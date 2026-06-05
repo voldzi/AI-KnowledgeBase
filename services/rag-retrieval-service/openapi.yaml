@@ -1,0 +1,576 @@
+openapi: 3.1.0
+info:
+  title: AKL RAG Retrieval Service
+  description: Hybrid retrieval, permission-aware reranking, answer composition, citations,
+    confidence, and no-answer policy for AKL Platform.
+  version: dev
+paths:
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
+    get:
+      tags:
+      - health
+      summary: Ready
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: At least one dependency is not ready.
+  /api/v1/rag/retrieve:
+    post:
+      tags:
+      - rag
+      summary: Retrieve
+      operationId: retrieve_api_v1_rag_retrieve_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrieveRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrieveResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/query:
+    post:
+      tags:
+      - rag
+      summary: Query
+      operationId: query_api_v1_rag_query_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RagQueryRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RagAnswer'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/answer:
+    post:
+      tags:
+      - rag
+      summary: Answer
+      operationId: answer_api_v1_rag_answer_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RagAnswer'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/compare-documents:
+    post:
+      tags:
+      - rag
+      summary: Compare Documents
+      operationId: compare_documents_api_v1_rag_compare_documents_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: ' '
+        required: true
+      responses:
+        '501':
+          description: Not implemented in this retrieval-only iteration.
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/check-compliance:
+    post:
+      tags:
+      - rag
+      summary: Check Compliance
+      operationId: check_compliance_api_v1_rag_check_compliance_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: ' '
+        required: true
+      responses:
+        '501':
+          description: Not implemented in this retrieval-only iteration.
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AnswerRequest:
+      properties:
+        subject_id:
+          type: string
+          minLength: 1
+          title: Subject Id
+        query:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Query
+        chunks:
+          items:
+            $ref: '#/components/schemas/RetrievedChunk'
+          type: array
+          title: Chunks
+        answer_mode:
+          type: string
+          enum:
+          - normative_with_citations
+          - retrieve_only
+          - compare
+          title: Answer Mode
+          default: normative_with_citations
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 8
+      additionalProperties: false
+      type: object
+      required:
+      - subject_id
+      - query
+      title: AnswerRequest
+    ChunkCitation:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          minLength: 1
+          title: Document Title
+        version_label:
+          type: string
+          minLength: 1
+          title: Version Label
+        document_version:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Document Version
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        article_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Article Number
+        paragraph_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paragraph Number
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      title: ChunkCitation
+    Citation:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          minLength: 1
+          title: Document Title
+        version_label:
+          type: string
+          minLength: 1
+          title: Version Label
+        document_version:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Document Version
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        chunk_id:
+          type: string
+          minLength: 1
+          title: Chunk Id
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      - chunk_id
+      title: Citation
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+      type: object
+      required:
+      - status
+      - service
+      - version
+      title: HealthResponse
+    RagAnswer:
+      properties:
+        query_id:
+          type: string
+          title: Query Id
+        answer:
+          type: string
+          title: Answer
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        used_chunks:
+          items:
+            type: string
+          type: array
+          title: Used Chunks
+        missing_information:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Missing Information
+      type: object
+      required:
+      - query_id
+      - answer
+      - confidence
+      - citations
+      title: RagAnswer
+    RagQueryFilters:
+      properties:
+        document_types:
+          items:
+            type: string
+            enum:
+            - directive
+            - regulation
+            - methodology
+            - policy
+            - procedure
+            - manual
+            - knowledge_base_article
+            - meeting_record
+            - contract
+            - attachment
+            - other
+          type: array
+          title: Document Types
+        only_valid:
+          type: boolean
+          title: Only Valid
+          default: true
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+      additionalProperties: false
+      type: object
+      title: RagQueryFilters
+    RagQueryRequest:
+      properties:
+        subject_id:
+          type: string
+          minLength: 1
+          title: Subject Id
+        query:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Query
+        filters:
+          $ref: '#/components/schemas/RagQueryFilters'
+        answer_mode:
+          type: string
+          enum:
+          - normative_with_citations
+          - retrieve_only
+          - compare
+          title: Answer Mode
+          default: normative_with_citations
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 8
+      additionalProperties: false
+      type: object
+      required:
+      - subject_id
+      - query
+      title: RagQueryRequest
+    ReadinessResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+        service:
+          type: string
+          title: Service
+        dependencies:
+          additionalProperties:
+            type: string
+          type: object
+          title: Dependencies
+      type: object
+      required:
+      - status
+      - service
+      - dependencies
+      title: ReadinessResponse
+    RetrieveRequest:
+      properties:
+        subject_id:
+          type: string
+          minLength: 1
+          title: Subject Id
+        query:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Query
+        filters:
+          $ref: '#/components/schemas/RagQueryFilters'
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 8
+      additionalProperties: false
+      type: object
+      required:
+      - subject_id
+      - query
+      title: RetrieveRequest
+    RetrieveResponse:
+      properties:
+        query_id:
+          type: string
+          title: Query Id
+        chunks:
+          items:
+            $ref: '#/components/schemas/RetrievedChunk'
+          type: array
+          title: Chunks
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - query_id
+      - chunks
+      title: RetrieveResponse
+    RetrievedChunk:
+      properties:
+        chunk_id:
+          type: string
+          minLength: 1
+          title: Chunk Id
+        score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Score
+        retrieval_method:
+          type: string
+          enum:
+          - dense
+          - sparse
+          - hybrid
+          - qdrant
+          title: Retrieval Method
+        text:
+          type: string
+          minLength: 1
+          title: Text
+        citation:
+          $ref: '#/components/schemas/ChunkCitation'
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - chunk_id
+      - score
+      - retrieval_method
+      - text
+      - citation
+      title: RetrievedChunk
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

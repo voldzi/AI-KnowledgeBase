@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+
+from app.config import Settings
+from app.errors import IngestionError
+from app.schemas import DocumentChunk
+
+
+@dataclass(frozen=True)
+class IndexingResult:
+    indexed_chunks: int
+
+
+class QdrantIndexer:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.mock_points: list[dict[str, Any]] = []
+
+    async def readiness(self) -> str:
+        if self.settings.indexer_mode == "mock":
+            return "mock"
+        try:
+            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+                response = await client.get(f"{self.settings.qdrant_base_url}/readyz", headers=self._headers())
+                if response.status_code == 404:
+                    response = await client.get(f"{self.settings.qdrant_base_url}/", headers=self._headers())
+            return "ready" if response.status_code < 500 else "not_ready"
+        except httpx.HTTPError:
+            return "not_ready"
+
+    async def index(
+        self,
+        *,
+        chunks: list[DocumentChunk],
+        vectors: list[list[float]],
+        embedding_model: str,
+    ) -> IndexingResult:
+        if len(chunks) != len(vectors):
+            raise IngestionError("INDEXING_INPUT_INVALID", "Chunk and vector counts do not match", status_code=500)
+        if not chunks:
+            return IndexingResult(indexed_chunks=0)
+
+        if self.settings.indexer_mode == "mock":
+            self.mock_points = [
+                self._point(chunk, vector, embedding_model=embedding_model)
+                for chunk, vector in zip(chunks, vectors, strict=True)
+            ]
+            return IndexingResult(indexed_chunks=len(chunks))
+
+        await self._ensure_collection(len(vectors[0]))
+        if self.settings.qdrant_delete_existing_version:
+            await self._delete_existing_version(chunks[0].document_version_id)
+        await self._upsert_points(
+            [self._point(chunk, vector, embedding_model=embedding_model) for chunk, vector in zip(chunks, vectors, strict=True)]
+        )
+        return IndexingResult(indexed_chunks=len(chunks))
+
+    async def _ensure_collection(self, vector_size: int) -> None:
+        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            response = await client.get(
+                f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}",
+                headers=self._headers(),
+            )
+            if response.status_code == 200:
+                return
+            if response.status_code != 404:
+                raise IngestionError(
+                    "QDRANT_COLLECTION_CHECK_FAILED",
+                    "Qdrant collection check failed",
+                    status_code=502,
+                    details={"status_code": response.status_code},
+                )
+            create_response = await client.put(
+                f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}",
+                headers=self._headers(),
+                json={
+                    "vectors": {
+                        "size": vector_size,
+                        "distance": self.settings.qdrant_distance,
+                    }
+                },
+            )
+            if create_response.status_code >= 400:
+                raise IngestionError(
+                    "QDRANT_COLLECTION_CREATE_FAILED",
+                    "Qdrant collection could not be created",
+                    status_code=502,
+                    details={"status_code": create_response.status_code},
+                )
+
+    async def _delete_existing_version(self, document_version_id: str) -> None:
+        payload = {
+            "filter": {
+                "must": [
+                    {"key": "document_version_id", "match": {"value": document_version_id}},
+                ]
+            }
+        }
+        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            response = await client.post(
+                f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/points/delete",
+                params={"wait": "true"},
+                headers=self._headers(),
+                json=payload,
+            )
+        if response.status_code >= 400:
+            raise IngestionError(
+                "QDRANT_DELETE_FAILED",
+                "Qdrant failed to delete existing vectors for document version",
+                status_code=502,
+                details={"status_code": response.status_code},
+            )
+
+    async def _upsert_points(self, points: list[dict[str, Any]]) -> None:
+        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            response = await client.put(
+                f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/points",
+                params={"wait": "true"},
+                headers=self._headers(),
+                json={"points": points},
+            )
+        if response.status_code >= 400:
+            raise IngestionError(
+                "QDRANT_UPSERT_FAILED",
+                "Qdrant vector upsert failed",
+                status_code=502,
+                details={"status_code": response.status_code},
+            )
+
+    def _point(self, chunk: DocumentChunk, vector: list[float], *, embedding_model: str) -> dict[str, Any]:
+        payload = chunk.model_dump(mode="json")
+        chunk_metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        for key in ("document_title", "version_label", "document_type", "status", "tags"):
+            if key in chunk_metadata and key not in payload:
+                payload[key] = chunk_metadata[key]
+        payload["embedding_model"] = embedding_model
+        return {
+            "id": str(uuid.uuid5(uuid.NAMESPACE_URL, chunk.chunk_id)),
+            "vector": vector,
+            "payload": payload,
+        }
+
+    def _headers(self) -> dict[str, str]:
+        if not self.settings.qdrant_api_key:
+            return {}
+        return {"api-key": self.settings.qdrant_api_key}

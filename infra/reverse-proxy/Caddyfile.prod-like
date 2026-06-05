@@ -1,0 +1,121 @@
+{
+	admin 0.0.0.0:2019
+	auto_https disable_redirects
+	metrics
+}
+
+(correlation_headers) {
+	header_up X-Request-ID {http.request.header.X-Request-ID}
+	header_up X-Correlation-ID {http.request.header.X-Correlation-ID}
+	header_up X-Service-Name reverse-proxy
+}
+
+(akl_security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+}
+
+(akl_routes) {
+	import akl_security_headers
+
+	log {
+		output stdout
+		format json
+	}
+
+	handle / {
+		respond "AKL Platform reverse proxy" 200
+	}
+
+	handle /health {
+		reverse_proxy {$PLATFORM_STATUS_UPSTREAM:platform-status:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle /ready {
+		reverse_proxy {$PLATFORM_STATUS_UPSTREAM:platform-status:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /platform/* {
+		reverse_proxy {$PLATFORM_STATUS_UPSTREAM:platform-status:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /web/* {
+		reverse_proxy {$WEB_UPSTREAM:web:3000} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /registry/* {
+		reverse_proxy {$REGISTRY_UPSTREAM:registry-api:8000} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /ingestion/* {
+		reverse_proxy {$INGESTION_UPSTREAM:ingestion-service:8090} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /rag/* {
+		reverse_proxy {$RAG_UPSTREAM:rag-retrieval-service:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /llm-gateway/* {
+		reverse_proxy {$LLM_GATEWAY_UPSTREAM:llm-gateway-service:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /evaluation/* {
+		reverse_proxy {$EVALUATION_UPSTREAM:evaluation-service:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle_path /governance/* {
+		reverse_proxy {$GOVERNANCE_UPSTREAM:governance-service:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle /grafana/* {
+		reverse_proxy {$GRAFANA_UPSTREAM:grafana:3000} {
+			import correlation_headers
+		}
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+}
+
+:{$AKL_PROXY_HTTP_CONTAINER_PORT:8080} {
+	handle /health {
+		reverse_proxy {$PLATFORM_STATUS_UPSTREAM:platform-status:8080} {
+			import correlation_headers
+		}
+	}
+
+	handle {
+		redir https://{$AKL_PUBLIC_HOST:localhost}:{$AKL_PROXY_HTTPS_PORT:8443}{uri} 308
+	}
+}
+
+{$AKL_PUBLIC_HOST:localhost}:{$AKL_PROXY_HTTPS_CONTAINER_PORT:8443} {
+	tls {$AKL_TLS_MODE:internal}
+	import akl_routes
+}

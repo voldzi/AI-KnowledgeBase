@@ -1,0 +1,428 @@
+openapi: 3.1.0
+info:
+  title: AKL Ingestion Service
+  description: Document ingestion service for parsing, OCR fallback, logical chunking,
+    embeddings, Qdrant indexing, and ingestion reports. It does not publish document
+    versions.
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
+    get:
+      tags:
+      - health
+      summary: Ready
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+  /api/v1/ingestion/jobs:
+    post:
+      tags:
+      - ingestion
+      summary: Create Ingestion Job
+      operationId: create_ingestion_job_api_v1_ingestion_jobs_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestionJobCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionJobResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/ingestion/jobs/{job_id}:
+    get:
+      tags:
+      - ingestion
+      summary: Get Ingestion Job
+      operationId: get_ingestion_job_api_v1_ingestion_jobs__job_id__get
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionJobResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/ingestion/jobs/{job_id}/report:
+    get:
+      tags:
+      - ingestion
+      summary: Get Ingestion Report
+      operationId: get_ingestion_report_api_v1_ingestion_jobs__job_id__report_get
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionReport'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/ingestion/jobs/{job_id}/cancel:
+    post:
+      tags:
+      - ingestion
+      summary: Cancel Ingestion Job
+      operationId: cancel_ingestion_job_api_v1_ingestion_jobs__job_id__cancel_post
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionJobResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/ingestion/reindex:
+    post:
+      tags:
+      - ingestion
+      summary: Reindex
+      operationId: reindex_api_v1_ingestion_reindex_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReindexRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReindexResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+      type: object
+      required:
+      - status
+      - service
+      - version
+      title: HealthResponse
+    IngestionJobCreate:
+      properties:
+        document_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Version Id
+        source_file_uri:
+          type: string
+          maxLength: 2048
+          minLength: 1
+          title: Source File Uri
+        parser_profile:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Parser Profile
+          default: controlled_document
+        ocr_enabled:
+          type: boolean
+          title: Ocr Enabled
+          default: true
+        chunking_strategy:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Chunking Strategy
+          default: legal_structured
+        embedding_profile:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Embedding Profile
+          default: default
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - source_file_uri
+      title: IngestionJobCreate
+    IngestionJobResponse:
+      properties:
+        job_id:
+          type: string
+          title: Job Id
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+      type: object
+      required:
+      - job_id
+      - status
+      - document_id
+      - document_version_id
+      - created_at
+      title: IngestionJobResponse
+    IngestionReport:
+      properties:
+        job_id:
+          type: string
+          title: Job Id
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        documents_processed:
+          type: integer
+          minimum: 0.0
+          title: Documents Processed
+        pages_processed:
+          type: integer
+          minimum: 0.0
+          title: Pages Processed
+        chunks_created:
+          type: integer
+          minimum: 0.0
+          title: Chunks Created
+        tables_detected:
+          type: integer
+          minimum: 0.0
+          title: Tables Detected
+        ocr_used:
+          type: boolean
+          title: Ocr Used
+        warnings:
+          items:
+            $ref: '#/components/schemas/ReportMessage'
+          type: array
+          title: Warnings
+        errors:
+          items:
+            $ref: '#/components/schemas/ReportMessage'
+          type: array
+          title: Errors
+      type: object
+      required:
+      - job_id
+      - status
+      - documents_processed
+      - pages_processed
+      - chunks_created
+      - tables_detected
+      - ocr_used
+      title: IngestionReport
+    JobStatus:
+      type: string
+      enum:
+      - queued
+      - running
+      - completed
+      - failed
+      - cancelled
+      - completed_with_warnings
+      title: JobStatus
+    ReadinessResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+        service:
+          type: string
+          title: Service
+        checks:
+          additionalProperties:
+            type: string
+          type: object
+          title: Checks
+      type: object
+      required:
+      - status
+      - service
+      title: ReadinessResponse
+    ReindexRequest:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/IngestionJobCreate'
+          type: array
+          maxItems: 100
+          title: Items
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Reason
+      additionalProperties: false
+      type: object
+      title: ReindexRequest
+    ReindexResponse:
+      properties:
+        accepted_jobs:
+          items:
+            type: string
+          type: array
+          title: Accepted Jobs
+        rejected_items:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Rejected Items
+      type: object
+      required:
+      - accepted_jobs
+      title: ReindexResponse
+    ReportMessage:
+      properties:
+        code:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Code
+        message:
+          type: string
+          maxLength: 1000
+          minLength: 1
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: ReportMessage
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

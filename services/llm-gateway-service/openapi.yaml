@@ -1,0 +1,631 @@
+openapi: 3.1.0
+info:
+  title: AKL LLM Gateway Service
+  version: 0.1.0
+  description: Unified LLM runtime and Local Model Manager API for AKL.
+servers:
+  - url: https://llm-gateway.local
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /ready:
+    get:
+      tags: [health]
+      summary: Readiness check
+      responses:
+        "200":
+          description: Active provider is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: Active provider is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /api/v1/providers:
+    get:
+      tags: [model-manager]
+      summary: List configured LLM providers and availability
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Provider status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvidersResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+  /api/v1/models:
+    get:
+      tags: [models]
+      summary: List available models from enabled providers
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Model list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelsResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/models/recommended:
+    get:
+      tags: [model-manager]
+      summary: List recommended local models
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Recommended model profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecommendedModelsResponse"
+  /api/v1/models/pull:
+    post:
+      tags: [model-manager]
+      summary: Explicitly pull a model through the active provider
+      description: Pull is never automatic at service startup and must be enabled with configuration.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelPullRequest"
+      responses:
+        "200":
+          description: Pull result or unsupported/disabled status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelPullResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/v1/models/test-chat:
+    post:
+      tags: [model-manager]
+      summary: Test a chat model
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelTestChatRequest"
+      responses:
+        "200":
+          description: Chat completion response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/v1/models/test-embedding:
+    post:
+      tags: [model-manager]
+      summary: Test an embedding model
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelTestEmbeddingRequest"
+      responses:
+        "200":
+          description: Embedding response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingsResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/v1/config/effective:
+    get:
+      tags: [model-manager]
+      summary: Return effective non-secret LLM Gateway configuration
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Effective configuration without secrets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EffectiveConfigResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+  /api/v1/chat/completions:
+    post:
+      tags: [chat]
+      summary: Create a chat completion
+      description: "Set `stream=true` to receive `text/event-stream` chunks followed by `data: [DONE]`."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: Chat completion JSON response, or SSE stream when `stream=true`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+  /api/v1/embeddings:
+    post:
+      tags: [embeddings]
+      summary: Create embeddings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingsRequest"
+      responses:
+        "200":
+          description: Embedding response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingsResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Error:
+      description: Standard AKL error envelope.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ProviderName:
+      type: string
+      enum: [mock, ollama, openai]
+    ModelKind:
+      type: string
+      enum: [chat, embedding]
+    HealthResponse:
+      type: object
+      required: [status, service, version]
+      properties:
+        status:
+          type: string
+          const: ok
+        service:
+          type: string
+        version:
+          type: string
+    ReadyResponse:
+      type: object
+      required: [status, service, default_provider, providers]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        service:
+          type: string
+        default_provider:
+          $ref: "#/components/schemas/ProviderName"
+        providers:
+          type: object
+          additionalProperties:
+            type: boolean
+    ProviderInfo:
+      type: object
+      required:
+        - name
+        - enabled
+        - active
+        - available
+        - supports_chat
+        - supports_embeddings
+        - supports_model_pull
+        - supports_model_delete
+      properties:
+        name:
+          $ref: "#/components/schemas/ProviderName"
+        enabled:
+          type: boolean
+        active:
+          type: boolean
+        available:
+          type: boolean
+        supports_chat:
+          type: boolean
+        supports_embeddings:
+          type: boolean
+        supports_model_pull:
+          type: boolean
+        supports_model_delete:
+          type: boolean
+        base_url:
+          type:
+            - string
+            - "null"
+        error_code:
+          type:
+            - string
+            - "null"
+        error_message:
+          type:
+            - string
+            - "null"
+    ProvidersResponse:
+      type: object
+      required: [active_provider, providers]
+      properties:
+        active_provider:
+          $ref: "#/components/schemas/ProviderName"
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderInfo"
+    ModelInfo:
+      type: object
+      required: [model_id, provider, capabilities]
+      properties:
+        model_id:
+          type: string
+        provider:
+          $ref: "#/components/schemas/ProviderName"
+        capabilities:
+          type: array
+          items:
+            type: string
+        context_window:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+    ModelsResponse:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelInfo"
+    RecommendedModel:
+      type: object
+      required: [name, recommended_for]
+      properties:
+        name:
+          type: string
+        provider:
+          type:
+            - string
+            - "null"
+          enum: [mock, ollama, openai, null]
+        recommended_for:
+          type: string
+        minimum_memory_gb:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+    RecommendedModelsResponse:
+      type: object
+      required: [chat_models, embedding_models]
+      properties:
+        chat_models:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendedModel"
+        embedding_models:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendedModel"
+    ModelPullRequest:
+      type: object
+      required: [model, kind]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+          minLength: 1
+        kind:
+          $ref: "#/components/schemas/ModelKind"
+    ModelPullResponse:
+      type: object
+      required: [status, provider, model]
+      properties:
+        status:
+          type: string
+          enum: [completed, started, unsupported, disabled]
+        provider:
+          $ref: "#/components/schemas/ProviderName"
+        model:
+          type: string
+        message:
+          type:
+            - string
+            - "null"
+    ModelTestChatRequest:
+      type: object
+      required: [prompt]
+      additionalProperties: false
+      properties:
+        model:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        prompt:
+          type: string
+          minLength: 1
+        think:
+          type:
+            - boolean
+            - "null"
+        max_tokens:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+    ModelTestEmbeddingRequest:
+      type: object
+      required: [input]
+      additionalProperties: false
+      properties:
+        model:
+          type:
+            - string
+            - "null"
+          minLength: 1
+        input:
+          type: string
+          minLength: 1
+    EffectiveConfigResponse:
+      type: object
+      required:
+        - service
+        - version
+        - environment
+        - active_provider
+        - enabled_providers
+        - default_chat_model
+        - default_embedding_model
+        - default_max_tokens
+        - model_provider_map
+        - allow_model_pull
+        - allow_model_delete
+        - ollama_think
+        - openai_api_key_configured
+      properties:
+        service:
+          type: string
+        version:
+          type: string
+        environment:
+          type: string
+        active_provider:
+          $ref: "#/components/schemas/ProviderName"
+        enabled_providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderName"
+        default_chat_model:
+          type: string
+        default_embedding_model:
+          type: string
+        default_max_tokens:
+          type: integer
+          minimum: 1
+        model_provider_map:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ProviderName"
+        allow_model_pull:
+          type: boolean
+        allow_model_delete:
+          type: boolean
+        ollama_base_url:
+          type:
+            - string
+            - "null"
+        ollama_think:
+          type: boolean
+        openai_base_url:
+          type:
+            - string
+            - "null"
+        openai_api_key_configured:
+          type: boolean
+    ChatMessage:
+      type: object
+      required: [role, content]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          type: string
+          minLength: 1
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+          minLength: 1
+        messages:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        temperature:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          maximum: 2
+        top_p:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          maximum: 1
+        max_tokens:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        think:
+          type:
+            - boolean
+            - "null"
+        stream:
+          type: boolean
+          default: false
+        metadata:
+          type: object
+          default: {}
+    ChatCompletionResponse:
+      type: object
+      required: [id, model, content, finish_reason, usage, provider]
+      properties:
+        id:
+          type: string
+        model:
+          type: string
+        content:
+          type: string
+        finish_reason:
+          type: string
+        usage:
+          $ref: "#/components/schemas/Usage"
+        provider:
+          $ref: "#/components/schemas/ProviderName"
+    EmbeddingsRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+          minLength: 1
+        input:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        metadata:
+          type: object
+          default: {}
+    EmbeddingsResponse:
+      type: object
+      required: [model, data, provider]
+      properties:
+        model:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmbeddingItem"
+        provider:
+          $ref: "#/components/schemas/ProviderName"
+    EmbeddingItem:
+      type: object
+      required: [index, embedding]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        embedding:
+          type: array
+          items:
+            type: number
+    Usage:
+      type: object
+      required: [prompt_tokens, completion_tokens, total_tokens]
+      properties:
+        prompt_tokens:
+          type: integer
+          minimum: 0
+        completion_tokens:
+          type: integer
+          minimum: 0
+        total_tokens:
+          type: integer
+          minimum: 0
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details, trace_id]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            trace_id:
+              type: string

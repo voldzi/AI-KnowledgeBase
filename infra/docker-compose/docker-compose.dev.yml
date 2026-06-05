@@ -1,0 +1,568 @@
+name: ${COMPOSE_PROJECT_NAME:-akl}
+
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-platform-status-build: &platform-status-build
+  context: ../..
+  dockerfile: services/platform-infrastructure/Dockerfile
+
+x-status-environment: &status-environment
+  AKL_ENV: ${AKL_ENV:-development}
+  AKL_AUTH_MODE: ${AKL_AUTH_MODE:-mock}
+  AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+  AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+  PLATFORM_HOST: 0.0.0.0
+  PLATFORM_PORT: 8080
+  PLATFORM_READY_TIMEOUT_SECONDS: ${PLATFORM_READY_TIMEOUT_SECONDS:-2}
+
+x-status-healthcheck: &status-healthcheck
+  test:
+    [
+      "CMD-SHELL",
+      "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()\"",
+    ]
+  interval: 20s
+  timeout: 3s
+  retries: 5
+  start_period: 10s
+
+services:
+  reverse-proxy:
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    restart: unless-stopped
+    environment:
+      AKL_PROXY_CONTAINER_PORT: ${AKL_PROXY_CONTAINER_PORT:-8080}
+      PLATFORM_STATUS_UPSTREAM: ${PLATFORM_STATUS_UPSTREAM:-platform-status:8080}
+      WEB_UPSTREAM: ${WEB_UPSTREAM:-web:3000}
+      REGISTRY_UPSTREAM: ${REGISTRY_UPSTREAM:-registry-api:8000}
+      INGESTION_UPSTREAM: ${INGESTION_UPSTREAM:-ingestion-service:8090}
+      RAG_UPSTREAM: ${RAG_UPSTREAM:-rag-retrieval-service:8080}
+      LLM_GATEWAY_UPSTREAM: ${LLM_GATEWAY_UPSTREAM:-llm-gateway-service:8080}
+      EVALUATION_UPSTREAM: ${EVALUATION_UPSTREAM:-evaluation-service:8080}
+      GOVERNANCE_UPSTREAM: ${GOVERNANCE_UPSTREAM:-governance-service:8080}
+      GRAFANA_UPSTREAM: ${GRAFANA_UPSTREAM:-grafana:3000}
+    ports:
+      - "${AKL_PROXY_HTTP_PORT:-8080}:${AKL_PROXY_CONTAINER_PORT:-8080}"
+    volumes:
+      - ../reverse-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      platform-status:
+        condition: service_healthy
+    networks:
+      - public_zone
+      - app_zone
+      - management_zone
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1:${AKL_PROXY_CONTAINER_PORT:-8080}/health >/dev/null 2>&1",
+        ]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    logging: *json-logging
+
+  platform-status:
+    build: *platform-status-build
+    image: ${PLATFORM_STATUS_IMAGE:-akl/platform-status:local}
+    restart: unless-stopped
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: platform-infrastructure
+      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-}
+    depends_on:
+      postgres:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+      keycloak:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    networks:
+      - app_zone
+      - management_zone
+    healthcheck: *status-healthcheck
+    logging: *json-logging
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-akl}
+      POSTGRES_USER: ${POSTGRES_USER:-akl_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-akl_local_postgres}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES:-akl_registry,akl_keycloak,akl_evaluation,akl_governance}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - data_zone
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *json-logging
+
+  qdrant:
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/6333' >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *json-logging
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-akl_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-akl_local_minio}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *json-logging
+
+  keycloak:
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:latest}
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/akl_keycloak
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:-akl_platform}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-akl_local_postgres}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-akl_local_keycloak_admin}
+    ports:
+      - "${KEYCLOAK_HTTP_PORT:-8081}:8080"
+    volumes:
+      - ../keycloak/realm-akl.json:/opt/keycloak/data/import/realm-akl.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_zone
+      - data_zone
+      - management_zone
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 5 bash -c '</dev/tcp/127.0.0.1/9000' >/dev/null 2>&1",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    logging: *json-logging
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - app_zone
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9090/-/ready >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    logging: *json-logging
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:latest}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-akl_local_grafana_admin}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:8080/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+    networks:
+      - management_zone
+    logging: *json-logging
+
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:latest}
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ../monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - management_zone
+    logging: *json-logging
+
+  ollama:
+    profiles: ["ai"]
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - ai_compute_zone
+    logging: *json-logging
+
+  web:
+    build:
+      context: ../../apps/web
+    image: ${WEB_IMAGE:-akl/web:local}
+    restart: unless-stopped
+    environment:
+      AKL_ENV: ${AKL_ENV:-development}
+      AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+      AKL_API_CLIENT_MODE: ${AKL_API_CLIENT_MODE:-production}
+      AKL_AUTH_MODE: ${AKL_WEB_AUTH_MODE:-mock}
+      AKL_REGISTRY_API_BASE_URL: ${AKL_WEB_REGISTRY_API_BASE_URL:-http://registry-api:8000/api/v1}
+      AKL_INGESTION_API_BASE_URL: ${AKL_WEB_INGESTION_API_BASE_URL:-http://ingestion-service:8090/api/v1}
+      AKL_RAG_API_BASE_URL: ${AKL_WEB_RAG_API_BASE_URL:-http://rag-retrieval-service:8080/api/v1}
+      AKL_DEV_ACCESS_TOKEN: ${AKL_DEV_ACCESS_TOKEN:-}
+      AKL_WEB_DEV_SUBJECT: ${AKL_WEB_DEV_SUBJECT:-user_dev}
+      AKL_WEB_DEV_ROLES: ${AKL_WEB_DEV_ROLES:-admin,document_manager,reader}
+      AKL_WEB_DEV_GROUPS: ${AKL_WEB_DEV_GROUPS:-}
+      PORT: 3000
+    ports:
+      - "${WEB_PORT:-3002}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://$${HOSTNAME}:3000/health >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      registry-api:
+        condition: service_healthy
+      ingestion-service:
+        condition: service_healthy
+      rag-retrieval-service:
+        condition: service_healthy
+    networks:
+      - app_zone
+    logging: *json-logging
+
+  registry-api:
+    build:
+      context: ../../services/registry-api
+    image: ${REGISTRY_API_IMAGE:-akl/registry-api:local}
+    restart: unless-stopped
+    environment:
+      AKL_ENV: ${AKL_ENV:-development}
+      AKL_SERVICE_NAME: registry-api
+      AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+      AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+      AKL_AUTH_MODE: ${AKL_REGISTRY_AUTH_MODE:-mock}
+      AKL_DATABASE_URL: ${AKL_REGISTRY_DATABASE_URL:-postgresql+psycopg://akl_platform:${POSTGRES_PASSWORD:-akl_local_postgres}@postgres:5432/akl_registry}
+      AKL_AUTO_CREATE_SCHEMA: ${AKL_REGISTRY_AUTO_CREATE_SCHEMA:-true}
+      AKL_MOCK_SUBJECT: ${AKL_MOCK_SUBJECT:-user_dev}
+      AKL_MOCK_ROLES: ${AKL_MOCK_ROLES:-["admin"]}
+    ports:
+      - "${REGISTRY_API_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_zone
+      - data_zone
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()\"",
+        ]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    logging: *json-logging
+
+  ingestion-service:
+    build:
+      context: ../../services/ingestion-service
+    image: ${INGESTION_SERVICE_IMAGE:-akl/ingestion-service:local}
+    restart: unless-stopped
+    environment:
+      AKL_ENV: ${AKL_ENV:-development}
+      AKL_SERVICE_NAME: ingestion-service
+      AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+      AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+      AKL_AUTH_MODE: ${AKL_INGESTION_AUTH_MODE:-mock}
+      AKL_SERVICE_ACCOUNT_SUBJECT: ${AKL_INGESTION_SERVICE_ACCOUNT_SUBJECT:-svc-ingestion}
+      AKL_SERVICE_ACCOUNT_ROLES: ${AKL_INGESTION_SERVICE_ACCOUNT_ROLES:-service_ingestion,document_manager}
+      AKL_INGESTION_REGISTRY_CLIENT_MODE: ${AKL_INGESTION_REGISTRY_CLIENT_MODE:-http}
+      AKL_REGISTRY_API_BASE_URL: ${AKL_INGESTION_REGISTRY_API_BASE_URL:-http://registry-api:8000}
+      AKL_INGESTION_OBJECT_STORAGE_MODE: ${AKL_INGESTION_OBJECT_STORAGE_MODE:-local}
+      AKL_OBJECT_STORAGE_ROOT: /data/object-storage
+      AKL_INGESTION_EMBEDDING_CLIENT_MODE: ${AKL_INGESTION_EMBEDDING_CLIENT_MODE:-http}
+      AKL_LLM_GATEWAY_BASE_URL: ${AKL_INGESTION_LLM_GATEWAY_BASE_URL:-http://llm-gateway-service:8080/api/v1}
+      AKL_INGESTION_DEFAULT_EMBEDDING_MODEL: ${AKL_INGESTION_DEFAULT_EMBEDDING_MODEL:-bge-m3}
+      AKL_INGESTION_INDEXER_MODE: ${AKL_INGESTION_INDEXER_MODE:-qdrant}
+      AKL_QDRANT_BASE_URL: ${AKL_QDRANT_BASE_URL:-http://qdrant:6333}
+      AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
+      AKL_INGESTION_JOB_STORE_PATH: /data/ingestion-jobs
+      AKL_INGESTION_PROCESS_JOBS_INLINE: ${AKL_INGESTION_PROCESS_JOBS_INLINE:-true}
+    ports:
+      - "${INGESTION_SERVICE_PORT:-8090}:8090"
+    volumes:
+      - ingestion-object-storage:/data/object-storage
+      - ingestion-jobs:/data/ingestion-jobs
+    depends_on:
+      registry-api:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+      llm-gateway-service:
+        condition: service_healthy
+    networks:
+      - app_zone
+      - data_zone
+    logging: *json-logging
+
+  rag-retrieval-service:
+    build:
+      context: ../../services/rag-retrieval-service
+    image: ${RAG_RETRIEVAL_SERVICE_IMAGE:-akl/rag-retrieval-service:local}
+    restart: unless-stopped
+    environment:
+      AKL_ENV: ${AKL_ENV:-development}
+      AKL_SERVICE_NAME: rag-retrieval-service
+      AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+      AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+      AKL_AUTH_MODE: ${AKL_RAG_AUTH_MODE:-mock}
+      AKL_SERVICE_ACCOUNT_SUBJECT: ${AKL_RAG_SERVICE_ACCOUNT_SUBJECT:-svc-rag}
+      AKL_SERVICE_ACCOUNT_ROLES: ${AKL_RAG_SERVICE_ACCOUNT_ROLES:-service_rag}
+      AKL_RAG_DEPENDENCY_MODE: ${AKL_RAG_DEPENDENCY_MODE:-http}
+      AKL_RAG_REGISTRY_CLIENT_MODE: ${AKL_RAG_REGISTRY_CLIENT_MODE:-http}
+      AKL_RAG_RETRIEVER_MODE: ${AKL_RAG_RETRIEVER_MODE:-qdrant}
+      AKL_RAG_LLM_CLIENT_MODE: ${AKL_RAG_LLM_CLIENT_MODE:-http}
+      RAG_RETRIEVAL_MODE: ${RAG_RETRIEVAL_MODE:-qdrant}
+      RAG_MOCK_MODE: ${RAG_MOCK_MODE:-false}
+      RAG_AUTHZ_MODE: ${RAG_AUTHZ_MODE:-dev}
+      AKL_REGISTRY_BASE_URL: ${AKL_RAG_REGISTRY_BASE_URL:-http://registry-api:8000/api/v1}
+      AKL_QDRANT_BASE_URL: ${AKL_QDRANT_BASE_URL:-http://qdrant:6333}
+      AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
+      AKL_LLM_GATEWAY_BASE_URL: ${AKL_RAG_LLM_GATEWAY_BASE_URL:-http://llm-gateway-service:8080/api/v1}
+      AKL_RAG_EMBEDDING_MODEL: ${AKL_RAG_EMBEDDING_MODEL:-bge-m3}
+    ports:
+      - "${RAG_RETRIEVAL_SERVICE_PORT:-8082}:8080"
+    depends_on:
+      registry-api:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      llm-gateway-service:
+        condition: service_healthy
+    networks:
+      - app_zone
+      - data_zone
+    logging: *json-logging
+
+  llm-gateway-service:
+    build:
+      context: ../../services/llm-gateway-service
+    image: ${LLM_GATEWAY_SERVICE_IMAGE:-akl/llm-gateway-service:local}
+    restart: unless-stopped
+    environment:
+      AKL_ENV: ${AKL_ENV:-development}
+      AKL_SERVICE_NAME: llm-gateway-service
+      AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+      AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+      AKL_AUTH_MODE: ${AKL_LLM_AUTH_MODE:-mock}
+      AKL_LLM_DEFAULT_PROVIDER: ${AKL_LLM_DEFAULT_PROVIDER:-mock}
+      AKL_LLM_ENABLED_PROVIDERS: ${AKL_LLM_ENABLED_PROVIDERS:-mock}
+      AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{}}
+      AKL_LLM_DEFAULT_CHAT_MODEL: ${AKL_LLM_DEFAULT_CHAT_MODEL:-qwen2.5:14b}
+      AKL_LLM_DEFAULT_EMBEDDING_MODEL: ${AKL_LLM_DEFAULT_EMBEDDING_MODEL:-bge-m3}
+      AKL_LLM_DEFAULT_MAX_TOKENS: ${AKL_LLM_DEFAULT_MAX_TOKENS:-512}
+      AKL_LLM_ALLOW_MODEL_PULL: ${AKL_LLM_ALLOW_MODEL_PULL:-false}
+      AKL_LLM_ALLOW_MODEL_DELETE: ${AKL_LLM_ALLOW_MODEL_DELETE:-false}
+      AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS: ${AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS:-1800}
+      AKL_LLM_REQUEST_TIMEOUT_SECONDS: ${AKL_LLM_REQUEST_TIMEOUT_SECONDS:-30}
+      AKL_LLM_RETRY_ATTEMPTS: ${AKL_LLM_RETRY_ATTEMPTS:-2}
+      AKL_LLM_RETRY_BACKOFF_SECONDS: ${AKL_LLM_RETRY_BACKOFF_SECONDS:-0.25}
+      AKL_OLLAMA_BASE_URL: ${AKL_OLLAMA_BASE_URL:-http://ollama:11434}
+      AKL_OLLAMA_THINK: ${AKL_OLLAMA_THINK:-false}
+      AKL_OPENAI_COMPAT_BASE_URL: ${AKL_OPENAI_COMPAT_BASE_URL:-http://vllm:8000}
+      AKL_OPENAI_COMPAT_API_KEY: ${AKL_OPENAI_COMPAT_API_KEY:-}
+      AKL_MOCK_CHAT_RESPONSE: ${AKL_MOCK_CHAT_RESPONSE:-Mock response generated by LLM Gateway.}
+      AKL_MOCK_EMBEDDING_DIMENSIONS: ${AKL_MOCK_EMBEDDING_DIMENSIONS:-8}
+      AKL_OLLAMA_CHAT_MODEL: ${AKL_OLLAMA_CHAT_MODEL:-qwen2.5:14b}
+      AKL_OLLAMA_EMBEDDING_MODEL: ${AKL_OLLAMA_EMBEDDING_MODEL:-bge-m3}
+    ports:
+      - "${LLM_GATEWAY_SERVICE_PORT:-8083}:8080"
+    depends_on:
+      ollama:
+        condition: service_started
+        required: false
+    networks:
+      - app_zone
+      - ai_compute_zone
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()\"",
+        ]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    logging: *json-logging
+
+  evaluation-service:
+    build:
+      context: ../../services/evaluation-service
+    image: ${EVALUATION_SERVICE_IMAGE:-akl/evaluation-service:local}
+    restart: unless-stopped
+    environment:
+      AKL_ENV: ${AKL_ENV:-development}
+      AKL_SERVICE_NAME: evaluation-service
+      AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+      AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+      AKL_AUTH_MODE: ${AKL_EVAL_AUTH_MODE:-mock}
+      AKL_EVAL_DEPENDENCY_MODE: ${AKL_EVAL_DEPENDENCY_MODE:-mock}
+      AKL_EVAL_RAG_CLIENT_MODE: ${AKL_EVAL_RAG_CLIENT_MODE:-mock}
+      AKL_EVAL_REGISTRY_CLIENT_MODE: ${AKL_EVAL_REGISTRY_CLIENT_MODE:-mock}
+      AKL_RAG_BASE_URL: ${AKL_EVAL_RAG_BASE_URL:-http://rag-retrieval-service:8080/api/v1}
+      AKL_REGISTRY_BASE_URL: ${AKL_EVAL_REGISTRY_BASE_URL:-http://registry-api:8000/api/v1}
+      AKL_EVAL_REPORTS_DIR: /data/evaluation-reports
+    ports:
+      - "${EVALUATION_SERVICE_PORT:-8084}:8080"
+    volumes:
+      - evaluation-reports:/data/evaluation-reports
+    depends_on:
+      registry-api:
+        condition: service_healthy
+      rag-retrieval-service:
+        condition: service_healthy
+    networks:
+      - app_zone
+    logging: *json-logging
+
+  governance-service:
+    build:
+      context: ../../services/governance-service
+    image: ${GOVERNANCE_SERVICE_IMAGE:-akl/governance-service:local}
+    restart: unless-stopped
+    environment:
+      AKL_ENV: ${AKL_ENV:-development}
+      AKL_SERVICE_NAME: governance-service
+      AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
+      AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+      AKL_AUTH_MODE: ${AKL_GOVERNANCE_AUTH_MODE:-mock}
+      AKL_GOVERNANCE_DEPENDENCY_MODE: ${AKL_GOVERNANCE_DEPENDENCY_MODE:-mock}
+      AKL_GOVERNANCE_REGISTRY_CLIENT_MODE: ${AKL_GOVERNANCE_REGISTRY_CLIENT_MODE:-mock}
+      AKL_GOVERNANCE_RAG_CLIENT_MODE: ${AKL_GOVERNANCE_RAG_CLIENT_MODE:-mock}
+      AKL_REGISTRY_BASE_URL: ${AKL_GOVERNANCE_REGISTRY_BASE_URL:-http://registry-api:8000/api/v1}
+      AKL_RAG_BASE_URL: ${AKL_GOVERNANCE_RAG_BASE_URL:-http://rag-retrieval-service:8080/api/v1}
+    ports:
+      - "${GOVERNANCE_SERVICE_PORT:-8085}:8080"
+    depends_on:
+      registry-api:
+        condition: service_healthy
+      rag-retrieval-service:
+        condition: service_healthy
+    networks:
+      - app_zone
+    logging: *json-logging
+
+networks:
+  public_zone:
+    driver: bridge
+  app_zone:
+    driver: bridge
+  data_zone:
+    driver: bridge
+    internal: true
+  ai_compute_zone:
+    driver: bridge
+    internal: true
+  management_zone:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  qdrant-data:
+  minio-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  ollama-data:
+  ingestion-object-storage:
+  ingestion-jobs:
+  evaluation-reports:

@@ -1,0 +1,83 @@
+export type AklEnvironment = "development" | "test" | "staging" | "production";
+export type ApiClientMode = "mock" | "production";
+export type AuthMode = "mock" | "oidc";
+
+export interface AklConfig {
+  environment: AklEnvironment;
+  apiClientMode: ApiClientMode;
+  authMode: AuthMode;
+  serviceBaseUrls: {
+    registry: string;
+    ingestion: string;
+    rag: string;
+  };
+  devAccessToken?: string;
+}
+
+type EnvSource = Record<string, string | undefined>;
+
+function parseEnvironment(value: string | undefined): AklEnvironment {
+  const normalized = value ?? "development";
+  if (["development", "test", "staging", "production"].includes(normalized)) {
+    return normalized as AklEnvironment;
+  }
+  throw new Error(`Unsupported AKL_ENV value: ${normalized}`);
+}
+
+function parseClientMode(value: string | undefined): ApiClientMode {
+  const normalized = value ?? "mock";
+  if (normalized === "mock" || normalized === "production") {
+    return normalized;
+  }
+  throw new Error(`Unsupported AKL_API_CLIENT_MODE value: ${normalized}`);
+}
+
+function parseAuthMode(value: string | undefined): AuthMode {
+  const normalized = value ?? "mock";
+  if (normalized === "mock" || normalized === "oidc") {
+    return normalized;
+  }
+  throw new Error(`Unsupported AKL_AUTH_MODE value: ${normalized}`);
+}
+
+function normalizeBaseUrl(value: string | undefined, name: string): string {
+  if (!value) {
+    throw new Error(`${name} is required when AKL_API_CLIENT_MODE=production`);
+  }
+  return value.replace(/\/+$/, "");
+}
+
+export function getAklConfig(env: EnvSource = process.env): AklConfig {
+  const environment = parseEnvironment(env.AKL_ENV);
+  const apiClientMode = parseClientMode(env.AKL_API_CLIENT_MODE);
+  const authMode = parseAuthMode(env.AKL_AUTH_MODE);
+
+  if (environment === "production" && apiClientMode === "mock") {
+    throw new Error("Refusing to start production with AKL_API_CLIENT_MODE=mock");
+  }
+
+  if (environment === "production" && authMode === "mock") {
+    throw new Error("Refusing to start production with AKL_AUTH_MODE=mock");
+  }
+
+  const serviceBaseUrls =
+    apiClientMode === "production"
+      ? {
+          registry: normalizeBaseUrl(env.AKL_REGISTRY_API_BASE_URL, "AKL_REGISTRY_API_BASE_URL"),
+          ingestion: normalizeBaseUrl(env.AKL_INGESTION_API_BASE_URL, "AKL_INGESTION_API_BASE_URL"),
+          rag: normalizeBaseUrl(env.AKL_RAG_API_BASE_URL, "AKL_RAG_API_BASE_URL")
+        }
+      : {
+          registry: "mock://registry",
+          ingestion: "mock://ingestion",
+          rag: "mock://rag"
+        };
+
+  return {
+    environment,
+    apiClientMode,
+    authMode,
+    serviceBaseUrls,
+    devAccessToken: env.AKL_DEV_ACCESS_TOKEN || undefined
+  };
+}

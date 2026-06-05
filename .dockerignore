@@ -1,0 +1,17 @@
+.git
+.DS_Store
+.env
+.env.*
+!.env.example
+infra/backup/artifacts
+**/__pycache__
+**/.pytest_cache
+**/.coverage
+**/htmlcov
+**/.venv
+**/venv
+**/node_modules
+**/.next
+**/dist
+**/build
+*.log

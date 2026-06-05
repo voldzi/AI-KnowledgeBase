@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "case_answer_001",
+      "expected_answer_terms": [
+        "gestor dokumentu",
+        "schvaluje"
+      ],
+      "expected_citations": [
+        {
+          "chunk_id": "chunk_789",
+          "document_id": "doc_123",
+          "document_version_id": "ver_456",
+          "page_number": 7,
+          "section_path": [
+            "Cl. 4",
+            "Odst. 2"
+          ]
+        }
+      ],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [
+        "chunk_789"
+      ],
+      "filters": {
+        "classification_max": "internal",
+        "document_types": [
+          "directive",
+          "methodology",
+          "knowledge_base_article",
+          "policy"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "max_chunks": 4,
+      "metadata": {
+        "topic": "exceptions"
+      },
+      "query": "Kdo schvaluje vyjimku ze smernice?",
+      "subject_id": "user_123",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "case_no_answer_001",
+      "expected_answer_terms": [],
+      "expected_citations": [],
+      "expected_no_answer": true,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "internal",
+        "document_types": [
+          "directive",
+          "methodology",
+          "knowledge_base_article",
+          "policy"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [
+        "schvaluje gestor"
+      ],
+      "max_chunks": 4,
+      "metadata": {
+        "topic": "negative-control"
+      },
+      "query": "Jake pravidlo plati pro neexistujici benefit xyzzy?",
+      "subject_id": "user_123",
+      "weight": 1.0
+    }
+  ],
+  "created_at": "2026-06-05T00:00:00Z",
+  "dataset_id": "sample_rag_eval",
+  "description": "Minimalni deterministicky dataset pro smoke test RAG odpovedi, citaci, retrievalu a no-answer chovani.",
+  "metadata": {
+    "source": "evaluation-service seed"
+  },
+  "name": "Sample RAG Evaluation",
+  "tags": [
+    "smoke",
+    "rag",
+    "citations"
+  ]
+}

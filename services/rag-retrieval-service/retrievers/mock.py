@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from typing import Any
+
+from app.config import Settings
+from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
+from retrievers.scoring import (
+    cosine_similarity,
+    deterministic_embedding,
+    hybrid_score,
+    payload_matches_filters,
+    sparse_score,
+)
+
+
+class MockHybridRetriever:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._chunks = _mock_chunks()
+
+    async def retrieve(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+        query_vector: list[float] | None = None,
+    ) -> list[RetrievedChunk]:
+        dense_query = query_vector or deterministic_embedding(query)
+        results: list[RetrievedChunk] = []
+
+        for chunk in self._chunks:
+            if not payload_matches_filters(chunk["payload"], filters):
+                continue
+
+            dense = cosine_similarity(dense_query, deterministic_embedding(chunk["text"]))
+            sparse = sparse_score(query, chunk["text"])
+            score = hybrid_score(dense, sparse, self._settings.hybrid_dense_weight)
+            results.append(
+                _to_retrieved_chunk(
+                    chunk,
+                    score=score,
+                    dense_score=dense,
+                    sparse_score=sparse,
+                )
+            )
+
+        return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+
+    async def readiness(self) -> str:
+        return "ready"
+
+
+def _to_retrieved_chunk(
+    chunk: dict[str, Any],
+    *,
+    score: float,
+    dense_score: float,
+    sparse_score: float,
+) -> RetrievedChunk:
+    payload = chunk["payload"]
+    return RetrievedChunk(
+        chunk_id=chunk["chunk_id"],
+        score=round(score, 6),
+        retrieval_method="hybrid",
+        text=chunk["text"],
+        citation=ChunkCitation(
+            document_id=payload["document_id"],
+            document_version_id=payload["document_version_id"],
+            document_title=payload["document_title"],
+            version_label=payload["version_label"],
+            page_number=payload.get("page_number"),
+            section_path=payload.get("section_path", []),
+            article_number=payload.get("article_number"),
+            paragraph_number=payload.get("paragraph_number"),
+        ),
+        metadata={
+            "dense_score": round(dense_score, 6),
+            "sparse_score": round(sparse_score, 6),
+            "document_type": payload.get("document_type"),
+            "classification": payload.get("classification"),
+            "tags": payload.get("tags", []),
+            "status": payload.get("status"),
+        },
+    )
+
+
+def _mock_chunks() -> list[dict[str, Any]]:
+    return [
+        {
+            "chunk_id": "chunk_789",
+            "text": (
+                "Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu. "
+                "Zadost musi obsahovat duvod, rozsah a dobu platnosti vyjimky."
+            ),
+            "payload": {
+                "document_id": "doc_123",
+                "document_version_id": "ver_456",
+                "document_title": "Smernice pro spravu dokumentu",
+                "version_label": "1.0",
+                "document_type": "directive",
+                "classification": "internal",
+                "status": "valid",
+                "tags": ["smernice", "vyjimky", "schvalovani"],
+                "page_number": 7,
+                "section_path": ["Cl. 4", "Odst. 2"],
+                "article_number": "4",
+                "paragraph_number": "2",
+            },
+        },
+        {
+            "chunk_id": "chunk_validity_1",
+            "text": (
+                "Platna verze rizeneho dokumentu je verze se stavem valid a s aktualnim obdobim "
+                "platnosti. Archivni a nahrazene verze se pouzivaji pouze jako historicky zdroj."
+            ),
+            "payload": {
+                "document_id": "doc_124",
+                "document_version_id": "ver_457",
+                "document_title": "Metodika rizeni platnosti dokumentu",
+                "version_label": "2.1",
+                "document_type": "methodology",
+                "classification": "internal",
+                "status": "valid",
+                "tags": ["platnost", "verze"],
+                "page_number": 3,
+                "section_path": ["Kap. 2"],
+                "article_number": None,
+                "paragraph_number": None,
+            },
+        },
+        {
+            "chunk_id": "chunk_public_kb_1",
+            "text": (
+                "Knowledge base clanek popisuje zakladni postup vyhledani dokumentu podle nazvu, "
+                "gestora nebo tematickych tagu."
+            ),
+            "payload": {
+                "document_id": "doc_125",
+                "document_version_id": "ver_458",
+                "document_title": "Jak hledat dokumenty v AKL",
+                "version_label": "1.0",
+                "document_type": "knowledge_base_article",
+                "classification": "public",
+                "status": "valid",
+                "tags": ["vyhledavani", "akl"],
+                "page_number": 1,
+                "section_path": ["Uvod"],
+                "article_number": None,
+                "paragraph_number": None,
+            },
+        },
+        {
+            "chunk_id": "chunk_denied_1",
+            "text": "Tajne pravidlo pro krizove vyjimky smi cist pouze specialni bezpecnostni role.",
+            "payload": {
+                "document_id": "doc_denied",
+                "document_version_id": "ver_denied",
+                "document_title": "Omezeny bezpecnostni postup",
+                "version_label": "1.0",
+                "document_type": "policy",
+                "classification": "confidential",
+                "status": "valid",
+                "tags": ["tajne", "bezpecnost"],
+                "page_number": 11,
+                "section_path": ["Sec. 9"],
+                "article_number": "9",
+                "paragraph_number": "1",
+            },
+        },
+    ]

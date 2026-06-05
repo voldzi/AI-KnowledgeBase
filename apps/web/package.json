@@ -1,0 +1,33 @@
+{
+  "name": "@akl/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AKL Platform Web Frontend",
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "lucide-react": "1.17.0",
+    "next": "16.2.7",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.1",
+    "@types/react": "19.2.16",
+    "@types/react-dom": "19.2.3",
+    "tsx": "4.22.4",
+    "typescript": "6.0.3"
+  },
+  "overrides": {
+    "postcss": "8.5.15"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,1272 @@
+openapi: 3.1.0
+info:
+  title: AKL Identity & Document Registry API
+  description: Registry service for controlled documents, versions, access policies,
+    authorization decisions, and audit events. It does not implement ingestion, RAG,
+    or LLM logic.
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
+    get:
+      summary: Ready
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Ready Ready Get
+  /api/v1/documents:
+    post:
+      summary: Create Document
+      operationId: create_document_api_v1_documents_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: List Documents
+      operationId: list_documents_api_v1_documents_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentStatus'
+          - type: 'null'
+          title: Status
+      - name: classification
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Classification'
+          - type: 'null'
+          title: Classification
+      - name: document_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentType'
+          - type: 'null'
+          title: Document Type
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner Id
+      - name: tag
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tag
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}:
+    get:
+      summary: Get Document
+      operationId: get_document_api_v1_documents__document_id__get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      summary: Patch Document
+      operationId: patch_document_api_v1_documents__document_id__patch
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      summary: Delete Document
+      operationId: delete_document_api_v1_documents__document_id__delete
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/versions:
+    post:
+      summary: Create Document Version
+      operationId: create_document_version_api_v1_documents__document_id__versions_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentVersionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: List Document Versions
+      operationId: list_document_versions_api_v1_documents__document_id__versions_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentStatus'
+          - type: 'null'
+          title: Status
+      - name: valid_on
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid On
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersionListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/versions/{version_id}:
+    get:
+      summary: Get Document Version
+      operationId: get_document_version_api_v1_documents__document_id__versions__version_id__get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/versions/{version_id}/publish:
+    post:
+      summary: Publish Document Version
+      operationId: publish_document_version_api_v1_documents__document_id__versions__version_id__publish_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/versions/{version_id}/archive:
+    post:
+      summary: Archive Document Version
+      operationId: archive_document_version_api_v1_documents__document_id__versions__version_id__archive_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/authz/check:
+    post:
+      summary: Check Authorization
+      operationId: check_authorization_api_v1_authz_check_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthzCheckRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthzCheckResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/authz/filter-documents:
+    post:
+      summary: Filter Authorized Documents
+      operationId: filter_authorized_documents_api_v1_authz_filter_documents_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthzFilterDocumentsRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthzFilterDocumentsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/audit/events:
+    post:
+      summary: Create Audit Event
+      operationId: create_audit_event_api_v1_audit_events_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditEventCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: List Audit Events
+      operationId: list_audit_events_api_v1_audit_events_get
+      parameters:
+      - name: actor_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Id
+      - name: event_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Event Type
+      - name: resource_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resource Type
+      - name: resource_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resource Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/audit/events/{event_id}:
+    get:
+      summary: Get Audit Event
+      operationId: get_audit_event_api_v1_audit_events__event_id__get
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AccessPolicyCreate:
+      properties:
+        subjects:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Subjects
+        actions:
+          items:
+            $ref: '#/components/schemas/Action'
+          type: array
+          minItems: 1
+          title: Actions
+        constraints:
+          additionalProperties: true
+          type: object
+          title: Constraints
+      type: object
+      required:
+      - subjects
+      - actions
+      title: AccessPolicyCreate
+    AccessPolicyResponse:
+      properties:
+        subjects:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Subjects
+        actions:
+          items:
+            $ref: '#/components/schemas/Action'
+          type: array
+          minItems: 1
+          title: Actions
+        constraints:
+          additionalProperties: true
+          type: object
+          title: Constraints
+        policy_id:
+          type: string
+          title: Policy Id
+        document_id:
+          type: string
+          title: Document Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - subjects
+      - actions
+      - policy_id
+      - document_id
+      - created_at
+      - updated_at
+      title: AccessPolicyResponse
+    Action:
+      type: string
+      enum:
+      - document.create
+      - document.read
+      - document.update
+      - document.delete
+      - document.version.create
+      - document.version.publish
+      - document.version.archive
+      - document.ingest
+      - document.reindex
+      - rag.query
+      - rag.compare
+      - rag.check_compliance
+      - audit.read
+      - audit.write
+      - admin.manage
+      title: Action
+    AuditEventCreate:
+      properties:
+        actor_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor Id
+        event_type:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Event Type
+        resource_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Resource Type
+        resource_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Resource Id
+        severity:
+          $ref: '#/components/schemas/AuditSeverity'
+          default: info
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - actor_id
+      - event_type
+      - resource_type
+      - resource_id
+      title: AuditEventCreate
+    AuditEventListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AuditEventResponse'
+          type: array
+          title: Items
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - limit
+      - offset
+      title: AuditEventListResponse
+    AuditEventResponse:
+      properties:
+        audit_event_id:
+          type: string
+          title: Audit Event Id
+        actor_id:
+          type: string
+          title: Actor Id
+        event_type:
+          type: string
+          title: Event Type
+        resource_type:
+          type: string
+          title: Resource Type
+        resource_id:
+          type: string
+          title: Resource Id
+        severity:
+          $ref: '#/components/schemas/AuditSeverity'
+        correlation_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - audit_event_id
+      - actor_id
+      - event_type
+      - resource_type
+      - resource_id
+      - severity
+      - correlation_id
+      - created_at
+      title: AuditEventResponse
+    AuditSeverity:
+      type: string
+      enum:
+      - debug
+      - info
+      - warning
+      - error
+      - critical
+      title: AuditSeverity
+    AuthzCheckRequest:
+      properties:
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        action:
+          $ref: '#/components/schemas/Action'
+        resource:
+          $ref: '#/components/schemas/AuthzResource'
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+        groups:
+          items:
+            type: string
+          type: array
+          title: Groups
+      type: object
+      required:
+      - subject_id
+      - action
+      title: AuthzCheckRequest
+    AuthzCheckResponse:
+      properties:
+        allowed:
+          type: boolean
+          title: Allowed
+        reason:
+          type: string
+          title: Reason
+        constraints:
+          additionalProperties: true
+          type: object
+          title: Constraints
+      type: object
+      required:
+      - allowed
+      - reason
+      title: AuthzCheckResponse
+    AuthzFilterDocumentsRequest:
+      properties:
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        action:
+          $ref: '#/components/schemas/Action'
+        candidate_document_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Candidate Document Ids
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+        groups:
+          items:
+            type: string
+          type: array
+          title: Groups
+      type: object
+      required:
+      - subject_id
+      - action
+      - candidate_document_ids
+      title: AuthzFilterDocumentsRequest
+    AuthzFilterDocumentsResponse:
+      properties:
+        allowed_document_ids:
+          items:
+            type: string
+          type: array
+          title: Allowed Document Ids
+        denied_document_ids:
+          items:
+            type: string
+          type: array
+          title: Denied Document Ids
+      type: object
+      required:
+      - allowed_document_ids
+      - denied_document_ids
+      title: AuthzFilterDocumentsResponse
+    AuthzResource:
+      properties:
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        document_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Version Id
+        classification:
+          anyOf:
+          - $ref: '#/components/schemas/Classification'
+          - type: 'null'
+      type: object
+      title: AuthzResource
+    Classification:
+      type: string
+      enum:
+      - public
+      - internal
+      - restricted
+      - confidential
+      title: Classification
+    DocumentCreate:
+      properties:
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        document_type:
+          $ref: '#/components/schemas/DocumentType'
+        owner_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Owner Id
+        gestor_unit:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Gestor Unit
+        classification:
+          $ref: '#/components/schemas/Classification'
+          default: internal
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        access_policies:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/AccessPolicyCreate'
+            type: array
+          - type: 'null'
+          title: Access Policies
+      type: object
+      required:
+      - title
+      - document_type
+      - owner_id
+      title: DocumentCreate
+    DocumentFileCreate:
+      properties:
+        filename:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Mime Type
+        size_bytes:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Size Bytes
+        sha256:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Sha256
+        uploaded_by:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Uploaded By
+      type: object
+      title: DocumentFileCreate
+    DocumentListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/DocumentResponse'
+          type: array
+          title: Items
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - limit
+      - offset
+      title: DocumentListResponse
+    DocumentPatch:
+      properties:
+        title:
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
+          title: Title
+        document_type:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentType'
+          - type: 'null'
+        status:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentStatus'
+          - type: 'null'
+        owner_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Owner Id
+        gestor_unit:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Gestor Unit
+        classification:
+          anyOf:
+          - $ref: '#/components/schemas/Classification'
+          - type: 'null'
+        tags:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Tags
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+        access_policies:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/AccessPolicyCreate'
+            type: array
+          - type: 'null'
+          title: Access Policies
+      type: object
+      title: DocumentPatch
+    DocumentResponse:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        title:
+          type: string
+          title: Title
+        document_type:
+          $ref: '#/components/schemas/DocumentType'
+        status:
+          $ref: '#/components/schemas/DocumentStatus'
+        classification:
+          $ref: '#/components/schemas/Classification'
+        owner_id:
+          type: string
+          title: Owner Id
+        owner:
+          type: string
+          title: Owner
+        gestor_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Gestor Unit
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        access_policies:
+          items:
+            $ref: '#/components/schemas/AccessPolicyResponse'
+          type: array
+          title: Access Policies
+      type: object
+      required:
+      - document_id
+      - title
+      - document_type
+      - status
+      - classification
+      - owner_id
+      - owner
+      - gestor_unit
+      - tags
+      - created_at
+      - updated_at
+      title: DocumentResponse
+    DocumentStatus:
+      type: string
+      enum:
+      - draft
+      - review
+      - valid
+      - superseded
+      - archived
+      - cancelled
+      title: DocumentStatus
+    DocumentType:
+      type: string
+      enum:
+      - directive
+      - regulation
+      - methodology
+      - policy
+      - procedure
+      - manual
+      - knowledge_base_article
+      - meeting_record
+      - contract
+      - attachment
+      - other
+      title: DocumentType
+    DocumentVersionCreate:
+      properties:
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
+        source_file_uri:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Source File Uri
+        file_hash:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: File Hash
+        change_summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Change Summary
+        file:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentFileCreate'
+          - type: 'null'
+      type: object
+      required:
+      - version_label
+      - source_file_uri
+      title: DocumentVersionCreate
+    DocumentVersionListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/DocumentVersionResponse'
+          type: array
+          title: Items
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - limit
+      - offset
+      title: DocumentVersionListResponse
+    DocumentVersionResponse:
+      properties:
+        document_version_id:
+          type: string
+          title: Document Version Id
+        document_id:
+          type: string
+          title: Document Id
+        version_label:
+          type: string
+          title: Version Label
+        status:
+          $ref: '#/components/schemas/DocumentStatus'
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
+        source_file_uri:
+          type: string
+          title: Source File Uri
+        file_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Hash
+        change_summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Change Summary
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        published_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Published At
+      type: object
+      required:
+      - document_version_id
+      - document_id
+      - version_label
+      - status
+      - valid_from
+      - valid_to
+      - source_file_uri
+      - file_hash
+      - change_summary
+      - created_at
+      - published_at
+      title: DocumentVersionResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+      type: object
+      required:
+      - status
+      - service
+      - version
+      title: HealthResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

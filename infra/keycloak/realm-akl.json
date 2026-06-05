@@ -1,0 +1,141 @@
+{
+  "realm": "akl",
+  "enabled": true,
+  "displayName": "AKL Platform",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": true,
+  "sslRequired": "external",
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Full AKL platform administration."
+      },
+      {
+        "name": "document_manager",
+        "description": "Manage controlled documents and metadata."
+      },
+      {
+        "name": "document_owner",
+        "description": "Own specific documents and versions."
+      },
+      {
+        "name": "reviewer",
+        "description": "Review document drafts."
+      },
+      {
+        "name": "reader",
+        "description": "Read authorized documents and ask RAG questions."
+      },
+      {
+        "name": "auditor",
+        "description": "Read audit events."
+      },
+      {
+        "name": "service_ingestion",
+        "description": "Service role for ingestion workers."
+      },
+      {
+        "name": "service_rag",
+        "description": "Service role for RAG retrieval."
+      },
+      {
+        "name": "service_llm_gateway",
+        "description": "Service role for the LLM Gateway."
+      },
+      {
+        "name": "service_evaluation",
+        "description": "Service role for evaluation workers."
+      },
+      {
+        "name": "service_governance",
+        "description": "Service role for governance workers."
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "akl-web",
+      "name": "AKL Web Frontend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:8080/*",
+        "https://localhost:8443/*"
+      ],
+      "webOrigins": [
+        "+"
+      ]
+    },
+    {
+      "clientId": "svc-ingestion",
+      "name": "AKL Ingestion Service Account",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "svc-rag",
+      "name": "AKL RAG Service Account",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "svc-llm-gateway",
+      "name": "AKL LLM Gateway Service Account",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "svc-evaluation",
+      "name": "AKL Evaluation Service Account",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "svc-governance",
+      "name": "AKL Governance Service Account",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "groups": [
+    {
+      "name": "AKL Administrators",
+      "realmRoles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "AKL Readers",
+      "realmRoles": [
+        "reader"
+      ]
+    }
+  ]
+}

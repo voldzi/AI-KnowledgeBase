@@ -1,0 +1,356 @@
+name: ${COMPOSE_PROJECT_NAME:-akl}
+
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-platform-status-build: &platform-status-build
+  context: ../..
+  dockerfile: services/platform-infrastructure/Dockerfile
+
+x-status-environment: &status-environment
+  AKL_ENV: ${AKL_ENV:-staging}
+  AKL_AUTH_MODE: ${AKL_AUTH_MODE:-oidc}
+  AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
+  AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
+  PLATFORM_HOST: 0.0.0.0
+  PLATFORM_PORT: 8080
+  PLATFORM_READY_TIMEOUT_SECONDS: ${PLATFORM_READY_TIMEOUT_SECONDS:-2}
+
+x-status-healthcheck: &status-healthcheck
+  test:
+    [
+      "CMD-SHELL",
+      "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()\"",
+    ]
+  interval: 20s
+  timeout: 3s
+  retries: 5
+  start_period: 10s
+
+x-placeholder-service: &placeholder-service
+  profiles: ["app-stubs"]
+  build: *platform-status-build
+  image: ${PLATFORM_STATUS_IMAGE:-akl/platform-status:local}
+  restart: unless-stopped
+  logging: *json-logging
+  networks:
+    - app_zone
+  healthcheck: *status-healthcheck
+
+services:
+  reverse-proxy:
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    restart: unless-stopped
+    environment:
+      AKL_PUBLIC_HOST: ${AKL_PUBLIC_HOST:-localhost}
+      AKL_PROXY_HTTP_CONTAINER_PORT: ${AKL_PROXY_HTTP_CONTAINER_PORT:-8080}
+      AKL_PROXY_HTTPS_CONTAINER_PORT: ${AKL_PROXY_HTTPS_CONTAINER_PORT:-8443}
+      AKL_PROXY_HTTPS_PORT: ${AKL_PROXY_HTTPS_PORT:-8443}
+      AKL_TLS_MODE: ${AKL_TLS_MODE:-internal}
+      PLATFORM_STATUS_UPSTREAM: ${PLATFORM_STATUS_UPSTREAM:-platform-status:8080}
+      WEB_UPSTREAM: ${WEB_UPSTREAM:-web:3000}
+      REGISTRY_UPSTREAM: ${REGISTRY_UPSTREAM:-registry-api:8000}
+      INGESTION_UPSTREAM: ${INGESTION_UPSTREAM:-ingestion-service:8090}
+      RAG_UPSTREAM: ${RAG_UPSTREAM:-rag-retrieval-service:8080}
+      LLM_GATEWAY_UPSTREAM: ${LLM_GATEWAY_UPSTREAM:-llm-gateway-service:8080}
+      EVALUATION_UPSTREAM: ${EVALUATION_UPSTREAM:-evaluation-service:8080}
+      GOVERNANCE_UPSTREAM: ${GOVERNANCE_UPSTREAM:-governance-service:8080}
+      GRAFANA_UPSTREAM: ${GRAFANA_UPSTREAM:-grafana:3000}
+    ports:
+      - "${AKL_PROXY_HTTP_PORT:-8080}:${AKL_PROXY_HTTP_CONTAINER_PORT:-8080}"
+      - "${AKL_PROXY_HTTPS_PORT:-8443}:${AKL_PROXY_HTTPS_CONTAINER_PORT:-8443}"
+    volumes:
+      - ../reverse-proxy/Caddyfile.prod-like:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      platform-status:
+        condition: service_healthy
+    networks:
+      - public_zone
+      - app_zone
+      - management_zone
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1:${AKL_PROXY_HTTP_CONTAINER_PORT:-8080}/health >/dev/null 2>&1",
+        ]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    logging: *json-logging
+
+  platform-status:
+    build: *platform-status-build
+    image: ${PLATFORM_STATUS_IMAGE:-akl/platform-status:local}
+    restart: unless-stopped
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: platform-infrastructure
+      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-}
+    depends_on:
+      postgres:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+      keycloak:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    networks:
+      - app_zone
+      - management_zone
+    healthcheck: *status-healthcheck
+    logging: *json-logging
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-akl}
+      POSTGRES_USER: ${POSTGRES_USER:-akl_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES:-akl_registry,akl_keycloak,akl_evaluation,akl_governance}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - data_zone
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *json-logging
+
+  qdrant:
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:6333/readyz >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *json-logging
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    volumes:
+      - minio-data:/data
+    networks:
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *json-logging
+
+  keycloak:
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:latest}
+    restart: unless-stopped
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/akl_keycloak
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:-akl_platform}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD must be set}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME: ${AKL_PUBLIC_HOST:-localhost}
+      KC_HOSTNAME_STRICT: "false"
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN must be set}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD must be set}
+    volumes:
+      - ../keycloak/realm-akl.json:/opt/keycloak/data/import/realm-akl.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_zone
+      - data_zone
+      - management_zone
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 5 bash -c '</dev/tcp/127.0.0.1/9000' >/dev/null 2>&1",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    logging: *json-logging
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - app_zone
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9090/-/ready >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    logging: *json-logging
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:latest}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://localhost:8443/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+    networks:
+      - management_zone
+    logging: *json-logging
+
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:latest}
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ../monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - management_zone
+    logging: *json-logging
+
+  ollama:
+    profiles: ["ai"]
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - ai_compute_zone
+    logging: *json-logging
+
+  web:
+    <<: *placeholder-service
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: web-placeholder
+      AKL_SERVICE_VERSION: 0.0-placeholder
+      PLATFORM_READY_CHECKS: ""
+
+  registry-api:
+    <<: *placeholder-service
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: registry-api-placeholder
+      AKL_SERVICE_VERSION: 0.0-placeholder
+      PLATFORM_READY_CHECKS: ""
+
+  ingestion-service:
+    <<: *placeholder-service
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: ingestion-service-placeholder
+      AKL_SERVICE_VERSION: 0.0-placeholder
+      PLATFORM_READY_CHECKS: ""
+
+  rag-retrieval-service:
+    <<: *placeholder-service
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: rag-retrieval-service-placeholder
+      AKL_SERVICE_VERSION: 0.0-placeholder
+      PLATFORM_READY_CHECKS: ""
+
+  llm-gateway-service:
+    <<: *placeholder-service
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: llm-gateway-service-placeholder
+      AKL_SERVICE_VERSION: 0.0-placeholder
+      PLATFORM_READY_CHECKS: ""
+
+  evaluation-service:
+    <<: *placeholder-service
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: evaluation-service-placeholder
+      AKL_SERVICE_VERSION: 0.0-placeholder
+      PLATFORM_READY_CHECKS: ""
+
+  governance-service:
+    <<: *placeholder-service
+    environment:
+      <<: *status-environment
+      AKL_SERVICE_NAME: governance-service-placeholder
+      AKL_SERVICE_VERSION: 0.0-placeholder
+      PLATFORM_READY_CHECKS: ""
+
+networks:
+  public_zone:
+    driver: bridge
+  app_zone:
+    driver: bridge
+    internal: true
+  data_zone:
+    driver: bridge
+    internal: true
+  ai_compute_zone:
+    driver: bridge
+    internal: true
+  management_zone:
+    driver: bridge
+    internal: true
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  qdrant-data:
+  minio-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  ollama-data:

@@ -1,0 +1,878 @@
+openapi: 3.1.0
+info:
+  title: AKL Evaluation Service
+  description: Evaluation runs, datasets, and reports for AKL RAG answer, citation,
+    and retrieval quality.
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
+    get:
+      tags:
+      - health
+      summary: Ready
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: At least one dependency is not ready.
+  /api/v1/evaluations/datasets:
+    get:
+      tags:
+      - evaluations
+      summary: List Datasets
+      operationId: list_datasets_api_v1_evaluations_datasets_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/DatasetSummary'
+                type: array
+                title: Response List Datasets Api V1 Evaluations Datasets Get
+    post:
+      tags:
+      - evaluations
+      summary: Create Dataset
+      operationId: create_dataset_api_v1_evaluations_datasets_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationDatasetCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDataset'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/evaluations/runs:
+    post:
+      tags:
+      - evaluations
+      summary: Create Run
+      operationId: create_run_api_v1_evaluations_runs_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRunRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationRun'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/evaluations/runs/{run_id}:
+    get:
+      tags:
+      - evaluations
+      summary: Get Run
+      operationId: get_run_api_v1_evaluations_runs__run_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationRun'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/evaluations/runs/{run_id}/report:
+    get:
+      tags:
+      - evaluations
+      summary: Get Report
+      operationId: get_report_api_v1_evaluations_runs__run_id__report_get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: format
+        in: query
+        required: false
+        schema:
+          enum:
+          - json
+          - csv
+          - html
+          type: string
+          default: json
+          title: Format
+      responses:
+        '200':
+          description: Evaluation report in JSON, CSV, or HTML.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationRun'
+            text/csv:
+              schema:
+                type: string
+            text/html:
+              schema:
+                type: string
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AnswerMetrics:
+      properties:
+        expected_term_count:
+          type: integer
+          title: Expected Term Count
+        matched_term_count:
+          type: integer
+          title: Matched Term Count
+        forbidden_term_violations:
+          items:
+            type: string
+          type: array
+          title: Forbidden Term Violations
+        term_coverage:
+          type: number
+          title: Term Coverage
+        answer_correctness:
+          type: number
+          title: Answer Correctness
+        faithfulness:
+          type: number
+          title: Faithfulness
+        no_answer_correctness:
+          type: number
+          title: No Answer Correctness
+      type: object
+      required:
+      - expected_term_count
+      - matched_term_count
+      - forbidden_term_violations
+      - term_coverage
+      - answer_correctness
+      - faithfulness
+      - no_answer_correctness
+      title: AnswerMetrics
+    Citation:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          minLength: 1
+          title: Document Title
+        version_label:
+          type: string
+          minLength: 1
+          title: Version Label
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        chunk_id:
+          type: string
+          minLength: 1
+          title: Chunk Id
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      - chunk_id
+      title: Citation
+    CitationMetrics:
+      properties:
+        expected_citation_count:
+          type: integer
+          title: Expected Citation Count
+        actual_citation_count:
+          type: integer
+          title: Actual Citation Count
+        matched_citation_count:
+          type: integer
+          title: Matched Citation Count
+        precision:
+          type: number
+          title: Precision
+        recall:
+          type: number
+          title: Recall
+        correctness:
+          type: number
+          title: Correctness
+      type: object
+      required:
+      - expected_citation_count
+      - actual_citation_count
+      - matched_citation_count
+      - precision
+      - recall
+      - correctness
+      title: CitationMetrics
+    DatasetSummary:
+      properties:
+        dataset_id:
+          type: string
+          title: Dataset Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        case_count:
+          type: integer
+          title: Case Count
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - dataset_id
+      - name
+      - description
+      - tags
+      - case_count
+      - created_at
+      title: DatasetSummary
+    EvalCase:
+      properties:
+        case_id:
+          type: string
+          minLength: 1
+          pattern: ^[A-Za-z0-9_.:-]+$
+          title: Case Id
+        subject_id:
+          type: string
+          minLength: 1
+          title: Subject Id
+          default: eval_subject
+        query:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Query
+        filters:
+          $ref: '#/components/schemas/RagQueryFilters'
+        answer_mode:
+          type: string
+          enum:
+          - normative_with_citations
+          - retrieve_only
+          - compare
+          title: Answer Mode
+          default: normative_with_citations
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 8
+        expected_answer_terms:
+          items:
+            type: string
+          type: array
+          title: Expected Answer Terms
+        forbidden_answer_terms:
+          items:
+            type: string
+          type: array
+          title: Forbidden Answer Terms
+        expected_citations:
+          items:
+            $ref: '#/components/schemas/ExpectedCitation'
+          type: array
+          title: Expected Citations
+        expected_relevant_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Expected Relevant Chunk Ids
+        expected_no_answer:
+          type: boolean
+          title: Expected No Answer
+          default: false
+        weight:
+          type: number
+          minimum: 0.0
+          title: Weight
+          default: 1.0
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - case_id
+      - query
+      title: EvalCase
+    EvaluationCaseResult:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        query_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Query Id
+        status:
+          type: string
+          enum:
+          - passed
+          - failed
+          - error
+          title: Status
+        overall_score:
+          type: number
+          title: Overall Score
+        latency_ms:
+          type: number
+          title: Latency Ms
+        retrieval_latency_ms:
+          type: number
+          title: Retrieval Latency Ms
+        answer_latency_ms:
+          type: number
+          title: Answer Latency Ms
+        confidence:
+          anyOf:
+          - type: string
+            enum:
+            - high
+            - medium
+            - low
+            - insufficient_source
+            - conflicting_sources
+          - type: 'null'
+          title: Confidence
+        retrieval_metrics:
+          $ref: '#/components/schemas/RetrievalMetrics'
+        citation_metrics:
+          $ref: '#/components/schemas/CitationMetrics'
+        answer_metrics:
+          $ref: '#/components/schemas/AnswerMetrics'
+        retrieved_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Retrieved Chunk Ids
+        used_chunks:
+          items:
+            type: string
+          type: array
+          title: Used Chunks
+        actual_citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Actual Citations
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        answer_excerpt:
+          type: string
+          title: Answer Excerpt
+          default: ''
+        answer_sha256:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Answer Sha256
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+      type: object
+      required:
+      - case_id
+      - query_id
+      - status
+      - overall_score
+      - latency_ms
+      - retrieval_latency_ms
+      - answer_latency_ms
+      - retrieval_metrics
+      - citation_metrics
+      - answer_metrics
+      title: EvaluationCaseResult
+    EvaluationDataset:
+      properties:
+        dataset_id:
+          type: string
+          minLength: 1
+          pattern: ^[A-Za-z0-9_.:-]+$
+          title: Dataset Id
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        description:
+          type: string
+          maxLength: 2000
+          title: Description
+          default: ''
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        cases:
+          items:
+            $ref: '#/components/schemas/EvalCase'
+          type: array
+          minItems: 1
+          title: Cases
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      additionalProperties: false
+      type: object
+      required:
+      - dataset_id
+      - name
+      - cases
+      - created_at
+      title: EvaluationDataset
+    EvaluationDatasetCreate:
+      properties:
+        dataset_id:
+          anyOf:
+          - type: string
+            minLength: 1
+            pattern: ^[A-Za-z0-9_.:-]+$
+          - type: 'null'
+          title: Dataset Id
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        description:
+          type: string
+          maxLength: 2000
+          title: Description
+          default: ''
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        cases:
+          items:
+            $ref: '#/components/schemas/EvalCase'
+          type: array
+          minItems: 1
+          title: Cases
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - cases
+      title: EvaluationDatasetCreate
+    EvaluationRun:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+        dataset_id:
+          type: string
+          title: Dataset Id
+        dataset_name:
+          type: string
+          title: Dataset Name
+        status:
+          type: string
+          enum:
+          - completed
+          - completed_with_errors
+          title: Status
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        finished_at:
+          type: string
+          format: date-time
+          title: Finished At
+        summary:
+          $ref: '#/components/schemas/EvaluationSummary'
+        cases:
+          items:
+            $ref: '#/components/schemas/EvaluationCaseResult'
+          type: array
+          title: Cases
+        settings:
+          additionalProperties: true
+          type: object
+          title: Settings
+      type: object
+      required:
+      - run_id
+      - dataset_id
+      - dataset_name
+      - status
+      - started_at
+      - finished_at
+      - summary
+      - cases
+      title: EvaluationRun
+    EvaluationRunRequest:
+      properties:
+        dataset_id:
+          anyOf:
+          - type: string
+            minLength: 1
+            pattern: ^[A-Za-z0-9_.:-]+$
+          - type: 'null'
+          title: Dataset Id
+        dataset:
+          anyOf:
+          - $ref: '#/components/schemas/EvaluationDatasetCreate'
+          - type: 'null'
+        case_ids:
+          items:
+            type: string
+          type: array
+          title: Case Ids
+        subject_id_override:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Subject Id Override
+        max_cases:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Max Cases
+      additionalProperties: false
+      type: object
+      title: EvaluationRunRequest
+    EvaluationSummary:
+      properties:
+        total_cases:
+          type: integer
+          title: Total Cases
+        passed_cases:
+          type: integer
+          title: Passed Cases
+        failed_cases:
+          type: integer
+          title: Failed Cases
+        error_cases:
+          type: integer
+          title: Error Cases
+        average_score:
+          type: number
+          title: Average Score
+        average_latency_ms:
+          type: number
+          title: Average Latency Ms
+        retrieval_precision:
+          type: number
+          title: Retrieval Precision
+        retrieval_recall:
+          type: number
+          title: Retrieval Recall
+        citation_correctness:
+          type: number
+          title: Citation Correctness
+        answer_correctness:
+          type: number
+          title: Answer Correctness
+        faithfulness:
+          type: number
+          title: Faithfulness
+        no_answer_correctness:
+          type: number
+          title: No Answer Correctness
+      type: object
+      required:
+      - total_cases
+      - passed_cases
+      - failed_cases
+      - error_cases
+      - average_score
+      - average_latency_ms
+      - retrieval_precision
+      - retrieval_recall
+      - citation_correctness
+      - answer_correctness
+      - faithfulness
+      - no_answer_correctness
+      title: EvaluationSummary
+    ExpectedCitation:
+      properties:
+        chunk_id:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Chunk Id
+        document_id:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Document Id
+        document_version_id:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Document Version Id
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+      additionalProperties: false
+      type: object
+      title: ExpectedCitation
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+      type: object
+      required:
+      - status
+      - service
+      - version
+      title: HealthResponse
+    RagQueryFilters:
+      properties:
+        document_types:
+          items:
+            type: string
+            enum:
+            - directive
+            - regulation
+            - methodology
+            - policy
+            - procedure
+            - manual
+            - knowledge_base_article
+            - meeting_record
+            - contract
+            - attachment
+            - other
+          type: array
+          title: Document Types
+        only_valid:
+          type: boolean
+          title: Only Valid
+          default: true
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+      additionalProperties: false
+      type: object
+      title: RagQueryFilters
+    ReadinessResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+        service:
+          type: string
+          title: Service
+        dependencies:
+          additionalProperties:
+            type: string
+          type: object
+          title: Dependencies
+      type: object
+      required:
+      - status
+      - service
+      - dependencies
+      title: ReadinessResponse
+    RetrievalMetrics:
+      properties:
+        expected_relevant_count:
+          type: integer
+          title: Expected Relevant Count
+        retrieved_count:
+          type: integer
+          title: Retrieved Count
+        relevant_retrieved_count:
+          type: integer
+          title: Relevant Retrieved Count
+        precision:
+          type: number
+          title: Precision
+        recall:
+          type: number
+          title: Recall
+        hit_rate:
+          type: number
+          title: Hit Rate
+        mrr:
+          type: number
+          title: Mrr
+      type: object
+      required:
+      - expected_relevant_count
+      - retrieved_count
+      - relevant_retrieved_count
+      - precision
+      - recall
+      - hit_rate
+      - mrr
+      title: RetrievalMetrics
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

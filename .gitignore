@@ -1,0 +1,50 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node / Next.js
+node_modules/
+.next/
+*.tsbuildinfo
+out/
+dist/
+build/
+
+# OS / IDE
+.idea/
+.vscode/
+
+# Logs
+logs/
+*.log
+
+# Local runtime data
+data/
+tmp/
+*.sqlite
+*.db
+services/evaluation-service/reports/*.json
+services/rag-retrieval-service/app/security 2.py
+
+# Docker / local volumes / backups
+infra/backup/artifacts/
+*.bak
+*.bak-*
+docker-data/
+volumes/
+
+# Local object/vector/database storage
+minio-data/
+qdrant-data/
+postgres-data/

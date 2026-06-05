@@ -1,0 +1,1411 @@
+openapi: 3.1.0
+info:
+  title: AKL Governance / Compliance Service
+  description: Document version comparison, compliance checking, conflict detection,
+    KB draft generation, and validity alerts with citations, sources, and confidence.
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
+    get:
+      tags:
+      - health
+      summary: Ready
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: At least one dependency is not ready.
+  /api/v1/governance/compare-versions:
+    post:
+      tags:
+      - governance
+      summary: Compare Versions
+      operationId: compare_versions_api_v1_governance_compare_versions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompareVersionsRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompareVersionsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/governance/check-compliance:
+    post:
+      tags:
+      - governance
+      summary: Check Compliance
+      operationId: check_compliance_api_v1_governance_check_compliance_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplianceCheckRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceCheckResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/governance/detect-conflicts:
+    post:
+      tags:
+      - governance
+      summary: Detect Conflicts
+      operationId: detect_conflicts_api_v1_governance_detect_conflicts_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConflictDetectionRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictDetectionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/governance/generate-kb-article:
+    post:
+      tags:
+      - governance
+      summary: Generate Kb Article
+      operationId: generate_kb_article_api_v1_governance_generate_kb_article_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateKbArticleRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateKbArticleResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/governance/validity-alerts:
+    get:
+      tags:
+      - governance
+      summary: Validity Alerts
+      operationId: validity_alerts_api_v1_governance_validity_alerts_get
+      parameters:
+      - name: subject_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Subject Id
+      - name: days_before_expiry
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 730
+            minimum: 1
+          - type: 'null'
+          title: Days Before Expiry
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidityAlertsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    ChangeItem:
+      properties:
+        change_id:
+          type: string
+          title: Change Id
+        change_type:
+          type: string
+          enum:
+          - added
+          - removed
+          - modified
+          - unchanged
+          title: Change Type
+        impact:
+          type: string
+          enum:
+          - none
+          - minor
+          - material
+          - critical
+          title: Impact
+        before_text:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Before Text
+        after_text:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: After Text
+        before_citation:
+          anyOf:
+          - $ref: '#/components/schemas/Citation'
+          - type: 'null'
+        after_citation:
+          anyOf:
+          - $ref: '#/components/schemas/Citation'
+          - type: 'null'
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        rationale:
+          type: string
+          title: Rationale
+      additionalProperties: false
+      type: object
+      required:
+      - change_id
+      - change_type
+      - impact
+      - citations
+      - confidence
+      - rationale
+      title: ChangeItem
+    ChunkCitation:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          minLength: 1
+          title: Document Title
+        version_label:
+          type: string
+          minLength: 1
+          title: Version Label
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        article_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Article Number
+        paragraph_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paragraph Number
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      title: ChunkCitation
+    Citation:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          minLength: 1
+          title: Document Title
+        version_label:
+          type: string
+          minLength: 1
+          title: Version Label
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        chunk_id:
+          type: string
+          minLength: 1
+          title: Chunk Id
+        source_excerpt:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Source Excerpt
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      - chunk_id
+      title: Citation
+    CompareVersionsRequest:
+      properties:
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        left_version:
+          $ref: '#/components/schemas/DocumentVersionContent'
+        right_version:
+          $ref: '#/components/schemas/DocumentVersionContent'
+        include_unchanged:
+          type: boolean
+          title: Include Unchanged
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - subject_id
+      - left_version
+      - right_version
+      title: CompareVersionsRequest
+    CompareVersionsResponse:
+      properties:
+        result_id:
+          type: string
+          title: Result Id
+        document_id:
+          type: string
+          title: Document Id
+        left_version_id:
+          type: string
+          title: Left Version Id
+        right_version_id:
+          type: string
+          title: Right Version Id
+        summary:
+          type: string
+          title: Summary
+        change_counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Change Counts
+        materiality_score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Materiality Score
+        changes:
+          items:
+            $ref: '#/components/schemas/ChangeItem'
+          type: array
+          title: Changes
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceReference'
+          type: array
+          title: Sources
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        missing_information:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Missing Information
+      type: object
+      required:
+      - result_id
+      - document_id
+      - left_version_id
+      - right_version_id
+      - summary
+      - change_counts
+      - materiality_score
+      - changes
+      - citations
+      - sources
+      - confidence
+      title: CompareVersionsResponse
+    ComplianceCheckRequest:
+      properties:
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        draft:
+          $ref: '#/components/schemas/DraftDocumentInput'
+        control_query:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Control Query
+          default: platne smernice pro rizene dokumenty, platnost, gestor, schvalovani
+            vyjimek
+        filters:
+          $ref: '#/components/schemas/RagQueryFilters'
+        control_sources:
+          items:
+            $ref: '#/components/schemas/RetrievedChunk'
+          type: array
+          title: Control Sources
+        max_control_chunks:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Max Control Chunks
+          default: 8
+      additionalProperties: false
+      type: object
+      required:
+      - subject_id
+      - draft
+      title: ComplianceCheckRequest
+    ComplianceCheckResponse:
+      properties:
+        result_id:
+          type: string
+          title: Result Id
+        status:
+          type: string
+          enum:
+          - compliant
+          - non_compliant
+          - needs_review
+          - insufficient_source
+          title: Status
+        summary:
+          type: string
+          title: Summary
+        findings:
+          items:
+            $ref: '#/components/schemas/ComplianceFinding'
+          type: array
+          title: Findings
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceReference'
+          type: array
+          title: Sources
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        missing_information:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Missing Information
+      type: object
+      required:
+      - result_id
+      - status
+      - summary
+      - findings
+      - citations
+      - sources
+      - confidence
+      title: ComplianceCheckResponse
+    ComplianceFinding:
+      properties:
+        finding_id:
+          type: string
+          title: Finding Id
+        rule_id:
+          type: string
+          title: Rule Id
+        rule_name:
+          type: string
+          title: Rule Name
+        status:
+          type: string
+          enum:
+          - passed
+          - warning
+          - failed
+          - manual_review
+          title: Status
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - error
+          - critical
+          title: Severity
+        message:
+          type: string
+          title: Message
+        recommendation:
+          type: string
+          title: Recommendation
+        evidence_citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Evidence Citations
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceReference'
+          type: array
+          title: Sources
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+      additionalProperties: false
+      type: object
+      required:
+      - finding_id
+      - rule_id
+      - rule_name
+      - status
+      - severity
+      - message
+      - recommendation
+      - evidence_citations
+      - sources
+      - confidence
+      title: ComplianceFinding
+    ConflictClaim:
+      properties:
+        statement:
+          type: string
+          title: Statement
+        citation:
+          $ref: '#/components/schemas/Citation'
+        source:
+          $ref: '#/components/schemas/SourceReference'
+      additionalProperties: false
+      type: object
+      required:
+      - statement
+      - citation
+      - source
+      title: ConflictClaim
+    ConflictDetectionRequest:
+      properties:
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        documents:
+          items:
+            $ref: '#/components/schemas/GovernanceSourceDocument'
+          type: array
+          maxItems: 20
+          minItems: 2
+          title: Documents
+        topic:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Topic
+      additionalProperties: false
+      type: object
+      required:
+      - subject_id
+      - documents
+      title: ConflictDetectionRequest
+    ConflictDetectionResponse:
+      properties:
+        result_id:
+          type: string
+          title: Result Id
+        summary:
+          type: string
+          title: Summary
+        conflicts:
+          items:
+            $ref: '#/components/schemas/ConflictFinding'
+          type: array
+          title: Conflicts
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceReference'
+          type: array
+          title: Sources
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        missing_information:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Missing Information
+      type: object
+      required:
+      - result_id
+      - summary
+      - conflicts
+      - citations
+      - sources
+      - confidence
+      title: ConflictDetectionResponse
+    ConflictFinding:
+      properties:
+        conflict_id:
+          type: string
+          title: Conflict Id
+        conflict_type:
+          type: string
+          enum:
+          - approval_owner_mismatch
+          - deadline_mismatch
+          - normative_polarity
+          - potential_overlap
+          title: Conflict Type
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - error
+          - critical
+          title: Severity
+        summary:
+          type: string
+          title: Summary
+        claims:
+          items:
+            $ref: '#/components/schemas/ConflictClaim'
+          type: array
+          title: Claims
+        recommendation:
+          type: string
+          title: Recommendation
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+      additionalProperties: false
+      type: object
+      required:
+      - conflict_id
+      - conflict_type
+      - severity
+      - summary
+      - claims
+      - recommendation
+      - confidence
+      title: ConflictFinding
+    DocumentVersionContent:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Document Title
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        status:
+          type: string
+          enum:
+          - draft
+          - review
+          - valid
+          - superseded
+          - archived
+          - cancelled
+          title: Status
+          default: draft
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+          default: internal
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
+        source_uri:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Source Uri
+        content:
+          type: string
+          maxLength: 200000
+          minLength: 1
+          title: Content
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      - content
+      title: DocumentVersionContent
+    DraftDocumentInput:
+      properties:
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        document_type:
+          type: string
+          enum:
+          - directive
+          - regulation
+          - methodology
+          - policy
+          - procedure
+          - manual
+          - knowledge_base_article
+          - meeting_record
+          - contract
+          - attachment
+          - other
+          title: Document Type
+          default: directive
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+          default: internal
+        content:
+          type: string
+          maxLength: 200000
+          minLength: 1
+          title: Content
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        document_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Version Id
+        owner_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Owner Id
+        gestor_unit:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Gestor Unit
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      - content
+      title: DraftDocumentInput
+    GenerateKbArticleRequest:
+      properties:
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        source_document:
+          $ref: '#/components/schemas/GovernanceSourceDocument'
+        audience:
+          type: string
+          enum:
+          - employees
+          - document_managers
+          - auditors
+          - general
+          title: Audience
+          default: employees
+        max_sections:
+          type: integer
+          maximum: 10.0
+          minimum: 2.0
+          title: Max Sections
+          default: 6
+      additionalProperties: false
+      type: object
+      required:
+      - subject_id
+      - source_document
+      title: GenerateKbArticleRequest
+    GenerateKbArticleResponse:
+      properties:
+        result_id:
+          type: string
+          title: Result Id
+        article:
+          $ref: '#/components/schemas/KbArticleDraft'
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceReference'
+          type: array
+          title: Sources
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        missing_information:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Missing Information
+      type: object
+      required:
+      - result_id
+      - article
+      - citations
+      - sources
+      - confidence
+      title: GenerateKbArticleResponse
+    GovernanceSourceDocument:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Document Title
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        status:
+          type: string
+          enum:
+          - draft
+          - review
+          - valid
+          - superseded
+          - archived
+          - cancelled
+          title: Status
+          default: valid
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+          default: internal
+        content:
+          type: string
+          maxLength: 200000
+          minLength: 1
+          title: Content
+        source_uri:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Source Uri
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      - content
+      title: GovernanceSourceDocument
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+      type: object
+      required:
+      - status
+      - service
+      - version
+      title: HealthResponse
+    KbArticleDraft:
+      properties:
+        title:
+          type: string
+          title: Title
+        summary:
+          type: string
+          title: Summary
+        sections:
+          items:
+            $ref: '#/components/schemas/KbArticleSection'
+          type: array
+          title: Sections
+        publication_status:
+          type: string
+          const: draft_proposal
+          title: Publication Status
+        registry_required_actions:
+          items:
+            type: string
+          type: array
+          title: Registry Required Actions
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      - summary
+      - sections
+      - publication_status
+      - registry_required_actions
+      title: KbArticleDraft
+    KbArticleSection:
+      properties:
+        heading:
+          type: string
+          title: Heading
+        body:
+          type: string
+          title: Body
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - heading
+      - body
+      - citations
+      title: KbArticleSection
+    RagQueryFilters:
+      properties:
+        document_types:
+          items:
+            type: string
+            enum:
+            - directive
+            - regulation
+            - methodology
+            - policy
+            - procedure
+            - manual
+            - knowledge_base_article
+            - meeting_record
+            - contract
+            - attachment
+            - other
+          type: array
+          title: Document Types
+        only_valid:
+          type: boolean
+          title: Only Valid
+          default: true
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+      additionalProperties: false
+      type: object
+      title: RagQueryFilters
+    ReadinessResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+        service:
+          type: string
+          title: Service
+        dependencies:
+          additionalProperties:
+            type: string
+          type: object
+          title: Dependencies
+      type: object
+      required:
+      - status
+      - service
+      - dependencies
+      title: ReadinessResponse
+    RetrievedChunk:
+      properties:
+        chunk_id:
+          type: string
+          minLength: 1
+          title: Chunk Id
+        score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Score
+        retrieval_method:
+          type: string
+          enum:
+          - dense
+          - sparse
+          - hybrid
+          title: Retrieval Method
+        text:
+          type: string
+          maxLength: 200000
+          minLength: 1
+          title: Text
+        citation:
+          $ref: '#/components/schemas/ChunkCitation'
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - chunk_id
+      - score
+      - retrieval_method
+      - text
+      - citation
+      title: RetrievedChunk
+    SourceReference:
+      properties:
+        source_id:
+          type: string
+          minLength: 1
+          title: Source Id
+        source_type:
+          type: string
+          enum:
+          - input_document
+          - document_version
+          - retrieved_chunk
+          - registry_metadata
+          title: Source Type
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        document_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Version Id
+        title:
+          type: string
+          minLength: 1
+          title: Title
+        uri:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Uri
+        citation:
+          anyOf:
+          - $ref: '#/components/schemas/Citation'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - source_id
+      - source_type
+      - title
+      title: SourceReference
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    ValidityAlert:
+      properties:
+        alert_id:
+          type: string
+          title: Alert Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        document_title:
+          type: string
+          title: Document Title
+        version_label:
+          type: string
+          title: Version Label
+        valid_to:
+          type: string
+          format: date
+          title: Valid To
+        days_remaining:
+          type: integer
+          title: Days Remaining
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - critical
+          title: Severity
+        recommendation:
+          type: string
+          title: Recommendation
+        citation:
+          $ref: '#/components/schemas/Citation'
+        source:
+          $ref: '#/components/schemas/SourceReference'
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+      additionalProperties: false
+      type: object
+      required:
+      - alert_id
+      - document_id
+      - document_version_id
+      - document_title
+      - version_label
+      - valid_to
+      - days_remaining
+      - severity
+      - recommendation
+      - citation
+      - source
+      - confidence
+      title: ValidityAlert
+    ValidityAlertsResponse:
+      properties:
+        result_id:
+          type: string
+          title: Result Id
+        as_of:
+          type: string
+          format: date
+          title: As Of
+        days_before_expiry:
+          type: integer
+          title: Days Before Expiry
+        alerts:
+          items:
+            $ref: '#/components/schemas/ValidityAlert'
+          type: array
+          title: Alerts
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceReference'
+          type: array
+          title: Sources
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        missing_information:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Missing Information
+      type: object
+      required:
+      - result_id
+      - as_of
+      - days_before_expiry
+      - alerts
+      - citations
+      - sources
+      - confidence
+      title: ValidityAlertsResponse
