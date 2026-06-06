@@ -10,14 +10,18 @@ import {
   Brain,
   CircleCheck,
   ClipboardCheck,
+  Copy,
+  ExternalLink,
   FileClock,
   FileSearch,
+  FileText,
   GitCompareArrows,
   Layers3,
   LockKeyhole,
   Network,
   Plus,
   Save,
+  ShieldAlert,
   ShieldCheck,
   Trash2,
   UploadCloud
@@ -39,7 +43,8 @@ import type {
   GovernanceCitation,
   GovernanceServiceResponse,
   IngestionJob,
-  RegistryWorkflowTask
+  RegistryWorkflowTask,
+  SourceContext
 } from "@/lib/types";
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
 
@@ -72,6 +77,13 @@ interface AuditTrace {
   scopes: string[];
 }
 
+interface SourceContextSignal {
+  chunkId: string;
+  title: string;
+  detail: string;
+  createdAt: string;
+}
+
 const detailCopy = {
   cs: {
     back: "Zpět do registru",
@@ -96,6 +108,24 @@ const detailCopy = {
     sourceHash: "Hash souboru",
     viewerMode: "Režim vieweru",
     viewerNotice: "Nativní preview dokumentu bude navázané na source-context a podepsané download URL. Aktuálně je dostupný citovatelný zdrojový kontext z RAG služby.",
+    sourceContextTitle: "Source-context",
+    sourceContextDetail: "Citovatelný kontext načtený přes RAG bridge a ověřený proti aktuálnímu dokumentu.",
+    sourceContextSignals: "Dostupné source-context signály",
+    sourceContextEmpty: "V auditní stopě není pro tento dokument žádný otevřitelný chunk.",
+    sourceContextPlaceholder: "Vyberte auditovaný chunk v panelu Zdroj a otevře se přesný citovatelný kontext.",
+    openSourceContext: "Otevřít source-context",
+    openingSourceContext: "Otevírám",
+    sourceContextError: "Source-context se nepodařilo otevřít.",
+    chunk: "Chunk",
+    page: "Strana",
+    section: "Sekce",
+    paragraph: "Odstavec",
+    row: "Řádek",
+    noSection: "Sekce není uvedená",
+    sourceUnavailable: "Zdroj není dostupný",
+    copyChunk: "Kopírovat chunk",
+    beforeContext: "Předchozí kontext",
+    afterContext: "Následující kontext",
     workflowTitle: "Publikační workflow",
     workflowDraft: "Koncept",
     workflowDraftDetail: "Metadata a verze jsou založené v Registry API.",
@@ -240,6 +270,24 @@ const detailCopy = {
     sourceHash: "File hash",
     viewerMode: "Viewer mode",
     viewerNotice: "Native document preview will be connected to source-context and signed download URLs. The citable source context from RAG is available now.",
+    sourceContextTitle: "Source context",
+    sourceContextDetail: "Citable context loaded through the RAG bridge and validated against the current document.",
+    sourceContextSignals: "Available source-context signals",
+    sourceContextEmpty: "No openable chunk is present in the audit trail for this document.",
+    sourceContextPlaceholder: "Select an audited chunk in the Source panel to open the exact citable context.",
+    openSourceContext: "Open source context",
+    openingSourceContext: "Opening",
+    sourceContextError: "Source context could not be opened.",
+    chunk: "Chunk",
+    page: "Page",
+    section: "Section",
+    paragraph: "Paragraph",
+    row: "Row",
+    noSection: "Section is not available",
+    sourceUnavailable: "Source unavailable",
+    copyChunk: "Copy chunk",
+    beforeContext: "Previous context",
+    afterContext: "Next context",
     workflowTitle: "Publication workflow",
     workflowDraft: "Draft",
     workflowDraftDetail: "Metadata and version are registered in Registry API.",
@@ -398,6 +446,10 @@ export function DocumentDetail({
       }),
     [assignments, auditEvents, copy, document, relatedJobs, versions, workflowTasks]
   );
+  const sourceContextSignals = useMemo(
+    () => sourceContextSignalsForDocument({ document, versions, auditEvents, copy }),
+    [auditEvents, copy, document, versions]
+  );
   const [assignmentRows, setAssignmentRows] = useState<AssignmentFormRow[]>(() =>
     assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
   );
@@ -410,6 +462,9 @@ export function DocumentDetail({
   const [governanceAction, setGovernanceAction] = useState<GovernanceActionKind | null>(null);
   const [governanceResult, setGovernanceResult] = useState<DocumentGovernanceRunResponse | null>(null);
   const [governanceFeedback, setGovernanceFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
+  const [sourceContextFeedback, setSourceContextFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [openingSourceChunkId, setOpeningSourceChunkId] = useState<string | null>(null);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -522,6 +577,31 @@ export function DocumentDetail({
       setGovernanceFeedback({ tone: "error", message: `${copy.governanceFailed}${suffix}` });
     } finally {
       setGovernanceAction(null);
+    }
+  }
+
+  async function openDocumentSourceContext(signal: SourceContextSignal) {
+    if (openingSourceChunkId) {
+      return;
+    }
+
+    setOpeningSourceChunkId(signal.chunkId);
+    setSourceContextFeedback(null);
+    try {
+      const response = await fetch(
+        `/api/documents/${encodeURIComponent(document.document_id)}/source-context?chunk_id=${encodeURIComponent(signal.chunkId)}`,
+        { method: "GET" }
+      );
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      const payload = (await response.json()) as { source_context: SourceContext };
+      setSourceContext(payload.source_context);
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setSourceContextFeedback({ tone: "error", message: `${copy.sourceContextError}${suffix}` });
+    } finally {
+      setOpeningSourceChunkId(null);
     }
   }
 
@@ -646,29 +726,78 @@ export function DocumentDetail({
         <section className="grid grid--two">
           <div className="panel">
             <div className="panel__header">
-              <h2>{copy.viewer}</h2>
-              <StatusBadge value="online" label={viewerMode} />
-            </div>
-            <div className="panel__body source-viewer document-preview">
-              <div className="document-preview__page">
-                <div className="document-preview__ruler" />
-                <h3>{document.title}</h3>
-                <p>{currentVersion?.change_summary ?? copy.noVersion}</p>
-                <div className="document-preview__highlight" />
-                <div className="document-preview__line" />
-                <div className="document-preview__line document-preview__line--short" />
+              <div>
+                <h2>{copy.sourceContextTitle}</h2>
+                <p>{copy.sourceContextDetail}</p>
               </div>
+              <StatusBadge value="online" label={sourceContext?.viewer_mode ?? viewerMode} />
+            </div>
+            <div className="panel__body">
+              {sourceContext ? (
+                <DocumentSourceContextViewer copy={copy} sourceContext={sourceContext} />
+              ) : (
+                <div className="source-viewer document-preview">
+                  <div className="document-preview__page">
+                    <div className="document-preview__ruler" />
+                    <h3>{document.title}</h3>
+                    <p>{copy.sourceContextPlaceholder}</p>
+                    <p>{currentVersion?.change_summary ?? copy.noVersion}</p>
+                    <div className="document-preview__highlight" />
+                    <div className="document-preview__line" />
+                    <div className="document-preview__line document-preview__line--short" />
+                  </div>
+                </div>
+              )}
+              {sourceContextFeedback ? (
+                <p className={`notice ${sourceContextFeedback.tone === "error" ? "notice--danger" : ""}`} role="status">
+                  {sourceContextFeedback.message}
+                </p>
+              ) : null}
             </div>
           </div>
           <aside className="panel">
             <div className="panel__header">
-              <h2>{copy.source}</h2>
+              <div>
+                <h2>{copy.source}</h2>
+                <p>{copy.sourceContextSignals}</p>
+              </div>
               <LockKeyhole size={18} aria-hidden="true" />
             </div>
             <div className="panel__body stack">
               <KeyValue label={copy.sourceUri} value={currentVersion?.source_file_uri ?? "n/a"} />
               <KeyValue label={copy.sourceHash} value={currentVersion?.file_hash ?? "n/a"} />
               <KeyValue label={copy.viewerMode} value={viewerMode} />
+              {sourceContextSignals.length > 0 ? (
+                <div className="source-context-list">
+                  {sourceContextSignals.map((signal) => (
+                    <div className="source-context-signal" key={signal.chunkId}>
+                      <FileText size={18} aria-hidden="true" />
+                      <span className="cell-title">
+                        <strong>{signal.title}</strong>
+                        <span>{signal.detail}</span>
+                        <span>{formatDateTime(signal.createdAt, language)}</span>
+                      </span>
+                      <button
+                        aria-label={`${copy.openSourceContext} ${signal.chunkId}`}
+                        className="button"
+                        disabled={openingSourceChunkId !== null}
+                        type="button"
+                        onClick={() => {
+                          void openDocumentSourceContext(signal);
+                        }}
+                      >
+                        <ExternalLink size={16} aria-hidden="true" />
+                        {openingSourceChunkId === signal.chunkId ? copy.openingSourceContext : copy.openSourceContext}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <AlertTriangle size={22} aria-hidden="true" />
+                  {copy.sourceContextEmpty}
+                </div>
+              )}
               <p className="notice">{copy.viewerNotice}</p>
             </div>
           </aside>
@@ -1192,6 +1321,61 @@ export function DocumentDetail({
   );
 }
 
+function sourceContextSignalsForDocument({
+  document,
+  versions,
+  auditEvents,
+  copy
+}: {
+  document: Document;
+  versions: DocumentVersion[];
+  auditEvents: AuditEvent[];
+  copy: Record<string, string>;
+}): SourceContextSignal[] {
+  const versionIds = new Set(versions.map((version) => version.document_version_id));
+  const signals = new Map<string, SourceContextSignal>();
+
+  for (const event of auditEvents) {
+    const metadata = event.metadata;
+    const metadataDocumentId = metadataString(metadata.document_id);
+    const metadataVersionId = metadataString(metadata.document_version_id);
+    const metadataChunkId = metadataString(metadata.chunk_id);
+    const metadataPageNumber = metadataString(metadata.page_number);
+    const metadataSourceUri = metadataString(metadata.source_file_uri);
+    const isSourceEvent =
+      event.event_type.includes("citation.") ||
+      event.event_type.includes("chunk.") ||
+      event.resource_type.includes("chunk");
+    const linkedToDocument =
+      metadataDocumentId === document.document_id ||
+      (metadataVersionId !== null && versionIds.has(metadataVersionId)) ||
+      metadataSourceUri?.includes(document.document_id);
+    const chunkId = metadataChunkId ?? (event.resource_type.includes("chunk") ? event.resource_id : null);
+
+    if (!isSourceEvent || !linkedToDocument || chunkId === null) {
+      continue;
+    }
+
+    const detailParts = [
+      metadataVersionId ? `${copy.version} ${metadataVersionId}` : null,
+      metadataPageNumber ? `${copy.page} ${metadataPageNumber}` : null,
+      metadataSourceUri
+    ].filter((part): part is string => part !== null);
+    const existing = signals.get(chunkId);
+    if (existing && existing.createdAt >= event.created_at) {
+      continue;
+    }
+    signals.set(chunkId, {
+      chunkId,
+      title: event.event_type,
+      detail: detailParts.length > 0 ? detailParts.join(" / ") : event.resource_type,
+      createdAt: event.created_at
+    });
+  }
+
+  return Array.from(signals.values()).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
 function auditTracesForDocument({
   document,
   versions,
@@ -1484,6 +1668,94 @@ function GovernanceList({ title, items }: { title: string; items: string[] }) {
       </div>
     </div>
   );
+}
+
+function DocumentSourceContextViewer({
+  copy,
+  sourceContext
+}: {
+  copy: Record<string, string>;
+  sourceContext: SourceContext;
+}) {
+  const sourceLabel = sourceContext.source_file_name ?? sourceContext.source_file_uri ?? copy.sourceUnavailable;
+  const locationParts = sourceContextLocationParts(sourceContext, copy);
+
+  return (
+    <div className="source-viewer source-viewer--document">
+      <div className="source-viewer__header">
+        <div>
+          <h3>{sourceContext.document_title}</h3>
+          <span>{sourceLabel}</span>
+        </div>
+        <StatusBadge value="online" label={sourceContext.viewer_mode} />
+      </div>
+      <div className="source-viewer__meta">
+        <span>{copy.chunk} {sourceContext.chunk_id}</span>
+        <span>{copy.version}: {sourceContext.document_version_id}</span>
+        {locationParts.map((part) => (
+          <span key={part}>{part}</span>
+        ))}
+      </div>
+      <div className="source-uri">
+        <FileText size={16} aria-hidden="true" />
+        <span>{sourceContext.source_file_uri ?? copy.sourceUnavailable}</span>
+      </div>
+      {sourceContext.before_text ? (
+        <div className="source-context-block">
+          <strong>{copy.beforeContext}</strong>
+          <pre className="chunk-text chunk-text--context">{sourceContext.before_text}</pre>
+        </div>
+      ) : null}
+      <pre className="chunk-text">{sourceContext.chunk_text}</pre>
+      {sourceContext.after_text ? (
+        <div className="source-context-block">
+          <strong>{copy.afterContext}</strong>
+          <pre className="chunk-text chunk-text--context">{sourceContext.after_text}</pre>
+        </div>
+      ) : null}
+      <div className="source-viewer__actions">
+        <button
+          className="button"
+          type="button"
+          onClick={() => {
+            void navigator.clipboard?.writeText(sourceContext.chunk_text);
+          }}
+        >
+          <Copy size={16} aria-hidden="true" />
+          {copy.copyChunk}
+        </button>
+      </div>
+      {sourceContext.warnings.length > 0 ? (
+        <div className="notice notice--danger">
+          <ShieldAlert size={16} aria-hidden="true" />
+          {sourceContext.warnings.join(", ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function sourceContextLocationParts(sourceContext: SourceContext, copy: Record<string, string>): string[] {
+  const location = sourceContext.location;
+  const parts: string[] = [];
+  if (location.page_number !== null) {
+    parts.push(`${copy.page} ${location.page_number}`);
+  }
+  if (location.section_path.length > 0) {
+    parts.push(`${copy.section}: ${location.section_path.join(" / ")}`);
+  } else {
+    parts.push(copy.noSection);
+  }
+  if (location.paragraph_number !== null) {
+    parts.push(`${copy.paragraph} ${location.paragraph_number}`);
+  }
+  if (location.sheet_name !== null) {
+    parts.push(location.sheet_name);
+  }
+  if (location.row_number !== null) {
+    parts.push(`${copy.row} ${location.row_number}`);
+  }
+  return parts;
 }
 
 function governanceMetrics(result: GovernanceServiceResponse): string[] {

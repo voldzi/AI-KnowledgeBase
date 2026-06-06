@@ -339,6 +339,7 @@ POST /rag/retrieve
 POST /rag/answer
 POST /rag/compare-documents
 POST /rag/check-compliance
+GET  /citations/{chunk_id}/open
 ```
 
 RAG query request:
@@ -382,6 +383,33 @@ RAG query response:
   "warnings": [],
   "used_chunks": ["chunk_789"],
   "missing_information": null
+}
+```
+
+Source context response for `GET /citations/{chunk_id}/open`:
+
+```json
+{
+  "chunk_id": "chunk_789",
+  "document_id": "doc_123",
+  "document_version_id": "ver_456",
+  "document_title": "Směrnice ...",
+  "source_file_uri": "s3://akl-documents/doc_123/ver_456/file.pdf",
+  "source_file_name": "file.pdf",
+  "source_mime_type": "application/pdf",
+  "source_sha256": "sha256:...",
+  "viewer_mode": "pdf",
+  "location": {
+    "page_number": 7,
+    "section_path": ["Čl. 4", "Odst. 2"],
+    "section_title": "Výjimky",
+    "paragraph_number": "2",
+    "bbox": null
+  },
+  "chunk_text": "Citovatelný text chunku ...",
+  "before_text": "",
+  "after_text": "",
+  "warnings": []
 }
 ```
 
@@ -613,6 +641,14 @@ POST /api/documents/{documentId}/governance
 ```
 
 Request obsahuje `action=compare_versions|check_compliance|detect_conflicts` a volitelna `left_version_id`/`right_version_id`. Bridge nacte Registry metadata, doplni subject/context a vola odpovidajici Governance Service endpoint. Aktualni vstup je metadata/source URI/change summary only; odpoved musi obsahovat `source_limitations` s `WEB_BRIDGE_METADATA_CONTENT_ONLY`, dokud web nepredava plny extrahovany text nebo citovatelne chunky.
+
+Web bridge pro source-context v detailu dokumentu:
+
+```text
+GET /api/documents/{documentId}/source-context?chunk_id={chunkId}
+```
+
+Bridge nacte dokument a jeho verze z Registry API, otevre chunk pres RAG `GET /citations/{chunk_id}/open` a vrati `source_context` pouze tehdy, kdyz `document_id` a `document_version_id` patri k otevrenemu detailu dokumentu. Nesoulad se vraci jako `409 BAD_DOCUMENT_WORKFLOW_REQUEST`.
 
 ---
 
