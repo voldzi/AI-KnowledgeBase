@@ -2,6 +2,7 @@ import type {
   ApiRequestContext,
   ApplyWorkflowTaskActionRequest,
   AuditEvent,
+  AuditEventListOptions,
   AuthorizationHint,
   CreateAuditEventRequest,
   CreateDocumentRequest,
@@ -381,8 +382,11 @@ export class MockRegistryClient implements RegistryApiClient {
     return cloneMock(nextTask);
   }
 
-  async listAuditEvents(_context: ApiRequestContext): Promise<AuditEvent[]> {
-    return cloneMock(this.auditEvents);
+  async listAuditEvents(_context: ApiRequestContext, options: AuditEventListOptions = {}): Promise<AuditEvent[]> {
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 100;
+    const events = this.auditEvents.filter((event) => auditEventMatchesOptions(event, options));
+    return cloneMock(events.slice(offset, offset + limit));
   }
 
   async createAuditEvent(request: CreateAuditEventRequest, context: ApiRequestContext): Promise<AuditEvent> {
@@ -422,6 +426,22 @@ function workflowTaskMatchesOptions(task: RegistryWorkflowTask, options: Workflo
     return false;
   }
   if (options.ownerId && task.owner_id !== options.ownerId) {
+    return false;
+  }
+  return true;
+}
+
+function auditEventMatchesOptions(event: AuditEvent, options: AuditEventListOptions): boolean {
+  if (options.actorId && event.actor_id !== options.actorId) {
+    return false;
+  }
+  if (options.eventType && event.event_type !== options.eventType) {
+    return false;
+  }
+  if (options.resourceType && event.resource_type !== options.resourceType) {
+    return false;
+  }
+  if (options.resourceId && event.resource_id !== options.resourceId) {
     return false;
   }
   return true;

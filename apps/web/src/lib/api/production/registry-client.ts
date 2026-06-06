@@ -2,6 +2,7 @@ import type {
   ApiRequestContext,
   ApplyWorkflowTaskActionRequest,
   AuditEvent,
+  AuditEventListOptions,
   AuthorizationHint,
   CreateAuditEventRequest,
   CreateDocumentRequest,
@@ -203,8 +204,32 @@ export class ProductionRegistryClient implements RegistryApiClient {
     );
   }
 
-  async listAuditEvents(context: ApiRequestContext): Promise<AuditEvent[]> {
-    const response = await this.get<ListEnvelope<AuditEvent>>("/audit/events", "listAuditEvents", context);
+  async listAuditEvents(context: ApiRequestContext, options: AuditEventListOptions = {}): Promise<AuditEvent[]> {
+    const params = new URLSearchParams();
+    if (options.actorId) {
+      params.set("actor_id", options.actorId);
+    }
+    if (options.eventType) {
+      params.set("event_type", options.eventType);
+    }
+    if (options.resourceType) {
+      params.set("resource_type", options.resourceType);
+    }
+    if (options.resourceId) {
+      params.set("resource_id", options.resourceId);
+    }
+    if (options.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+    if (options.offset !== undefined) {
+      params.set("offset", String(options.offset));
+    }
+    const query = params.toString();
+    const response = await this.get<ListEnvelope<AuditEvent>>(
+      `/audit/events${query ? `?${query}` : ""}`,
+      "listAuditEvents",
+      context
+    );
     return response.items;
   }
 

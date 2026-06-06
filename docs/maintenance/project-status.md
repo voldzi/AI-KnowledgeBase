@@ -14,7 +14,7 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - Web aplikace obsahuje Document Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Assistant.
 - GitHub je stabilizovany pres chraneny `main`, PR workflow, CI gate a release proces.
 
-Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou native viewer/source-context, skutecne governance akce v UI, persistovane AI insighty, audit tab na detailu dokumentu, vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu mimo web bridge.
+Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou native viewer/source-context, skutecne governance akce v UI, persistovane AI insighty, vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu mimo web bridge.
 
 ## Current GitHub Baseline
 
@@ -34,6 +34,7 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou na
 - `/documents/[documentId]` obsahuje prehled, viewer preview, workflow, insighty, verze a ingestion stav.
 - Detail dokumentu zobrazuje publish gate a workflow task historii z Registry API.
 - Detail dokumentu spravuje organizacni odpovednosti dokumentu z `document_assignments`: owner, gestor, reviewer, approver, auditor, steward, SLA a eskalace.
+- Detail dokumentu obsahuje audit tab filtrovany podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat.
 - `/upload` pouziva browser file preflight, SHA-256, podepsanou upload session a PUT upload do aplikacniho upload endpointu.
 - `/help` obsahuje napovedu pro dokumentove role, upload, viewer/citace, workflow, governance a troubleshooting.
 
@@ -62,7 +63,7 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 1. Native viewer/source-context: PDF/DOCX/tabulky/OCR zatim nemaji produkcni viewer s page jump, highlight a signed download URL.
 2. Governance UI execution: compare/compliance/conflict panel v detailu zatim nespousti Governance Service endpointy.
 3. AI insights: povinnosti, role, lhuty, rizika a FAQ zatim nejsou persistovane jako `proposed` insighty se schvalenim.
-4. Audit tab: detail dokumentu zatim nema filtrovany audit tab pro udalosti daneho dokumentu.
+4. Audit event coverage: audit tab existuje, ale produkcni hodnota zavisi na duslednem zapisu udalosti ze vsech sluzeb.
 5. Multi-step approvals: assignments existuji, ale workflow zatim nema sekvencni approval steps s explicitnim quorum/poradim.
 6. SLA escalation runtime: SLA a eskalacni metadata existuji, ale chybi scheduler/notifikace a automaticke eskalacni udalosti.
 7. Ingestion-owned task contract: ingestion warningy jsou v UI doplnene mimo Registry-owned task publikaci.
@@ -72,13 +73,12 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 
 ## Next Recommended Implementation Slices
 
-1. Audit tab v detailu dokumentu: filtrovat Registry audit events podle `document_id`, `document_version_id`, workflow tasku a source opening udalosti.
-2. Governance Service UI: napojit compare versions, compliance check a conflict detection na skutecne endpointy a auditovat vysledky.
-3. Native viewer/source-context: signed source open, PDF page jump, DOCX/text preview a presna viewer lokace citaci.
-4. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
-5. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.
-6. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.
-7. RAG evaluation: eval dataset pro citace, no-answer rate, retrieval precision a regression gate.
+1. Governance Service UI: napojit compare versions, compliance check a conflict detection na skutecne endpointy a auditovat vysledky.
+2. Native viewer/source-context: signed source open, PDF page jump, DOCX/text preview a presna viewer lokace citaci.
+3. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
+4. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.
+5. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.
+6. RAG evaluation: eval dataset pro citace, no-answer rate, retrieval precision a regression gate.
 
 ## Maintenance Rule
 

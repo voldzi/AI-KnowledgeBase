@@ -280,6 +280,44 @@ describe("production API clients", () => {
     });
   });
 
+  it("loads filtered audit events from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        items: [
+          {
+            audit_event_id: "audit_1",
+            actor_id: "admin_1",
+            event_type: "document.assignments.updated",
+            resource_type: "document",
+            resource_id: "doc_1",
+            severity: "info",
+            correlation_id: "corr_1",
+            metadata: { document_id: "doc_1" },
+            created_at: "2026-06-06T10:00:00Z"
+          }
+        ],
+        limit: 25,
+        offset: 0
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const events = await clients.registry.listAuditEvents(createMockContext(), {
+      eventType: "document.assignments.updated",
+      resourceType: "document",
+      resourceId: "doc_1",
+      limit: 25
+    });
+
+    assert.equal(events[0].audit_event_id, "audit_1");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/audit/events?event_type=document.assignments.updated&resource_type=document&resource_id=doc_1&limit=25"
+    );
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
   it("applies workflow task actions through the Registry API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

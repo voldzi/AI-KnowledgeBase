@@ -138,6 +138,8 @@ Služba automaticky auditně zapisuje:
 
 Externí služby mohou zapisovat audit přes `POST /api/v1/audit/events`, pokud mají akci `audit.write`.
 
+Audit list `GET /api/v1/audit/events` podporuje filtry `actor_id`, `event_type`, `resource_type`, `resource_id`, `limit` a `offset`. Web detail dokumentu je pouziva spolecne s metadaty udalosti pro filtrovany audit tab.
+
 ## Workflow tasky
 
 Registry API poskytuje perzistentni workflow tasky pres `GET /api/v1/workflow/tasks`. Aktivni tasky jsou idempotentne synchronizovane z dokumentovych stavu, citlive klasifikace a auditnich varovani.

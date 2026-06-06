@@ -20,3 +20,12 @@ export interface CreateAuditEventRequest {
   severity: AuditSeverity;
   metadata: Record<string, string | number | boolean | null>;
 }
+
+export interface AuditEventListOptions {
+  actorId?: string;
+  eventType?: string;
+  resourceType?: string;
+  resourceId?: string;
+  limit?: number;
+  offset?: number;
+}
