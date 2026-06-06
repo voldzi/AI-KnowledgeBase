@@ -226,14 +226,24 @@ def _default_assignment_payloads(payload: DocumentCreate) -> list[DocumentAssign
 
 
 def _external_document_metadata(payload: ExternalDocumentUpsertRequest) -> dict[str, object]:
+    external_system = payload.external_system.value
+    source_location = (
+        payload.source_location.model_dump(mode="json", exclude_none=True)
+        if payload.source_location is not None
+        else None
+    )
     return {
         **dict(payload.metadata),
         "external": {
             "tenant_id": payload.tenant_id,
-            "source_system": payload.source_system,
+            "external_system": external_system,
             "external_ref": payload.external_ref,
             "entity_type": payload.entity_type,
             "entity_id": payload.entity_id,
+            "source_location": source_location,
+            "akb_source_uri": payload.akb_source_uri,
+            "citation_base_url": payload.citation_base_url,
+            "preview_url": payload.preview_url,
         },
     }
 
@@ -890,7 +900,7 @@ def upsert_external_document(
         select(ExternalDocumentRef)
         .where(
             ExternalDocumentRef.tenant_id == payload.tenant_id,
-            ExternalDocumentRef.source_system == payload.source_system,
+            ExternalDocumentRef.external_system == payload.external_system.value,
             ExternalDocumentRef.external_ref == payload.external_ref,
         )
         .options(
@@ -911,7 +921,7 @@ def upsert_external_document(
         classification=payload.classification.value,
         owner_id=payload.owner.user_id,
         gestor_unit=payload.gestor_unit,
-        tags=sorted({*payload.tags, "external", payload.source_system.lower()}),
+        tags=sorted({*payload.tags, "external", payload.external_system.value.lower()}),
         document_metadata=_external_document_metadata(payload),
     )
     document.access_policies = _external_document_policies(payload)
@@ -940,12 +950,19 @@ def upsert_external_document(
     external_ref = ExternalDocumentRef(
         external_document_id=make_id("extdoc"),
         tenant_id=payload.tenant_id,
-        source_system=payload.source_system,
+        external_system=payload.external_system.value,
         external_ref=payload.external_ref,
         entity_type=payload.entity_type,
         entity_id=payload.entity_id,
         document=document,
+        akb_source_uri=payload.akb_source_uri,
+        source_location=(
+            payload.source_location.model_dump(mode="json", exclude_none=True)
+            if payload.source_location is not None
+            else None
+        ),
         citation_base_url=payload.citation_base_url,
+        preview_url=payload.preview_url,
         ref_metadata=payload.metadata,
     )
     db.add(document)
@@ -960,11 +977,16 @@ def upsert_external_document(
         metadata={
             "created": True,
             "tenant_id": payload.tenant_id,
-            "source_system": payload.source_system,
+            "external_system": payload.external_system.value,
             "external_ref": payload.external_ref,
             "entity_type": payload.entity_type,
             "entity_id": payload.entity_id,
             "document_id": document.document_id,
+            "source_location": (
+                payload.source_location.model_dump(mode="json", exclude_none=True)
+                if payload.source_location is not None
+                else None
+            ),
         },
     )
     for assignment in document.assignments:
@@ -1255,6 +1277,11 @@ def create_document_version(
         valid_from=payload.valid_from,
         valid_to=payload.valid_to,
         source_file_uri=payload.source_file_uri,
+        source_location=(
+            payload.source_location.model_dump(mode="json", exclude_none=True)
+            if payload.source_location is not None
+            else None
+        ),
         file_hash=payload.file_hash,
         change_summary=payload.change_summary,
     )

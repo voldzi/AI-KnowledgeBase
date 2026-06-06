@@ -92,6 +92,9 @@ class DocumentVersion(Base):
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     source_file_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source_location: Mapped[dict[str, object] | None] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=True
+    )
     file_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -134,7 +137,7 @@ class ExternalDocumentRef(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
-            "source_system",
+            "external_system",
             "external_ref",
             name="uq_external_document_ref_identity",
         ),
@@ -147,7 +150,7 @@ class ExternalDocumentRef(Base, TimestampMixin):
         String(64), primary_key=True, default=lambda: make_id("extdoc")
     )
     tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, default="default")
-    source_system: Mapped[str] = mapped_column(String(80), nullable=False)
+    external_system: Mapped[str] = mapped_column(String(80), nullable=False)
     external_ref: Mapped[str] = mapped_column(String(240), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -159,7 +162,11 @@ class ExternalDocumentRef(Base, TimestampMixin):
     current_ingestion_job_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     current_ingestion_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
     akb_source_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    source_location: Mapped[dict[str, object] | None] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=True
+    )
     citation_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    preview_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ref_metadata: Mapped[dict[str, object]] = mapped_column(
         "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
     )

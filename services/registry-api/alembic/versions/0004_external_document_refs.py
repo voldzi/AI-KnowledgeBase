@@ -21,11 +21,15 @@ def _json_type():
 
 
 def upgrade() -> None:
+    op.add_column(
+        "document_versions",
+        sa.Column("source_location", _json_type(), nullable=True),
+    )
     op.create_table(
         "external_document_refs",
         sa.Column("external_document_id", sa.String(length=64), nullable=False),
         sa.Column("tenant_id", sa.String(length=128), nullable=False),
-        sa.Column("source_system", sa.String(length=80), nullable=False),
+        sa.Column("external_system", sa.String(length=80), nullable=False),
         sa.Column("external_ref", sa.String(length=240), nullable=False),
         sa.Column("entity_type", sa.String(length=80), nullable=False),
         sa.Column("entity_id", sa.String(length=128), nullable=False),
@@ -35,7 +39,9 @@ def upgrade() -> None:
         sa.Column("current_ingestion_job_id", sa.String(length=128), nullable=True),
         sa.Column("current_ingestion_status", sa.String(length=40), nullable=True),
         sa.Column("akb_source_uri", sa.String(length=1024), nullable=True),
+        sa.Column("source_location", _json_type(), nullable=True),
         sa.Column("citation_base_url", sa.String(length=512), nullable=True),
+        sa.Column("preview_url", sa.String(length=2048), nullable=True),
         sa.Column("metadata", _json_type(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -48,7 +54,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("external_document_id", name="pk_external_document_refs"),
         sa.UniqueConstraint(
             "tenant_id",
-            "source_system",
+            "external_system",
             "external_ref",
             name="uq_external_document_ref_identity",
         ),
@@ -73,3 +79,4 @@ def downgrade() -> None:
     op.drop_index("ix_external_document_refs_entity", table_name="external_document_refs")
     op.drop_index("ix_external_document_refs_document", table_name="external_document_refs")
     op.drop_table("external_document_refs")
+    op.drop_column("document_versions", "source_location")

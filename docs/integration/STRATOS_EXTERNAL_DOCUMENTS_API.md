@@ -8,7 +8,7 @@ Implementovaná část:
 
 - idempotentní registrace externího dokumentu,
 - získání externí reference a navázaného AKL dokumentu,
-- unikátní vazba `tenant_id + source_system + external_ref`,
+- unikátní vazba `tenant_id + external_system + external_ref`,
 - audit vytvoření externí reference.
 
 Navazující části budou doplněné v dalších fázích:
@@ -25,9 +25,15 @@ Navazující části budou doplněné v dalších fázích:
 - Source of truth pro obchodní objekty zůstává v aplikacích STRATOS.
 - AKL drží dokument, verze, souborová metadata, OCR/text/chunky, index a citace.
 - `external_ref` musí být stabilní a idempotentní.
-- Stejné `tenant_id`, `source_system` a `external_ref` nesmí vytvořit druhý AKL dokument.
+- Stejné `tenant_id`, `external_system` a `external_ref` nesmí vytvořit druhý AKL dokument.
 - AI výstupy jsou návrhy s citací, ne přímý zápis do Budget, ProjectFlow nebo jiného source-of-truth modelu.
 - Browser klient STRATOS nesmí volat tyto endpointy přímo.
+- Veřejný kontrakt používá `external_system`.
+- `source_location`, `akb_source_uri`, `citation_base_url` a `preview_url` mají oddělený význam:
+  - `source_location` popisuje původ dokumentu ve STRATOS nebo externím úložišti.
+  - `akb_source_uri` je interní AKL uložený zdroj, pokud už existuje.
+  - `citation_base_url` je báze pro otevření citací uživatelem.
+  - `preview_url` je volitelný náhled dokumentu pro uživatele nebo adapter.
 
 ## Autentizace a audit
 
@@ -57,7 +63,7 @@ Payload:
 ```json
 {
   "tenant_id": "default",
-  "source_system": "STRATOS_BUDGET",
+  "external_system": "STRATOS_BUDGET",
   "external_ref": "contract:256-2022-S:main",
   "entity_type": "Contract",
   "entity_id": "contract-uuid",
@@ -79,7 +85,22 @@ Payload:
     "procurement_action_id": null,
     "projectflow_project_id": null
   },
-  "citation_base_url": "https://akb.example/api/v1/citations"
+  "source_location": {
+    "kind": "url",
+    "uri": "https://stratos.local/contracts/256-2022-S/document",
+    "file_name": "256-2022-S.pdf",
+    "content_type": "application/pdf",
+    "sha256": "optional-64-char-hex",
+    "storage_ref": null,
+    "captured_at": "2026-06-07T00:00:00Z",
+    "display_url": "https://stratos.local/contracts/256-2022-S",
+    "repository": "BudgetContracts",
+    "path": "/contracts/256-2022-S/document",
+    "version": "2026-06-07"
+  },
+  "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
+  "citation_base_url": "https://akb.example/api/v1/citations",
+  "preview_url": "https://stratos.local/contracts/256-2022-S/preview"
 }
 ```
 
@@ -91,7 +112,7 @@ Odpověď při vytvoření:
   "external_document": {
     "external_document_id": "extdoc_...",
     "tenant_id": "default",
-    "source_system": "STRATOS_BUDGET",
+    "external_system": "STRATOS_BUDGET",
     "external_ref": "contract:256-2022-S:main",
     "entity_type": "Contract",
     "entity_id": "contract-uuid",
@@ -100,8 +121,16 @@ Odpověď při vytvoření:
     "current_file_id": null,
     "current_ingestion_job_id": null,
     "current_ingestion_status": null,
-    "akb_source_uri": null,
+    "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
+    "source_location": {
+      "kind": "url",
+      "uri": "https://stratos.local/contracts/256-2022-S/document",
+      "file_name": "256-2022-S.pdf",
+      "content_type": "application/pdf",
+      "display_url": "https://stratos.local/contracts/256-2022-S"
+    },
     "citation_base_url": "https://akb.example/api/v1/citations",
+    "preview_url": "https://stratos.local/contracts/256-2022-S/preview",
     "metadata": {
       "contract_id": "contract-uuid",
       "contract_number": "256-2022-S"
@@ -124,10 +153,18 @@ Odpověď při vytvoření:
       "contract_number": "256-2022-S",
       "external": {
         "tenant_id": "default",
-        "source_system": "STRATOS_BUDGET",
+        "external_system": "STRATOS_BUDGET",
         "external_ref": "contract:256-2022-S:main",
         "entity_type": "Contract",
-        "entity_id": "contract-uuid"
+        "entity_id": "contract-uuid",
+        "source_location": {
+          "kind": "url",
+          "uri": "https://stratos.local/contracts/256-2022-S/document",
+          "file_name": "256-2022-S.pdf"
+        },
+        "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
+        "citation_base_url": "https://akb.example/api/v1/citations",
+        "preview_url": "https://stratos.local/contracts/256-2022-S/preview"
       }
     },
     "created_at": "2026-06-07T00:00:00Z",
@@ -138,7 +175,7 @@ Odpověď při vytvoření:
 }
 ```
 
-Opakované volání se stejným `tenant_id`, `source_system` a `external_ref` vrátí stejnou vazbu s `created: false`.
+Opakované volání se stejným `tenant_id`, `external_system` a `external_ref` vrátí stejnou vazbu s `created: false`.
 
 ### Detail externího dokumentu
 
@@ -147,6 +184,31 @@ GET /api/v1/external-documents/{external_document_id}
 ```
 
 Vrací stejný tvar jako upsert, vždy s `created: false`.
+
+## Povolené externí systémy
+
+`external_system` musí být jedna z hodnot:
+
+- `STRATOS_BUDGET`
+- `STRATOS_PROJECTFLOW`
+- `STRATOS_ARCHFLOW`
+- `STRATOS_PROCESSFORGE`
+- `STRATOS_EXECUTIVE`
+- `STRATOS_PLATFORM`
+
+Neznámá hodnota je odmítnutá validační chybou `422`.
+
+## Source location
+
+`source_location.kind` musí být jedna z hodnot:
+
+- `url`
+- `uploaded_file`
+- `object_storage`
+- `generated_text`
+- `external_repository`
+
+`source_location` je součástí requestu i response pro external document a document version. Není to volný metadata blob.
 
 ## Povolené typy dokumentů
 

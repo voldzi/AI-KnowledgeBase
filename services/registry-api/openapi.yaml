@@ -1544,6 +1544,10 @@ components:
           maxLength: 1024
           minLength: 1
           title: Source File Uri
+        source_location:
+          anyOf:
+          - $ref: '#/components/schemas/SourceLocation'
+          - type: 'null'
         file_hash:
           anyOf:
           - type: string
@@ -1611,6 +1615,10 @@ components:
         source_file_uri:
           type: string
           title: Source File Uri
+        source_location:
+          anyOf:
+          - $ref: '#/components/schemas/SourceLocation'
+          - type: 'null'
         file_hash:
           anyOf:
           - type: string
@@ -1640,6 +1648,7 @@ components:
       - valid_from
       - valid_to
       - source_file_uri
+      - source_location
       - file_hash
       - change_summary
       - created_at
@@ -1670,9 +1679,9 @@ components:
         tenant_id:
           type: string
           title: Tenant Id
-        source_system:
+        external_system:
           type: string
-          title: Source System
+          title: External System
         external_ref:
           type: string
           title: External Ref
@@ -1710,11 +1719,20 @@ components:
           - type: string
           - type: 'null'
           title: Akb Source Uri
+        source_location:
+          anyOf:
+          - $ref: '#/components/schemas/SourceLocation'
+          - type: 'null'
         citation_base_url:
           anyOf:
           - type: string
           - type: 'null'
           title: Citation Base Url
+        preview_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Preview Url
         metadata:
           additionalProperties: true
           type: object
@@ -1731,7 +1749,7 @@ components:
       required:
       - external_document_id
       - tenant_id
-      - source_system
+      - external_system
       - external_ref
       - entity_type
       - entity_id
@@ -1741,7 +1759,9 @@ components:
       - current_ingestion_job_id
       - current_ingestion_status
       - akb_source_uri
+      - source_location
       - citation_base_url
+      - preview_url
       - created_at
       - updated_at
       title: ExternalDocumentRefResponse
@@ -1762,11 +1782,8 @@ components:
       title: ExternalDocumentResponse
     ExternalDocumentUpsertRequest:
       properties:
-        source_system:
-          type: string
-          maxLength: 80
-          minLength: 1
-          title: Source System
+        external_system:
+          $ref: '#/components/schemas/ExternalSourceSystem'
         external_ref:
           type: string
           maxLength: 240
@@ -1815,12 +1832,28 @@ components:
           additionalProperties: true
           type: object
           title: Metadata
+        source_location:
+          anyOf:
+          - $ref: '#/components/schemas/SourceLocation'
+          - type: 'null'
+        akb_source_uri:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Akb Source Uri
         citation_base_url:
           anyOf:
           - type: string
             maxLength: 512
           - type: 'null'
           title: Citation Base Url
+        preview_url:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Preview Url
         access_policies:
           anyOf:
           - items:
@@ -1837,7 +1870,7 @@ components:
           title: Assignments
       type: object
       required:
-      - source_system
+      - external_system
       - external_ref
       - entity_type
       - entity_id
@@ -1845,6 +1878,16 @@ components:
       - title
       - owner
       title: ExternalDocumentUpsertRequest
+    ExternalSourceSystem:
+      type: string
+      enum:
+      - STRATOS_BUDGET
+      - STRATOS_PROJECTFLOW
+      - STRATOS_ARCHFLOW
+      - STRATOS_PROCESSFORGE
+      - STRATOS_EXECUTIVE
+      - STRATOS_PLATFORM
+      title: ExternalSourceSystem
     HTTPValidationError:
       properties:
         detail:
@@ -1872,6 +1915,83 @@ components:
       - service
       - version
       title: HealthResponse
+    SourceLocation:
+      properties:
+        kind:
+          $ref: '#/components/schemas/SourceLocationKind'
+        uri:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Uri
+        file_name:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: File Name
+        content_type:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Content Type
+        sha256:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Sha256
+        storage_ref:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Storage Ref
+        captured_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Captured At
+        display_url:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Display Url
+        repository:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Repository
+        path:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Path
+        version:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Version
+      type: object
+      required:
+      - kind
+      title: SourceLocation
+    SourceLocationKind:
+      type: string
+      enum:
+      - url
+      - uploaded_file
+      - object_storage
+      - generated_text
+      - external_repository
+      title: SourceLocationKind
     ValidationError:
       properties:
         loc:
