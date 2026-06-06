@@ -11,6 +11,7 @@ import {
   CircleCheck,
   ClipboardCheck,
   Copy,
+  Download,
   ExternalLink,
   FileClock,
   FileSearch,
@@ -37,6 +38,7 @@ import type {
   DocumentAssignment,
   DocumentAssignmentInput,
   DocumentAssignmentRole,
+  DocumentSourceOpenDecision,
   DocumentGovernanceRunResponse,
   DocumentVersion,
   GovernanceActionKind,
@@ -108,6 +110,19 @@ const detailCopy = {
     sourceHash: "Hash souboru",
     viewerMode: "Režim vieweru",
     viewerNotice: "Nativní preview dokumentu bude navázané na source-context a podepsané download URL. Aktuálně je dostupný citovatelný zdrojový kontext z RAG služby.",
+    sourceOpenTitle: "Podepsané otevření zdroje",
+    sourceOpenDetail: "Server připraví krátkodobou URL pouze pro aktuální dokument a verzi.",
+    requestSourceOpen: "Připravit podepsaný zdroj",
+    sourceOpening: "Připravuji",
+    sourceOpenReady: "Podepsaný zdroj je připravený.",
+    sourceOpenUnavailable: "Zdrojový objekt není v lokálním storage dostupný.",
+    sourceOpenError: "Podepsané otevření zdroje se nepodařilo připravit.",
+    openSignedSource: "Otevřít zdroj",
+    downloadSignedSource: "Stáhnout zdroj",
+    expiresAt: "Expirace",
+    storageAvailability: "Dostupnost ve storage",
+    available: "dostupné",
+    unavailable: "nedostupné",
     sourceContextTitle: "Source-context",
     sourceContextDetail: "Citovatelný kontext načtený přes RAG bridge a ověřený proti aktuálnímu dokumentu.",
     sourceContextSignals: "Dostupné source-context signály",
@@ -270,6 +285,19 @@ const detailCopy = {
     sourceHash: "File hash",
     viewerMode: "Viewer mode",
     viewerNotice: "Native document preview will be connected to source-context and signed download URLs. The citable source context from RAG is available now.",
+    sourceOpenTitle: "Signed source opening",
+    sourceOpenDetail: "The server prepares a short-lived URL only for the current document and version.",
+    requestSourceOpen: "Prepare signed source",
+    sourceOpening: "Preparing",
+    sourceOpenReady: "Signed source is ready.",
+    sourceOpenUnavailable: "Source object is not available in local storage.",
+    sourceOpenError: "Signed source opening could not be prepared.",
+    openSignedSource: "Open source",
+    downloadSignedSource: "Download source",
+    expiresAt: "Expires",
+    storageAvailability: "Storage availability",
+    available: "available",
+    unavailable: "unavailable",
     sourceContextTitle: "Source context",
     sourceContextDetail: "Citable context loaded through the RAG bridge and validated against the current document.",
     sourceContextSignals: "Available source-context signals",
@@ -465,6 +493,9 @@ export function DocumentDetail({
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceContextFeedback, setSourceContextFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [openingSourceChunkId, setOpeningSourceChunkId] = useState<string | null>(null);
+  const [sourceOpen, setSourceOpen] = useState<DocumentSourceOpenDecision | null>(null);
+  const [sourceOpenAction, setSourceOpenAction] = useState(false);
+  const [sourceOpenFeedback, setSourceOpenFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -602,6 +633,35 @@ export function DocumentDetail({
       setSourceContextFeedback({ tone: "error", message: `${copy.sourceContextError}${suffix}` });
     } finally {
       setOpeningSourceChunkId(null);
+    }
+  }
+
+  async function prepareSignedSourceOpen() {
+    if (!currentVersion || sourceOpenAction) {
+      return;
+    }
+
+    setSourceOpenAction(true);
+    setSourceOpenFeedback(null);
+    try {
+      const response = await fetch(
+        `/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(currentVersion.document_version_id)}/source/open`,
+        { method: "POST" }
+      );
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      const payload = (await response.json()) as { source_open: DocumentSourceOpenDecision };
+      setSourceOpen(payload.source_open);
+      setSourceOpenFeedback({
+        tone: payload.source_open.available ? "success" : "error",
+        message: payload.source_open.available ? copy.sourceOpenReady : copy.sourceOpenUnavailable
+      });
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setSourceOpenFeedback({ tone: "error", message: `${copy.sourceOpenError}${suffix}` });
+    } finally {
+      setSourceOpenAction(false);
     }
   }
 
@@ -767,6 +827,54 @@ export function DocumentDetail({
               <KeyValue label={copy.sourceUri} value={currentVersion?.source_file_uri ?? "n/a"} />
               <KeyValue label={copy.sourceHash} value={currentVersion?.file_hash ?? "n/a"} />
               <KeyValue label={copy.viewerMode} value={viewerMode} />
+              <div className="source-open-card">
+                <div className="source-open-card__header">
+                  <FileText size={18} aria-hidden="true" />
+                  <span className="cell-title">
+                    <strong>{copy.sourceOpenTitle}</strong>
+                    <span>{copy.sourceOpenDetail}</span>
+                  </span>
+                </div>
+                <button
+                  className="button button--primary"
+                  disabled={!currentVersion || sourceOpenAction}
+                  type="button"
+                  onClick={() => {
+                    void prepareSignedSourceOpen();
+                  }}
+                >
+                  <Download size={16} aria-hidden="true" />
+                  {sourceOpenAction ? copy.sourceOpening : copy.requestSourceOpen}
+                </button>
+                {sourceOpen ? (
+                  <div className="detail-kv-grid detail-kv-grid--compact">
+                    <KeyValue
+                      label={copy.storageAvailability}
+                      value={sourceOpen.available ? copy.available : copy.unavailable}
+                    />
+                    <KeyValue label={copy.expiresAt} value={formatDateTime(sourceOpen.expires_at, language)} />
+                    <KeyValue label={copy.sourceUri} value={sourceOpen.source_file_uri} />
+                    <KeyValue label={copy.viewerMode} value={sourceOpen.viewer_mode} />
+                  </div>
+                ) : null}
+                {sourceOpen?.available && sourceOpen.download_url ? (
+                  <div className="source-viewer__actions">
+                    <a className="button button--primary" href={sourceOpen.download_url} target="_blank" rel="noreferrer">
+                      <ExternalLink size={16} aria-hidden="true" />
+                      {copy.openSignedSource}
+                    </a>
+                    <a className="button" href={sourceOpen.download_url} download={sourceOpen.file.filename}>
+                      <Download size={16} aria-hidden="true" />
+                      {copy.downloadSignedSource}
+                    </a>
+                  </div>
+                ) : null}
+                {sourceOpenFeedback ? (
+                  <p className={`notice ${sourceOpenFeedback.tone === "error" ? "notice--danger" : ""}`} role="status">
+                    {sourceOpenFeedback.message}
+                  </p>
+                ) : null}
+              </div>
               {sourceContextSignals.length > 0 ? (
                 <div className="source-context-list">
                   {sourceContextSignals.map((signal) => (

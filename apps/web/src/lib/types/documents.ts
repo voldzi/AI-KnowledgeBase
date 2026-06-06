@@ -106,6 +106,25 @@ export interface DocumentFile {
   uploaded_at: string;
 }
 
+export interface DocumentSourceOpenDecision {
+  source_open_id: string;
+  download_url: string | null;
+  download_method: "GET";
+  expires_at: string;
+  source_file_uri: string;
+  bucket: string;
+  object_key: string;
+  available: boolean;
+  unavailable_reason: string | null;
+  file: {
+    filename: string;
+    mime_type: string;
+    size_bytes: number | null;
+    sha256: string | null;
+  };
+  viewer_mode: string;
+}
+
 export interface CreateDocumentRequest {
   title: string;
   document_type: DocumentType;

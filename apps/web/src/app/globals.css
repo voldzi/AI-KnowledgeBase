@@ -1041,6 +1041,21 @@ button {
   padding: 12px;
 }
 
+.source-open-card {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.source-open-card__header {
+  align-items: flex-start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 22px minmax(0, 1fr);
+}
+
 .workflow-rail {
   display: grid;
   gap: 12px;
