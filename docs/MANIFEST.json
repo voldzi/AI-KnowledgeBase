@@ -1,6 +1,6 @@
 {
   "project": "AKL Platform — AI Knowledge Library",
-  "date": "2026-06-05",
+  "date": "2026-06-06",
   "architecture": "service-oriented distributed architecture",
   "files": [
     "00_CENTRALNI_ZADANI_AKL_PLATFORM.md",
@@ -25,6 +25,9 @@
     "CONTRACTS/06_SECURITY_AUTHZ_MODEL.md",
     "governance/governance-service.md",
     "governance/compliance-checks.md",
+    "maintenance/code-health.md",
+    "maintenance/project-status.md",
+    "maintenance/release-process.md",
     "OPERATIONS/07_DEPLOYMENT_MODEL.md",
     "README_START_HERE.md"
   ]

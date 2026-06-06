@@ -82,6 +82,7 @@ Minimum required data set:
 - one valid published version,
 - one archived version,
 - one ingestion warning or failed ingestion case,
+- document assignments for owner, gestor, reviewer, approver and auditor,
 - one workflow task assigned to a reviewer,
 - one workflow task that requires changes.
 
@@ -109,6 +110,7 @@ Must be able to:
 - upload source content through preflight,
 - understand validation errors before ingestion starts,
 - monitor ingestion state,
+- maintain document responsibilities, SLA and escalation metadata,
 - send the document into review,
 - see the next required action from the detail page.
 
@@ -156,12 +158,13 @@ Must be able to:
 | DW-10 | Publish Gate | Publish an approved document version. | Version becomes valid, previous state is not ambiguous, action is auditable. |
 | DW-11 | Archive | Archive a valid version. | Archive is allowed only for the current valid version and the resulting state is visible. |
 | DW-12 | Governance | Trigger or inspect governance action panel. | Current limitation is clear; no fake success state is shown when service integration is not implemented. |
-| DW-13 | RAG | Ask a question that should be answered from imported documents. | Answer includes citations and opens source context. |
-| DW-14 | RAG | Ask a question outside the corpus. | System refuses or asks for clarification instead of inventing an answer. |
-| DW-15 | Help | Open `/help`. | Help content covers quick start, roles, registry, upload, viewer, workflow, governance, chat, warnings, and errors. |
-| DW-16 | Language | Switch language if available in the active UI context. | Help and main document surfaces use the same language context. |
-| DW-17 | Error Handling | Stop or misconfigure one backend service. | Web UI reports degraded state without a blank page or misleading success. |
-| DW-18 | Audit | Inspect audit-related surfaces. | Workflow decisions and document state changes are traceable to a source action. |
+| DW-13 | Assignments | Inspect and update document responsibilities. | Owner/reviewer/approver/auditor roles, SLA and escalation metadata are visible and saved through Registry API. |
+| DW-14 | RAG | Ask a question that should be answered from imported documents. | Answer includes citations and opens source context. |
+| DW-15 | RAG | Ask a question outside the corpus. | System refuses or asks for clarification instead of inventing an answer. |
+| DW-16 | Help | Open `/help`. | Help content covers quick start, roles, registry, upload, viewer, workflow, governance, chat, warnings, and errors. |
+| DW-17 | Language | Switch language if available in the active UI context. | Help and main document surfaces use the same language context. |
+| DW-18 | Error Handling | Stop or misconfigure one backend service. | Web UI reports degraded state without a blank page or misleading success. |
+| DW-19 | Audit | Inspect audit-related surfaces. | Workflow decisions, assignment changes and document state changes are traceable to a source action. |
 
 ## 7. Viewport And Browser Matrix
 

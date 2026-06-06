@@ -11,7 +11,7 @@ export interface JsonRequestOptions {
   operation: string;
   baseUrl: string;
   path: string;
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   context: ApiRequestContext;
   fetcher?: AklFetch;

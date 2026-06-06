@@ -7,7 +7,9 @@ import type {
   CreateDocumentRequest,
   CreateVersionRequest,
   Document,
+  DocumentAssignment,
   DocumentVersion,
+  ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
   WorkflowTaskListOptions,
   RegistryApiClient
@@ -73,6 +75,54 @@ export class MockRegistryClient implements RegistryApiClient {
     };
     this.documents.unshift(document);
     return cloneMock(document);
+  }
+
+  async listDocumentAssignments(documentId: string, _context: ApiRequestContext): Promise<DocumentAssignment[]> {
+    return cloneMock(this.requireDocument(documentId).assignments ?? []);
+  }
+
+  async replaceDocumentAssignments(
+    documentId: string,
+    request: ReplaceDocumentAssignmentsRequest,
+    context: ApiRequestContext
+  ): Promise<DocumentAssignment[]> {
+    if (request.assignments.length === 0) {
+      throw new ApiClientError("At least one document assignment is required", 422, "VALIDATION_ERROR", "mock-trace");
+    }
+
+    const document = this.requireDocument(documentId);
+    const now = new Date().toISOString();
+    document.assignments = request.assignments.map((assignment, index) => ({
+      assignment_id: `assign_${documentId}_${index + 1}`,
+      document_id: documentId,
+      role: assignment.role,
+      subject_type: assignment.subject_type ?? "user",
+      subject_id: assignment.subject_id,
+      display_label: assignment.display_label ?? null,
+      is_primary: assignment.is_primary ?? false,
+      active: assignment.active ?? true,
+      sla_days: assignment.sla_days ?? null,
+      escalation_subject_type: assignment.escalation_subject_type ?? null,
+      escalation_subject_id: assignment.escalation_subject_id ?? null,
+      escalation_label: assignment.escalation_label ?? null,
+      assigned_by: context.subjectId,
+      assigned_at: now,
+      last_audit_event_id: `audit_${this.auditEvents.length + 601}`,
+      metadata: assignment.metadata ?? {},
+      created_at: now,
+      updated_at: now
+    }));
+    const owner = document.assignments.find((assignment) => assignment.role === "owner" && assignment.active);
+    const gestor = document.assignments.find((assignment) => assignment.role === "gestor" && assignment.active);
+    if (owner) {
+      document.owner_id = owner.subject_id;
+      document.owner = owner.display_label ?? owner.subject_id;
+    }
+    if (gestor) {
+      document.gestor_unit = gestor.display_label ?? gestor.subject_id;
+    }
+    document.updated_at = now;
+    return cloneMock(document.assignments);
   }
 
   async listDocumentVersions(documentId: string, _context: ApiRequestContext): Promise<DocumentVersion[]> {
@@ -164,6 +214,9 @@ export class MockRegistryClient implements RegistryApiClient {
     const now = new Date().toISOString();
     const generatedTasks: RegistryWorkflowTask[] = [];
     for (const document of this.documents) {
+      const draftAssignment = assignmentFor(document, ["owner", "gestor"]);
+      const reviewAssignment = assignmentFor(document, ["reviewer", "approver", "gestor", "owner"]);
+      const governanceAssignment = assignmentFor(document, ["auditor", "gestor", "owner"]);
       if (document.status === "review") {
         generatedTasks.push({
           task_id: `task_review_${document.document_id}`,
@@ -174,9 +227,9 @@ export class MockRegistryClient implements RegistryApiClient {
           title: "Document review required",
           description: "Review metadata, source context, access classification and publication readiness.",
           source: "Registry document status",
-          owner_id: document.owner_id,
-          owner_label: document.gestor_unit ?? document.owner,
-          role: "Owner / gestor",
+          owner_id: reviewAssignment?.subject_id ?? document.owner_id,
+          owner_label: assignmentLabel(reviewAssignment) ?? document.gestor_unit ?? document.owner,
+          role: assignmentRoleLabel(reviewAssignment) ?? "Owner / gestor",
           document_id: document.document_id,
           document_title: document.title,
           document_version_id: null,
@@ -184,7 +237,7 @@ export class MockRegistryClient implements RegistryApiClient {
           job_id: null,
           due_at: document.updated_at,
           resolved_at: null,
-          metadata: { derived: true },
+          metadata: { derived: true, ...assignmentTaskMetadata(reviewAssignment) },
           created_at: document.updated_at,
           updated_at: now
         });
@@ -199,9 +252,9 @@ export class MockRegistryClient implements RegistryApiClient {
           title: "Draft needs completion",
           description: "Complete source file, validity metadata and ingestion preparation before review.",
           source: "Registry draft state",
-          owner_id: document.owner_id,
-          owner_label: document.owner,
-          role: "Document manager",
+          owner_id: draftAssignment?.subject_id ?? document.owner_id,
+          owner_label: assignmentLabel(draftAssignment) ?? document.owner,
+          role: assignmentRoleLabel(draftAssignment) ?? "Document manager",
           document_id: document.document_id,
           document_title: document.title,
           document_version_id: null,
@@ -209,7 +262,7 @@ export class MockRegistryClient implements RegistryApiClient {
           job_id: null,
           due_at: document.updated_at,
           resolved_at: null,
-          metadata: { derived: true },
+          metadata: { derived: true, ...assignmentTaskMetadata(draftAssignment) },
           created_at: document.updated_at,
           updated_at: now
         });
@@ -224,9 +277,9 @@ export class MockRegistryClient implements RegistryApiClient {
           title: "Governance check before publication",
           description: "Restricted sources require access, conflict and compliance checks before publication.",
           source: "Document classification policy",
-          owner_id: document.owner_id,
-          owner_label: document.gestor_unit ?? document.owner,
-          role: "Governance / auditor",
+          owner_id: governanceAssignment?.subject_id ?? document.owner_id,
+          owner_label: assignmentLabel(governanceAssignment) ?? document.gestor_unit ?? document.owner,
+          role: assignmentRoleLabel(governanceAssignment) ?? "Governance / auditor",
           document_id: document.document_id,
           document_title: document.title,
           document_version_id: null,
@@ -234,7 +287,7 @@ export class MockRegistryClient implements RegistryApiClient {
           job_id: null,
           due_at: document.updated_at,
           resolved_at: null,
-          metadata: { derived: true },
+          metadata: { derived: true, ...assignmentTaskMetadata(governanceAssignment) },
           created_at: document.updated_at,
           updated_at: now
         });
@@ -342,6 +395,14 @@ export class MockRegistryClient implements RegistryApiClient {
     this.auditEvents.unshift(event);
     return cloneMock(event);
   }
+
+  private requireDocument(documentId: string): Document {
+    const document = this.documents.find((candidate) => candidate.document_id === documentId);
+    if (!document) {
+      throw new ApiClientError("Document not found", 404, "DOCUMENT_NOT_FOUND", "mock-trace");
+    }
+    return document;
+  }
 }
 
 function workflowTaskMatchesOptions(task: RegistryWorkflowTask, options: WorkflowTaskListOptions): boolean {
@@ -364,4 +425,42 @@ function workflowTaskMatchesOptions(task: RegistryWorkflowTask, options: Workflo
     return false;
   }
   return true;
+}
+
+function assignmentFor(document: Document, roles: DocumentAssignment["role"][]): DocumentAssignment | undefined {
+  const assignments = document.assignments ?? [];
+  return roles
+    .flatMap((role) =>
+      assignments
+        .filter((assignment) => assignment.active && assignment.role === role)
+        .sort((left, right) => Number(right.is_primary) - Number(left.is_primary))
+    )
+    .at(0);
+}
+
+function assignmentLabel(assignment: DocumentAssignment | undefined): string | undefined {
+  if (!assignment) {
+    return undefined;
+  }
+  return assignment.display_label ?? assignment.subject_id;
+}
+
+function assignmentRoleLabel(assignment: DocumentAssignment | undefined): string | undefined {
+  if (!assignment) {
+    return undefined;
+  }
+  return assignment.role.replaceAll("_", " ");
+}
+
+function assignmentTaskMetadata(assignment: DocumentAssignment | undefined): Record<string, unknown> {
+  if (!assignment) {
+    return {};
+  }
+  return {
+    assignment_id: assignment.assignment_id,
+    assignment_role: assignment.role,
+    sla_days: assignment.sla_days,
+    escalation_subject_id: assignment.escalation_subject_id,
+    escalated: false
+  };
 }

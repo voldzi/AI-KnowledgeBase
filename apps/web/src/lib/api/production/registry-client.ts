@@ -7,7 +7,9 @@ import type {
   CreateDocumentRequest,
   CreateVersionRequest,
   Document,
+  DocumentAssignment,
   DocumentVersion,
+  ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
   WorkflowTaskListOptions,
   RegistryApiClient
@@ -41,6 +43,29 @@ export class ProductionRegistryClient implements RegistryApiClient {
 
   createDocument(request: CreateDocumentRequest, context: ApiRequestContext): Promise<Document> {
     return this.post<Document>("/documents", request, "createDocument", context);
+  }
+
+  async listDocumentAssignments(documentId: string, context: ApiRequestContext): Promise<DocumentAssignment[]> {
+    const response = await this.get<ListEnvelope<DocumentAssignment>>(
+      `/documents/${documentId}/assignments`,
+      "listDocumentAssignments",
+      context
+    );
+    return response.items;
+  }
+
+  async replaceDocumentAssignments(
+    documentId: string,
+    request: ReplaceDocumentAssignmentsRequest,
+    context: ApiRequestContext
+  ): Promise<DocumentAssignment[]> {
+    const response = await this.put<ListEnvelope<DocumentAssignment>>(
+      `/documents/${documentId}/assignments`,
+      request,
+      "replaceDocumentAssignments",
+      context
+    );
+    return response.items;
   }
 
   async listDocumentVersions(documentId: string, context: ApiRequestContext): Promise<DocumentVersion[]> {
@@ -205,6 +230,19 @@ export class ProductionRegistryClient implements RegistryApiClient {
       baseUrl: this.baseUrl,
       path,
       method: "POST",
+      body,
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  private put<T>(path: string, body: unknown, operation: string, context: ApiRequestContext): Promise<T> {
+    return requestJson<T>({
+      service: "registry-api",
+      operation,
+      baseUrl: this.baseUrl,
+      path,
+      method: "PUT",
       body,
       context,
       fetcher: this.fetcher

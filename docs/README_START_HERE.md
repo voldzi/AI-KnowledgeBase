@@ -10,6 +10,7 @@ Pro reprodukovatelné spuštění Phase 02 po čistém clone začni v kořenové
 Pro import projektové dokumentace jako lokální znalostní báze pokračuj přes `integration/PHASE_03_LOCAL_PRODUCTION.md` a `OPERATIONS/import-docs-folder.md`.
 Pro Phase 04 enterprise / ČSÚ směr začni v `ARCHITECTURE/enterprise-architecture.md`, `security/enterprise-security-model.md` a `integration/PHASE_04_CSU_ENTERPRISE_KNOWLEDGE_PLATFORM.md`.
 Pro UI práci nad dokumenty a workflow pokračuj přes `ui/document-workbench.md`, `ui/workflow-inbox.md`, `integration/PHASE_05_DOCUMENT_WORKBENCH.md` a `qa/document-workbench-product-qa.md`.
+Aktualni konsolidovany stav praci je v `maintenance/project-status.md`.
 
 Nejdříve otevři:
 

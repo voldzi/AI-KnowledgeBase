@@ -117,6 +117,7 @@ Details: `docs/deployment/local-production.md`.
 Enterprise architecture: `docs/ARCHITECTURE/enterprise-architecture.md`.
 Security model: `docs/security/enterprise-security-model.md`.
 Code health baseline: `docs/maintenance/code-health.md`.
+Project status: `docs/maintenance/project-status.md`.
 Release process: `docs/maintenance/release-process.md`.
 Document Workbench QA: `docs/qa/document-workbench-product-qa.md`.
 
