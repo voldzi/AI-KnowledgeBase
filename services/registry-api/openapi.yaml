@@ -200,6 +200,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/assignments:
+    get:
+      summary: List Document Assignments
+      operationId: list_document_assignments_api_v1_documents__document_id__assignments_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentAssignmentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      summary: Replace Document Assignments
+      operationId: replace_document_assignments_api_v1_documents__document_id__assignments_put
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentAssignmentReplaceRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentAssignmentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/documents/{document_id}/versions:
     post:
       summary: Create Document Version
@@ -735,6 +788,14 @@ components:
       - audit.write
       - admin.manage
       title: Action
+    AssignmentSubjectType:
+      type: string
+      enum:
+      - user
+      - group
+      - unit
+      - service
+      title: AssignmentSubjectType
     AuditEventCreate:
       properties:
         actor_id:
@@ -966,6 +1027,191 @@ components:
       - restricted
       - confidential
       title: Classification
+    DocumentAssignmentCreate:
+      properties:
+        role:
+          $ref: '#/components/schemas/DocumentAssignmentRole'
+        subject_type:
+          $ref: '#/components/schemas/AssignmentSubjectType'
+          default: user
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        display_label:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Display Label
+        is_primary:
+          type: boolean
+          title: Is Primary
+          default: false
+        active:
+          type: boolean
+          title: Active
+          default: true
+        sla_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 1.0
+          - type: 'null'
+          title: Sla Days
+        escalation_subject_type:
+          anyOf:
+          - $ref: '#/components/schemas/AssignmentSubjectType'
+          - type: 'null'
+        escalation_subject_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Escalation Subject Id
+        escalation_label:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Escalation Label
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - role
+      - subject_id
+      title: DocumentAssignmentCreate
+    DocumentAssignmentListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/DocumentAssignmentResponse'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: DocumentAssignmentListResponse
+    DocumentAssignmentReplaceRequest:
+      properties:
+        assignments:
+          items:
+            $ref: '#/components/schemas/DocumentAssignmentCreate'
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Assignments
+      type: object
+      required:
+      - assignments
+      title: DocumentAssignmentReplaceRequest
+    DocumentAssignmentResponse:
+      properties:
+        role:
+          $ref: '#/components/schemas/DocumentAssignmentRole'
+        subject_type:
+          $ref: '#/components/schemas/AssignmentSubjectType'
+          default: user
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        display_label:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Display Label
+        is_primary:
+          type: boolean
+          title: Is Primary
+          default: false
+        active:
+          type: boolean
+          title: Active
+          default: true
+        sla_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 1.0
+          - type: 'null'
+          title: Sla Days
+        escalation_subject_type:
+          anyOf:
+          - $ref: '#/components/schemas/AssignmentSubjectType'
+          - type: 'null'
+        escalation_subject_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Escalation Subject Id
+        escalation_label:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Escalation Label
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        assignment_id:
+          type: string
+          title: Assignment Id
+        document_id:
+          type: string
+          title: Document Id
+        assigned_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned By
+        assigned_at:
+          type: string
+          format: date-time
+          title: Assigned At
+        last_audit_event_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Audit Event Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - role
+      - subject_id
+      - assignment_id
+      - document_id
+      - assigned_by
+      - assigned_at
+      - last_audit_event_id
+      - created_at
+      - updated_at
+      title: DocumentAssignmentResponse
+    DocumentAssignmentRole:
+      type: string
+      enum:
+      - owner
+      - gestor
+      - reviewer
+      - approver
+      - auditor
+      - steward
+      title: DocumentAssignmentRole
     DocumentCreate:
       properties:
         title:
@@ -1005,6 +1251,13 @@ components:
             type: array
           - type: 'null'
           title: Access Policies
+        assignments:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/DocumentAssignmentCreate'
+            type: array
+          - type: 'null'
+          title: Assignments
       type: object
       required:
       - title
@@ -1118,6 +1371,13 @@ components:
             type: array
           - type: 'null'
           title: Access Policies
+        assignments:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/DocumentAssignmentCreate'
+            type: array
+          - type: 'null'
+          title: Assignments
       type: object
       title: DocumentPatch
     DocumentResponse:
@@ -1167,6 +1427,11 @@ components:
             $ref: '#/components/schemas/AccessPolicyResponse'
           type: array
           title: Access Policies
+        assignments:
+          items:
+            $ref: '#/components/schemas/DocumentAssignmentResponse'
+          type: array
+          title: Assignments
       type: object
       required:
       - document_id

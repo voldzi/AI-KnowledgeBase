@@ -78,7 +78,7 @@ QA gate pokryva:
 
 ### Registry API
 
-- Rozsirit stavovy automat o samostatne review role a vicekrokove schvalovani.
+- Rozsirit stavovy automat o vicekrokove schvalovani nad existujicim `document_assignments` modelem.
 - Pridat retention/disposition metadata.
 - Pridat signed download URL a evidenci upload session do auditni stopy.
 

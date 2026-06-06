@@ -36,13 +36,40 @@ export class MockRegistryClient implements RegistryApiClient {
 
   async createDocument(request: CreateDocumentRequest, _context: ApiRequestContext): Promise<Document> {
     const now = new Date().toISOString();
+    const {
+      access_policies: _accessPolicies,
+      assignments: assignmentRequests,
+      metadata: _metadata,
+      ...documentRequest
+    } = request;
+    const documentId = `doc_${this.documents.length + 201}`;
     const document: Document = {
-      document_id: `doc_${this.documents.length + 201}`,
+      ...documentRequest,
+      document_id: documentId,
       status: "draft",
       created_at: now,
       updated_at: now,
       owner: request.owner_id,
-      ...request
+      assignments: assignmentRequests?.map((assignment, index) => ({
+        assignment_id: `assign_${documentId}_${index + 1}`,
+        document_id: documentId,
+        role: assignment.role,
+        subject_type: assignment.subject_type ?? "user",
+        subject_id: assignment.subject_id,
+        display_label: assignment.display_label ?? null,
+        is_primary: assignment.is_primary ?? false,
+        active: assignment.active ?? true,
+        sla_days: assignment.sla_days ?? null,
+        escalation_subject_type: assignment.escalation_subject_type ?? null,
+        escalation_subject_id: assignment.escalation_subject_id ?? null,
+        escalation_label: assignment.escalation_label ?? null,
+        assigned_by: "mock",
+        assigned_at: now,
+        last_audit_event_id: null,
+        metadata: assignment.metadata ?? {},
+        created_at: now,
+        updated_at: now
+      }))
     };
     this.documents.unshift(document);
     return cloneMock(document);

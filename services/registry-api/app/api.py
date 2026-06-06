@@ -17,6 +17,7 @@ from app.models import (
     AuditEvent,
     Document,
     DocumentAccessPolicy,
+    DocumentAssignment,
     DocumentFile,
     DocumentVersion,
     WorkflowTask,
@@ -43,6 +44,10 @@ from app.schemas import (
     AuthzFilterDocumentsRequest,
     AuthzFilterDocumentsResponse,
     Classification,
+    DocumentAssignmentCreate,
+    DocumentAssignmentListResponse,
+    DocumentAssignmentReplaceRequest,
+    DocumentAssignmentRole,
     DocumentCreate,
     DocumentListResponse,
     DocumentPatch,
@@ -71,6 +76,15 @@ ACTIVE_TASK_STATUSES = {
     WorkflowTaskStatus.open.value,
     WorkflowTaskStatus.waiting.value,
     WorkflowTaskStatus.blocked.value,
+}
+
+DEFAULT_ASSIGNMENT_SLA_DAYS = {
+    DocumentAssignmentRole.owner.value: 5,
+    DocumentAssignmentRole.gestor.value: 3,
+    DocumentAssignmentRole.reviewer.value: 3,
+    DocumentAssignmentRole.approver.value: 2,
+    DocumentAssignmentRole.auditor.value: 2,
+    DocumentAssignmentRole.steward.value: 5,
 }
 
 DOCUMENT_STATUS_TRANSITIONS = {
@@ -155,11 +169,189 @@ def _policy_models(document: Document, payload: DocumentCreate | DocumentPatch) 
     ]
 
 
+def _assignment_model(
+    *,
+    document: Document,
+    payload: DocumentAssignmentCreate,
+    actor_id: str | None,
+) -> DocumentAssignment:
+    return DocumentAssignment(
+        document_id=document.document_id,
+        role=payload.role.value,
+        subject_type=payload.subject_type.value,
+        subject_id=payload.subject_id,
+        display_label=payload.display_label,
+        is_primary=payload.is_primary,
+        active=payload.active,
+        sla_days=payload.sla_days,
+        escalation_subject_type=(
+            payload.escalation_subject_type.value if payload.escalation_subject_type else None
+        ),
+        escalation_subject_id=payload.escalation_subject_id,
+        escalation_label=payload.escalation_label,
+        assigned_by=actor_id,
+        assignment_metadata=payload.metadata,
+    )
+
+
+def _default_assignment_payloads(payload: DocumentCreate) -> list[DocumentAssignmentCreate]:
+    assignments = [
+        DocumentAssignmentCreate(
+            role=DocumentAssignmentRole.owner,
+            subject_type="user",
+            subject_id=payload.owner_id,
+            display_label=payload.owner_id,
+            is_primary=True,
+            sla_days=DEFAULT_ASSIGNMENT_SLA_DAYS[DocumentAssignmentRole.owner.value],
+            metadata={"source": "document.owner_id"},
+        )
+    ]
+    if payload.gestor_unit:
+        assignments.append(
+            DocumentAssignmentCreate(
+                role=DocumentAssignmentRole.gestor,
+                subject_type="unit",
+                subject_id=payload.gestor_unit,
+                display_label=payload.gestor_unit,
+                is_primary=True,
+                sla_days=DEFAULT_ASSIGNMENT_SLA_DAYS[DocumentAssignmentRole.gestor.value],
+                metadata={"source": "document.gestor_unit"},
+            )
+        )
+    return assignments
+
+
+def _assignment_models(
+    *,
+    document: Document,
+    payloads: list[DocumentAssignmentCreate],
+    actor_id: str | None,
+) -> list[DocumentAssignment]:
+    return [
+        _assignment_model(document=document, payload=assignment, actor_id=actor_id)
+        for assignment in payloads
+    ]
+
+
+def _validated_assignment_payloads(
+    payloads: list[DocumentAssignmentCreate],
+) -> list[DocumentAssignmentCreate]:
+    primary_roles: set[str] = set()
+    seen_subjects: set[tuple[str, str, str]] = set()
+    for payload in payloads:
+        key = (payload.role.value, payload.subject_type.value, payload.subject_id)
+        if key in seen_subjects:
+            raise problem(
+                status.HTTP_400_BAD_REQUEST,
+                "duplicate_assignment",
+                "Assignment role and subject must be unique within a document",
+            )
+        seen_subjects.add(key)
+        if payload.is_primary:
+            if payload.role.value in primary_roles:
+                raise problem(
+                    status.HTTP_400_BAD_REQUEST,
+                    "duplicate_primary_assignment",
+                    "Only one primary assignment is allowed per role",
+                )
+            primary_roles.add(payload.role.value)
+        if payload.escalation_subject_id and payload.escalation_subject_type is None:
+            raise problem(
+                status.HTTP_400_BAD_REQUEST,
+                "missing_escalation_subject_type",
+                "Escalation subject type is required when escalation subject id is set",
+            )
+    return payloads
+
+
+def _sync_document_assignment_denormalized_fields(document: Document) -> None:
+    active_assignments = [assignment for assignment in document.assignments if assignment.active]
+    owner = _select_assignment(active_assignments, [DocumentAssignmentRole.owner.value])
+    gestor = _select_assignment(active_assignments, [DocumentAssignmentRole.gestor.value])
+    if owner is not None and owner.subject_type == "user":
+        document.owner_id = owner.subject_id
+    if gestor is not None:
+        document.gestor_unit = gestor.display_label or gestor.subject_id
+
+
+def _select_assignment(
+    assignments: list[DocumentAssignment],
+    roles: list[str],
+) -> DocumentAssignment | None:
+    for role in roles:
+        candidates = [
+            assignment
+            for assignment in assignments
+            if assignment.active and assignment.role == role
+        ]
+        if not candidates:
+            continue
+        primary = next((assignment for assignment in candidates if assignment.is_primary), None)
+        return primary or candidates[0]
+    return None
+
+
+def _workflow_assignment_context(
+    document: Document,
+    *,
+    roles: list[str],
+    fallback_owner_id: str,
+    fallback_owner_label: str,
+    fallback_role: str,
+    default_sla_days: int,
+    base_time=None,
+) -> dict[str, object]:
+    assignment = _select_assignment(list(document.assignments), roles)
+    if assignment is None:
+        return {
+            "owner_id": fallback_owner_id,
+            "owner_label": fallback_owner_label,
+            "role": fallback_role,
+            "sla_days": default_sla_days,
+            "assignment_metadata": {
+                "assignment_id": None,
+                "assignment_role": None,
+                "sla_days": default_sla_days,
+                "assignment_source": "document_fields",
+            },
+        }
+
+    sla_days = assignment.sla_days or DEFAULT_ASSIGNMENT_SLA_DAYS.get(assignment.role, default_sla_days)
+    due_at = _add_days(base_time or document.updated_at, sla_days)
+    now = utcnow()
+    comparable_due_at = due_at if due_at.tzinfo is not None else due_at.replace(tzinfo=now.tzinfo)
+    escalated = comparable_due_at < now
+    assignment_metadata = {
+        "assignment_id": assignment.assignment_id,
+        "assignment_role": assignment.role,
+        "assignment_subject_type": assignment.subject_type,
+        "assignment_subject_id": assignment.subject_id,
+        "sla_days": sla_days,
+        "escalated": escalated,
+    }
+    if assignment.escalation_subject_id:
+        assignment_metadata.update(
+            {
+                "escalation_subject_type": assignment.escalation_subject_type,
+                "escalation_subject_id": assignment.escalation_subject_id,
+                "escalation_label": assignment.escalation_label,
+            }
+        )
+
+    return {
+        "owner_id": assignment.subject_id,
+        "owner_label": assignment.display_label or assignment.subject_id,
+        "role": assignment.role.replace("_", " ").title(),
+        "sla_days": sla_days,
+        "assignment_metadata": assignment_metadata,
+    }
+
+
 def _get_document(db: Session, document_id: str) -> Document:
     document = db.execute(
         select(Document)
         .where(Document.document_id == document_id)
-        .options(selectinload(Document.access_policies))
+        .options(selectinload(Document.access_policies), selectinload(Document.assignments))
     ).scalar_one_or_none()
     if document is None:
         raise problem(status.HTTP_404_NOT_FOUND, "document_not_found", "Document was not found")
@@ -373,15 +565,31 @@ def _upsert_derived_task(db: Session, *, source_key: str, values: dict[str, obje
         if has_manual_decision and key in {"status", "owner_id", "owner_label"}:
             continue
         if key == "task_metadata":
-            task.task_metadata = {**dict(value), **existing_metadata}
+            if has_manual_decision:
+                task.task_metadata = {**dict(value), **existing_metadata}
+            else:
+                task.task_metadata = {**existing_metadata, **dict(value)}
             continue
         setattr(task, key, value)
 
 
 def _sync_derived_workflow_tasks(db: Session) -> None:
-    documents = list(db.execute(select(Document)).scalars())
+    documents = list(db.execute(select(Document).options(selectinload(Document.assignments))).scalars())
     for document in documents:
         if document.status == DocumentStatus.review.value:
+            review_context = _workflow_assignment_context(
+                document,
+                roles=[
+                    DocumentAssignmentRole.reviewer.value,
+                    DocumentAssignmentRole.approver.value,
+                    DocumentAssignmentRole.gestor.value,
+                    DocumentAssignmentRole.owner.value,
+                ],
+                fallback_owner_id=document.owner_id,
+                fallback_owner_label=document.gestor_unit or document.owner_id,
+                fallback_role="Owner / gestor",
+                default_sla_days=3,
+            )
             _upsert_derived_task(
                 db,
                 source_key=f"document-review:{document.document_id}",
@@ -396,20 +604,32 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     "title": "Document review required",
                     "description": "Review metadata, source context, access classification and publication readiness.",
                     "source": "Registry document status",
-                    "owner_id": document.owner_id,
-                    "owner_label": document.gestor_unit or document.owner_id,
-                    "role": "Owner / gestor",
+                    "owner_id": review_context["owner_id"],
+                    "owner_label": review_context["owner_label"],
+                    "role": review_context["role"],
                     "document_id": document.document_id,
                     "document_title": document.title,
                     "document_version_id": None,
                     "audit_event_id": None,
                     "job_id": None,
-                    "due_at": _add_days(document.updated_at, 3),
-                    "task_metadata": {"derived": True, "document_status": document.status},
+                    "due_at": _add_days(document.updated_at, int(review_context["sla_days"])),
+                    "task_metadata": {
+                        "derived": True,
+                        "document_status": document.status,
+                        **dict(review_context["assignment_metadata"]),
+                    },
                 },
             )
 
         if document.status == DocumentStatus.draft.value:
+            draft_context = _workflow_assignment_context(
+                document,
+                roles=[DocumentAssignmentRole.owner.value, DocumentAssignmentRole.gestor.value],
+                fallback_owner_id=document.owner_id,
+                fallback_owner_label=document.owner_id,
+                fallback_role="Document manager",
+                default_sla_days=5,
+            )
             _upsert_derived_task(
                 db,
                 source_key=f"document-draft:{document.document_id}",
@@ -420,20 +640,36 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     "title": "Draft needs completion",
                     "description": "Complete source file, validity metadata and ingestion preparation before review.",
                     "source": "Registry draft state",
-                    "owner_id": document.owner_id,
-                    "owner_label": document.owner_id,
-                    "role": "Document manager",
+                    "owner_id": draft_context["owner_id"],
+                    "owner_label": draft_context["owner_label"],
+                    "role": draft_context["role"],
                     "document_id": document.document_id,
                     "document_title": document.title,
                     "document_version_id": None,
                     "audit_event_id": None,
                     "job_id": None,
-                    "due_at": _add_days(document.updated_at, 5),
-                    "task_metadata": {"derived": True, "document_status": document.status},
+                    "due_at": _add_days(document.updated_at, int(draft_context["sla_days"])),
+                    "task_metadata": {
+                        "derived": True,
+                        "document_status": document.status,
+                        **dict(draft_context["assignment_metadata"]),
+                    },
                 },
             )
 
         if document.classification in {Classification.restricted.value, Classification.confidential.value} and document.status != DocumentStatus.valid.value:
+            governance_context = _workflow_assignment_context(
+                document,
+                roles=[
+                    DocumentAssignmentRole.auditor.value,
+                    DocumentAssignmentRole.gestor.value,
+                    DocumentAssignmentRole.owner.value,
+                ],
+                fallback_owner_id=document.owner_id,
+                fallback_owner_label=document.gestor_unit or document.owner_id,
+                fallback_role="Governance / auditor",
+                default_sla_days=2,
+            )
             _upsert_derived_task(
                 db,
                 source_key=f"document-governance:{document.document_id}",
@@ -448,16 +684,20 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     "title": "Governance check before publication",
                     "description": "Restricted sources require access, conflict and compliance checks before publication.",
                     "source": "Document classification policy",
-                    "owner_id": document.owner_id,
-                    "owner_label": document.gestor_unit or document.owner_id,
-                    "role": "Governance / auditor",
+                    "owner_id": governance_context["owner_id"],
+                    "owner_label": governance_context["owner_label"],
+                    "role": governance_context["role"],
                     "document_id": document.document_id,
                     "document_title": document.title,
                     "document_version_id": None,
                     "audit_event_id": None,
                     "job_id": None,
-                    "due_at": _add_days(document.updated_at, 2),
-                    "task_metadata": {"derived": True, "classification": document.classification},
+                    "due_at": _add_days(document.updated_at, int(governance_context["sla_days"])),
+                    "task_metadata": {
+                        "derived": True,
+                        "classification": document.classification,
+                        **dict(governance_context["assignment_metadata"]),
+                    },
                 },
             )
 
@@ -468,6 +708,23 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
     for event in warning_events:
         document_id = event.event_metadata.get("document_id")
         document = documents_by_id.get(document_id) if isinstance(document_id, str) else None
+        audit_context = (
+            _workflow_assignment_context(
+                document,
+                roles=[
+                    DocumentAssignmentRole.auditor.value,
+                    DocumentAssignmentRole.owner.value,
+                    DocumentAssignmentRole.gestor.value,
+                ],
+                fallback_owner_id=document.owner_id,
+                fallback_owner_label=document.gestor_unit or document.owner_id,
+                fallback_role="Auditor",
+                default_sla_days=1,
+                base_time=event.created_at,
+            )
+            if document is not None
+            else None
+        )
         _upsert_derived_task(
             db,
             source_key=f"audit:{event.audit_event_id}",
@@ -486,16 +743,24 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                 "title": "Audit event needs review",
                 "description": "Review the audit signal and confirm whether a document, ingestion or access policy action is needed.",
                 "source": event.event_type,
-                "owner_id": document.owner_id if document is not None else None,
-                "owner_label": (document.gestor_unit or document.owner_id) if document is not None else "Auditor",
-                "role": "Auditor",
+                "owner_id": audit_context["owner_id"] if audit_context is not None else None,
+                "owner_label": audit_context["owner_label"] if audit_context is not None else "Auditor",
+                "role": audit_context["role"] if audit_context is not None else "Auditor",
                 "document_id": document.document_id if document is not None else None,
                 "document_title": document.title if document is not None else document_id,
                 "document_version_id": None,
                 "audit_event_id": event.audit_event_id,
                 "job_id": event.resource_id if event.resource_type == "ingestion_job" else None,
-                "due_at": _add_days(event.created_at, 1),
-                "task_metadata": {"derived": True, "audit_severity": event.severity},
+                "due_at": (
+                    _add_days(event.created_at, int(audit_context["sla_days"]))
+                    if document is not None and audit_context is not None
+                    else _add_days(event.created_at, 1)
+                ),
+                "task_metadata": {
+                    "derived": True,
+                    "audit_severity": event.severity,
+                    **(dict(audit_context["assignment_metadata"]) if audit_context is not None else {}),
+                },
             },
         )
 
@@ -542,15 +807,30 @@ def create_document(
         document_metadata=payload.metadata,
     )
     document.access_policies = _policy_models(document, payload)
+    assignment_payloads = _validated_assignment_payloads(
+        payload.assignments if payload.assignments is not None else _default_assignment_payloads(payload)
+    )
+    document.assignments = _assignment_models(
+        document=document,
+        payloads=assignment_payloads,
+        actor_id=principal.subject_id,
+    )
+    _sync_document_assignment_denormalized_fields(document)
     db.add(document)
-    add_audit_event(
+    audit_event = add_audit_event(
         db,
         actor_id=principal.subject_id,
         event_type="document.created",
         resource_type="document",
         resource_id=document.document_id,
-        metadata={"classification": document.classification, "document_type": document.document_type},
+        metadata={
+            "classification": document.classification,
+            "document_type": document.document_type,
+            "assignment_count": len(document.assignments),
+        },
     )
+    for assignment in document.assignments:
+        assignment.last_audit_event_id = audit_event.audit_event_id
     _commit_or_conflict(db)
     db.refresh(document)
     return document
@@ -570,7 +850,7 @@ def list_documents(
 ) -> DocumentListResponse:
     stmt = (
         select(Document)
-        .options(selectinload(Document.access_policies))
+        .options(selectinload(Document.access_policies), selectinload(Document.assignments))
         .order_by(desc(Document.created_at))
         .limit(limit)
         .offset(offset)
@@ -607,6 +887,64 @@ def get_document(
     return document
 
 
+@router.get("/documents/{document_id}/assignments", response_model=DocumentAssignmentListResponse)
+def list_document_assignments(
+    document_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentAssignmentListResponse:
+    document = _get_document(db, document_id)
+    require_document_action(principal, Action.document_read, document)
+    items = sorted(
+        document.assignments,
+        key=lambda assignment: (
+            assignment.role,
+            not assignment.is_primary,
+            assignment.subject_type,
+            assignment.subject_id,
+        ),
+    )
+    return DocumentAssignmentListResponse(items=items)
+
+
+@router.put("/documents/{document_id}/assignments", response_model=DocumentAssignmentListResponse)
+def replace_document_assignments(
+    document_id: str,
+    payload: DocumentAssignmentReplaceRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentAssignmentListResponse:
+    document = _get_document(db, document_id)
+    require_document_action(principal, Action.document_update, document)
+    assignment_payloads = _validated_assignment_payloads(payload.assignments)
+
+    document.assignments.clear()
+    db.flush()
+    document.assignments = _assignment_models(
+        document=document,
+        payloads=assignment_payloads,
+        actor_id=principal.subject_id,
+    )
+    _sync_document_assignment_denormalized_fields(document)
+    audit_event = add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="document.assignments.updated",
+        resource_type="document",
+        resource_id=document.document_id,
+        metadata={
+            "assignment_count": len(document.assignments),
+            "roles": sorted({assignment.role for assignment in document.assignments}),
+        },
+    )
+    for assignment in document.assignments:
+        assignment.last_audit_event_id = audit_event.audit_event_id
+
+    _commit_or_conflict(db)
+    db.refresh(document)
+    return DocumentAssignmentListResponse(items=document.assignments)
+
+
 @router.patch("/documents/{document_id}", response_model=DocumentResponse)
 def patch_document(
     document_id: str,
@@ -639,8 +977,18 @@ def patch_document(
         document.document_metadata = payload.metadata
     if payload.access_policies is not None:
         document.access_policies = _policy_models(document, payload)
+    if payload.assignments is not None:
+        assignment_payloads = _validated_assignment_payloads(payload.assignments)
+        document.assignments.clear()
+        db.flush()
+        document.assignments = _assignment_models(
+            document=document,
+            payloads=assignment_payloads,
+            actor_id=principal.subject_id,
+        )
+        _sync_document_assignment_denormalized_fields(document)
 
-    add_audit_event(
+    audit_event = add_audit_event(
         db,
         actor_id=principal.subject_id,
         event_type="document.updated",
@@ -648,6 +996,9 @@ def patch_document(
         resource_id=document.document_id,
         metadata={"changed_fields": sorted(changes.keys())},
     )
+    if payload.assignments is not None:
+        for assignment in document.assignments:
+            assignment.last_audit_event_id = audit_event.audit_event_id
     _commit_or_conflict(db)
     db.refresh(document)
     return document
@@ -1023,6 +1374,9 @@ def apply_workflow_task_action(
             "document_version_id": task.document_version_id,
             "status": task.status,
             "document_status": document.status if document is not None else None,
+            "assignment_id": task.task_metadata.get("assignment_id"),
+            "assignment_role": task.task_metadata.get("assignment_role"),
+            "escalation_subject_id": task.task_metadata.get("escalation_subject_id"),
         },
     )
     _commit_or_conflict(db)

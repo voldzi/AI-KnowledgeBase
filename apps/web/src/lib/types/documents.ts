@@ -22,6 +22,29 @@ export type DocumentStatus =
   | "cancelled";
 
 export type Classification = "public" | "internal" | "restricted" | "confidential";
+export type DocumentAssignmentRole = "owner" | "gestor" | "reviewer" | "approver" | "auditor" | "steward";
+export type AssignmentSubjectType = "user" | "group" | "unit" | "service";
+
+export interface DocumentAssignment {
+  assignment_id: string;
+  document_id: string;
+  role: DocumentAssignmentRole;
+  subject_type: AssignmentSubjectType;
+  subject_id: string;
+  display_label: string | null;
+  is_primary: boolean;
+  active: boolean;
+  sla_days: number | null;
+  escalation_subject_type: AssignmentSubjectType | null;
+  escalation_subject_id: string | null;
+  escalation_label: string | null;
+  assigned_by: string | null;
+  assigned_at: string;
+  last_audit_event_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Document {
   document_id: string;
@@ -33,6 +56,7 @@ export interface Document {
   owner: string;
   gestor_unit: string | null;
   tags: string[];
+  assignments?: DocumentAssignment[];
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +96,19 @@ export interface CreateDocumentRequest {
   classification: Classification;
   tags: string[];
   metadata?: Record<string, unknown>;
+  assignments?: Array<{
+    role: DocumentAssignmentRole;
+    subject_type?: AssignmentSubjectType;
+    subject_id: string;
+    display_label?: string | null;
+    is_primary?: boolean;
+    active?: boolean;
+    sla_days?: number | null;
+    escalation_subject_type?: AssignmentSubjectType | null;
+    escalation_subject_id?: string | null;
+    escalation_label?: string | null;
+    metadata?: Record<string, unknown>;
+  }>;
   access_policies?: Array<{
     subjects: string[];
     actions: string[];
