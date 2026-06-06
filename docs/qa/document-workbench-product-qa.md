@@ -268,15 +268,29 @@ Decision:
 
 ## 12. Automation Backlog
 
+Automated in `apps/web/e2e/document-workbench.spec.ts`:
+
+- DW-01 registry render and filters.
+- DW-06 document detail tabs.
+- DW-08 workflow task approval.
+- DW-09 publish gate blocked before approval.
+- DW-13 cited RAG answer opens source context.
+- DW-15 help center renders role-based guidance.
+
+Run locally:
+
+```bash
+npm --prefix apps/web run test:e2e
+```
+
 Convert these scenarios to automated E2E tests first:
 
-1. DW-01 registry render and filters.
-2. DW-03 upload preflight success.
-3. DW-04 upload validation failure.
-4. DW-06 document detail tabs.
-5. DW-08 workflow task approval.
-6. DW-09 publish gate blocked before approval.
-7. DW-13 cited RAG answer opens source context.
-8. DW-15 help center renders role-based guidance.
+1. DW-03 upload preflight success.
+2. DW-04 upload validation failure.
+3. DW-07 viewer source metadata.
+4. DW-12 governance limitation state.
+5. DW-14 no-answer state outside the corpus.
+6. DW-17 degraded backend error handling.
+7. DW-18 audit traceability.
 
-The first automated implementation should run against mocked web clients in CI. A second suite can later run against the Docker stack as a nightly or release-candidate gate.
+The current automated implementation runs against mocked web clients in CI. A second suite can later run against the Docker stack as a nightly or release-candidate gate.
