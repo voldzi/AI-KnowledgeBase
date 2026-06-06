@@ -19,13 +19,14 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
   const context = getServerRequestContext();
 
   try {
-    const [document, assignments, versions, jobs, authorization, workflowTasks] = await Promise.all([
+    const [document, assignments, versions, jobs, authorization, workflowTasks, auditEvents] = await Promise.all([
       clients.registry.getDocument(documentId, context),
       clients.registry.listDocumentAssignments(documentId, context),
       clients.registry.listDocumentVersions(documentId, context),
       clients.ingestion.listJobs(context),
       clients.registry.getAuthorizationHints(context),
-      clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }).catch(() => [])
+      clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }).catch(() => []),
+      clients.registry.listAuditEvents(context, { limit: 200 }).catch(() => [])
     ]);
 
     return (
@@ -44,6 +45,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           authorization={authorization}
           assignments={assignments}
           workflowTasks={workflowTasks}
+          auditEvents={auditEvents}
         />
       </>
     );

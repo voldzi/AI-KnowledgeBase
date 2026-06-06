@@ -1,4 +1,4 @@
-import type { AuditEvent, CreateAuditEventRequest } from "./audit";
+import type { AuditEvent, AuditEventListOptions, CreateAuditEventRequest } from "./audit";
 import type {
   AuthorizationHint,
   CreateDocumentRequest,
@@ -72,7 +72,7 @@ export interface RegistryApiClient {
     request: ApplyWorkflowTaskActionRequest,
     context: ApiRequestContext
   ): Promise<RegistryWorkflowTask>;
-  listAuditEvents(context: ApiRequestContext): Promise<AuditEvent[]>;
+  listAuditEvents(context: ApiRequestContext, options?: AuditEventListOptions): Promise<AuditEvent[]>;
   createAuditEvent(request: CreateAuditEventRequest, context: ApiRequestContext): Promise<AuditEvent>;
 }
 

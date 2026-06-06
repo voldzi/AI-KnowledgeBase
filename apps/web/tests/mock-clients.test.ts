@@ -189,6 +189,22 @@ describe("mock API clients", () => {
     assert.equal(reviewTask?.metadata.assignment_role, "reviewer");
   });
 
+  it("filters audit events in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext({ subjectId: "auditor_1" });
+    const documentEvents = await clients.registry.listAuditEvents(context, {
+      resourceType: "document",
+      resourceId: "doc_102"
+    });
+    const workflowEvents = await clients.registry.listAuditEvents(context, {
+      eventType: "workflow.task.approve"
+    });
+
+    assert.equal(documentEvents.length, 1);
+    assert.equal(documentEvents[0].event_type, "document.assignments.updated");
+    assert.equal(workflowEvents[0].resource_id, "task_review_doc_102");
+  });
+
   it("enforces the publish gate in mock mode", async () => {
     const clients = createApiClients({ env });
     const context = createMockContext({ subjectId: "admin_1" });

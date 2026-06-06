@@ -386,6 +386,53 @@ export const mockReports: IngestionReport[] = [
 
 export const mockAuditEvents: AuditEvent[] = [
   {
+    audit_event_id: "audit_504",
+    actor_id: "user_209",
+    event_type: "citation.opened",
+    resource_type: "document_chunk",
+    resource_id: "chunk_789",
+    severity: "info",
+    correlation_id: "corr_504",
+    metadata: {
+      document_id: "doc_102",
+      document_version_id: "ver_102_1",
+      page_number: 7,
+      source_file_uri: "s3://akl-documents/doc_102/ver_102_1/file.pdf"
+    },
+    created_at: "2026-06-05T09:05:00Z"
+  },
+  {
+    audit_event_id: "audit_503",
+    actor_id: "admin_1",
+    event_type: "document.assignments.updated",
+    resource_type: "document",
+    resource_id: "doc_102",
+    severity: "info",
+    correlation_id: "corr_503",
+    metadata: {
+      document_id: "doc_102",
+      assignment_count: 4,
+      roles: "approver,auditor,owner,reviewer"
+    },
+    created_at: "2026-06-05T08:55:00Z"
+  },
+  {
+    audit_event_id: "audit_502",
+    actor_id: "admin_1",
+    event_type: "workflow.task.approve",
+    resource_type: "workflow_task",
+    resource_id: "task_review_doc_102",
+    severity: "info",
+    correlation_id: "corr_502",
+    metadata: {
+      document_id: "doc_102",
+      document_version_id: "ver_102_1",
+      action: "approve",
+      assignment_role: "reviewer"
+    },
+    created_at: "2026-06-05T08:50:00Z"
+  },
+  {
     audit_event_id: "audit_501",
     actor_id: "user_123",
     event_type: "rag.query.executed",

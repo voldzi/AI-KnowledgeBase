@@ -16,8 +16,10 @@ Implementovano ve web aplikaci:
   - insighty,
   - verze,
   - ingestion,
+  - audit,
 - workflow zalozka detailu dokumentu zobrazuje autoritativni Registry tasky a posledni rozhodnuti pro dany dokument,
 - workflow zalozka detailu dokumentu zobrazuje a spravuje `document_assignments`: owner, gestor, reviewer, approver, auditor, steward, SLA a eskalace,
+- audit zalozka detailu dokumentu filtruje Registry audit udalosti podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
@@ -106,4 +108,3 @@ QA gate pokryva:
 ### Web UI
 
 - Prevest viewer z preview panelu na skutecne nativni zobrazeni zdroje.
-- Doplnit audit tab s filtrem na udalosti daneho dokumentu.

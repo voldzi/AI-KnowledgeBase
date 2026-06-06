@@ -14,11 +14,12 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - filtry podle workflow stavu, typu dokumentu a klasifikace,
   - pracovni pohledy pro revizi, platne zdroje, citlive zdroje a archiv.
 - `/documents/[documentId]`:
-  - taby pro prehled, viewer, workflow, insighty, verze a ingestion,
+  - taby pro prehled, viewer, workflow, insighty, verze, ingestion a audit,
   - prioritni kroky odvozene ze stavu dokumentu, verze, ingestion jobu a klasifikace,
   - viewer preview s metadaty zdrojoveho souboru,
   - governance action panel pro compare/compliance/conflict workflow,
   - panel organizacnich odpovednosti nad `document_assignments` s roli, subjektem, SLA a eskalaci,
+  - audit tab filtrovany podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
   - workflow task historie filtrovana na dany dokument,
   - publish gate panel pro publikaci `approved` dokumentu a archivaci aktualni `valid` verze.
 - `/upload`:
@@ -63,15 +64,14 @@ Workflow inbox preferuje autoritativni Registry API tasky. Ingestion tasky zusta
 - Detail dokumentu zatim nema realny native viewer pro PDF/DOCX.
 - Governance action panel zatim nespousti Governance Service endpointy.
 - AI insighty nejsou persistovane ani schvalovane.
-- Audit tab dokumentu zatim neni napojen na filtrovane audit udalosti.
+- Audit tab dokumentu je napojeny na Registry audit list; uplnost zalezi na tom, zda vsechny sluzby zapisují relevantni audit udalosti.
 - Workflow akce zatim nemaji viceurovnove schvalovatele; SLA a eskalacni metadata existuji v `document_assignments`, ale chybi runtime scheduler/notifikace.
 - Ingestion tasky zatim nejsou publikovane do Registry API tasku.
 - Upload session zatim vlastni web bridge; cilovy stav je samostatny Object Storage service nebo Ingestion-owned upload contract s audit udalosti.
 
 ## 5. Next Recommended Slice
 
-1. Web UI: audit tab v detailu dokumentu s filtrem na Registry audit udalosti.
-2. Governance Service: napojit compare/compliance/conflict checks na workflow tasky.
-3. Web UI: realny viewer source-context pro PDF/DOCX.
-4. Registry API: vicekrokove approval steps a runtime SLA eskalace nad `document_assignments`.
-5. Object Storage: presunout signed upload/download kontrakt z web bridge do backend sluzby.
+1. Governance Service: napojit compare/compliance/conflict checks na workflow tasky.
+2. Web UI: realny viewer source-context pro PDF/DOCX.
+3. Registry API: vicekrokove approval steps a runtime SLA eskalace nad `document_assignments`.
+4. Object Storage: presunout signed upload/download kontrakt z web bridge do backend sluzby.

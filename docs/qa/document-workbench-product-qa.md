@@ -164,7 +164,7 @@ Must be able to:
 | DW-16 | Help | Open `/help`. | Help content covers quick start, roles, registry, upload, viewer, workflow, governance, chat, warnings, and errors. |
 | DW-17 | Language | Switch language if available in the active UI context. | Help and main document surfaces use the same language context. |
 | DW-18 | Error Handling | Stop or misconfigure one backend service. | Web UI reports degraded state without a blank page or misleading success. |
-| DW-19 | Audit | Inspect audit-related surfaces. | Workflow decisions, assignment changes and document state changes are traceable to a source action. |
+| DW-19 | Audit | Inspect document detail audit tab. | Workflow decisions, assignment changes, source-context opens and document state changes are traceable to a source action. |
 
 ## 7. Viewport And Browser Matrix
 
@@ -293,7 +293,6 @@ Convert these scenarios to automated E2E tests first:
 3. DW-07 viewer source metadata.
 4. DW-12 governance limitation state.
 5. DW-14 no-answer state outside the corpus.
-6. DW-17 degraded backend error handling.
-7. DW-18 audit traceability.
+6. DW-18 degraded backend error handling.
 
 The current automated implementation runs against mocked web clients in CI. A second suite can later run against the Docker stack as a nightly or release-candidate gate.

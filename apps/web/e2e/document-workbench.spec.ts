@@ -22,7 +22,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.locator("tbody tr")).toHaveCount(4);
   });
 
-  test("DW-06, DW-09 and DW-13 detail shows workflow, assignments and locked publish gate", async ({ page }) => {
+  test("DW-06, DW-09, DW-13 and DW-19 detail shows workflow, assignments, audit and locked publish gate", async ({ page }) => {
     await page.goto("/documents/doc_102");
 
     await expect(page.getByRole("heading", { name: "Detail dokumentu" })).toBeVisible();
@@ -37,6 +37,13 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.locator('input[value="security-reviewers"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "Workflow tasky" })).toBeVisible();
     await expect(page.getByText("Document review required")).toBeVisible();
+
+    await page.getByRole("button", { name: "Audit" }).click();
+    await expect(page.getByRole("heading", { name: "Auditní stopa dokumentu" })).toBeVisible();
+    await expect(page.getByText("document.assignments.updated")).toBeVisible();
+    await expect(page.getByText("workflow.task.approve")).toBeVisible();
+    await expect(page.getByText("citation.opened")).toBeVisible();
+    await expect(page.getByText("source-context", { exact: true })).toBeVisible();
   });
 
   test("DW-08 workflow inbox records an approval decision in mock mode", async ({ page }) => {

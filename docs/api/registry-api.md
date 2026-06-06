@@ -56,6 +56,8 @@ GET    /audit/events
 GET    /audit/events/{event_id}
 ```
 
+`GET /audit/events` podporuje filtry `actor_id`, `event_type`, `resource_type`, `resource_id`, `limit` a `offset`.
+
 `GET /health` a `GET /ready` jsou mimo verzovaný prefix.
 
 ## Chyby
@@ -79,7 +81,7 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 
 ## Integrační body
 
-- Web Frontend používá `/documents`, `/versions` a auditní list.
+- Web Frontend používá `/documents`, `/versions`, `/workflow/tasks`, `/documents/{document_id}/assignments` a auditní list. Detail dokumentu filtruje auditní události podle resource id a metadat dokumentu/verze/tasku.
 - Ingestion Service čte metadata dokumentů a může zapisovat auditní události.
 - RAG Retrieval Service volá `/authz/filter-documents` a zapisuje auditní události.
 - Evaluation a Governance služby používají registry metadata, authorization check a audit.

@@ -27,6 +27,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AssignmentSubjectType,
+  AuditEvent,
   AuthorizationHint,
   Document,
   DocumentAssignment,
@@ -45,6 +46,7 @@ interface DocumentDetailProps {
   authorization: AuthorizationHint;
   assignments?: DocumentAssignment[];
   workflowTasks?: RegistryWorkflowTask[];
+  auditEvents?: AuditEvent[];
 }
 
 interface AssignmentFormRow {
@@ -61,6 +63,11 @@ interface AssignmentFormRow {
   escalation_label: string;
 }
 
+interface AuditTrace {
+  event: AuditEvent;
+  scopes: string[];
+}
+
 const detailCopy = {
   cs: {
     back: "Zpět do registru",
@@ -71,6 +78,7 @@ const detailCopy = {
     insights: "Insighty",
     versionsTab: "Verze",
     ingestionTab: "Ingestion",
+    auditTab: "Audit",
     owner: "Vlastník",
     type: "Typ",
     classification: "Klasifikace",
@@ -165,7 +173,25 @@ const detailCopy = {
     changeSummary: "Souhrn změny",
     ingestionStatus: "Stav zpracování",
     created: "vytvořeno",
-    noJob: "K tomuto dokumentu není aktuálně připojena žádná ingestion úloha."
+    noJob: "K tomuto dokumentu není aktuálně připojena žádná ingestion úloha.",
+    auditTitle: "Auditní stopa dokumentu",
+    auditDetail: "Události navázané přes dokument, verzi, workflow task, odpovědnost, ingestion nebo source-context metadata.",
+    auditHidden: "Auditní stopa je skrytá, protože Registry API neudělilo audit.read.",
+    auditEmpty: "K tomuto dokumentu nejsou v načteném auditním okně evidované žádné události.",
+    auditEvent: "Událost",
+    auditSeverity: "Závažnost",
+    auditActor: "Aktér",
+    auditResource: "Zdroj",
+    auditScope: "Vazba",
+    auditCorrelation: "Korelace",
+    auditMetadata: "Metadata",
+    auditCreated: "Vytvořeno",
+    auditScopeDocument: "dokument",
+    auditScopeVersion: "verze",
+    auditScopeWorkflow: "workflow",
+    auditScopeAssignment: "odpovědnost",
+    auditScopeIngestion: "ingestion",
+    auditScopeSource: "source-context"
   },
   en: {
     back: "Back to registry",
@@ -176,6 +202,7 @@ const detailCopy = {
     insights: "Insights",
     versionsTab: "Versions",
     ingestionTab: "Ingestion",
+    auditTab: "Audit",
     owner: "Owner",
     type: "Type",
     classification: "Classification",
@@ -270,11 +297,29 @@ const detailCopy = {
     changeSummary: "Change summary",
     ingestionStatus: "Ingestion status",
     created: "created",
-    noJob: "No ingestion job is currently linked to this document."
+    noJob: "No ingestion job is currently linked to this document.",
+    auditTitle: "Document audit trail",
+    auditDetail: "Events linked through document, version, workflow task, responsibility, ingestion or source-context metadata.",
+    auditHidden: "The audit trail is hidden because Registry API did not grant audit.read.",
+    auditEmpty: "No events for this document are present in the loaded audit window.",
+    auditEvent: "Event",
+    auditSeverity: "Severity",
+    auditActor: "Actor",
+    auditResource: "Resource",
+    auditScope: "Scope",
+    auditCorrelation: "Correlation",
+    auditMetadata: "Metadata",
+    auditCreated: "Created",
+    auditScopeDocument: "document",
+    auditScopeVersion: "version",
+    auditScopeWorkflow: "workflow",
+    auditScopeAssignment: "responsibility",
+    auditScopeIngestion: "ingestion",
+    auditScopeSource: "source-context"
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
-type DetailTab = "overview" | "viewer" | "workflow" | "insights" | "versions" | "ingestion";
+type DetailTab = "overview" | "viewer" | "workflow" | "insights" | "versions" | "ingestion" | "audit";
 
 const assignmentRoles: DocumentAssignmentRole[] = ["owner", "gestor", "reviewer", "approver", "auditor", "steward"];
 const assignmentSubjectTypes: AssignmentSubjectType[] = ["user", "group", "unit", "service"];
@@ -285,7 +330,8 @@ export function DocumentDetail({
   jobs,
   authorization,
   assignments = [],
-  workflowTasks = []
+  workflowTasks = [],
+  auditEvents = []
 }: DocumentDetailProps) {
   const { language } = useLanguage();
   const router = useRouter();
@@ -294,6 +340,19 @@ export function DocumentDetail({
   const sortedWorkflowTasks = useMemo(
     () => [...workflowTasks].sort((left, right) => right.updated_at.localeCompare(left.updated_at)),
     [workflowTasks]
+  );
+  const documentAuditTraces = useMemo(
+    () =>
+      auditTracesForDocument({
+        document,
+        versions,
+        relatedJobs,
+        assignments: assignments.length > 0 ? assignments : document.assignments ?? [],
+        workflowTasks,
+        auditEvents,
+        copy
+      }),
+    [assignments, auditEvents, copy, document, relatedJobs, versions, workflowTasks]
   );
   const [assignmentRows, setAssignmentRows] = useState<AssignmentFormRow[]>(() =>
     assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
@@ -443,7 +502,8 @@ export function DocumentDetail({
           ["workflow", copy.workflow, ClipboardCheck],
           ["insights", copy.insights, Brain],
           ["versions", copy.versionsTab, Layers3],
-          ["ingestion", copy.ingestionTab, FileClock]
+          ["ingestion", copy.ingestionTab, FileClock],
+          ["audit", copy.auditTab, ShieldCheck]
         ].map(([tab, label, Icon]) => {
           const TypedIcon = Icon as typeof FileSearch;
           return (
@@ -934,8 +994,163 @@ export function DocumentDetail({
           </div>
         </section>
       ) : null}
+
+      {activeTab === "audit" ? (
+        <section className="panel">
+          <div className="panel__header">
+            <div>
+              <h2>{copy.auditTitle}</h2>
+              <p>{copy.auditDetail}</p>
+            </div>
+            <StatusBadge value="info" label={String(documentAuditTraces.length)} />
+          </div>
+          {!authorization.can_read_audit ? (
+            <div className="panel__body">
+              <div className="empty-state">
+                <ShieldCheck size={22} aria-hidden="true" />
+                {copy.auditHidden}
+              </div>
+            </div>
+          ) : documentAuditTraces.length === 0 ? (
+            <div className="panel__body">
+              <div className="empty-state">
+                <CircleCheck size={22} aria-hidden="true" />
+                {copy.auditEmpty}
+              </div>
+            </div>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{copy.auditEvent}</th>
+                  <th>{copy.auditSeverity}</th>
+                  <th>{copy.auditActor}</th>
+                  <th>{copy.auditResource}</th>
+                  <th>{copy.auditScope}</th>
+                  <th>{copy.auditCorrelation}</th>
+                  <th>{copy.auditCreated}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {documentAuditTraces.map((trace) => (
+                  <tr key={trace.event.audit_event_id}>
+                    <td>
+                      <span className="cell-title">
+                        <strong>{trace.event.event_type}</strong>
+                        <span>{trace.event.audit_event_id}</span>
+                        <span>{copy.auditMetadata}: {auditMetadataSummary(trace.event.metadata)}</span>
+                      </span>
+                    </td>
+                    <td>
+                      <StatusBadge value={trace.event.severity} />
+                    </td>
+                    <td>{trace.event.actor_id}</td>
+                    <td>
+                      <span className="cell-title">
+                        <strong>{trace.event.resource_type}</strong>
+                        <span>{trace.event.resource_id}</span>
+                      </span>
+                    </td>
+                    <td>
+                      <div className="tag-list">
+                        {trace.scopes.map((scope) => (
+                          <span className="tag" key={`${trace.event.audit_event_id}-${scope}`}>{scope}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>{trace.event.correlation_id}</td>
+                    <td>{formatDateTime(trace.event.created_at, language)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ) : null}
     </div>
   );
+}
+
+function auditTracesForDocument({
+  document,
+  versions,
+  relatedJobs,
+  assignments,
+  workflowTasks,
+  auditEvents,
+  copy
+}: {
+  document: Document;
+  versions: DocumentVersion[];
+  relatedJobs: IngestionJob[];
+  assignments: DocumentAssignment[];
+  workflowTasks: RegistryWorkflowTask[];
+  auditEvents: AuditEvent[];
+  copy: Record<string, string>;
+}): AuditTrace[] {
+  const documentIds = new Set([document.document_id]);
+  const versionIds = new Set(versions.map((version) => version.document_version_id));
+  const workflowTaskIds = new Set(workflowTasks.map((task) => task.task_id));
+  const assignmentIds = new Set(assignments.map((assignment) => assignment.assignment_id));
+  const jobIds = new Set(relatedJobs.map((job) => job.job_id));
+
+  return auditEvents
+    .map((event) => {
+      const scopes = new Set<string>();
+      const metadata = event.metadata;
+      const metadataDocumentId = metadataString(metadata.document_id);
+      const metadataVersionId = metadataString(metadata.document_version_id);
+      const metadataJobId = metadataString(metadata.job_id);
+      const metadataSourceUri = metadataString(metadata.source_file_uri);
+
+      if (documentIds.has(event.resource_id) || metadataDocumentId === document.document_id) {
+        scopes.add(copy.auditScopeDocument);
+      }
+      if (versionIds.has(event.resource_id) || (metadataVersionId !== null && versionIds.has(metadataVersionId))) {
+        scopes.add(copy.auditScopeVersion);
+      }
+      if (workflowTaskIds.has(event.resource_id)) {
+        scopes.add(copy.auditScopeWorkflow);
+      }
+      if (assignmentIds.has(event.resource_id) || event.event_type.includes("assignment") || event.resource_type.includes("assignment")) {
+        scopes.add(copy.auditScopeAssignment);
+      }
+      if (jobIds.has(event.resource_id) || (metadataJobId !== null && jobIds.has(metadataJobId))) {
+        scopes.add(copy.auditScopeIngestion);
+      }
+      if (
+        metadataSourceUri?.includes(document.document_id) ||
+        event.event_type.includes("citation.") ||
+        event.event_type.includes("chunk.") ||
+        event.resource_type.includes("chunk")
+      ) {
+        if (metadataDocumentId === document.document_id || metadataSourceUri?.includes(document.document_id)) {
+          scopes.add(copy.auditScopeSource);
+        }
+      }
+
+      return scopes.size > 0 ? { event, scopes: Array.from(scopes) } : null;
+    })
+    .filter((trace): trace is AuditTrace => trace !== null)
+    .sort((left, right) => right.event.created_at.localeCompare(left.event.created_at));
+}
+
+function metadataString(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
+function auditMetadataSummary(metadata: AuditEvent["metadata"]): string {
+  const entries = Object.entries(metadata)
+    .filter(([, value]) => value !== null && value !== "")
+    .slice(0, 4)
+    .map(([key, value]) => `${key}=${String(value)}`);
+  return entries.length > 0 ? entries.join(", ") : "n/a";
 }
 
 function assignmentRowsFrom(assignments: DocumentAssignment[], documentId: string): AssignmentFormRow[] {
