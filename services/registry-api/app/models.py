@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -57,6 +57,9 @@ class Document(Base, TimestampMixin):
         back_populates="document", cascade="all, delete-orphan"
     )
     files: Mapped[list["DocumentFile"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+    assignments: Mapped[list["DocumentAssignment"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
     workflow_tasks: Mapped[list["WorkflowTask"]] = relationship(
@@ -143,6 +146,47 @@ class DocumentAccessPolicy(Base, TimestampMixin):
     )
 
     document: Mapped[Document] = relationship(back_populates="access_policies")
+
+
+class DocumentAssignment(Base, TimestampMixin):
+    __tablename__ = "document_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "role",
+            "subject_type",
+            "subject_id",
+            name="uq_document_assignment_subject_role",
+        ),
+        Index("ix_document_assignments_document_role", "document_id", "role"),
+        Index("ix_document_assignments_subject", "subject_type", "subject_id"),
+        Index("ix_document_assignments_active", "active"),
+    )
+
+    assignment_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("assign")
+    )
+    document_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("documents.document_id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False, default="user", index=True)
+    subject_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    display_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sla_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    escalation_subject_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    escalation_subject_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    escalation_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_audit_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    assignment_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+
+    document: Mapped[Document] = relationship(back_populates="assignments")
 
 
 class UserProfile(Base, TimestampMixin):

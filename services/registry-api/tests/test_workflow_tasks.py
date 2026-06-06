@@ -34,6 +34,82 @@ def test_workflow_tasks_are_derived_from_document_state(client, admin_headers):
     assert governance["document_id"] == document["document_id"]
 
 
+def test_document_creation_seeds_owner_and_gestor_assignments(client, admin_headers):
+    document = _create_document(client, admin_headers, owner_id="user_owner", gestor_unit="Knowledge Ops")
+
+    assignments = document["assignments"]
+    roles = {assignment["role"]: assignment for assignment in assignments}
+    assert roles["owner"]["subject_id"] == "user_owner"
+    assert roles["owner"]["subject_type"] == "user"
+    assert roles["owner"]["is_primary"] is True
+    assert roles["owner"]["last_audit_event_id"]
+    assert roles["gestor"]["subject_id"] == "Knowledge Ops"
+    assert roles["gestor"]["subject_type"] == "unit"
+
+    listed = client.get(f"/api/v1/documents/{document['document_id']}/assignments", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    assert {item["role"] for item in listed.json()["items"]} == {"owner", "gestor"}
+
+
+def test_document_assignments_drive_review_task_owner_sla_and_escalation(client, admin_headers):
+    document = _create_document(client, admin_headers, classification="restricted")
+    replaced = client.put(
+        f"/api/v1/documents/{document['document_id']}/assignments",
+        headers=admin_headers,
+        json={
+            "assignments": [
+                {
+                    "role": "owner",
+                    "subject_type": "user",
+                    "subject_id": "user_owner",
+                    "display_label": "Document Owner",
+                    "is_primary": True,
+                    "sla_days": 5,
+                },
+                {
+                    "role": "reviewer",
+                    "subject_type": "user",
+                    "subject_id": "user_reviewer",
+                    "display_label": "Security Reviewer",
+                    "is_primary": True,
+                    "sla_days": 1,
+                    "escalation_subject_type": "unit",
+                    "escalation_subject_id": "Compliance",
+                    "escalation_label": "Compliance escalation",
+                },
+                {
+                    "role": "auditor",
+                    "subject_type": "group",
+                    "subject_id": "auditors",
+                    "display_label": "Audit team",
+                    "is_primary": True,
+                    "sla_days": 2,
+                },
+            ]
+        },
+    )
+    assert replaced.status_code == 200, replaced.text
+    reviewer_assignment = next(item for item in replaced.json()["items"] if item["role"] == "reviewer")
+
+    submitted = client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "review"},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    listed = client.get("/api/v1/workflow/tasks?kind=review", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    task = next(item for item in listed.json()["items"] if item["document_id"] == document["document_id"])
+
+    assert task["owner_id"] == "user_reviewer"
+    assert task["owner_label"] == "Security Reviewer"
+    assert task["metadata"]["assignment_id"] == reviewer_assignment["assignment_id"]
+    assert task["metadata"]["assignment_role"] == "reviewer"
+    assert task["metadata"]["sla_days"] == 1
+    assert task["metadata"]["escalation_subject_id"] == "Compliance"
+
+
 def test_workflow_tasks_include_warning_audit_events(client, admin_headers):
     created = client.post(
         "/api/v1/audit/events",
@@ -149,3 +225,57 @@ def test_review_workflow_approval_enables_publish_gate(client, admin_headers):
     )
     assert published.status_code == 200, published.text
     assert published.json()["status"] == "valid"
+
+
+def test_workflow_action_audit_keeps_assignment_context(client, admin_headers):
+    document = _create_document(client, admin_headers)
+    replaced = client.put(
+        f"/api/v1/documents/{document['document_id']}/assignments",
+        headers=admin_headers,
+        json={
+            "assignments": [
+                {
+                    "role": "owner",
+                    "subject_type": "user",
+                    "subject_id": "user_owner",
+                    "is_primary": True,
+                },
+                {
+                    "role": "reviewer",
+                    "subject_type": "user",
+                    "subject_id": "user_reviewer",
+                    "is_primary": True,
+                    "sla_days": 2,
+                    "escalation_subject_type": "user",
+                    "escalation_subject_id": "user_escalation",
+                },
+            ]
+        },
+    )
+    assert replaced.status_code == 200, replaced.text
+    reviewer_assignment = next(item for item in replaced.json()["items"] if item["role"] == "reviewer")
+
+    submitted = client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "review"},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    listed = client.get("/api/v1/workflow/tasks?kind=review", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    task = next(item for item in listed.json()["items"] if item["document_id"] == document["document_id"])
+
+    resolved = client.post(
+        f"/api/v1/workflow/tasks/{task['task_id']}/actions",
+        headers=admin_headers,
+        json={"action": "request_changes", "comment": "Needs owner update."},
+    )
+    assert resolved.status_code == 200, resolved.text
+
+    audit = client.get("/api/v1/audit/events?event_type=workflow.task.request_changes", headers=admin_headers)
+    assert audit.status_code == 200, audit.text
+    event = audit.json()["items"][0]
+    assert event["metadata"]["assignment_id"] == reviewer_assignment["assignment_id"]
+    assert event["metadata"]["assignment_role"] == "reviewer"
+    assert event["metadata"]["escalation_subject_id"] == "user_escalation"

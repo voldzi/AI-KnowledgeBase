@@ -10,6 +10,7 @@ Implementováno:
 - DocumentVersion registry.
 - DocumentFile datový model pro evidenci URI a file metadat.
 - DocumentAccessPolicy datový model a vyhodnocení.
+- DocumentAssignment datový model pro owner/gestor/reviewer/approver/auditor/steward role, SLA a eskalace.
 - Authorization check a bulk filter API.
 - AuditEvent API a interní auditní body.
 - Health/readiness, jednotný error envelope a correlation id.
@@ -37,6 +38,9 @@ GET    /documents
 GET    /documents/{document_id}
 PATCH  /documents/{document_id}
 DELETE /documents/{document_id}
+
+GET    /documents/{document_id}/assignments
+PUT    /documents/{document_id}/assignments
 
 POST   /documents/{document_id}/versions
 GET    /documents/{document_id}/versions
@@ -79,6 +83,7 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 - Ingestion Service čte metadata dokumentů a může zapisovat auditní události.
 - RAG Retrieval Service volá `/authz/filter-documents` a zapisuje auditní události.
 - Evaluation a Governance služby používají registry metadata, authorization check a audit.
+- Workflow inbox bere odpovednost, SLA a eskalacni metadata z `document_assignments`, pokud jsou pro dokument nastavena.
 
 Služby nesmí importovat interní Python kód registry API; komunikace je přes REST/OpenAPI.
 

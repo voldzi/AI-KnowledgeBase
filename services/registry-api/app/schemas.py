@@ -97,6 +97,22 @@ class WorkflowTaskAction(str, Enum):
     resolve = "resolve"
 
 
+class DocumentAssignmentRole(str, Enum):
+    owner = "owner"
+    gestor = "gestor"
+    reviewer = "reviewer"
+    approver = "approver"
+    auditor = "auditor"
+    steward = "steward"
+
+
+class AssignmentSubjectType(str, Enum):
+    user = "user"
+    group = "group"
+    unit = "unit"
+    service = "service"
+
+
 class ErrorEnvelope(BaseModel):
     error: dict[str, Any]
 
@@ -126,6 +142,45 @@ class AccessPolicyResponse(AccessPolicyBase):
     updated_at: datetime
 
 
+class DocumentAssignmentBase(BaseModel):
+    role: DocumentAssignmentRole
+    subject_type: AssignmentSubjectType = AssignmentSubjectType.user
+    subject_id: str = Field(min_length=1, max_length=128)
+    display_label: str | None = Field(default=None, max_length=200)
+    is_primary: bool = False
+    active: bool = True
+    sla_days: int | None = Field(default=None, ge=1, le=365)
+    escalation_subject_type: AssignmentSubjectType | None = None
+    escalation_subject_id: str | None = Field(default=None, max_length=128)
+    escalation_label: str | None = Field(default=None, max_length=200)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentAssignmentCreate(DocumentAssignmentBase):
+    pass
+
+
+class DocumentAssignmentResponse(DocumentAssignmentBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    assignment_id: str
+    document_id: str
+    assigned_by: str | None
+    assigned_at: datetime
+    last_audit_event_id: str | None
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="assignment_metadata")
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentAssignmentListResponse(BaseModel):
+    items: list[DocumentAssignmentResponse]
+
+
+class DocumentAssignmentReplaceRequest(BaseModel):
+    assignments: list[DocumentAssignmentCreate] = Field(min_length=1, max_length=50)
+
+
 class DocumentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     document_type: DocumentType
@@ -135,6 +190,7 @@ class DocumentCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     access_policies: list[AccessPolicyCreate] | None = None
+    assignments: list[DocumentAssignmentCreate] | None = None
 
 
 class DocumentPatch(BaseModel):
@@ -147,6 +203,7 @@ class DocumentPatch(BaseModel):
     tags: list[str] | None = None
     metadata: dict[str, Any] | None = None
     access_policies: list[AccessPolicyCreate] | None = None
+    assignments: list[DocumentAssignmentCreate] | None = None
 
 
 class DocumentResponse(BaseModel):
@@ -165,6 +222,7 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     access_policies: list[AccessPolicyResponse] = Field(default_factory=list)
+    assignments: list[DocumentAssignmentResponse] = Field(default_factory=list)
 
 
 class DocumentListResponse(BaseModel):

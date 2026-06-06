@@ -3,7 +3,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.middleware import get_correlation_id
-from app.models import AuditEvent
+from app.models import AuditEvent, make_id
 
 
 def add_audit_event(
@@ -18,6 +18,7 @@ def add_audit_event(
     correlation_id: str | None = None,
 ) -> AuditEvent:
     event = AuditEvent(
+        audit_event_id=make_id("audit"),
         actor_id=actor_id,
         event_type=event_type,
         resource_type=resource_type,

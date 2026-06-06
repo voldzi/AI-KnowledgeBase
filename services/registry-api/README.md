@@ -8,6 +8,7 @@ Služba neparsuje dokumenty, nevytváří embeddingy, nevolá LLM, neodpovídá 
 
 - Registry dokumentů a verzí dokumentů.
 - Metadata, stav, platnost, klasifikace, vlastník a gestor.
+- Perzistentni organizacni prirazeni dokumentu: owner, gestor, reviewer, approver, auditor a steward.
 - Document-level access policies.
 - Authorization check API pro frontend, ingestion, RAG, evaluation a governance služby.
 - Audit API a interní auditní body pro změny dokumentů a verzí.
@@ -61,6 +62,9 @@ GET    /api/v1/documents
 GET    /api/v1/documents/{document_id}
 PATCH  /api/v1/documents/{document_id}
 DELETE /api/v1/documents/{document_id}
+
+GET    /api/v1/documents/{document_id}/assignments
+PUT    /api/v1/documents/{document_id}/assignments
 
 POST   /api/v1/documents/{document_id}/versions
 GET    /api/v1/documents/{document_id}/versions
@@ -138,6 +142,14 @@ Externí služby mohou zapisovat audit přes `POST /api/v1/audit/events`, pokud 
 
 Registry API poskytuje perzistentni workflow tasky pres `GET /api/v1/workflow/tasks`. Aktivni tasky jsou idempotentne synchronizovane z dokumentovych stavu, citlive klasifikace a auditnich varovani.
 
+Od verze `0003_document_assignments` se odpovednost tasku bere z `document_assignments`:
+
+- `draft` task preferuje `owner`, potom `gestor`,
+- `review` task preferuje `reviewer`, potom `approver`, `gestor`, `owner`,
+- `governance` a auditni task preferuji `auditor`, potom `gestor`, `owner`.
+
+Kazdy assignment muze nest `sla_days` a eskalacni subjekt. Odvozene tasky ukladaji do `metadata` hodnoty `assignment_id`, `assignment_role`, `sla_days`, `escalation_subject_id` a priznak `escalated`. Rozhodnuti nad workflow taskem zapisuje tento kontext i do auditni udalosti `workflow.task.<action>`.
+
 Rozhodnuti nad taskem se zapisuje pres `POST /api/v1/workflow/tasks/{task_id}/actions`. Podporovane akce jsou `assign`, `request_changes`, `approve`, `publish`, `archive` a `resolve`. `approve` nad review taskem nastavuje dokument na `approved`, `request_changes` vraci review/approved dokument na `draft`, `publish` respektuje stejny publish gate jako dokumentovy endpoint a `archive` pouziva stejnou archivacni logiku jako verze.
 
 Stavovy automat dokumentu je `draft -> review -> approved -> valid -> archived/cancelled`. `POST /api/v1/documents/{document_id}/versions/{version_id}/publish` vyzaduje `Document.status=approved`; jinak vraci `409 publish_requires_approval`.
@@ -149,6 +161,7 @@ Odvozena synchronizace aktivnich tasku zachovava manualni workflow rozhodnuti (`
 - `GET /documents`, `GET /versions`, `GET /workflow/tasks` a `GET /audit/events` mají limit 1-200 záznamů.
 - `POST /authz/filter-documents` přijme maximálně 1000 candidate document ids.
 - `DELETE /documents/{document_id}` je logický delete: nastaví `Document.status=cancelled` a archivuje platné verze.
+- `owner_id` a `gestor_unit` zustavaji denormalizovana kompatibilni pole. Cilovy organizacni model je `document_assignments`.
 - Technické logy obsahují request/correlation id, cestu, status a latenci. Nelogují plné dokumenty, tokeny, prompty ani odpovědi.
 - `DocumentFile` ukládá jen metadata a URI souboru; nevlastní fyzický obsah.
 
