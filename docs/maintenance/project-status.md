@@ -37,7 +37,7 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou na
 - Detail dokumentu obsahuje audit tab filtrovany podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat.
 - Detail dokumentu spousti Governance Service pres web bridge pro compare versions, compliance check a conflict detection; vysledek ukazuje result ID, confidence, warnings, citace a explicitni zdrojova omezeni.
 - Detail dokumentu ve Viewer tabu otevre auditovany RAG source-context chunk pres `/api/documents/{documentId}/source-context` a zobrazi zdroj, verzi, stranu, sekci a citovatelny text.
-- Detail dokumentu ve Viewer tabu umi pripravit podepsane otevreni zdrojoveho objektu pres `/api/documents/{documentId}/versions/{versionId}/source/open`; content endpoint ověřuje HMAC token a cte pouze objekt z povoleneho storage bucketu.
+- Detail dokumentu ve Viewer tabu umi pripravit podepsane otevreni zdrojoveho objektu pres `/api/documents/{documentId}/versions/{versionId}/source/open`; content endpoint ověřuje HMAC token a cte pouze objekt z povoleneho storage bucketu. Pokud je otevreny source-context s `page_number`, UI umi z podepsane URL nabidnout page-jump odkaz `#page=N`.
 - `/upload` pouziva browser file preflight, SHA-256, podepsanou upload session a PUT upload do aplikacniho upload endpointu.
 - `/help` obsahuje napovedu pro dokumentove role, upload, viewer/citace, workflow, governance a troubleshooting.
 
@@ -63,7 +63,7 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou na
 
 Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazky.
 
-1. Native viewer/rendering: detail dokumentu umi otevrit citovatelny RAG source-context chunk a pripravit podepsane otevreni zdrojoveho objektu, ale PDF/DOCX/tabulky/OCR zatim nemaji produkcni renderer s page jump a highlight.
+1. Native viewer/rendering: detail dokumentu umi otevrit citovatelny RAG source-context chunk, pripravit podepsane otevreni zdrojoveho objektu a nabidnout page-jump URL pro dostupny zdroj, ale PDF/DOCX/tabulky/OCR zatim nemaji produkcni renderer s highlightem.
 2. Governance source fidelity: compare/compliance/conflict panel vola Governance Service, ale web bridge zatim predava Registry metadata, source URI a change summary misto plneho extrahovaneho textu dokumentu.
 3. AI insights: povinnosti, role, lhuty, rizika a FAQ zatim nejsou persistovane jako `proposed` insighty se schvalenim.
 4. Audit event coverage: audit tab existuje, ale produkcni hodnota zavisi na duslednem zapisu udalosti ze vsech sluzeb.
@@ -76,7 +76,7 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 
 ## Next Recommended Implementation Slices
 
-1. Native viewer/rendering: PDF page jump/highlight, DOCX/text preview a nativni zobrazeni tabulek/OCR nad existujicim signed source open kontraktem.
+1. Native viewer/rendering: PDF highlight, DOCX/text preview a nativni zobrazeni tabulek/OCR nad existujicim signed source open/page-jump kontraktem.
 2. Governance source fidelity: predat Governance Service nativne extrahovany text/chunky a propojit vysledek na workflow task closure.
 3. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
 4. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.

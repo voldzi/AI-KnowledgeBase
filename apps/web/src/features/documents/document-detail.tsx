@@ -119,6 +119,8 @@ const detailCopy = {
     sourceOpenError: "Podepsané otevření zdroje se nepodařilo připravit.",
     openSignedSource: "Otevřít zdroj",
     downloadSignedSource: "Stáhnout zdroj",
+    openCitationPage: "Otevřít stranu citace",
+    citationPageUnavailable: "Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.",
     expiresAt: "Expirace",
     storageAvailability: "Dostupnost ve storage",
     available: "dostupné",
@@ -294,6 +296,8 @@ const detailCopy = {
     sourceOpenError: "Signed source opening could not be prepared.",
     openSignedSource: "Open source",
     downloadSignedSource: "Download source",
+    openCitationPage: "Open citation page",
+    citationPageUnavailable: "Opening the exact citation page will be available after the signed source is available.",
     expiresAt: "Expires",
     storageAvailability: "Storage availability",
     available: "available",
@@ -501,6 +505,10 @@ export function DocumentDetail({
     [copy, currentVersion, document, relatedJobs]
   );
   const viewerMode = currentVersion ? viewerModeFor(currentVersion.source_file_uri) : "binary";
+  const citationPageUrl =
+    sourceOpen?.available && sourceOpen.download_url && sourceContext?.location.page_number
+      ? sourceUrlWithPageFragment(sourceOpen.download_url, sourceContext.location.page_number)
+      : null;
   const canPublishCurrentVersion = Boolean(
     authorization.can_publish &&
       currentVersion &&
@@ -863,11 +871,20 @@ export function DocumentDetail({
                       <ExternalLink size={16} aria-hidden="true" />
                       {copy.openSignedSource}
                     </a>
+                    {citationPageUrl ? (
+                      <a className="button button--primary" href={citationPageUrl} target="_blank" rel="noreferrer">
+                        <ExternalLink size={16} aria-hidden="true" />
+                        {copy.openCitationPage}
+                      </a>
+                    ) : null}
                     <a className="button" href={sourceOpen.download_url} download={sourceOpen.file.filename}>
                       <Download size={16} aria-hidden="true" />
                       {copy.downloadSignedSource}
                     </a>
                   </div>
+                ) : null}
+                {sourceContext?.location.page_number && !citationPageUrl ? (
+                  <p className="notice">{copy.citationPageUnavailable}</p>
                 ) : null}
                 {sourceOpenFeedback ? (
                   <p className={`notice ${sourceOpenFeedback.tone === "error" ? "notice--danger" : ""}`} role="status">
@@ -1864,6 +1881,12 @@ function sourceContextLocationParts(sourceContext: SourceContext, copy: Record<s
     parts.push(`${copy.row} ${location.row_number}`);
   }
   return parts;
+}
+
+function sourceUrlWithPageFragment(sourceUrl: string, pageNumber: number): string {
+  const page = Math.max(1, Math.trunc(pageNumber));
+  const [baseUrl] = sourceUrl.split("#");
+  return `${baseUrl}#page=${page}`;
 }
 
 function governanceMetrics(result: GovernanceServiceResponse): string[] {

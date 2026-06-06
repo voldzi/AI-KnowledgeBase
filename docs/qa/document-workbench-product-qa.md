@@ -152,7 +152,7 @@ Must be able to:
 | DW-04 | Upload | Try an unsupported or inconsistent upload. | User sees a precise error and no draft version is silently published. |
 | DW-05 | Ingestion | Start ingestion for uploaded content. | Draft version is created, ingestion job is visible, automatic publish does not happen. |
 | DW-06 | Detail | Open `/documents/{documentId}`. | Overview, viewer, workflow, insights, versions, and ingestion sections render coherent data. |
-| DW-07 | Viewer | Open source preview or citation context. | Detail can request signed source opening, reports missing storage objects explicitly, audit-backed source-context chunk opens, source/version/page/section/text are visible, and the user can distinguish this from full native renderer capability. |
+| DW-07 | Viewer | Open source preview or citation context. | Detail can request signed source opening, reports missing storage objects explicitly, audit-backed source-context chunk opens, source/version/page/section/text are visible, page-jump is offered only when signed source is available, and the user can distinguish this from full native renderer capability. |
 | DW-08 | Workflow | Approve a review task from `/tasks`. | Registry API records the action, task state changes, document workflow state is reflected in detail. |
 | DW-09 | Publish Gate | Try to publish before approval. | Publish is blocked with clear explanation. |
 | DW-10 | Publish Gate | Publish an approved document version. | Version becomes valid, previous state is not ambiguous, action is auditable. |

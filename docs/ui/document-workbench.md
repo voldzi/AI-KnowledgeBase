@@ -23,6 +23,7 @@ Implementovano ve web aplikaci:
 - audit zalozka detailu dokumentu filtruje Registry audit udalosti podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
 - viewer zalozka detailu dokumentu nabizi auditovane source-context signaly a po otevreni chunku zobrazuje citovatelny text, zdroj, verzi, stranu a sekci,
 - viewer zalozka detailu dokumentu pripravuje signed source open URL pro zdrojovy objekt a ukazuje, zda je objekt ve storage fyzicky dostupny,
+- pokud je podepsany zdroj dostupny a source-context obsahuje `page_number`, viewer nabidne otevreni zdroje na strance citace pomoci `#page=N`,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
@@ -110,4 +111,4 @@ QA gate pokryva:
 ### Web UI
 
 - Prevest viewer z RAG source-context panelu a signed source open odkazu na skutecne nativni zobrazeni zdroje pro PDF/DOCX/tabulky/OCR.
-- Doplnit page jump/highlight pro citace.
+- Doplnit highlight a native renderer integraci pro citace.
