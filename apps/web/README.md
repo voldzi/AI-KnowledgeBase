@@ -103,8 +103,11 @@ Integration logs include only service, operation, status, latency, request id, c
 ```bash
 npm run typecheck
 npm run test
+npm run test:e2e
 npm run build
 ```
+
+`npm run test:e2e` starts the Next.js app on `127.0.0.1:3217` with mock API clients and verifies the first automated Document Workbench product paths from `docs/qa/document-workbench-product-qa.md`.
 
 ## Docker
 

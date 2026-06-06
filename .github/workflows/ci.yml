@@ -45,6 +45,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end test
+        run: npm run test:e2e
+
   python-services:
     name: Python / ${{ matrix.service }}
     runs-on: ubuntu-latest
