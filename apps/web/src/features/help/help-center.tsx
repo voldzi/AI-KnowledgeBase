@@ -36,7 +36,7 @@ const helpCopy = {
     workflow: "Workflow publikace",
     workflowBody: "Produkční postup je draft, preflight, ingestion, governance kontrola, revize, publikace a archivace nahrazených verzí.",
     governance: "Governance kontroly",
-    governanceBody: "Porovnání verzí, compliance check, detekce konfliktů a AI insighty jsou podpůrné výstupy. Autoritativní rozhodnutí zůstává na vlastníkovi nebo gestorovi.",
+    governanceBody: "Porovnání verzí, compliance check a detekci konfliktů lze spustit v detailu dokumentu. Výstup je podpůrný, uvádí citace, confidence a zdrojová omezení; autoritativní rozhodnutí zůstává na vlastníkovi nebo gestorovi.",
     chat: "Znalostní chat",
     chatBody: "Odpovědi musí mít citace. Pokud zdroje nestačí, systém má vrátit no-answer stav místo neověřené odpovědi.",
     troubleshooting: "Varování a chyby",
@@ -66,7 +66,7 @@ const helpCopy = {
     workflow: "Publication workflow",
     workflowBody: "The production flow is draft, preflight, ingestion, governance check, review, publication and archive of superseded versions.",
     governance: "Governance checks",
-    governanceBody: "Version compare, compliance check, conflict detection and AI insights are supporting outputs. The authoritative decision stays with owner or gestor.",
+    governanceBody: "Version compare, compliance check and conflict detection can be run from document detail. The output is supporting evidence with citations, confidence and source limitations; the authoritative decision stays with owner or gestor.",
     chat: "Knowledge chat",
     chatBody: "Answers must have citations. If sources are insufficient, the system should return a no-answer state instead of an unsupported answer.",
     troubleshooting: "Warnings and errors",
@@ -86,7 +86,7 @@ export function HelpCenter() {
     { icon: FileUp, title: copy.upload, body: copy.uploadBody, status: copy.partial },
     { icon: BookOpenCheck, title: copy.viewer, body: copy.viewerBody, status: copy.partial },
     { icon: Workflow, title: copy.workflow, body: copy.workflowBody, status: copy.partial },
-    { icon: ShieldCheck, title: copy.governance, body: copy.governanceBody, status: copy.planned },
+    { icon: ShieldCheck, title: copy.governance, body: copy.governanceBody, status: copy.partial },
     { icon: MessageSquareQuote, title: copy.chat, body: copy.chatBody, status: copy.available },
     { icon: ClipboardCheck, title: copy.troubleshooting, body: copy.troubleshootingBody, status: copy.partial }
   ];

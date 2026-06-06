@@ -2,7 +2,7 @@ type IntegrationLogLevel = "info" | "warn" | "error";
 
 interface IntegrationLogEvent {
   level: IntegrationLogLevel;
-  service: "registry-api" | "ingestion-service" | "rag-retrieval-service";
+  service: "registry-api" | "ingestion-service" | "rag-retrieval-service" | "governance-service";
   operation: string;
   status?: number;
   latencyMs?: number;

@@ -33,7 +33,11 @@ import type {
   DocumentAssignment,
   DocumentAssignmentInput,
   DocumentAssignmentRole,
+  DocumentGovernanceRunResponse,
   DocumentVersion,
+  GovernanceActionKind,
+  GovernanceCitation,
+  GovernanceServiceResponse,
   IngestionJob,
   RegistryWorkflowTask
 } from "@/lib/types";
@@ -162,9 +166,29 @@ const detailCopy = {
     insightRiskDetail: "Označit konflikty, neúplná metadata a citlivé části.",
     proposed: "návrh",
     governanceTitle: "Governance kontroly",
+    governanceDetail: "Spustitelné kontroly volají Governance Service přes serverový bridge a vrací citace, confidence a auditovatelný result ID.",
     compareVersions: "Porovnat verze",
+    compareVersionsDetail: "Diff posledních dvou verzí, materialita změn a citace zdrojových verzí.",
     complianceCheck: "Kontrola compliance",
+    complianceCheckDetail: "Baseline pravidla pro vlastníka, gestora, platnost, výjimky a trasovatelnost.",
     conflictDetection: "Detekce konfliktů",
+    conflictDetectionDetail: "Hledá překryv nebo rozpor s dalšími autorizovanými dokumenty v registru.",
+    governanceRun: "Spustit",
+    governanceRunning: "Spouštím",
+    governanceResultTitle: "Výsledek governance kontroly",
+    governanceRunComplete: "Governance kontrola byla dokončená.",
+    governanceFailed: "Governance kontrolu se nepodařilo spustit.",
+    governanceUnavailable: "Akce zatím nemá dostatečný vstup.",
+    governanceConfidence: "Confidence",
+    governanceResultId: "Result ID",
+    governanceGenerated: "Vygenerováno",
+    governanceSourceLimitations: "Zdrojová omezení",
+    governanceWarnings: "Varování",
+    governanceCounts: "Souhrn metrik",
+    governanceFindings: "Nálezy",
+    governanceCitations: "Citace",
+    governanceMissing: "Chybějící informace",
+    governanceNoItems: "Výsledek neobsahuje detailní položky.",
     versionHistory: "Historie verzí",
     upload: "Nahrát",
     version: "Verze",
@@ -286,9 +310,29 @@ const detailCopy = {
     insightRiskDetail: "Flag conflicts, incomplete metadata and sensitive sections.",
     proposed: "proposed",
     governanceTitle: "Governance checks",
+    governanceDetail: "Executable checks call Governance Service through a server bridge and return citations, confidence and auditable result ID.",
     compareVersions: "Compare versions",
+    compareVersionsDetail: "Diff of the latest two versions, change materiality and source-version citations.",
     complianceCheck: "Compliance check",
+    complianceCheckDetail: "Baseline rules for owner, gestor, validity, exceptions and traceability.",
     conflictDetection: "Conflict detection",
+    conflictDetectionDetail: "Finds overlap or conflict with other authorized registry documents.",
+    governanceRun: "Run",
+    governanceRunning: "Running",
+    governanceResultTitle: "Governance check result",
+    governanceRunComplete: "Governance check completed.",
+    governanceFailed: "Governance check could not be executed.",
+    governanceUnavailable: "The action does not have enough input yet.",
+    governanceConfidence: "Confidence",
+    governanceResultId: "Result ID",
+    governanceGenerated: "Generated",
+    governanceSourceLimitations: "Source limitations",
+    governanceWarnings: "Warnings",
+    governanceCounts: "Metric summary",
+    governanceFindings: "Findings",
+    governanceCitations: "Citations",
+    governanceMissing: "Missing information",
+    governanceNoItems: "The result has no detailed items.",
     versionHistory: "Version history",
     upload: "Upload",
     version: "Version",
@@ -363,6 +407,9 @@ export function DocumentDetail({
   const [workflowFeedback, setWorkflowFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [savingAssignments, setSavingAssignments] = useState(false);
   const [assignmentFeedback, setAssignmentFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [governanceAction, setGovernanceAction] = useState<GovernanceActionKind | null>(null);
+  const [governanceResult, setGovernanceResult] = useState<DocumentGovernanceRunResponse | null>(null);
+  const [governanceFeedback, setGovernanceFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -447,6 +494,34 @@ export function DocumentDetail({
       setAssignmentFeedback({ tone: "error", message: `${copy.assignmentFailed}${suffix}` });
     } finally {
       setSavingAssignments(false);
+    }
+  }
+
+  async function runGovernanceAction(action: GovernanceActionKind) {
+    if (governanceAction) {
+      return;
+    }
+    setGovernanceAction(action);
+    setGovernanceFeedback(null);
+    try {
+      const response = await fetch(`/api/documents/${encodeURIComponent(document.document_id)}/governance`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ action })
+      });
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      const payload = (await response.json()) as DocumentGovernanceRunResponse;
+      setGovernanceResult(payload);
+      setGovernanceFeedback({ tone: "success", message: copy.governanceRunComplete });
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setGovernanceFeedback({ tone: "error", message: `${copy.governanceFailed}${suffix}` });
+    } finally {
+      setGovernanceAction(null);
     }
   }
 
@@ -644,10 +719,56 @@ export function DocumentDetail({
                 <h2>{copy.governanceTitle}</h2>
                 <Network size={18} aria-hidden="true" />
               </div>
-              <div className="panel__body governance-action-grid">
-                <GovernanceAction icon={GitCompareArrows} label={copy.compareVersions} enabled={versions.length > 1} />
-                <GovernanceAction icon={ClipboardCheck} label={copy.complianceCheck} enabled={document.status !== "archived"} />
-                <GovernanceAction icon={ShieldCheck} label={copy.conflictDetection} enabled={document.status === "review"} />
+              <div className="panel__body stack">
+                <p className="muted">{copy.governanceDetail}</p>
+                <div className="governance-action-grid">
+                  {[
+                    {
+                      action: "compare_versions" as const,
+                      icon: GitCompareArrows,
+                      label: copy.compareVersions,
+                      detail: copy.compareVersionsDetail,
+                      enabled: versions.length > 1
+                    },
+                    {
+                      action: "check_compliance" as const,
+                      icon: ClipboardCheck,
+                      label: copy.complianceCheck,
+                      detail: copy.complianceCheckDetail,
+                      enabled: document.status !== "archived"
+                    },
+                    {
+                      action: "detect_conflicts" as const,
+                      icon: ShieldCheck,
+                      label: copy.conflictDetection,
+                      detail: copy.conflictDetectionDetail,
+                      enabled: document.status === "review"
+                    }
+                  ].map((item) => (
+                    <GovernanceAction
+                      action={item.action}
+                      detail={item.detail}
+                      enabled={item.enabled}
+                      icon={item.icon}
+                      key={item.action}
+                      label={item.label}
+                      running={governanceAction === item.action}
+                      runLabel={copy.governanceRun}
+                      runningLabel={copy.governanceRunning}
+                      unavailableLabel={copy.governanceUnavailable}
+                      onRun={runGovernanceAction}
+                    />
+                  ))}
+                </div>
+                {governanceFeedback ? (
+                  <div
+                    className={`notice ${governanceFeedback.tone === "error" ? "notice--danger" : ""}`}
+                    role={governanceFeedback.tone === "error" ? "alert" : "status"}
+                  >
+                    {governanceFeedback.message}
+                  </div>
+                ) : null}
+                {governanceResult ? <GovernanceResultPanel run={governanceResult} copy={copy} language={language} /> : null}
               </div>
             </div>
           </section>
@@ -1240,21 +1361,163 @@ function KeyValue({ label, value }: { label: string; value: string }) {
 }
 
 function GovernanceAction({
+  action,
+  detail,
   enabled,
   icon: Icon,
-  label
+  label,
+  running,
+  runLabel,
+  runningLabel,
+  unavailableLabel,
+  onRun
 }: {
+  action: GovernanceActionKind;
+  detail: string;
   enabled: boolean;
   icon: typeof GitCompareArrows;
   label: string;
+  running: boolean;
+  runLabel: string;
+  runningLabel: string;
+  unavailableLabel: string;
+  onRun: (action: GovernanceActionKind) => Promise<void>;
 }) {
   return (
     <div className={`governance-action ${enabled ? "governance-action--enabled" : ""}`}>
       <Icon size={18} aria-hidden="true" />
-      <strong>{label}</strong>
-      <StatusBadge value={enabled ? "queued" : "draft"} />
+      <span className="cell-title">
+        <strong>{label}</strong>
+        <span>{detail}</span>
+      </span>
+      <button
+        aria-label={`${runLabel} ${label}`}
+        className="button"
+        disabled={!enabled || running}
+        type="button"
+        onClick={() => {
+          void onRun(action);
+        }}
+      >
+        {running ? runningLabel : enabled ? runLabel : unavailableLabel}
+      </button>
     </div>
   );
+}
+
+function GovernanceResultPanel({
+  run,
+  copy,
+  language
+}: {
+  run: DocumentGovernanceRunResponse;
+  copy: Record<string, string>;
+  language: AklLanguage;
+}) {
+  const result = run.result;
+  const metrics = governanceMetrics(result);
+  const items = governanceResultItems(result);
+  const citations = governanceCitations(result);
+
+  return (
+    <section className="governance-result" aria-label={copy.governanceResultTitle}>
+      <div className="governance-result__header">
+        <div>
+          <h3>{copy.governanceResultTitle}</h3>
+          <p>{result.summary}</p>
+        </div>
+        <StatusBadge value={result.confidence} label={`${copy.governanceConfidence}: ${result.confidence}`} />
+      </div>
+      <div className="detail-kv-grid detail-kv-grid--compact">
+        <KeyValue label={copy.governanceResultId} value={result.result_id} />
+        <KeyValue label={copy.governanceGenerated} value={formatDateTime(run.generated_at, language)} />
+      </div>
+      {metrics.length > 0 ? (
+        <div className="stack">
+          <strong>{copy.governanceCounts}</strong>
+          <div className="tag-list">
+            {metrics.map((metric) => (
+              <span className="tag" key={metric}>{metric}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {items.length > 0 ? (
+        <div className="timeline">
+          <strong>{copy.governanceFindings}</strong>
+          {items.map((item) => (
+            <div className="timeline-item" key={item}>
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <CircleCheck size={18} aria-hidden="true" />
+          {copy.governanceNoItems}
+        </div>
+      )}
+      {result.missing_information ? (
+        <div className="notice notice--danger">
+          <strong>{copy.governanceMissing}: </strong>
+          {result.missing_information}
+        </div>
+      ) : null}
+      <GovernanceList title={copy.governanceSourceLimitations} items={run.source_limitations} />
+      <GovernanceList title={copy.governanceWarnings} items={result.warnings} />
+      <GovernanceList title={copy.governanceCitations} items={citations.map(citationLabel)} />
+    </section>
+  );
+}
+
+function GovernanceList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <div className="stack">
+      <strong>{title}</strong>
+      <div className="tag-list">
+        {items.map((item) => (
+          <span className="tag" key={item}>{item}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function governanceMetrics(result: GovernanceServiceResponse): string[] {
+  if ("change_counts" in result) {
+    return Object.entries(result.change_counts).map(([key, value]) => `${key}: ${value}`);
+  }
+  if ("findings" in result) {
+    return [`status: ${result.status}`, `findings: ${result.findings.length}`];
+  }
+  if ("conflicts" in result) {
+    return [`conflicts: ${result.conflicts.length}`];
+  }
+  return [];
+}
+
+function governanceResultItems(result: GovernanceServiceResponse): string[] {
+  if ("changes" in result) {
+    return result.changes.map((change) => `${change.impact} ${change.change_type}: ${change.rationale}`);
+  }
+  if ("findings" in result) {
+    return result.findings.map((finding) => `${finding.severity} ${finding.rule_id}: ${finding.message}`);
+  }
+  if ("conflicts" in result) {
+    return result.conflicts.map((conflict) => `${conflict.severity} ${conflict.conflict_type}: ${conflict.summary}`);
+  }
+  return [];
+}
+
+function governanceCitations(result: GovernanceServiceResponse): GovernanceCitation[] {
+  return result.citations.slice(0, 6);
+}
+
+function citationLabel(citation: GovernanceCitation): string {
+  return `${citation.document_title} ${citation.version_label} / ${citation.chunk_id}`;
 }
 
 function workflowTaskStatusTone(status: RegistryWorkflowTask["status"]) {

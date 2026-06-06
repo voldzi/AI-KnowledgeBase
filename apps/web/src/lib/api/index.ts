@@ -2,9 +2,11 @@ import type { ApiClients } from "@/lib/types";
 
 import type { AklFetch } from "./http-client";
 import { getAklConfig } from "./config";
+import { MockGovernanceClient } from "./mock/governance-client";
 import { MockIngestionClient } from "./mock/ingestion-client";
 import { MockRagClient } from "./mock/rag-client";
 import { MockRegistryClient } from "./mock/registry-client";
+import { ProductionGovernanceClient } from "./production/governance-client";
 import { ProductionIngestionClient } from "./production/ingestion-client";
 import { ProductionRagClient } from "./production/rag-client";
 import { ProductionRegistryClient } from "./production/registry-client";
@@ -21,13 +23,15 @@ export function createApiClients(options: ApiClientFactoryOptions = {}): ApiClie
     return {
       registry: new MockRegistryClient(),
       ingestion: new MockIngestionClient(),
-      rag: new MockRagClient()
+      rag: new MockRagClient(),
+      governance: new MockGovernanceClient()
     };
   }
 
   return {
     registry: new ProductionRegistryClient(config.serviceBaseUrls.registry, options.fetcher),
     ingestion: new ProductionIngestionClient(config.serviceBaseUrls.ingestion, options.fetcher),
-    rag: new ProductionRagClient(config.serviceBaseUrls.rag, options.fetcher)
+    rag: new ProductionRagClient(config.serviceBaseUrls.rag, options.fetcher),
+    governance: new ProductionGovernanceClient(config.serviceBaseUrls.governance, options.fetcher)
   };
 }

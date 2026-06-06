@@ -157,7 +157,7 @@ Must be able to:
 | DW-09 | Publish Gate | Try to publish before approval. | Publish is blocked with clear explanation. |
 | DW-10 | Publish Gate | Publish an approved document version. | Version becomes valid, previous state is not ambiguous, action is auditable. |
 | DW-11 | Archive | Archive a valid version. | Archive is allowed only for the current valid version and the resulting state is visible. |
-| DW-12 | Governance | Trigger or inspect governance action panel. | Current limitation is clear; no fake success state is shown when service integration is not implemented. |
+| DW-12 | Governance | Trigger governance action panel. | Compare/compliance/conflict action calls the web governance bridge, result ID/confidence/warnings/citations are visible, and metadata-only source limitation is explicit. |
 | DW-13 | Assignments | Inspect and update document responsibilities. | Owner/reviewer/approver/auditor roles, SLA and escalation metadata are visible and saved through Registry API. |
 | DW-14 | RAG | Ask a question that should be answered from imported documents. | Answer includes citations and opens source context. |
 | DW-15 | RAG | Ask a question outside the corpus. | System refuses or asks for clarification instead of inventing an answer. |
@@ -291,8 +291,8 @@ Convert these scenarios to automated E2E tests first:
 1. DW-03 upload preflight success.
 2. DW-04 upload validation failure.
 3. DW-07 viewer source metadata.
-4. DW-12 governance limitation state.
-5. DW-14 no-answer state outside the corpus.
-6. DW-18 degraded backend error handling.
+4. DW-14 no-answer state outside the corpus.
+5. DW-18 degraded backend error handling.
+6. Docker-stack governance service failure/degraded-state handling.
 
 The current automated implementation runs against mocked web clients in CI. A second suite can later run against the Docker stack as a nightly or release-candidate gate.

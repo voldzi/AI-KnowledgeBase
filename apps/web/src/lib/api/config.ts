@@ -10,6 +10,7 @@ export interface AklConfig {
     registry: string;
     ingestion: string;
     rag: string;
+    governance: string;
   };
   devAccessToken?: string;
 }
@@ -65,12 +66,14 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
       ? {
           registry: normalizeBaseUrl(env.AKL_REGISTRY_API_BASE_URL, "AKL_REGISTRY_API_BASE_URL"),
           ingestion: normalizeBaseUrl(env.AKL_INGESTION_API_BASE_URL, "AKL_INGESTION_API_BASE_URL"),
-          rag: normalizeBaseUrl(env.AKL_RAG_API_BASE_URL, "AKL_RAG_API_BASE_URL")
+          rag: normalizeBaseUrl(env.AKL_RAG_API_BASE_URL, "AKL_RAG_API_BASE_URL"),
+          governance: normalizeBaseUrl(env.AKL_GOVERNANCE_API_BASE_URL, "AKL_GOVERNANCE_API_BASE_URL")
         }
       : {
           registry: "mock://registry",
           ingestion: "mock://ingestion",
-          rag: "mock://rag"
+          rag: "mock://rag",
+          governance: "mock://governance"
         };
 
   return {

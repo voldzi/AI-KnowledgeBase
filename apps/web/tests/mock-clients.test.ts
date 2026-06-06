@@ -205,6 +205,54 @@ describe("mock API clients", () => {
     assert.equal(workflowEvents[0].resource_id, "task_review_doc_102");
   });
 
+  it("runs governance checks in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext({ subjectId: "auditor_1" });
+    const document = await clients.registry.getDocument("doc_101", context);
+    const versions = await clients.registry.listDocumentVersions("doc_101", context);
+    const [rightVersion, leftVersion] = versions;
+
+    assert.ok(leftVersion);
+    assert.ok(rightVersion);
+
+    const result = await clients.governance.compareVersions(
+      {
+        subject_id: context.subjectId,
+        left_version: {
+          document_id: document.document_id,
+          document_version_id: leftVersion.document_version_id,
+          document_title: document.title,
+          version_label: leftVersion.version_label,
+          status: "valid",
+          classification: document.classification,
+          valid_from: leftVersion.valid_from,
+          valid_to: leftVersion.valid_to,
+          source_uri: leftVersion.source_file_uri,
+          content: leftVersion.change_summary ?? "left",
+          citations: []
+        },
+        right_version: {
+          document_id: document.document_id,
+          document_version_id: rightVersion.document_version_id,
+          document_title: document.title,
+          version_label: rightVersion.version_label,
+          status: "review",
+          classification: document.classification,
+          valid_from: rightVersion.valid_from,
+          valid_to: rightVersion.valid_to,
+          source_uri: rightVersion.source_file_uri,
+          content: rightVersion.change_summary ?? "right",
+          citations: []
+        }
+      },
+      context
+    );
+
+    assert.equal(result.result_id, "governance_compare_mock");
+    assert.ok(result.citations.length > 0);
+    assert.ok(result.warnings.includes("WEB_BRIDGE_METADATA_CONTENT_ONLY"));
+  });
+
   it("enforces the publish gate in mock mode", async () => {
     const clients = createApiClients({ env });
     const context = createMockContext({ subjectId: "admin_1" });

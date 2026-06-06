@@ -7,7 +7,7 @@ import { withCorrelationDefaults } from "./correlation";
 export type AklFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface JsonRequestOptions {
-  service: "registry-api" | "ingestion-service" | "rag-retrieval-service";
+  service: "registry-api" | "ingestion-service" | "rag-retrieval-service" | "governance-service";
   operation: string;
   baseUrl: string;
   path: string;

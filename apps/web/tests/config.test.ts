@@ -30,7 +30,8 @@ describe("AKL web config", () => {
         AKL_AUTH_MODE: "mock",
         AKL_REGISTRY_API_BASE_URL: "https://registry.local/api/v1",
         AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1",
-        AKL_RAG_API_BASE_URL: "https://rag.local/api/v1"
+        AKL_RAG_API_BASE_URL: "https://rag.local/api/v1",
+        AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1"
       }),
     /Refusing to start production with AKL_AUTH_MODE=mock/);
   });
@@ -42,11 +43,13 @@ describe("AKL web config", () => {
       AKL_AUTH_MODE: "oidc",
       AKL_REGISTRY_API_BASE_URL: "https://registry.local/api/v1/",
       AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1/",
-      AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/"
+      AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/",
+      AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/"
     });
 
     assert.equal(config.serviceBaseUrls.registry, "https://registry.local/api/v1");
     assert.equal(config.serviceBaseUrls.ingestion, "https://ingestion.local/api/v1");
     assert.equal(config.serviceBaseUrls.rag, "https://rag.local/api/v1");
+    assert.equal(config.serviceBaseUrls.governance, "https://governance.local/api/v1");
   });
 });

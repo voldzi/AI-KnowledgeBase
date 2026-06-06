@@ -32,6 +32,13 @@ Smerem do RAG Retrieval Service:
 
 - `POST /api/v1/rag/retrieve`
 
+Smerem z Web Frontendu:
+
+- Web nepousti browser primo na Governance Service.
+- Detail dokumentu vola serverovy bridge `POST /api/documents/{documentId}/governance`.
+- Bridge prijima akce `compare_versions`, `check_compliance` a `detect_conflicts`, doplni subject/context, nacte Registry metadata a zavola odpovidajici `/api/v1/governance/*` endpoint.
+- Aktualni web bridge predava Registry metadata, source URI a change summary. Plny extrahovany text/chunky jsou dalsi integracni krok a UI proto zobrazuje `WEB_BRIDGE_METADATA_CONTENT_ONLY`.
+
 Vsechna volani propaguji:
 
 ```text

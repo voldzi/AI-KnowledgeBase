@@ -9,6 +9,14 @@ import type {
   ReplaceDocumentAssignmentsRequest
 } from "./documents";
 import type { CreateIngestionJobRequest, IngestionJob, IngestionReport } from "./ingestion";
+import type {
+  CompareVersionsRequest,
+  CompareVersionsResponse,
+  ComplianceCheckRequest,
+  ComplianceCheckResponse,
+  ConflictDetectionRequest,
+  ConflictDetectionResponse
+} from "./governance";
 import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTask, WorkflowTaskListOptions } from "./workflow";
 import type {
   AssistantChatRequest,
@@ -94,10 +102,17 @@ export interface RagApiClient {
   assistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationResponse>;
 }
 
+export interface GovernanceApiClient {
+  compareVersions(request: CompareVersionsRequest, context: ApiRequestContext): Promise<CompareVersionsResponse>;
+  checkCompliance(request: ComplianceCheckRequest, context: ApiRequestContext): Promise<ComplianceCheckResponse>;
+  detectConflicts(request: ConflictDetectionRequest, context: ApiRequestContext): Promise<ConflictDetectionResponse>;
+}
+
 export interface ApiClients {
   registry: RegistryApiClient;
   ingestion: IngestionApiClient;
   rag: RagApiClient;
+  governance: GovernanceApiClient;
 }
 
 export class ApiClientError extends Error {
