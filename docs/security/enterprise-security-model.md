@@ -38,7 +38,7 @@ RAG retrieval filters chunks through Registry authorization before answer compos
 Local real RAG profile uses:
 
 ```text
-RAG_AUTHZ_MODE=dev
+AKL_RAG_AUTHZ_MODE=dev
 ```
 
 Enterprise pilot should move to Registry/OIDC backed authorization before employee rollout.

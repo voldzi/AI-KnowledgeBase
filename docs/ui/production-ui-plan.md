@@ -1,6 +1,6 @@
 # Production UI Plan
 
-Phase 03 moves the Web UI from technical MVP to a local production work surface.
+The Web UI is organized as a local production work surface for knowledge and document operations.
 
 Phase 04 adds a dual GUI model:
 

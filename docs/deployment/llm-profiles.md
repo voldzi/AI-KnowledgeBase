@@ -18,9 +18,9 @@ AKL_RAG_CHAT_MODEL=mock-chat
 AKL_RAG_EMBEDDING_MODEL=mock-embedding
 ```
 
-Mock embeddings are 8-dimensional by default. Do not index them into the real Phase 02 `akl_document_chunks` collection used by `bge-m3`, which is 1024-dimensional.
+Mock embeddings are 8-dimensional by default. Do not index them into the real `akl_document_chunks` collection used by `bge-m3`, which is 1024-dimensional.
 
-## Phase 02 Real Local RAG Profile
+## Real Local RAG Profile
 
 Required `.env` values:
 
@@ -39,7 +39,9 @@ AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b
 AKL_RAG_EMBEDDING_MODEL=bge-m3
-RAG_AUTHZ_MODE=dev
+AKL_RAG_AUTHZ_MODE=dev
+AKL_RAG_REQUIRE_CITATIONS=true
+AKL_RAG_ENABLE_RERANKING=true
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine

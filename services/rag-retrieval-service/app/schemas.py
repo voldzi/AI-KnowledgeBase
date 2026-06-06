@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 DocumentType = Literal[
     "directive",
@@ -114,7 +114,7 @@ class RetrievedChunk(BaseModel):
 class RagQueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    subject_id: str = Field(min_length=1, validation_alias=AliasChoices("subject_id", "user_id"))
+    subject_id: str = Field(min_length=1)
     query: str = Field(min_length=1, max_length=4000)
     filters: RagQueryFilters = Field(default_factory=RagQueryFilters)
     answer_mode: AnswerMode = "normative_with_citations"
@@ -125,7 +125,7 @@ class RagQueryRequest(BaseModel):
 class RetrieveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    subject_id: str = Field(min_length=1, validation_alias=AliasChoices("subject_id", "user_id"))
+    subject_id: str = Field(min_length=1)
     query: str = Field(min_length=1, max_length=4000)
     filters: RagQueryFilters = Field(default_factory=RagQueryFilters)
     max_chunks: int = Field(default=8, ge=1, le=20)
@@ -140,7 +140,7 @@ class RetrieveResponse(BaseModel):
 class AnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    subject_id: str = Field(min_length=1, validation_alias=AliasChoices("subject_id", "user_id"))
+    subject_id: str = Field(min_length=1)
     query: str = Field(min_length=1, max_length=4000)
     chunks: list[RetrievedChunk] = Field(default_factory=list)
     answer_mode: AnswerMode = "normative_with_citations"
@@ -193,7 +193,7 @@ class SourceContextResponse(BaseModel):
 class AssistantChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    user_id: str = Field(min_length=1, validation_alias=AliasChoices("user_id", "subject_id"))
+    user_id: str = Field(min_length=1)
     conversation_id: str | None = None
     message: str = Field(min_length=1, max_length=4000)
     context: dict[str, Any] = Field(default_factory=dict)

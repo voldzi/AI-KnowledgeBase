@@ -8,14 +8,14 @@ This document describes the Platform / Infrastructure owned local environment fo
 - A local `.env` created from `.env.example`.
 - Host ports from `.env.example` available, or adjusted before startup.
 
-## Phase 02 Real Local RAG Start
+## Real Local RAG Start
 
 ```bash
 cp .env.example .env
 docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --profile ai up -d --build
 ```
 
-The default `.env.example` values are the Phase 02 real local RAG profile: Ollama provider, `gemma4:12b` chat, `bge-m3` embeddings, Qdrant retriever/indexer, and `RAG_AUTHZ_MODE=dev`.
+The default `.env.example` values are the current real local RAG profile: Ollama provider, `gemma4:12b` chat, `bge-m3` embeddings, Qdrant retriever/indexer, and `AKL_RAG_AUTHZ_MODE=dev`.
 
 Pull required models through the AKL Model Manager API:
 
@@ -29,7 +29,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
   -d '{"model":"gemma4:12b","kind":"chat"}'
 ```
 
-Run the Phase 02 smoke tests:
+Run the baseline smoke tests:
 
 ```bash
 python3 scripts/phase_02_llm_gateway_smoke.py

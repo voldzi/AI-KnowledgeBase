@@ -18,7 +18,7 @@ def test_providers_endpoint_reports_mock_active_provider() -> None:
     assert providers["mock"]["supports_embeddings"] is True
 
 
-def test_recommended_models_endpoint_returns_phase_02_defaults() -> None:
+def test_recommended_models_endpoint_returns_current_local_defaults() -> None:
     with make_client() as client:
         response = client.get("/api/v1/models/recommended")
 

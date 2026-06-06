@@ -39,7 +39,9 @@ After frontend source changes, rebuild only the web service:
 docker compose -f infra/docker-compose/docker-compose.dev.yml up -d --build web
 ```
 
-To run the current source against the local Phase 02C services from the host:
+The standard local web runtime is the Docker web service on `http://localhost:3002`.
+Avoid running a second host-side Next.js server against the same backend during normal development.
+For focused host-side UI debugging, stop the Docker web service first and then run:
 
 ```bash
 AKL_ENV=development \
@@ -50,11 +52,8 @@ AKL_INGESTION_API_BASE_URL=http://localhost:8090/api/v1 \
 AKL_RAG_API_BASE_URL=http://localhost:8082/api/v1 \
 AKL_WEB_DEV_SUBJECT=user_dev \
 AKL_WEB_DEV_ROLES=admin,document_manager,reader \
-npm run dev -- --port 3003
+npm run dev -- --port 3002
 ```
-
-Open `http://localhost:3003` only for optional host-side Next.js development
-when the docker web image has not been rebuilt.
 
 ## Configuration
 

@@ -102,19 +102,18 @@ Příklad:
 ```text
 AKL_ENV=development
 
-REGISTRY_DATABASE_URL=postgresql://...
-REGISTRY_OIDC_ISSUER_URL=https://keycloak.local/realms/akl
+AKL_REGISTRY_DATABASE_URL=postgresql://...
+AKL_OIDC_ISSUER=https://keycloak.local/realms/akl
 
-INGESTION_REGISTRY_API_URL=https://registry-api.local/api/v1
-INGESTION_QDRANT_URL=http://qdrant:6333
-INGESTION_OBJECT_STORAGE_ENDPOINT=http://minio:9000
+AKL_INGESTION_REGISTRY_API_BASE_URL=https://registry-api.local/api/v1
+AKL_QDRANT_BASE_URL=http://qdrant:6333
+AKL_OBJECT_STORAGE_ENDPOINT=http://minio:9000
 
-RAG_REGISTRY_API_URL=https://registry-api.local/api/v1
-RAG_QDRANT_URL=http://qdrant:6333
-RAG_LLM_GATEWAY_URL=https://llm-gateway.local/api/v1
+AKL_RAG_REGISTRY_BASE_URL=https://registry-api.local/api/v1
+AKL_RAG_LLM_GATEWAY_BASE_URL=https://llm-gateway.local/api/v1
 
-LLM_GATEWAY_PROVIDER=ollama
-LLM_GATEWAY_OLLAMA_URL=http://ollama:11434
+AKL_LLM_DEFAULT_PROVIDER=ollama
+AKL_OLLAMA_BASE_URL=http://ollama:11434
 ```
 
 ---

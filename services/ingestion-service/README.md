@@ -57,7 +57,7 @@ curl http://localhost:8090/ready
 |---|---|
 | `AKL_ENV` | `development`, `test`, nebo `production`. |
 | `AKL_AUTH_MODE` | `disabled`, `mock`, `bearer`, nebo `oidc`; produkce odmítá `disabled` a `mock`. |
-| `AKL_SERVICE_TOKEN` | Očekávaný inbound bearer token v legacy `bearer` režimu. |
+| `AKL_SERVICE_TOKEN` | Očekávaný inbound bearer token při `AKL_AUTH_MODE=bearer`. |
 | `AKL_SERVICE_ACCOUNT_SUBJECT` | Fallback subject pro mezislužbová volání bez caller tokenu. |
 | `AKL_SERVICE_ACCOUNT_ROLES` | Fallback role pro mezislužbová volání bez caller tokenu. |
 | `AKL_INGESTION_REGISTRY_CLIENT_MODE` | `http` nebo `mock`. |
@@ -104,7 +104,7 @@ document.pdf.ocr.txt
 document.ocr.txt
 ```
 
-`tesseract` OCR podporuje image MIME typy. PDF OCR přes rasterizaci je připravené jako provider boundary, ale není v tomto MVP implementované jako interní konverze stránek.
+`tesseract` OCR podporuje image MIME typy. PDF OCR přes rasterizaci je připravené jako provider boundary, ale interní konverze stránek zatím není součástí služby.
 
 ## Chunking
 
@@ -155,7 +155,7 @@ Technické logy obsahují ID jobu, dokumentu/verze, počty chunků, status a lat
 - Výchozí cílová velikost chunku je 1400 znaků.
 - Výchozí maximální velikost chunku je 3000 znaků.
 - Výchozí maximální počet chunků na job je 5000.
-- File-backed job store je MVP persistence, ne náhrada za produkční durable queue.
+- File-backed job store je lokální persistence, ne náhrada za produkční durable queue.
 - Inline processing je vhodný pro lokální/test běh; produkční nasazení má připojit worker/queue ve stejných kontraktech.
 
 ## Testy

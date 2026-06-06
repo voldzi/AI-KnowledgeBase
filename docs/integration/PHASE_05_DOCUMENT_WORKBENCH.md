@@ -1,10 +1,10 @@
 # Phase 05 Document Workbench
 
-Validated: pending.
+Validated: 2026-06-06.
 
 ## 1. Summary
 
-Phase 05 meni dokumentovou cast z MVP obrazovek na Document Workbench a pridava prvni perzistentni workflow task kontrakt v Registry API. Implementace zustava kompatibilni se stavajicimi Registry, Ingestion a RAG kontrakty.
+Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni workflow task kontrakt v Registry API. Implementace pouziva soucasne Registry, Ingestion a RAG kontrakty bez legacy runtime aliasu.
 
 ## 2. Implemented In This Increment
 

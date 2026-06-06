@@ -16,7 +16,7 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
 
 
 def test_production_rejects_mock_clients() -> None:
-    with pytest.raises(ConfigError, match="Production must use http clients"):
+    with pytest.raises(ConfigError, match="Production must use non-mock clients"):
         load_settings(
             {
                 "AKL_ENV": "production",
@@ -37,21 +37,21 @@ def test_invalid_answer_max_tokens_is_rejected() -> None:
         load_settings({"AKL_RAG_ANSWER_MAX_TOKENS": "0"})
 
 
-def test_phase_02_legacy_env_names_are_supported() -> None:
+def test_current_http_profile_uses_explicit_akl_env_names() -> None:
     settings = load_settings(
         {
             "AKL_ENV": "development",
             "AKL_AUTH_MODE": "disabled",
-            "RAG_RETRIEVAL_MODE": "qdrant",
-            "RAG_MOCK_MODE": "false",
-            "QDRANT_URL": "http://qdrant:6333",
-            "QDRANT_COLLECTION": "phase02_chunks",
-            "REGISTRY_API_URL": "http://registry-api:8000",
-            "LLM_GATEWAY_URL": "http://llm-gateway:8080",
-            "RAG_TOP_K": "6",
-            "RAG_MIN_SCORE": "0.15",
-            "RAG_AUTHZ_MODE": "registry",
-            "RAG_ENABLE_RERANKING": "false",
+            "AKL_RAG_DEPENDENCY_MODE": "http",
+            "AKL_RAG_RETRIEVER_MODE": "qdrant",
+            "AKL_QDRANT_BASE_URL": "http://qdrant:6333",
+            "AKL_QDRANT_COLLECTION": "document_chunks",
+            "AKL_REGISTRY_BASE_URL": "http://registry-api:8000",
+            "AKL_LLM_GATEWAY_BASE_URL": "http://llm-gateway:8080",
+            "AKL_RAG_DEFAULT_MAX_CHUNKS": "6",
+            "AKL_RAG_NO_ANSWER_MIN_SCORE": "0.15",
+            "AKL_RAG_AUTHZ_MODE": "registry",
+            "AKL_RAG_ENABLE_RERANKING": "false",
         }
     )
 
@@ -59,7 +59,7 @@ def test_phase_02_legacy_env_names_are_supported() -> None:
     assert settings.registry_client_mode == "http"
     assert settings.llm_client_mode == "http"
     assert settings.qdrant_base_url == "http://qdrant:6333"
-    assert settings.qdrant_collection == "phase02_chunks"
+    assert settings.qdrant_collection == "document_chunks"
     assert settings.registry_base_url == "http://registry-api:8000/api/v1"
     assert settings.llm_gateway_base_url == "http://llm-gateway:8080/api/v1"
     assert settings.default_max_chunks == 6

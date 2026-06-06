@@ -40,7 +40,7 @@ hybrid_score = dense_score * AKL_RAG_HYBRID_DENSE_WEIGHT
 
 Dense score pochazi z Qdrant similarity nebo deterministic mock embeddingu. Sparse score je lexical token overlap.
 
-## Phase 02 real profile
+## Real Local RAG Profile
 
 Real local RAG používá:
 
@@ -49,7 +49,7 @@ Real local RAG používá:
 - `AKL_RAG_CHAT_MODEL=gemma4:12b`
 - `AKL_RAG_EMBEDDING_MODEL=bge-m3`
 - `AKL_RAG_ANSWER_MAX_TOKENS=512`
-- `RAG_AUTHZ_MODE=dev`
+- `AKL_RAG_AUTHZ_MODE=dev`
 - Qdrant kolekci `akl_document_chunks` s vektorem velikosti `1024` a distance `Cosine`
 
 Mock/dev-test profil používá `mock-embedding` s výchozí dimenzí 8. Tento profil nesmí zapisovat ani číst real Qdrant kolekci vytvořenou pro `bge-m3`.

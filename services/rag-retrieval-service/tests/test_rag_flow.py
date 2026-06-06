@@ -42,14 +42,13 @@ def test_query_returns_answer_with_citation_from_authorized_chunk() -> None:
     assert "Vyjimku ze smernice schvaluje gestor dokumentu" in body["answer"]
 
 
-def test_query_accepts_phase_02_user_id_alias() -> None:
+def test_query_rejects_removed_user_id_alias() -> None:
     payload = _query_payload("Kdo schvaluje vyjimku?")
     payload["user_id"] = payload.pop("subject_id")
     with make_client() as client:
         response = client.post("/api/v1/rag/query", json=payload)
 
-    assert response.status_code == 200
-    assert response.json()["citations"][0]["chunk_id"] == "chunk_789"
+    assert response.status_code == 422
 
 
 def test_query_applies_no_answer_policy_for_low_relevance() -> None:
@@ -90,7 +89,7 @@ def test_no_answer_respects_english_response_language() -> None:
 
 
 def test_query_filters_denied_documents_before_answer_composition_in_registry_authz_mode() -> None:
-    with make_client({"RAG_AUTHZ_MODE": "registry", "AKL_RAG_REGISTRY_CLIENT_MODE": "mock"}) as client:
+    with make_client({"AKL_RAG_AUTHZ_MODE": "registry", "AKL_RAG_REGISTRY_CLIENT_MODE": "mock"}) as client:
         response = client.post(
             "/api/v1/rag/query",
             json=_query_payload("tajne pravidlo pro krizove vyjimky", classification_max="confidential"),
@@ -147,6 +146,20 @@ def test_assistant_chat_requests_clarification_for_vague_access_query() -> None:
     assert body["response_type"] == "clarification_needed"
     assert body["conversation_id"].startswith("conv_")
     assert {question["id"] for question in body["questions"]} >= {"system", "request_type"}
+
+
+def test_assistant_chat_rejects_removed_subject_id_alias() -> None:
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "subject_id": "employee_1",
+                "message": "Potřebuji přístup.",
+                "context": {"domain": "IT", "user_role": "employee"},
+            },
+        )
+
+    assert response.status_code == 422
 
 
 def test_assistant_chat_requests_clarification_in_english() -> None:

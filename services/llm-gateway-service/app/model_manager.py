@@ -10,7 +10,7 @@ def recommended_models() -> RecommendedModelsResponse:
             RecommendedModel(
                 name="gemma4:12b",
                 provider="ollama",
-                recommended_for="Phase 02 real local RAG",
+                recommended_for="real local RAG",
                 minimum_memory_gb=24,
             ),
             RecommendedModel(

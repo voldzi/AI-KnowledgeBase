@@ -226,7 +226,7 @@ AKL_AUTH_MODE=oidc
 Authorization: Bearer <jwt>
 ```
 
-Registry API validuje JWT podpis a claims přes JWKS. RAG Retrieval, Ingestion a LLM Gateway bearer token vyžadují a propagují, ale v Phase 02D neduplikují lokální JWT signature validation; dokumentová rozhodnutí vynucuje Registry `/authz/check` nebo `/authz/filter-documents`.
+Registry API validuje JWT podpis a claims přes JWKS. RAG Retrieval, Ingestion a LLM Gateway bearer token vyžadují a propagují, ale neduplikují lokální JWT signature validation; dokumentová rozhodnutí vynucuje Registry `/authz/check` nebo `/authz/filter-documents`.
 
 Produkce musí odmítnout start, pokud:
 
@@ -235,7 +235,7 @@ AKL_ENV=production
 AKL_AUTH_MODE=mock
 ```
 
-K Phase 02D zůstává mimo baseline plný browser OIDC login flow a per-user filtrování historie ingestion jobů/reportů.
+Mimo baseline zatím zůstává plný browser OIDC login flow a per-user filtrování historie ingestion jobů/reportů.
 
 ---
 

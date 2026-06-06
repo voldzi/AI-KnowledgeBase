@@ -2,7 +2,7 @@
 
 AKL is a local AI Knowledge Library for controlled documents, ingestion, embeddings, Qdrant-backed RAG retrieval, citations, and audit events.
 
-## Phase 02 Quickstart
+## Local Quickstart
 
 Clone and enter the repository:
 
@@ -17,7 +17,7 @@ Create local configuration:
 cp .env.example .env
 ```
 
-The checked-in `.env.example` is configured for the Phase 02 real local RAG profile:
+The checked-in `.env.example` is configured for the current real local RAG profile:
 
 ```text
 AKL_LLM_DEFAULT_PROVIDER=ollama
@@ -32,7 +32,9 @@ AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b
 AKL_RAG_EMBEDDING_MODEL=bge-m3
-RAG_AUTHZ_MODE=dev
+AKL_RAG_AUTHZ_MODE=dev
+AKL_RAG_REQUIRE_CITATIONS=true
+AKL_RAG_ENABLE_RERANKING=true
 ```
 
 Start the stack with the compose Ollama profile:
@@ -53,7 +55,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
   -d '{"model":"gemma4:12b","kind":"chat"}'
 ```
 
-Run Phase 02 smoke tests:
+Run the baseline smoke tests:
 
 ```bash
 python3 scripts/phase_02_llm_gateway_smoke.py
@@ -114,6 +116,7 @@ RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<ba
 Details: `docs/deployment/local-production.md`.
 Enterprise architecture: `docs/ARCHITECTURE/enterprise-architecture.md`.
 Security model: `docs/security/enterprise-security-model.md`.
+Code health baseline: `docs/maintenance/code-health.md`.
 
 ## Document Viewer
 

@@ -35,7 +35,7 @@ AKL_RAG_EMBEDDING_MODEL=mock-embedding
 
 Tento režim nevyžaduje GPU runtime ani síťové LLM služby. Mock embeddings mají výchozí dimenzi 8 a nesmí se používat s real Qdrant kolekcí pro `bge-m3`.
 
-## Phase 02 Real Local RAG Profile
+## Real Local RAG Profile
 
 ```text
 AKL_LLM_DEFAULT_PROVIDER=ollama
@@ -57,7 +57,9 @@ AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b
 AKL_RAG_EMBEDDING_MODEL=bge-m3
-RAG_AUTHZ_MODE=dev
+AKL_RAG_AUTHZ_MODE=dev
+AKL_RAG_REQUIRE_CITATIONS=true
+AKL_RAG_ENABLE_RERANKING=true
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine

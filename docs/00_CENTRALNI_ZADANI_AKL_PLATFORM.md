@@ -96,7 +96,7 @@ Každá služba musí splňovat:
 | Metadata DB | PostgreSQL |
 | Vector DB | Qdrant |
 | Object storage | MinIO nebo lokální filesystem abstraction |
-| LLM runtime pro MVP | Ollama |
+| LLM runtime pro lokální profil | Ollama |
 | LLM runtime pro produkci | vLLM / OpenAI-compatible API |
 | Auth | Keycloak / OIDC / JWT |
 | Dokument parser | Docling, Apache Tika fallback, plain text fallback |

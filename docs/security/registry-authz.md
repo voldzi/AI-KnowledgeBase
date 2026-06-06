@@ -15,7 +15,7 @@ Ingestion, RAG Retrieval a LLM Gateway používají stejný slovník auth režim
 
 - `disabled` jen pro lokální testy,
 - `mock` pro explicitní dev profil,
-- `bearer` pro legacy service-token profil,
+- `bearer` pro explicitní service-token profil,
 - `oidc` pro Keycloak/OIDC profil s povinným bearer tokenem.
 
 V `oidc` profilu downstream služby token předávají dál; dokumentová rozhodnutí vynucuje Registry API.

@@ -1,6 +1,6 @@
 # Document Workbench
 
-Document Workbench je produkcni smer pro praci s dokumenty v AKL Platforme. Navazuje na Phase 02 controlled-document MVP a rozsiruje ho z technickeho pruchodu na spravcovskou pracovni plochu.
+Document Workbench je produkcni smer pro praci s dokumenty v AKL Platforme. Nahrazuje technicky pruchod dokumentem spravcovskou pracovni plochou pro upload, revize, publikaci a dohled nad znalostmi.
 
 ## Stav po prvnim inkrementu
 
