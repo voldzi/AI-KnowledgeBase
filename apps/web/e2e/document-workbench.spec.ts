@@ -22,7 +22,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.locator("tbody tr")).toHaveCount(4);
   });
 
-  test("DW-06, DW-09, DW-13 and DW-19 detail shows workflow, assignments, audit and locked publish gate", async ({ page }) => {
+  test("DW-06, DW-09, DW-12, DW-13 and DW-19 detail shows workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
     await page.goto("/documents/doc_102");
 
     await expect(page.getByRole("heading", { name: "Detail dokumentu" })).toBeVisible();
@@ -37,6 +37,11 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.locator('input[value="security-reviewers"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "Workflow tasky" })).toBeVisible();
     await expect(page.getByText("Document review required")).toBeVisible();
+
+    await page.getByRole("button", { name: "Spustit Kontrola compliance" }).click();
+    await expect(page.getByRole("heading", { name: "Výsledek governance kontroly" })).toBeVisible();
+    await expect(page.getByText("governance_compliance_mock")).toBeVisible();
+    await expect(page.getByText("WEB_BRIDGE_METADATA_CONTENT_ONLY")).toHaveCount(2);
 
     await page.getByRole("button", { name: "Audit" }).click();
     await expect(page.getByRole("heading", { name: "Auditní stopa dokumentu" })).toBeVisible();

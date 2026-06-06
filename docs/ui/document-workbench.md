@@ -19,6 +19,7 @@ Implementovano ve web aplikaci:
   - audit,
 - workflow zalozka detailu dokumentu zobrazuje autoritativni Registry tasky a posledni rozhodnuti pro dany dokument,
 - workflow zalozka detailu dokumentu zobrazuje a spravuje `document_assignments`: owner, gestor, reviewer, approver, auditor, steward, SLA a eskalace,
+- workflow zalozka detailu dokumentu spousti Governance Service akce: compare versions, compliance check a conflict detection; vysledek zobrazuje result ID, confidence, warnings, citace a zdrojova omezeni,
 - audit zalozka detailu dokumentu filtruje Registry audit udalosti podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
@@ -100,9 +101,8 @@ QA gate pokryva:
 
 ### Governance Service
 
-- Napojit UI na `/api/v1/governance/compare-versions`.
-- Napojit UI na `/api/v1/governance/check-compliance`.
-- Napojit UI na `/api/v1/governance/detect-conflicts`.
+- Predavat Governance Service plny extrahovany text nebo citovatelne chunky misto weboveho metadata-only bridge vstupu.
+- Propojit governance result ID na workflow task closure a audit review.
 - Persistovat AI insighty jako `proposed` a vyzadovat lidske schvaleni.
 
 ### Web UI

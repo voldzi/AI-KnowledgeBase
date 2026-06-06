@@ -594,6 +594,7 @@ Frontend volá:
 - Registry API,
 - RAG Retrieval Service,
 - Ingestion Service.
+- Governance Service pouze ze serveroveho web bridge, ne primo z browseru.
 
 Web bridge pro upload dokumentu vystavuje pouze aplikacni boundary endpointy:
 
@@ -604,6 +605,14 @@ POST /api/controlled-document/ingestion
 ```
 
 `preflight` prijima `document_id`, `file_name`, `file_size`, `file_type` a `sha256`, vraci `upload_session_id`, `source_file_uri`, `upload_url`, expiraci a povinne upload hlavicky. `content` overuje HMAC upload token, velikost a SHA-256 a uklada objekt do storage dostupneho Ingestion Service. `ingestion` pri pritomnosti `upload_token` overi, ze metadata draft verze odpovidaji podepsane upload session.
+
+Web bridge pro governance dokumentu:
+
+```text
+POST /api/documents/{documentId}/governance
+```
+
+Request obsahuje `action=compare_versions|check_compliance|detect_conflicts` a volitelna `left_version_id`/`right_version_id`. Bridge nacte Registry metadata, doplni subject/context a vola odpovidajici Governance Service endpoint. Aktualni vstup je metadata/source URI/change summary only; odpoved musi obsahovat `source_limitations` s `WEB_BRIDGE_METADATA_CONTENT_ONLY`, dokud web nepredava plny extrahovany text nebo citovatelne chunky.
 
 ---
 

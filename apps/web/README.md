@@ -50,6 +50,7 @@ AKL_AUTH_MODE=mock \
 AKL_REGISTRY_API_BASE_URL=http://localhost:8001/api/v1 \
 AKL_INGESTION_API_BASE_URL=http://localhost:8090/api/v1 \
 AKL_RAG_API_BASE_URL=http://localhost:8082/api/v1 \
+AKL_GOVERNANCE_API_BASE_URL=http://localhost:8085/api/v1 \
 AKL_WEB_DEV_SUBJECT=user_dev \
 AKL_WEB_DEV_ROLES=admin,document_manager,reader \
 npm run dev -- --port 3002
@@ -67,6 +68,7 @@ Copy `.env.example` to `.env.local` for local overrides.
 | `AKL_REGISTRY_API_BASE_URL` | Registry API `/api/v1` base URL |
 | `AKL_INGESTION_API_BASE_URL` | Ingestion Service `/api/v1` base URL |
 | `AKL_RAG_API_BASE_URL` | RAG Retrieval Service `/api/v1` base URL |
+| `AKL_GOVERNANCE_API_BASE_URL` | Governance Service `/api/v1` base URL |
 | `AKL_DEV_ACCESS_TOKEN` | Optional local integration token |
 | `AKL_WEB_DEV_SUBJECT` | Local mock-auth subject sent to APIs in development |
 | `AKL_WEB_DEV_ROLES` | Comma-separated local mock-auth roles |
@@ -125,10 +127,16 @@ The frontend calls only these services:
 - Registry API: documents, document versions, authorization checks, audit events
 - Ingestion Service: ingestion jobs and reports
 - RAG Retrieval Service: citation-backed RAG query
+- Governance Service: document compare, compliance and conflict checks through a server bridge
 
 The controlled-document workflow is bridged through App Router API routes under
 `/api/controlled-document/*` so browser components do not call internal service
 URLs directly.
+
+Document governance actions are bridged through `POST /api/documents/{documentId}/governance`.
+The bridge accepts `compare_versions`, `check_compliance` and `detect_conflicts`, loads Registry
+metadata server-side and returns Governance Service output plus explicit source limitations while
+native extracted text is not yet available to the web bridge.
 
 The current UI assumes a list endpoint for ingestion jobs: `GET /api/v1/ingestion/jobs`. The central contract documents job creation and job lookup as minimum required endpoints, so this list endpoint should be treated as a frontend integration requirement for operational status screens.
 

@@ -11,7 +11,8 @@ const env = {
   AKL_AUTH_MODE: "oidc",
   AKL_REGISTRY_API_BASE_URL: "https://registry.local/api/v1/",
   AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1/",
-  AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/"
+  AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/",
+  AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/"
 };
 
 describe("production API clients", () => {
@@ -395,5 +396,65 @@ describe("production API clients", () => {
     assert.equal(version.status, "archived");
     assert.equal(calls[0][0], "https://registry.local/api/v1/documents/doc_1/versions/ver_1/archive");
     assert.equal(calls[0][1]?.method, "POST");
+  });
+
+  it("runs governance version comparison through the Governance API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        result_id: "result_1",
+        document_id: "doc_1",
+        left_version_id: "ver_1",
+        right_version_id: "ver_2",
+        summary: "Changed.",
+        change_counts: { added: 0, removed: 0, modified: 1 },
+        materiality_score: 0.5,
+        changes: [],
+        citations: [],
+        sources: [],
+        confidence: "medium",
+        warnings: [],
+        missing_information: null
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const response = await clients.governance.compareVersions(
+      {
+        subject_id: "user_1",
+        left_version: {
+          document_id: "doc_1",
+          document_version_id: "ver_1",
+          document_title: "Document",
+          version_label: "1.0",
+          status: "valid",
+          classification: "internal",
+          valid_from: "2026-06-01",
+          valid_to: null,
+          source_uri: "s3://akl/doc_1/ver_1.md",
+          content: "Old content",
+          citations: []
+        },
+        right_version: {
+          document_id: "doc_1",
+          document_version_id: "ver_2",
+          document_title: "Document",
+          version_label: "2.0",
+          status: "review",
+          classification: "internal",
+          valid_from: "2026-07-01",
+          valid_to: null,
+          source_uri: "s3://akl/doc_1/ver_2.md",
+          content: "New content",
+          citations: []
+        }
+      },
+      createMockContext()
+    );
+
+    assert.equal(response.result_id, "result_1");
+    assert.equal(calls[0][0], "https://governance.local/api/v1/governance/compare-versions");
+    assert.equal(calls[0][1]?.method, "POST");
+    assert.equal(JSON.parse(String(calls[0][1]?.body)).subject_id, "user_1");
   });
 });
