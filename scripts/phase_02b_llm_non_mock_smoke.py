@@ -10,8 +10,8 @@ from typing import Any
 
 
 LLM_URL = os.getenv("AKL_SMOKE_LLM_URL", "http://localhost:8083").rstrip("/")
-CHAT_MODEL = os.getenv("AKL_LLM_SMOKE_CHAT_MODEL") or os.getenv("AKL_OLLAMA_CHAT_MODEL")
-EMBEDDING_MODEL = os.getenv("AKL_LLM_SMOKE_EMBEDDING_MODEL") or os.getenv("AKL_OLLAMA_EMBEDDING_MODEL")
+CHAT_MODEL = os.getenv("AKL_LLM_SMOKE_CHAT_MODEL") or os.getenv("AKL_OLLAMA_CHAT_MODEL", "gemma4:12b")
+EMBEDDING_MODEL = os.getenv("AKL_LLM_SMOKE_EMBEDDING_MODEL") or os.getenv("AKL_OLLAMA_EMBEDDING_MODEL", "bge-m3")
 BEARER_TOKEN = os.getenv("AKL_SMOKE_LLM_BEARER_TOKEN")
 
 

@@ -31,7 +31,7 @@ SOURCE_URI = os.getenv(
     "s3://akl-documents/smoke/phase02-controlled-document.md",
 )
 SUBJECT_ID = os.getenv("AKL_SMOKE_SUBJECT_ID", "user_dev")
-TODAY = dt.date.today().isoformat()
+TODAY = dt.datetime.now(dt.UTC).date().isoformat()
 RUN_TAG = os.getenv("AKL_SMOKE_RUN_TAG", f"phase02-smoke-{uuid.uuid4().hex[:8]}")
 
 
