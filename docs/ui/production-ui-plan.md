@@ -71,9 +71,9 @@ The current upload bridge stores the source object in shared local object storag
 
 ### STRATOS UI Adapter
 
-AKL now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search and view tabs while the external `@stratos/ui` package remains outside the AKL Docker build context.
+AKL now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search and view tabs while `@stratos/ui` is distributed through GitHub Packages and still needs a read-only `read:packages` token in AKL local/CI builds.
 
-The adapter keeps `stratos-*` class names and maps AKL theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. When the repos/build context are unified, the adapter can be replaced by direct imports from `@stratos/ui` without changing feature screens.
+The adapter keeps `stratos-*` class names and maps AKL theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, and `@stratos/ui/styles.css`.
 
 ### Workflow Inbox
 

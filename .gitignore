@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 !.env.local-prod.example
+.npmrc
+apps/web/.npmrc
 
 # Python
 __pycache__/

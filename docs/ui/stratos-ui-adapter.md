@@ -4,14 +4,38 @@ AKL Platform bude soucasti portfolia STRATOS aplikaci. Sdilena UI knihovna ve ST
 
 ## Implementacni Rozhodnuti
 
-AKL Docker build ma jako context pouze AKL workspace, proto web aplikace zatim nemuze spolehlive importovat balicek z externiho repozitare `/Users/voldzi/Documents/Development/18 2026/STRATOS`.
+`@stratos/ui` je cilovy zdroj sdilenych UI komponent. Balicek se nema pripojovat pres `file:` dependency mimo Docker build context. Distribuce ma jit pres GitHub Packages jako restricted package s read-only tokenem `read:packages`.
 
-Aktualni reseni je lokalni kompatibilni adapter v `apps/web/src/components/stratos`:
+AKL je pripraveny na instalaci balicku pres npm scope konfiguraci:
+
+```ini
+@stratos:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+always-auth=true
+```
+
+Do repozitare patri pouze `apps/web/.npmrc.example`. Skutecny `.npmrc` a token zustavaji lokalni/CI secret a jsou ignorovane Gitem. Dockerfile umi nacist `.npmrc` jako BuildKit secret `npmrc`, aby se token neulozil do image vrstvy.
+
+Aktualni lokalni fallback je kompatibilni adapter v `apps/web/src/components/stratos`:
 
 - komponenty pouzivaji STRATOS nazvoslovi a CSS tridy `stratos-*`,
 - globalni CSS mapuje AKL tokeny na `--stratos-*`,
 - shell, rail, topbar, tlacitka, search box a view tabs maji stejnou strukturu jako cilovy STRATOS system,
 - feature komponenty nemusi znat, zda bezi nad lokalnim adapterem nebo budou pozdeji prepojeny na `@stratos/ui`.
+
+Fallback zustava jen do doby, nez bude `@stratos/ui` dostupne pro AKL CI/Docker build pres GitHub Packages token. V tomto prostredi `npm view @stratos/ui --registry=https://npm.pkg.github.com` zatim vraci `404`, tedy balicek neni dostupny bez dalsiho opravneni nebo publikace pod ocekavanym scope.
+
+## Stabilni Sdilene Exporty
+
+Prvni napojeni AKL pouzije tyto exporty z `@stratos/ui`:
+
+- `ProjectTopbar`
+- `CommandCenter`
+- `UnifiedSelect`
+- `SettingsSurface`
+- `SurfaceModeMenu`
+- `DetailSurface`
+- jednotny CSS import `@stratos/ui/styles.css`
 
 ## Pouzite Komponenty
 
@@ -41,13 +65,14 @@ Zbyvajici mista pouzivaji CSS kompatibilni `.button` aliasy, zejmena download/ex
 
 ## Migracni Cesta Na Sdileny Balicek
 
-Az bude `@stratos/ui` dostupne v AKL build contextu:
+Jakmile bude dostupny read-only GitHub Packages token:
 
-1. pridat dependency na workspace nebo publikovany balicek `@stratos/ui`,
-2. premapovat exporty v `apps/web/src/components/stratos/index.ts` na importy ze sdilene knihovny,
-3. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,
-4. ponechat `--stratos-*` tokeny jako verejny kontrakt pro AKL theme,
-5. spustit typecheck, build a vizualni QA hlavniho shellu, registru a detailu dokumentu.
+1. pridat dependency `@stratos/ui` na publikovanou verzi z GitHub Packages,
+2. pridat `import "@stratos/ui/styles.css";` do globalniho vstupu webu,
+3. premapovat exporty v `apps/web/src/components/stratos/index.ts` na importy ze sdilene knihovny,
+4. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,
+5. ponechat `--stratos-*` tokeny jako verejny kontrakt pro AKL theme,
+6. spustit typecheck, build, Docker build se secretem `npmrc` a vizualni QA hlavniho shellu, registru, detailu dokumentu a nastaveni.
 
 ## UI Pravidla
 

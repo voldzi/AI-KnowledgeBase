@@ -118,6 +118,6 @@ QA gate pokryva:
 
 ### Web UI
 
-- Prepojit lokalni STRATOS UI adapter na sdileny `@stratos/ui` balicek, jakmile bude dostupny v AKL Docker build contextu.
+- Prepojit lokalni STRATOS UI adapter na sdileny `@stratos/ui` balicek pres GitHub Packages, jakmile AKL lokalni/CI build dostane read-only `read:packages` token.
 - Doplnit pokrocile Office fidelity prvky nad stejnym signed source kontraktem.
 - Doplnit PDF textovy highlight primo ve vieweru a hlubsi native renderer integraci pro citace.
