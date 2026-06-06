@@ -11,6 +11,35 @@ from app.schemas import Classification, RagQueryFilters
 CLASSIFICATION_ORDER: tuple[Classification, ...] = ("public", "internal", "restricted", "confidential")
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
+CONCEPT_BONUSES: tuple[tuple[set[str], set[str], float], ...] = (
+    (
+        {"riziko", "rizika", "rizik", "risk", "risks"},
+        {
+            "chybove",
+            "chybovy",
+            "chyba",
+            "chyby",
+            "scenare",
+            "scenar",
+            "selhani",
+            "selze",
+            "nedostupna",
+            "nedostupny",
+            "problem",
+            "problemy",
+            "limity",
+            "omezeni",
+            "bezpecnostni",
+        },
+        0.35,
+    ),
+    (
+        {"projekt", "projektu", "platforma", "akl"},
+        {"projekt", "projektu", "platforma", "akl", "system", "sluzba", "sluzby"},
+        0.10,
+    ),
+)
+
 
 def normalize_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value.lower())
@@ -31,7 +60,15 @@ def sparse_score(query: str, text: str) -> float:
 
     overlap = len(query_tokens & text_tokens) / len(query_tokens)
     phrase_bonus = 0.15 if normalize_text(query).strip() in normalize_text(text) else 0.0
-    return min(1.0, overlap + phrase_bonus)
+    return min(1.0, overlap + phrase_bonus + _concept_bonus(query_tokens, text_tokens))
+
+
+def _concept_bonus(query_tokens: set[str], text_tokens: set[str]) -> float:
+    bonus = 0.0
+    for query_terms, text_terms, value in CONCEPT_BONUSES:
+        if query_tokens.intersection(query_terms) and text_tokens.intersection(text_terms):
+            bonus += value
+    return min(0.5, bonus)
 
 
 def deterministic_embedding(text: str, dimensions: int = 32) -> list[float]:

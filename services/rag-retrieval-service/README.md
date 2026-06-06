@@ -39,6 +39,13 @@ RAG:
 - `POST /api/v1/rag/compare-documents`
 - `POST /api/v1/rag/check-compliance`
 
+Employee Assistant:
+
+- `POST /api/v1/assistant/chat`
+- `POST /api/v1/assistant/clarify`
+- `GET /api/v1/assistant/suggestions`
+- `GET /api/v1/assistant/citations/{chunk_id}/open`
+
 OpenAPI specifikace je v `openapi.yaml`.
 
 ## Hlavni tok
@@ -56,6 +63,8 @@ OpenAPI specifikace je v `openapi.yaml`.
 9. Pokud jsou zdroje dostatecne, sestavi prompt a zavola LLM Gateway chat completion.
 10. Vrati odpoved, confidence, citace, `used_chunks`, warnings a `missing_information`.
 11. Zapise audit event pres Registry API. Do auditu jde hash odpovedi, ID chunku a ID dokumentu, ne plny text odpovedi.
+
+Volitelne pole `response_language` podporuje `cs` a `en`. Vychozi hodnota je `cs`. Hodnota se pouziva pro RAG odpoved, no-answer texty, Employee Assistant clarifikace a navrhy dotazu; citovane zdrojove vyryvky zustavaji v puvodnim jazyce dokumentu.
 
 ## Konfigurace
 
@@ -79,6 +88,7 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_LLM_GATEWAY_BASE_URL` | `http://localhost:8080/api/v1` | LLM Gateway API base URL. |
 | `AKL_RAG_NO_ANSWER_MIN_SCORE` | `0.35` | Minimalni rerank score pro odpoved. |
 | `AKL_RAG_MAX_CONTEXT_CHARS` | `12000` | Maximalni velikost kontextu pro LLM. |
+| `AKL_RAG_ANSWER_MAX_TOKENS` | `512` | Maximalni delka generovane odpovedi posilana do LLM Gateway. |
 
 Phase 02 compatibility aliases jsou take podporovane:
 

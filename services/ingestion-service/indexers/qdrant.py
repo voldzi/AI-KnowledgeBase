@@ -52,13 +52,36 @@ class QdrantIndexer:
             ]
             return IndexingResult(indexed_chunks=len(chunks))
 
-        await self._ensure_collection(len(vectors[0]))
+        vector_size = self._validate_vector_sizes(vectors, embedding_model=embedding_model)
+        await self._ensure_collection(vector_size)
         if self.settings.qdrant_delete_existing_version:
             await self._delete_existing_version(chunks[0].document_version_id)
         await self._upsert_points(
             [self._point(chunk, vector, embedding_model=embedding_model) for chunk, vector in zip(chunks, vectors, strict=True)]
         )
         return IndexingResult(indexed_chunks=len(chunks))
+
+    def _validate_vector_sizes(self, vectors: list[list[float]], *, embedding_model: str) -> int:
+        actual_sizes = {len(vector) for vector in vectors}
+        expected_size = self.settings.qdrant_vector_size
+        if actual_sizes == {expected_size}:
+            return expected_size
+
+        raise IngestionError(
+            "QDRANT_VECTOR_SIZE_MISMATCH",
+            (
+                "Embedding vector size does not match the configured Qdrant vector size. "
+                "Use bge-m3 with the real Qdrant profile, or switch both ingestion and RAG "
+                "to the mock/dev-test profile."
+            ),
+            status_code=500,
+            details={
+                "collection": self.settings.qdrant_collection,
+                "configured_vector_size": expected_size,
+                "actual_vector_sizes": sorted(actual_sizes),
+                "embedding_model": embedding_model,
+            },
+        )
 
     async def _ensure_collection(self, vector_size: int) -> None:
         async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
@@ -67,6 +90,31 @@ class QdrantIndexer:
                 headers=self._headers(),
             )
             if response.status_code == 200:
+                existing_size, existing_distance = _collection_vector_config(response.json())
+                expected_distance = self.settings.qdrant_distance
+                if existing_size != vector_size:
+                    raise IngestionError(
+                        "QDRANT_COLLECTION_VECTOR_SIZE_MISMATCH",
+                        "Qdrant collection vector size does not match the configured embedding model.",
+                        status_code=500,
+                        details={
+                            "collection": self.settings.qdrant_collection,
+                            "configured_vector_size": vector_size,
+                            "existing_vector_size": existing_size,
+                            "embedding_model": self.settings.default_embedding_model,
+                        },
+                    )
+                if existing_distance and existing_distance.lower() != expected_distance.lower():
+                    raise IngestionError(
+                        "QDRANT_COLLECTION_DISTANCE_MISMATCH",
+                        "Qdrant collection distance does not match the configured distance.",
+                        status_code=500,
+                        details={
+                            "collection": self.settings.qdrant_collection,
+                            "configured_distance": expected_distance,
+                            "existing_distance": existing_distance,
+                        },
+                    )
                 return
             if response.status_code != 404:
                 raise IngestionError(
@@ -80,7 +128,7 @@ class QdrantIndexer:
                 headers=self._headers(),
                 json={
                     "vectors": {
-                        "size": vector_size,
+                        "size": self.settings.qdrant_vector_size,
                         "distance": self.settings.qdrant_distance,
                     }
                 },
@@ -149,3 +197,22 @@ class QdrantIndexer:
         if not self.settings.qdrant_api_key:
             return {}
         return {"api-key": self.settings.qdrant_api_key}
+
+
+def _collection_vector_config(data: dict[str, Any]) -> tuple[int | None, str | None]:
+    result = data.get("result")
+    if not isinstance(result, dict):
+        return None, None
+    config = result.get("config")
+    if not isinstance(config, dict):
+        return None, None
+    params = config.get("params")
+    if not isinstance(params, dict):
+        return None, None
+    vectors = params.get("vectors")
+    if not isinstance(vectors, dict):
+        return None, None
+
+    size = vectors.get("size")
+    distance = vectors.get("distance")
+    return size if isinstance(size, int) else None, distance if isinstance(distance, str) else None

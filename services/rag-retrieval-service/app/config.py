@@ -96,6 +96,7 @@ class Settings:
     default_max_chunks: int
     retrieval_candidate_limit: int
     max_context_chars: int
+    answer_max_tokens: int
     hybrid_dense_weight: float
     no_answer_min_score: float
     confidence_high_threshold: float
@@ -148,6 +149,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             _get(source, "AKL_RAG_RETRIEVAL_CANDIDATE_LIMIT", str(max(24, default_max_chunks * 3)))
         )
         max_context_chars = int(_get(source, "AKL_RAG_MAX_CONTEXT_CHARS", "12000"))
+        answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "512"))
         hybrid_dense_weight = float(_get(source, "AKL_RAG_HYBRID_DENSE_WEIGHT", "0.35"))
         no_answer_min_score = float(_get_first(source, ("AKL_RAG_NO_ANSWER_MIN_SCORE", "RAG_MIN_SCORE"), "0.35"))
         confidence_high_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_HIGH_THRESHOLD", "0.75"))
@@ -167,6 +169,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_RETRIEVAL_CANDIDATE_LIMIT must be at least AKL_RAG_DEFAULT_MAX_CHUNKS")
     if max_context_chars <= 0:
         raise ConfigError("AKL_RAG_MAX_CONTEXT_CHARS must be greater than zero")
+    if answer_max_tokens <= 0:
+        raise ConfigError("AKL_RAG_ANSWER_MAX_TOKENS must be greater than zero")
     if not 0 <= hybrid_dense_weight <= 1:
         raise ConfigError("AKL_RAG_HYBRID_DENSE_WEIGHT must be between 0 and 1")
     if not 0 <= no_answer_min_score <= 1:
@@ -222,6 +226,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         default_max_chunks=default_max_chunks,
         retrieval_candidate_limit=retrieval_candidate_limit,
         max_context_chars=max_context_chars,
+        answer_max_tokens=answer_max_tokens,
         hybrid_dense_weight=hybrid_dense_weight,
         no_answer_min_score=no_answer_min_score,
         confidence_high_threshold=confidence_high_threshold,

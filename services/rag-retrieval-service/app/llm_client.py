@@ -55,7 +55,11 @@ class MockLLMGatewayClient:
         source_text = _first_source_text_line(context)
         first_sentence = source_text.split(".")[0].strip()
         if not first_sentence:
+            if metadata.get("response_language") == "en":
+                return "No sufficiently reliable source was found for the question."
             return "K dotazu nebyl nalezen dostatecne oporyhodny zdroj."
+        if metadata.get("response_language") == "en":
+            return f"According to the cited sources: {first_sentence}."
         return f"Podle citovanych zdroju: {first_sentence}."
 
     async def readiness(self) -> str:
@@ -103,7 +107,7 @@ class HttpLLMGatewayClient:
                 "model": self._settings.chat_model,
                 "messages": messages,
                 "temperature": 0.1,
-                "max_tokens": 900,
+                "max_tokens": self._settings.answer_max_tokens,
                 "stream": False,
                 "metadata": metadata,
             },
@@ -134,9 +138,9 @@ def _extract_context(messages: list[dict[str, str]]) -> str:
     for message in reversed(messages):
         if message.get("role") == "user":
             content = message.get("content", "")
-            marker = "KONTEXT:"
-            if marker in content:
-                return content.split(marker, 1)[1]
+            for marker in ("KONTEXT:", "CONTEXT:"):
+                if marker in content:
+                    return content.split(marker, 1)[1]
     return ""
 
 

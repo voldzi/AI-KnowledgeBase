@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.config import Settings
 from app.llm_client import LLMGatewayClient
-from app.schemas import Citation, Confidence, RagAnswer, RetrievedChunk
+from app.schemas import AnswerMode, Citation, Confidence, RagAnswer, ResponseLanguage, RetrievedChunk
 from app.security import AuthContext
 from policies.no_answer import NO_ANSWER_TEXT
 
@@ -21,27 +21,27 @@ class AnswerComposer:
         confidence: Confidence,
         warnings: list[str],
         max_chunks: int,
+        answer_mode: AnswerMode = "normative_with_citations",
+        response_language: ResponseLanguage = "cs",
         auth_context: AuthContext | None = None,
     ) -> RagAnswer:
         selected, truncated = self._select_context(chunks[:max_chunks])
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are the AKL Retrieval answer composer. Answer only from the supplied context. "
-                    "Do not add facts that are not supported by cited chunks. If the context is insufficient, "
-                    "say that the source support is insufficient."
-                ),
+                "content": _system_prompt(answer_mode, response_language),
             },
             {
                 "role": "user",
-                "content": _build_user_prompt(query=query, chunks=selected),
+                "content": _build_user_prompt(query=query, chunks=selected, response_language=response_language),
             },
         ]
         answer = await self._llm_client.chat_completion(
             messages=messages,
             metadata={
                 "purpose": "rag_answer_composition",
+                "answer_mode": answer_mode,
+                "response_language": response_language,
                 "query_id": query_id,
                 "chunk_count": len(selected),
                 "used_chunk_ids": [chunk.chunk_id for chunk in selected],
@@ -89,12 +89,23 @@ class AnswerComposer:
         return selected, truncated
 
 
-def _build_user_prompt(*, query: str, chunks: list[RetrievedChunk]) -> str:
-    lines = [
-        f"DOTAZ: {query}",
-        "",
-        "KONTEXT:",
-    ]
+def _build_user_prompt(*, query: str, chunks: list[RetrievedChunk], response_language: ResponseLanguage = "cs") -> str:
+    if response_language == "en":
+        lines = [
+            "FINAL ANSWER LANGUAGE: English",
+            "Translate supported facts into English when the source text is in another language.",
+            f"QUESTION: {query}",
+            "",
+            "CONTEXT:",
+        ]
+    else:
+        lines = [
+            "JAZYK FINÁLNÍ ODPOVĚDI: čeština",
+            "Přelož podložená fakta do češtiny, pokud je zdrojový text v jiném jazyce.",
+            f"DOTAZ: {query}",
+            "",
+            "KONTEXT:",
+        ]
     for chunk in chunks:
         citation = chunk.citation
         section = " > ".join(citation.section_path)
@@ -109,6 +120,68 @@ def _build_user_prompt(*, query: str, chunks: list[RetrievedChunk]) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage = "cs") -> str:
+    if answer_mode == "it_support_answer":
+        base = (
+            "You are the AKL employee assistant. Answer only from the supplied context. "
+            "The API returns source citations separately, so do not include chunk ids, document ids, "
+            "version ids, or bracket citation markers in the final prose. "
+            "Do not add facts that are not supported by the supplied context. If the context is insufficient, "
+            "say that the source support is insufficient."
+        )
+    else:
+        base = (
+            "You are the AKL Retrieval answer composer. Answer only from the supplied context. "
+            "Every factual or normative claim must be supported by cited chunk ids in square brackets. "
+            "Do not add facts that are not supported by cited chunks. If the context is insufficient, "
+            "say that the source support is insufficient."
+        )
+    language_instruction = {
+        "cs": (
+            "The selected UI language is Czech. Write the final answer in Czech only, "
+            "even when the user question or source context is in another language. "
+            "Keep citation chunk ids unchanged."
+        ),
+        "en": (
+            "The selected UI language is English. Write the final answer in English only, "
+            "even when the user question or source context is Czech or another language. "
+            "Translate supported facts into English. Keep citation chunk ids unchanged. "
+            "Do not write Czech sentences except source titles, proper names, or identifiers."
+        ),
+    }[response_language]
+    mode_prompts: dict[str, str] = {
+        "ask": "Provide a concise sourced answer for an employee-facing assistant.",
+        "standard_answer": "Provide a concise sourced answer.",
+        "normative_with_citations": "Provide a normative answer with citations.",
+        "normative_answer_with_citations": "Provide a normative answer with citations.",
+        "find_procedure": "Find the relevant procedure and explain the actionable steps with citations.",
+        "find_owner": "Identify the owner, gestor, or accountable role only when supported by citations.",
+        "find_responsibility": "Identify responsibilities and role boundaries with citations.",
+        "summary": "Summarize only the provided context and preserve citations.",
+        "extract_obligations": "Extract obligations as role, obligation, deadline if present, and citation.",
+        "extract_roles": "Extract roles and responsibilities with citations.",
+        "extract_deadlines": "Extract terms, deadlines, validity dates, and timing constraints with citations.",
+        "extract_risks": "Extract risks, failure scenarios, controls, and limitations with citations.",
+        "create_checklist": "Create a checklist where each item is grounded in a citation.",
+        "create_faq": "Create a FAQ from the context. Each answer must cite source chunks.",
+        "create_kb_article": "Create a short knowledge base article with cited sections.",
+        "find_conflicts": "Identify possible conflicts without choosing a winner unless a cited source clearly resolves it.",
+        "find_missing_metadata": "Identify missing or weak governance metadata only when supported by context.",
+        "explain_process": "Explain the process as ordered steps with citations.",
+        "it_support_answer": (
+            "Answer in plain employee-facing language. Avoid internal implementation terms such as API endpoint names, "
+            "service container names, chunk ids, vector databases, embeddings, reranking, model gateways, model providers, "
+            "ports, Docker, Kubernetes, monitoring product names, and runtime internals unless the user explicitly asks for "
+            "technical implementation detail. When source text contains those details, summarize them as business capabilities "
+            "such as user interface, document registry, document processing, search, answer generation, source display, audit, "
+            "and access control."
+        ),
+        "manager_brief": "Provide a short management brief with decision-relevant facts and citations.",
+        "audit_question": "Answer audit questions conservatively, preserve source constraints, and cite every factual claim.",
+    }
+    return f"{base} {language_instruction} {mode_prompts.get(answer_mode, mode_prompts['standard_answer'])}"
 
 
 def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:

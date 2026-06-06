@@ -12,6 +12,7 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.registry_client_mode == "mock"
     assert settings.retriever_mode == "mock"
     assert settings.llm_client_mode == "mock"
+    assert settings.answer_max_tokens == 512
 
 
 def test_production_rejects_mock_clients() -> None:
@@ -29,6 +30,11 @@ def test_production_rejects_mock_clients() -> None:
 def test_invalid_threshold_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_NO_ANSWER_MIN_SCORE"):
         load_settings({"AKL_RAG_NO_ANSWER_MIN_SCORE": "2"})
+
+
+def test_invalid_answer_max_tokens_is_rejected() -> None:
+    with pytest.raises(ConfigError, match="AKL_RAG_ANSWER_MAX_TOKENS"):
+        load_settings({"AKL_RAG_ANSWER_MAX_TOKENS": "0"})
 
 
 def test_phase_02_legacy_env_names_are_supported() -> None:

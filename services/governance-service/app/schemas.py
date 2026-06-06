@@ -13,6 +13,7 @@ DocumentType = Literal[
     "procedure",
     "manual",
     "knowledge_base_article",
+    "project_documentation",
     "meeting_record",
     "contract",
     "attachment",

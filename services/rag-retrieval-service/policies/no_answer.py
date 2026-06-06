@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.config import Settings
-from app.schemas import Confidence, RagAnswer, RetrievedChunk
+from app.schemas import Confidence, RagAnswer, ResponseLanguage, RetrievedChunk
 
 NO_ANSWER_TEXT = "K dotazu nebyl nalezen dostatecne oporyhodny zdroj v povolenych dokumentech."
+NO_ANSWER_TEXT_EN = "No sufficiently reliable source was found in the allowed documents for this question."
 
 
 @dataclass(frozen=True)
@@ -78,16 +79,33 @@ class NoAnswerPolicy:
             missing_information=None,
         )
 
-    def no_answer(self, *, query_id: str, decision: PolicyDecision) -> RagAnswer:
+    def no_answer(
+        self,
+        *,
+        query_id: str,
+        decision: PolicyDecision,
+        response_language: ResponseLanguage = "cs",
+    ) -> RagAnswer:
         return RagAnswer(
             query_id=query_id,
-            answer=NO_ANSWER_TEXT,
+            answer=NO_ANSWER_TEXT_EN if response_language == "en" else NO_ANSWER_TEXT,
             confidence=decision.confidence,
             citations=[],
             warnings=decision.warnings,
             used_chunks=[],
-            missing_information=decision.missing_information,
+            missing_information=_missing_information(decision.missing_information, response_language),
         )
 
     def _authz_filtered(self, denied_document_ids: set[str]) -> bool:
         return self._settings.authz_mode == "registry" and bool(denied_document_ids)
+
+
+def _missing_information(value: str | None, response_language: ResponseLanguage) -> str | None:
+    if response_language == "cs" or value is None:
+        return value
+    translations = {
+        "Chybi citovatelny chunk v povolenych dokumentech.": "A citable source is missing from the allowed documents.",
+        "Nalezeny chunk nema dostatecna citacni metadata.": "The retrieved source does not have sufficient citation metadata.",
+        "Nejlepsi nalezeny zdroj nema dostatecnou relevanci.": "The best retrieved source is not relevant enough.",
+    }
+    return translations.get(value, value)

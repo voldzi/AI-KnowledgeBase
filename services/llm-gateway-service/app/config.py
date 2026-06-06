@@ -101,7 +101,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     default_chat_model = _get_any(
         source,
         ("AKL_LLM_DEFAULT_CHAT_MODEL", "LLM_GATEWAY_DEFAULT_CHAT_MODEL", "AKL_OLLAMA_CHAT_MODEL"),
-        "qwen2.5:14b",
+        "gemma4:12b",
     )
     default_embedding_model = _get_any(
         source,

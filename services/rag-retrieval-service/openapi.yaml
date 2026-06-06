@@ -108,6 +108,211 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/chunks/{chunk_id}/source-context:
+    get:
+      tags:
+      - viewer
+      summary: Chunk Source Context
+      operationId: chunk_source_context_api_v1_chunks__chunk_id__source_context_get
+      parameters:
+      - name: chunk_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chunk Id
+      - name: subject_id
+        in: query
+        required: false
+        schema:
+          type: string
+          default: user_dev
+          title: Subject Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceContextResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/citations/{chunk_id}/open:
+    get:
+      tags:
+      - viewer
+      summary: Open Citation
+      operationId: open_citation_api_v1_citations__chunk_id__open_get
+      parameters:
+      - name: chunk_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chunk Id
+      - name: subject_id
+        in: query
+        required: false
+        schema:
+          type: string
+          default: user_dev
+          title: Subject Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceContextResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/citations/{chunk_id}/open:
+    get:
+      tags:
+      - assistant
+      summary: Open Assistant Citation
+      operationId: open_assistant_citation_api_v1_assistant_citations__chunk_id__open_get
+      parameters:
+      - name: chunk_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chunk Id
+      - name: subject_id
+        in: query
+        required: false
+        schema:
+          type: string
+          default: user_dev
+          title: Subject Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceContextResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/chat:
+    post:
+      tags:
+      - assistant
+      summary: Assistant Chat
+      operationId: assistant_chat_api_v1_assistant_chat_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantChatRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantChatResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/clarify:
+    post:
+      tags:
+      - assistant
+      summary: Assistant Clarify
+      operationId: assistant_clarify_api_v1_assistant_clarify_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantChatRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantChatResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/suggestions:
+    get:
+      tags:
+      - assistant
+      summary: Assistant Suggestions
+      operationId: assistant_suggestions_api_v1_assistant_suggestions_get
+      parameters:
+      - name: response_language
+        in: query
+        required: false
+        schema:
+          enum:
+          - cs
+          - en
+          type: string
+          default: cs
+          title: Response Language
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantSuggestionsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/conversations/{conversation_id}:
+    get:
+      tags:
+      - assistant
+      summary: Assistant Conversation
+      operationId: assistant_conversation_api_v1_assistant_conversations__conversation_id__get
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Conversation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantConversationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/rag/compare-documents:
     post:
       tags:
@@ -181,9 +386,30 @@ components:
         answer_mode:
           type: string
           enum:
+          - ask
+          - standard_answer
           - normative_with_citations
+          - normative_answer_with_citations
           - retrieve_only
           - compare
+          - compare_documents
+          - summary
+          - extract_obligations
+          - extract_roles
+          - extract_deadlines
+          - extract_risks
+          - find_procedure
+          - find_owner
+          - find_responsibility
+          - create_checklist
+          - create_faq
+          - create_kb_article
+          - find_conflicts
+          - find_missing_metadata
+          - explain_process
+          - it_support_answer
+          - manager_brief
+          - audit_question
           title: Answer Mode
           default: normative_with_citations
         max_chunks:
@@ -192,12 +418,240 @@ components:
           minimum: 1.0
           title: Max Chunks
           default: 8
+        response_language:
+          type: string
+          enum:
+          - cs
+          - en
+          title: Response Language
+          default: cs
       additionalProperties: false
       type: object
       required:
       - subject_id
       - query
       title: AnswerRequest
+    AssistantChatRequest:
+      properties:
+        user_id:
+          type: string
+          minLength: 1
+          title: User Id
+        conversation_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Conversation Id
+        message:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Message
+        context:
+          additionalProperties: true
+          type: object
+          title: Context
+        mode:
+          type: string
+          enum:
+          - ask
+          - standard_answer
+          - normative_with_citations
+          - normative_answer_with_citations
+          - retrieve_only
+          - compare
+          - compare_documents
+          - summary
+          - extract_obligations
+          - extract_roles
+          - extract_deadlines
+          - extract_risks
+          - find_procedure
+          - find_owner
+          - find_responsibility
+          - create_checklist
+          - create_faq
+          - create_kb_article
+          - find_conflicts
+          - find_missing_metadata
+          - explain_process
+          - it_support_answer
+          - manager_brief
+          - audit_question
+          title: Mode
+          default: it_support_answer
+        response_language:
+          type: string
+          enum:
+          - cs
+          - en
+          title: Response Language
+          default: cs
+      additionalProperties: false
+      type: object
+      required:
+      - user_id
+      - message
+      title: AssistantChatRequest
+    AssistantChatResponse:
+      properties:
+        response_type:
+          type: string
+          enum:
+          - answer
+          - clarification_needed
+          - no_answer
+          - restricted
+          - handoff_recommended
+          title: Response Type
+        conversation_id:
+          type: string
+          title: Conversation Id
+        answer:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Answer
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+        questions:
+          items:
+            $ref: '#/components/schemas/ClarificationQuestion'
+          type: array
+          title: Questions
+        why_needed:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Why Needed
+        current_context:
+          additionalProperties: true
+          type: object
+          title: Current Context
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        follow_up_questions:
+          items:
+            type: string
+          type: array
+          title: Follow Up Questions
+        suggested_actions:
+          items:
+            $ref: '#/components/schemas/AssistantSuggestedAction'
+          type: array
+          title: Suggested Actions
+        confidence:
+          anyOf:
+          - type: string
+            enum:
+            - high
+            - medium
+            - low
+            - insufficient_source
+            - conflicting_sources
+          - type: 'null'
+          title: Confidence
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        missing_information:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Missing Information
+        recommended_action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recommended Action
+      type: object
+      required:
+      - response_type
+      - conversation_id
+      title: AssistantChatResponse
+    AssistantConversationResponse:
+      properties:
+        conversation_id:
+          type: string
+          title: Conversation Id
+        status:
+          type: string
+          const: ephemeral
+          title: Status
+        messages:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Messages
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - conversation_id
+      - status
+      title: AssistantConversationResponse
+    AssistantSuggestedAction:
+      properties:
+        label:
+          type: string
+          title: Label
+        action_type:
+          type: string
+          title: Action Type
+        target:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target
+      type: object
+      required:
+      - label
+      - action_type
+      title: AssistantSuggestedAction
+    AssistantSuggestion:
+      properties:
+        label:
+          type: string
+          title: Label
+        prompt:
+          type: string
+          title: Prompt
+        domain:
+          type: string
+          title: Domain
+        audience:
+          type: string
+          title: Audience
+          default: employee
+      type: object
+      required:
+      - label
+      - prompt
+      - domain
+      title: AssistantSuggestion
+    AssistantSuggestionsResponse:
+      properties:
+        suggestions:
+          items:
+            $ref: '#/components/schemas/AssistantSuggestion'
+          type: array
+          title: Suggestions
+      type: object
+      required:
+      - suggestions
+      title: AssistantSuggestionsResponse
     ChunkCitation:
       properties:
         document_id:
@@ -299,6 +753,31 @@ components:
       - version_label
       - chunk_id
       title: Citation
+    ClarificationQuestion:
+      properties:
+        id:
+          type: string
+          title: Id
+        question:
+          type: string
+          title: Question
+        type:
+          type: string
+          enum:
+          - free_text
+          - single_choice
+          title: Type
+        options:
+          items:
+            type: string
+          type: array
+          title: Options
+      type: object
+      required:
+      - id
+      - question
+      - type
+      title: ClarificationQuestion
     HTTPValidationError:
       properties:
         detail:
@@ -383,6 +862,7 @@ components:
             - procedure
             - manual
             - knowledge_base_article
+            - project_documentation
             - meeting_record
             - contract
             - attachment
@@ -426,9 +906,30 @@ components:
         answer_mode:
           type: string
           enum:
+          - ask
+          - standard_answer
           - normative_with_citations
+          - normative_answer_with_citations
           - retrieve_only
           - compare
+          - compare_documents
+          - summary
+          - extract_obligations
+          - extract_roles
+          - extract_deadlines
+          - extract_risks
+          - find_procedure
+          - find_owner
+          - find_responsibility
+          - create_checklist
+          - create_faq
+          - create_kb_article
+          - find_conflicts
+          - find_missing_metadata
+          - explain_process
+          - it_support_answer
+          - manager_brief
+          - audit_question
           title: Answer Mode
           default: normative_with_citations
         max_chunks:
@@ -437,6 +938,13 @@ components:
           minimum: 1.0
           title: Max Chunks
           default: 8
+        response_language:
+          type: string
+          enum:
+          - cs
+          - en
+          title: Response Language
+          default: cs
       additionalProperties: false
       type: object
       required:
@@ -548,6 +1056,153 @@ components:
       - text
       - citation
       title: RetrievedChunk
+    SourceContextResponse:
+      properties:
+        chunk_id:
+          type: string
+          title: Chunk Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        document_title:
+          type: string
+          title: Document Title
+        source_file_uri:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source File Uri
+        source_mime_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Mime Type
+        source_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source File Name
+        source_size_bytes:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Source Size Bytes
+        source_sha256:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Sha256
+        viewer_mode:
+          type: string
+          enum:
+          - pdf
+          - markdown
+          - text
+          - html
+          - table
+          - presentation
+          - image
+          - ocr
+          - binary
+          title: Viewer Mode
+        location:
+          $ref: '#/components/schemas/SourceLocation'
+        chunk_text:
+          type: string
+          title: Chunk Text
+        before_text:
+          type: string
+          title: Before Text
+          default: ''
+        after_text:
+          type: string
+          title: After Text
+          default: ''
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - chunk_id
+      - document_id
+      - document_version_id
+      - document_title
+      - viewer_mode
+      - location
+      - chunk_text
+      title: SourceContextResponse
+    SourceLocation:
+      properties:
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        slide_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Slide Number
+        sheet_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sheet Name
+        row_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Row Number
+        column_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Column Name
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        section_title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Section Title
+        paragraph_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paragraph Number
+        char_start:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Char Start
+        char_end:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Char End
+        bbox:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Bbox
+      type: object
+      title: SourceLocation
     ValidationError:
       properties:
         loc:
