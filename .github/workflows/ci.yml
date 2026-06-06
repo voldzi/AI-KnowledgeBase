@@ -104,6 +104,45 @@ jobs:
           PYTHONPATH: .
         run: python -m pytest
 
+  registry-postgres:
+    name: Registry API / PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: akl
+          POSTGRES_USER: akl_platform
+          POSTGRES_PASSWORD: akl_local_postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U akl_platform -d akl"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/registry-api/pyproject.toml
+
+      - name: Install Registry API dependencies
+        working-directory: services/registry-api
+        run: python -m pip install -e ".[test]"
+
+      - name: Run PostgreSQL migration and integration smoke
+        env:
+          AKL_REGISTRY_PG_ADMIN_URL: postgresql://akl_platform:akl_local_postgres@localhost:5432/akl
+          AKL_REGISTRY_PG_DATABASE: akl_registry_smoke
+        run: python scripts/registry_postgres_smoke.py
+
   compose:
     name: Docker Compose Config
     runs-on: ubuntu-latest

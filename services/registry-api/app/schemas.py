@@ -231,6 +231,56 @@ class DocumentListResponse(BaseModel):
     offset: int
 
 
+class ExternalDocumentOwner(BaseModel):
+    user_id: str = Field(min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, max_length=200)
+
+
+class ExternalDocumentUpsertRequest(BaseModel):
+    source_system: str = Field(min_length=1, max_length=80)
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: str = Field(min_length=1, max_length=80)
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_type: DocumentType
+    title: str = Field(min_length=1, max_length=300)
+    classification: Classification = Classification.internal
+    owner: ExternalDocumentOwner
+    tenant_id: str = Field(default="default", min_length=1, max_length=128)
+    gestor_unit: str | None = Field(default=None, max_length=128)
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    citation_base_url: str | None = Field(default=None, max_length=512)
+    access_policies: list[AccessPolicyCreate] | None = None
+    assignments: list[DocumentAssignmentCreate] | None = None
+
+
+class ExternalDocumentRefResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    external_document_id: str
+    tenant_id: str
+    source_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    current_document_version_id: str | None
+    current_file_id: str | None
+    current_ingestion_job_id: str | None
+    current_ingestion_status: str | None
+    akb_source_uri: str | None
+    citation_base_url: str | None
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="ref_metadata")
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExternalDocumentResponse(BaseModel):
+    external_document: ExternalDocumentRefResponse
+    document: DocumentResponse
+    created: bool = False
+
+
 class DocumentFileCreate(BaseModel):
     filename: str | None = Field(default=None, max_length=300)
     mime_type: str | None = Field(default=None, max_length=160)

@@ -1,0 +1,223 @@
+# STRATOS External Documents API
+
+Tento dokument je interní kontrakt pro STRATOS aplikace, které potřebují uložit nebo číst dokumenty přes AI KnowledgeBase / AKL. Frontendy STRATOS nevolají AKL přímo. Volání jde přes serverový adapter ve STRATOS `apps/api`, který zajistí autentizaci, audit, tenant a mapování oprávnění.
+
+## Stav kontraktu
+
+Implementovaná část:
+
+- idempotentní registrace externího dokumentu,
+- získání externí reference a navázaného AKL dokumentu,
+- unikátní vazba `tenant_id + source_system + external_ref`,
+- audit vytvoření externí reference.
+
+Navazující části budou doplněné v dalších fázích:
+
+- vytvoření dokumentové verze,
+- spuštění ingestion jobu,
+- sjednocený ingestion status,
+- query nad externími dokumenty,
+- extrakce insightů,
+- stabilní citation open endpoint pro STRATOS adapter.
+
+## Zásady
+
+- Source of truth pro obchodní objekty zůstává v aplikacích STRATOS.
+- AKL drží dokument, verze, souborová metadata, OCR/text/chunky, index a citace.
+- `external_ref` musí být stabilní a idempotentní.
+- Stejné `tenant_id`, `source_system` a `external_ref` nesmí vytvořit druhý AKL dokument.
+- AI výstupy jsou návrhy s citací, ne přímý zápis do Budget, ProjectFlow nebo jiného source-of-truth modelu.
+- Browser klient STRATOS nesmí volat tyto endpointy přímo.
+
+## Autentizace a audit
+
+STRATOS adapter posílá service-to-service request s hlavičkami:
+
+```http
+Authorization: Bearer <service-token>
+X-AKL-Subject: <subject_user_id_or_service_id>
+X-AKL-Roles: stratos_service,document_manager
+X-AKL-Groups: <optional comma separated groups>
+X-Request-ID: <request id>
+X-Correlation-ID: <correlation id propagated across STRATOS>
+```
+
+V lokálním mock/dev režimu mohou být použité `X-AKL-*` hlavičky. Produkční režim musí používat OIDC/service token podle bezpečnostní konfigurace AKL.
+
+## Endpointy
+
+### Upsert externího dokumentu
+
+```http
+POST /api/v1/external-documents/upsert
+```
+
+Payload:
+
+```json
+{
+  "tenant_id": "default",
+  "source_system": "STRATOS_BUDGET",
+  "external_ref": "contract:256-2022-S:main",
+  "entity_type": "Contract",
+  "entity_id": "contract-uuid",
+  "document_type": "contract",
+  "title": "Smlouva 256-2022-S - Zajištění provozu přebíracích míst",
+  "classification": "internal",
+  "owner": {
+    "user_id": "user-uuid",
+    "display_name": "Portfolio manager"
+  },
+  "gestor_unit": "Finance",
+  "tags": ["contract", "budget"],
+  "metadata": {
+    "contract_id": "contract-uuid",
+    "contract_number": "256-2022-S",
+    "supplier_id": "supplier-uuid",
+    "supplier_name": "AUTOCONT a.s.",
+    "budget_year": 2026,
+    "procurement_action_id": null,
+    "projectflow_project_id": null
+  },
+  "citation_base_url": "https://akb.example/api/v1/citations"
+}
+```
+
+Odpověď při vytvoření:
+
+```json
+{
+  "created": true,
+  "external_document": {
+    "external_document_id": "extdoc_...",
+    "tenant_id": "default",
+    "source_system": "STRATOS_BUDGET",
+    "external_ref": "contract:256-2022-S:main",
+    "entity_type": "Contract",
+    "entity_id": "contract-uuid",
+    "document_id": "doc_...",
+    "current_document_version_id": null,
+    "current_file_id": null,
+    "current_ingestion_job_id": null,
+    "current_ingestion_status": null,
+    "akb_source_uri": null,
+    "citation_base_url": "https://akb.example/api/v1/citations",
+    "metadata": {
+      "contract_id": "contract-uuid",
+      "contract_number": "256-2022-S"
+    },
+    "created_at": "2026-06-07T00:00:00Z",
+    "updated_at": "2026-06-07T00:00:00Z"
+  },
+  "document": {
+    "document_id": "doc_...",
+    "title": "Smlouva 256-2022-S - Zajištění provozu přebíracích míst",
+    "document_type": "contract",
+    "status": "draft",
+    "classification": "internal",
+    "owner_id": "user-uuid",
+    "owner": "user-uuid",
+    "gestor_unit": "Finance",
+    "tags": ["budget", "contract", "external", "stratos_budget"],
+    "metadata": {
+      "contract_id": "contract-uuid",
+      "contract_number": "256-2022-S",
+      "external": {
+        "tenant_id": "default",
+        "source_system": "STRATOS_BUDGET",
+        "external_ref": "contract:256-2022-S:main",
+        "entity_type": "Contract",
+        "entity_id": "contract-uuid"
+      }
+    },
+    "created_at": "2026-06-07T00:00:00Z",
+    "updated_at": "2026-06-07T00:00:00Z",
+    "access_policies": [],
+    "assignments": []
+  }
+}
+```
+
+Opakované volání se stejným `tenant_id`, `source_system` a `external_ref` vrátí stejnou vazbu s `created: false`.
+
+### Detail externího dokumentu
+
+```http
+GET /api/v1/external-documents/{external_document_id}
+```
+
+Vrací stejný tvar jako upsert, vždy s `created: false`.
+
+## Povolené typy dokumentů
+
+AKL Registry aktuálně podporuje:
+
+- `directive`
+- `regulation`
+- `methodology`
+- `policy`
+- `procedure`
+- `manual`
+- `knowledge_base_article`
+- `project_documentation`
+- `meeting_record`
+- `contract`
+- `attachment`
+- `other`
+
+## Klasifikace
+
+Používejte pouze:
+
+- `public`
+- `internal`
+- `restricted`
+- `confidential`
+
+STRATOS adapter mapuje vlastní klasifikační kódy na tyto hodnoty před voláním AKL.
+
+## Doporučené external_ref
+
+`external_ref` musí být stabilní a čitelné:
+
+```text
+contract:<contractNumber>:main
+contract:<contractNumber>:amendment:<amendmentNumber>
+project:<projectId>:meeting:<meetingId>
+project:<projectId>:documentation:<documentKind>:<sourceId>
+directive:<sourceSystemId>:<documentCode>
+```
+
+Neměňte `external_ref` při změně názvu dokumentu. Název je metadata, externí reference je identita.
+
+## Chybové stavy
+
+| HTTP | Kód | Význam |
+| --- | --- | --- |
+| 400 | validation error | Neplatný payload nebo enum hodnota |
+| 403 | forbidden | Caller nemá oprávnění vytvořit nebo číst dokument |
+| 404 | external_document_not_found | Externí reference neexistuje |
+| 409 | conflict | Porušení unikátního klíče nebo souběžný zápis |
+
+## Minimální tok pro STRATOS aplikaci
+
+1. STRATOS aplikace uloží vlastní obchodní objekt.
+2. STRATOS `apps/api` zavolá `POST /api/v1/external-documents/upsert`.
+3. STRATOS uloží `external_document_id` a `document_id` do své `KnowledgeDocumentRef`.
+4. Po doplnění Fáze 2 STRATOS vytvoří verzi a spustí ingestion job.
+5. RAG a citace budou povolené až po stavu `INDEXED`.
+
+## Navazující kontrakt pro Fázi 2
+
+Plánované endpointy:
+
+```http
+POST /api/v1/external-documents/{externalDocumentId}/versions
+POST /api/v1/external-documents/{externalDocumentId}/ingestion-jobs
+GET  /api/v1/external-documents/{externalDocumentId}/ingestion-status
+POST /api/v1/external-documents/query
+POST /api/v1/external-documents/extract-insights
+GET  /api/v1/citations/{chunkId}/open
+```
+
+Tyto URL jsou rezervované pro stabilní STRATOS kontrakt.

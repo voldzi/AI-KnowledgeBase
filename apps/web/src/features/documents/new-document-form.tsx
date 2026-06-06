@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Save } from "lucide-react";
 
+import { StratosButton, StratosSelect } from "@/components/stratos";
 import { documentTypeLabel } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuthorizationHint, Document } from "@/lib/types";
@@ -90,25 +91,19 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
             <label htmlFor="title">{copy.titleLabel}</label>
             <input id="title" name="title" placeholder={copy.titlePlaceholder} required />
           </div>
-          <div className="field">
-            <label htmlFor="type">{copy.type}</label>
-            <select id="type" name="document_type" defaultValue="directive">
+          <StratosSelect id="type" name="document_type" label={copy.type} defaultValue="directive">
               {["directive", "methodology", "policy", "manual", "project_documentation"].map((value) => (
                 <option key={value} value={value}>{documentTypeLabel(value, language)}</option>
               ))}
-            </select>
-          </div>
+          </StratosSelect>
         </div>
         <div className="form-grid form-grid--two">
-          <div className="field">
-            <label htmlFor="classification">{copy.classification}</label>
-            <select id="classification" name="classification" defaultValue="internal">
+          <StratosSelect id="classification" name="classification" label={copy.classification} defaultValue="internal">
               <option value="public">{copy.public}</option>
               <option value="internal">{copy.internal}</option>
               <option value="restricted">{copy.restricted}</option>
               <option value="confidential">{copy.confidential}</option>
-            </select>
-          </div>
+          </StratosSelect>
           <div className="field">
             <label htmlFor="gestor">{copy.gestorUnit}</label>
             <input id="gestor" name="gestor_unit" placeholder="IT" />
@@ -118,10 +113,10 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
           <label htmlFor="tags">{copy.tags}</label>
           <input id="tags" name="tags" defaultValue="controlled-document,phase02" />
         </div>
-        <button className="button button--primary" type="submit" disabled={!authorization.can_update || submitting}>
+        <StratosButton tone="primary" type="submit" disabled={!authorization.can_update || submitting}>
           <Save size={16} aria-hidden="true" />
           {submitting ? copy.saving : copy.save}
-        </button>
+        </StratosButton>
         {!authorization.can_update ? (
           <p className="notice">{copy.disabled}</p>
         ) : null}

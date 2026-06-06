@@ -21,7 +21,12 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
   try {
     const [document, assignments, versions, jobs, authorization, workflowTasks, auditEvents] = await Promise.all([
       clients.registry.getDocument(documentId, context),
-      clients.registry.listDocumentAssignments(documentId, context),
+      clients.registry.listDocumentAssignments(documentId, context).catch((error) => {
+        if (error instanceof ApiClientError && error.status === 404) {
+          return [];
+        }
+        throw error;
+      }),
       clients.registry.listDocumentVersions(documentId, context),
       clients.ingestion.listJobs(context),
       clients.registry.getAuthorizationHints(context),

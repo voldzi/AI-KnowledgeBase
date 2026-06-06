@@ -20,6 +20,7 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - otevreni auditovaneho RAG source-context chunku pres `/api/documents/{documentId}/source-context?chunk_id=...` s overenim dokumentu a verze,
   - podepsane otevreni zdrojoveho objektu pres `/api/documents/{documentId}/versions/{versionId}/source/open` a HMAC content endpoint `/api/documents/source/content`,
   - page-jump odkaz `#page=N` pro otevreny source-context s cislem strany, pokud je podepsany zdroj dostupny,
+  - nativni preview nad dostupnym podepsanym zdrojem: PDF render citacni strany pres pdf.js s textovou vrstvou a bbox overlayem, Markdown render jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR obrazek s bbox overlayem, DOCX odstavce, XLSX tabulky, PPTX slidy, textovy nahled a CSV tabulka s aktivnim radkem,
   - spustitelny governance action panel pro compare/compliance/conflict workflow pres `/api/documents/{documentId}/governance`,
   - panel organizacnich odpovednosti nad `document_assignments` s roli, subjektem, SLA a eskalaci,
   - audit tab filtrovany podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
@@ -64,8 +65,8 @@ Workflow inbox preferuje autoritativni Registry API tasky. Ingestion tasky zusta
 
 ## 4. Open Production Gaps
 
-- Detail dokumentu umi otevrit citovatelny RAG source-context chunk, pripravit signed source open pro objekty v lokálním storage a nabidnout page-jump URL, ale zatim nema realny native renderer pro PDF/DOCX/tabulky/OCR s highlightem.
-- Governance action panel vola Governance Service, ale web bridge zatim pouziva Registry metadata/source URI/change summary misto plneho extrahovaneho textu dokumentu.
+- Detail dokumentu umi otevrit citovatelny RAG source-context chunk, pripravit signed source open pro objekty v lokálním storage, nabidnout page-jump URL a zobrazit native preview pro PDF/image/OCR/DOCX/XLSX/PPTX/text/Markdown/CSV. PDF preview renderuje citacni stranu pres pdf.js a kombinuje textovou shodu s bbox metadaty; Office preview je extrakcni.
+- Governance action panel vola Governance Service. Web bridge predava extrahovany text pro text/Markdown/CSV a DOCX/XLSX/PPTX zdroje; PDF a dalsi binarni zdroje zustavaji explicitni metadata fallback, dokud nebude dostupna serverova PDF/OCR textova extrakce.
 - AI insighty nejsou persistovane ani schvalovane.
 - Audit tab dokumentu je napojeny na Registry audit list; uplnost zalezi na tom, zda vsechny sluzby zapisují relevantni audit udalosti.
 - Workflow akce zatim nemaji viceurovnove schvalovatele; SLA a eskalacni metadata existuji v `document_assignments`, ale chybi runtime scheduler/notifikace.
@@ -74,7 +75,7 @@ Workflow inbox preferuje autoritativni Registry API tasky. Ingestion tasky zusta
 
 ## 5. Next Recommended Slice
 
-1. Web UI: native renderer pro PDF/DOCX/tabulky/OCR, highlight a presne navazani citaci na viewer lokaci.
-2. Governance Service: predat nativne extrahovany dokumentovy text/chunky a propojit governance vysledky na workflow tasky.
+1. Web UI: pokrocila Office fidelity, PDF textovy highlight primo ve vieweru a presnejsi navazani citaci na viewer lokaci.
+2. Governance Service: doplnit PDF/OCR textovou extrakci a propojit governance vysledky na workflow tasky.
 3. Registry API: vicekrokove approval steps a runtime SLA eskalace nad `document_assignments`.
 4. Object Storage: presunout signed upload/download kontrakt z web bridge do backend sluzby.

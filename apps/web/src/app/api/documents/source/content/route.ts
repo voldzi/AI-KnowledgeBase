@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
-import { readSourceObject, SourceDownloadError, verifySourceDownloadToken } from "@/lib/upload/source-download";
+import {
+  readSourceObject,
+  SourceDownloadError,
+  sourceContentTypeHeader,
+  verifySourceDownloadToken
+} from "@/lib/upload/source-download";
 
 function sourceDownloadErrorResponse(error: SourceDownloadError) {
   return NextResponse.json(
@@ -59,7 +64,7 @@ export async function GET(request: NextRequest) {
         "Cache-Control": "private, no-store",
         "Content-Disposition": contentDispositionFilename(source.filename),
         "Content-Length": String(source.bytes.byteLength),
-        "Content-Type": source.mime_type,
+        "Content-Type": sourceContentTypeHeader(source.mime_type),
         "X-AKL-Source-Open-Id": payload.source_open_id,
         "X-Content-Type-Options": "nosniff"
       }

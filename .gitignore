@@ -50,5 +50,6 @@ volumes/
 
 # Local object/vector/database storage
 minio-data/
+object-storage/
 qdrant-data/
 postgres-data/

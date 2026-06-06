@@ -16,10 +16,10 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel")).toBeVisible();
 
     await page.getByLabel("Klasifikace").selectOption("restricted");
-    await expect(page.getByText("Zobrazeno 1 z 4")).toBeVisible();
+    await expect(page.getByText("Zobrazeno 1 z 9")).toBeVisible();
 
     await page.getByRole("button", { name: "Vyčistit" }).click();
-    await expect(page.locator("tbody tr")).toHaveCount(4);
+    await expect(page.locator("tbody tr")).toHaveCount(9);
   });
 
   test("DW-06, DW-07, DW-09, DW-12, DW-13 and DW-19 detail shows viewer, workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
@@ -37,7 +37,8 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Otevřít source-context chunk_789" }).click();
     await expect(page.getByText("Chunk chunk_789")).toBeVisible();
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
-    await expect(page.getByText("Sekce: Cl. 4 / Odst. 2")).toBeVisible();
+    await expect(page.getByText("Sekce: Cl. 4 / Odst. 2")).toHaveCount(2);
+    await expect(page.getByLabel("Lokace citace").getByText("Sekce: Cl. 4 / Odst. 2")).toBeVisible();
     await expect(page.getByText("Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.")).toBeVisible();
 
     await page.getByRole("button", { name: "Workflow" }).click();
@@ -63,6 +64,96 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("source-context", { exact: true })).toBeVisible();
   });
 
+  test("DW-07 native preview opens an available signed image source with OCR bbox", async ({ page }) => {
+    await page.goto("/documents/doc_103");
+
+    await page.getByRole("button", { name: "Viewer" }).click();
+    await expect(page.getByRole("heading", { name: "Nativní preview" })).toBeVisible();
+    await expect(page.getByText("Nejprve připravte podepsaný zdroj v panelu Zdroj.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
+    await expect(page.getByText("Podepsaný zdroj je připravený.")).toBeVisible();
+    await expect(page.getByText("Dostupnost ve storage")).toBeVisible();
+    await expect(page.getByText("dostupné", { exact: true })).toBeVisible();
+    await expect(page.locator(".native-preview__image")).toBeVisible();
+
+    await page.getByRole("button", { name: "Otevřít source-context chunk_ocr_103" }).click();
+    await expect(page.getByText("Spravce musi potvrdit vlastnika, gestora a workflow task.")).toBeVisible();
+    await expect(page.getByLabel("OCR oblast citace")).toBeVisible();
+    await expect(page.getByLabel("Lokace citace").getByText("Sekce: Prvni kontrola")).toBeVisible();
+  });
+
+  test("DW-07 native preview renders Markdown as a structured document", async ({ page }) => {
+    await page.goto("/documents/doc_109");
+
+    await page.getByRole("button", { name: "Viewer" }).click();
+    await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
+    await expect(page.getByText("Podepsaný zdroj je připravený.")).toBeVisible();
+    await expect(page.locator(".native-preview__markdown h1")).toHaveText("Markdown preview fixture");
+    await expect(page.getByLabel("Obsah dokumentu").getByText("Citation target")).toBeVisible();
+    await expect(page.locator(".native-preview__markdown table").getByText("Code blocks")).toBeVisible();
+    await expect(page.locator(".native-preview__markdown pre").getByText("viewer_mode: markdown")).toBeVisible();
+
+    await page.getByRole("button", { name: "Otevřít source-context chunk_md_109" }).click();
+    await expect(page.locator(".native-preview__markdown-citation")).toContainText("Markdown citation text should be highlighted");
+    await expect(page.getByLabel("Lokace citace").getByText("Sekce: Citation target")).toBeVisible();
+  });
+
+  test("DW-12A insight proposals are generated from source text", async ({ page }) => {
+    await page.goto("/documents/doc_109");
+
+    await page.getByRole("button", { name: "Insighty" }).click();
+    await expect(page.getByText("Autoritativní uložení a schvalování v Registry bude další krok.")).toBeVisible();
+    await page.getByRole("button", { name: "Navrhnout insighty" }).click();
+
+    await expect(page.getByRole("status")).toContainText("Návrhy insightů byly vytvořené ze zdrojového textu.");
+    await expect(page.locator(".insight-item")).toHaveCount(4);
+    await expect(page.getByText("Confidence:")).toHaveCount(4);
+    await expect(page.getByText("Citace: Extracted source")).toHaveCount(4);
+  });
+
+  test("DW-07 native preview renders DOCX, XLSX and presentation sources", async ({ page }) => {
+    const cases = [
+      {
+        documentId: "doc_105",
+        expected: ["DOCX source fixture title", "DOCX viewer extracts controlled document paragraphs."]
+      },
+      {
+        documentId: "doc_106",
+        expected: ["List: Evidence", "Owner", "Security", "Ready"]
+      },
+      {
+        documentId: "doc_107",
+        expected: ["Slide 1", "Presentation source fixture", "Slide text is extracted for native preview."]
+      }
+    ];
+
+    for (const previewCase of cases) {
+      await page.goto(`/documents/${previewCase.documentId}`);
+      await page.getByRole("button", { name: "Viewer" }).click();
+      await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
+      await expect(page.getByText("Podepsaný zdroj je připravený.")).toBeVisible();
+      for (const expectedText of previewCase.expected) {
+        await expect(page.getByText(expectedText).first()).toBeVisible();
+      }
+    }
+  });
+
+  test("DW-07 PDF preview renders citation page with bbox metadata", async ({ page }) => {
+    await page.goto("/documents/doc_108");
+
+    await page.getByRole("button", { name: "Viewer" }).click();
+    await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
+    await expect(page.getByText("Podepsaný zdroj je připravený.")).toBeVisible();
+    await page.getByRole("button", { name: "Otevřít source-context chunk_pdf_108" }).click();
+    await expect(page.getByText("PDF citation area for controlled document preview.")).toBeVisible();
+    await expect(page.locator(".native-preview__pdf-rendered").getByText("Vykreslená strana citace")).toBeVisible();
+    await expect(page.locator(".native-preview__pdf-page canvas")).toBeVisible();
+    await expect(page.locator(".native-preview__bbox--pdf-page")).toBeVisible();
+    await expect(page.locator(".native-preview__pdf-locator").getByText("Lokace v PDF podle metadat")).toBeVisible();
+    await expect(page.getByLabel("Lokace v PDF podle metadat").getByText("Strana 1")).toBeVisible();
+  });
+
   test("DW-08 workflow inbox records an approval decision in mock mode", async ({ page }) => {
     await page.goto("/tasks");
 
@@ -84,6 +175,14 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Otevřít citaci" }).first().click();
     await expect(page.getByText("Chunk chunk_789")).toBeVisible();
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
+      "href",
+      "/documents/doc_102?tab=viewer&chunk_id=chunk_789"
+    );
+
+    await page.goto("/documents/doc_102?tab=viewer&chunk_id=chunk_789");
+    await expect(page.getByRole("button", { name: "Viewer" })).toHaveClass(/tab-button--active/);
+    await expect(page.getByText("Chunk chunk_789")).toBeVisible();
   });
 
   test("DW-16 help center renders role-based guidance", async ({ page }) => {

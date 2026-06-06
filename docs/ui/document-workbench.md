@@ -19,11 +19,14 @@ Implementovano ve web aplikaci:
   - audit,
 - workflow zalozka detailu dokumentu zobrazuje autoritativni Registry tasky a posledni rozhodnuti pro dany dokument,
 - workflow zalozka detailu dokumentu zobrazuje a spravuje `document_assignments`: owner, gestor, reviewer, approver, auditor, steward, SLA a eskalace,
-- workflow zalozka detailu dokumentu spousti Governance Service akce: compare versions, compliance check a conflict detection; vysledek zobrazuje result ID, confidence, warnings, citace a zdrojova omezeni,
+- workflow zalozka detailu dokumentu spousti Governance Service akce: compare versions, compliance check a conflict detection; web bridge predava extrahovany source text pro text/Markdown/CSV a DOCX/XLSX/PPTX, u nepodporovanych zdroju ukazuje explicitni metadata fallback; vysledek zobrazuje result ID, confidence, warnings, citace a zdrojova omezeni,
 - audit zalozka detailu dokumentu filtruje Registry audit udalosti podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
+- insights zalozka detailu dokumentu umi vytvorit pracovni `proposed` insighty ze zdrojoveho textu aktualni verze: povinnosti, role, lhuty a rizika; kazdy navrh ukazuje confidence, citaci a source warnings,
 - viewer zalozka detailu dokumentu nabizi auditovane source-context signaly a po otevreni chunku zobrazuje citovatelny text, zdroj, verzi, stranu a sekci,
 - viewer zalozka detailu dokumentu pripravuje signed source open URL pro zdrojovy objekt a ukazuje, zda je objekt ve storage fyzicky dostupny,
+- citace z Knowledge Chat i Employee Assistant pouzivaji jednotny citation viewer: hlavni odpoved zustava cista pro netechnicke role, technicke identifikatory jsou oddelene v detailu a akce `Otevrit dokument` vede na `/documents/{documentId}?tab=viewer&chunk_id={chunkId}`,
 - pokud je podepsany zdroj dostupny a source-context obsahuje `page_number`, viewer nabidne otevreni zdroje na strance citace pomoci `#page=N`,
+- nativni preview nad signed source zobrazuje PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
@@ -104,11 +107,17 @@ QA gate pokryva:
 
 ### Governance Service
 
-- Predavat Governance Service plny extrahovany text nebo citovatelne chunky misto weboveho metadata-only bridge vstupu.
+- Doplnit serverovou PDF/OCR textovou extrakci pro governance bridge nad stejnym source-object kontraktem.
 - Propojit governance result ID na workflow task closure a audit review.
-- Persistovat AI insighty jako `proposed` a vyzadovat lidske schvaleni.
+
+### Insights
+
+- Persistovat navrzene insighty do Registry jako `document_insights`.
+- Doplnit stavovy workflow `proposed -> approved/rejected`.
+- Schvalene insighty pouzivat jako governed knowledge pro RAG a nápovědu.
 
 ### Web UI
 
-- Prevest viewer z RAG source-context panelu a signed source open odkazu na skutecne nativni zobrazeni zdroje pro PDF/DOCX/tabulky/OCR.
-- Doplnit highlight a native renderer integraci pro citace.
+- Prepojit lokalni STRATOS UI adapter na sdileny `@stratos/ui` balicek, jakmile bude dostupny v AKL Docker build contextu.
+- Doplnit pokrocile Office fidelity prvky nad stejnym signed source kontraktem.
+- Doplnit PDF textovy highlight primo ve vieweru a hlubsi native renderer integraci pro citace.

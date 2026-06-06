@@ -20,6 +20,7 @@ from app.models import (
     DocumentAssignment,
     DocumentFile,
     DocumentVersion,
+    ExternalDocumentRef,
     WorkflowTask,
     make_id,
     utcnow,
@@ -57,6 +58,9 @@ from app.schemas import (
     DocumentVersionCreate,
     DocumentVersionListResponse,
     DocumentVersionResponse,
+    ExternalDocumentResponse,
+    ExternalDocumentRefResponse,
+    ExternalDocumentUpsertRequest,
     HealthResponse,
     WorkflowTaskActionRequest,
     WorkflowTaskKind,
@@ -221,6 +225,64 @@ def _default_assignment_payloads(payload: DocumentCreate) -> list[DocumentAssign
     return assignments
 
 
+def _external_document_metadata(payload: ExternalDocumentUpsertRequest) -> dict[str, object]:
+    return {
+        **dict(payload.metadata),
+        "external": {
+            "tenant_id": payload.tenant_id,
+            "source_system": payload.source_system,
+            "external_ref": payload.external_ref,
+            "entity_type": payload.entity_type,
+            "entity_id": payload.entity_id,
+        },
+    }
+
+
+def _external_document_policies(payload: ExternalDocumentUpsertRequest) -> list[DocumentAccessPolicy]:
+    if payload.access_policies is not None:
+        return [
+            DocumentAccessPolicy(
+                subjects=list(policy.subjects),
+                actions=_action_values(policy.actions),
+                constraints=dict(policy.constraints),
+            )
+            for policy in payload.access_policies
+        ]
+
+    return [
+        DocumentAccessPolicy(
+            subjects=[
+                f"user:{payload.owner.user_id}",
+                "role:admin",
+                "role:document_manager",
+                "role:stratos_service",
+            ],
+            actions=[
+                Action.document_read.value,
+                Action.document_update.value,
+                Action.document_version_create.value,
+                Action.document_version_publish.value,
+                Action.document_version_archive.value,
+                Action.document_ingest.value,
+                Action.document_reindex.value,
+                Action.rag_query.value,
+            ],
+            constraints={
+                "tenant_id": payload.tenant_id,
+                "classification_max": Classification.confidential.value,
+            },
+        ),
+        DocumentAccessPolicy(
+            subjects=["role:reader"],
+            actions=[Action.document_read.value, Action.rag_query.value],
+            constraints={
+                "tenant_id": payload.tenant_id,
+                "classification_max": payload.classification.value,
+            },
+        ),
+    ]
+
+
 def _assignment_models(
     *,
     document: Document,
@@ -356,6 +418,36 @@ def _get_document(db: Session, document_id: str) -> Document:
     if document is None:
         raise problem(status.HTTP_404_NOT_FOUND, "document_not_found", "Document was not found")
     return document
+
+
+def _get_external_document_ref(db: Session, external_document_id: str) -> ExternalDocumentRef:
+    external_ref = db.execute(
+        select(ExternalDocumentRef)
+        .where(ExternalDocumentRef.external_document_id == external_document_id)
+        .options(
+            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
+            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
+        )
+    ).scalar_one_or_none()
+    if external_ref is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "external_document_not_found",
+            "External document reference was not found",
+        )
+    return external_ref
+
+
+def _external_document_response(
+    external_ref: ExternalDocumentRef,
+    *,
+    created: bool,
+) -> ExternalDocumentResponse:
+    return ExternalDocumentResponse(
+        external_document=ExternalDocumentRefResponse.model_validate(external_ref),
+        document=DocumentResponse.model_validate(external_ref.document),
+        created=created,
+    )
 
 
 def _get_version(db: Session, document_id: str, version_id: str) -> DocumentVersion:
@@ -782,6 +874,118 @@ def health() -> HealthResponse:
 def ready(db: Session = Depends(get_db)) -> dict[str, str]:
     db.execute(text("SELECT 1"))
     return {"status": "ready", "service": "registry-api"}
+
+
+@router.post(
+    "/external-documents/upsert",
+    response_model=ExternalDocumentResponse,
+    status_code=status.HTTP_200_OK,
+)
+def upsert_external_document(
+    payload: ExternalDocumentUpsertRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentResponse:
+    existing_ref = db.execute(
+        select(ExternalDocumentRef)
+        .where(
+            ExternalDocumentRef.tenant_id == payload.tenant_id,
+            ExternalDocumentRef.source_system == payload.source_system,
+            ExternalDocumentRef.external_ref == payload.external_ref,
+        )
+        .options(
+            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
+            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
+        )
+    ).scalar_one_or_none()
+    if existing_ref is not None:
+        require_document_action(principal, Action.document_read, existing_ref.document)
+        return _external_document_response(existing_ref, created=False)
+
+    require_global_action(principal, Action.document_create)
+    document = Document(
+        document_id=make_id("doc"),
+        title=payload.title,
+        document_type=payload.document_type.value,
+        status=DocumentStatus.draft.value,
+        classification=payload.classification.value,
+        owner_id=payload.owner.user_id,
+        gestor_unit=payload.gestor_unit,
+        tags=sorted({*payload.tags, "external", payload.source_system.lower()}),
+        document_metadata=_external_document_metadata(payload),
+    )
+    document.access_policies = _external_document_policies(payload)
+    assignment_payloads = _validated_assignment_payloads(
+        payload.assignments
+        if payload.assignments is not None
+        else _default_assignment_payloads(
+            DocumentCreate(
+                title=payload.title,
+                document_type=payload.document_type,
+                owner_id=payload.owner.user_id,
+                gestor_unit=payload.gestor_unit,
+                classification=payload.classification,
+                tags=payload.tags,
+                metadata=payload.metadata,
+            )
+        )
+    )
+    document.assignments = _assignment_models(
+        document=document,
+        payloads=assignment_payloads,
+        actor_id=principal.subject_id,
+    )
+    _sync_document_assignment_denormalized_fields(document)
+
+    external_ref = ExternalDocumentRef(
+        external_document_id=make_id("extdoc"),
+        tenant_id=payload.tenant_id,
+        source_system=payload.source_system,
+        external_ref=payload.external_ref,
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        document=document,
+        citation_base_url=payload.citation_base_url,
+        ref_metadata=payload.metadata,
+    )
+    db.add(document)
+    db.add(external_ref)
+    audit_event = add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="external_document.upserted",
+        resource_type="external_document",
+        resource_id=external_ref.external_document_id,
+        correlation_id=get_correlation_id(),
+        metadata={
+            "created": True,
+            "tenant_id": payload.tenant_id,
+            "source_system": payload.source_system,
+            "external_ref": payload.external_ref,
+            "entity_type": payload.entity_type,
+            "entity_id": payload.entity_id,
+            "document_id": document.document_id,
+        },
+    )
+    for assignment in document.assignments:
+        assignment.last_audit_event_id = audit_event.audit_event_id
+    _commit_or_conflict(db)
+    db.refresh(external_ref)
+    return _external_document_response(external_ref, created=True)
+
+
+@router.get(
+    "/external-documents/{external_document_id}",
+    response_model=ExternalDocumentResponse,
+)
+def get_external_document(
+    external_document_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentResponse:
+    external_ref = _get_external_document_ref(db, external_document_id)
+    require_document_action(principal, Action.document_read, external_ref.document)
+    return _external_document_response(external_ref, created=False)
 
 
 @router.post(

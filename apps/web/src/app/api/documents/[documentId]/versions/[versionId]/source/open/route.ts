@@ -21,6 +21,7 @@ function viewerModeForUri(uri: string): string {
   if (value.endsWith(".md") || value.endsWith(".markdown")) return "markdown";
   if (value.endsWith(".docx") || value.endsWith(".doc") || value.endsWith(".odt")) return "text";
   if (value.endsWith(".xlsx") || value.endsWith(".csv")) return "table";
+  if (value.match(/\.(png|jpe?g|gif|webp|svg)$/)) return "image";
   return "binary";
 }
 

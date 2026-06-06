@@ -65,6 +65,9 @@ class Document(Base, TimestampMixin):
     workflow_tasks: Mapped[list["WorkflowTask"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+    external_refs: Mapped[list["ExternalDocumentRef"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
 
     @property
     def owner(self) -> str:
@@ -124,6 +127,44 @@ class DocumentFile(Base):
 
     document: Mapped[Document] = relationship(back_populates="files")
     document_version: Mapped[DocumentVersion] = relationship(back_populates="files")
+
+
+class ExternalDocumentRef(Base, TimestampMixin):
+    __tablename__ = "external_document_refs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "source_system",
+            "external_ref",
+            name="uq_external_document_ref_identity",
+        ),
+        Index("ix_external_document_refs_entity", "tenant_id", "entity_type", "entity_id"),
+        Index("ix_external_document_refs_document", "document_id"),
+        Index("ix_external_document_refs_ingestion_status", "current_ingestion_status"),
+    )
+
+    external_document_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("extdoc")
+    )
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, default="default")
+    source_system: Mapped[str] = mapped_column(String(80), nullable=False)
+    external_ref: Mapped[str] = mapped_column(String(240), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    document_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("documents.document_id", ondelete="CASCADE"), nullable=False
+    )
+    current_document_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    current_file_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    current_ingestion_job_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    current_ingestion_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    akb_source_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    citation_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ref_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+
+    document: Mapped[Document] = relationship(back_populates="external_refs")
 
 
 class DocumentAccessPolicy(Base, TimestampMixin):

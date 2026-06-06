@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   Archive,
@@ -10,7 +9,6 @@ import {
   FileSearch,
   Filter,
   History,
-  Search,
   ShieldAlert,
   SlidersHorizontal,
   UploadCloud,
@@ -19,6 +17,15 @@ import {
 
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
+import {
+  StratosButton,
+  StratosButtonLink,
+  StratosDataTable,
+  StratosIconButtonLink,
+  StratosSearchBox,
+  StratosSelect,
+  type StratosDataTableColumn
+} from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuthorizationHint, Classification, Document, DocumentStatus, DocumentType } from "@/lib/types";
 import { documentTypeLabel, formatDateTime } from "@/lib/format";
@@ -41,6 +48,10 @@ const registryCopy = {
     typeFilter: "Typ",
     classificationFilter: "Klasifikace",
     clearFilters: "Vyčistit",
+    clearFilter: "Zrušit filtr",
+    closeFilter: "Zavřít filtr",
+    filterTitlePrefix: "Filtr",
+    noFilterResults: "Nenalezena žádná hodnota.",
     all: "Vše",
     allViews: "Všechny dokumenty",
     reviewQueue: "Fronta revize",
@@ -56,6 +67,7 @@ const registryCopy = {
     restrictedDocuments: "Citlivé",
     restrictedDocumentsDetail: "omezené nebo důvěrné",
     showing: "Zobrazeno",
+    selected: "vybráno",
     of: "z",
     noResults: "Nenalezen žádný dokument pro aktuální filtr.",
     titleColumn: "Název",
@@ -81,6 +93,10 @@ const registryCopy = {
     typeFilter: "Type",
     classificationFilter: "Classification",
     clearFilters: "Clear",
+    clearFilter: "Clear filter",
+    closeFilter: "Close filter",
+    filterTitlePrefix: "Filter",
+    noFilterResults: "No value found.",
     all: "All",
     allViews: "All documents",
     reviewQueue: "Review queue",
@@ -96,6 +112,7 @@ const registryCopy = {
     restrictedDocuments: "Sensitive",
     restrictedDocumentsDetail: "restricted or confidential",
     showing: "Showing",
+    selected: "selected",
     of: "of",
     noResults: "No document matches the current filter.",
     titleColumn: "Title",
@@ -114,7 +131,7 @@ const registryCopy = {
 type RegistryView = "all" | "review" | "valid" | "restricted" | "archive";
 
 const documentStatuses: DocumentStatus[] = ["draft", "review", "approved", "valid", "superseded", "archived", "cancelled"];
-const classifications: Classification[] = ["public", "internal", "restricted", "confidential"];
+const classificationOptions: Classification[] = ["public", "internal", "restricted", "confidential"];
 const documentTypes: DocumentType[] = [
   "directive",
   "regulation",
@@ -135,9 +152,10 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
   const copy = registryCopy[language];
   const [query, setQuery] = useState("");
   const [view, setView] = useState<RegistryView>("all");
-  const [status, setStatus] = useState<DocumentStatus | "all">("all");
-  const [type, setType] = useState<DocumentType | "all">("all");
-  const [classification, setClassification] = useState<Classification | "all">("all");
+  const [statuses, setStatuses] = useState<DocumentStatus[]>([]);
+  const [types, setTypes] = useState<DocumentType[]>([]);
+  const [classifications, setClassifications] = useState<Classification[]>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
 
   const metrics = useMemo(() => {
     const reviewCount = documents.filter((document) => ["draft", "review", "approved"].includes(document.status)).length;
@@ -168,13 +186,13 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
       if (view === "archive" && !["archived", "superseded", "cancelled"].includes(document.status)) {
         return false;
       }
-      if (status !== "all" && document.status !== status) {
+      if (statuses.length > 0 && !statuses.includes(document.status)) {
         return false;
       }
-      if (type !== "all" && document.document_type !== type) {
+      if (types.length > 0 && !types.includes(document.document_type)) {
         return false;
       }
-      if (classification !== "all" && document.classification !== classification) {
+      if (classifications.length > 0 && !classifications.includes(document.classification)) {
         return false;
       }
       if (!normalizedQuery) {
@@ -194,15 +212,102 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
         .toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [classification, documents, query, status, type, view]);
+  }, [classifications, documents, query, statuses, types, view]);
 
   function clearFilters() {
     setQuery("");
     setView("all");
-    setStatus("all");
-    setType("all");
-    setClassification("all");
+    setStatuses([]);
+    setTypes([]);
+    setClassifications([]);
   }
+
+  const columns: Array<StratosDataTableColumn<Document>> = [
+    {
+      id: "title",
+      label: copy.titleColumn,
+      width: "minmax(260px, 1.5fr)",
+      sortable: true,
+      sortAccessor: (document) => document.title,
+      render: (document) => (
+        <span className="cell-title">
+          <strong>{document.title}</strong>
+          <span>{document.document_id} - {document.gestor_unit}</span>
+        </span>
+      )
+    },
+    {
+      id: "type",
+      label: copy.type,
+      width: "minmax(150px, 0.8fr)",
+      sortable: true,
+      sortAccessor: (document) => documentTypeLabel(document.document_type, language),
+      render: (document) => documentTypeLabel(document.document_type, language)
+    },
+    {
+      id: "status",
+      label: copy.status,
+      width: 132,
+      sortable: true,
+      sortAccessor: (document) => document.status,
+      render: (document) => <StatusBadge value={document.status} />
+    },
+    {
+      id: "classification",
+      label: copy.classification,
+      width: 132,
+      sortable: true,
+      sortAccessor: (document) => document.classification,
+      render: (document) => document.classification
+    },
+    {
+      id: "owner",
+      label: copy.owner,
+      width: "minmax(140px, 0.8fr)",
+      sortable: true,
+      sortAccessor: (document) => document.owner_id,
+      render: (document) => document.owner_id
+    },
+    {
+      id: "tags",
+      label: copy.tags,
+      width: "minmax(180px, 1fr)",
+      render: (document) => (
+        <span className="tag-list">
+          {document.tags.slice(0, 3).map((tag) => (
+            <span className="tag" key={tag}>{tag}</span>
+          ))}
+        </span>
+      )
+    },
+    {
+      id: "updated",
+      label: copy.updated,
+      width: 170,
+      sortable: true,
+      sortAccessor: (document) => new Date(document.updated_at),
+      render: (document) => formatDateTime(document.updated_at, language)
+    },
+    {
+      id: "open",
+      label: copy.open,
+      width: 100,
+      align: "center",
+      render: (document) => (
+        <span className="inline-actions">
+          <StratosIconButtonLink href={`/documents/${document.document_id}`} aria-label={`${copy.openDocument} ${document.title}`}>
+            <ArrowUpRight size={16} aria-hidden="true" />
+          </StratosIconButtonLink>
+          <StratosIconButtonLink
+            href={`/documents/${document.document_id}#versions`}
+            aria-label={`${copy.viewVersions} ${document.title}`}
+          >
+            <History size={16} aria-hidden="true" />
+          </StratosIconButtonLink>
+        </span>
+      )
+    }
+  ];
 
   return (
     <div className="stack">
@@ -241,136 +346,122 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
           <h2>{copy.title}</h2>
           <div className="inline-actions">
             {authorization.can_update ? (
-              <Link className="button" href="/documents/new">
+              <StratosButtonLink href="/documents/new">
                 <FilePlus2 size={16} aria-hidden="true" />
                 {copy.newDraft}
-              </Link>
+              </StratosButtonLink>
             ) : null}
             {authorization.can_ingest ? (
-              <Link className="button button--primary" href="/upload">
+              <StratosButtonLink tone="primary" href="/upload">
                 <UploadCloud size={16} aria-hidden="true" />
                 {copy.uploadVersion}
-              </Link>
+              </StratosButtonLink>
             ) : null}
           </div>
         </div>
         <div className="panel__body stack">
           <div className="registry-toolbar">
-            <label className="registry-search" htmlFor="document-registry-search">
-              <Search size={17} aria-hidden="true" />
-              <span className="sr-only">{copy.searchLabel}</span>
-              <input
-                id="document-registry-search"
-                value={query}
-                placeholder={copy.searchPlaceholder}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
+            <StratosSearchBox
+              id="document-registry-search"
+              label={copy.searchLabel}
+              value={query}
+              placeholder={copy.searchPlaceholder}
+              onChange={(event) => setQuery(event.target.value)}
+            />
             <div className="registry-filter-grid">
-              <FieldSelect label={copy.view} value={view} onChange={(value) => setView(value as RegistryView)}>
+              <FieldSelect
+                id="document-registry-view"
+                label={copy.view}
+                closeLabel={copy.closeFilter}
+                filterTitlePrefix={copy.filterTitlePrefix}
+                noResultsLabel={copy.noFilterResults}
+                value={view}
+                onChange={(value) => setView(value as RegistryView)}
+              >
                 <option value="all">{copy.allViews}</option>
                 <option value="review">{copy.reviewQueue}</option>
                 <option value="valid">{copy.validKnowledge}</option>
                 <option value="restricted">{copy.restrictedView}</option>
                 <option value="archive">{copy.archiveView}</option>
               </FieldSelect>
-              <FieldSelect label={copy.statusFilter} value={status} onChange={(value) => setStatus(value as DocumentStatus | "all")}>
-                <option value="all">{copy.all}</option>
+              <FieldSelect
+                id="document-registry-status"
+                label={copy.statusFilter}
+                multiple
+                placeholder={copy.all}
+                clearDescription={copy.clearFilter}
+                closeLabel={copy.closeFilter}
+                filterTitlePrefix={copy.filterTitlePrefix}
+                noResultsLabel={copy.noFilterResults}
+                value={statuses}
+                onValuesChange={(values) => setStatuses(values as DocumentStatus[])}
+              >
                 {documentStatuses.map((item) => (
                   <option key={item} value={item}>{item.replaceAll("_", " ")}</option>
                 ))}
               </FieldSelect>
-              <FieldSelect label={copy.typeFilter} value={type} onChange={(value) => setType(value as DocumentType | "all")}>
-                <option value="all">{copy.all}</option>
+              <FieldSelect
+                id="document-registry-type"
+                label={copy.typeFilter}
+                multiple
+                placeholder={copy.all}
+                clearDescription={copy.clearFilter}
+                closeLabel={copy.closeFilter}
+                filterTitlePrefix={copy.filterTitlePrefix}
+                noResultsLabel={copy.noFilterResults}
+                value={types}
+                onValuesChange={(values) => setTypes(values as DocumentType[])}
+              >
                 {documentTypes.map((item) => (
                   <option key={item} value={item}>{documentTypeLabel(item, language)}</option>
                 ))}
               </FieldSelect>
               <FieldSelect
+                id="document-registry-classification"
                 label={copy.classificationFilter}
-                value={classification}
-                onChange={(value) => setClassification(value as Classification | "all")}
+                multiple
+                placeholder={copy.all}
+                clearDescription={copy.clearFilter}
+                closeLabel={copy.closeFilter}
+                filterTitlePrefix={copy.filterTitlePrefix}
+                noResultsLabel={copy.noFilterResults}
+                value={classifications}
+                onValuesChange={(values) => setClassifications(values as Classification[])}
               >
-                <option value="all">{copy.all}</option>
-                {classifications.map((item) => (
+                {classificationOptions.map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
               </FieldSelect>
             </div>
-            <button className="button" type="button" onClick={clearFilters}>
+            <StratosButton type="button" onClick={clearFilters}>
               <X size={15} aria-hidden="true" />
               {copy.clearFilters}
-            </button>
+            </StratosButton>
           </div>
 
           <div className="registry-result-bar">
             <span>
               <Filter size={15} aria-hidden="true" />
               {copy.showing} {filteredDocuments.length} {copy.of} {documents.length}
+              {selectedDocumentIds.length > 0 ? ` · ${selectedDocumentIds.length} ${copy.selected}` : ""}
             </span>
           </div>
 
-          {filteredDocuments.length > 0 ? (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{copy.titleColumn}</th>
-                  <th>{copy.type}</th>
-                  <th>{copy.status}</th>
-                  <th>{copy.classification}</th>
-                  <th>{copy.owner}</th>
-                  <th>{copy.tags}</th>
-                  <th>{copy.updated}</th>
-                  <th>{copy.open}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredDocuments.map((document) => (
-                  <tr key={document.document_id}>
-                    <td>
-                      <span className="cell-title">
-                        <strong>{document.title}</strong>
-                        <span>{document.document_id} - {document.gestor_unit}</span>
-                      </span>
-                    </td>
-                    <td>{documentTypeLabel(document.document_type, language)}</td>
-                    <td>
-                      <StatusBadge value={document.status} />
-                    </td>
-                    <td>{document.classification}</td>
-                    <td>{document.owner_id}</td>
-                    <td>
-                      <span className="tag-list">
-                        {document.tags.slice(0, 3).map((tag) => (
-                          <span className="tag" key={tag}>{tag}</span>
-                        ))}
-                      </span>
-                    </td>
-                    <td>{formatDateTime(document.updated_at, language)}</td>
-                    <td>
-                      <span className="inline-actions">
-                        <Link className="icon-button" href={`/documents/${document.document_id}`} aria-label={`${copy.openDocument} ${document.title}`}>
-                          <ArrowUpRight size={16} aria-hidden="true" />
-                        </Link>
-                        <Link
-                          className="icon-button"
-                          href={`/documents/${document.document_id}#versions`}
-                          aria-label={`${copy.viewVersions} ${document.title}`}
-                        >
-                          <History size={16} aria-hidden="true" />
-                        </Link>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-state">
-              <Archive size={22} aria-hidden="true" />
-              {copy.noResults}
-            </div>
-          )}
+          <StratosDataTable
+            rows={filteredDocuments}
+            columns={columns}
+            getRowId={(document) => document.document_id}
+            selectableRows
+            selectedRowIds={selectedDocumentIds}
+            onSelectedRowIdsChange={setSelectedDocumentIds}
+            emptyLabel={
+              <span className="empty-state empty-state--inline">
+                <Archive size={22} aria-hidden="true" />
+                {copy.noResults}
+              </span>
+            }
+            aria-label={copy.title}
+          />
         </div>
       </section>
     </div>
@@ -379,21 +470,46 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
 
 function FieldSelect({
   children,
+  clearDescription,
+  closeLabel,
+  filterTitlePrefix,
+  id,
   label,
+  multiple,
+  noResultsLabel,
+  onValuesChange,
+  placeholder,
   value,
   onChange
 }: {
   children: React.ReactNode;
+  clearDescription?: string;
+  closeLabel?: string;
+  filterTitlePrefix?: string;
+  id: string;
   label: string;
-  value: string;
-  onChange: (value: string) => void;
+  multiple?: boolean;
+  noResultsLabel?: string;
+  onValuesChange?: (values: string[]) => void;
+  placeholder?: string;
+  value: string | string[];
+  onChange?: (value: string) => void;
 }) {
   return (
-    <label className="field registry-filter">
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {children}
-      </select>
-    </label>
+    <StratosSelect
+      id={id}
+      label={label}
+      multiple={multiple}
+      placeholder={placeholder}
+      clearDescription={clearDescription}
+      closeLabel={closeLabel}
+      filterTitlePrefix={filterTitlePrefix}
+      noResultsLabel={noResultsLabel}
+      value={value}
+      onChange={(event) => onChange?.(event.target.value)}
+      onValuesChange={onValuesChange}
+    >
+      {children}
+    </StratosSelect>
   );
 }

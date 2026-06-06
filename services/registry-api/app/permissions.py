@@ -83,6 +83,16 @@ ROLE_ACTIONS: dict[str, set[str]] = {
         Action.workflow_task_write.value,
         Action.audit_write.value,
     },
+    "stratos_service": {
+        Action.document_create.value,
+        Action.document_read.value,
+        Action.document_update.value,
+        Action.document_version_create.value,
+        Action.document_ingest.value,
+        Action.document_reindex.value,
+        Action.rag_query.value,
+        Action.audit_write.value,
+    },
 }
 
 ROLE_MAX_CLASSIFICATION = {
@@ -97,6 +107,7 @@ ROLE_MAX_CLASSIFICATION = {
     "service_llm_gateway": Classification.public.value,
     "service_evaluation": Classification.restricted.value,
     "service_governance": Classification.confidential.value,
+    "stratos_service": Classification.confidential.value,
 }
 
 OWNER_ACTIONS = {

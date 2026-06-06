@@ -2,9 +2,11 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, CheckCircle2, ExternalLink, HelpCircle, LifeBuoy, Send, ShieldAlert } from "lucide-react";
+import { BookOpen, CheckCircle2, HelpCircle, LifeBuoy, Send, ShieldAlert } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { StratosButton, StratosSelect } from "@/components/stratos";
+import { CitationList, SourceContextCard } from "@/features/citations/citation-viewer";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AssistantChatResponse,
@@ -37,9 +39,17 @@ const assistantCopy = {
     emptyState: "Zeptejte se na postup, odpovědnost, schvalování nebo kde najít správný dokument.",
     sourceTitle: "Zdroj odpovědi",
     sourceOpen: "otevřen",
+    sourceOpened: "Citace otevřena",
     sourceWaiting: "čeká",
     sourceFileMissing: "Soubor není dostupný",
+    version: "Verze",
     page: "Strana",
+    opening: "Otevírám",
+    openCitation: "Otevřít citaci",
+    openDocument: "Otevřít dokument",
+    sourceUnavailable: "zdroj není dostupný",
+    copyChunk: "Kopírovat úryvek",
+    chunk: "Chunk",
     noSection: "Bez oddílu",
     sourceEmpty: "Po otevření zdroje se zde zobrazí citovaná část dokumentu.",
     clarificationTitle: "Potřebuji doplnit",
@@ -72,9 +82,17 @@ const assistantCopy = {
     emptyState: "Ask about a procedure, responsibility, approval, or where to find the right document.",
     sourceTitle: "Answer source",
     sourceOpen: "open",
+    sourceOpened: "Citation opened",
     sourceWaiting: "waiting",
     sourceFileMissing: "File is not available",
+    version: "Version",
     page: "Page",
+    opening: "Opening",
+    openCitation: "Open citation",
+    openDocument: "Open document",
+    sourceUnavailable: "source unavailable",
+    copyChunk: "Copy excerpt",
+    chunk: "Chunk",
     noSection: "No section",
     sourceEmpty: "After opening a source, the cited part of the document will appear here.",
     clarificationTitle: "I need more details",
@@ -247,10 +265,10 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
             >
               <label htmlFor="employee-question">{copy.questionLabel}</label>
               <textarea id="employee-question" value={question} onChange={(event) => setQuestion(event.target.value)} />
-              <button className="button button--primary" type="submit" disabled={submitting}>
+              <StratosButton tone="primary" type="submit" disabled={submitting}>
                 <Send size={16} aria-hidden="true" />
                 {submitting ? copy.asking : copy.ask}
-              </button>
+              </StratosButton>
             </form>
 
             {statusMessage ? (
@@ -286,16 +304,8 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
           <StatusBadge value={sourceContext ? "valid" : "insufficient_source"} label={sourceContext ? copy.sourceOpen : copy.sourceWaiting} />
         </div>
         {sourceContext ? (
-          <div className="assistant-source-panel__body stack">
-            <div>
-              <strong>{sourceContext.document_title}</strong>
-              <span>{sourceContext.source_file_name ?? copy.sourceFileMissing}</span>
-            </div>
-            <div className="assistant-source-meta">
-              <span>{copy.page} {sourceContext.location.page_number ?? "n/a"}</span>
-              <span>{sourceContext.location.section_path.join(" / ") || copy.noSection}</span>
-            </div>
-            <pre className="source-excerpt">{sourceContext.chunk_text}</pre>
+          <div className="assistant-source-panel__body">
+            <SourceContextCard labels={copy} sourceContext={sourceContext} />
           </div>
         ) : (
           <div className="assistant-source-empty">
@@ -338,10 +348,11 @@ function AssistantResponse({
           <p className="assistant-copy">{response.why_needed ?? copy.clarificationFallback}</p>
           <div className="clarification-grid">
             {response.questions.map((question) => (
-              <label className="field" key={question.id}>
-                <span>{question.question}</span>
+              <div className="field" key={question.id}>
                 {question.type === "single_choice" ? (
-                  <select
+                  <StratosSelect
+                    id={`assistant-clarification-${question.id}`}
+                    label={question.question}
                     value={clarificationValues[question.id] ?? ""}
                     onChange={(event) =>
                       setClarificationValues((current) => ({ ...current, [question.id]: event.target.value }))
@@ -351,22 +362,26 @@ function AssistantResponse({
                     {question.options.map((option) => (
                       <option key={option} value={option}>{option}</option>
                     ))}
-                  </select>
+                  </StratosSelect>
                 ) : (
-                  <input
-                    value={clarificationValues[question.id] ?? ""}
-                    onChange={(event) =>
-                      setClarificationValues((current) => ({ ...current, [question.id]: event.target.value }))
-                    }
-                  />
+                  <label className="field" htmlFor={`assistant-clarification-${question.id}`}>
+                    <span>{question.question}</span>
+                    <input
+                      id={`assistant-clarification-${question.id}`}
+                      value={clarificationValues[question.id] ?? ""}
+                      onChange={(event) =>
+                        setClarificationValues((current) => ({ ...current, [question.id]: event.target.value }))
+                      }
+                    />
+                  </label>
                 )}
-              </label>
+              </div>
             ))}
           </div>
-          <button className="button button--primary" type="button" onClick={() => onSubmitClarification(response.questions)}>
+          <StratosButton tone="primary" type="button" onClick={() => onSubmitClarification(response.questions)}>
             <Send size={16} aria-hidden="true" />
             {copy.continue}
-          </button>
+          </StratosButton>
         </div>
       </section>
     );
@@ -403,24 +418,13 @@ function AssistantResponse({
         {response.citations.length > 0 ? (
           <div className="assistant-sources">
             <h3>{copy.sources}</h3>
-            {response.citations.map((citation) => (
-              <button
-                className="source-button"
-                key={citation.chunk_id}
-                type="button"
-                onClick={() => onOpenSource(citation)}
-                disabled={openingSourceId === citation.chunk_id}
-              >
-                <BookOpen size={16} aria-hidden="true" />
-                <span>
-                  <strong>{citation.document_title}</strong>
-                  <small>
-                    {citation.page_number ? `${copy.page} ${citation.page_number}` : copy.sourceDocument}
-                  </small>
-                </span>
-                <ExternalLink size={15} aria-hidden="true" />
-              </button>
-            ))}
+            <CitationList
+              citations={response.citations}
+              openingChunkId={openingSourceId}
+              emptyLabel={copy.noPreciseSource}
+              labels={copy}
+              onOpenCitation={onOpenSource}
+            />
           </div>
         ) : null}
         {response.follow_up_questions.length > 0 ? (
