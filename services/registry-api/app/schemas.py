@@ -13,6 +13,7 @@ class DocumentType(str, Enum):
     procedure = "procedure"
     manual = "manual"
     knowledge_base_article = "knowledge_base_article"
+    project_documentation = "project_documentation"
     meeting_record = "meeting_record"
     contract = "contract"
     attachment = "attachment"
@@ -22,6 +23,7 @@ class DocumentType(str, Enum):
 class DocumentStatus(str, Enum):
     draft = "draft"
     review = "review"
+    approved = "approved"
     valid = "valid"
     superseded = "superseded"
     archived = "archived"
@@ -48,6 +50,8 @@ class Action(str, Enum):
     rag_query = "rag.query"
     rag_compare = "rag.compare"
     rag_check_compliance = "rag.check_compliance"
+    workflow_task_read = "workflow.task.read"
+    workflow_task_write = "workflow.task.write"
     audit_read = "audit.read"
     audit_write = "audit.write"
     admin_manage = "admin.manage"
@@ -59,6 +63,38 @@ class AuditSeverity(str, Enum):
     warning = "warning"
     error = "error"
     critical = "critical"
+
+
+class WorkflowTaskKind(str, Enum):
+    review = "review"
+    draft = "draft"
+    ingestion = "ingestion"
+    governance = "governance"
+    audit = "audit"
+
+
+class WorkflowTaskPriority(str, Enum):
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class WorkflowTaskStatus(str, Enum):
+    open = "open"
+    waiting = "waiting"
+    blocked = "blocked"
+    resolved = "resolved"
+    cancelled = "cancelled"
+
+
+class WorkflowTaskAction(str, Enum):
+    assign = "assign"
+    request_changes = "request_changes"
+    approve = "approve"
+    publish = "publish"
+    archive = "archive"
+    resolve = "resolve"
 
 
 class ErrorEnvelope(BaseModel):
@@ -252,3 +288,42 @@ class AuditEventListResponse(BaseModel):
     items: list[AuditEventResponse]
     limit: int
     offset: int
+
+
+class WorkflowTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    task_id: str
+    source_key: str | None
+    kind: WorkflowTaskKind
+    priority: WorkflowTaskPriority
+    status: WorkflowTaskStatus
+    title: str
+    description: str
+    source: str
+    owner_id: str | None
+    owner_label: str
+    role: str
+    document_id: str | None
+    document_title: str | None
+    document_version_id: str | None
+    audit_event_id: str | None
+    job_id: str | None
+    due_at: datetime
+    resolved_at: datetime | None
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="task_metadata")
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkflowTaskListResponse(BaseModel):
+    items: list[WorkflowTaskResponse]
+    limit: int
+    offset: int
+
+
+class WorkflowTaskActionRequest(BaseModel):
+    action: WorkflowTaskAction
+    comment: str | None = Field(default=None, max_length=1000)
+    assignee_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -19,6 +19,7 @@ from app.models import (
     DocumentAccessPolicy,
     DocumentFile,
     DocumentVersion,
+    WorkflowTask,
     make_id,
     utcnow,
 )
@@ -52,6 +53,12 @@ from app.schemas import (
     DocumentVersionListResponse,
     DocumentVersionResponse,
     HealthResponse,
+    WorkflowTaskActionRequest,
+    WorkflowTaskKind,
+    WorkflowTaskListResponse,
+    WorkflowTaskPriority,
+    WorkflowTaskResponse,
+    WorkflowTaskStatus,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -59,6 +66,50 @@ health_router = APIRouter()
 
 Limit = Annotated[int, Query(ge=1, le=200)]
 Offset = Annotated[int, Query(ge=0)]
+
+ACTIVE_TASK_STATUSES = {
+    WorkflowTaskStatus.open.value,
+    WorkflowTaskStatus.waiting.value,
+    WorkflowTaskStatus.blocked.value,
+}
+
+DOCUMENT_STATUS_TRANSITIONS = {
+    DocumentStatus.draft.value: {
+        DocumentStatus.draft.value,
+        DocumentStatus.review.value,
+        DocumentStatus.cancelled.value,
+    },
+    DocumentStatus.review.value: {
+        DocumentStatus.review.value,
+        DocumentStatus.draft.value,
+        DocumentStatus.approved.value,
+        DocumentStatus.cancelled.value,
+    },
+    DocumentStatus.approved.value: {
+        DocumentStatus.approved.value,
+        DocumentStatus.review.value,
+        DocumentStatus.draft.value,
+        DocumentStatus.valid.value,
+        DocumentStatus.cancelled.value,
+    },
+    DocumentStatus.valid.value: {
+        DocumentStatus.valid.value,
+        DocumentStatus.archived.value,
+        DocumentStatus.cancelled.value,
+    },
+    DocumentStatus.superseded.value: {
+        DocumentStatus.superseded.value,
+        DocumentStatus.archived.value,
+        DocumentStatus.cancelled.value,
+    },
+    DocumentStatus.archived.value: {
+        DocumentStatus.archived.value,
+        DocumentStatus.cancelled.value,
+    },
+    DocumentStatus.cancelled.value: {
+        DocumentStatus.cancelled.value,
+    },
+}
 
 
 def _action_values(actions: list[Action]) -> list[str]:
@@ -159,6 +210,301 @@ def _authz_subject_context(
         caller = context_for_principal(principal)
         return context_for_subject(db, subject_id, caller.roles, caller.groups)
     return context_for_subject(db, subject_id, roles, groups)
+
+
+def _add_days(value, days: int):
+    return value + timedelta(days=days)
+
+
+def _transition_document_status(document: Document, target_status: DocumentStatus) -> None:
+    target = target_status.value
+    current = document.status
+    if target == current:
+        return
+    allowed_targets = DOCUMENT_STATUS_TRANSITIONS.get(current, {current})
+    if target not in allowed_targets:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "invalid_document_status_transition",
+            f"Document status cannot transition from {current} to {target}",
+        )
+    document.status = target
+
+
+def _latest_document_version(db: Session, document_id: str) -> DocumentVersion | None:
+    return db.execute(
+        select(DocumentVersion)
+        .where(DocumentVersion.document_id == document_id)
+        .order_by(desc(DocumentVersion.created_at))
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _current_valid_document_version(db: Session, document_id: str) -> DocumentVersion | None:
+    return db.execute(
+        select(DocumentVersion)
+        .where(
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.status == DocumentStatus.valid.value,
+        )
+        .order_by(desc(DocumentVersion.published_at), desc(DocumentVersion.created_at))
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _workflow_action_version(
+    db: Session,
+    *,
+    task: WorkflowTask,
+    payload: WorkflowTaskActionRequest,
+    prefer_valid: bool = False,
+) -> DocumentVersion | None:
+    if task.document_id is None:
+        return None
+    requested_version_id = task.document_version_id
+    metadata_version_id = payload.metadata.get("document_version_id")
+    if requested_version_id is None and isinstance(metadata_version_id, str):
+        requested_version_id = metadata_version_id
+    if requested_version_id:
+        return _get_version(db, task.document_id, requested_version_id)
+    if prefer_valid:
+        return _current_valid_document_version(db, task.document_id)
+    return _latest_document_version(db, task.document_id)
+
+
+def _approve_document_for_publication(db: Session, document: Document) -> DocumentVersion | None:
+    _transition_document_status(document, DocumentStatus.approved)
+    version = _latest_document_version(db, document.document_id)
+    if version is not None and version.status in {DocumentStatus.draft.value, DocumentStatus.review.value}:
+        version.status = DocumentStatus.approved.value
+    return version
+
+
+def _request_document_changes(document: Document, version: DocumentVersion | None = None) -> None:
+    if document.status in {DocumentStatus.review.value, DocumentStatus.approved.value}:
+        _transition_document_status(document, DocumentStatus.draft)
+    if version is not None and version.status == DocumentStatus.approved.value:
+        version.status = DocumentStatus.draft.value
+
+
+def _publish_version(
+    db: Session,
+    *,
+    document: Document,
+    version: DocumentVersion,
+    actor_id: str,
+) -> None:
+    if version.status == DocumentStatus.valid.value:
+        return
+    if version.status in {
+        DocumentStatus.archived.value,
+        DocumentStatus.superseded.value,
+        DocumentStatus.cancelled.value,
+    }:
+        raise problem(status.HTTP_409_CONFLICT, "version_not_publishable", "Version cannot be published")
+    if document.status != DocumentStatus.approved.value:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "publish_requires_approval",
+            "Document must be approved before a version can be published",
+        )
+
+    active_versions = db.execute(
+        select(DocumentVersion).where(
+            DocumentVersion.document_id == document.document_id,
+            DocumentVersion.status == DocumentStatus.valid.value,
+            DocumentVersion.document_version_id != version.document_version_id,
+        )
+    ).scalars()
+    for active_version in active_versions:
+        active_version.status = DocumentStatus.superseded.value
+
+    version.status = DocumentStatus.valid.value
+    version.published_at = utcnow()
+    _transition_document_status(document, DocumentStatus.valid)
+    add_audit_event(
+        db,
+        actor_id=actor_id,
+        event_type="document.version.published",
+        resource_type="document_version",
+        resource_id=version.document_version_id,
+        metadata={"document_id": document.document_id},
+    )
+
+
+def _archive_version(
+    db: Session,
+    *,
+    document: Document,
+    version: DocumentVersion,
+    actor_id: str,
+) -> None:
+    version.status = DocumentStatus.archived.value
+    has_other_valid = db.execute(
+        select(DocumentVersion.document_version_id).where(
+            DocumentVersion.document_id == document.document_id,
+            DocumentVersion.status == DocumentStatus.valid.value,
+            DocumentVersion.document_version_id != version.document_version_id,
+        )
+    ).first()
+    if not has_other_valid and document.status == DocumentStatus.valid.value:
+        _transition_document_status(document, DocumentStatus.archived)
+
+    add_audit_event(
+        db,
+        actor_id=actor_id,
+        event_type="document.version.archived",
+        resource_type="document_version",
+        resource_id=version.document_version_id,
+        metadata={"document_id": document.document_id},
+    )
+
+
+def _upsert_derived_task(db: Session, *, source_key: str, values: dict[str, object]) -> None:
+    task = db.execute(select(WorkflowTask).where(WorkflowTask.source_key == source_key)).scalar_one_or_none()
+    if task is None:
+        db.add(WorkflowTask(task_id=make_id("task"), source_key=source_key, **values))
+        return
+    if task.status not in ACTIVE_TASK_STATUSES:
+        return
+    existing_metadata = dict(task.task_metadata or {})
+    has_manual_decision = "last_action" in existing_metadata
+    for key, value in values.items():
+        if has_manual_decision and key in {"status", "owner_id", "owner_label"}:
+            continue
+        if key == "task_metadata":
+            task.task_metadata = {**dict(value), **existing_metadata}
+            continue
+        setattr(task, key, value)
+
+
+def _sync_derived_workflow_tasks(db: Session) -> None:
+    documents = list(db.execute(select(Document)).scalars())
+    for document in documents:
+        if document.status == DocumentStatus.review.value:
+            _upsert_derived_task(
+                db,
+                source_key=f"document-review:{document.document_id}",
+                values={
+                    "kind": WorkflowTaskKind.review.value,
+                    "priority": (
+                        WorkflowTaskPriority.high.value
+                        if document.classification in {Classification.restricted.value, Classification.confidential.value}
+                        else WorkflowTaskPriority.medium.value
+                    ),
+                    "status": WorkflowTaskStatus.open.value,
+                    "title": "Document review required",
+                    "description": "Review metadata, source context, access classification and publication readiness.",
+                    "source": "Registry document status",
+                    "owner_id": document.owner_id,
+                    "owner_label": document.gestor_unit or document.owner_id,
+                    "role": "Owner / gestor",
+                    "document_id": document.document_id,
+                    "document_title": document.title,
+                    "document_version_id": None,
+                    "audit_event_id": None,
+                    "job_id": None,
+                    "due_at": _add_days(document.updated_at, 3),
+                    "task_metadata": {"derived": True, "document_status": document.status},
+                },
+            )
+
+        if document.status == DocumentStatus.draft.value:
+            _upsert_derived_task(
+                db,
+                source_key=f"document-draft:{document.document_id}",
+                values={
+                    "kind": WorkflowTaskKind.draft.value,
+                    "priority": WorkflowTaskPriority.medium.value,
+                    "status": WorkflowTaskStatus.waiting.value,
+                    "title": "Draft needs completion",
+                    "description": "Complete source file, validity metadata and ingestion preparation before review.",
+                    "source": "Registry draft state",
+                    "owner_id": document.owner_id,
+                    "owner_label": document.owner_id,
+                    "role": "Document manager",
+                    "document_id": document.document_id,
+                    "document_title": document.title,
+                    "document_version_id": None,
+                    "audit_event_id": None,
+                    "job_id": None,
+                    "due_at": _add_days(document.updated_at, 5),
+                    "task_metadata": {"derived": True, "document_status": document.status},
+                },
+            )
+
+        if document.classification in {Classification.restricted.value, Classification.confidential.value} and document.status != DocumentStatus.valid.value:
+            _upsert_derived_task(
+                db,
+                source_key=f"document-governance:{document.document_id}",
+                values={
+                    "kind": WorkflowTaskKind.governance.value,
+                    "priority": (
+                        WorkflowTaskPriority.critical.value
+                        if document.classification == Classification.confidential.value
+                        else WorkflowTaskPriority.high.value
+                    ),
+                    "status": WorkflowTaskStatus.open.value,
+                    "title": "Governance check before publication",
+                    "description": "Restricted sources require access, conflict and compliance checks before publication.",
+                    "source": "Document classification policy",
+                    "owner_id": document.owner_id,
+                    "owner_label": document.gestor_unit or document.owner_id,
+                    "role": "Governance / auditor",
+                    "document_id": document.document_id,
+                    "document_title": document.title,
+                    "document_version_id": None,
+                    "audit_event_id": None,
+                    "job_id": None,
+                    "due_at": _add_days(document.updated_at, 2),
+                    "task_metadata": {"derived": True, "classification": document.classification},
+                },
+            )
+
+    warning_events = db.execute(
+        select(AuditEvent).where(AuditEvent.severity.in_(["warning", "error", "critical"]))
+    ).scalars()
+    documents_by_id = {document.document_id: document for document in documents}
+    for event in warning_events:
+        document_id = event.event_metadata.get("document_id")
+        document = documents_by_id.get(document_id) if isinstance(document_id, str) else None
+        _upsert_derived_task(
+            db,
+            source_key=f"audit:{event.audit_event_id}",
+            values={
+                "kind": WorkflowTaskKind.audit.value,
+                "priority": (
+                    WorkflowTaskPriority.critical.value
+                    if event.severity in {"critical", "error"}
+                    else WorkflowTaskPriority.high.value
+                ),
+                "status": (
+                    WorkflowTaskStatus.blocked.value
+                    if event.severity in {"critical", "error"}
+                    else WorkflowTaskStatus.open.value
+                ),
+                "title": "Audit event needs review",
+                "description": "Review the audit signal and confirm whether a document, ingestion or access policy action is needed.",
+                "source": event.event_type,
+                "owner_id": document.owner_id if document is not None else None,
+                "owner_label": (document.gestor_unit or document.owner_id) if document is not None else "Auditor",
+                "role": "Auditor",
+                "document_id": document.document_id if document is not None else None,
+                "document_title": document.title if document is not None else document_id,
+                "document_version_id": None,
+                "audit_event_id": event.audit_event_id,
+                "job_id": event.resource_id if event.resource_type == "ingestion_job" else None,
+                "due_at": _add_days(event.created_at, 1),
+                "task_metadata": {"derived": True, "audit_severity": event.severity},
+            },
+        )
+
+
+def _get_workflow_task(db: Session, task_id: str) -> WorkflowTask:
+    task = db.execute(select(WorkflowTask).where(WorkflowTask.task_id == task_id)).scalar_one_or_none()
+    if task is None:
+        raise problem(status.HTTP_404_NOT_FOUND, "workflow_task_not_found", "Workflow task was not found")
+    return task
 
 
 @health_router.get("/health", response_model=HealthResponse)
@@ -280,7 +626,7 @@ def patch_document(
     if payload.document_type is not None:
         document.document_type = payload.document_type.value
     if payload.status is not None:
-        document.status = payload.status.value
+        _transition_document_status(document, payload.status)
     if payload.owner_id is not None:
         document.owner_id = payload.owner_id
     if "gestor_unit" in changes:
@@ -443,30 +789,7 @@ def publish_document_version(
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_version_publish, document)
     version = _get_version(db, document_id, version_id)
-    if version.status == DocumentStatus.archived.value:
-        raise problem(status.HTTP_409_CONFLICT, "version_archived", "Archived version cannot be published")
-
-    active_versions = db.execute(
-        select(DocumentVersion).where(
-            DocumentVersion.document_id == document_id,
-            DocumentVersion.status == DocumentStatus.valid.value,
-            DocumentVersion.document_version_id != version_id,
-        )
-    ).scalars()
-    for active_version in active_versions:
-        active_version.status = DocumentStatus.superseded.value
-
-    version.status = DocumentStatus.valid.value
-    version.published_at = utcnow()
-    document.status = DocumentStatus.valid.value
-    add_audit_event(
-        db,
-        actor_id=principal.subject_id,
-        event_type="document.version.published",
-        resource_type="document_version",
-        resource_id=version.document_version_id,
-        metadata={"document_id": document.document_id},
-    )
+    _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
     db.refresh(version)
     return version
@@ -486,25 +809,7 @@ def archive_document_version(
     require_document_action(principal, Action.document_version_archive, document)
     version = _get_version(db, document_id, version_id)
 
-    version.status = DocumentStatus.archived.value
-    has_other_valid = db.execute(
-        select(DocumentVersion.document_version_id).where(
-            DocumentVersion.document_id == document_id,
-            DocumentVersion.status == DocumentStatus.valid.value,
-            DocumentVersion.document_version_id != version_id,
-        )
-    ).first()
-    if not has_other_valid and document.status == DocumentStatus.valid.value:
-        document.status = DocumentStatus.archived.value
-
-    add_audit_event(
-        db,
-        actor_id=principal.subject_id,
-        event_type="document.version.archived",
-        resource_type="document_version",
-        resource_id=version.document_version_id,
-        metadata={"document_id": document.document_id},
-    )
+    _archive_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
     db.refresh(version)
     return version
@@ -578,6 +883,151 @@ def filter_authorized_documents(
         allowed_document_ids=allowed_document_ids,
         denied_document_ids=denied_document_ids,
     )
+
+
+@router.get("/workflow/tasks", response_model=WorkflowTaskListResponse)
+def list_workflow_tasks(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+    status_filter: WorkflowTaskStatus | None = Query(default=None, alias="status"),
+    kind: WorkflowTaskKind | None = None,
+    priority: WorkflowTaskPriority | None = None,
+    document_id: str | None = None,
+    owner_id: str | None = None,
+    include_resolved: bool = False,
+    limit: Limit = 100,
+    offset: Offset = 0,
+) -> WorkflowTaskListResponse:
+    require_global_action(principal, Action.workflow_task_read)
+    _sync_derived_workflow_tasks(db)
+    _commit_or_conflict(db)
+
+    stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at).limit(limit).offset(offset)
+    if status_filter:
+        stmt = stmt.where(WorkflowTask.status == status_filter.value)
+    elif not include_resolved:
+        stmt = stmt.where(WorkflowTask.status.in_(ACTIVE_TASK_STATUSES))
+    if kind:
+        stmt = stmt.where(WorkflowTask.kind == kind.value)
+    if priority:
+        stmt = stmt.where(WorkflowTask.priority == priority.value)
+    if document_id:
+        stmt = stmt.where(WorkflowTask.document_id == document_id)
+    if owner_id:
+        stmt = stmt.where(WorkflowTask.owner_id == owner_id)
+
+    tasks = list(db.execute(stmt).scalars())
+    context = context_for_principal(principal)
+    document_ids = {task.document_id for task in tasks if task.document_id}
+    documents_by_id = {
+        document.document_id: document
+        for document in db.execute(
+            select(Document)
+            .where(Document.document_id.in_(document_ids))
+            .options(selectinload(Document.access_policies))
+        ).scalars()
+    }
+    elevated_task_roles = {"admin", "document_manager", "auditor", "service_governance"}
+    visible_tasks = []
+    for task in tasks:
+        if task.document_id is None:
+            if context.roles & elevated_task_roles:
+                visible_tasks.append(task)
+            continue
+        document = documents_by_id.get(task.document_id)
+        if document is None:
+            continue
+        decision = evaluate_document_access(context, Action.document_read.value, document)
+        if decision.allowed:
+            visible_tasks.append(task)
+
+    return WorkflowTaskListResponse(items=visible_tasks, limit=limit, offset=offset)
+
+
+@router.post("/workflow/tasks/{task_id}/actions", response_model=WorkflowTaskResponse)
+def apply_workflow_task_action(
+    task_id: str,
+    payload: WorkflowTaskActionRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> WorkflowTask:
+    require_global_action(principal, Action.workflow_task_write)
+    task = _get_workflow_task(db, task_id)
+    document: Document | None = None
+    if task.document_id:
+        document = _get_document(db, task.document_id)
+        require_document_action(principal, Action.document_read, document)
+
+    now = utcnow()
+    if payload.assignee_id:
+        task.owner_id = payload.assignee_id
+        task.owner_label = payload.assignee_id
+
+    if payload.action.value == "approve":
+        if document is not None and task.kind == WorkflowTaskKind.review.value:
+            require_document_action(principal, Action.document_update, document)
+            _approve_document_for_publication(db, document)
+        task.status = WorkflowTaskStatus.resolved.value
+        task.resolved_at = now
+    elif payload.action.value == "publish":
+        if document is None:
+            raise problem(status.HTTP_409_CONFLICT, "workflow_task_without_document", "Workflow task has no document to publish")
+        require_document_action(principal, Action.document_version_publish, document)
+        version = _workflow_action_version(db, task=task, payload=payload)
+        if version is None:
+            raise problem(status.HTTP_409_CONFLICT, "no_publishable_version", "Workflow task has no version to publish")
+        _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
+        task.document_version_id = version.document_version_id
+        task.status = WorkflowTaskStatus.resolved.value
+        task.resolved_at = now
+    elif payload.action.value == "archive":
+        if document is None:
+            raise problem(status.HTTP_409_CONFLICT, "workflow_task_without_document", "Workflow task has no document to archive")
+        require_document_action(principal, Action.document_version_archive, document)
+        version = _workflow_action_version(db, task=task, payload=payload, prefer_valid=True)
+        if version is None:
+            raise problem(status.HTTP_409_CONFLICT, "no_archivable_version", "Workflow task has no version to archive")
+        _archive_version(db, document=document, version=version, actor_id=principal.subject_id)
+        task.document_version_id = version.document_version_id
+        task.status = WorkflowTaskStatus.resolved.value
+        task.resolved_at = now
+    elif payload.action.value == "resolve":
+        task.status = WorkflowTaskStatus.resolved.value
+        task.resolved_at = now
+    elif payload.action.value == "request_changes":
+        if document is not None:
+            require_document_action(principal, Action.document_update, document)
+            version = _workflow_action_version(db, task=task, payload=payload)
+            _request_document_changes(document, version)
+        task.status = WorkflowTaskStatus.open.value
+        task.resolved_at = None
+    elif payload.action.value == "assign":
+        task.status = WorkflowTaskStatus.open.value
+
+    task.task_metadata = {
+        **dict(task.task_metadata),
+        "last_action": payload.action.value,
+        "last_actor_id": principal.subject_id,
+        "last_comment": payload.comment,
+        "last_action_at": now.isoformat(),
+        "decision_metadata": payload.metadata,
+    }
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type=f"workflow.task.{payload.action.value}",
+        resource_type="workflow_task",
+        resource_id=task.task_id,
+        metadata={
+            "document_id": task.document_id,
+            "document_version_id": task.document_version_id,
+            "status": task.status,
+            "document_status": document.status if document is not None else None,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(task)
+    return task
 
 
 @router.post(

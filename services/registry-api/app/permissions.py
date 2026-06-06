@@ -28,22 +28,30 @@ ROLE_ACTIONS: dict[str, set[str]] = {
         Action.document_version_create.value,
         Action.document_version_publish.value,
         Action.document_version_archive.value,
+        Action.workflow_task_read.value,
+        Action.workflow_task_write.value,
         Action.audit_write.value,
     },
     "document_owner": {
         Action.document_read.value,
         Action.document_update.value,
         Action.document_version_create.value,
+        Action.workflow_task_read.value,
+        Action.workflow_task_write.value,
     },
     "reviewer": {
         Action.document_read.value,
         Action.document_version_publish.value,
+        Action.workflow_task_read.value,
+        Action.workflow_task_write.value,
     },
     "reader": {
         Action.document_read.value,
         Action.rag_query.value,
     },
     "auditor": {
+        Action.workflow_task_read.value,
+        Action.workflow_task_write.value,
         Action.audit_read.value,
         Action.audit_write.value,
     },
@@ -71,6 +79,8 @@ ROLE_ACTIONS: dict[str, set[str]] = {
     "service_governance": {
         Action.document_read.value,
         Action.rag_check_compliance.value,
+        Action.workflow_task_read.value,
+        Action.workflow_task_write.value,
         Action.audit_write.value,
     },
 }

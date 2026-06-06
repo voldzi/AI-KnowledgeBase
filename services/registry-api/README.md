@@ -71,6 +71,9 @@ POST   /api/v1/documents/{document_id}/versions/{version_id}/archive
 POST   /api/v1/authz/check
 POST   /api/v1/authz/filter-documents
 
+GET    /api/v1/workflow/tasks
+POST   /api/v1/workflow/tasks/{task_id}/actions
+
 POST   /api/v1/audit/events
 GET    /api/v1/audit/events
 GET    /api/v1/audit/events/{event_id}
@@ -127,12 +130,23 @@ Služba automaticky auditně zapisuje:
 - `document.version.created`
 - `document.version.published`
 - `document.version.archived`
+- `workflow.task.<action>`
 
 Externí služby mohou zapisovat audit přes `POST /api/v1/audit/events`, pokud mají akci `audit.write`.
 
+## Workflow tasky
+
+Registry API poskytuje perzistentni workflow tasky pres `GET /api/v1/workflow/tasks`. Aktivni tasky jsou idempotentne synchronizovane z dokumentovych stavu, citlive klasifikace a auditnich varovani.
+
+Rozhodnuti nad taskem se zapisuje pres `POST /api/v1/workflow/tasks/{task_id}/actions`. Podporovane akce jsou `assign`, `request_changes`, `approve`, `publish`, `archive` a `resolve`. `approve` nad review taskem nastavuje dokument na `approved`, `request_changes` vraci review/approved dokument na `draft`, `publish` respektuje stejny publish gate jako dokumentovy endpoint a `archive` pouziva stejnou archivacni logiku jako verze.
+
+Stavovy automat dokumentu je `draft -> review -> approved -> valid -> archived/cancelled`. `POST /api/v1/documents/{document_id}/versions/{version_id}/publish` vyzaduje `Document.status=approved`; jinak vraci `409 publish_requires_approval`.
+
+Odvozena synchronizace aktivnich tasku zachovava manualni workflow rozhodnuti (`last_action`, aktualni stav a prirazeni). Sync muze aktualizovat zdrojova metadata jako aktualni stav dokumentu, ale nesmi pri listovani vratit task zpet do vychoziho stavu.
+
 ## Limity
 
-- `GET /documents`, `GET /versions` a `GET /audit/events` mají limit 1-200 záznamů.
+- `GET /documents`, `GET /versions`, `GET /workflow/tasks` a `GET /audit/events` mají limit 1-200 záznamů.
 - `POST /authz/filter-documents` přijme maximálně 1000 candidate document ids.
 - `DELETE /documents/{document_id}` je logický delete: nastaví `Document.status=cancelled` a archivuje platné verze.
 - Technické logy obsahují request/correlation id, cestu, status a latenci. Nelogují plné dokumenty, tokeny, prompty ani odpovědi.
@@ -145,4 +159,4 @@ cd services/registry-api
 pytest
 ```
 
-Testy používají izolovanou SQLite databázi a ověřují hlavní registry, authz a auditní tok.
+Testy používají izolovanou SQLite databázi a ověřují hlavní registry, workflow, authz a auditní tok.
