@@ -1,105 +1,99 @@
 # LLM Profiles
 
-## Mock Profile
+## Mock / Dev-Test Profile
 
-Use this for CI and deterministic local smoke tests.
+Use this for unit tests and deterministic development without Ollama or a real Qdrant embedding collection.
 
 ```bash
 AKL_LLM_DEFAULT_PROVIDER=mock
 AKL_LLM_ENABLED_PROVIDERS=mock
+AKL_LLM_MODEL_PROVIDER_MAP={}
 AKL_MOCK_EMBEDDING_DIMENSIONS=8
-AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
+AKL_INGESTION_EMBEDDING_CLIENT_MODE=mock
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=mock-embedding
-AKL_RAG_LLM_CLIENT_MODE=http
-AKL_RAG_EMBEDDING_MODEL=mock-embedding
+AKL_INGESTION_INDEXER_MODE=mock
+AKL_RAG_RETRIEVER_MODE=mock
+AKL_RAG_LLM_CLIENT_MODE=mock
 AKL_RAG_CHAT_MODEL=mock-chat
+AKL_RAG_EMBEDDING_MODEL=mock-embedding
 ```
 
-The Phase 02 smoke test was validated with this profile through LLM Gateway HTTP. It still performs real ingestion and real Qdrant indexing/retrieval.
+Mock embeddings are 8-dimensional by default. Do not index them into the real Phase 02 `akl_document_chunks` collection used by `bge-m3`, which is 1024-dimensional.
 
-## Local Ollama Profile
+## Phase 02 Real Local RAG Profile
 
-Start the AI profile:
+Required `.env` values:
 
 ```bash
-docker compose -f infra/docker-compose/docker-compose.dev.yml --profile ai up -d --build ollama llm-gateway-service
+AKL_LLM_DEFAULT_PROVIDER=ollama
+AKL_LLM_ENABLED_PROVIDERS=ollama
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b":"ollama","bge-m3":"ollama"}
+AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b
+AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_LLM_DEFAULT_MAX_TOKENS=512
+AKL_OLLAMA_THINK=false
+AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_RAG_RETRIEVER_MODE=qdrant
+AKL_RAG_LLM_CLIENT_MODE=http
+AKL_RAG_CHAT_MODEL=gemma4:12b
+AKL_RAG_EMBEDDING_MODEL=bge-m3
+RAG_AUTHZ_MODE=dev
+AKL_QDRANT_COLLECTION=akl_document_chunks
+AKL_QDRANT_VECTOR_SIZE=1024
+AKL_QDRANT_DISTANCE=Cosine
 ```
 
-Pull suggested models:
+Start the compose stack with the Ollama profile:
 
 ```bash
-docker exec akl-ollama-1 ollama pull bge-m3
-docker exec akl-ollama-1 ollama pull qwen2.5:14b
+docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --profile ai up -d --build
 ```
 
-Run the app stack with Ollama selected:
-
-```bash
-AKL_LLM_DEFAULT_PROVIDER=ollama \
-AKL_LLM_ENABLED_PROVIDERS=ollama \
-AKL_LLM_MODEL_PROVIDER_MAP='{"qwen2.5:14b":"ollama","bge-m3":"ollama"}' \
-AKL_LLM_DEFAULT_CHAT_MODEL=qwen2.5:14b \
-AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3 \
-AKL_LLM_DEFAULT_MAX_TOKENS=512 \
-AKL_LLM_ALLOW_MODEL_PULL=true \
-AKL_OLLAMA_THINK=false \
-AKL_INGESTION_EMBEDDING_CLIENT_MODE=http \
-AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3 \
-AKL_RAG_LLM_CLIENT_MODE=http \
-AKL_RAG_EMBEDDING_MODEL=bge-m3 \
-AKL_RAG_CHAT_MODEL=qwen2.5:14b \
-AKL_INGESTION_INDEXER_MODE=qdrant \
-AKL_RAG_RETRIEVER_MODE=qdrant \
-docker compose -f infra/docker-compose/docker-compose.dev.yml --profile ai up -d --build
-```
-
-Verify model visibility:
-
-```bash
-curl http://localhost:8083/api/v1/models
-```
-
-Expected response includes Ollama models with provider `ollama`.
-
-Verify Local Model Manager API:
-
-```bash
-curl http://localhost:8083/api/v1/providers
-curl http://localhost:8083/api/v1/models/recommended
-curl http://localhost:8083/api/v1/config/effective
-```
-
-Explicit model pull through LLM Gateway, if `AKL_LLM_ALLOW_MODEL_PULL=true`:
+Pull required models through the Local Model Manager API:
 
 ```bash
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
   -d '{"model":"bge-m3","kind":"embedding"}'
+
+curl -sS http://localhost:8083/api/v1/models/pull \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gemma4:12b","kind":"chat"}'
 ```
 
-Thinking-capable Ollama model smoke:
+Verify model visibility and effective config:
 
 ```bash
-curl -X POST http://localhost:8083/api/v1/models/test-chat \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemma4:12b","prompt":"Odpověz česky jednou větou: k čemu slouží řízená dokumentace?","think":false,"max_tokens":256}'
+curl http://localhost:8083/api/v1/models
+curl http://localhost:8083/api/v1/models/recommended
+curl http://localhost:8083/api/v1/config/effective
+```
+
+The effective config should show:
+
+```text
+active_provider=ollama
+default_chat_model=gemma4:12b
+default_embedding_model=bge-m3
+default_max_tokens=512
+ollama_think=false
 ```
 
 ## Host Ollama
 
-If Ollama runs on the host instead of the compose profile, point LLM Gateway at the host:
+If Ollama runs on the host instead of the compose `ai` profile, point LLM Gateway at the host:
 
 ```bash
-AKL_LLM_DEFAULT_PROVIDER=ollama
-AKL_LLM_ENABLED_PROVIDERS=ollama
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
-On macOS with a local service:
+On macOS with a local Ollama service:
 
 ```bash
 ollama pull bge-m3
-ollama pull qwen2.5:14b
+ollama pull gemma4:12b
 ollama list
 ```
 
@@ -109,9 +103,17 @@ For macOS helper checks:
 scripts/setup_local_llm_macos.sh
 ```
 
-## Qdrant Dimension Reset
+## Qdrant Collection Bootstrap
 
-Mock embeddings and Ollama embeddings have different vector dimensions. Before switching from mock to Ollama in a local environment, delete the development collection:
+The Ingestion Service automatically creates the Qdrant collection if it is missing:
+
+```text
+collection: akl_document_chunks
+vector size: 1024
+distance: Cosine
+```
+
+If the collection exists with a different vector size, ingestion fails with `QDRANT_COLLECTION_VECTOR_SIZE_MISMATCH`. Before switching embedding models in a local environment, reset the development collection:
 
 ```bash
 curl -X DELETE http://localhost:6333/collections/akl_document_chunks
@@ -121,25 +123,9 @@ Then rerun ingestion.
 
 ## Smoke Commands
 
-Mock LLM Gateway over HTTP:
-
 ```bash
+python3 scripts/phase_02_llm_gateway_smoke.py
 python3 scripts/phase_02_controlled_document_smoke.py
 ```
 
-Ollama smoke after model pull and collection reset:
-
-```bash
-AKL_SMOKE_QDRANT_URL=http://localhost:6333 \
-python3 scripts/phase_02_controlled_document_smoke.py
-```
-
-The smoke test should report:
-
-```text
-OK qdrant_points= ...
-OK cited_chunk_id= ...
-OK rag_audit_event_id= ...
-```
-
-If it fails with a Qdrant vector-size error, the collection was created with a different embedding model and must be reset.
+The controlled document smoke test should report Qdrant points, a cited chunk, and audit events.

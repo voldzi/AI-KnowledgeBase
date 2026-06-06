@@ -20,11 +20,16 @@ AKL_RAG_DEPENDENCY_MODE=http
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_REGISTRY_CLIENT_MODE=http
+AKL_RAG_CHAT_MODEL=gemma4:12b
+AKL_RAG_EMBEDDING_MODEL=bge-m3
+RAG_AUTHZ_MODE=dev
 AKL_QDRANT_BASE_URL=http://qdrant:6333
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_LLM_GATEWAY_BASE_URL=http://llm-gateway-service:8080/api/v1
 AKL_REGISTRY_BASE_URL=http://registry-api:8000/api/v1
 ```
+
+The retriever query embedding must use the same embedding model as ingestion. For Phase 02 real local RAG this is `bge-m3` with a 1024-dimensional Qdrant collection. Do not query a `bge-m3` collection with mock embeddings.
 
 ## Payload Contract
 

@@ -13,7 +13,11 @@ Configuration:
 ```bash
 AKL_QDRANT_BASE_URL=http://qdrant:6333
 AKL_QDRANT_COLLECTION=akl_document_chunks
+AKL_QDRANT_VECTOR_SIZE=1024
+AKL_QDRANT_DISTANCE=Cosine
 AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_RAG_RETRIEVER_MODE=qdrant
 ```
 
@@ -71,16 +75,23 @@ RAG Retrieval builds Qdrant filters from request filters:
 - `tags` matches payload `tags`.
 - `only_valid=true` requires `status=valid` and `valid_from <= today`.
 
+## Collection Bootstrap
+
+Ingestion Service creates the collection automatically if it does not exist:
+
+```text
+collection: akl_document_chunks
+vector size: 1024
+distance: Cosine
+```
+
+If the collection already exists with another vector size, ingestion fails with a clear `QDRANT_COLLECTION_VECTOR_SIZE_MISMATCH` error before writing points.
+
 ## Vector Dimensions
 
-The collection vector size is created from the first indexed vector.
+Phase 02 real local RAG uses Ollama `bge-m3`, which returns 1024-dimensional embeddings. The mock/dev-test embedding profile uses 8 dimensions by default via `AKL_MOCK_EMBEDDING_DIMENSIONS=8`.
 
-Common profiles:
-
-- mock embeddings: 8 dimensions by default via `AKL_MOCK_EMBEDDING_DIMENSIONS=8`
-- Ollama `nomic-embed-text`: model-defined dimensions, commonly 768
-
-When switching embedding models, reset the development collection:
+Mock embeddings must not be used with the real `bge-m3` Qdrant collection. When switching embedding models, reset the development collection:
 
 ```bash
 curl -X DELETE http://localhost:6333/collections/akl_document_chunks

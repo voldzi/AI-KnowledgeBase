@@ -72,6 +72,8 @@ document.reindex
 rag.query
 rag.compare
 rag.check_compliance
+workflow.task.read
+workflow.task.write
 audit.read
 audit.write
 admin.manage
@@ -154,6 +156,7 @@ Auditovat:
 - změnu metadat,
 - změnu oprávnění,
 - publikaci verze,
+- workflow rozhodnuti nad taskem,
 - spuštění ingestion jobu,
 - RAG dotaz,
 - použité zdroje,

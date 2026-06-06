@@ -45,7 +45,7 @@ The LLM response is not trusted as the source of citation metadata.
 
 ## Context Selection
 
-Only chunks with `score >= RAG_MIN_SCORE` are sent to the LLM. Context is capped by `AKL_RAG_MAX_CONTEXT_CHARS`.
+Only chunks with `score >= RAG_MIN_SCORE` are sent to the LLM. Context is capped by `AKL_RAG_MAX_CONTEXT_CHARS`, and the generated answer is capped by `AKL_RAG_ANSWER_MAX_TOKENS` (`512` in the real local RAG profile).
 
 ## No-Answer
 

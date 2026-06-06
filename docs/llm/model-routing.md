@@ -24,23 +24,43 @@ openai
 AKL_LLM_DEFAULT_PROVIDER=mock
 AKL_LLM_ENABLED_PROVIDERS=mock
 AKL_LLM_MODEL_PROVIDER_MAP={}
+AKL_INGESTION_EMBEDDING_CLIENT_MODE=mock
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=mock-embedding
+AKL_INGESTION_INDEXER_MODE=mock
+AKL_RAG_RETRIEVER_MODE=mock
+AKL_RAG_LLM_CLIENT_MODE=mock
+AKL_RAG_CHAT_MODEL=mock-chat
+AKL_RAG_EMBEDDING_MODEL=mock-embedding
 ```
 
-Tento režim nevyžaduje GPU runtime ani síťové LLM služby.
+Tento režim nevyžaduje GPU runtime ani síťové LLM služby. Mock embeddings mají výchozí dimenzi 8 a nesmí se používat s real Qdrant kolekcí pro `bge-m3`.
 
-## Příklad pro Ollama MVP
+## Phase 02 Real Local RAG Profile
 
 ```text
 AKL_LLM_DEFAULT_PROVIDER=ollama
 AKL_LLM_ENABLED_PROVIDERS=ollama
 AKL_OLLAMA_BASE_URL=http://ollama:11434
-AKL_LLM_DEFAULT_CHAT_MODEL=qwen2.5:14b
+AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_LLM_DEFAULT_MAX_TOKENS=512
 AKL_LLM_ALLOW_MODEL_PULL=true
+AKL_OLLAMA_THINK=false
 AKL_LLM_MODEL_PROVIDER_MAP={
-  "qwen2.5:14b": "ollama",
+  "gemma4:12b": "ollama",
   "bge-m3": "ollama"
 }
+AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_RAG_RETRIEVER_MODE=qdrant
+AKL_RAG_LLM_CLIENT_MODE=http
+AKL_RAG_CHAT_MODEL=gemma4:12b
+AKL_RAG_EMBEDDING_MODEL=bge-m3
+RAG_AUTHZ_MODE=dev
+AKL_QDRANT_COLLECTION=akl_document_chunks
+AKL_QDRANT_VECTOR_SIZE=1024
+AKL_QDRANT_DISTANCE=Cosine
 ```
 
 Použité endpointy:

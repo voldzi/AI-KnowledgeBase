@@ -5,12 +5,14 @@
 Persistent navigation:
 
 - Dashboard
+- Tasks
 - Documents
 - Upload
 - Ingestion
 - Knowledge chat
 - Audit
 - Admin
+- Help
 
 The app shell is a work console, not a landing page. Search, health state and timezone live in the top bar.
 
@@ -24,6 +26,17 @@ Purpose:
 - surface active and failed ingestion jobs
 - show audit activity
 - remind users that authorization hints come from Registry API
+- surface open workflow tasks and overdue blockers
+
+### Tasks
+
+Purpose:
+
+- provide an organizational workflow inbox for document reviews, governance checks, ingestion warnings and audit signals
+- show priority, owner/gestor responsibility, due date and source signal
+- route users to the authoritative source screen for the task
+- read persistent Registry API workflow tasks and merge in ingestion-owned operational warnings
+- write Registry-owned task decisions through the workflow action endpoint
 
 ### Documents
 
@@ -42,14 +55,24 @@ Purpose:
 - distinguish valid, draft, archived and superseded records
 - show version labels, validity windows and change summaries
 - show linked ingestion jobs
+- show Registry workflow task history for the document
+- expose publish/archive actions only when Registry state and authorization allow them
 
 ### Upload
 
 Purpose:
 
 - prepare a new document version
-- collect signed source URI, parser profile and chunking strategy
+- collect source file preflight metadata, signed source URI, parser profile and chunking strategy
 - queue ingestion through Ingestion Service
+
+### Help
+
+Purpose:
+
+- provide in-app guidance for document managers, owners, gestors and auditors
+- describe registry, upload, viewer, citation, workflow, governance and troubleshooting paths
+- keep user guidance available without exposing implementation-only service details
 
 ### Ingestion
 

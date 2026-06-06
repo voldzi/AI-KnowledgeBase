@@ -8,20 +8,35 @@ This document describes the Platform / Infrastructure owned local environment fo
 - A local `.env` created from `.env.example`.
 - Host ports from `.env.example` available, or adjusted before startup.
 
-## Start
+## Phase 02 Real Local RAG Start
 
 ```bash
 cp .env.example .env
-docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml up --build
+docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --profile ai up -d --build
 ```
 
-Optional AI runtime:
+The default `.env.example` values are the Phase 02 real local RAG profile: Ollama provider, `gemma4:12b` chat, `bge-m3` embeddings, Qdrant retriever/indexer, and `RAG_AUTHZ_MODE=dev`.
+
+Pull required models through the AKL Model Manager API:
 
 ```bash
-docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --profile ai up --build
+curl -sS http://localhost:8083/api/v1/models/pull \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-m3","kind":"embedding"}'
+
+curl -sS http://localhost:8083/api/v1/models/pull \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gemma4:12b","kind":"chat"}'
 ```
 
-For a non-mock local LLM profile backed by Ollama, use `--profile ai` and follow `docs/deployment/llm-profiles.md`.
+Run the Phase 02 smoke tests:
+
+```bash
+python3 scripts/phase_02_llm_gateway_smoke.py
+python3 scripts/phase_02_controlled_document_smoke.py
+```
+
+For host-level Ollama or mock/dev-test overrides, follow `docs/deployment/llm-profiles.md`.
 
 Optional placeholder health endpoints for not-yet-implemented app services:
 
