@@ -650,6 +650,17 @@ GET /api/documents/{documentId}/source-context?chunk_id={chunkId}
 
 Bridge nacte dokument a jeho verze z Registry API, otevre chunk pres RAG `GET /citations/{chunk_id}/open` a vrati `source_context` pouze tehdy, kdyz `document_id` a `document_version_id` patri k otevrenemu detailu dokumentu. Nesoulad se vraci jako `409 BAD_DOCUMENT_WORKFLOW_REQUEST`.
 
+Web bridge pro signed source opening:
+
+```text
+POST /api/documents/{documentId}/versions/{versionId}/source/open
+GET  /api/documents/source/content?token={downloadToken}
+```
+
+`source/open` nacte dokument, verze a `document.read` hint z Registry API. Pokud verze patri k dokumentu, vytvori kratkodoby HMAC token vazany na `document_id`, `document_version_id`, `source_file_uri`, bucket, object key, filename, MIME typ, volitelny SHA-256 a expiraci. Odpoved vraci `source_open.available=false` a `unavailable_reason=SOURCE_OBJECT_NOT_FOUND`, pokud objekt neni ve storage fyzicky dostupny; browser pak nesmi predstirat funkcni download.
+
+`source/content` token overi, odmita cizi bucket/object traversal, cte pouze z nakonfigurovaneho object-storage rootu a vraci objekt s `Cache-Control: private, no-store`, `Content-Disposition: inline`, `X-AKL-Source-Open-Id` a `X-Content-Type-Options: nosniff`. Pokud Registry metadata obsahuji plny SHA-256, content endpoint kontroluje hash pred vracenim obsahu. `source.open_requested` a `source.opened` jsou zapisovane do Registry audit logu best-effort.
+
 ---
 
 ## 8. Verzionování API

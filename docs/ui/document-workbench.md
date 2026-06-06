@@ -22,6 +22,7 @@ Implementovano ve web aplikaci:
 - workflow zalozka detailu dokumentu spousti Governance Service akce: compare versions, compliance check a conflict detection; vysledek zobrazuje result ID, confidence, warnings, citace a zdrojova omezeni,
 - audit zalozka detailu dokumentu filtruje Registry audit udalosti podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
 - viewer zalozka detailu dokumentu nabizi auditovane source-context signaly a po otevreni chunku zobrazuje citovatelny text, zdroj, verzi, stranu a sekci,
+- viewer zalozka detailu dokumentu pripravuje signed source open URL pro zdrojovy objekt a ukazuje, zda je objekt ve storage fyzicky dostupny,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
@@ -85,7 +86,7 @@ QA gate pokryva:
 
 - Rozsirit stavovy automat o vicekrokove schvalovani nad existujicim `document_assignments` modelem.
 - Pridat retention/disposition metadata.
-- Pridat signed download URL a evidenci upload session do auditni stopy.
+- Rozsirit signed source open o backend-owned Object Storage kontrakt a dlouhodobou evidenci upload/download session.
 - Doplnit runtime SLA eskalace nad existujicimi assignment metadaty.
 
 ### Ingestion Service
@@ -108,5 +109,5 @@ QA gate pokryva:
 
 ### Web UI
 
-- Prevest viewer z RAG source-context panelu na skutecne nativni zobrazeni zdroje pro PDF/DOCX/tabulky/OCR.
-- Doplnit signed source opening a page jump/highlight pro citace.
+- Prevest viewer z RAG source-context panelu a signed source open odkazu na skutecne nativni zobrazeni zdroje pro PDF/DOCX/tabulky/OCR.
+- Doplnit page jump/highlight pro citace.

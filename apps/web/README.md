@@ -73,6 +73,11 @@ Copy `.env.example` to `.env.local` for local overrides.
 | `AKL_WEB_DEV_SUBJECT` | Local mock-auth subject sent to APIs in development |
 | `AKL_WEB_DEV_ROLES` | Comma-separated local mock-auth roles |
 | `AKL_WEB_DEV_GROUPS` | Comma-separated local mock-auth groups |
+| `AKL_WEB_OBJECT_STORAGE_ROOT` | Local object-storage root used by upload and signed source opening |
+| `AKL_WEB_UPLOAD_BUCKET` | Allowed storage bucket for uploaded and opened source objects |
+| `AKL_WEB_DOWNLOAD_SIGNING_SECRET` | Optional HMAC secret for signed source opening; falls back to upload/dev secret |
+| `AKL_WEB_DOWNLOAD_TOKEN_TTL_SECONDS` | Optional signed source opening token TTL |
+| `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` | Optional same-origin content endpoint path for signed source opening |
 
 Production refuses to start when `AKL_API_CLIENT_MODE=mock` or `AKL_AUTH_MODE=mock`.
 
@@ -142,6 +147,12 @@ Document detail source-context is bridged through
 `GET /api/documents/{documentId}/source-context?chunk_id={chunkId}`. The bridge opens the RAG
 citation server-side and rejects the response unless its document and version belong to the active
 document detail.
+
+Document source opening is bridged through
+`POST /api/documents/{documentId}/versions/{versionId}/source/open`, which returns a short-lived
+same-origin download URL only when the source object exists in configured storage. The browser then
+uses `GET /api/documents/source/content?token=...`; the content route verifies the HMAC token,
+bucket, object key and optional SHA-256 before returning bytes.
 
 The current UI assumes a list endpoint for ingestion jobs: `GET /api/v1/ingestion/jobs`. The central contract documents job creation and job lookup as minimum required endpoints, so this list endpoint should be treated as a frontend integration requirement for operational status screens.
 

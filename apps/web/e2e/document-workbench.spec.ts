@@ -31,6 +31,9 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Viewer" }).click();
     await expect(page.getByRole("heading", { name: "Source-context" })).toBeVisible();
     await expect(page.getByText("Dostupné source-context signály")).toBeVisible();
+    await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
+    await expect(page.getByText("Zdrojový objekt není v lokálním storage dostupný.")).toBeVisible();
+    await expect(page.getByText("Dostupnost ve storage")).toBeVisible();
     await page.getByRole("button", { name: "Otevřít source-context chunk_789" }).click();
     await expect(page.getByText("Chunk chunk_789")).toBeVisible();
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
