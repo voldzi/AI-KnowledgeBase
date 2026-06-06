@@ -17,6 +17,7 @@ Implementovano ve web aplikaci:
   - verze,
   - ingestion,
 - workflow zalozka detailu dokumentu zobrazuje autoritativni Registry tasky a posledni rozhodnuti pro dany dokument,
+- workflow zalozka detailu dokumentu zobrazuje a spravuje `document_assignments`: owner, gestor, reviewer, approver, auditor, steward, SLA a eskalace,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
@@ -81,6 +82,7 @@ QA gate pokryva:
 - Rozsirit stavovy automat o vicekrokove schvalovani nad existujicim `document_assignments` modelem.
 - Pridat retention/disposition metadata.
 - Pridat signed download URL a evidenci upload session do auditni stopy.
+- Doplnit runtime SLA eskalace nad existujicimi assignment metadaty.
 
 ### Ingestion Service
 

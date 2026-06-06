@@ -4,7 +4,9 @@ import type {
   CreateDocumentRequest,
   CreateVersionRequest,
   Document,
-  DocumentVersion
+  DocumentAssignment,
+  DocumentVersion,
+  ReplaceDocumentAssignmentsRequest
 } from "./documents";
 import type { CreateIngestionJobRequest, IngestionJob, IngestionReport } from "./ingestion";
 import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTask, WorkflowTaskListOptions } from "./workflow";
@@ -41,6 +43,12 @@ export interface RegistryApiClient {
   listDocuments(context: ApiRequestContext): Promise<Document[]>;
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document>;
   createDocument(request: CreateDocumentRequest, context: ApiRequestContext): Promise<Document>;
+  listDocumentAssignments(documentId: string, context: ApiRequestContext): Promise<DocumentAssignment[]>;
+  replaceDocumentAssignments(
+    documentId: string,
+    request: ReplaceDocumentAssignmentsRequest,
+    context: ApiRequestContext
+  ): Promise<DocumentAssignment[]>;
   listDocumentVersions(documentId: string, context: ApiRequestContext): Promise<DocumentVersion[]>;
   createDocumentVersion(
     documentId: string,

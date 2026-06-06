@@ -19,8 +19,9 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
   const context = getServerRequestContext();
 
   try {
-    const [document, versions, jobs, authorization, workflowTasks] = await Promise.all([
+    const [document, assignments, versions, jobs, authorization, workflowTasks] = await Promise.all([
       clients.registry.getDocument(documentId, context),
+      clients.registry.listDocumentAssignments(documentId, context),
       clients.registry.listDocumentVersions(documentId, context),
       clients.ingestion.listJobs(context),
       clients.registry.getAuthorizationHints(context),
@@ -41,6 +42,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           versions={versions}
           jobs={jobs}
           authorization={authorization}
+          assignments={assignments}
           workflowTasks={workflowTasks}
         />
       </>

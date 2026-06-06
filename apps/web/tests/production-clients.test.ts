@@ -202,6 +202,84 @@ describe("production API clients", () => {
     assert.equal(calls[0][1]?.method, "GET");
   });
 
+  it("loads and replaces document assignments through the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        items: [
+          {
+            assignment_id: "assign_1",
+            document_id: "doc_1",
+            role: "reviewer",
+            subject_type: "group",
+            subject_id: "reviewers",
+            display_label: "Reviewers",
+            is_primary: true,
+            active: true,
+            sla_days: 3,
+            escalation_subject_type: "unit",
+            escalation_subject_id: "Compliance",
+            escalation_label: "Compliance",
+            assigned_by: "admin_1",
+            assigned_at: "2026-06-06T10:00:00Z",
+            last_audit_event_id: "audit_1",
+            metadata: {},
+            created_at: "2026-06-06T10:00:00Z",
+            updated_at: "2026-06-06T10:00:00Z"
+          }
+        ]
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext();
+
+    const listed = await clients.registry.listDocumentAssignments("doc_1", context);
+    const replaced = await clients.registry.replaceDocumentAssignments(
+      "doc_1",
+      {
+        assignments: [
+          {
+            role: "reviewer",
+            subject_type: "group",
+            subject_id: "reviewers",
+            display_label: "Reviewers",
+            is_primary: true,
+            active: true,
+            sla_days: 3,
+            escalation_subject_type: "unit",
+            escalation_subject_id: "Compliance",
+            escalation_label: "Compliance"
+          }
+        ]
+      },
+      context
+    );
+
+    assert.equal(listed[0].assignment_id, "assign_1");
+    assert.equal(replaced[0].role, "reviewer");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/documents/doc_1/assignments");
+    assert.equal(calls[0][1]?.method, "GET");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/documents/doc_1/assignments");
+    assert.equal(calls[1][1]?.method, "PUT");
+    assert.deepEqual(JSON.parse(String(calls[1][1]?.body)), {
+      assignments: [
+        {
+          role: "reviewer",
+          subject_type: "group",
+          subject_id: "reviewers",
+          display_label: "Reviewers",
+          is_primary: true,
+          active: true,
+          sla_days: 3,
+          escalation_subject_type: "unit",
+          escalation_subject_id: "Compliance",
+          escalation_label: "Compliance"
+        }
+      ]
+    });
+  });
+
   it("applies workflow task actions through the Registry API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

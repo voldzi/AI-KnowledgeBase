@@ -46,6 +46,24 @@ export interface DocumentAssignment {
   updated_at: string;
 }
 
+export interface DocumentAssignmentInput {
+  role: DocumentAssignmentRole;
+  subject_type?: AssignmentSubjectType;
+  subject_id: string;
+  display_label?: string | null;
+  is_primary?: boolean;
+  active?: boolean;
+  sla_days?: number | null;
+  escalation_subject_type?: AssignmentSubjectType | null;
+  escalation_subject_id?: string | null;
+  escalation_label?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ReplaceDocumentAssignmentsRequest {
+  assignments: DocumentAssignmentInput[];
+}
+
 export interface Document {
   document_id: string;
   title: string;
@@ -96,19 +114,7 @@ export interface CreateDocumentRequest {
   classification: Classification;
   tags: string[];
   metadata?: Record<string, unknown>;
-  assignments?: Array<{
-    role: DocumentAssignmentRole;
-    subject_type?: AssignmentSubjectType;
-    subject_id: string;
-    display_label?: string | null;
-    is_primary?: boolean;
-    active?: boolean;
-    sla_days?: number | null;
-    escalation_subject_type?: AssignmentSubjectType | null;
-    escalation_subject_id?: string | null;
-    escalation_label?: string | null;
-    metadata?: Record<string, unknown>;
-  }>;
+  assignments?: DocumentAssignmentInput[];
   access_policies?: Array<{
     subjects: string[];
     actions: string[];

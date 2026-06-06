@@ -1091,6 +1091,56 @@ button {
   justify-content: space-between;
 }
 
+.assignment-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.assignment-row {
+  align-items: end;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns:
+    minmax(112px, 0.8fr)
+    minmax(96px, 0.7fr)
+    minmax(132px, 1fr)
+    minmax(140px, 1fr)
+    minmax(84px, 0.55fr)
+    minmax(104px, 0.75fr)
+    minmax(122px, 0.9fr)
+    minmax(132px, 1fr)
+    auto
+    auto
+    auto;
+  padding: 12px;
+}
+
+.assignment-row__sla input {
+  min-width: 0;
+}
+
+.assignment-row__remove {
+  white-space: nowrap;
+}
+
+.checkbox-field {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.checkbox-field input {
+  accent-color: var(--accent);
+  height: 16px;
+  width: 16px;
+}
+
 .governance-action-grid,
 .insight-grid,
 .help-grid {
@@ -1622,6 +1672,10 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .assignment-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .assistant-workspace {
     grid-template-columns: 1fr;
   }
@@ -1671,6 +1725,7 @@ button {
   .registry-toolbar,
   .registry-filter-grid,
   .preflight-card,
+  .assignment-row,
   .task-toolbar,
   .task-row {
     grid-template-columns: 1fr;

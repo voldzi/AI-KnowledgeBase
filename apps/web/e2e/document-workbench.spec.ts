@@ -22,7 +22,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.locator("tbody tr")).toHaveCount(4);
   });
 
-  test("DW-06 and DW-09 detail shows workflow and locked publish gate", async ({ page }) => {
+  test("DW-06, DW-09 and DW-13 detail shows workflow, assignments and locked publish gate", async ({ page }) => {
     await page.goto("/documents/doc_102");
 
     await expect(page.getByRole("heading", { name: "Detail dokumentu" })).toBeVisible();
@@ -32,6 +32,9 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("heading", { name: "Publish gate" })).toBeVisible();
     await expect(page.getByText("Publikační akce nejsou pro tuto relaci povolené.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Publikovat schválenou verzi" })).toBeDisabled();
+    await expect(page.getByRole("heading", { name: "Organizační odpovědnosti" })).toBeVisible();
+    await expect(page.locator('input[value="Security reviewers"]')).toBeVisible();
+    await expect(page.locator('input[value="security-reviewers"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "Workflow tasky" })).toBeVisible();
     await expect(page.getByText("Document review required")).toBeVisible();
   });
@@ -48,7 +51,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("status")).toContainText("Rozhodnutí bylo zapsané.");
   });
 
-  test("DW-13 knowledge chat opens cited source context", async ({ page }) => {
+  test("DW-14 knowledge chat opens cited source context", async ({ page }) => {
     await page.goto("/chat");
 
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
@@ -59,7 +62,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
   });
 
-  test("DW-15 help center renders role-based guidance", async ({ page }) => {
+  test("DW-16 help center renders role-based guidance", async ({ page }) => {
     await page.goto("/help");
 
     await expect(page.getByRole("heading", { name: "Nápověda" })).toBeVisible();

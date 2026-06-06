@@ -18,6 +18,7 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - prioritni kroky odvozene ze stavu dokumentu, verze, ingestion jobu a klasifikace,
   - viewer preview s metadaty zdrojoveho souboru,
   - governance action panel pro compare/compliance/conflict workflow,
+  - panel organizacnich odpovednosti nad `document_assignments` s roli, subjektem, SLA a eskalaci,
   - workflow task historie filtrovana na dany dokument,
   - publish gate panel pro publikaci `approved` dokumentu a archivaci aktualni `valid` verze.
 - `/upload`:
@@ -43,7 +44,11 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - auditni zapis `workflow.task.<action>`,
   - idempotentni synchronizace tasku z dokumentovych stavu, citlive klasifikace a auditnich varovani,
   - stavovy automat `draft -> review -> approved -> valid -> archived/cancelled`,
-  - publish gate: `/documents/{document_id}/versions/{version_id}/publish` vyzaduje `Document.status=approved`.
+  - publish gate: `/documents/{document_id}/versions/{version_id}/publish` vyzaduje `Document.status=approved`,
+  - tabulka `document_assignments`,
+  - `GET /api/v1/documents/{document_id}/assignments`,
+  - `PUT /api/v1/documents/{document_id}/assignments`,
+  - odvozovani owner/reviewer/approver/auditor tasku z assignment roli, SLA a eskalacnich metadat.
 
 ## 3. Compatibility Notes
 
@@ -59,13 +64,14 @@ Workflow inbox preferuje autoritativni Registry API tasky. Ingestion tasky zusta
 - Governance action panel zatim nespousti Governance Service endpointy.
 - AI insighty nejsou persistovane ani schvalovane.
 - Audit tab dokumentu zatim neni napojen na filtrovane audit udalosti.
-- Workflow akce zatim nemaji viceurovnove schvalovatele ani SLA eskalace.
+- Workflow akce zatim nemaji viceurovnove schvalovatele; SLA a eskalacni metadata existuji v `document_assignments`, ale chybi runtime scheduler/notifikace.
 - Ingestion tasky zatim nejsou publikovane do Registry API tasku.
 - Upload session zatim vlastni web bridge; cilovy stav je samostatny Object Storage service nebo Ingestion-owned upload contract s audit udalosti.
 
 ## 5. Next Recommended Slice
 
-1. Web UI: realny viewer source-context pro PDF/DOCX.
-2. Object Storage: presunout signed upload/download kontrakt z web bridge do backend sluzby.
-3. Governance Service: napojit compare/compliance/conflict checks na workflow tasky.
-4. Registry API: audit tab a SLA/eskalace pro workflow tasky.
+1. Web UI: audit tab v detailu dokumentu s filtrem na Registry audit udalosti.
+2. Governance Service: napojit compare/compliance/conflict checks na workflow tasky.
+3. Web UI: realny viewer source-context pro PDF/DOCX.
+4. Registry API: vicekrokove approval steps a runtime SLA eskalace nad `document_assignments`.
+5. Object Storage: presunout signed upload/download kontrakt z web bridge do backend sluzby.

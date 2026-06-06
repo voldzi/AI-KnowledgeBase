@@ -71,6 +71,11 @@ path_rules:
     domain: model-platform
     audience: [knowledge-admin, it-architect]
     tags: [llm, model-platform]
+  - pattern: "maintenance/**"
+    area: maintenance
+    domain: project-governance
+    audience: [knowledge-admin, developer, auditor]
+    tags: [maintenance, project-status, release-process]
   - pattern: "qa/**"
     area: qa
     domain: product-quality

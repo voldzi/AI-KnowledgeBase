@@ -16,13 +16,26 @@ import {
   Layers3,
   LockKeyhole,
   Network,
+  Plus,
+  Save,
   ShieldCheck,
+  Trash2,
   UploadCloud
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
-import type { AuthorizationHint, Document, DocumentVersion, IngestionJob, RegistryWorkflowTask } from "@/lib/types";
+import type {
+  AssignmentSubjectType,
+  AuthorizationHint,
+  Document,
+  DocumentAssignment,
+  DocumentAssignmentInput,
+  DocumentAssignmentRole,
+  DocumentVersion,
+  IngestionJob,
+  RegistryWorkflowTask
+} from "@/lib/types";
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
 
 interface DocumentDetailProps {
@@ -30,7 +43,22 @@ interface DocumentDetailProps {
   versions: DocumentVersion[];
   jobs: IngestionJob[];
   authorization: AuthorizationHint;
+  assignments?: DocumentAssignment[];
   workflowTasks?: RegistryWorkflowTask[];
+}
+
+interface AssignmentFormRow {
+  id: string;
+  role: DocumentAssignmentRole;
+  subject_type: AssignmentSubjectType;
+  subject_id: string;
+  display_label: string;
+  is_primary: boolean;
+  active: boolean;
+  sla_days: string;
+  escalation_subject_type: AssignmentSubjectType;
+  escalation_subject_id: string;
+  escalation_label: string;
 }
 
 const detailCopy = {
@@ -72,6 +100,27 @@ const detailCopy = {
     workflowTasksTitle: "Workflow tasky",
     workflowTasksDetail: "Autoritativní stav, vlastník a poslední rozhodnutí z Registry API.",
     workflowTasksEmpty: "K dokumentu nejsou evidované workflow tasky.",
+    assignmentsTitle: "Organizační odpovědnosti",
+    assignmentsDetail: "Role, SLA a eskalace z Registry API pro tento dokument.",
+    assignmentsEmpty: "K dokumentu nejsou evidované odpovědnosti.",
+    assignmentRole: "Role",
+    assignmentSubjectType: "Subjekt",
+    assignmentSubjectId: "ID subjektu",
+    assignmentLabel: "Zobrazený název",
+    assignmentSla: "SLA dny",
+    assignmentEscalation: "Eskalace",
+    assignmentEscalationType: "Typ eskalace",
+    assignmentEscalationId: "ID eskalace",
+    assignmentPrimary: "primární",
+    assignmentActive: "aktivní",
+    assignmentAdd: "Přidat roli",
+    assignmentSave: "Uložit odpovědnosti",
+    assignmentSaving: "Ukládám",
+    assignmentRemove: "Odebrat",
+    assignmentNoPermission: "Úprava odpovědností není pro tuto relaci povolená.",
+    assignmentSaved: "Odpovědnosti byly uložené.",
+    assignmentFailed: "Odpovědnosti se nepodařilo uložit.",
+    assignmentRequiresSubject: "Každá role musí mít vyplněné ID subjektu.",
     publishGateTitle: "Publish gate",
     publishGateReady: "Dokument je schválený. Aktuální verzi lze publikovat.",
     publishGatePublished: "Aktuální verze je publikovaná. Archivace je dostupná podle oprávnění.",
@@ -156,6 +205,27 @@ const detailCopy = {
     workflowTasksTitle: "Workflow tasks",
     workflowTasksDetail: "Authoritative status, owner and last decision from Registry API.",
     workflowTasksEmpty: "No workflow tasks are recorded for this document.",
+    assignmentsTitle: "Organizational responsibilities",
+    assignmentsDetail: "Roles, SLA and escalation from Registry API for this document.",
+    assignmentsEmpty: "No responsibilities are recorded for this document.",
+    assignmentRole: "Role",
+    assignmentSubjectType: "Subject",
+    assignmentSubjectId: "Subject ID",
+    assignmentLabel: "Display label",
+    assignmentSla: "SLA days",
+    assignmentEscalation: "Escalation",
+    assignmentEscalationType: "Escalation type",
+    assignmentEscalationId: "Escalation ID",
+    assignmentPrimary: "primary",
+    assignmentActive: "active",
+    assignmentAdd: "Add role",
+    assignmentSave: "Save responsibilities",
+    assignmentSaving: "Saving",
+    assignmentRemove: "Remove",
+    assignmentNoPermission: "Responsibility editing is not allowed in this session.",
+    assignmentSaved: "Responsibilities saved.",
+    assignmentFailed: "Responsibilities could not be saved.",
+    assignmentRequiresSubject: "Every role must have a subject ID.",
     publishGateTitle: "Publish gate",
     publishGateReady: "The document is approved. The current version can be published.",
     publishGatePublished: "The current version is published. Archive is available according to permissions.",
@@ -206,7 +276,17 @@ const detailCopy = {
 
 type DetailTab = "overview" | "viewer" | "workflow" | "insights" | "versions" | "ingestion";
 
-export function DocumentDetail({ document, versions, jobs, authorization, workflowTasks = [] }: DocumentDetailProps) {
+const assignmentRoles: DocumentAssignmentRole[] = ["owner", "gestor", "reviewer", "approver", "auditor", "steward"];
+const assignmentSubjectTypes: AssignmentSubjectType[] = ["user", "group", "unit", "service"];
+
+export function DocumentDetail({
+  document,
+  versions,
+  jobs,
+  authorization,
+  assignments = [],
+  workflowTasks = []
+}: DocumentDetailProps) {
   const { language } = useLanguage();
   const router = useRouter();
   const copy = detailCopy[language];
@@ -215,10 +295,15 @@ export function DocumentDetail({ document, versions, jobs, authorization, workfl
     () => [...workflowTasks].sort((left, right) => right.updated_at.localeCompare(left.updated_at)),
     [workflowTasks]
   );
+  const [assignmentRows, setAssignmentRows] = useState<AssignmentFormRow[]>(() =>
+    assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
+  );
   const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [workflowAction, setWorkflowAction] = useState<"publish" | "archive" | null>(null);
   const [workflowFeedback, setWorkflowFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [savingAssignments, setSavingAssignments] = useState(false);
+  const [assignmentFeedback, setAssignmentFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -253,6 +338,56 @@ export function DocumentDetail({ document, versions, jobs, authorization, workfl
       setWorkflowFeedback({ tone: "error", message: `${copy.workflowActionFailed}${suffix}` });
     } finally {
       setWorkflowAction(null);
+    }
+  }
+
+  function updateAssignmentRow(rowId: string, patch: Partial<AssignmentFormRow>) {
+    setAssignmentRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
+  }
+
+  function addAssignmentRow() {
+    setAssignmentRows((current) => [...current, newAssignmentRow(document.document_id)]);
+  }
+
+  function removeAssignmentRow(rowId: string) {
+    setAssignmentRows((current) => {
+      const nextRows = current.filter((row) => row.id !== rowId);
+      return nextRows.length > 0 ? nextRows : [newAssignmentRow(document.document_id)];
+    });
+  }
+
+  async function saveAssignments() {
+    if (!authorization.can_update || savingAssignments) {
+      return;
+    }
+    const payloadAssignments = assignmentRows.map((row) => assignmentPayloadFromRow(row));
+    if (payloadAssignments.some((assignment) => !assignment.subject_id)) {
+      setAssignmentFeedback({ tone: "error", message: copy.assignmentRequiresSubject });
+      return;
+    }
+
+    setSavingAssignments(true);
+    setAssignmentFeedback(null);
+    try {
+      const response = await fetch(`/api/documents/${encodeURIComponent(document.document_id)}/assignments`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ assignments: payloadAssignments })
+      });
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      const payload = (await response.json()) as { assignments: DocumentAssignment[] };
+      setAssignmentRows(assignmentRowsFrom(payload.assignments, document.document_id));
+      setAssignmentFeedback({ tone: "success", message: copy.assignmentSaved });
+      router.refresh();
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setAssignmentFeedback({ tone: "error", message: `${copy.assignmentFailed}${suffix}` });
+    } finally {
+      setSavingAssignments(false);
     }
   }
 
@@ -459,6 +594,174 @@ export function DocumentDetail({ document, versions, jobs, authorization, workfl
           <section className="panel">
             <div className="panel__header">
               <div>
+                <h2>{copy.assignmentsTitle}</h2>
+                <p>{copy.assignmentsDetail}</p>
+              </div>
+              <StatusBadge value="info" label={String(assignmentRows.length)} />
+            </div>
+            <div className="panel__body stack">
+              {assignmentRows.length > 0 ? (
+                <div className="assignment-editor">
+                  {assignmentRows.map((row, index) => (
+                    <div className="assignment-row" key={row.id}>
+                      <label className="field">
+                        <span>{copy.assignmentRole}</span>
+                        <select
+                          aria-label={`${copy.assignmentRole} ${index + 1}`}
+                          value={row.role}
+                          onChange={(event) =>
+                            updateAssignmentRow(row.id, { role: event.target.value as DocumentAssignmentRole })
+                          }
+                        >
+                          {assignmentRoles.map((role) => (
+                            <option key={role} value={role}>
+                              {assignmentRoleLabel(role, language)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>{copy.assignmentSubjectType}</span>
+                        <select
+                          aria-label={`${copy.assignmentSubjectType} ${index + 1}`}
+                          value={row.subject_type}
+                          onChange={(event) =>
+                            updateAssignmentRow(row.id, { subject_type: event.target.value as AssignmentSubjectType })
+                          }
+                        >
+                          {assignmentSubjectTypes.map((subjectType) => (
+                            <option key={subjectType} value={subjectType}>
+                              {subjectType}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>{copy.assignmentSubjectId}</span>
+                        <input
+                          aria-label={`${copy.assignmentSubjectId} ${index + 1}`}
+                          value={row.subject_id}
+                          onChange={(event) => updateAssignmentRow(row.id, { subject_id: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>{copy.assignmentLabel}</span>
+                        <input
+                          aria-label={`${copy.assignmentLabel} ${index + 1}`}
+                          value={row.display_label}
+                          onChange={(event) => updateAssignmentRow(row.id, { display_label: event.target.value })}
+                        />
+                      </label>
+                      <label className="field assignment-row__sla">
+                        <span>{copy.assignmentSla}</span>
+                        <input
+                          aria-label={`${copy.assignmentSla} ${index + 1}`}
+                          min="1"
+                          max="365"
+                          type="number"
+                          value={row.sla_days}
+                          onChange={(event) => updateAssignmentRow(row.id, { sla_days: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>{copy.assignmentEscalationType}</span>
+                        <select
+                          aria-label={`${copy.assignmentEscalationType} ${index + 1}`}
+                          value={row.escalation_subject_type}
+                          onChange={(event) =>
+                            updateAssignmentRow(row.id, {
+                              escalation_subject_type: event.target.value as AssignmentSubjectType
+                            })
+                          }
+                        >
+                          {assignmentSubjectTypes.map((subjectType) => (
+                            <option key={subjectType} value={subjectType}>
+                              {subjectType}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>{copy.assignmentEscalationId}</span>
+                        <input
+                          aria-label={`${copy.assignmentEscalationId} ${index + 1}`}
+                          value={row.escalation_subject_id}
+                          onChange={(event) => updateAssignmentRow(row.id, { escalation_subject_id: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>{copy.assignmentEscalation}</span>
+                        <input
+                          aria-label={`${copy.assignmentEscalation} ${index + 1}`}
+                          value={row.escalation_label}
+                          onChange={(event) => updateAssignmentRow(row.id, { escalation_label: event.target.value })}
+                        />
+                      </label>
+                      <label className="checkbox-field">
+                        <input
+                          checked={row.is_primary}
+                          type="checkbox"
+                          onChange={(event) => updateAssignmentRow(row.id, { is_primary: event.target.checked })}
+                        />
+                        <span>{copy.assignmentPrimary}</span>
+                      </label>
+                      <label className="checkbox-field">
+                        <input
+                          checked={row.active}
+                          type="checkbox"
+                          onChange={(event) => updateAssignmentRow(row.id, { active: event.target.checked })}
+                        />
+                        <span>{copy.assignmentActive}</span>
+                      </label>
+                      <button
+                        aria-label={`${copy.assignmentRemove} ${index + 1}`}
+                        className="button assignment-row__remove"
+                        type="button"
+                        onClick={() => removeAssignmentRow(row.id)}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                        {copy.assignmentRemove}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <AlertTriangle size={22} aria-hidden="true" />
+                  {copy.assignmentsEmpty}
+                </div>
+              )}
+              <div className="task-actions">
+                <button className="button" type="button" onClick={addAssignmentRow}>
+                  <Plus size={16} aria-hidden="true" />
+                  {copy.assignmentAdd}
+                </button>
+                <button
+                  className="button button--primary"
+                  disabled={!authorization.can_update || savingAssignments}
+                  type="button"
+                  onClick={() => {
+                    void saveAssignments();
+                  }}
+                >
+                  <Save size={16} aria-hidden="true" />
+                  {savingAssignments ? copy.assignmentSaving : copy.assignmentSave}
+                </button>
+                {!authorization.can_update ? <span className="muted">{copy.assignmentNoPermission}</span> : null}
+                {assignmentFeedback ? (
+                  <div
+                    className={`notice ${assignmentFeedback.tone === "error" ? "notice--danger" : ""}`}
+                    role={assignmentFeedback.tone === "error" ? "alert" : "status"}
+                  >
+                    {assignmentFeedback.message}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel__header">
+              <div>
                 <h2>{copy.publishGateTitle}</h2>
                 <p>
                   {authorization.can_publish
@@ -633,6 +936,83 @@ export function DocumentDetail({ document, versions, jobs, authorization, workfl
       ) : null}
     </div>
   );
+}
+
+function assignmentRowsFrom(assignments: DocumentAssignment[], documentId: string): AssignmentFormRow[] {
+  if (assignments.length === 0) {
+    return [newAssignmentRow(documentId)];
+  }
+  return assignments.map((assignment) => ({
+    id: assignment.assignment_id,
+    role: assignment.role,
+    subject_type: assignment.subject_type,
+    subject_id: assignment.subject_id,
+    display_label: assignment.display_label ?? "",
+    is_primary: assignment.is_primary,
+    active: assignment.active,
+    sla_days: assignment.sla_days === null ? "" : String(assignment.sla_days),
+    escalation_subject_type: assignment.escalation_subject_type ?? "unit",
+    escalation_subject_id: assignment.escalation_subject_id ?? "",
+    escalation_label: assignment.escalation_label ?? ""
+  }));
+}
+
+function newAssignmentRow(documentId: string): AssignmentFormRow {
+  return {
+    id: `new_${documentId}_${Date.now()}`,
+    role: "reviewer",
+    subject_type: "user",
+    subject_id: "",
+    display_label: "",
+    is_primary: false,
+    active: true,
+    sla_days: "3",
+    escalation_subject_type: "unit",
+    escalation_subject_id: "",
+    escalation_label: ""
+  };
+}
+
+function assignmentPayloadFromRow(row: AssignmentFormRow): DocumentAssignmentInput {
+  const slaDays = Number.parseInt(row.sla_days, 10);
+  const escalationSubjectId = row.escalation_subject_id.trim();
+  return {
+    role: row.role,
+    subject_type: row.subject_type,
+    subject_id: row.subject_id.trim(),
+    display_label: row.display_label.trim() || null,
+    is_primary: row.is_primary,
+    active: row.active,
+    sla_days: Number.isFinite(slaDays) ? slaDays : null,
+    escalation_subject_type: escalationSubjectId ? row.escalation_subject_type : null,
+    escalation_subject_id: escalationSubjectId || null,
+    escalation_label: row.escalation_label.trim() || null,
+    metadata: {
+      source: "web.document_detail"
+    }
+  };
+}
+
+function assignmentRoleLabel(role: DocumentAssignmentRole, language: AklLanguage): string {
+  const labels = {
+    cs: {
+      owner: "vlastník",
+      gestor: "gestor",
+      reviewer: "revizor",
+      approver: "schvalovatel",
+      auditor: "auditor",
+      steward: "správce znalosti"
+    },
+    en: {
+      owner: "owner",
+      gestor: "gestor",
+      reviewer: "reviewer",
+      approver: "approver",
+      auditor: "auditor",
+      steward: "steward"
+    }
+  } satisfies Record<AklLanguage, Record<DocumentAssignmentRole, string>>;
+  return labels[language][role];
 }
 
 function KeyValue({ label, value }: { label: string; value: string }) {

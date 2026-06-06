@@ -144,6 +144,51 @@ describe("mock API clients", () => {
     assert.equal(historicalTask.metadata.last_action, "resolve");
   });
 
+  it("keeps document assignments stateful in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext({ subjectId: "admin_1" });
+
+    const initialAssignments = await clients.registry.listDocumentAssignments("doc_102", context);
+    const assignments = await clients.registry.replaceDocumentAssignments(
+      "doc_102",
+      {
+        assignments: [
+          {
+            role: "owner",
+            subject_type: "user",
+            subject_id: "user_777",
+            display_label: "New owner",
+            is_primary: true,
+            active: true,
+            sla_days: 5,
+            escalation_subject_type: "unit",
+            escalation_subject_id: "Security",
+            escalation_label: "Security management"
+          },
+          {
+            role: "reviewer",
+            subject_type: "group",
+            subject_id: "review-board",
+            display_label: "Review board",
+            is_primary: true,
+            active: true,
+            sla_days: 2
+          }
+        ]
+      },
+      context
+    );
+    const document = await clients.registry.getDocument("doc_102", context);
+    const tasks = await clients.registry.listWorkflowTasks(context, { kind: "review" });
+    const reviewTask = tasks.find((task) => task.document_id === "doc_102");
+
+    assert.ok(initialAssignments.length > 0);
+    assert.equal(assignments.length, 2);
+    assert.equal(document.owner_id, "user_777");
+    assert.equal(reviewTask?.owner_id, "review-board");
+    assert.equal(reviewTask?.metadata.assignment_role, "reviewer");
+  });
+
   it("enforces the publish gate in mock mode", async () => {
     const clients = createApiClients({ env });
     const context = createMockContext({ subjectId: "admin_1" });
