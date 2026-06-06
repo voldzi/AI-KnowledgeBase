@@ -61,6 +61,19 @@ Obsahuje:
 
 Napoveda je dvojjazycna a pouziva stejny jazykovy kontext jako zbytek webu.
 
+## Product QA Gate
+
+Produktova kontrola Document Workbench je popsana v `docs/qa/document-workbench-product-qa.md`.
+
+QA gate pokryva:
+
+- kriticke scenare registry, uploadu, workflow, publish gate, RAG citaci a napovedy,
+- role spravce dokumentu, gestora/revizora, auditora a zamestnance,
+- chybove stavy bez legacy kompatibility,
+- viewport matrix,
+- vykonova ocekavani pro Docker stack,
+- sign-off sablonu pro PR a release.
+
 ## Další Implementační Kroky
 
 ### Registry API

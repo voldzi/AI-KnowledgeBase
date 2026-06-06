@@ -71,6 +71,11 @@ path_rules:
     domain: model-platform
     audience: [knowledge-admin, it-architect]
     tags: [llm, model-platform]
+  - pattern: "qa/**"
+    area: qa
+    domain: product-quality
+    audience: [knowledge-admin, document-manager, auditor, developer]
+    tags: [qa, product-quality, document-workbench]
   - pattern: "rag/**"
     area: rag
     domain: knowledge-retrieval
