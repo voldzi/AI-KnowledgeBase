@@ -96,6 +96,7 @@ class Settings:
     qdrant_base_url: str
     qdrant_api_key: str | None
     qdrant_collection: str
+    qdrant_vector_size: int
     qdrant_distance: str
     qdrant_delete_existing_version: bool
 
@@ -137,9 +138,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         max_chunks_per_job = int(_get(source, "AKL_INGESTION_MAX_CHUNKS_PER_JOB", "5000"))
         embedding_batch_size = int(_get(source, "AKL_INGESTION_EMBEDDING_BATCH_SIZE", "32"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
+        qdrant_vector_size = int(_get(source, "AKL_QDRANT_VECTOR_SIZE", "1024"))
         request_timeout_seconds = float(_get(source, "AKL_INGESTION_REQUEST_TIMEOUT_SECONDS", "30"))
     except ValueError as exc:
-        raise ConfigError("Numeric AKL_INGESTION_* configuration value is invalid") from exc
+        raise ConfigError("Numeric AKL_INGESTION_* or AKL_QDRANT_* configuration value is invalid") from exc
 
     if max_file_bytes <= 0:
         raise ConfigError("AKL_INGESTION_MAX_FILE_BYTES must be greater than zero")
@@ -159,6 +161,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_EMBEDDING_BATCH_SIZE must be greater than zero")
     if mock_embedding_dimensions <= 0:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
+    if qdrant_vector_size <= 0:
+        raise ConfigError("AKL_QDRANT_VECTOR_SIZE must be greater than zero")
     if request_timeout_seconds <= 0:
         raise ConfigError("AKL_INGESTION_REQUEST_TIMEOUT_SECONDS must be greater than zero")
 
@@ -229,6 +233,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         qdrant_base_url=_get(source, "AKL_QDRANT_BASE_URL", "http://localhost:6333").rstrip("/"),
         qdrant_api_key=source.get("AKL_QDRANT_API_KEY") or None,
         qdrant_collection=_get(source, "AKL_QDRANT_COLLECTION", "akl_document_chunks"),
+        qdrant_vector_size=qdrant_vector_size,
         qdrant_distance=_get(source, "AKL_QDRANT_DISTANCE", "Cosine"),
         qdrant_delete_existing_version=_parse_bool(
             _get(source, "AKL_QDRANT_DELETE_EXISTING_VERSION", "true")

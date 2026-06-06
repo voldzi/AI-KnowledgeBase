@@ -34,7 +34,23 @@ For `only_valid=true` retrieval, the document version must be published before i
 - `valid_from`: set to today or earlier
 - `valid_to`: `null` or future date
 
-The Phase 02 smoke test publishes the version before ingestion so Qdrant receives `status=valid`.
+The controlled-document smoke test publishes the version before ingestion so Qdrant receives `status=valid`.
+
+## Real Local RAG Profile
+
+The verified real profile uses:
+
+```text
+chat model: gemma4:12b
+embedding model: bge-m3
+RAG chat model: gemma4:12b
+Qdrant collection: akl_document_chunks
+Qdrant vector size: 1024
+Qdrant distance: Cosine
+AKL_RAG_AUTHZ_MODE=dev
+```
+
+Ingestion creates the Qdrant collection if it is missing. If the collection exists with a different vector size, ingestion returns a vector-size mismatch error instead of writing incompatible points. Mock embeddings are 8-dimensional by default and must not be mixed with the real `bge-m3` collection.
 
 ## Source Fixture
 

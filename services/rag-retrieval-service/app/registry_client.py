@@ -32,6 +32,7 @@ class RegistryClient(Protocol):
         event_type: str,
         resource_id: str,
         metadata: dict[str, object],
+        resource_type: str = "rag_query",
         auth_context: AuthContext | None = None,
     ) -> None:
         ...
@@ -66,6 +67,7 @@ class MockRegistryClient:
         event_type: str,
         resource_id: str,
         metadata: dict[str, object],
+        resource_type: str = "rag_query",
         auth_context: AuthContext | None = None,
     ) -> None:
         return None
@@ -115,12 +117,13 @@ class HttpRegistryClient:
         event_type: str,
         resource_id: str,
         metadata: dict[str, object],
+        resource_type: str = "rag_query",
         auth_context: AuthContext | None = None,
     ) -> None:
         body = {
             "actor_id": actor_id,
             "event_type": event_type,
-            "resource_type": "rag_query",
+            "resource_type": resource_type,
             "resource_id": resource_id,
             "severity": "info",
             "correlation_id": get_correlation_id(),
@@ -172,6 +175,7 @@ class DevAuthzRegistryClient:
         event_type: str,
         resource_id: str,
         metadata: dict[str, object],
+        resource_type: str = "rag_query",
         auth_context: AuthContext | None = None,
     ) -> None:
         await self._audit_client.write_audit_event(
@@ -179,6 +183,7 @@ class DevAuthzRegistryClient:
             event_type=event_type,
             resource_id=resource_id,
             metadata=metadata,
+            resource_type=resource_type,
             auth_context=auth_context,
         )
 

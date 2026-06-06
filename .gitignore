@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.local-prod.example
 
 # Python
 __pycache__/
@@ -31,6 +32,7 @@ logs/
 
 # Local runtime data
 data/
+reports/
 tmp/
 *.sqlite
 *.db

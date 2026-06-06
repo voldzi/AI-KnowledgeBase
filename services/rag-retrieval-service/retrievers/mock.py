@@ -50,6 +50,17 @@ class MockHybridRetriever:
     async def readiness(self) -> str:
         return "ready"
 
+    async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
+        for chunk in self._chunks:
+            if chunk["chunk_id"] == chunk_id:
+                return _to_retrieved_chunk(
+                    chunk,
+                    score=1.0,
+                    dense_score=1.0,
+                    sparse_score=1.0,
+                )
+        return None
+
 
 def _to_retrieved_chunk(
     chunk: dict[str, Any],
@@ -81,6 +92,14 @@ def _to_retrieved_chunk(
             "classification": payload.get("classification"),
             "tags": payload.get("tags", []),
             "status": payload.get("status"),
+            "source_file_uri": payload.get("source_file_uri"),
+            "source_file_name": payload.get("source_file_name"),
+            "source_mime_type": payload.get("source_mime_type"),
+            "source_size_bytes": payload.get("source_size_bytes"),
+            "source_sha256": payload.get("source_sha256"),
+            "section_title": payload.get("section_title"),
+            "char_start": payload.get("char_start"),
+            "char_end": payload.get("char_end"),
         },
     )
 
@@ -106,6 +125,14 @@ def _mock_chunks() -> list[dict[str, Any]]:
                 "section_path": ["Cl. 4", "Odst. 2"],
                 "article_number": "4",
                 "paragraph_number": "2",
+                "source_file_uri": "s3://akl-documents/doc_123/ver_456/source.md",
+                "source_file_name": "source.md",
+                "source_mime_type": "text/markdown",
+                "source_size_bytes": 2048,
+                "source_sha256": "sha256:mock",
+                "section_title": "Vyjimky",
+                "char_start": 120,
+                "char_end": 310,
             },
         },
         {

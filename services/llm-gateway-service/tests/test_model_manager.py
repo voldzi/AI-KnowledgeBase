@@ -18,13 +18,13 @@ def test_providers_endpoint_reports_mock_active_provider() -> None:
     assert providers["mock"]["supports_embeddings"] is True
 
 
-def test_recommended_models_endpoint_returns_phase_02_defaults() -> None:
+def test_recommended_models_endpoint_returns_current_local_defaults() -> None:
     with make_client() as client:
         response = client.get("/api/v1/models/recommended")
 
     assert response.status_code == 200
     body = response.json()
-    assert any(model["name"] == "qwen2.5:14b" for model in body["chat_models"])
+    assert body["chat_models"][0]["name"] == "gemma4:12b"
     assert any(model["name"] == "bge-m3" for model in body["embedding_models"])
 
 
@@ -43,7 +43,7 @@ def test_model_pull_returns_unsupported_for_mock_provider() -> None:
     with make_client() as client:
         response = client.post(
             "/api/v1/models/pull",
-            json={"model": "qwen2.5:14b", "kind": "chat"},
+            json={"model": "gemma4:12b", "kind": "chat"},
         )
 
     assert response.status_code == 200

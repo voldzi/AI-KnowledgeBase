@@ -124,5 +124,10 @@ def _filename_for_uri(uri: str) -> str:
 
 
 def _guess_mime_type(value: str) -> str:
+    suffix = Path(value).suffix.lower()
+    if suffix in {".md", ".markdown"}:
+        return "text/markdown"
+    if suffix == ".txt":
+        return "text/plain"
     mime_type, _ = mimetypes.guess_type(value)
     return mime_type or "application/octet-stream"

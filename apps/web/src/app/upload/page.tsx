@@ -15,8 +15,11 @@ export default async function UploadPage() {
   return (
     <>
       <PageHeader
-        title="Upload wizard"
-        description="Prepare a new document version and queue ingestion without direct database, Qdrant or LLM runtime access."
+        title={{ cs: "Průvodce nahráním", en: "Upload wizard" }}
+        description={{
+          cs: "Ověří soubor, vytvoří podepsanou upload session, uloží zdrojový objekt a zařadí ingestion bez přímého přístupu k databázi, Qdrantu nebo LLM runtime.",
+          en: "Validate a file, create a signed upload session, store the source object and queue ingestion without direct database, Qdrant or LLM runtime access."
+        }}
       />
       <UploadWizard documents={documents} authorization={authorization} />
     </>

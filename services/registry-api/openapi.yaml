@@ -4,7 +4,7 @@ info:
   description: Registry service for controlled documents, versions, access policies,
     authorization decisions, and audit events. It does not implement ingestion, RAG,
     or LLM logic.
-  version: 0.1.0
+  version: dev
 paths:
   /health:
     get:
@@ -423,6 +423,118 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/workflow/tasks:
+    get:
+      summary: List Workflow Tasks
+      operationId: list_workflow_tasks_api_v1_workflow_tasks_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/WorkflowTaskStatus'
+          - type: 'null'
+          title: Status
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/WorkflowTaskKind'
+          - type: 'null'
+          title: Kind
+      - name: priority
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/WorkflowTaskPriority'
+          - type: 'null'
+          title: Priority
+      - name: document_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner Id
+      - name: include_resolved
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Resolved
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowTaskListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/workflow/tasks/{task_id}/actions:
+    post:
+      summary: Apply Workflow Task Action
+      operationId: apply_workflow_task_action_api_v1_workflow_tasks__task_id__actions_post
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Task Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowTaskActionRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowTaskResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/audit/events:
     post:
       summary: Create Audit Event
@@ -617,6 +729,8 @@ components:
       - rag.query
       - rag.compare
       - rag.check_compliance
+      - workflow.task.read
+      - workflow.task.write
       - audit.read
       - audit.write
       - admin.manage
@@ -1072,6 +1186,7 @@ components:
       enum:
       - draft
       - review
+      - approved
       - valid
       - superseded
       - archived
@@ -1087,6 +1202,7 @@ components:
       - procedure
       - manual
       - knowledge_base_article
+      - project_documentation
       - meeting_record
       - contract
       - attachment
@@ -1270,3 +1386,188 @@ components:
       - msg
       - type
       title: ValidationError
+    WorkflowTaskAction:
+      type: string
+      enum:
+      - assign
+      - request_changes
+      - approve
+      - publish
+      - archive
+      - resolve
+      title: WorkflowTaskAction
+    WorkflowTaskActionRequest:
+      properties:
+        action:
+          $ref: '#/components/schemas/WorkflowTaskAction'
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Comment
+        assignee_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Assignee Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - action
+      title: WorkflowTaskActionRequest
+    WorkflowTaskKind:
+      type: string
+      enum:
+      - review
+      - draft
+      - ingestion
+      - governance
+      - audit
+      title: WorkflowTaskKind
+    WorkflowTaskListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/WorkflowTaskResponse'
+          type: array
+          title: Items
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - limit
+      - offset
+      title: WorkflowTaskListResponse
+    WorkflowTaskPriority:
+      type: string
+      enum:
+      - critical
+      - high
+      - medium
+      - low
+      title: WorkflowTaskPriority
+    WorkflowTaskResponse:
+      properties:
+        task_id:
+          type: string
+          title: Task Id
+        source_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Key
+        kind:
+          $ref: '#/components/schemas/WorkflowTaskKind'
+        priority:
+          $ref: '#/components/schemas/WorkflowTaskPriority'
+        status:
+          $ref: '#/components/schemas/WorkflowTaskStatus'
+        title:
+          type: string
+          title: Title
+        description:
+          type: string
+          title: Description
+        source:
+          type: string
+          title: Source
+        owner_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner Id
+        owner_label:
+          type: string
+          title: Owner Label
+        role:
+          type: string
+          title: Role
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        document_title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Title
+        document_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Version Id
+        audit_event_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Audit Event Id
+        job_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Job Id
+        due_at:
+          type: string
+          format: date-time
+          title: Due At
+        resolved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Resolved At
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - task_id
+      - source_key
+      - kind
+      - priority
+      - status
+      - title
+      - description
+      - source
+      - owner_id
+      - owner_label
+      - role
+      - document_id
+      - document_title
+      - document_version_id
+      - audit_event_id
+      - job_id
+      - due_at
+      - resolved_at
+      - created_at
+      - updated_at
+      title: WorkflowTaskResponse
+    WorkflowTaskStatus:
+      type: string
+      enum:
+      - open
+      - waiting
+      - blocked
+      - resolved
+      - cancelled
+      title: WorkflowTaskStatus

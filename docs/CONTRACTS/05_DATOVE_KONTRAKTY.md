@@ -18,6 +18,14 @@ Tento dokument definuje sdílené datové objekty používané napříč služba
   "owner_id": "user_123",
   "gestor_unit": "IT",
   "tags": ["směrnice"],
+  "metadata": {
+    "domain": "IT Governance",
+    "area": "governance",
+    "audience": ["employee", "knowledge-admin"],
+    "language": "cs",
+    "source_system": "git",
+    "source_path": "governance/example.md"
+  },
   "created_at": "2026-06-05T10:00:00Z",
   "updated_at": "2026-06-05T10:00:00Z"
 }
@@ -33,6 +41,7 @@ policy
 procedure
 manual
 knowledge_base_article
+project_documentation
 meeting_record
 contract
 attachment
@@ -92,7 +101,7 @@ confidential
   "filename": "smernice.pdf",
   "mime_type": "application/pdf",
   "size_bytes": 123456,
-  "sha256": "...",
+  "sha256": "sha256:...",
   "uploaded_by": "user_123",
   "uploaded_at": "2026-06-05T10:00:00Z"
 }
@@ -100,7 +109,36 @@ confidential
 
 ---
 
-## 4. DocumentChunk
+## 4. UploadPreflightSession
+
+Web bridge upload session neni dlouhodoby business objekt, ale kontrakt mezi browserem, web boundary a storage vrstvou.
+
+```json
+{
+  "upload_session_id": "upl_123",
+  "upload_url": "/api/controlled-document/upload/sessions/upl_123/content",
+  "upload_method": "PUT",
+  "source_file_uri": "s3://akl-documents/doc_123/draft/2026-06-06/upl_123/smernice.pdf",
+  "expires_at": "2026-06-06T10:15:00Z",
+  "required_headers": {
+    "Content-Type": "application/pdf",
+    "X-AKL-Content-SHA256": "sha256:...",
+    "X-AKL-Upload-Token": "<hmac-token>"
+  },
+  "file": {
+    "filename": "smernice.pdf",
+    "mime_type": "application/pdf",
+    "size_bytes": 123456,
+    "sha256": "sha256:..."
+  }
+}
+```
+
+Podepsany token vaze `document_id`, `upload_session_id`, `source_file_uri`, `file_name`, `file_size`, `file_type`, `sha256` a expiraci. Bridge pri zakladani draft verze musi metadata znovu overit.
+
+---
+
+## 5. DocumentChunk
 
 Chunk musí umožnit přesnou citaci.
 
@@ -137,7 +175,7 @@ Chunk musí umožnit přesnou citaci.
 
 ---
 
-## 5. RetrievedChunk
+## 6. RetrievedChunk
 
 ```json
 {
@@ -165,7 +203,7 @@ Chunk musí umožnit přesnou citaci.
 
 ---
 
-## 6. RAG Answer
+## 7. RAG Answer
 
 ```json
 {
@@ -201,7 +239,50 @@ conflicting_sources
 
 ---
 
-## 7. GovernanceResult
+## 8. AssistantChatResponse
+
+```json
+{
+  "response_type": "answer",
+  "conversation_id": "conv_123",
+  "answer": "Postup je popsán v citovaném dokumentu.",
+  "message": null,
+  "questions": [],
+  "why_needed": null,
+  "current_context": {},
+  "citations": [
+    {
+      "document_id": "doc_123",
+      "document_version_id": "ver_456",
+      "document_title": "Smernice ...",
+      "version_label": "1.0",
+      "section_path": ["Cl. 4"],
+      "page_number": 7,
+      "chunk_id": "chunk_789"
+    }
+  ],
+  "follow_up_questions": [],
+  "suggested_actions": [],
+  "confidence": "medium",
+  "warnings": [],
+  "missing_information": null,
+  "recommended_action": null
+}
+```
+
+Allowed `response_type`:
+
+```text
+answer
+clarification_needed
+no_answer
+restricted
+handoff_recommended
+```
+
+---
+
+## 9. GovernanceResult
 
 Governance vystupy musi byt navrhove a citovatelne.
 
@@ -239,7 +320,7 @@ Governance result nesmi byt povazovan za publikacni rozhodnuti. Publikace a zmen
 
 ---
 
-## 8. IngestionJob
+## 10. IngestionJob
 
 ```json
 {
@@ -271,7 +352,7 @@ completed_with_warnings
 
 ---
 
-## 9. IngestionReport
+## 11. IngestionReport
 
 ```json
 {
@@ -294,7 +375,7 @@ completed_with_warnings
 
 ---
 
-## 10. AuditEvent
+## 12. AuditEvent
 
 ```json
 {
@@ -314,7 +395,60 @@ completed_with_warnings
 
 ---
 
-## 11. EvalQuestion
+## 13. WorkflowTask
+
+```json
+{
+  "task_id": "task_123",
+  "source_key": "document-governance:doc_123",
+  "kind": "governance",
+  "priority": "high",
+  "status": "open",
+  "title": "Governance check before publication",
+  "description": "Restricted sources require access, conflict and compliance checks before publication.",
+  "source": "Document classification policy",
+  "owner_id": "user_123",
+  "owner_label": "Security",
+  "role": "Governance / auditor",
+  "document_id": "doc_123",
+  "document_title": "Metodika výjimek",
+  "document_version_id": null,
+  "audit_event_id": null,
+  "job_id": null,
+  "due_at": "2026-06-08T10:00:00Z",
+  "resolved_at": null,
+  "metadata": {
+    "derived": true,
+    "classification": "restricted"
+  },
+  "created_at": "2026-06-05T10:00:00Z",
+  "updated_at": "2026-06-05T10:00:00Z"
+}
+```
+
+Enumy:
+
+```text
+kind: review | draft | ingestion | governance | audit
+priority: critical | high | medium | low
+status: open | waiting | blocked | resolved | cancelled
+```
+
+Souvisejici `Document.status` workflow pouziva hodnoty:
+
+```text
+draft | review | approved | valid | superseded | archived | cancelled
+```
+
+Publikace verze je povolena jen pri `Document.status=approved`. Workflow `approve` nad review taskem pripravuje dokument a posledni draft/review verzi k publikaci; `request_changes` vraci review/approved dokument zpet na `draft`.
+
+Registry API vlastni dokumentove, governance a audit tasky. Ingestion task muze byt v UI zobrazen ve stejnem tvaru, ale zdrojove autoritativni pole zustava v Ingestion Service.
+
+U odvozenych Registry tasku plati, ze synchronizace ze stavu dokumentu nebo auditu zachovava manualni workflow rozhodnuti. Pole `metadata.last_action`, `metadata.last_actor_id`, `metadata.last_comment`, `metadata.last_action_at`, `status`, `owner_id` a `owner_label` nesmi byt pri dalsim `GET /workflow/tasks` vracena do vychoziho odvozeneho stavu.
+
+---
+
+## 14. EvalQuestion
 
 ```json
 {
@@ -337,7 +471,7 @@ completed_with_warnings
 
 ---
 
-## 12. Naming conventions
+## 15. Naming conventions
 
 - ID prefixy:
   - `doc_`
@@ -347,6 +481,7 @@ completed_with_warnings
   - `ing_`
   - `query_`
   - `audit_`
+  - `task_`
   - `eval_`
   - `gov_`
   - `cmp_`

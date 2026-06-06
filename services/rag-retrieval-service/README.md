@@ -39,6 +39,13 @@ RAG:
 - `POST /api/v1/rag/compare-documents`
 - `POST /api/v1/rag/check-compliance`
 
+Employee Assistant:
+
+- `POST /api/v1/assistant/chat`
+- `POST /api/v1/assistant/clarify`
+- `GET /api/v1/assistant/suggestions`
+- `GET /api/v1/assistant/citations/{chunk_id}/open`
+
 OpenAPI specifikace je v `openapi.yaml`.
 
 ## Hlavni tok
@@ -57,6 +64,8 @@ OpenAPI specifikace je v `openapi.yaml`.
 10. Vrati odpoved, confidence, citace, `used_chunks`, warnings a `missing_information`.
 11. Zapise audit event pres Registry API. Do auditu jde hash odpovedi, ID chunku a ID dokumentu, ne plny text odpovedi.
 
+Volitelne pole `response_language` podporuje `cs` a `en`. Vychozi hodnota je `cs`. Hodnota se pouziva pro RAG odpoved, no-answer texty, Employee Assistant clarifikace a navrhy dotazu; citovane zdrojove vyryvky zustavaji v puvodnim jazyce dokumentu.
+
 ## Konfigurace
 
 Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
@@ -65,7 +74,7 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 |---|---:|---|
 | `AKL_ENV` | `development` | `production` odmítá `disabled`/`mock` auth a vynucuje http klienty. |
 | `AKL_AUTH_MODE` | `disabled` | `disabled`, `mock`, `bearer`, nebo `oidc`. |
-| `AKL_SERVICE_TOKEN` | prazdne | Token pro legacy prichozi `bearer` auth. |
+| `AKL_SERVICE_TOKEN` | prazdne | Token pro prichozi `bearer` auth. |
 | `AKL_UPSTREAM_BEARER_TOKEN` | prazdne | Fallback token pro volani Registry API a LLM Gateway, kdyz neni caller token. |
 | `AKL_SERVICE_ACCOUNT_SUBJECT` | `svc-rag` | Fallback service subject pro dev/service-token volani. |
 | `AKL_SERVICE_ACCOUNT_ROLES` | `service_rag` | Fallback service role pro dev/service-token volani. |
@@ -79,21 +88,10 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_LLM_GATEWAY_BASE_URL` | `http://localhost:8080/api/v1` | LLM Gateway API base URL. |
 | `AKL_RAG_NO_ANSWER_MIN_SCORE` | `0.35` | Minimalni rerank score pro odpoved. |
 | `AKL_RAG_MAX_CONTEXT_CHARS` | `12000` | Maximalni velikost kontextu pro LLM. |
-
-Phase 02 compatibility aliases jsou take podporovane:
-
-| Promenna | Priklad | Popis |
-|---|---:|---|
-| `RAG_RETRIEVAL_MODE` | `mock` nebo `qdrant` | Alias pro retriever mode. |
-| `RAG_MOCK_MODE` | `true` | Vynuti mock dependency default. |
-| `QDRANT_URL` | `http://qdrant:6333` | Alias pro Qdrant URL. |
-| `QDRANT_COLLECTION` | `akl_document_chunks` | Alias pro Qdrant kolekci. |
-| `REGISTRY_API_URL` | `http://registry-api:8000` | Alias pro Registry API root; `/api/v1` se doplni automaticky. |
-| `LLM_GATEWAY_URL` | `http://llm-gateway:8080` | Alias pro LLM Gateway root; `/api/v1` se doplni automaticky. |
-| `RAG_TOP_K` | `8` | Alias pro vychozi `max_chunks`. |
-| `RAG_MIN_SCORE` | `0.35` | Alias pro no-answer relevance threshold. |
-| `RAG_ENABLE_RERANKING` | `true` | Zapne/vypne lexical reranking. |
-| `RAG_AUTHZ_MODE` | `dev` nebo `registry` | Dev pouzije mock authz, registry pouzije Registry API klienta. |
+| `AKL_RAG_ANSWER_MAX_TOKENS` | `512` | Maximalni delka generovane odpovedi posilana do LLM Gateway. |
+| `AKL_RAG_REQUIRE_CITATIONS` | `true` | Vynuti citace u odpovedi. |
+| `AKL_RAG_ENABLE_RERANKING` | `true` | Zapne/vypne lexical reranking. |
+| `AKL_RAG_AUTHZ_MODE` | `dev` | `dev` pouzije lokalni authz filtr, `registry` pouzije Registry API klienta. |
 
 ## Spusteni
 

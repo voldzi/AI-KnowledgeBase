@@ -62,23 +62,26 @@ The returned citation pointed to the run-created document and Article 2 chunk.
 
 ## 6. LLM Provider Result
 
-Validated smoke path used LLM Gateway over HTTP with the mock provider:
+Validated smoke path used LLM Gateway over HTTP with the real local Ollama profile:
 
-- embeddings: `mock-embedding`
-- chat: `mock-chat`
+- chat model: `gemma4:12b`
+- embedding model: `bge-m3`
+- `AKL_LLM_DEFAULT_PROVIDER=ollama`
+- `AKL_OLLAMA_THINK=false`
+- `AKL_LLM_DEFAULT_MAX_TOKENS=512`
 
-The non-mock Ollama profile is documented in `docs/deployment/llm-profiles.md`. It is configuration-ready, but this run did not validate pulled Ollama models.
+The default checked-in Phase 02 real local RAG profile is documented in `docs/deployment/llm-profiles.md`.
 
 ## 7. Web Workflow Result
 
 Web baseline now has real API-backed workflow points:
 
 - `/documents/new` creates Registry document metadata through `/api/controlled-document/documents`.
-- `/upload` creates and publishes a version, then queues ingestion through `/api/controlled-document/ingestion`.
+- `/upload` originally created and published a version, then queued ingestion through `/api/controlled-document/ingestion`.
 - `/ingestion` reads real ingestion jobs via `GET /api/v1/ingestion/jobs`.
 - `/chat` submits RAG queries through `/api/controlled-document/query`.
 
-The frontend still uses source URIs rather than direct browser file upload.
+Phase 05 supersedes the upload behavior: `/upload` now uses preflight, signed upload session, browser PUT upload, draft version creation and review-gated publication.
 
 ## 8. Auth/AuthZ Result
 
@@ -93,7 +96,7 @@ The frontend still uses source URIs rather than direct browser file upload.
 Commands run:
 
 ```bash
-python3 scripts/phase_01_smoke.py
+python3 scripts/phase_02_llm_gateway_smoke.py
 python3 scripts/phase_02_controlled_document_smoke.py
 npm test
 npm run typecheck
@@ -101,12 +104,13 @@ npm run typecheck
 
 Results:
 
-- Phase 01 smoke: passed.
+- Phase 02 LLM Gateway smoke: passed with `gemma4:12b`.
 - Phase 02 smoke: passed.
 - Web tests: 11 passed.
-- Web typecheck: passed after cleaning stale `.next/dev` generated files.
+- Web typecheck: passed.
+- Python service tests: passed.
 
-Host Python did not have `pytest` installed, so Python unit tests were not run through `pytest` in this shell. Python syntax checks passed for touched services.
+Python service tests can be run from a Python 3.11 virtualenv with each service's `requirements.txt`.
 
 ## 10. Issues Found
 
@@ -115,17 +119,16 @@ Host Python did not have `pytest` installed, so Python unit tests were not run t
 | P2-001 | P1 | AuthZ | RAG `rag.query` filtering initially denied owner-created Phase 01 documents. | Added owner permission for `rag.query`. Add explicit regression tests when pytest is available. |
 | P2-002 | P1 | Frontend | Production Registry client expected arrays, while Registry returns list envelopes. | Fixed production client unwrapping for documents, versions, and audit events. |
 | P2-003 | P1 | Frontend | Upload and chat screens were preview-only. | Added internal web API bridge routes and client submit handlers. |
-| P2-004 | P2 | Tooling | Local Python environment lacks pytest. | Use service containers or install dev dependencies before running Python unit tests locally. |
-| P2-005 | P2 | LLM | Ollama profile is documented but not model-validated in this run. | Pull documented models and run a non-mock smoke pass. |
+| P2-004 | P2 | Tooling | Local Python environment may not include pytest by default. | Use a Python 3.11 virtualenv or service-specific test environment for Python unit tests. |
+| P2-005 | P2 | Qdrant | Mock embeddings and bge-m3 embeddings use different dimensions. | Keep mock/dev-test profile isolated from the real 1024-dimensional Qdrant collection. |
 
 ## 11. Remaining Open Points
 
 - Add CI-ready Python pytest execution for all services.
 - Add browser-level Playwright verification for the web workflow.
-- Add direct file upload/signed upload flow; current web workflow expects an existing source URI.
-- Validate Ollama embeddings/chat with a fresh Qdrant collection sized for the selected embedding model.
+- Move signed upload/download ownership from the web bridge to a backend Object Storage or Ingestion-owned contract.
 - Complete OIDC login and token propagation from the browser session.
 
 ## 12. Recommendation for Phase 03
 
-Phase 03 should focus on hardening the MVP path: browser-level workflow tests, real upload storage, non-mock model validation, OIDC enforcement, and regression evaluation over a small controlled-document dataset.
+Phase 03 should focus on hardening the MVP path: browser-level workflow tests, real upload storage, OIDC enforcement, and regression evaluation over a small controlled-document dataset.

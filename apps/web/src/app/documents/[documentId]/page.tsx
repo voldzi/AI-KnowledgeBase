@@ -19,20 +19,30 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
   const context = getServerRequestContext();
 
   try {
-    const [document, versions, jobs, authorization] = await Promise.all([
+    const [document, versions, jobs, authorization, workflowTasks] = await Promise.all([
       clients.registry.getDocument(documentId, context),
       clients.registry.listDocumentVersions(documentId, context),
       clients.ingestion.listJobs(context),
-      clients.registry.getAuthorizationHints(context)
+      clients.registry.getAuthorizationHints(context),
+      clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }).catch(() => [])
     ]);
 
     return (
       <>
         <PageHeader
-          title="Document detail"
-          description="Document metadata, current validity, version history and linked ingestion pipeline state."
+          title={{ cs: "Detail dokumentu", en: "Document detail" }}
+          description={{
+            cs: "Metadata dokumentu, aktuální platnost, historie verzí a navázaný stav ingestion pipeline.",
+            en: "Document metadata, current validity, version history and linked ingestion pipeline state."
+          }}
         />
-        <DocumentDetail document={document} versions={versions} jobs={jobs} authorization={authorization} />
+        <DocumentDetail
+          document={document}
+          versions={versions}
+          jobs={jobs}
+          authorization={authorization}
+          workflowTasks={workflowTasks}
+        />
       </>
     );
   } catch (error) {

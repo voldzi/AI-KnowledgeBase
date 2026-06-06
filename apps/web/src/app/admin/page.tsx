@@ -12,8 +12,11 @@ export default async function AdminPage() {
   return (
     <>
       <PageHeader
-        title="Admin skeleton"
-        description="Early administration surface for role mapping, OIDC readiness, policy hints and service connectivity."
+        title={{ cs: "Administrace", en: "Administration" }}
+        description={{
+          cs: "Základní správa mapování rolí, připravenosti OIDC, policy hintů a dostupnosti služeb.",
+          en: "Early administration surface for role mapping, OIDC readiness, policy hints and service connectivity."
+        }}
       />
       <AdminSkeleton authorization={authorization} />
     </>

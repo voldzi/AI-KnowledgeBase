@@ -20,7 +20,7 @@ It does not fetch documents and does not call Qdrant directly.
 The composer calls LLM Gateway through:
 
 ```text
-POST ${LLM_GATEWAY_URL}/api/v1/chat/completions
+POST ${AKL_LLM_GATEWAY_BASE_URL}/chat/completions
 ```
 
 The prompt contains:
@@ -45,7 +45,7 @@ The LLM response is not trusted as the source of citation metadata.
 
 ## Context Selection
 
-Only chunks with `score >= RAG_MIN_SCORE` are sent to the LLM. Context is capped by `AKL_RAG_MAX_CONTEXT_CHARS`.
+Only chunks with `score >= AKL_RAG_NO_ANSWER_MIN_SCORE` are sent to the LLM. Context is capped by `AKL_RAG_MAX_CONTEXT_CHARS`, and the generated answer is capped by `AKL_RAG_ANSWER_MAX_TOKENS` (`512` in the real local RAG profile).
 
 ## No-Answer
 

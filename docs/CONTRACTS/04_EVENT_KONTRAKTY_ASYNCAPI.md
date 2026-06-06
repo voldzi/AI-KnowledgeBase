@@ -22,9 +22,9 @@ Tento dokument definuje asynchronní události mezi službami.
 
 ---
 
-## 2. Doporučený mechanismus pro MVP
+## 2. Doporučený mechanismus
 
-Pro MVP použít:
+Použít:
 
 - PostgreSQL outbox table v Registry API,
 - polling worker nebo jednoduchý event dispatcher,

@@ -26,7 +26,7 @@ def test_ollama_non_mock_profile_can_be_enabled() -> None:
             "AKL_AUTH_MODE": "mock",
             "AKL_LLM_DEFAULT_PROVIDER": "ollama",
             "AKL_LLM_ENABLED_PROVIDERS": "ollama",
-            "AKL_LLM_MODEL_PROVIDER_MAP": '{"qwen2.5:14b":"ollama","bge-m3":"ollama"}',
+            "AKL_LLM_MODEL_PROVIDER_MAP": '{"gemma4:12b":"ollama","bge-m3":"ollama"}',
             "AKL_OLLAMA_BASE_URL": "http://ollama:11434",
         }
     )
@@ -34,23 +34,23 @@ def test_ollama_non_mock_profile_can_be_enabled() -> None:
     assert settings.default_provider == "ollama"
     assert settings.enabled_providers == ("ollama",)
     assert "mock" not in settings.enabled_providers
-    assert settings.default_chat_model == "qwen2.5:14b"
+    assert settings.default_chat_model == "gemma4:12b"
     assert settings.default_embedding_model == "bge-m3"
     assert settings.default_max_tokens == 512
     assert settings.ollama_think is False
 
 
-def test_legacy_llm_gateway_env_aliases_are_supported() -> None:
+def test_current_ollama_profile_uses_explicit_akl_env_names() -> None:
     settings = load_settings(
         {
             "AKL_ENV": "development",
             "AKL_AUTH_MODE": "mock",
-            "LLM_GATEWAY_PROVIDER": "ollama",
+            "AKL_LLM_DEFAULT_PROVIDER": "ollama",
             "AKL_LLM_ENABLED_PROVIDERS": "ollama",
-            "LLM_GATEWAY_DEFAULT_CHAT_MODEL": "qwen2.5:14b",
-            "LLM_GATEWAY_DEFAULT_EMBEDDING_MODEL": "bge-m3",
-            "LLM_GATEWAY_ALLOW_MODEL_PULL": "true",
-            "OLLAMA_BASE_URL": "http://host.docker.internal:11434",
+            "AKL_LLM_DEFAULT_CHAT_MODEL": "qwen2.5:14b",
+            "AKL_LLM_DEFAULT_EMBEDDING_MODEL": "bge-m3",
+            "AKL_LLM_ALLOW_MODEL_PULL": "true",
+            "AKL_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
             "AKL_LLM_DEFAULT_MAX_TOKENS": "256",
             "AKL_OLLAMA_THINK": "true",
         }

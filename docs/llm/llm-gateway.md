@@ -90,11 +90,13 @@ Podporované workflow:
 
 Model pull je explicitní akce přes `POST /api/v1/models/pull`; při startu služby se žádné modely automaticky nestahují.
 
-Výchozí doporučení pro Phase 02B:
+Výchozí doporučení pro Phase 02 real local RAG:
 
 ```text
-chat: qwen2.5:14b
+chat: gemma4:12b
 embedding: bge-m3
+max_tokens: 512
+ollama_think: false
 ```
 
 Pro thinking-capable Ollama modely gateway podporuje:

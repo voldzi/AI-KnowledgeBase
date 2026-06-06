@@ -17,8 +17,11 @@ export default async function IngestionPage() {
   return (
     <>
       <PageHeader
-        title="Ingestion status"
-        description="Operational view over queued, running, failed and warning states reported by the Ingestion Service."
+        title={{ cs: "Stav zpracování", en: "Ingestion status" }}
+        description={{
+          cs: "Provozní pohled na úlohy ve frontě, běžící úlohy, chyby a varování hlášené Ingestion Service.",
+          en: "Operational view over queued, running, failed and warning states reported by the Ingestion Service."
+        }}
       />
       <IngestionBoard documents={documents} jobs={jobs} reports={reports} />
     </>

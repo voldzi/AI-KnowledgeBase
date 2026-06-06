@@ -101,7 +101,7 @@ class IngestionPipeline:
                 document_metadata=document_metadata,
                 parser_profile=request.parser_profile,
                 chunking_strategy=request.chunking_strategy,
-                source_sha256=source.sha256,
+                source=source,
             )
             warnings.extend(_messages(chunking_result.warnings))
             chunks = chunking_result.chunks

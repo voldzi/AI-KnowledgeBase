@@ -39,9 +39,9 @@ Do not assume all services run on one host. Configure remote URLs through enviro
 ```text
 REGISTRY_UPSTREAM=registry-api.internal.example:8080
 RAG_UPSTREAM=rag.internal.example:8080
-INGESTION_OBJECT_STORAGE_ENDPOINT=https://minio.internal.example
-RAG_QDRANT_URL=https://qdrant.internal.example
-LLM_GATEWAY_OLLAMA_URL=http://ollama.ai.internal:11434
+AKL_INGESTION_OBJECT_STORAGE_MODE=http
+AKL_QDRANT_BASE_URL=https://qdrant.internal.example
+AKL_OLLAMA_BASE_URL=http://ollama.ai.internal:11434
 ```
 
 The reverse proxy can keep the same public paths while upstreams point to different servers.

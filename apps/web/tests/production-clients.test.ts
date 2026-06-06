@@ -90,4 +90,194 @@ describe("production API clients", () => {
         error.traceId === "trace_1"
     );
   });
+
+  it("uses assistant endpoints under the RAG API base URL", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      if (String(input).includes("/assistant/citations/")) {
+        return Response.json({
+          chunk_id: "chunk_1",
+          document_id: "doc_1",
+          document_version_id: "ver_1",
+          document_title: "Test",
+          source_file_uri: "s3://akl/test.md",
+          source_mime_type: "text/markdown",
+          source_file_name: "test.md",
+          source_size_bytes: 10,
+          source_sha256: "sha256:test",
+          viewer_mode: "markdown",
+          location: {
+            page_number: null,
+            slide_number: null,
+            sheet_name: null,
+            row_number: null,
+            column_name: null,
+            section_path: [],
+            section_title: null,
+            paragraph_number: null,
+            char_start: null,
+            char_end: null,
+            bbox: null
+          },
+          chunk_text: "Test text",
+          before_text: "",
+          after_text: "",
+          warnings: []
+        });
+      }
+      return Response.json({
+        suggestions: [
+          {
+            label: "Nový přístup",
+            prompt: "Jak požádám o nový přístup?",
+            domain: "Service Desk",
+            audience: "employee"
+          }
+        ]
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({
+      subjectId: "employee_1",
+      accessToken: "test-token",
+      requestId: "req_assistant",
+      correlationId: "corr_assistant"
+    });
+
+    const response = await clients.rag.assistantSuggestions(context);
+    const source = await clients.rag.openAssistantCitation("chunk_1", context);
+
+    assert.equal(response.suggestions[0].label, "Nový přístup");
+    assert.equal(source.chunk_id, "chunk_1");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0][0], "https://rag.local/api/v1/assistant/suggestions");
+    assert.equal(calls[0][1]?.method, "GET");
+    assert.equal(calls[1][0], "https://rag.local/api/v1/assistant/citations/chunk_1/open?subject_id=employee_1");
+    assert.equal(calls[1][1]?.method, "GET");
+  });
+
+  it("loads workflow tasks from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        items: [
+          {
+            task_id: "task_1",
+            source_key: "document-review:doc_1",
+            kind: "review",
+            priority: "high",
+            status: "open",
+            title: "Review",
+            description: "Review document.",
+            source: "Registry document status",
+            owner_id: "user_1",
+            owner_label: "IT",
+            role: "Owner / gestor",
+            document_id: "doc_1",
+            document_title: "Document",
+            document_version_id: null,
+            audit_event_id: null,
+            job_id: null,
+            due_at: "2026-06-06T10:00:00Z",
+            resolved_at: null,
+            metadata: {},
+            created_at: "2026-06-05T10:00:00Z",
+            updated_at: "2026-06-05T10:00:00Z"
+          }
+        ],
+        limit: 100,
+        offset: 0
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const tasks = await clients.registry.listWorkflowTasks(createMockContext(), {
+      includeResolved: true,
+      documentId: "doc_1"
+    });
+
+    assert.equal(tasks[0].task_id, "task_1");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/workflow/tasks?document_id=doc_1&include_resolved=true");
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
+  it("applies workflow task actions through the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        task_id: "task_1",
+        source_key: "document-review:doc_1",
+        kind: "review",
+        priority: "high",
+        status: "resolved",
+        title: "Review",
+        description: "Review document.",
+        source: "Registry document status",
+        owner_id: "user_2",
+        owner_label: "user_2",
+        role: "Owner / gestor",
+        document_id: "doc_1",
+        document_title: "Document",
+        document_version_id: null,
+        audit_event_id: null,
+        job_id: null,
+        due_at: "2026-06-06T10:00:00Z",
+        resolved_at: "2026-06-06T11:00:00Z",
+        metadata: {
+          last_action: "approve"
+        },
+        created_at: "2026-06-05T10:00:00Z",
+        updated_at: "2026-06-06T11:00:00Z"
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const task = await clients.registry.applyWorkflowTaskAction(
+      "task_1",
+      {
+        action: "approve",
+        comment: "Looks good.",
+        assignee_id: "user_2",
+        metadata: { source: "test" }
+      },
+      createMockContext()
+    );
+
+    assert.equal(task.status, "resolved");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/workflow/tasks/task_1/actions");
+    assert.equal(calls[0][1]?.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[0][1]?.body)), {
+      action: "approve",
+      comment: "Looks good.",
+      assignee_id: "user_2",
+      metadata: { source: "test" }
+    });
+  });
+
+  it("archives document versions through the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        document_version_id: "ver_1",
+        document_id: "doc_1",
+        version_label: "1.0",
+        status: "archived",
+        valid_from: "2026-06-01",
+        valid_to: null,
+        source_file_uri: "s3://akl-documents/doc_1/ver_1/file.pdf",
+        file_hash: "sha256:abc",
+        change_summary: "Archived.",
+        created_at: "2026-06-01T10:00:00Z",
+        published_at: "2026-06-02T10:00:00Z"
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const version = await clients.registry.archiveDocumentVersion("doc_1", "ver_1", createMockContext());
+
+    assert.equal(version.status, "archived");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/documents/doc_1/versions/ver_1/archive");
+    assert.equal(calls[0][1]?.method, "POST");
+  });
 });

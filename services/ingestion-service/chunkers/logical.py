@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.config import Settings
+from app.object_storage import SourceObject
 from app.schemas import DocumentChunk, DocumentMetadata
 from parsers.base import ParsedBlock, ParserResult
 
@@ -27,7 +28,7 @@ class LogicalStructureChunker:
         document_metadata: DocumentMetadata,
         parser_profile: str,
         chunking_strategy: str,
-        source_sha256: str,
+        source: SourceObject,
     ) -> ChunkingResult:
         chunks: list[DocumentChunk] = []
         warnings: list[tuple[str, str]] = []
@@ -43,7 +44,7 @@ class LogicalStructureChunker:
                             parser_result=parser_result,
                             parser_profile=parser_profile,
                             chunking_strategy=chunking_strategy,
-                            source_sha256=source_sha256,
+                            source=source,
                             chunk_index=len(chunks),
                         )
                     )
@@ -56,7 +57,7 @@ class LogicalStructureChunker:
                             parser_result=parser_result,
                             parser_profile=parser_profile,
                             chunking_strategy=chunking_strategy,
-                            source_sha256=source_sha256,
+                            source=source,
                             chunk_index=len(chunks),
                         )
                     )
@@ -70,9 +71,9 @@ class LogicalStructureChunker:
                         pending,
                         document_metadata=document_metadata,
                         parser_result=parser_result,
-                        parser_profile=parser_profile,
-                        chunking_strategy=chunking_strategy,
-                        source_sha256=source_sha256,
+                            parser_profile=parser_profile,
+                            chunking_strategy=chunking_strategy,
+                            source=source,
                         chunk_index=len(chunks),
                     )
                 )
@@ -88,7 +89,7 @@ class LogicalStructureChunker:
                     parser_result=parser_result,
                     parser_profile=parser_profile,
                     chunking_strategy=chunking_strategy,
-                    source_sha256=source_sha256,
+                    source=source,
                     chunk_index=len(chunks),
                 )
             )
@@ -111,7 +112,7 @@ class LogicalStructureChunker:
         parser_result: ParserResult,
         parser_profile: str,
         chunking_strategy: str,
-        source_sha256: str,
+        source: SourceObject,
         chunk_index: int,
     ) -> DocumentChunk:
         first = blocks[0]
@@ -125,7 +126,10 @@ class LogicalStructureChunker:
             "parser_profile": parser_profile,
             "chunking_strategy": chunking_strategy,
             "chunk_index": chunk_index,
-            "source_file_sha256": source_sha256,
+            "source_file_sha256": source.sha256,
+            "source_file_uri": source.uri,
+            "source_file_name": source.filename,
+            "source_mime_type": source.mime_type,
         }
         document_title = document_metadata.title or document_metadata.document_id
         version_label = document_metadata.version_label or document_metadata.document_version_id
@@ -144,6 +148,11 @@ class LogicalStructureChunker:
             section_title=first.section_title,
             article_number=first.article_number,
             paragraph_number=first.paragraph_number,
+            source_file_uri=source.uri,
+            source_file_name=source.filename,
+            source_mime_type=source.mime_type,
+            source_size_bytes=source.size_bytes,
+            source_sha256=source.sha256,
             char_start=first.char_start,
             char_end=max(last.char_end, first.char_start + len(text)),
             text_hash=text_hash,

@@ -76,6 +76,17 @@ Document response:
 }
 ```
 
+Document status workflow:
+
+```text
+draft -> review -> approved -> valid
+valid -> archived
+any active state -> cancelled
+review/approved -> draft when changes are requested
+```
+
+`PATCH /documents/{document_id}` odmita neplatne preskoky stavu chybou `409 invalid_document_status_transition`.
+
 ### 2.2 Document versions
 
 ```text
@@ -97,6 +108,8 @@ Create version request:
   "change_summary": "První platná verze."
 }
 ```
+
+`POST /documents/{document_id}/versions/{version_id}/publish` vyzaduje `Document.status=approved`. Pokud dokument neni schvaleny, vraci `409 publish_requires_approval`. Publikace nastavi verzi na `valid`, dokument na `valid` a predchozi platne verze na `superseded`.
 
 ### 2.3 Authorization check
 
@@ -177,6 +190,84 @@ Audit event request:
   }
 }
 ```
+
+### 2.6 Workflow tasks
+
+```text
+GET  /workflow/tasks
+POST /workflow/tasks/{task_id}/actions
+```
+
+`GET /workflow/tasks` vraci autoritativni workflow tasky vlastnene Registry API. Aktivni tasky jsou idempotentne synchronizovane z dokumentovych stavu, klasifikace a auditnich udalosti. Ingestion tasky zustavaji ve vlastnictvi Ingestion Service a web je muze zobrazit ve stejnem inboxu jako provozni doplnek.
+
+Query filtry:
+
+```text
+status=open|waiting|blocked|resolved|cancelled
+kind=review|draft|ingestion|governance|audit
+priority=critical|high|medium|low
+document_id=doc_123
+owner_id=user_123
+include_resolved=false
+limit=100
+offset=0
+```
+
+Workflow task response:
+
+```json
+{
+  "task_id": "task_123",
+  "source_key": "document-review:doc_123",
+  "kind": "review",
+  "priority": "high",
+  "status": "open",
+  "title": "Document review required",
+  "description": "Review metadata, source context, access classification and publication readiness.",
+  "source": "Registry document status",
+  "owner_id": "user_123",
+  "owner_label": "IT",
+  "role": "Owner / gestor",
+  "document_id": "doc_123",
+  "document_title": "Směrnice pro správu dokumentů",
+  "document_version_id": null,
+  "audit_event_id": null,
+  "job_id": null,
+  "due_at": "2026-06-08T10:00:00Z",
+  "resolved_at": null,
+  "metadata": {
+    "derived": true
+  },
+  "created_at": "2026-06-05T10:00:00Z",
+  "updated_at": "2026-06-05T10:00:00Z"
+}
+```
+
+Task action request:
+
+```json
+{
+  "action": "resolve",
+  "comment": "Reviewed by gestor.",
+  "assignee_id": null,
+  "metadata": {
+    "decision": "accepted"
+  }
+}
+```
+
+Podporovane akce:
+
+```text
+assign
+request_changes
+approve
+publish
+archive
+resolve
+```
+
+Action endpoint zapisuje rozhodnuti do `workflow_tasks.metadata`, meni stav tasku podle akce a vytvari audit event `workflow.task.<action>`. `approve` nad review taskem posouva dokument do `approved`, `request_changes` vraci review/approved dokument na `draft`, `publish` vola stejny publish gate jako dokumentovy endpoint a `archive` vola archive endpoint logiku. Idempotentni synchronizace odvozenych tasku smi aktualizovat zdrojova metadata, ale nesmi prepsat `status`, vlastnika ani `last_action` po lidskem rozhodnuti.
 
 ---
 
@@ -263,9 +354,12 @@ RAG query request:
     "tags": []
   },
   "answer_mode": "normative_with_citations",
-  "max_chunks": 8
+  "max_chunks": 8,
+  "response_language": "cs"
 }
 ```
+
+`response_language` supports `cs` and `en`; omitted value defaults to Czech (`cs`).
 
 RAG query response:
 
@@ -291,6 +385,54 @@ RAG query response:
 }
 ```
 
+### 4.2 Employee Assistant
+
+```text
+POST /assistant/chat
+POST /assistant/clarify
+GET  /assistant/suggestions
+GET  /assistant/conversations/{conversation_id}
+GET  /assistant/citations/{chunk_id}/open
+```
+
+Assistant chat request:
+
+```json
+{
+  "user_id": "user_123",
+  "conversation_id": null,
+  "message": "Potřebuji přístup.",
+  "context": {
+    "domain": "IT",
+    "user_role": "employee"
+  },
+  "mode": "it_support_answer",
+  "response_language": "cs"
+}
+```
+
+Assistant response:
+
+```json
+{
+  "response_type": "clarification_needed",
+  "conversation_id": "conv_123",
+  "answer": null,
+  "message": "Potřebuji upřesnit dotaz.",
+  "questions": [
+    {
+      "id": "system",
+      "question": "O který systém se jedná?",
+      "type": "free_text",
+      "options": []
+    }
+  ],
+  "citations": [],
+  "confidence": null,
+  "warnings": []
+}
+```
+
 ---
 
 ## 5. LLM Gateway API
@@ -313,7 +455,7 @@ Response:
 {
   "models": [
     {
-      "model_id": "qwen2.5:14b",
+      "model_id": "gemma4:12b",
       "provider": "ollama",
       "capabilities": ["chat"],
       "context_window": 32768
@@ -332,7 +474,7 @@ Request:
 
 ```json
 {
-  "model": "qwen2.5:14b",
+  "model": "gemma4:12b",
   "messages": [
     {
       "role": "system",
@@ -356,7 +498,7 @@ Response:
 ```json
 {
   "id": "cmpl_123",
-  "model": "qwen2.5:14b",
+  "model": "gemma4:12b",
   "content": "Postup je ...",
   "finish_reason": "stop",
   "usage": {
@@ -452,6 +594,16 @@ Frontend volá:
 - Registry API,
 - RAG Retrieval Service,
 - Ingestion Service.
+
+Web bridge pro upload dokumentu vystavuje pouze aplikacni boundary endpointy:
+
+```text
+POST /api/controlled-document/upload/preflight
+PUT  /api/controlled-document/upload/sessions/{sessionId}/content
+POST /api/controlled-document/ingestion
+```
+
+`preflight` prijima `document_id`, `file_name`, `file_size`, `file_type` a `sha256`, vraci `upload_session_id`, `source_file_uri`, `upload_url`, expiraci a povinne upload hlavicky. `content` overuje HMAC upload token, velikost a SHA-256 a uklada objekt do storage dostupneho Ingestion Service. `ingestion` pri pritomnosti `upload_token` overi, ze metadata draft verze odpovidaji podepsane upload session.
 
 ---
 

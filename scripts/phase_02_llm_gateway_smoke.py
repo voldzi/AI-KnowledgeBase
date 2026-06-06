@@ -11,7 +11,7 @@ from typing import Any
 
 LLM_URL = os.getenv("AKL_SMOKE_LLM_URL", "http://localhost:8083").rstrip("/")
 CHAT_MODEL = os.getenv("AKL_LLM_SMOKE_CHAT_MODEL", os.getenv("AKL_LLM_DEFAULT_CHAT_MODEL", "gemma4:12b"))
-MAX_TOKENS = int(os.getenv("AKL_LLM_SMOKE_MAX_TOKENS", os.getenv("AKL_LLM_DEFAULT_MAX_TOKENS", "256")))
+MAX_TOKENS = int(os.getenv("AKL_LLM_SMOKE_MAX_TOKENS", "96"))
 
 
 def main() -> int:
@@ -29,7 +29,7 @@ def main() -> int:
         f"{LLM_URL}/api/v1/models/test-chat",
         {
             "model": CHAT_MODEL,
-            "prompt": "Odpověz česky jednou větou: k čemu slouží řízená dokumentace?",
+            "prompt": "Odpověz česky nejvýše osmi slovy: k čemu slouží řízená dokumentace?",
             "think": False,
             "max_tokens": MAX_TOKENS,
         },

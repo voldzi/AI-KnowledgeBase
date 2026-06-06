@@ -26,8 +26,11 @@ export default async function ChatPage() {
   return (
     <>
       <PageHeader
-        title="Knowledge chat"
-        description="RAG query surface with visible confidence, warnings and citations for every sourced answer."
+        title={{ cs: "Znalostní chat", en: "Knowledge chat" }}
+        description={{
+          cs: "RAG dotazovací plocha s viditelnou důvěryhodností, varováními a citacemi u každé odpovědi se zdroji.",
+          en: "RAG query surface with visible confidence, warnings and citations for every sourced answer."
+        }}
       />
       <KnowledgeChat initialAnswer={answer} />
     </>

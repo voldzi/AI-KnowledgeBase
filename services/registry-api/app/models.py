@@ -59,6 +59,9 @@ class Document(Base, TimestampMixin):
     files: Mapped[list["DocumentFile"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+    workflow_tasks: Mapped[list["WorkflowTask"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
 
     @property
     def owner(self) -> str:
@@ -185,3 +188,41 @@ class AuditEvent(Base):
         "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class WorkflowTask(Base, TimestampMixin):
+    __tablename__ = "workflow_tasks"
+    __table_args__ = (
+        UniqueConstraint("source_key", name="uq_workflow_tasks_source_key"),
+        Index("ix_workflow_tasks_status_priority", "status", "priority"),
+        Index("ix_workflow_tasks_document_status", "document_id", "status"),
+        Index("ix_workflow_tasks_owner_status", "owner_id", "status"),
+    )
+
+    task_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("task")
+    )
+    source_key: Mapped[str | None] = mapped_column(String(220), nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open", index=True)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(160), nullable=False)
+    owner_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    owner_label: Mapped[str] = mapped_column(String(160), nullable=False)
+    role: Mapped[str] = mapped_column(String(120), nullable=False)
+    document_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("documents.document_id", ondelete="CASCADE"), nullable=True
+    )
+    document_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    document_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    audit_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    job_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    task_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+
+    document: Mapped[Document | None] = relationship(back_populates="workflow_tasks")

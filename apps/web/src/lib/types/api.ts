@@ -7,7 +7,17 @@ import type {
   DocumentVersion
 } from "./documents";
 import type { CreateIngestionJobRequest, IngestionJob, IngestionReport } from "./ingestion";
-import type { RagAnswer, RagQueryRequest } from "./rag";
+import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTask, WorkflowTaskListOptions } from "./workflow";
+import type {
+  AssistantChatRequest,
+  AssistantChatResponse,
+  AssistantConversationResponse,
+  AssistantSuggestionsResponse,
+  RagAnswer,
+  RagQueryRequest,
+  SourceContext
+} from "./rag";
+import type { AklLanguage } from "../language";
 
 export interface ApiRequestContext {
   subjectId: string;
@@ -42,7 +52,18 @@ export interface RegistryApiClient {
     versionId: string,
     context: ApiRequestContext
   ): Promise<DocumentVersion>;
+  archiveDocumentVersion(
+    documentId: string,
+    versionId: string,
+    context: ApiRequestContext
+  ): Promise<DocumentVersion>;
   getAuthorizationHints(context: ApiRequestContext): Promise<AuthorizationHint>;
+  listWorkflowTasks(context: ApiRequestContext, options?: WorkflowTaskListOptions): Promise<RegistryWorkflowTask[]>;
+  applyWorkflowTaskAction(
+    taskId: string,
+    request: ApplyWorkflowTaskActionRequest,
+    context: ApiRequestContext
+  ): Promise<RegistryWorkflowTask>;
   listAuditEvents(context: ApiRequestContext): Promise<AuditEvent[]>;
   createAuditEvent(request: CreateAuditEventRequest, context: ApiRequestContext): Promise<AuditEvent>;
 }
@@ -57,6 +78,12 @@ export interface IngestionApiClient {
 
 export interface RagApiClient {
   query(request: RagQueryRequest, context: ApiRequestContext): Promise<RagAnswer>;
+  openCitation(chunkId: string, context: ApiRequestContext): Promise<SourceContext>;
+  openAssistantCitation(chunkId: string, context: ApiRequestContext): Promise<SourceContext>;
+  assistantChat(request: AssistantChatRequest, context: ApiRequestContext): Promise<AssistantChatResponse>;
+  assistantClarify(request: AssistantChatRequest, context: ApiRequestContext): Promise<AssistantChatResponse>;
+  assistantSuggestions(context: ApiRequestContext, language?: AklLanguage): Promise<AssistantSuggestionsResponse>;
+  assistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationResponse>;
 }
 
 export interface ApiClients {

@@ -1,0 +1,88 @@
+defaults:
+  document_type: project_documentation
+  classification: internal
+  status: valid
+  owner: akl-team
+  area: project
+  domain: platform-knowledge
+  language: cs
+  source_system: git
+  audience: [employee, knowledge-admin, document-manager, it-support]
+  steward: akl-team
+  retention_class: project-documentation
+  tags: [akl-docs, project-documentation, csu-enterprise-kb]
+
+exclude:
+  - "**/ADR_TEMPLATE.md"
+
+path_rules:
+  - pattern: "ARCHITECTURE/**"
+    area: architecture
+    domain: enterprise-architecture
+    audience: [knowledge-admin, it-architect, it-support]
+    tags: [architecture, enterprise-architecture]
+  - pattern: "CONTRACTS/**"
+    area: contracts
+    domain: api-contracts
+    audience: [knowledge-admin, developer, auditor]
+    tags: [contracts, api-contracts]
+  - pattern: "CODEX_THREADS/**"
+    area: codex-threads
+    domain: implementation-guidance
+    audience: [developer, knowledge-admin]
+    tags: [codex-threads, implementation-guidance]
+  - pattern: "OPERATIONS/**"
+    area: operations
+    domain: operations
+    audience: [employee, it-support, knowledge-admin]
+    tags: [operations]
+  - pattern: "api/**"
+    area: api
+    domain: api-contracts
+    audience: [developer, knowledge-admin]
+    tags: [api, api-contracts]
+  - pattern: "deployment/**"
+    area: deployment
+    domain: operations
+    audience: [it-support, knowledge-admin]
+    tags: [deployment, operations]
+  - pattern: "evaluation/**"
+    area: evaluation
+    domain: quality
+    audience: [auditor, knowledge-admin]
+    tags: [evaluation, quality]
+  - pattern: "governance/**"
+    area: governance
+    domain: governance
+    audience: [employee, auditor, knowledge-admin]
+    tags: [governance]
+  - pattern: "ingestion/**"
+    area: ingestion
+    domain: knowledge-ingestion
+    audience: [knowledge-admin, document-manager]
+    tags: [ingestion, knowledge-ingestion]
+  - pattern: "integration/**"
+    area: integration
+    domain: integration
+    audience: [knowledge-admin, developer]
+    tags: [integration]
+  - pattern: "llm/**"
+    area: llm
+    domain: model-platform
+    audience: [knowledge-admin, it-architect]
+    tags: [llm, model-platform]
+  - pattern: "rag/**"
+    area: rag
+    domain: knowledge-retrieval
+    audience: [knowledge-admin, it-support, auditor]
+    tags: [rag, knowledge-retrieval]
+  - pattern: "security/**"
+    area: security
+    domain: security
+    audience: [employee, security, auditor]
+    tags: [security]
+  - pattern: "ui/**"
+    area: ui
+    domain: user-experience
+    audience: [employee, knowledge-admin]
+    tags: [ui, employee-assistant]

@@ -4,7 +4,7 @@ info:
   description: Document ingestion service for parsing, OCR fallback, logical chunking,
     embeddings, Qdrant indexing, and ingestion reports. It does not publish document
     versions.
-  version: 0.1.0
+  version: dev
 paths:
   /health:
     get:
@@ -33,6 +33,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReadinessResponse'
   /api/v1/ingestion/jobs:
+    get:
+      tags:
+      - ingestion
+      summary: List Ingestion Jobs
+      operationId: list_ingestion_jobs_api_v1_ingestion_jobs_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/IngestionJobResponse'
+                type: array
+                title: Response List Ingestion Jobs Api V1 Ingestion Jobs Get
     post:
       tags:
       - ingestion
@@ -248,6 +263,27 @@ components:
         document_version_id:
           type: string
           title: Document Version Id
+        source_file_uri:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source File Uri
+        parser_profile:
+          type: string
+          title: Parser Profile
+          default: controlled_document
+        ocr_enabled:
+          type: boolean
+          title: Ocr Enabled
+          default: true
+        chunking_strategy:
+          type: string
+          title: Chunking Strategy
+          default: legal_structured
+        embedding_profile:
+          type: string
+          title: Embedding Profile
+          default: default
         created_at:
           type: string
           format: date-time

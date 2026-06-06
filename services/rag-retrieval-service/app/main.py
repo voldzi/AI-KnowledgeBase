@@ -22,12 +22,18 @@ from app.middleware import CorrelationIdMiddleware
 from app.registry_client import create_registry_client
 from app.schemas import (
     AnswerRequest,
+    AssistantChatRequest,
+    AssistantChatResponse,
+    AssistantConversationResponse,
+    AssistantSuggestionsResponse,
     HealthResponse,
     RagAnswer,
     RagQueryRequest,
     ReadinessResponse,
     RetrieveRequest,
     RetrieveResponse,
+    ResponseLanguage,
+    SourceContextResponse,
 )
 from app.security import AuthContext, auth_context_for_request, require_service_auth
 from app.service import RagRetrievalService
@@ -125,6 +131,78 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             len(payload.chunks),
         )
         return await _service(request).answer(payload, auth_context=auth_context)
+
+    @app.get("/api/v1/chunks/{chunk_id}/source-context", response_model=SourceContextResponse, tags=["viewer"])
+    async def chunk_source_context(chunk_id: str, request: Request, subject_id: str = "user_dev") -> SourceContextResponse:
+        auth_context = _guard_request(request)
+        logger.info("chunk_source_context_requested subject_id=%s chunk_id=%s", subject_id, chunk_id)
+        return await _service(request).source_context(
+            chunk_id=chunk_id,
+            subject_id=subject_id,
+            event_type="chunk.opened",
+            auth_context=auth_context,
+        )
+
+    @app.get("/api/v1/citations/{chunk_id}/open", response_model=SourceContextResponse, tags=["viewer"])
+    async def open_citation(chunk_id: str, request: Request, subject_id: str = "user_dev") -> SourceContextResponse:
+        auth_context = _guard_request(request)
+        logger.info("citation_open_requested subject_id=%s chunk_id=%s", subject_id, chunk_id)
+        return await _service(request).source_context(
+            chunk_id=chunk_id,
+            subject_id=subject_id,
+            event_type="citation.opened",
+            auth_context=auth_context,
+        )
+
+    @app.get("/api/v1/assistant/citations/{chunk_id}/open", response_model=SourceContextResponse, tags=["assistant"])
+    async def open_assistant_citation(chunk_id: str, request: Request, subject_id: str = "user_dev") -> SourceContextResponse:
+        auth_context = _guard_request(request)
+        logger.info("assistant_citation_open_requested subject_id=%s chunk_id=%s", subject_id, chunk_id)
+        return await _service(request).source_context(
+            chunk_id=chunk_id,
+            subject_id=subject_id,
+            event_type="assistant.citation_opened",
+            auth_context=auth_context,
+        )
+
+    @app.post("/api/v1/assistant/chat", response_model=AssistantChatResponse, tags=["assistant"])
+    async def assistant_chat(payload: AssistantChatRequest, request: Request) -> AssistantChatResponse:
+        auth_context = _guard_request(request)
+        logger.info(
+            "assistant_chat_requested user_id=%s conversation_id=%s mode=%s message_logged=false",
+            payload.user_id,
+            payload.conversation_id,
+            payload.mode,
+        )
+        return await _service(request).assistant_chat(payload, auth_context=auth_context)
+
+    @app.post("/api/v1/assistant/clarify", response_model=AssistantChatResponse, tags=["assistant"])
+    async def assistant_clarify(payload: AssistantChatRequest, request: Request) -> AssistantChatResponse:
+        auth_context = _guard_request(request)
+        logger.info(
+            "assistant_clarify_requested user_id=%s conversation_id=%s mode=%s message_logged=false",
+            payload.user_id,
+            payload.conversation_id,
+            payload.mode,
+        )
+        return await _service(request).assistant_chat(payload, auth_context=auth_context)
+
+    @app.get("/api/v1/assistant/suggestions", response_model=AssistantSuggestionsResponse, tags=["assistant"])
+    async def assistant_suggestions(
+        request: Request,
+        response_language: ResponseLanguage = "cs",
+    ) -> AssistantSuggestionsResponse:
+        _guard_request(request)
+        return await _service(request).assistant_suggestions(response_language)
+
+    @app.get(
+        "/api/v1/assistant/conversations/{conversation_id}",
+        response_model=AssistantConversationResponse,
+        tags=["assistant"],
+    )
+    async def assistant_conversation(conversation_id: str, request: Request) -> AssistantConversationResponse:
+        _guard_request(request)
+        return await _service(request).assistant_conversation(conversation_id)
 
     @app.post(
         "/api/v1/rag/compare-documents",

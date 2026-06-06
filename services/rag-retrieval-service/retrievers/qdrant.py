@@ -53,6 +53,35 @@ class QdrantHybridRetriever:
 
         return sorted(chunks, key=lambda item: item.score, reverse=True)[:limit]
 
+    async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
+        payload = await request_json_with_retry(
+            dependency="qdrant",
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
+            json_body={
+                "limit": 1,
+                "with_payload": True,
+                "with_vector": False,
+                "filter": {
+                    "must": [
+                        {"key": "chunk_id", "match": {"value": chunk_id}},
+                    ]
+                },
+            },
+        )
+        result = payload.get("result", {})
+        points = result.get("points", []) if isinstance(result, dict) else []
+        if not points:
+            return None
+        point_payload = points[0].get("payload", {})
+        if not isinstance(point_payload, dict):
+            return None
+        text = str(point_payload.get("text") or point_payload.get("normalized_text") or "").strip()
+        if not text:
+            return None
+        return _point_to_chunk(point_payload, score=1.0, dense_score=1.0, sparse_score=1.0)
+
     async def readiness(self) -> str:
         try:
             await request_json_with_retry(
@@ -99,6 +128,14 @@ def _point_to_chunk(
             "document_type": payload.get("document_type") or chunk_metadata.get("document_type"),
             "tags": payload.get("tags", chunk_metadata.get("tags", [])),
             "status": payload.get("status") or chunk_metadata.get("status"),
+            "source_file_uri": payload.get("source_file_uri") or chunk_metadata.get("source_file_uri"),
+            "source_file_name": payload.get("source_file_name") or chunk_metadata.get("source_file_name"),
+            "source_mime_type": payload.get("source_mime_type") or chunk_metadata.get("source_mime_type"),
+            "source_size_bytes": payload.get("source_size_bytes"),
+            "source_sha256": payload.get("source_sha256") or chunk_metadata.get("source_file_sha256"),
+            "section_title": payload.get("section_title"),
+            "char_start": payload.get("char_start"),
+            "char_end": payload.get("char_end"),
         },
     )
 

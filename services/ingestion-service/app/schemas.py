@@ -119,6 +119,13 @@ class DocumentChunk(BaseModel):
     section_title: str | None = None
     article_number: str | None = None
     paragraph_number: str | None = None
+    source_file_uri: str | None = None
+    source_file_name: str | None = None
+    source_mime_type: str | None = None
+    source_size_bytes: int | None = Field(default=None, ge=0)
+    source_sha256: str | None = None
+    extracted_text_uri: str | None = None
+    preview_uri: str | None = None
     char_start: int = Field(ge=0)
     char_end: int = Field(gt=0)
     text_hash: str

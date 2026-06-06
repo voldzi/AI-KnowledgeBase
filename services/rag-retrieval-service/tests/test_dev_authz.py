@@ -78,7 +78,7 @@ def test_retrieve_endpoint_dev_authz_allows_qdrant_candidates(caplog) -> None:
             "AKL_RAG_REGISTRY_CLIENT_MODE": "http",
             "AKL_RAG_RETRIEVER_MODE": "qdrant",
             "AKL_RAG_LLM_CLIENT_MODE": "mock",
-            "RAG_AUTHZ_MODE": "dev",
+            "AKL_RAG_AUTHZ_MODE": "dev",
         }
     )
     llm_client = FakeLLMClient()

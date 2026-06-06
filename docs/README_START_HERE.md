@@ -6,6 +6,11 @@ Architektura je navržena jako **distribuovaná sada samostatně nasaditelných 
 
 ## Jak začít
 
+Pro reprodukovatelné spuštění Phase 02 po čistém clone začni v kořenovém `README.md`.
+Pro import projektové dokumentace jako lokální znalostní báze pokračuj přes `integration/PHASE_03_LOCAL_PRODUCTION.md` a `OPERATIONS/import-docs-folder.md`.
+Pro Phase 04 enterprise / ČSÚ směr začni v `ARCHITECTURE/enterprise-architecture.md`, `security/enterprise-security-model.md` a `integration/PHASE_04_CSU_ENTERPRISE_KNOWLEDGE_PLATFORM.md`.
+Pro UI práci nad dokumenty a workflow pokračuj přes `ui/document-workbench.md`, `ui/workflow-inbox.md` a `integration/PHASE_05_DOCUMENT_WORKBENCH.md`.
+
 Nejdříve otevři:
 
 1. `00_CENTRALNI_ZADANI_AKL_PLATFORM.md`

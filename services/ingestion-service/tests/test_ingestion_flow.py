@@ -55,6 +55,10 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
     assert payload["version_label"] == "mock"
     assert payload["document_type"] == "directive"
     assert payload["status"] == "valid"
+    assert payload["source_file_uri"] == str(source)
+    assert payload["source_file_name"] == "policy.md"
+    assert payload["source_mime_type"] in {"text/markdown", "text/plain"}
+    assert payload["source_size_bytes"] == source.stat().st_size
 
 
 def test_ocr_sidecar_fallback_marks_warning(tmp_path: Path) -> None:

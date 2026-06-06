@@ -78,6 +78,27 @@ def test_version_create_publish_archive(client, admin_headers):
     assert version["document_version_id"].startswith("ver_")
     assert version["status"] == "draft"
 
+    rejected_publish = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions/{version['document_version_id']}/publish",
+        headers=admin_headers,
+    )
+    assert rejected_publish.status_code == 409
+    assert rejected_publish.json()["error"]["code"] == "publish_requires_approval"
+
+    submitted = client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "review"},
+    )
+    assert submitted.status_code == 200
+    approved = client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "approved"},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
     published = client.post(
         f"/api/v1/documents/{document['document_id']}/versions/{version['document_version_id']}/publish",
         headers=admin_headers,
@@ -96,3 +117,16 @@ def test_version_create_publish_archive(client, admin_headers):
     versions = client.get(f"/api/v1/documents/{document['document_id']}/versions", headers=admin_headers)
     assert versions.status_code == 200
     assert versions.json()["items"][0]["document_version_id"] == version["document_version_id"]
+
+
+def test_document_status_transition_rejects_invalid_jump(client, admin_headers):
+    document = _create_document(client, admin_headers)
+
+    rejected = client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "approved"},
+    )
+
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "invalid_document_status_transition"
