@@ -1,5 +1,6 @@
 import type {
   ApiRequestContext,
+  ApplyWorkflowTaskActionRequest,
   AuditEvent,
   AuthorizationHint,
   CreateAuditEventRequest,
@@ -7,6 +8,8 @@ import type {
   CreateVersionRequest,
   Document,
   DocumentVersion,
+  RegistryWorkflowTask,
+  WorkflowTaskListOptions,
   RegistryApiClient
 } from "@/lib/types";
 
@@ -75,6 +78,19 @@ export class ProductionRegistryClient implements RegistryApiClient {
     );
   }
 
+  archiveDocumentVersion(
+    documentId: string,
+    versionId: string,
+    context: ApiRequestContext
+  ): Promise<DocumentVersion> {
+    return this.post<DocumentVersion>(
+      `/documents/${documentId}/versions/${versionId}/archive`,
+      undefined,
+      "archiveDocumentVersion",
+      context
+    );
+  }
+
   async getAuthorizationHints(context: ApiRequestContext): Promise<AuthorizationHint> {
     const check = (action: string) =>
       this.post<AuthzCheckResponse>(
@@ -109,6 +125,57 @@ export class ProductionRegistryClient implements RegistryApiClient {
       can_read_audit: canReadAudit,
       can_manage_admin: canManageAdmin
     };
+  }
+
+  async listWorkflowTasks(
+    context: ApiRequestContext,
+    options: WorkflowTaskListOptions = {}
+  ): Promise<RegistryWorkflowTask[]> {
+    const params = new URLSearchParams();
+    if (options.status) {
+      params.set("status", options.status);
+    }
+    if (options.kind) {
+      params.set("kind", options.kind);
+    }
+    if (options.priority) {
+      params.set("priority", options.priority);
+    }
+    if (options.documentId) {
+      params.set("document_id", options.documentId);
+    }
+    if (options.ownerId) {
+      params.set("owner_id", options.ownerId);
+    }
+    if (options.includeResolved !== undefined) {
+      params.set("include_resolved", String(options.includeResolved));
+    }
+    if (options.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+    if (options.offset !== undefined) {
+      params.set("offset", String(options.offset));
+    }
+    const query = params.toString();
+    const response = await this.get<ListEnvelope<RegistryWorkflowTask>>(
+      `/workflow/tasks${query ? `?${query}` : ""}`,
+      "listWorkflowTasks",
+      context
+    );
+    return response.items;
+  }
+
+  applyWorkflowTaskAction(
+    taskId: string,
+    request: ApplyWorkflowTaskActionRequest,
+    context: ApiRequestContext
+  ): Promise<RegistryWorkflowTask> {
+    return this.post<RegistryWorkflowTask>(
+      `/workflow/tasks/${encodeURIComponent(taskId)}/actions`,
+      request,
+      "applyWorkflowTaskAction",
+      context
+    );
   }
 
   async listAuditEvents(context: ApiRequestContext): Promise<AuditEvent[]> {

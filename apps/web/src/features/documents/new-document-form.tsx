@@ -3,13 +3,58 @@
 import { useState } from "react";
 import { Save } from "lucide-react";
 
+import { documentTypeLabel } from "@/lib/format";
+import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuthorizationHint, Document } from "@/lib/types";
 
 interface NewDocumentFormProps {
   authorization: AuthorizationHint;
 }
 
+const newDocumentCopy = {
+  cs: {
+    title: "Metadata konceptu",
+    titleLabel: "Název",
+    titlePlaceholder: "Název dokumentu",
+    type: "Typ dokumentu",
+    classification: "Klasifikace",
+    gestorUnit: "Gestorská jednotka",
+    tags: "Štítky",
+    saving: "Ukládám",
+    save: "Uložit metadata konceptu",
+    registryError: "Registry API vrátilo HTTP",
+    disabled: "Akce je vypnutá, protože Registry API neudělilo document.update.",
+    created: "Vytvořeno",
+    continue: "Pokračujte nahráním verze a ingestion.",
+    public: "veřejné",
+    internal: "interní",
+    restricted: "omezené",
+    confidential: "důvěrné"
+  },
+  en: {
+    title: "Draft metadata",
+    titleLabel: "Title",
+    titlePlaceholder: "Document title",
+    type: "Document type",
+    classification: "Classification",
+    gestorUnit: "Gestor unit",
+    tags: "Tags",
+    saving: "Saving",
+    save: "Save draft metadata",
+    registryError: "Registry API returned HTTP",
+    disabled: "Action disabled because Registry API did not grant document.update.",
+    created: "Created",
+    continue: "Continue with upload/version ingestion.",
+    public: "public",
+    internal: "internal",
+    restricted: "restricted",
+    confidential: "confidential"
+  }
+} satisfies Record<AklLanguage, Record<string, string>>;
+
 export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
+  const { language } = useLanguage();
+  const copy = newDocumentCopy[language];
   const [created, setCreated] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -17,7 +62,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
   return (
     <section className="panel">
       <div className="panel__header">
-        <h2>Draft metadata</h2>
+        <h2>{copy.title}</h2>
       </div>
       <form
         className="panel__body form-grid"
@@ -33,7 +78,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
           });
           setSubmitting(false);
           if (!response.ok) {
-            setError(`Registry API returned HTTP ${response.status}.`);
+            setError(`${copy.registryError} ${response.status}.`);
             return;
           }
           const payload = (await response.json()) as { document: Document };
@@ -42,46 +87,45 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
       >
         <div className="form-grid form-grid--two">
           <div className="field">
-            <label htmlFor="title">Title</label>
-            <input id="title" name="title" placeholder="Document title" required />
+            <label htmlFor="title">{copy.titleLabel}</label>
+            <input id="title" name="title" placeholder={copy.titlePlaceholder} required />
           </div>
           <div className="field">
-            <label htmlFor="type">Document type</label>
+            <label htmlFor="type">{copy.type}</label>
             <select id="type" name="document_type" defaultValue="directive">
-              <option value="directive">directive</option>
-              <option value="methodology">methodology</option>
-              <option value="policy">policy</option>
-              <option value="manual">manual</option>
+              {["directive", "methodology", "policy", "manual", "project_documentation"].map((value) => (
+                <option key={value} value={value}>{documentTypeLabel(value, language)}</option>
+              ))}
             </select>
           </div>
         </div>
         <div className="form-grid form-grid--two">
           <div className="field">
-            <label htmlFor="classification">Classification</label>
+            <label htmlFor="classification">{copy.classification}</label>
             <select id="classification" name="classification" defaultValue="internal">
-              <option value="public">public</option>
-              <option value="internal">internal</option>
-              <option value="restricted">restricted</option>
-              <option value="confidential">confidential</option>
+              <option value="public">{copy.public}</option>
+              <option value="internal">{copy.internal}</option>
+              <option value="restricted">{copy.restricted}</option>
+              <option value="confidential">{copy.confidential}</option>
             </select>
           </div>
           <div className="field">
-            <label htmlFor="gestor">Gestor unit</label>
+            <label htmlFor="gestor">{copy.gestorUnit}</label>
             <input id="gestor" name="gestor_unit" placeholder="IT" />
           </div>
         </div>
         <div className="field">
-          <label htmlFor="tags">Tags</label>
+          <label htmlFor="tags">{copy.tags}</label>
           <input id="tags" name="tags" defaultValue="controlled-document,phase02" />
         </div>
         <button className="button button--primary" type="submit" disabled={!authorization.can_update || submitting}>
           <Save size={16} aria-hidden="true" />
-          {submitting ? "Saving" : "Save draft metadata"}
+          {submitting ? copy.saving : copy.save}
         </button>
         {!authorization.can_update ? (
-          <p className="notice">Action disabled because Registry API did not grant document.update.</p>
+          <p className="notice">{copy.disabled}</p>
         ) : null}
-        {created ? <p className="notice">Created {created.document_id}. Continue with upload/version ingestion.</p> : null}
+        {created ? <p className="notice">{copy.created} {created.document_id}. {copy.continue}</p> : null}
         {error ? <p className="notice">{error}</p> : null}
       </form>
     </section>

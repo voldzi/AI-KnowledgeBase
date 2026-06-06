@@ -6,6 +6,7 @@ export type DocumentType =
   | "procedure"
   | "manual"
   | "knowledge_base_article"
+  | "project_documentation"
   | "meeting_record"
   | "contract"
   | "attachment"
@@ -14,6 +15,7 @@ export type DocumentType =
 export type DocumentStatus =
   | "draft"
   | "review"
+  | "approved"
   | "valid"
   | "superseded"
   | "archived"
@@ -82,7 +84,15 @@ export interface CreateVersionRequest {
   valid_from: string;
   valid_to: string | null;
   source_file_uri: string;
+  file_hash?: string | null;
   change_summary: string;
+  file?: {
+    filename?: string | null;
+    mime_type?: string | null;
+    size_bytes?: number | null;
+    sha256?: string | null;
+    uploaded_by?: string | null;
+  } | null;
 }
 
 export interface AuthorizationHint {

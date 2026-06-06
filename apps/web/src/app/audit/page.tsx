@@ -15,8 +15,11 @@ export default async function AuditPage() {
   return (
     <>
       <PageHeader
-        title="Audit viewer"
-        description="Review metadata-level audit activity without leaking document content, prompts, tokens or full answers into technical logs."
+        title={{ cs: "Auditní prohlížeč", en: "Audit viewer" }}
+        description={{
+          cs: "Kontrola auditních událostí na úrovni metadat bez ukládání obsahu dokumentů, promptů, tokenů nebo plných odpovědí do technických logů.",
+          en: "Review metadata-level audit activity without leaking document content, prompts, tokens or full answers into technical logs."
+        }}
       />
       <AuditViewer events={events} authorization={authorization} />
     </>

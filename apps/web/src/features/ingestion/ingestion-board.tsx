@@ -1,6 +1,9 @@
+"use client";
+
 import { Ban, RefreshCw } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { Document, IngestionJob, IngestionReport } from "@/lib/types";
 import { formatDateTime, formatNumber } from "@/lib/format";
 
@@ -10,29 +13,64 @@ interface IngestionBoardProps {
   reports: IngestionReport[];
 }
 
+const ingestionCopy = {
+  cs: {
+    title: "Ingestion úlohy",
+    refresh: "Obnovit",
+    job: "Úloha",
+    document: "Dokument",
+    status: "Stav",
+    profile: "Profil",
+    progress: "Průběh",
+    started: "Spuštěno",
+    action: "Akce",
+    pages: "stran",
+    chunks: "chunků",
+    processing: "Zpracovává se",
+    cancel: "Zrušit"
+  },
+  en: {
+    title: "Ingestion jobs",
+    refresh: "Refresh",
+    job: "Job",
+    document: "Document",
+    status: "Status",
+    profile: "Profile",
+    progress: "Progress report",
+    started: "Started",
+    action: "Action",
+    pages: "pages",
+    chunks: "chunks",
+    processing: "Processing",
+    cancel: "Cancel"
+  }
+} satisfies Record<AklLanguage, Record<string, string>>;
+
 export function IngestionBoard({ documents, jobs, reports }: IngestionBoardProps) {
+  const { language } = useLanguage();
+  const copy = ingestionCopy[language];
   const documentById = new Map(documents.map((document) => [document.document_id, document]));
   const reportByJobId = new Map(reports.map((report) => [report.job_id, report]));
 
   return (
     <section className="panel">
       <div className="panel__header">
-        <h2>Ingestion jobs</h2>
+        <h2>{copy.title}</h2>
         <button className="button" type="button">
           <RefreshCw size={16} aria-hidden="true" />
-          Refresh
+          {copy.refresh}
         </button>
       </div>
       <table className="data-table">
         <thead>
           <tr>
-            <th>Job</th>
-            <th>Document</th>
-            <th>Status</th>
-            <th>Profile</th>
-            <th>Progress report</th>
-            <th>Started</th>
-            <th>Action</th>
+            <th>{copy.job}</th>
+            <th>{copy.document}</th>
+            <th>{copy.status}</th>
+            <th>{copy.profile}</th>
+            <th>{copy.progress}</th>
+            <th>{copy.started}</th>
+            <th>{copy.action}</th>
           </tr>
         </thead>
         <tbody>
@@ -55,15 +93,15 @@ export function IngestionBoard({ documents, jobs, reports }: IngestionBoardProps
                 <td>
                   {report ? (
                     <span>
-                      {formatNumber(report.pages_processed)} pages, {formatNumber(report.chunks_created)} chunks
+                      {formatNumber(report.pages_processed, language)} {copy.pages}, {formatNumber(report.chunks_created, language)} {copy.chunks}
                     </span>
                   ) : (
-                    <span>Processing</span>
+                    <span>{copy.processing}</span>
                   )}
                 </td>
-                <td>{formatDateTime(job.started_at ?? job.created_at)}</td>
+                <td>{formatDateTime(job.started_at ?? job.created_at, language)}</td>
                 <td>
-                  <button className="icon-button" type="button" aria-label={`Cancel ${job.job_id}`} disabled={job.status !== "running"}>
+                  <button className="icon-button" type="button" aria-label={`${copy.cancel} ${job.job_id}`} disabled={job.status !== "running"}>
                     <Ban size={16} aria-hidden="true" />
                   </button>
                 </td>

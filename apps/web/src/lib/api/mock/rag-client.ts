@@ -1,4 +1,15 @@
-import type { ApiRequestContext, RagAnswer, RagApiClient, RagQueryRequest } from "@/lib/types";
+import type {
+  ApiRequestContext,
+  AssistantChatRequest,
+  AssistantChatResponse,
+  AssistantConversationResponse,
+  AssistantSuggestionsResponse,
+  RagAnswer,
+  RagApiClient,
+  RagQueryRequest,
+  SourceContext
+} from "@/lib/types";
+import type { AklLanguage } from "@/lib/language";
 
 import { cloneMock, mockRagAnswer } from "./data";
 
@@ -19,6 +30,143 @@ export class MockRagClient implements RagApiClient {
     return {
       ...answer,
       answer: `${answer.answer} Dotaz: "${request.query}".`
+    };
+  }
+
+  async openCitation(chunkId: string, _context: ApiRequestContext): Promise<SourceContext> {
+    return {
+      chunk_id: chunkId,
+      document_id: "doc_102",
+      document_version_id: "ver_102_1",
+      document_title: "Metodika vyjimek z bezpecnostnich pravidel",
+      source_file_uri: "s3://akl-documents/doc_102/ver_102_1/source.md",
+      source_mime_type: "text/markdown",
+      source_file_name: "source.md",
+      source_size_bytes: 2048,
+      source_sha256: "sha256:mock",
+      viewer_mode: "markdown",
+      location: {
+        page_number: 7,
+        slide_number: null,
+        sheet_name: null,
+        row_number: null,
+        column_name: null,
+        section_path: ["Cl. 4", "Odst. 2"],
+        section_title: "Vyjimky",
+        paragraph_number: "2",
+        char_start: 120,
+        char_end: 310,
+        bbox: null
+      },
+      chunk_text: "Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.",
+      before_text: "",
+      after_text: "",
+      warnings: []
+    };
+  }
+
+  openAssistantCitation(chunkId: string, context: ApiRequestContext): Promise<SourceContext> {
+    return this.openCitation(chunkId, context);
+  }
+
+  async assistantChat(request: AssistantChatRequest, _context: ApiRequestContext): Promise<AssistantChatResponse> {
+    const conversationId = request.conversation_id ?? "conv_mock";
+    const message = request.message.toLowerCase();
+    const language = request.response_language ?? "cs";
+    if ((message.includes("přístup") || message.includes("pristup") || message.includes("access") || message.includes("permission")) && !request.context?.system) {
+      return {
+        response_type: "clarification_needed",
+        conversation_id: conversationId,
+        answer: null,
+        message: language === "en" ? "I need to clarify the question." : "Potřebuji upřesnit dotaz.",
+        questions: [
+          {
+            id: "system",
+            question: language === "en" ? "Which system is this about?" : "O který systém se jedná?",
+            type: "free_text",
+            options: []
+          },
+          {
+            id: "request_type",
+            question: language === "en"
+              ? "Is this a new access request, permission change, or access removal?"
+              : "Jde o nový přístup, změnu oprávnění nebo odebrání přístupu?",
+            type: "single_choice",
+            options: language === "en"
+              ? ["new access", "permission change", "access removal"]
+              : ["nový přístup", "změna oprávnění", "odebrání přístupu"]
+          }
+        ],
+        why_needed: language === "en"
+          ? "The question can refer to multiple procedures."
+          : "Dotaz může znamenat více různých postupů.",
+        current_context: request.context ?? {},
+        citations: [],
+        follow_up_questions: [],
+        suggested_actions: [{ label: "Doplnit odpovědi", action_type: "continue_conversation", target: conversationId }],
+        confidence: null,
+        warnings: [],
+        missing_information: null,
+        recommended_action: null
+      };
+    }
+
+    return {
+      response_type: "answer",
+      conversation_id: conversationId,
+      answer: language === "en"
+        ? "The document owner approves an exception to the directive after impact assessment. The answer is supported by the source below."
+        : "Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu. Odpověď je podložená citací níže.",
+      message: null,
+      questions: [],
+      why_needed: null,
+      current_context: request.context ?? {},
+      citations: cloneMock(mockRagAnswer.citations),
+      follow_up_questions: language === "en"
+        ? ["Do you want to open the source document?", "Do you want to ask a follow-up question?"]
+        : ["Chcete otevřít zdrojový dokument?", "Chcete položit doplňující otázku?"],
+      suggested_actions: [
+        { label: language === "en" ? "Open source" : "Otevřít zdroj", action_type: "open_citation", target: null },
+        { label: language === "en" ? "Ask follow-up" : "Položit doplňující dotaz", action_type: "ask_followup", target: null }
+      ],
+      confidence: "medium",
+      warnings: [],
+      missing_information: null,
+      recommended_action: null
+    };
+  }
+
+  assistantClarify(request: AssistantChatRequest, context: ApiRequestContext): Promise<AssistantChatResponse> {
+    return this.assistantChat(request, context);
+  }
+
+  async assistantSuggestions(_context: ApiRequestContext, language: AklLanguage = "cs"): Promise<AssistantSuggestionsResponse> {
+    if (language === "en") {
+      return {
+        suggestions: [
+          { label: "New access", prompt: "How do I request new access?", domain: "Service Desk", audience: "employee" },
+          { label: "Report incident", prompt: "How do I report an incident?", domain: "IT Operations", audience: "employee" },
+          { label: "Who approves exception", prompt: "Who approves an exception to a directive?", domain: "Documentation", audience: "employee" },
+          { label: "Platform architecture", prompt: "What is the architecture of the AKL platform?", domain: "Documentation", audience: "employee" }
+        ]
+      };
+    }
+    return {
+      suggestions: [
+        { label: "Nový přístup", prompt: "Jak požádám o nový přístup?", domain: "Service Desk", audience: "employee" },
+        { label: "Nahlásit incident", prompt: "Jak nahlásím incident?", domain: "IT Operations", audience: "employee" },
+        { label: "Kdo schvaluje výjimku", prompt: "Kdo schvaluje výjimku ze směrnice?", domain: "Dokumentace", audience: "employee" },
+        { label: "Architektura platformy", prompt: "Jaká je architektura AKL platformy?", domain: "Dokumentace", audience: "employee" }
+      ]
+    };
+  }
+
+  async assistantConversation(conversationId: string, _context: ApiRequestContext): Promise<AssistantConversationResponse> {
+    return {
+      conversation_id: conversationId,
+      status: "ephemeral",
+      messages: [],
+      warnings: ["CONVERSATION_HISTORY_NOT_PERSISTED"]
     };
   }
 }

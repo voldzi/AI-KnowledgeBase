@@ -1,6 +1,3 @@
-import { FilePlus2 } from "lucide-react";
-import Link from "next/link";
-
 import { PageHeader } from "@/components/page-header";
 import { DocumentRegistry } from "@/features/documents/document-registry";
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
@@ -18,16 +15,11 @@ export default async function DocumentsPage() {
   return (
     <>
       <PageHeader
-        actions={
-          authorization.can_update ? (
-            <Link className="button button--primary" href="/documents/new">
-              <FilePlus2 size={16} aria-hidden="true" />
-              New draft
-            </Link>
-          ) : null
-        }
-        title="Document registry"
-        description="Registry UI for controlled documents, classifications, workflow states and ownership metadata."
+        title={{ cs: "Registr dokumentů", en: "Document registry" }}
+        description={{
+          cs: "Rozhraní registru pro řízené dokumenty, klasifikace, workflow stavy a vlastnická metadata.",
+          en: "Registry UI for controlled documents, classifications, workflow states and ownership metadata."
+        }}
       />
       <DocumentRegistry documents={documents} authorization={authorization} />
     </>
