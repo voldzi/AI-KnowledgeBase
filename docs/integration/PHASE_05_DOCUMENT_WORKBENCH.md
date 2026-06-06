@@ -17,6 +17,7 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - taby pro prehled, viewer, workflow, insighty, verze, ingestion a audit,
   - prioritni kroky odvozene ze stavu dokumentu, verze, ingestion jobu a klasifikace,
   - viewer preview s metadaty zdrojoveho souboru,
+  - otevreni auditovaneho RAG source-context chunku pres `/api/documents/{documentId}/source-context?chunk_id=...` s overenim dokumentu a verze,
   - spustitelny governance action panel pro compare/compliance/conflict workflow pres `/api/documents/{documentId}/governance`,
   - panel organizacnich odpovednosti nad `document_assignments` s roli, subjektem, SLA a eskalaci,
   - audit tab filtrovany podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
@@ -61,7 +62,7 @@ Workflow inbox preferuje autoritativni Registry API tasky. Ingestion tasky zusta
 
 ## 4. Open Production Gaps
 
-- Detail dokumentu zatim nema realny native viewer pro PDF/DOCX.
+- Detail dokumentu umi otevrit citovatelny RAG source-context chunk, ale zatim nema realny native viewer pro PDF/DOCX/tabulky/OCR ani signed download.
 - Governance action panel vola Governance Service, ale web bridge zatim pouziva Registry metadata/source URI/change summary misto plneho extrahovaneho textu dokumentu.
 - AI insighty nejsou persistovane ani schvalovane.
 - Audit tab dokumentu je napojeny na Registry audit list; uplnost zalezi na tom, zda vsechny sluzby zapisují relevantni audit udalosti.
@@ -71,7 +72,7 @@ Workflow inbox preferuje autoritativni Registry API tasky. Ingestion tasky zusta
 
 ## 5. Next Recommended Slice
 
-1. Web UI: realny viewer source-context pro PDF/DOCX a signed source opening.
+1. Web UI: native viewer/download pro PDF/DOCX/tabulky/OCR, signed source opening a page jump/highlight.
 2. Governance Service: predat nativne extrahovany dokumentovy text/chunky a propojit governance vysledky na workflow tasky.
 3. Registry API: vicekrokove approval steps a runtime SLA eskalace nad `document_assignments`.
 4. Object Storage: presunout signed upload/download kontrakt z web bridge do backend sluzby.

@@ -22,11 +22,19 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.locator("tbody tr")).toHaveCount(4);
   });
 
-  test("DW-06, DW-09, DW-12, DW-13 and DW-19 detail shows workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
+  test("DW-06, DW-07, DW-09, DW-12, DW-13 and DW-19 detail shows viewer, workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
     await page.goto("/documents/doc_102");
 
     await expect(page.getByRole("heading", { name: "Detail dokumentu" })).toBeVisible();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Viewer" }).click();
+    await expect(page.getByRole("heading", { name: "Source-context" })).toBeVisible();
+    await expect(page.getByText("Dostupné source-context signály")).toBeVisible();
+    await page.getByRole("button", { name: "Otevřít source-context chunk_789" }).click();
+    await expect(page.getByText("Chunk chunk_789")).toBeVisible();
+    await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
+    await expect(page.getByText("Sekce: Cl. 4 / Odst. 2")).toBeVisible();
 
     await page.getByRole("button", { name: "Workflow" }).click();
     await expect(page.getByRole("heading", { name: "Publish gate" })).toBeVisible();

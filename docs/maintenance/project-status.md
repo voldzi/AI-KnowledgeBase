@@ -14,7 +14,7 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - Web aplikace obsahuje Document Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Assistant.
 - GitHub je stabilizovany pres chraneny `main`, PR workflow, CI gate a release proces.
 
-Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou native viewer/source-context, plny extrahovany text pro governance bridge, persistovane AI insighty, vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu mimo web bridge.
+Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou native viewer/download pro soubory, plny extrahovany text pro governance bridge, persistovane AI insighty, vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu mimo web bridge.
 
 ## Current GitHub Baseline
 
@@ -36,6 +36,7 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou na
 - Detail dokumentu spravuje organizacni odpovednosti dokumentu z `document_assignments`: owner, gestor, reviewer, approver, auditor, steward, SLA a eskalace.
 - Detail dokumentu obsahuje audit tab filtrovany podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat.
 - Detail dokumentu spousti Governance Service pres web bridge pro compare versions, compliance check a conflict detection; vysledek ukazuje result ID, confidence, warnings, citace a explicitni zdrojova omezeni.
+- Detail dokumentu ve Viewer tabu otevre auditovany RAG source-context chunk pres `/api/documents/{documentId}/source-context` a zobrazi zdroj, verzi, stranu, sekci a citovatelny text.
 - `/upload` pouziva browser file preflight, SHA-256, podepsanou upload session a PUT upload do aplikacniho upload endpointu.
 - `/help` obsahuje napovedu pro dokumentove role, upload, viewer/citace, workflow, governance a troubleshooting.
 
@@ -61,7 +62,7 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou na
 
 Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazky.
 
-1. Native viewer/source-context: PDF/DOCX/tabulky/OCR zatim nemaji produkcni viewer s page jump, highlight a signed download URL.
+1. Native viewer/download: detail dokumentu umi otevrit citovatelny RAG source-context chunk, ale PDF/DOCX/tabulky/OCR zatim nemaji produkcni viewer s page jump, highlight a signed download URL.
 2. Governance source fidelity: compare/compliance/conflict panel vola Governance Service, ale web bridge zatim predava Registry metadata, source URI a change summary misto plneho extrahovaneho textu dokumentu.
 3. AI insights: povinnosti, role, lhuty, rizika a FAQ zatim nejsou persistovane jako `proposed` insighty se schvalenim.
 4. Audit event coverage: audit tab existuje, ale produkcni hodnota zavisi na duslednem zapisu udalosti ze vsech sluzeb.
@@ -74,7 +75,7 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 
 ## Next Recommended Implementation Slices
 
-1. Native viewer/source-context: signed source open, PDF page jump, DOCX/text preview a presna viewer lokace citaci.
+1. Native viewer/download: signed source open, PDF page jump/highlight, DOCX/text preview a nativni zobrazeni tabulek/OCR.
 2. Governance source fidelity: predat Governance Service nativne extrahovany text/chunky a propojit vysledek na workflow task closure.
 3. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
 4. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.

@@ -1025,6 +1025,22 @@ button {
   width: 54%;
 }
 
+.source-context-list {
+  display: grid;
+  gap: 10px;
+}
+
+.source-context-signal {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(150px, auto);
+  min-height: 74px;
+  padding: 12px;
+}
+
 .workflow-rail {
   display: grid;
   gap: 12px;
@@ -1608,6 +1624,10 @@ button {
   padding: 14px;
 }
 
+.source-viewer--document {
+  min-height: 430px;
+}
+
 .source-viewer__header {
   align-items: flex-start;
   display: flex;
@@ -1659,6 +1679,23 @@ button {
   overflow: auto;
   padding: 12px;
   white-space: pre-wrap;
+}
+
+.chunk-text--context {
+  background: #f5f8f8;
+  color: var(--ink);
+  max-height: 180px;
+}
+
+.source-context-block {
+  display: grid;
+  gap: 8px;
+}
+
+.source-viewer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 @media (max-width: 1100px) {
@@ -1755,6 +1792,7 @@ button {
   .registry-filter-grid,
   .preflight-card,
   .governance-action,
+  .source-context-signal,
   .assignment-row,
   .task-toolbar,
   .task-row {

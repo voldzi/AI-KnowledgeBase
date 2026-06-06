@@ -138,6 +138,11 @@ The bridge accepts `compare_versions`, `check_compliance` and `detect_conflicts`
 metadata server-side and returns Governance Service output plus explicit source limitations while
 native extracted text is not yet available to the web bridge.
 
+Document detail source-context is bridged through
+`GET /api/documents/{documentId}/source-context?chunk_id={chunkId}`. The bridge opens the RAG
+citation server-side and rejects the response unless its document and version belong to the active
+document detail.
+
 The current UI assumes a list endpoint for ingestion jobs: `GET /api/v1/ingestion/jobs`. The central contract documents job creation and job lookup as minimum required endpoints, so this list endpoint should be treated as a frontend integration requirement for operational status screens.
 
 ## Limits
