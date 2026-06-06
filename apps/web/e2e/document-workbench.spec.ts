@@ -38,6 +38,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Chunk chunk_789")).toBeVisible();
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
     await expect(page.getByText("Sekce: Cl. 4 / Odst. 2")).toBeVisible();
+    await expect(page.getByText("Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.")).toBeVisible();
 
     await page.getByRole("button", { name: "Workflow" }).click();
     await expect(page.getByRole("heading", { name: "Publish gate" })).toBeVisible();
