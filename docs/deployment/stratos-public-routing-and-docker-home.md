@@ -84,6 +84,20 @@ server {
         root /var/www/html;
     }
 
+    location = /akb {
+        proxy_pass http://docker.home.cz:3220;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Prefix /akb;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
     location /akb/ {
         proxy_pass http://docker.home.cz:3220;
         proxy_http_version 1.1;
@@ -185,6 +199,22 @@ server {
     proxy_read_timeout 300s;
     proxy_connect_timeout 300s;
     proxy_send_timeout 300s;
+
+    location = /akb {
+        proxy_pass http://docker.home.cz:3220;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Prefix /akb;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
 
     location /akb/ {
         proxy_pass http://docker.home.cz:3220;
