@@ -33,7 +33,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://$HOSTNAME:3000/health >/dev/null || exit 1
+  CMD wget -qO- "http://$HOSTNAME:3000${NEXT_PUBLIC_AKL_BASE_PATH:-}/health" >/dev/null || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server.js"]
