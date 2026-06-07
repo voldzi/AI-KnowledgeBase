@@ -1,6 +1,7 @@
 "use client";
 
-import { Activity, Check, ChevronDown, Gauge, Loader2, Search, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Activity, Check, ChevronDown, Clock, Loader2, Search, X } from "lucide-react";
 
 import { StratosGlobalTopbar, type StratosGlobalTopbarApp } from "@/components/stratos";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -48,6 +49,21 @@ export function ProjectTopbar({
   saveState = "saved",
   workspaceName
 }: ProjectTopbarProps) {
+  const [pragueTime, setPragueTime] = useState("");
+
+  useEffect(() => {
+    const formatter = new Intl.DateTimeFormat("cs-CZ", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Prague"
+    });
+
+    const updateTime = () => setPragueTime(formatter.format(new Date()));
+    updateTime();
+    const interval = window.setInterval(updateTime, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const stratosApps: StratosGlobalTopbarApp[] = [
     {
       id: "akl",
@@ -107,7 +123,7 @@ export function ProjectTopbar({
       }
       status={
         <div className="akl-topbar-status">
-          <span className={`save-status-pill state-${saveState}`} aria-live="polite">
+          <span className={`save-status-pill state-${saveState}`} aria-live="polite" title={`${apiModeLabel} · ${authModeLabel}`}>
             {saveState === "saving" ? (
               <Loader2 className="spin" size={13} aria-hidden="true" />
             ) : saveState === "error" ? (
@@ -121,9 +137,9 @@ export function ProjectTopbar({
             <Activity size={15} aria-hidden="true" />
             {healthLabel}
           </span>
-          <span className="topbar__chip" title={`${apiModeLabel} · ${authModeLabel}`}>
-            <Gauge size={15} aria-hidden="true" />
-            Europe/Prague
+          <span className="topbar__chip" title={`Europe/Prague · ${apiModeLabel} · ${authModeLabel}`} aria-live="polite">
+            <Clock size={15} aria-hidden="true" />
+            {pragueTime ? `Europe/Prague ${pragueTime}` : "Europe/Prague"}
           </span>
         </div>
       }

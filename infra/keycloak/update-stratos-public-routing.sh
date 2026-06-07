@@ -44,7 +44,7 @@ update_client() {
   redirect_uris_json="$2"
   web_origins_json="$3"
 
-  id="$(/opt/keycloak/bin/kcadm.sh get clients -r "$REALM" -q clientId="$client_id" --fields id --format csv | tail -n +2 | tr -d '"' | head -n 1)"
+  id="$(/opt/keycloak/bin/kcadm.sh get clients -r "$REALM" -q clientId="$client_id" --fields id,clientId --format csv | awk -F, -v client="$client_id" '{ gsub(/"/, "", $1); gsub(/"/, "", $2); if ($2 == client) { print $1; exit } }')"
   if [ -z "$id" ]; then
     echo "ERROR: client not found: $client_id" >&2
     exit 1
