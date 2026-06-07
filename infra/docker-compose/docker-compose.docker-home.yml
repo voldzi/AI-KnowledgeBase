@@ -57,7 +57,7 @@ services:
       PLATFORM_HOST: 0.0.0.0
       PLATFORM_PORT: 8080
       PLATFORM_READY_TIMEOUT_SECONDS: ${PLATFORM_READY_TIMEOUT_SECONDS:-3}
-      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,web=http://web:3000/health}
+      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,web=http://web:3000${AKL_WEB_BASE_PATH:-}/health}
     networks:
       - app_zone
       - management_zone
