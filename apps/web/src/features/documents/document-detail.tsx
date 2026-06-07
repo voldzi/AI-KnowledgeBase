@@ -31,6 +31,7 @@ import {
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosButtonLink, StratosSelect, StratosViewTabs, type StratosViewTab } from "@/components/stratos";
+import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AssignmentSubjectType,
@@ -681,7 +682,7 @@ export function DocumentDetail({
     setWorkflowFeedback(null);
     try {
       const response = await fetch(
-        `/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(currentVersion.document_version_id)}/${action}`,
+        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(currentVersion.document_version_id)}/${action}`),
         { method: "POST" }
       );
       if (!response.ok) {
@@ -725,7 +726,7 @@ export function DocumentDetail({
     setSavingAssignments(true);
     setAssignmentFeedback(null);
     try {
-      const response = await fetch(`/api/documents/${encodeURIComponent(document.document_id)}/assignments`, {
+      const response = await fetch(withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/assignments`), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json"
@@ -754,7 +755,7 @@ export function DocumentDetail({
     setGovernanceAction(action);
     setGovernanceFeedback(null);
     try {
-      const response = await fetch(`/api/documents/${encodeURIComponent(document.document_id)}/governance`, {
+      const response = await fetch(withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/governance`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -784,7 +785,7 @@ export function DocumentDetail({
     setSourceContextFeedback(null);
     try {
       const response = await fetch(
-        `/api/documents/${encodeURIComponent(document.document_id)}/source-context?chunk_id=${encodeURIComponent(chunkId)}`,
+        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/source-context?chunk_id=${encodeURIComponent(chunkId)}`),
         { method: "GET" }
       );
       if (!response.ok) {
@@ -813,7 +814,7 @@ export function DocumentDetail({
     setSourceOpenFeedback(null);
     try {
       const response = await fetch(
-        `/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(currentVersion.document_version_id)}/source/open`,
+        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(currentVersion.document_version_id)}/source/open`),
         { method: "POST" }
       );
       if (!response.ok) {
@@ -841,7 +842,7 @@ export function DocumentDetail({
     setInsightsAction(true);
     setInsightsFeedback(null);
     try {
-      const response = await fetch(`/api/documents/${encodeURIComponent(document.document_id)}/insights/propose`, {
+      const response = await fetch(withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/insights/propose`), {
         method: "POST"
       });
       if (!response.ok) {
@@ -2067,7 +2068,7 @@ function DocumentNativePreview({
     let cancelled = false;
     setPreview({ status: "loading", text: "", truncated: false });
 
-    fetch(sourceUrl, { headers: { Accept: "text/plain, text/markdown, text/csv, */*" } })
+    fetch(withAppBasePath(sourceUrl), { headers: { Accept: "text/plain, text/markdown, text/csv, */*" } })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -2102,7 +2103,7 @@ function DocumentNativePreview({
     let cancelled = false;
     setStructuredPreview({ status: "loading", preview: null });
 
-    fetch(sourcePreviewUrl, { headers: { Accept: "application/json" } })
+    fetch(withAppBasePath(sourcePreviewUrl), { headers: { Accept: "application/json" } })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -2232,7 +2233,7 @@ function PdfRenderedPreview({
       try {
         const pdfjs = await loadPdfJs();
         if (cancelled) return;
-        const response = await fetch(sourceUrlWithoutFragment, { headers: { Accept: "application/pdf" } });
+        const response = await fetch(withAppBasePath(sourceUrlWithoutFragment), { headers: { Accept: "application/pdf" } });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

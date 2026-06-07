@@ -85,7 +85,7 @@ server {
     }
 
     location /akb/ {
-        proxy_pass http://docker.home.cz:3220/;
+        proxy_pass http://docker.home.cz:3220;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Host $host;
@@ -187,7 +187,7 @@ server {
     proxy_send_timeout 300s;
 
     location /akb/ {
-        proxy_pass http://docker.home.cz:3220/;
+        proxy_pass http://docker.home.cz:3220;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Host $host;
@@ -318,6 +318,7 @@ AKB:
 
 ```env
 AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb
+AKL_WEB_BASE_PATH=/akb
 AKL_WEB_OIDC_ISSUER=https://login.zeleznalady.cz/realms/stratos
 AKL_WEB_OIDC_CLIENT_ID=akl-web
 ```

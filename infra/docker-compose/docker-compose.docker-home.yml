@@ -69,6 +69,8 @@ services:
   web:
     build:
       context: ../../apps/web
+      args:
+        NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-}
       secrets:
         - npmrc
     image: ${WEB_IMAGE:-akl/web:docker-home}
@@ -87,6 +89,7 @@ services:
       AKL_WEB_OIDC_CLIENT_SECRET: ${AKL_WEB_OIDC_CLIENT_SECRET:-}
       AKL_WEB_OIDC_SCOPES: ${AKL_WEB_OIDC_SCOPES:-openid profile email}
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
+      NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}
       AKL_WEB_OBJECT_STORAGE_ROOT: /data/object-storage
       AKL_WEB_UPLOAD_BUCKET: ${AKL_WEB_UPLOAD_BUCKET:-akl-documents}

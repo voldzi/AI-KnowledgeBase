@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Save } from "lucide-react";
 
 import { StratosButton, StratosSelect } from "@/components/stratos";
+import { withAppBasePath } from "@/lib/app-url";
 import { documentTypeLabel } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuthorizationHint, Document } from "@/lib/types";
@@ -72,7 +73,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
           setSubmitting(true);
           setError(null);
           const form = new FormData(event.currentTarget);
-          const response = await fetch("/api/controlled-document/documents", {
+          const response = await fetch(withAppBasePath("/api/controlled-document/documents"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(Object.fromEntries(form.entries()))

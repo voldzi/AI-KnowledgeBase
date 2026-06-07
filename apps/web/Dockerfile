@@ -7,7 +7,9 @@ RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
 
 FROM node:26-alpine AS builder
 WORKDIR /app
+ARG NEXT_PUBLIC_AKL_BASE_PATH=""
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
@@ -16,6 +18,7 @@ FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_AKL_BASE_PATH=""
 
 RUN apk add --no-cache su-exec
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
