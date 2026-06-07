@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const context = getServerRequestContext();
+    const context = await getServerRequestContext();
     const clients = getServerApiClients();
     const classification = String(body.classification ?? "internal") as Classification;
     const title = String(body.title ?? "").trim();

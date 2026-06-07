@@ -28,7 +28,7 @@ interface ProposedDocumentInsight {
 export async function POST(_: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const [document, versions] = await Promise.all([
       clients.registry.getDocument(documentId, requestContext),

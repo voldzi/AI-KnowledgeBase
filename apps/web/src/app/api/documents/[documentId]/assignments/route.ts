@@ -16,7 +16,7 @@ interface RouteContext {
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const assignments = await clients.registry.listDocumentAssignments(documentId, requestContext);
 
@@ -30,7 +30,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const { documentId } = await context.params;
     const payload = (await request.json()) as ReplaceDocumentAssignmentsRequest;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const assignments = await clients.registry.replaceDocumentAssignments(documentId, payload, requestContext);
 

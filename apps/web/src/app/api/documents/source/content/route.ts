@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const payload = verifySourceDownloadToken(token);
     const source = await readSourceObject(payload);
     const clients = getServerApiClients();
-    const context = getServerRequestContext();
+    const context = await getServerRequestContext();
     void clients.registry.createAuditEvent(
       {
         actor_id: context.subjectId,

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ChatPage() {
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
   const answer = await clients.rag.query(
     {
       subject_id: context.subjectId,

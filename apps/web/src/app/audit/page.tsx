@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AuditPage() {
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
   const [events, authorization] = await Promise.all([
     clients.registry.listAuditEvents(context),
     clients.registry.getAuthorizationHints(context)

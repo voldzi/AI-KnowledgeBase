@@ -19,7 +19,7 @@ const DEFAULT_DOCUMENT_TYPES: DocumentType[] = [
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const context = getServerRequestContext();
+    const context = await getServerRequestContext();
     const clients = getServerApiClients();
     const query = String(body.query ?? "").trim();
 

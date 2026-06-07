@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const { taskId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const task = await clients.registry.applyWorkflowTaskAction(taskId, payload, requestContext);
 

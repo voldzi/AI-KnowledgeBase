@@ -15,7 +15,7 @@ interface RouteContext {
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { chunkId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const sourceContext = await clients.rag.openCitation(chunkId, requestContext);
 

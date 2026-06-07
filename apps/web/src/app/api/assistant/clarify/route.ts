@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const context = getServerRequestContext();
+    const context = await getServerRequestContext();
     const clients = getServerApiClients();
     const message = String(body.message ?? "").trim();
 

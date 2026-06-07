@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
 import { readGovernanceSourceContent } from "@/lib/upload/governance-source-content";
 import type {
+  ApiRequestContext,
   Classification,
   Document,
   DocumentGovernanceRunResponse,
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const { documentId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const [document, versions] = await Promise.all([
       clients.registry.getDocument(documentId, requestContext),
@@ -91,7 +92,7 @@ async function runGovernanceAction({
   versions: DocumentVersion[];
   currentVersion: DocumentVersion;
   leftVersionId?: string;
-  requestContext: ReturnType<typeof getServerRequestContext>;
+  requestContext: ApiRequestContext;
   clients: ReturnType<typeof getServerApiClients>;
 }): Promise<DocumentGovernanceRunResponse> {
   if (action === "compare_versions") {
@@ -147,7 +148,7 @@ async function runGovernanceAction({
 
 async function conflictSourceDocuments(
   clients: ReturnType<typeof getServerApiClients>,
-  requestContext: ReturnType<typeof getServerRequestContext>,
+  requestContext: ApiRequestContext,
   currentDocument: Document,
   currentVersion: DocumentVersion
 ): Promise<GovernanceSourceDocument[]> {
