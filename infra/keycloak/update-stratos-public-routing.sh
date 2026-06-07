@@ -39,12 +39,34 @@ set -euo pipefail
   --user "$KEYCLOAK_ADMIN_USER" \
   --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
 
+
+strip_quotes() {
+  value="$1"
+  case "$value" in
+    \"*) value="${value#?}" ;;
+  esac
+  case "$value" in
+    *\") value="${value%?}" ;;
+  esac
+  printf "%s" "$value"
+}
+
 update_client() {
   client_id="$1"
   redirect_uris_json="$2"
   web_origins_json="$3"
 
-  id="$(/opt/keycloak/bin/kcadm.sh get clients -r "$REALM" -q clientId="$client_id" --fields id,clientId --format csv | awk -F, -v client="$client_id" '{ gsub(/"/, "", $1); gsub(/"/, "", $2); if ($2 == client) { print $1; exit } }')"
+  id=""
+  while IFS=, read -r raw_id raw_client_id; do
+    raw_id=$(strip_quotes "$raw_id")
+    raw_client_id=$(strip_quotes "$raw_client_id")
+    if [ "$raw_client_id" = "$client_id" ]; then
+      id="$raw_id"
+      break
+    fi
+  done <<CLIENTS
+$(/opt/keycloak/bin/kcadm.sh get clients -r "$REALM" -q clientId="$client_id" --fields id,clientId --format csv)
+CLIENTS
   if [ -z "$id" ]; then
     echo "ERROR: client not found: $client_id" >&2
     exit 1
