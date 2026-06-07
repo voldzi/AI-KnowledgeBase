@@ -139,8 +139,8 @@ Cílový realm:
 - locales: `cs`, `en`
 - clients:
   - `akl-web`, `budget-web`, `projectflow-web`, `archflow-web`, `stratos-shell` public OIDC clients,
-- `akl-api`, `budget-api`, `projectflow-api`, `archflow-api` confidential service clients,
-- `stratos-akl-adapter` confidential service client pro STRATOS adapter.
+  - `akl-api`, `budget-api`, `projectflow-api`, `archflow-api` confidential service clients,
+  - `stratos-akl-adapter` confidential service client pro STRATOS adapter.
 - sdílené realm role:
   - `stratos_admin`
   - `stratos_user`
@@ -215,9 +215,10 @@ Základní env:
 
 ```env
 AKL_ENV=production
-AKL_WEB_API_CLIENT_MODE=production
+AKL_API_CLIENT_MODE=production
 AKL_WEB_AUTH_MODE=oidc
 AKL_RAG_REQUIRE_CITATIONS=true
+AKL_RAG_AUTHZ_MODE=registry
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_QDRANT_COLLECTION=akl_document_chunks
@@ -242,7 +243,16 @@ Veřejně vystavit jen web a případné bezpečně chráněné API endpointy pr
 4. Vytvořit Keycloak STRATOS realm a theme.
 5. Vytvořit prázdné PostgreSQL databáze.
 6. Připravit SeaweedFS prostor `akl-documents`.
-7. Sestavit image:
+7. Spustit preflight:
+
+```bash
+cd /srv/akl/repo
+AKL_PROD_ENV_FILE=/srv/akl/env/akl.prod.env \
+AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
+./scripts/docker_home_preflight.sh
+```
+
+8. Sestavit image:
 
 ```bash
 cd /srv/akl/repo
@@ -252,8 +262,8 @@ DOCKER_BUILDKIT=1 docker compose \
   build --secret id=npmrc,src=/srv/akl/secrets/npmrc
 ```
 
-8. Spustit DB migrace.
-9. Spustit služby:
+9. Spustit DB migrace.
+10. Spustit služby:
 
 ```bash
 docker compose \
@@ -262,7 +272,7 @@ docker compose \
   up -d
 ```
 
-10. Připojit reverse proxy.
+11. Připojit reverse proxy.
 
 ## 8. Smoke Testy Po Nasazení
 
