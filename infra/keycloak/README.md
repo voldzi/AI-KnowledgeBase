@@ -69,8 +69,10 @@ AKL web uses the authorization code flow through `akl-web` and stores an encrypt
 ```text
 AKL_WEB_OIDC_ISSUER=https://login.zeleznalady.cz/realms/stratos
 AKL_WEB_OIDC_CLIENT_ID=akl-web
-AKL_WEB_PUBLIC_BASE_URL=https://akl.zeleznalady.cz
+AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb
 AKL_WEB_SESSION_SECRET=<long random value>
 ```
 
 `akl-web` and `stratos-akl-adapter` include an `akl-api` audience mapper because Registry API validates bearer tokens with `AKL_OIDC_AUDIENCE=akl-api`.
+
+The target STRATOS public routing model is documented in `docs/deployment/stratos-public-routing-and-docker-home.md`. The `akl.zeleznalady.cz` standalone domain can remain as a temporary Keycloak redirect alias during migration, but the target public AKB URL is `/akb` under `https://stratos.zeleznalady.cz`.

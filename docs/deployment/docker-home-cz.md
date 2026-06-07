@@ -228,12 +228,14 @@ AKL_QDRANT_COLLECTION=akl_document_chunks
 
 Navržené endpointy:
 
-- AKL web: `https://akl.zeleznalady.cz`
+- STRATOS public shell: `https://stratos.zeleznalady.cz`
+- AKL web target: `https://stratos.zeleznalady.cz/akb`
+- AKL standalone alias during migration: `https://akl.zeleznalady.cz`
 - Registry API interně: `http://registry-api:8080`
 - RAG API interně: `http://rag-retrieval-service:8080`
 - Keycloak issuer: `https://login.zeleznalady.cz/realms/stratos`
 
-Veřejně vystavit jen web a případné bezpečně chráněné API endpointy pro STRATOS adapter. Interní service API ponechat v Docker síti.
+Veřejně vystavit jen STRATOS shell a aplikační path prefixy přes DMZ reverse proxy na `dmz.home.cz`. AKL běží pod `/akb`; interní service API ponechat v Docker síti. Souhrnný route kontrakt pro všechny STRATOS aplikace je v `docs/deployment/stratos-public-routing-and-docker-home.md`.
 
 ## 7. Nasazovací Postup
 
@@ -279,8 +281,8 @@ docker compose \
 Minimální smoke:
 
 ```bash
-curl -fsS https://akl.zeleznalady.cz/api/health
-curl -fsS https://akl.zeleznalady.cz/api/ready
+curl -fsS https://stratos.zeleznalady.cz/akb/health
+curl -fsS https://stratos.zeleznalady.cz/akb/ready
 ```
 
 Funkční smoke:

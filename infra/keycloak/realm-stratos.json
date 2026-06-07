@@ -192,6 +192,7 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "https://stratos.zeleznalady.cz/akb/*",
         "https://akl.zeleznalady.cz/*",
         "https://docker.home.cz/*",
         "http://localhost:3000/*",
@@ -199,6 +200,7 @@
         "http://localhost:3003/*"
       ],
       "webOrigins": [
+        "https://stratos.zeleznalady.cz",
         "https://akl.zeleznalady.cz",
         "https://docker.home.cz",
         "+"
@@ -237,11 +239,13 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "https://stratos.zeleznalady.cz/arch/*",
         "https://archflow.zeleznalady.cz/*",
         "https://docker.home.cz/*",
         "http://localhost:3006/*"
       ],
       "webOrigins": [
+        "https://stratos.zeleznalady.cz",
         "https://archflow.zeleznalady.cz",
         "https://docker.home.cz",
         "+"
@@ -267,12 +271,14 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "https://stratos.zeleznalady.cz/*",
         "https://budget.zeleznalady.cz/*",
         "https://contracts.zeleznalady.cz/*",
         "https://docker.home.cz/*",
         "http://localhost:3004/*"
       ],
       "webOrigins": [
+        "https://stratos.zeleznalady.cz",
         "https://budget.zeleznalady.cz",
         "https://contracts.zeleznalady.cz",
         "https://docker.home.cz",
@@ -299,11 +305,13 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "https://stratos.zeleznalady.cz/project/*",
         "https://projectflow.zeleznalady.cz/*",
         "https://docker.home.cz/*",
         "http://localhost:3005/*"
       ],
       "webOrigins": [
+        "https://stratos.zeleznalady.cz",
         "https://projectflow.zeleznalady.cz",
         "https://docker.home.cz",
         "+"

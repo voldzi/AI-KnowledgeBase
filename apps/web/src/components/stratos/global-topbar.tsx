@@ -8,6 +8,7 @@ export type StratosGlobalTopbarApp = {
   id: string;
   label: string;
   shortLabel?: string;
+  href?: string;
   icon?: ReactNode;
   active?: boolean;
   disabled?: boolean;
@@ -88,6 +89,9 @@ export function StratosGlobalTopbar({
       return;
     }
     app.onSelect?.();
+    if (app.href && typeof window !== "undefined") {
+      window.location.assign(app.href);
+    }
     setOpenMenu(null);
   }
 

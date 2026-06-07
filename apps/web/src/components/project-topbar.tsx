@@ -51,16 +51,28 @@ export function ProjectTopbar({
   const stratosApps: StratosGlobalTopbarApp[] = [
     {
       id: "akl",
-      label: "AKL Platform",
+      label: "AKB",
       shortLabel: "AK",
-      active: true
+      active: true,
+      href: "https://stratos.zeleznalady.cz/akb"
+    },
+    {
+      id: "budget-contract",
+      label: "Budget & Contract",
+      shortLabel: "BC",
+      href: "https://stratos.zeleznalady.cz/"
     },
     {
       id: "projectflow",
       label: "ProjectFlow",
       shortLabel: "PF",
-      disabled: true,
-      disabledReason: labels.appComingSoon
+      href: "https://stratos.zeleznalady.cz/project"
+    },
+    {
+      id: "archflow",
+      label: "ArchFlow",
+      shortLabel: "AF",
+      href: "https://stratos.zeleznalady.cz/arch"
     }
   ];
 
