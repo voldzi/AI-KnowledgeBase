@@ -55,6 +55,18 @@ git checkout main
 
 Použít PostgreSQL, ne SQLite.
 
+Produkční přístup k PostgreSQL jde přes HAProxy:
+
+```text
+haproxy.home.cz:5000
+```
+
+Ověřeno z vývojového prostředí:
+
+- `haproxy.home.cz:5000` je otevřený TCP endpoint,
+- `patroni1.home.cz:5432`, `patroni2.home.cz:5432` a `patroni3.home.cz:5432` jsou dostupné PostgreSQL nody,
+- aplikační connection stringy mají používat HAProxy endpoint, ne přímé Patroni nody.
+
 Minimální databáze:
 
 - `akl_registry`
@@ -62,6 +74,14 @@ Minimální databáze:
 - `akl_rag`
 - `akl_evaluation`
 - `akl_governance`
+
+Produkční connection string šablona:
+
+```env
+AKL_REGISTRY_DATABASE_URL=postgresql+psycopg://<user>:<password>@haproxy.home.cz:5000/akl_registry
+```
+
+Stejný host a port použít i pro další AKL databáze, vždy s konkrétním názvem DB. Pokud bude HAProxy poskytovat separátní read-only port, AKL ho v první produkční verzi nepoužívá pro zápisové služby.
 
 První nasazení:
 
