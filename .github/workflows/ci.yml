@@ -165,3 +165,11 @@ jobs:
             -f infra/docker-compose/docker-compose.dev.yml \
             -f infra/docker-compose/docker-compose.local-prod.yml \
             config >/tmp/akl-compose-local-prod.yml
+
+      - name: Validate docker.home.cz compose config
+        run: |
+          printf '@stratos:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=dummy\n' >/tmp/akl-npmrc
+          AKL_NPMRC_SECRET_FILE=/tmp/akl-npmrc docker compose \
+            --env-file infra/docker-compose/docker-home.env.example \
+            -f infra/docker-compose/docker-compose.docker-home.yml \
+            config >/tmp/akl-compose-docker-home.yml

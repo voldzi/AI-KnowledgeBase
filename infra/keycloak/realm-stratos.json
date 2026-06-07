@@ -1,0 +1,136 @@
+{
+  "realm": "stratos",
+  "enabled": true,
+  "displayName": "STRATOS",
+  "displayNameHtml": "STRATOS",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "external",
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "cs",
+    "en"
+  ],
+  "defaultLocale": "cs",
+  "loginTheme": "stratos",
+  "roles": {
+    "realm": [
+      {
+        "name": "akl_admin",
+        "description": "Full AKL administration in STRATOS."
+      },
+      {
+        "name": "akl_document_manager",
+        "description": "Manage AKL controlled documents and metadata."
+      },
+      {
+        "name": "akl_document_owner",
+        "description": "Own AKL documents and versions."
+      },
+      {
+        "name": "akl_reviewer",
+        "description": "Review AKL document drafts."
+      },
+      {
+        "name": "akl_reader",
+        "description": "Read authorized AKL documents and answers."
+      },
+      {
+        "name": "akl_auditor",
+        "description": "Read AKL audit events."
+      },
+      {
+        "name": "akl_stratos_service",
+        "description": "Service role for STRATOS server adapters calling AKL."
+      },
+      {
+        "name": "akl_service_ingestion",
+        "description": "Service role for AKL ingestion workers."
+      },
+      {
+        "name": "akl_service_rag",
+        "description": "Service role for AKL RAG retrieval."
+      },
+      {
+        "name": "akl_service_llm_gateway",
+        "description": "Service role for AKL LLM Gateway."
+      },
+      {
+        "name": "akl_service_evaluation",
+        "description": "Service role for AKL evaluation workers."
+      },
+      {
+        "name": "akl_service_governance",
+        "description": "Service role for AKL governance workers."
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "akl-web",
+      "name": "AKL Web Frontend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://akl.zeleznalady.cz/*",
+        "https://docker.home.cz/*",
+        "http://localhost:3000/*",
+        "http://localhost:3002/*",
+        "http://localhost:3003/*"
+      ],
+      "webOrigins": [
+        "https://akl.zeleznalady.cz",
+        "https://docker.home.cz",
+        "+"
+      ]
+    },
+    {
+      "clientId": "akl-api",
+      "name": "AKL API Services",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "stratos-akl-adapter",
+      "name": "STRATOS AKL Adapter",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "groups": [
+    {
+      "name": "STRATOS AKL Administrators",
+      "realmRoles": [
+        "akl_admin",
+        "akl_document_manager",
+        "akl_auditor"
+      ]
+    },
+    {
+      "name": "STRATOS AKL Readers",
+      "realmRoles": [
+        "akl_reader"
+      ]
+    },
+    {
+      "name": "STRATOS AKL Services",
+      "realmRoles": [
+        "akl_stratos_service"
+      ]
+    }
+  ]
+}
