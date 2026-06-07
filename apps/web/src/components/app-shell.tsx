@@ -28,6 +28,7 @@ import {
   type CommandCenterItem,
   type StratosWorkspaceNavGroup
 } from "@/components/stratos";
+import { withAppBasePath } from "@/lib/app-url";
 import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
 
 const navigation = {
@@ -180,6 +181,13 @@ interface AppShellProps {
   authMode: "mock" | "oidc";
 }
 
+interface AklUserProfile {
+  name: string;
+  email?: string;
+  initials: string;
+  roles: string[];
+}
+
 export function AppShell({ children, apiMode, authMode }: AppShellProps) {
   return (
     <LanguageProvider>
@@ -200,10 +208,40 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
+    name: authMode === "mock" ? "AKL Dev User" : "AKL",
+    email: authMode === "mock" ? "dev@akl.local" : undefined,
+    initials: authMode === "mock" ? "AD" : "AK",
+    roles: []
+  }));
 
   useEffect(() => {
     setActiveModule(moduleForPath(pathname));
   }, [pathname]);
+
+  useEffect(() => {
+    let active = true;
+    fetch(withAppBasePath("/api/auth/session"), { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!active || !payload?.user) {
+          return;
+        }
+        const name = String(payload.user.name || payload.user.email || payload.user.subjectId || "AKL");
+        const email = typeof payload.user.email === "string" ? payload.user.email : undefined;
+        const roles = Array.isArray(payload.user.roles) ? payload.user.roles.filter((role: unknown): role is string => typeof role === "string") : [];
+        setUserProfile({
+          name,
+          email,
+          initials: initialsFromName(name),
+          roles
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const railItems = [
     { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database },
@@ -340,6 +378,10 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const handleLogout = () => {
+    window.location.assign(withAppBasePath("/api/auth/logout"));
+  };
+
   return (
     <StratosAppShell
       sidebarCollapsed={sidebarCollapsed}
@@ -422,8 +464,10 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             language={language}
             onCommandCenterOpen={() => setCommandCenterOpen(true)}
             onLanguageChange={setLanguage}
+            onLogout={handleLogout}
             onSettingsOpen={() => setSettingsOpen(true)}
             projectName={activeTopbarContext}
+            user={userProfile}
             workspaceName={activeModuleLabel}
           />
           <CommandCenter
@@ -442,7 +486,9 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             onQueryChange={setCommandCenterQuery}
             onClose={() => setCommandCenterOpen(false)}
           />
-          {settingsOpen ? <SettingsModal authModeLabel={authModeLabel} language={language} onClose={() => setSettingsOpen(false)} /> : null}
+          {settingsOpen ? (
+            <SettingsModal authModeLabel={authModeLabel} language={language} user={userProfile} onClose={() => setSettingsOpen(false)} onLogout={handleLogout} />
+          ) : null}
         </>
       }
     >
@@ -497,9 +543,24 @@ function navItemToWorkspaceItem(
   const Icon = item.icon;
   return {
     id: item.href,
-    href: item.href,
+    href: withAppBasePath(item.href),
     label: item.label,
     icon: <Icon size={16} aria-hidden="true" />,
     active: pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
   };
+}
+
+function initialsFromName(name: string): string {
+  const parts = name
+    .replace(/[^\p{L}\p{N}\s._-]/gu, " ")
+    .split(/[\s._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return "AK";
+  }
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }

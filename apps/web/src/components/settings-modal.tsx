@@ -9,7 +9,14 @@ import type { AklLanguage } from "@/lib/i18n";
 interface SettingsModalProps {
   authModeLabel: string;
   language: AklLanguage;
+  onLogout: () => void;
   onClose: () => void;
+  user: {
+    name: string;
+    email?: string;
+    initials: string;
+    roles: string[];
+  };
 }
 
 const settingsCopy = {
@@ -79,7 +86,7 @@ const settingsCopy = {
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
-export function SettingsModal({ authModeLabel, language, onClose }: SettingsModalProps) {
+export function SettingsModal({ authModeLabel, language, onClose, onLogout, user }: SettingsModalProps) {
   const copy = settingsCopy[language];
   const [mode, setMode] = useState<SettingsSurfaceMode>("modal");
 
@@ -103,26 +110,26 @@ export function SettingsModal({ authModeLabel, language, onClose }: SettingsModa
         children: (
           <div className="akl-settings-profile">
             <div className="stratos-settings-avatar-block">
-              <span className="stratos-settings-avatar">AK</span>
+              <span className="stratos-settings-avatar">{user.initials}</span>
               <span>
-                <strong>AKL Admin</strong>
+                <strong>{user.name}</strong>
                 <small>{authModeLabel}</small>
               </span>
             </div>
             <label className="akl-settings-field">
               <span>{copy.fullName}</span>
-              <input value="AKL Admin" readOnly />
+              <input value={user.name} readOnly />
             </label>
             <label className="akl-settings-field">
               <span>{copy.email}</span>
               <span className="akl-settings-readonly">
                 <Mail size={16} aria-hidden="true" />
-                admin@akl.local
+                {user.email ?? "-"}
               </span>
             </label>
             <label className="akl-settings-field">
               <span>{copy.role}</span>
-              <input value="Knowledge administrator" readOnly />
+              <input value={user.roles.length > 0 ? user.roles.join(", ") : authModeLabel} readOnly />
             </label>
           </div>
         )
@@ -149,7 +156,7 @@ export function SettingsModal({ authModeLabel, language, onClose }: SettingsModa
         children: <p className="akl-settings-note">{language.toUpperCase()}</p>
       }
     ],
-    [authModeLabel, copy, language]
+    [authModeLabel, copy, language, user]
   );
 
   return (
@@ -175,6 +182,7 @@ export function SettingsModal({ authModeLabel, language, onClose }: SettingsModa
       mode={mode}
       dirty={false}
       onClose={onClose}
+      onLogout={onLogout}
       onModeChange={setMode}
       onSave={() => undefined}
     />

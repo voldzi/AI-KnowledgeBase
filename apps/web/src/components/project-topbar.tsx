@@ -9,6 +9,12 @@ import type { AklLanguage } from "@/lib/i18n";
 
 type SaveState = "saved" | "saving" | "error";
 
+export interface AklTopbarUserProfile {
+  name: string;
+  email?: string;
+  initials: string;
+}
+
 interface ProjectTopbarProps {
   apiModeLabel: string;
   authModeLabel: string;
@@ -17,10 +23,12 @@ interface ProjectTopbarProps {
   healthLabel: string;
   language: AklLanguage;
   onCommandCenterOpen: () => void;
+  onLogout: () => void;
   onLanguageChange: (language: AklLanguage) => void;
   onSettingsOpen?: () => void;
   projectName: string;
   saveState?: SaveState;
+  user: AklTopbarUserProfile;
   workspaceName: string;
   labels: {
     applications: string;
@@ -43,10 +51,12 @@ export function ProjectTopbar({
   labels,
   language,
   onCommandCenterOpen,
+  onLogout,
   onLanguageChange,
   onSettingsOpen,
   projectName,
   saveState = "saved",
+  user,
   workspaceName
 }: ProjectTopbarProps) {
   const [pragueTime, setPragueTime] = useState("");
@@ -102,8 +112,9 @@ export function ProjectTopbar({
         logout: labels.logout
       }}
       user={{
-        name: "AKL Admin",
-        initials: "AK",
+        name: user.name,
+        email: user.email,
+        initials: user.initials,
         status: authModeLabel
       }}
       context={
@@ -144,6 +155,7 @@ export function ProjectTopbar({
         </div>
       }
       actions={<LanguageSwitcher language={language} setLanguage={onLanguageChange} />}
+      onLogout={onLogout}
       onSettings={onSettingsOpen}
     />
   );

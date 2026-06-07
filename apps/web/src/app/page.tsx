@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { DashboardOverview } from "@/features/dashboard/dashboard-overview";
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { ApiClientError, type AuditEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
   const [documents, jobs, auditEvents, registryTasks, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
     clients.ingestion.listJobs(context),
-    clients.registry.listAuditEvents(context),
+    listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
     clients.registry.listWorkflowTasks(context).catch(() => undefined),
     clients.registry.getAuthorizationHints(context)
   ]);
@@ -52,4 +53,15 @@ function _shouldUseEmployeeAssistant(roles: string[]) {
     "auditor"
   ]);
   return normalized.size > 0 && [...normalized].every((role) => !adminRoles.has(role));
+}
+
+async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 403) {
+      return [];
+    }
+    throw error;
+  }
 }
