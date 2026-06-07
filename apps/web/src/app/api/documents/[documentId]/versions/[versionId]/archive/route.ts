@@ -16,7 +16,7 @@ interface RouteContext {
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const { documentId, versionId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const version = await clients.registry.archiveDocumentVersion(documentId, versionId, requestContext);
 

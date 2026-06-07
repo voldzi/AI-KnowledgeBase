@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const context = getServerRequestContext();
+    const context = await getServerRequestContext();
     const clients = getServerApiClients();
     const requestedLanguage = new URL(request.url).searchParams.get("language");
     const response = await clients.rag.assistantSuggestions(

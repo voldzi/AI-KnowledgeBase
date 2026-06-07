@@ -138,9 +138,13 @@ Cílový realm:
 - login theme: `stratos`
 - locales: `cs`, `en`
 - clients:
-  - `akl-web` public OIDC client,
-  - `akl-api` nebo service clients podle interních služeb,
-  - `stratos-akl-adapter` confidential service client pro STRATOS adapter.
+  - `akl-web`, `budget-web`, `projectflow-web`, `archflow-web`, `stratos-shell` public OIDC clients,
+- `akl-api`, `budget-api`, `projectflow-api`, `archflow-api` confidential service clients,
+- `stratos-akl-adapter` confidential service client pro STRATOS adapter.
+- sdílené realm role:
+  - `stratos_admin`
+  - `stratos_user`
+  - `stratos_auditor`
 - realm role pro AKL:
   - `akl_admin`
   - `akl_document_manager`
@@ -149,6 +153,8 @@ Cílový realm:
   - `akl_reader`
   - `akl_auditor`
   - `akl_stratos_service`
+- AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`, `reader`, `auditor` a servisní role bez prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
+- `akl-web` a `stratos-akl-adapter` mají audience mapper na `akl-api`; Registry API v produkci validuje `AKL_OIDC_AUDIENCE=akl-api`.
 
 Theme struktura v repu:
 
@@ -175,7 +181,8 @@ Bootstrap postup:
 2. Importovat realm do Keycloaku.
 3. Nastavit redirect URI pro produkční AKL doménu a interní testovací URL na `docker.home.cz`.
 4. Ověřit login přes AKL frontend.
-5. Ověřit service token pro `stratos-akl-adapter`.
+5. Ověřit browser login pro `akl-web`.
+6. Ověřit service token pro `stratos-akl-adapter`.
 
 ## 5. Docker Compose Profil
 
@@ -296,5 +303,5 @@ Obnova se provádí z prázdného checkoutu `main`, obnovy DB/object storage/Qdr
 - Rozhodnout, zda SeaweedFS bude připojený přes S3 gateway nebo filesystem mount. Pro dlouhodobý provoz preferovat S3 adapter.
 - Nasadit přes připravený standalone compose profil `infra/docker-compose/docker-compose.docker-home.yml`.
 - Ověřit dostupnost `@stratos/ui` z GitHub Packages pomocí read-only tokenu.
-- Doplnit OIDC produkční konfiguraci do webu a služeb.
+- Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL` a `AKL_WEB_SESSION_SECRET`.
 - Připravit monitoring a log retention pro `/srv/akl/data/logs`.

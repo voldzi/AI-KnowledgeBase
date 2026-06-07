@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     const { documentId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const [document, versions, sourceContext] = await Promise.all([
       clients.registry.getDocument(documentId, requestContext),

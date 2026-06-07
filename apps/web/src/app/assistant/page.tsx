@@ -13,7 +13,7 @@ const FALLBACK_SUGGESTIONS: AssistantSuggestion[] = [
 
 export default async function AssistantPage() {
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
   let suggestions = FALLBACK_SUGGESTIONS;
 
   try {

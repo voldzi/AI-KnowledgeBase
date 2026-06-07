@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
   if (_shouldUseEmployeeAssistant(context.roles ?? [])) {
     redirect("/assistant");
   }

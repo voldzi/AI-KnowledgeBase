@@ -16,7 +16,7 @@ interface DocumentDetailPageProps {
 export default async function DocumentDetailPage({ params }: DocumentDetailPageProps) {
   const { documentId } = await params;
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
 
   try {
     const [document, assignments, versions, jobs, authorization, workflowTasks, auditEvents] = await Promise.all([

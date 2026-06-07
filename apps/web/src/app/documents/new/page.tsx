@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewDocumentPage() {
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
   const authorization = await clients.registry.getAuthorizationHints(context);
 
   return (

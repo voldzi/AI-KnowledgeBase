@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TasksPage() {
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
   const [documents, jobs, auditEvents, registryTasks, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
     clients.ingestion.listJobs(context),

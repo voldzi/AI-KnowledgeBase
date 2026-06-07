@@ -44,12 +44,28 @@ describe("AKL web config", () => {
       AKL_REGISTRY_API_BASE_URL: "https://registry.local/api/v1/",
       AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1/",
       AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/",
-      AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/"
+      AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/",
+      AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos/",
+      AKL_WEB_PUBLIC_BASE_URL: "https://akl.local/",
+      AKL_WEB_SESSION_SECRET: "test-session-secret"
     });
 
     assert.equal(config.serviceBaseUrls.registry, "https://registry.local/api/v1");
     assert.equal(config.serviceBaseUrls.ingestion, "https://ingestion.local/api/v1");
     assert.equal(config.serviceBaseUrls.rag, "https://rag.local/api/v1");
     assert.equal(config.serviceBaseUrls.governance, "https://governance.local/api/v1");
+    assert.equal(config.oidc?.issuer, "https://login.local/realms/stratos");
+    assert.equal(config.oidc?.clientId, "akl-web");
+    assert.equal(config.oidc?.redirectUri, "https://akl.local/api/auth/callback");
+  });
+
+  it("requires web OIDC settings when OIDC auth is enabled", () => {
+    assert.throws(() =>
+      getAklConfig({
+        AKL_ENV: "staging",
+        AKL_API_CLIENT_MODE: "mock",
+        AKL_AUTH_MODE: "oidc"
+      }),
+    /AKL_WEB_OIDC_ISSUER is required when AKL_AUTH_MODE=oidc/);
   });
 });

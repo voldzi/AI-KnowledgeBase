@@ -12,6 +12,14 @@ export interface AklConfig {
     rag: string;
     governance: string;
   };
+  oidc?: {
+    issuer: string;
+    clientId: string;
+    clientSecret?: string;
+    redirectUri: string;
+    scopes: string;
+    sessionSecret: string;
+  };
   devAccessToken?: string;
 }
 
@@ -48,6 +56,13 @@ function normalizeBaseUrl(value: string | undefined, name: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function requireEnv(value: string | undefined, name: string): string {
+  if (!value) {
+    throw new Error(`${name} is required when AKL_AUTH_MODE=oidc`);
+  }
+  return value;
+}
+
 export function getAklConfig(env: EnvSource = process.env): AklConfig {
   const environment = parseEnvironment(env.AKL_ENV);
   const apiClientMode = parseClientMode(env.AKL_API_CLIENT_MODE);
@@ -75,12 +90,26 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
           rag: "mock://rag",
           governance: "mock://governance"
         };
+  const publicBaseUrl = env.AKL_WEB_PUBLIC_BASE_URL?.replace(/\/+$/, "");
+  const oidc =
+    authMode === "oidc"
+      ? {
+          issuer: requireEnv(env.AKL_WEB_OIDC_ISSUER ?? env.AKL_OIDC_ISSUER, "AKL_WEB_OIDC_ISSUER")
+            .replace(/\/+$/, ""),
+          clientId: requireEnv(env.AKL_WEB_OIDC_CLIENT_ID ?? "akl-web", "AKL_WEB_OIDC_CLIENT_ID"),
+          clientSecret: env.AKL_WEB_OIDC_CLIENT_SECRET || undefined,
+          redirectUri: `${requireEnv(publicBaseUrl, "AKL_WEB_PUBLIC_BASE_URL")}/api/auth/callback`,
+          scopes: env.AKL_WEB_OIDC_SCOPES ?? "openid profile email",
+          sessionSecret: requireEnv(env.AKL_WEB_SESSION_SECRET, "AKL_WEB_SESSION_SECRET")
+        }
+      : undefined;
 
   return {
     environment,
     apiClientMode,
     authMode,
     serviceBaseUrls,
+    oidc,
     devAccessToken: env.AKL_DEV_ACCESS_TOKEN || undefined
   };
 }

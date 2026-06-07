@@ -42,7 +42,7 @@ function sourceDownloadErrorResponse(error: SourceDownloadError) {
 export async function POST(_request: Request, context: RouteContext) {
   try {
     const { documentId, versionId } = await context.params;
-    const requestContext = getServerRequestContext();
+    const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const [document, versions, authorization] = await Promise.all([
       clients.registry.getDocument(documentId, requestContext),

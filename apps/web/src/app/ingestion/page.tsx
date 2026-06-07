@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function IngestionPage() {
   const clients = getServerApiClients();
-  const context = getServerRequestContext();
+  const context = await getServerRequestContext();
   const [documents, jobs] = await Promise.all([clients.registry.listDocuments(context), clients.ingestion.listJobs(context)]);
   const reports = (
     await Promise.all(

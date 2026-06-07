@@ -12,7 +12,10 @@ const env = {
   AKL_REGISTRY_API_BASE_URL: "https://registry.local/api/v1/",
   AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1/",
   AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/",
-  AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/"
+  AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/",
+  AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
+  AKL_WEB_PUBLIC_BASE_URL: "https://akl.local",
+  AKL_WEB_SESSION_SECRET: "test-session-secret"
 };
 
 describe("production API clients", () => {

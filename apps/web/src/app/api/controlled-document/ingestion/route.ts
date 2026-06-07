@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const context = getServerRequestContext();
+    const context = await getServerRequestContext();
     const clients = getServerApiClients();
     const documentId = String(body.document_id ?? "").trim();
     const sourceFileUri = String(body.source_file_uri ?? "").trim();
