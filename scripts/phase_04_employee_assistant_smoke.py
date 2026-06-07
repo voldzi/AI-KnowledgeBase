@@ -125,7 +125,7 @@ def check_employee_answer_with_citation(conversation_id: str) -> dict[str, Any]:
 
 def check_web_assistant_route() -> None:
     html = request_text("GET", f"{WEB_URL}/assistant")
-    if "ČSÚ znalostní asistent" not in html and "Znalostní asistent" not in html:
+    if "Znalostní asistent STRATOS" not in html and "STRATOS knowledge assistant" not in html:
         raise RuntimeError("Web assistant route did not render the employee assistant shell")
 
 
