@@ -26,9 +26,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid OIDC callback state." }, { status: 400 });
   }
 
-  const tokens = await exchangeAuthorizationCode(config, code);
-  const session = sessionFromTokens(tokens);
   const { returnTo } = parseState(state);
+  let tokens;
+  try {
+    tokens = await exchangeAuthorizationCode(config, code);
+  } catch (error) {
+    console.error("OIDC callback token exchange failed.", error);
+    const loginUrl = buildPublicAppUrl(config, `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`);
+    const response = NextResponse.redirect(loginUrl);
+    response.cookies.delete(OIDC_STATE_COOKIE);
+    response.cookies.delete(OIDC_SESSION_COOKIE);
+    return response;
+  }
+
+  const session = sessionFromTokens(tokens);
   const response = NextResponse.redirect(buildPublicAppUrl(config, returnTo));
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.set(OIDC_SESSION_COOKIE, sealSession(session, oidc.sessionSecret), cookieOptions(config));
