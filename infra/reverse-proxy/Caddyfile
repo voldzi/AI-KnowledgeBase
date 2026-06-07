@@ -31,7 +31,8 @@
 		respond "AKL Platform reverse proxy" 200
 	}
 
-	handle /akb /akb/* {
+	@akb path /akb /akb/*
+	handle @akb {
 		reverse_proxy {$WEB_UPSTREAM:web:3000} {
 			import correlation_headers
 		}
