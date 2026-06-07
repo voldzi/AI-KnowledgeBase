@@ -36,22 +36,13 @@ class QdrantHybridRetriever:
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/search",
             json_body=body,
         )
-        points = payload.get("result", [])
-        chunks: list[RetrievedChunk] = []
-        for point in points:
-            point_payload = point.get("payload", {})
-            if not isinstance(point_payload, dict):
-                continue
-            text = str(point_payload.get("text") or point_payload.get("normalized_text") or "").strip()
-            if not text:
-                continue
-
-            dense = max(0.0, min(1.0, float(point.get("score", 0.0))))
-            sparse = sparse_score(query, text)
-            score = hybrid_score(dense, sparse, self._settings.hybrid_dense_weight)
-            chunks.append(_point_to_chunk(point_payload, score=score, dense_score=dense, sparse_score=sparse))
-
-        return sorted(chunks, key=lambda item: item.score, reverse=True)[:limit]
+        vector_chunks = _points_to_hybrid_chunks(
+            query=query,
+            points=payload.get("result", []),
+            dense_weight=self._settings.hybrid_dense_weight,
+        )
+        lexical_chunks = await self._retrieve_lexical_candidates(query=query, filters=filters, limit=max(1000, limit * 20))
+        return _merge_ranked_chunks([*vector_chunks, *lexical_chunks])[:limit]
 
     async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
         payload = await request_json_with_retry(
@@ -93,6 +84,101 @@ class QdrantHybridRetriever:
         except Exception:
             return "not_ready"
         return "ready"
+
+    async def _retrieve_lexical_candidates(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+    ) -> list[RetrievedChunk]:
+        payload = await request_json_with_retry(
+            dependency="qdrant",
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
+            json_body={
+                "limit": limit,
+                "with_payload": True,
+                "with_vector": False,
+                "filter": _qdrant_filter(filters),
+            },
+        )
+        result = payload.get("result", {})
+        points = result.get("points", []) if isinstance(result, dict) else []
+        return _points_to_lexical_chunks(query=query, points=points)
+
+
+def _points_to_hybrid_chunks(*, query: str, points: Any, dense_weight: float) -> list[RetrievedChunk]:
+    if not isinstance(points, list):
+        return []
+
+    chunks: list[RetrievedChunk] = []
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        point_payload = point.get("payload", {})
+        if not isinstance(point_payload, dict):
+            continue
+        text = str(point_payload.get("text") or point_payload.get("normalized_text") or "").strip()
+        if not text:
+            continue
+
+        dense = max(0.0, min(1.0, float(point.get("score", 0.0))))
+        sparse = sparse_score(query, text)
+        score = hybrid_score(dense, sparse, dense_weight)
+        chunks.append(_point_to_chunk(point_payload, score=score, dense_score=dense, sparse_score=sparse))
+
+    return chunks
+
+
+def _points_to_lexical_chunks(*, query: str, points: Any) -> list[RetrievedChunk]:
+    if not isinstance(points, list):
+        return []
+
+    chunks: list[RetrievedChunk] = []
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        point_payload = point.get("payload", {})
+        if not isinstance(point_payload, dict):
+            continue
+        text = str(point_payload.get("text") or point_payload.get("normalized_text") or "").strip()
+        if not text:
+            continue
+
+        sparse = sparse_score(query, text)
+        if sparse <= 0:
+            continue
+        chunk = _point_to_chunk(point_payload, score=sparse, dense_score=0.0, sparse_score=sparse)
+        chunks.append(
+            chunk.model_copy(
+                update={
+                    "metadata": {
+                        **chunk.metadata,
+                        "lexical_fallback": True,
+                    }
+                }
+            )
+        )
+
+    return chunks
+
+
+def _merge_ranked_chunks(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    best_by_chunk_id: dict[str, RetrievedChunk] = {}
+    for chunk in chunks:
+        existing = best_by_chunk_id.get(chunk.chunk_id)
+        if existing is None or (chunk.score, chunk.metadata.get("sparse_score", 0)) > (
+            existing.score,
+            existing.metadata.get("sparse_score", 0),
+        ):
+            best_by_chunk_id[chunk.chunk_id] = chunk
+    return sorted(
+        best_by_chunk_id.values(),
+        key=lambda item: (item.score, item.metadata.get("sparse_score", 0)),
+        reverse=True,
+    )
 
 
 def _point_to_chunk(

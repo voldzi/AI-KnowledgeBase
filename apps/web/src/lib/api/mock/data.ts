@@ -249,6 +249,76 @@ export const mockDocuments: Document[] = [
     ],
     created_at: "2025-12-12T14:00:00Z",
     updated_at: "2026-02-10T10:10:00Z"
+  },
+  {
+    document_id: "doc_105",
+    title: "DOCX preview fixture",
+    document_type: "manual",
+    status: "draft",
+    classification: "internal",
+    owner_id: "user_123",
+    owner: "user_123",
+    gestor_unit: "Knowledge Ops",
+    tags: ["viewer", "docx"],
+    assignments: [],
+    created_at: "2026-06-04T10:00:00Z",
+    updated_at: "2026-06-04T10:00:00Z"
+  },
+  {
+    document_id: "doc_106",
+    title: "XLSX preview fixture",
+    document_type: "attachment",
+    status: "draft",
+    classification: "internal",
+    owner_id: "user_123",
+    owner: "user_123",
+    gestor_unit: "Knowledge Ops",
+    tags: ["viewer", "xlsx"],
+    assignments: [],
+    created_at: "2026-06-04T10:10:00Z",
+    updated_at: "2026-06-04T10:10:00Z"
+  },
+  {
+    document_id: "doc_107",
+    title: "PPTX preview fixture",
+    document_type: "project_documentation",
+    status: "draft",
+    classification: "internal",
+    owner_id: "user_123",
+    owner: "user_123",
+    gestor_unit: "Knowledge Ops",
+    tags: ["viewer", "pptx"],
+    assignments: [],
+    created_at: "2026-06-04T10:20:00Z",
+    updated_at: "2026-06-04T10:20:00Z"
+  },
+  {
+    document_id: "doc_108",
+    title: "PDF bbox preview fixture",
+    document_type: "manual",
+    status: "draft",
+    classification: "internal",
+    owner_id: "user_123",
+    owner: "user_123",
+    gestor_unit: "Knowledge Ops",
+    tags: ["viewer", "pdf", "bbox"],
+    assignments: [],
+    created_at: "2026-06-04T10:30:00Z",
+    updated_at: "2026-06-04T10:30:00Z"
+  },
+  {
+    document_id: "doc_109",
+    title: "Markdown preview fixture",
+    document_type: "manual",
+    status: "draft",
+    classification: "internal",
+    owner_id: "user_123",
+    owner: "user_123",
+    gestor_unit: "Knowledge Ops",
+    tags: ["viewer", "markdown"],
+    assignments: [],
+    created_at: "2026-06-04T10:40:00Z",
+    updated_at: "2026-06-04T10:40:00Z"
   }
 ];
 
@@ -293,14 +363,92 @@ export const mockVersions: DocumentVersion[] = [
     published_at: null
   },
   {
+    document_version_id: "ver_108_1",
+    document_id: "doc_108",
+    version_label: "0.1",
+    status: "draft",
+    valid_from: "2026-07-15",
+    valid_to: null,
+    source_file_uri: "s3://akl-documents/doc_108/ver_108_1/file.pdf",
+    file_hash: "sha256:b95ee5fa232b27128e77c887c73804824d4f56d0e8cb8246bdcd1ec3e3a40637",
+    change_summary: "PDF fixture pro bbox locator.",
+    created_at: "2026-06-04T10:30:00Z",
+    published_at: null
+  },
+  {
+    document_version_id: "ver_109_1",
+    document_id: "doc_109",
+    version_label: "0.1",
+    status: "draft",
+    valid_from: "2026-07-15",
+    valid_to: null,
+    source_file_uri: "s3://akl-documents/doc_109/ver_109_1/source.md",
+    file_hash: "sha256:aa07de942e1d2b06cdaad0e979e6fe2205134ba11f0fdbfe96b2a17b6963c703",
+    change_summary: "Markdown fixture pro nativni preview.",
+    created_at: "2026-06-04T10:40:00Z",
+    published_at: null
+  },
+  {
+    document_version_id: "ver_105_1",
+    document_id: "doc_105",
+    version_label: "0.1",
+    status: "draft",
+    valid_from: "2026-07-15",
+    valid_to: null,
+    source_file_uri: "s3://akl-documents/doc_105/ver_105_1/source.docx",
+    file_hash: "sha256:b9154dde4b097b5b17ce9d6a4d7410b6cae4406aff563396d74f308c35217819",
+    change_summary: "DOCX fixture pro nativni preview.",
+    created_at: "2026-06-04T10:00:00Z",
+    published_at: null
+  },
+  {
+    document_version_id: "ver_106_1",
+    document_id: "doc_106",
+    version_label: "0.1",
+    status: "draft",
+    valid_from: "2026-07-15",
+    valid_to: null,
+    source_file_uri: "s3://akl-documents/doc_106/ver_106_1/source.xlsx",
+    file_hash: "sha256:d8084e488ffa355ba16b19f64b704d6a5ca32aa5c3b16d898de88d7d7d4069d0",
+    change_summary: "XLSX fixture pro nativni preview.",
+    created_at: "2026-06-04T10:10:00Z",
+    published_at: null
+  },
+  {
+    document_version_id: "ver_107_1",
+    document_id: "doc_107",
+    version_label: "0.1",
+    status: "draft",
+    valid_from: "2026-07-15",
+    valid_to: null,
+    source_file_uri: "s3://akl-documents/doc_107/ver_107_1/source.pptx",
+    file_hash: "sha256:e31f18bc2760a36f3ae68dc4ad86be4cadbc0b02d8e138f2f8f074e020d1d26e",
+    change_summary: "PPTX fixture pro nativni preview.",
+    created_at: "2026-06-04T10:20:00Z",
+    published_at: null
+  },
+  {
+    document_version_id: "ver_103_2",
+    document_id: "doc_103",
+    version_label: "0.2",
+    status: "draft",
+    valid_from: "2026-07-10",
+    valid_to: null,
+    source_file_uri: "s3://akl-documents/doc_103/ver_103_2/scan.svg",
+    file_hash: "sha256:9a68f67b97f92f0752dd5e48b50c773dceca5b9e5880909493743453c0ea0072",
+    change_summary: "OCR scan onboarding checklistu pro overeni image vieweru.",
+    created_at: "2026-06-04T09:20:00Z",
+    published_at: null
+  },
+  {
     document_version_id: "ver_103_1",
     document_id: "doc_103",
     version_label: "0.1",
     status: "draft",
     valid_from: "2026-07-01",
     valid_to: null,
-    source_file_uri: "s3://akl-documents/doc_103/ver_103_1/file.pdf",
-    file_hash: "sha256:8a11bc0138a2ee7c",
+    source_file_uri: "s3://akl-documents/doc_103/ver_103_1/source.md",
+    file_hash: "sha256:1b9027635f805bbd7d75eedd4b895536cb1a4c1eb5627085ec9f6007aaf8a83b",
     change_summary: "Pracovni draft struktury onboarding materialu.",
     created_at: "2026-06-03T16:20:00Z",
     published_at: null
@@ -385,6 +533,56 @@ export const mockReports: IngestionReport[] = [
 ];
 
 export const mockAuditEvents: AuditEvent[] = [
+  {
+    audit_event_id: "audit_507",
+    actor_id: "knowledge_owner",
+    event_type: "chunk.indexed",
+    resource_type: "document_chunk",
+    resource_id: "chunk_md_109",
+    severity: "info",
+    correlation_id: "corr_507",
+    metadata: {
+      document_id: "doc_109",
+      document_version_id: "ver_109_1",
+      chunk_id: "chunk_md_109",
+      source_file_uri: "s3://akl-documents/doc_109/ver_109_1/source.md"
+    },
+    created_at: "2026-06-04T10:45:00Z"
+  },
+  {
+    audit_event_id: "audit_506",
+    actor_id: "knowledge_owner",
+    event_type: "chunk.indexed",
+    resource_type: "document_chunk",
+    resource_id: "chunk_pdf_108",
+    severity: "info",
+    correlation_id: "corr_506",
+    metadata: {
+      document_id: "doc_108",
+      document_version_id: "ver_108_1",
+      chunk_id: "chunk_pdf_108",
+      page_number: 1,
+      source_file_uri: "s3://akl-documents/doc_108/ver_108_1/file.pdf"
+    },
+    created_at: "2026-06-04T10:40:00Z"
+  },
+  {
+    audit_event_id: "audit_505",
+    actor_id: "knowledge_owner",
+    event_type: "chunk.indexed",
+    resource_type: "document_chunk",
+    resource_id: "chunk_ocr_103",
+    severity: "info",
+    correlation_id: "corr_505",
+    metadata: {
+      document_id: "doc_103",
+      document_version_id: "ver_103_2",
+      chunk_id: "chunk_ocr_103",
+      page_number: 1,
+      source_file_uri: "s3://akl-documents/doc_103/ver_103_2/scan.svg"
+    },
+    created_at: "2026-06-04T09:35:00Z"
+  },
   {
     audit_event_id: "audit_504",
     actor_id: "user_209",

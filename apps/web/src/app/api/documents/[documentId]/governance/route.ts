@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { readGovernanceSourceContent } from "@/lib/upload/governance-source-content";
 import type {
   Classification,
   Document,
@@ -24,10 +25,11 @@ interface RouteContext {
   }>;
 }
 
-const sourceLimitations = [
-  "WEB_BRIDGE_METADATA_CONTENT_ONLY",
-  "Native extracted document text is not yet exposed to the web governance bridge."
-];
+interface GovernanceContentBundle {
+  content: string;
+  citations: GovernanceSourceDocument["citations"];
+  limitations: string[];
+}
 
 export async function POST(request: NextRequest, context: RouteContext) {
   let body: unknown;
@@ -100,20 +102,21 @@ async function runGovernanceAction({
     const result = await clients.governance.compareVersions(
       {
         subject_id: requestContext.subjectId,
-        left_version: versionContent(document, leftVersion),
-        right_version: versionContent(document, currentVersion),
+        left_version: await versionContent(document, leftVersion),
+        right_version: await versionContent(document, currentVersion),
         include_unchanged: false
       },
       requestContext
     );
-    return governanceRunResponse(action, result);
+    return governanceRunResponse(action, result, await sourceLimitationsFor(document, leftVersion, currentVersion));
   }
 
   if (action === "check_compliance") {
+    const draft = await draftContent(document, currentVersion);
     const result = await clients.governance.checkCompliance(
       {
         subject_id: requestContext.subjectId,
-        draft: draftContent(document, currentVersion),
+        draft,
         filters: {
           document_types: ["directive", "methodology", "policy"],
           only_valid: true,
@@ -124,7 +127,7 @@ async function runGovernanceAction({
       },
       requestContext
     );
-    return governanceRunResponse(action, result);
+    return governanceRunResponse(action, result, await sourceLimitationsFor(document, currentVersion));
   }
 
   const sourceDocuments = await conflictSourceDocuments(clients, requestContext, document, currentVersion);
@@ -139,7 +142,7 @@ async function runGovernanceAction({
     },
     requestContext
   );
-  return governanceRunResponse(action, result);
+  return governanceRunResponse(action, result, sourceDocuments.flatMap((source) => source.citations.length > 0 ? [] : ["SOURCE_DOCUMENT_WITHOUT_CITATION"]));
 }
 
 async function conflictSourceDocuments(
@@ -159,13 +162,13 @@ async function conflictSourceDocuments(
   const entries: GovernanceSourceDocument[] = [];
   for (const candidate of candidates) {
     if (candidate.document_id === currentDocument.document_id) {
-      entries.push(sourceDocument(currentDocument, currentVersion));
+      entries.push(await sourceDocument(currentDocument, currentVersion));
       continue;
     }
     const versions = sortVersions(await clients.registry.listDocumentVersions(candidate.document_id, requestContext));
     const version = versions.find((item) => item.status === "valid") ?? versions[0];
     if (version) {
-      entries.push(sourceDocument(candidate, version));
+      entries.push(await sourceDocument(candidate, version));
     }
     if (entries.length >= 5) {
       break;
@@ -176,17 +179,19 @@ async function conflictSourceDocuments(
 
 function governanceRunResponse(
   action: GovernanceActionKind,
-  result: DocumentGovernanceRunResponse["result"]
+  result: DocumentGovernanceRunResponse["result"],
+  limitations: string[]
 ): DocumentGovernanceRunResponse {
   return {
     action,
     result,
-    source_limitations: sourceLimitations,
+    source_limitations: uniqueStrings(limitations),
     generated_at: new Date().toISOString()
   };
 }
 
-function versionContent(document: Document, version: DocumentVersion): GovernanceVersionContent {
+async function versionContent(document: Document, version: DocumentVersion): Promise<GovernanceVersionContent> {
+  const source = await governanceContentFor(document, version);
   return {
     document_id: document.document_id,
     document_version_id: version.document_version_id,
@@ -197,17 +202,18 @@ function versionContent(document: Document, version: DocumentVersion): Governanc
     valid_from: version.valid_from,
     valid_to: version.valid_to,
     source_uri: version.source_file_uri,
-    content: synthesizedContent(document, version),
-    citations: []
+    content: source.content,
+    citations: source.citations
   };
 }
 
-function draftContent(document: Document, version: DocumentVersion): GovernanceDraftDocumentInput {
+async function draftContent(document: Document, version: DocumentVersion): Promise<GovernanceDraftDocumentInput> {
+  const source = await governanceContentFor(document, version);
   return {
     title: document.title,
     document_type: document.document_type,
     classification: document.classification,
-    content: synthesizedContent(document, version),
+    content: source.content,
     document_id: document.document_id,
     document_version_id: version.document_version_id,
     owner_id: document.owner_id,
@@ -215,11 +221,12 @@ function draftContent(document: Document, version: DocumentVersion): GovernanceD
     valid_from: version.valid_from,
     valid_to: version.valid_to,
     tags: document.tags,
-    citations: []
+    citations: source.citations
   };
 }
 
-function sourceDocument(document: Document, version: DocumentVersion): GovernanceSourceDocument {
+async function sourceDocument(document: Document, version: DocumentVersion): Promise<GovernanceSourceDocument> {
+  const source = await governanceContentFor(document, version);
   return {
     document_id: document.document_id,
     document_version_id: version.document_version_id,
@@ -227,13 +234,51 @@ function sourceDocument(document: Document, version: DocumentVersion): Governanc
     version_label: version.version_label,
     status: governanceStatus(version.status),
     classification: document.classification,
-    content: synthesizedContent(document, version),
+    content: source.content,
     source_uri: version.source_file_uri,
-    citations: []
+    citations: source.citations
   };
 }
 
-function synthesizedContent(document: Document, version: DocumentVersion): string {
+async function governanceContentFor(document: Document, version: DocumentVersion): Promise<GovernanceContentBundle> {
+  if (!version.source_file_uri) {
+    return {
+      content: synthesizedContent(document, version, ["SOURCE_FILE_URI_MISSING"]),
+      citations: [governanceCitation(document, version, "Registry metadata fallback", "SOURCE_FILE_URI_MISSING")],
+      limitations: ["SOURCE_FILE_URI_MISSING", "WEB_BRIDGE_METADATA_FALLBACK"]
+    };
+  }
+
+  const extracted = await readGovernanceSourceContent({
+    document_id: document.document_id,
+    document_version_id: version.document_version_id,
+    source_file_uri: version.source_file_uri,
+    file_hash: version.file_hash,
+    viewer_mode: viewerModeForSourceUri(version.source_file_uri)
+  });
+
+  if (extracted.extracted && extracted.content.trim()) {
+    return {
+      content: sourceContentEnvelope(document, version, extracted.content, extracted.warnings),
+      citations: [governanceCitation(document, version, "Extracted source", extracted.content)],
+      limitations: extracted.warnings
+    };
+  }
+
+  return {
+    content: synthesizedContent(document, version, extracted.warnings),
+    citations: [governanceCitation(document, version, "Registry metadata fallback", extracted.warnings.join(", ") || "SOURCE_TEXT_UNAVAILABLE")],
+    limitations: [...extracted.warnings, "WEB_BRIDGE_METADATA_FALLBACK"]
+  };
+}
+
+async function sourceLimitationsFor(document: Document, ...versions: DocumentVersion[]): Promise<string[]> {
+  const bundles = await Promise.all(versions.map((version) => governanceContentFor(document, version)));
+  const limitations = bundles.flatMap((bundle) => bundle.limitations);
+  return limitations.length > 0 ? limitations : ["SOURCE_TEXT_EXTRACTED"];
+}
+
+function synthesizedContent(document: Document, version: DocumentVersion, warnings: string[] = []): string {
   return [
     `Title: ${document.title}`,
     `Document ID: ${document.document_id}`,
@@ -250,8 +295,62 @@ function synthesizedContent(document: Document, version: DocumentVersion): strin
     `Source URI: ${version.source_file_uri}`,
     `File hash: ${version.file_hash ?? "n/a"}`,
     `Change summary: ${version.change_summary ?? "n/a"}`,
-    "Source limitation: web governance bridge currently passes Registry metadata, source URI and change summary, not native extracted document text."
+    `Source extraction warnings: ${warnings.join(", ") || "n/a"}`,
+    "Source limitation: web governance bridge used Registry metadata fallback because extracted source text was not available."
   ].join("\n");
+}
+
+function sourceContentEnvelope(document: Document, version: DocumentVersion, content: string, warnings: string[]): string {
+  return [
+    `Title: ${document.title}`,
+    `Document ID: ${document.document_id}`,
+    `Document type: ${document.document_type}`,
+    `Document status: ${document.status}`,
+    `Classification: ${document.classification}`,
+    `Owner: ${document.owner_id}`,
+    `Gestor unit: ${document.gestor_unit ?? "n/a"}`,
+    `Tags: ${document.tags.join(", ") || "n/a"}`,
+    `Version: ${version.version_label}`,
+    `Version status: ${version.status}`,
+    `Valid from: ${version.valid_from ?? "n/a"}`,
+    `Valid to: ${version.valid_to ?? "n/a"}`,
+    `Source URI: ${version.source_file_uri}`,
+    `File hash: ${version.file_hash ?? "n/a"}`,
+    `Change summary: ${version.change_summary ?? "n/a"}`,
+    `Source extraction warnings: ${warnings.join(", ") || "n/a"}`,
+    "",
+    "Extracted source text:",
+    content
+  ].join("\n");
+}
+
+function governanceCitation(document: Document, version: DocumentVersion, section: string, excerptSource: string): GovernanceSourceDocument["citations"][number] {
+  const excerpt = excerptSource.replace(/\s+/g, " ").trim().slice(0, 500) || null;
+  return {
+    document_id: document.document_id,
+    document_version_id: version.document_version_id,
+    document_title: document.title,
+    version_label: version.version_label,
+    section_path: [section],
+    page_number: null,
+    chunk_id: `governance:${version.document_version_id}`,
+    source_excerpt: excerpt
+  };
+}
+
+function viewerModeForSourceUri(sourceUri: string): string {
+  const normalized = sourceUri.toLowerCase();
+  if (normalized.endsWith(".pdf")) return "pdf";
+  if (normalized.endsWith(".md") || normalized.endsWith(".markdown")) return "markdown";
+  if (normalized.endsWith(".csv") || normalized.endsWith(".xlsx")) return "table";
+  if (normalized.endsWith(".doc") || normalized.endsWith(".docx") || normalized.endsWith(".txt")) return "text";
+  if (normalized.endsWith(".pptx")) return "presentation";
+  if (normalized.match(/\.(png|jpe?g|gif|webp|svg)$/)) return "image";
+  return "binary";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function governanceStatus(status: DocumentStatus): GovernanceDocumentStatus {

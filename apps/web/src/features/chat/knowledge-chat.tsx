@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bot, Copy, ExternalLink, FileText, Send, ShieldAlert } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bot, Send, ShieldAlert } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { StratosButton } from "@/components/stratos";
+import { CitationList, SourceContextCard } from "@/features/citations/citation-viewer";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { Citation, RagAnswer, SourceContext } from "@/lib/types";
 
@@ -32,6 +34,14 @@ const chatCopy = {
     noSection: "Bez oddílu",
     copyChunk: "Kopírovat úryvek",
     chunk: "Chunk",
+    openDocument: "Otevřít dokument",
+    sourceOpened: "Citace otevřena",
+    technicalDetails: "Technické detaily",
+    technicalDetailsSummary: "Zobrazit technické detaily odpovědi",
+    queryId: "Query ID",
+    usedChunks: "Použité chunky",
+    warnings: "Varování",
+    noTechnicalWarnings: "Bez varování",
     requestFailed: "RAG API vrátilo HTTP",
     requestError: "Dotaz se nepodařilo odeslat.",
     citationFailed: "Citation API vrátilo HTTP",
@@ -57,6 +67,14 @@ const chatCopy = {
     noSection: "No section",
     copyChunk: "Copy excerpt",
     chunk: "Chunk",
+    openDocument: "Open document",
+    sourceOpened: "Citation opened",
+    technicalDetails: "Technical details",
+    technicalDetailsSummary: "Show technical answer details",
+    queryId: "Query ID",
+    usedChunks: "Used chunks",
+    warnings: "Warnings",
+    noTechnicalWarnings: "No warnings",
     requestFailed: "RAG API returned HTTP",
     requestError: "RAG request failed.",
     citationFailed: "Citation API returned HTTP",
@@ -75,10 +93,17 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [openingChunkId, setOpeningChunkId] = useState<string | null>(null);
+  const sourceViewerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     setQuestion(chatCopy[language].defaultQuestion);
   }, [language]);
+
+  useEffect(() => {
+    if (sourceContext) {
+      sourceViewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [sourceContext]);
 
   function openCitation(citation: Citation) {
     setOpeningChunkId(citation.chunk_id);
@@ -95,6 +120,7 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
         }
         const payload = (await response.json()) as { source_context: SourceContext };
         setSourceContext(payload.source_context);
+        setSourceError(null);
       })
       .catch((reason: unknown) => {
         setOpeningChunkId(null);
@@ -137,6 +163,8 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
                   }
                   const payload = (await response.json()) as { answer: RagAnswer };
                   setAnswer(payload.answer);
+                  setSourceContext(null);
+                  setSourceError(null);
                 })
                 .catch((reason: unknown) => {
                   setSubmitting(false);
@@ -152,10 +180,10 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
               <label htmlFor="tags-filter">{copy.scope}</label>
               <input id="tags-filter" value={tags} onChange={(event) => setTags(event.target.value)} />
             </div>
-            <button className="button button--primary" type="submit" disabled={submitting}>
+            <StratosButton tone="primary" type="submit" disabled={submitting}>
               <Send size={16} aria-hidden="true" />
               {submitting ? copy.asking : copy.ask}
-            </button>
+            </StratosButton>
           </form>
           {error ? <div className="notice">{error}</div> : null}
           <article className="answer-block">
@@ -164,13 +192,14 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
               <StatusBadge value={answer.confidence} />
             </div>
             <div className="answer-block__body stack">
-              <p>{answer.answer}</p>
+              <ReadableAnswer text={answer.answer} />
               {answer.warnings.length > 0 ? (
                 <div className="notice">
                   <ShieldAlert size={16} aria-hidden="true" />
                   {answer.warnings.join(", ")}
                 </div>
               ) : null}
+              <AnswerTechnicalDetails answer={answer} copy={copy} />
             </div>
           </article>
         </div>
@@ -182,62 +211,91 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
           <StatusBadge value={answer.citations.length > 0 ? "valid" : "insufficient_source"} label={`${answer.citations.length} ${copy.citations}`} />
         </div>
         <div className="panel__body stack">
-          {answer.citations.length > 0 ? (
-            answer.citations.map((citation) => (
-              <article className="timeline-item" key={citation.chunk_id}>
-                <strong>{citation.document_title}</strong>
-                <span>{copy.version} {citation.version_label} - {copy.page} {citation.page_number ?? "n/a"}</span>
-                <span>{citation.section_path.join(" / ")} - {citation.chunk_id}</span>
-                <button className="button citation-open-button" type="button" onClick={() => openCitation(citation)} disabled={openingChunkId === citation.chunk_id}>
-                  <ExternalLink size={15} aria-hidden="true" />
-                  {openingChunkId === citation.chunk_id ? copy.opening : copy.openCitation}
-                </button>
-              </article>
-            ))
-          ) : (
-            <div className="empty-state">{copy.noCitation}</div>
-          )}
+          <CitationList
+            citations={answer.citations}
+            activeChunkId={sourceContext?.chunk_id}
+            openingChunkId={openingChunkId}
+            emptyLabel={copy.noCitation}
+            labels={copy}
+            onOpenCitation={openCitation}
+          />
           {sourceError ? <div className="notice">{sourceError}</div> : null}
-          {sourceContext ? (
-            <article className="source-viewer">
-              <div className="source-viewer__header">
-                <div>
-                  <h3>{sourceContext.document_title}</h3>
-                  <span>{sourceContext.viewer_mode} viewer - {sourceContext.source_file_name ?? copy.sourceUnavailable}</span>
-                </div>
-                <StatusBadge value="valid" label={sourceContext.viewer_mode} />
-              </div>
-              <div className="source-viewer__meta">
-                <span>{copy.chunk} {sourceContext.chunk_id}</span>
-                <span>{copy.version} {sourceContext.document_version_id}</span>
-                <span>{copy.page} {sourceContext.location.page_number ?? "n/a"}</span>
-                <span>{sourceContext.location.section_path.join(" / ") || copy.noSection}</span>
-              </div>
-              {sourceContext.source_file_uri ? (
-                <div className="source-uri">
-                  <FileText size={15} aria-hidden="true" />
-                  <span>{sourceContext.source_file_uri}</span>
-                </div>
-              ) : null}
-              <pre className="chunk-text">{sourceContext.chunk_text}</pre>
-              <button
-                className="button"
-                type="button"
-                onClick={() => navigator.clipboard.writeText(sourceContext.chunk_text)}
-              >
-                <Copy size={15} aria-hidden="true" />
-                {copy.copyChunk}
-              </button>
-              {sourceContext.warnings.length > 0 ? (
-                <div className="notice">
-                  <ShieldAlert size={16} aria-hidden="true" />
-                  {sourceContext.warnings.join(", ")}
-                </div>
-              ) : null}
-            </article>
-          ) : null}
+          {sourceContext ? <SourceContextCard labels={copy} ref={sourceViewerRef} sourceContext={sourceContext} /> : null}
         </div>
       </aside>
     </section>
+  );
+}
+
+function ReadableAnswer({ text }: { text: string }) {
+  const blocks = readableAnswerBlocks(text);
+  return (
+    <div className="readable-answer">
+      {blocks.map((block, index) =>
+        block.kind === "bullet" ? (
+          <div className="readable-answer__bullet" key={`${block.text}-${index}`}>
+            <span aria-hidden="true">•</span>
+            <p>{renderAnswerInline(block.text)}</p>
+          </div>
+        ) : (
+          <p key={`${block.text}-${index}`}>{renderAnswerInline(block.text)}</p>
+        )
+      )}
+    </div>
+  );
+}
+
+function AnswerTechnicalDetails({ answer, copy }: { answer: RagAnswer; copy: Record<string, string> }) {
+  const chunkIdsFromText = Array.from(answer.answer.matchAll(/chunk_[a-zA-Z0-9_]+/g), (match) => match[0]);
+  const usedChunks = Array.from(new Set([...answer.used_chunks, ...chunkIdsFromText, ...answer.citations.map((citation) => citation.chunk_id)]));
+  return (
+    <details className="technical-details">
+      <summary>{copy.technicalDetailsSummary}</summary>
+      <div className="technical-details__body">
+        <KeyedLine label={copy.queryId} value={answer.query_id} />
+        <KeyedLine label={copy.usedChunks} value={usedChunks.length > 0 ? usedChunks.join(", ") : "n/a"} />
+        <KeyedLine label={copy.warnings} value={answer.warnings.length > 0 ? answer.warnings.join(", ") : copy.noTechnicalWarnings} />
+      </div>
+    </details>
+  );
+}
+
+function KeyedLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="technical-details__line">
+      <strong>{label}</strong>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function readableAnswerBlocks(text: string): Array<{ kind: "paragraph" | "bullet"; text: string }> {
+  const withoutChunkRefs = text.replace(/\s*\[[^\]]*chunk_[^\]]+\]/g, "");
+  const normalized = withoutChunkRefs
+    .replace(/\s+\*\s+\*\*/g, "\n- **")
+    .replace(/\s+\*\s+/g, "\n- ")
+    .replace(/\.\s+-\s+/g, ".\n- ")
+    .replace(/\s+-\s+\*\*/g, "\n- **")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return normalized
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => ({
+      kind: line.startsWith("- ") ? "bullet" : "paragraph",
+      text: line.replace(/^-\s+/, "")
+    }));
+}
+
+function renderAnswerInline(text: string) {
+  const match = text.match(/^\*\*(.+?):\*\*\s*(.*)$/);
+  if (!match) {
+    return text;
+  }
+  return (
+    <>
+      <strong>{match[1]}:</strong> {match[2]}
+    </>
   );
 }

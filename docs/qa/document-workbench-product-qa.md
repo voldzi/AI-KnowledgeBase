@@ -152,14 +152,15 @@ Must be able to:
 | DW-04 | Upload | Try an unsupported or inconsistent upload. | User sees a precise error and no draft version is silently published. |
 | DW-05 | Ingestion | Start ingestion for uploaded content. | Draft version is created, ingestion job is visible, automatic publish does not happen. |
 | DW-06 | Detail | Open `/documents/{documentId}`. | Overview, viewer, workflow, insights, versions, and ingestion sections render coherent data. |
-| DW-07 | Viewer | Open source preview or citation context. | Detail can request signed source opening, reports missing storage objects explicitly, audit-backed source-context chunk opens, source/version/page/section/text are visible, page-jump is offered only when signed source is available, and the user can distinguish this from full native renderer capability. |
+| DW-07 | Viewer | Open source preview or citation context. | Detail can request signed source opening, reports missing storage objects explicitly, opens available signed PDF/image/OCR/DOCX/XLSX/PPTX/Markdown/text/CSV source as native preview, audit-backed source-context chunk opens, source/version/page/section/text/bbox are visible when available, page-jump is offered only when signed source is available, and unsupported native renderers are explicit. |
 | DW-08 | Workflow | Approve a review task from `/tasks`. | Registry API records the action, task state changes, document workflow state is reflected in detail. |
 | DW-09 | Publish Gate | Try to publish before approval. | Publish is blocked with clear explanation. |
 | DW-10 | Publish Gate | Publish an approved document version. | Version becomes valid, previous state is not ambiguous, action is auditable. |
 | DW-11 | Archive | Archive a valid version. | Archive is allowed only for the current valid version and the resulting state is visible. |
-| DW-12 | Governance | Trigger governance action panel. | Compare/compliance/conflict action calls the web governance bridge, result ID/confidence/warnings/citations are visible, and metadata-only source limitation is explicit. |
+| DW-12 | Governance | Trigger governance action panel. | Compare/compliance/conflict action calls the web governance bridge, extracted source text is used for text/Markdown/CSV and DOCX/XLSX/PPTX when available, result ID/confidence/warnings/citations are visible, and unsupported-source metadata fallback is explicit. |
+| DW-12A | Insights | Generate proposed document insights. | Detail Insights tab creates proposed obligations, roles, deadlines and risks from current source text, shows confidence, citation and warnings, and clearly states that Registry persistence/approval is still a follow-up. |
 | DW-13 | Assignments | Inspect and update document responsibilities. | Owner/reviewer/approver/auditor roles, SLA and escalation metadata are visible and saved through Registry API. |
-| DW-14 | RAG | Ask a question that should be answered from imported documents. | Answer includes citations and opens source context. |
+| DW-14 | RAG | Ask a question that should be answered from imported documents. | Answer includes citations, opens source context in the chat/assistant citation viewer, and the document action deep-links to `/documents/{documentId}?tab=viewer&chunk_id={chunkId}`. |
 | DW-15 | RAG | Ask a question outside the corpus. | System refuses or asks for clarification instead of inventing an answer. |
 | DW-16 | Help | Open `/help`. | Help content covers quick start, roles, registry, upload, viewer, workflow, governance, chat, warnings, and errors. |
 | DW-17 | Language | Switch language if available in the active UI context. | Help and main document surfaces use the same language context. |

@@ -37,6 +37,47 @@ class Classification(str, Enum):
     confidential = "confidential"
 
 
+class ExternalSourceSystem(str, Enum):
+    stratos_budget = "STRATOS_BUDGET"
+    stratos_projectflow = "STRATOS_PROJECTFLOW"
+    stratos_archflow = "STRATOS_ARCHFLOW"
+    stratos_processforge = "STRATOS_PROCESSFORGE"
+    stratos_executive = "STRATOS_EXECUTIVE"
+    stratos_platform = "STRATOS_PLATFORM"
+
+
+class SourceLocationKind(str, Enum):
+    url = "url"
+    uploaded_file = "uploaded_file"
+    object_storage = "object_storage"
+    generated_text = "generated_text"
+    external_repository = "external_repository"
+
+
+class SourceLocation(BaseModel):
+    kind: SourceLocationKind
+    uri: str | None = Field(default=None, max_length=2048)
+    file_name: str | None = Field(default=None, max_length=300)
+    content_type: str | None = Field(default=None, max_length=160)
+    sha256: str | None = Field(default=None, max_length=128)
+    storage_ref: str | None = Field(default=None, max_length=1024)
+    captured_at: datetime | None = None
+    display_url: str | None = Field(default=None, max_length=2048)
+    repository: str | None = Field(default=None, max_length=200)
+    path: str | None = Field(default=None, max_length=1024)
+    version: str | None = Field(default=None, max_length=160)
+
+    @field_validator("sha256")
+    @classmethod
+    def validate_sha256(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.removeprefix("sha256:")
+        if len(normalized) != 64 or any(char not in "0123456789abcdefABCDEF" for char in normalized):
+            raise ValueError("sha256 must be a 64-character hex digest, optionally prefixed with sha256:")
+        return value
+
+
 class Action(str, Enum):
     document_create = "document.create"
     document_read = "document.read"
@@ -231,6 +272,61 @@ class DocumentListResponse(BaseModel):
     offset: int
 
 
+class ExternalDocumentOwner(BaseModel):
+    user_id: str = Field(min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, max_length=200)
+
+
+class ExternalDocumentUpsertRequest(BaseModel):
+    external_system: ExternalSourceSystem
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: str = Field(min_length=1, max_length=80)
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_type: DocumentType
+    title: str = Field(min_length=1, max_length=300)
+    classification: Classification = Classification.internal
+    owner: ExternalDocumentOwner
+    tenant_id: str = Field(default="default", min_length=1, max_length=128)
+    gestor_unit: str | None = Field(default=None, max_length=128)
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source_location: SourceLocation | None = None
+    akb_source_uri: str | None = Field(default=None, max_length=1024)
+    citation_base_url: str | None = Field(default=None, max_length=512)
+    preview_url: str | None = Field(default=None, max_length=2048)
+    access_policies: list[AccessPolicyCreate] | None = None
+    assignments: list[DocumentAssignmentCreate] | None = None
+
+
+class ExternalDocumentRefResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    external_document_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    current_document_version_id: str | None
+    current_file_id: str | None
+    current_ingestion_job_id: str | None
+    current_ingestion_status: str | None
+    akb_source_uri: str | None
+    source_location: SourceLocation | None
+    citation_base_url: str | None
+    preview_url: str | None
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="ref_metadata")
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExternalDocumentResponse(BaseModel):
+    external_document: ExternalDocumentRefResponse
+    document: DocumentResponse
+    created: bool = False
+
+
 class DocumentFileCreate(BaseModel):
     filename: str | None = Field(default=None, max_length=300)
     mime_type: str | None = Field(default=None, max_length=160)
@@ -251,6 +347,7 @@ class DocumentVersionCreate(BaseModel):
     valid_from: date | None = None
     valid_to: date | None = None
     source_file_uri: str = Field(min_length=1, max_length=1024)
+    source_location: SourceLocation | None = None
     file_hash: str | None = Field(default=None, max_length=128)
     change_summary: str | None = None
     file: DocumentFileCreate | None = None
@@ -273,6 +370,7 @@ class DocumentVersionResponse(BaseModel):
     valid_from: date | None
     valid_to: date | None
     source_file_uri: str
+    source_location: SourceLocation | None
     file_hash: str | None
     change_summary: str | None
     created_at: datetime

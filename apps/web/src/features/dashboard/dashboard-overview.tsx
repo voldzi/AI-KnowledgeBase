@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Bot, ClipboardList, FileText, UploadCloud } from "lucide-react";
 
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
+import { StratosButtonLink, StratosDataTable, StratosSearchBox, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuditEvent, AuthorizationHint, Document, IngestionJob, RegistryWorkflowTask } from "@/lib/types";
 import { documentTypeLabel, formatDateTime } from "@/lib/format";
@@ -34,6 +35,14 @@ const dashboardCopy = {
     overdueTasks: "po termínu",
     openInbox: "Otevřít inbox",
     recentDocuments: "Nedávné řízené dokumenty",
+    recentSearchLabel: "Hledat dokumenty",
+    recentSearchPlaceholder: "Dokument, typ, gestor, stav nebo klasifikace",
+    noRecentDocuments: "Nenalezen žádný nedávný dokument pro aktuální filtr.",
+    all: "Vše",
+    clearFilter: "Zrušit filtr",
+    closeFilter: "Zavřít filtr",
+    filterTitlePrefix: "Filtr",
+    noFilterResults: "Nenalezena žádná hodnota.",
     document: "Dokument",
     status: "Stav",
     classification: "Klasifikace",
@@ -67,6 +76,14 @@ const dashboardCopy = {
     overdueTasks: "overdue",
     openInbox: "Open inbox",
     recentDocuments: "Recent controlled documents",
+    recentSearchLabel: "Search documents",
+    recentSearchPlaceholder: "Document, type, owner unit, status, or classification",
+    noRecentDocuments: "No recent document matches the current filter.",
+    all: "All",
+    clearFilter: "Clear filter",
+    closeFilter: "Close filter",
+    filterTitlePrefix: "Filter",
+    noFilterResults: "No value found.",
     document: "Document",
     status: "Status",
     classification: "Classification",
@@ -98,11 +115,81 @@ export function DashboardOverview({
 }: DashboardOverviewProps) {
   const { language } = useLanguage();
   const copy = dashboardCopy[language];
+  const [recentQuery, setRecentQuery] = useState("");
+  const [recentStatuses, setRecentStatuses] = useState<string[]>([]);
+  const [recentClassifications, setRecentClassifications] = useState<string[]>([]);
   const validDocuments = documents.filter((document) => document.status === "valid").length;
   const activeJobs = jobs.filter((job) => job.status === "queued" || job.status === "running").length;
   const failedJobs = jobs.filter((job) => job.status === "failed").length;
   const workflowTasks = buildWorkflowTasks({ documents, jobs, auditEvents, registryTasks, nowIso });
   const overdueTasks = workflowTasks.filter((task) => isTaskOverdue(task, nowIso));
+  const recentStatusOptions = useMemo(() => Array.from(new Set(documents.slice(0, 12).map((document) => document.status))).sort(), [documents]);
+  const recentClassificationOptions = useMemo(
+    () => Array.from(new Set(documents.slice(0, 12).map((document) => document.classification))).sort(),
+    [documents]
+  );
+  const recentDocuments = useMemo(() => {
+    const normalizedQuery = recentQuery.trim().toLowerCase();
+    const rows = documents.slice(0, 12);
+    return rows
+      .filter((document) => {
+        if (recentStatuses.length > 0 && !recentStatuses.includes(document.status)) {
+          return false;
+        }
+        if (recentClassifications.length > 0 && !recentClassifications.includes(document.classification)) {
+          return false;
+        }
+        if (!normalizedQuery) {
+          return true;
+        }
+        const haystack = [
+          document.title,
+          document.document_id,
+          documentTypeLabel(document.document_type, language),
+          document.document_type,
+          document.gestor_unit ?? "",
+          document.owner_id,
+          document.status,
+          document.classification,
+          ...document.tags
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalizedQuery);
+      })
+      .slice(0, 5);
+  }, [documents, language, recentClassifications, recentQuery, recentStatuses]);
+  const recentDocumentColumns: Array<StratosDataTableColumn<Document>> = [
+    {
+      id: "document",
+      label: copy.document,
+      width: "minmax(260px, 1.4fr)",
+      render: (document) => (
+        <span className="cell-title">
+          <strong>{document.title}</strong>
+          <span>{documentTypeLabel(document.document_type, language)} - {document.gestor_unit}</span>
+        </span>
+      )
+    },
+    {
+      id: "status",
+      label: copy.status,
+      width: 130,
+      render: (document) => <StatusBadge value={document.status} />
+    },
+    {
+      id: "classification",
+      label: copy.classification,
+      width: 140,
+      render: (document) => document.classification
+    },
+    {
+      id: "updated",
+      label: copy.updated,
+      width: 170,
+      render: (document) => formatDateTime(document.updated_at, language)
+    }
+  ];
 
   return (
     <div className="stack">
@@ -142,42 +229,65 @@ export function DashboardOverview({
           <div className="panel__header">
             <h2>{copy.recentDocuments}</h2>
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{copy.document}</th>
-                <th>{copy.status}</th>
-                <th>{copy.classification}</th>
-                <th>{copy.updated}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.slice(0, 5).map((document) => (
-                <tr key={document.document_id}>
-                  <td>
-                    <span className="cell-title">
-                      <strong>{document.title}</strong>
-                      <span>{documentTypeLabel(document.document_type, language)} - {document.gestor_unit}</span>
-                    </span>
-                  </td>
-                  <td>
-                    <StatusBadge value={document.status} />
-                  </td>
-                  <td>{document.classification}</td>
-                  <td>{formatDateTime(document.updated_at, language)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="panel__body panel__body--toolbar">
+            <div className="table-toolbar">
+              <StratosSearchBox
+                id="dashboard-recent-documents-search"
+                label={copy.recentSearchLabel}
+                value={recentQuery}
+                placeholder={copy.recentSearchPlaceholder}
+                onChange={(event) => setRecentQuery(event.target.value)}
+              />
+              <StratosSelect
+                id="dashboard-recent-status-filter"
+                label={copy.status}
+                multiple
+                placeholder={copy.all}
+                clearDescription={copy.clearFilter}
+                closeLabel={copy.closeFilter}
+                filterTitlePrefix={copy.filterTitlePrefix}
+                noResultsLabel={copy.noFilterResults}
+                value={recentStatuses}
+                onValuesChange={setRecentStatuses}
+              >
+                {recentStatusOptions.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </StratosSelect>
+              <StratosSelect
+                id="dashboard-recent-classification-filter"
+                label={copy.classification}
+                multiple
+                placeholder={copy.all}
+                clearDescription={copy.clearFilter}
+                closeLabel={copy.closeFilter}
+                filterTitlePrefix={copy.filterTitlePrefix}
+                noResultsLabel={copy.noFilterResults}
+                value={recentClassifications}
+                onValuesChange={setRecentClassifications}
+              >
+                {recentClassificationOptions.map((classification) => (
+                  <option key={classification} value={classification}>{classification}</option>
+                ))}
+              </StratosSelect>
+            </div>
+          </div>
+          <StratosDataTable
+            rows={recentDocuments}
+            columns={recentDocumentColumns}
+            getRowId={(document) => document.document_id}
+            emptyLabel={copy.noRecentDocuments}
+            aria-label={copy.recentDocuments}
+          />
         </div>
 
         <div className="panel">
           <div className="panel__header">
             <h2>{copy.ingestionAndAudit}</h2>
-            <Link className="button" href="/tasks">
+            <StratosButtonLink href="/tasks">
               {copy.openInbox}
               <ArrowUpRight size={15} aria-hidden="true" />
-            </Link>
+            </StratosButtonLink>
           </div>
           <div className="panel__body stack">
             <div className="notice">

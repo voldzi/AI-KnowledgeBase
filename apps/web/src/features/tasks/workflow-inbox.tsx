@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
@@ -11,12 +10,12 @@ import {
   ClipboardList,
   FileCheck2,
   FilterX,
-  Search,
   TimerOff
 } from "lucide-react";
 
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
+import { StratosButton, StratosButtonLink, StratosSearchBox, StratosSelect } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   ApplyWorkflowTaskActionRequest,
@@ -283,16 +282,13 @@ export function WorkflowInbox({ documents, jobs, auditEvents, registryTasks, aut
         <div className="panel__body stack">
           <p className="muted task-inbox-lead">{copy.inboxDescription}</p>
           <div className="task-toolbar">
-            <label className="registry-search">
-              <Search size={16} aria-hidden="true" />
-              <span className="sr-only">{copy.searchPlaceholder}</span>
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={copy.searchPlaceholder}
-                type="search"
-              />
-            </label>
+            <StratosSearchBox
+              id="workflow-inbox-search"
+              label={copy.searchPlaceholder}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={copy.searchPlaceholder}
+            />
             <TaskSelect
               label={copy.priority}
               value={priority}
@@ -323,10 +319,10 @@ export function WorkflowInbox({ documents, jobs, auditEvents, registryTasks, aut
               }))}
               allLabel={copy.all}
             />
-            <button className="button" type="button" onClick={clearFilters}>
+            <StratosButton type="button" onClick={clearFilters}>
               <FilterX size={16} aria-hidden="true" />
               {copy.clear}
-            </button>
+            </StratosButton>
           </div>
         </div>
       </section>
@@ -377,17 +373,19 @@ interface TaskSelectProps {
 
 function TaskSelect({ label, value, options, allLabel, onChange }: TaskSelectProps) {
   return (
-    <label className="registry-filter">
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="all">{allLabel}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <StratosSelect
+      id={`workflow-filter-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+      label={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="all">{allLabel}</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </StratosSelect>
   );
 }
 
@@ -488,15 +486,15 @@ function TaskDetail({
           <TaskField label={copy.job} value={task.job_id ?? "n/a"} />
         </div>
         <div className="task-actions">
-          <Link className="button button--primary" href={task.href}>
+          <StratosButtonLink tone="primary" href={task.href}>
             {task.action_label}
             <ArrowUpRight size={15} aria-hidden="true" />
-          </Link>
+          </StratosButtonLink>
           {task.secondary_href ? (
-            <Link className="button" href={task.secondary_href}>
+            <StratosButtonLink href={task.secondary_href}>
               {copy.secondaryAction}
               <ArrowUpRight size={15} aria-hidden="true" />
-            </Link>
+            </StratosButtonLink>
           ) : null}
         </div>
         {task.registry_task_id ? (
@@ -530,8 +528,8 @@ function TaskDetail({
             </div>
             <div className="task-action-buttons">
               {actions.map((action) => (
-                <button
-                  className={`button ${action === "approve" || action === "resolve" ? "button--primary" : ""}`}
+                <StratosButton
+                  tone={action === "approve" || action === "resolve" ? "primary" : "default"}
                   disabled={Boolean(submittingAction) || (action === "assign" && assigneeId.trim().length === 0)}
                   key={action}
                   type="button"
@@ -540,7 +538,7 @@ function TaskDetail({
                   }}
                 >
                   {workflowActionLabel(action, copy)}
-                </button>
+                </StratosButton>
               ))}
             </div>
             {feedback ? (

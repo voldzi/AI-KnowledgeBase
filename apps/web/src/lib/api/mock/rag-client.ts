@@ -34,6 +34,112 @@ export class MockRagClient implements RagApiClient {
   }
 
   async openCitation(chunkId: string, _context: ApiRequestContext): Promise<SourceContext> {
+    if (chunkId === "chunk_md_109") {
+      return {
+        chunk_id: chunkId,
+        document_id: "doc_109",
+        document_version_id: "ver_109_1",
+        document_title: "Markdown preview fixture",
+        source_file_uri: "s3://akl-documents/doc_109/ver_109_1/source.md",
+        source_mime_type: "text/markdown",
+        source_file_name: "source.md",
+        source_size_bytes: 1024,
+        source_sha256: "sha256:aa07de942e1d2b06cdaad0e979e6fe2205134ba11f0fdbfe96b2a17b6963c703",
+        viewer_mode: "markdown",
+        location: {
+          page_number: null,
+          slide_number: null,
+          sheet_name: null,
+          row_number: null,
+          column_name: null,
+          section_path: ["Citation target"],
+          section_title: "Citation target",
+          paragraph_number: "1",
+          char_start: 0,
+          char_end: 76,
+          bbox: null
+        },
+        chunk_text: "Markdown citation text should be highlighted inside the rendered document.",
+        before_text: "",
+        after_text: "viewer_mode: markdown",
+        warnings: []
+      };
+    }
+
+    if (chunkId === "chunk_pdf_108") {
+      return {
+        chunk_id: chunkId,
+        document_id: "doc_108",
+        document_version_id: "ver_108_1",
+        document_title: "PDF bbox preview fixture",
+        source_file_uri: "s3://akl-documents/doc_108/ver_108_1/file.pdf",
+        source_mime_type: "application/pdf",
+        source_file_name: "file.pdf",
+        source_size_bytes: 1024,
+        source_sha256: "sha256:b95ee5fa232b27128e77c887c73804824d4f56d0e8cb8246bdcd1ec3e3a40637",
+        viewer_mode: "pdf",
+        location: {
+          page_number: 1,
+          slide_number: null,
+          sheet_name: null,
+          row_number: null,
+          column_name: null,
+          section_path: ["Fixture"],
+          section_title: "Fixture",
+          paragraph_number: "2",
+          char_start: 24,
+          char_end: 74,
+          bbox: {
+            x: 11.8,
+            y: 10.2,
+            width: 65,
+            height: 7.5
+          }
+        },
+        chunk_text: "PDF citation area for controlled document preview.",
+        before_text: "PDF source fixture title",
+        after_text: "",
+        warnings: []
+      };
+    }
+
+    if (chunkId === "chunk_ocr_103") {
+      return {
+        chunk_id: chunkId,
+        document_id: "doc_103",
+        document_version_id: "ver_103_2",
+        document_title: "Prirucka pro onboarding znalostni baze",
+        source_file_uri: "s3://akl-documents/doc_103/ver_103_2/scan.svg",
+        source_mime_type: "image/svg+xml",
+        source_file_name: "scan.svg",
+        source_size_bytes: 4096,
+        source_sha256: "sha256:9a68f67b97f92f0752dd5e48b50c773dceca5b9e5880909493743453c0ea0072",
+        viewer_mode: "ocr",
+        location: {
+          page_number: 1,
+          slide_number: null,
+          sheet_name: null,
+          row_number: null,
+          column_name: null,
+          section_path: ["Prvni kontrola"],
+          section_title: "Prvni kontrola",
+          paragraph_number: "1",
+          char_start: 0,
+          char_end: 68,
+          bbox: {
+            x: 13.3,
+            y: 34.6,
+            width: 73.4,
+            height: 4.2
+          }
+        },
+        chunk_text: "Spravce musi potvrdit vlastnika, gestora a workflow task.",
+        before_text: "Prvni kontrola",
+        after_text: "Kontrola se zapisuje do workflow tasku a auditni stopy.",
+        warnings: []
+      };
+    }
+
     return {
       chunk_id: chunkId,
       document_id: "doc_102",

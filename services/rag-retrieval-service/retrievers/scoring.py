@@ -10,28 +10,32 @@ from app.schemas import Classification, RagQueryFilters
 
 CLASSIFICATION_ORDER: tuple[Classification, ...] = ("public", "internal", "restricted", "confidential")
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
+RISK_QUERY_TERMS = {"riziko", "rizika", "rizik", "risk", "risks"}
+RISK_TEXT_TERMS = {
+    "chybove",
+    "scenare",
+    "scenar",
+    "selhani",
+    "selze",
+    "nedostupna",
+    "nedostupny",
+    "nedostupnost",
+    "konflikt",
+    "konflikty",
+    "limity",
+    "limit",
+    "omezeni",
+    "bezpecnostni",
+    "riziko",
+    "rizika",
+    "rizikove",
+}
 
 CONCEPT_BONUSES: tuple[tuple[set[str], set[str], float], ...] = (
     (
-        {"riziko", "rizika", "rizik", "risk", "risks"},
-        {
-            "chybove",
-            "chybovy",
-            "chyba",
-            "chyby",
-            "scenare",
-            "scenar",
-            "selhani",
-            "selze",
-            "nedostupna",
-            "nedostupny",
-            "problem",
-            "problemy",
-            "limity",
-            "omezeni",
-            "bezpecnostni",
-        },
-        0.35,
+        RISK_QUERY_TERMS,
+        RISK_TEXT_TERMS,
+        0.25,
     ),
     (
         {"projekt", "projektu", "platforma", "akl"},
@@ -68,7 +72,17 @@ def _concept_bonus(query_tokens: set[str], text_tokens: set[str]) -> float:
     for query_terms, text_terms, value in CONCEPT_BONUSES:
         if query_tokens.intersection(query_terms) and text_tokens.intersection(text_terms):
             bonus += value
+    bonus += _risk_signal_bonus(query_tokens, text_tokens)
     return min(0.5, bonus)
+
+
+def _risk_signal_bonus(query_tokens: set[str], text_tokens: set[str]) -> float:
+    if not query_tokens.intersection(RISK_QUERY_TERMS):
+        return 0.0
+    risk_signal_count = len(text_tokens.intersection(RISK_TEXT_TERMS))
+    if risk_signal_count < 2:
+        return 0.0
+    return min(0.25, risk_signal_count * 0.05)
 
 
 def deterministic_embedding(text: str, dimensions: int = 32) -> list[float]:

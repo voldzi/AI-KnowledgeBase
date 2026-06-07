@@ -1,25 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   Bot,
+  ChevronsLeft,
+  ChevronsRight,
   CircleHelp,
   Database,
   FileClock,
   FilePlus2,
-  Gauge,
-  Languages,
   LayoutDashboard,
   ListChecks,
-  Search,
-  Settings,
   ShieldCheck,
   UserRound
 } from "lucide-react";
 
-import { LanguageProvider, languageLabels, useLanguage, type AklLanguage } from "@/lib/i18n";
+import { ProjectTopbar } from "@/components/project-topbar";
+import { SettingsModal } from "@/components/settings-modal";
+import {
+  StratosAppRail,
+  StratosAppShell,
+  CommandCenter,
+  StratosWorkspaceNav,
+  StratosWorkspaceSidebar,
+  type CommandCenterItem,
+  type StratosWorkspaceNavGroup
+} from "@/components/stratos";
+import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
 
 const navigation = {
   cs: [
@@ -31,7 +40,6 @@ const navigation = {
     { href: "/ingestion", label: "Zpracování", icon: FileClock },
     { href: "/chat", label: "Znalostní chat", icon: Bot },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
-    { href: "/admin", label: "Správa", icon: Settings },
     { href: "/help", label: "Nápověda", icon: CircleHelp }
   ],
   en: [
@@ -43,7 +51,6 @@ const navigation = {
     { href: "/ingestion", label: "Ingestion", icon: FileClock },
     { href: "/chat", label: "Knowledge chat", icon: Bot },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
-    { href: "/admin", label: "Admin", icon: Settings },
     { href: "/help", label: "Help", icon: CircleHelp }
   ]
 } satisfies Record<AklLanguage, Array<{ href: string; label: string; icon: typeof UserRound }>>;
@@ -56,6 +63,42 @@ const shellCopy = {
     knowledgeManagement: "Správa znalostí",
     help: "Nápověda",
     searchPlaceholder: "Najít dokument, verzi, citaci nebo auditní událost",
+    commandCenterOpen: "Otevřít Command Center",
+    commandCenterTitle: "Command Center",
+    commandCenterPlaceholder: "Hledat v AKL nebo spustit akci",
+    commandCenterPreview: "Vyberte výsledek pro rychlé otevření nebo spuštění akce.",
+    commandCenterNoResults: "Nenalezen žádný výsledek.",
+    commandCenterActions: "Akce",
+    commandCenterClose: "Zavřít Command Center",
+    commandOpen: "Otevřít",
+    commandGo: "Přejít",
+    commandSections: "Sekce",
+    commandTools: "Nástroje",
+    commandKnowledge: "Znalosti",
+    stratosApplications: "Aplikace STRATOS",
+    appComingSoon: "Připravuje se",
+    userMenu: "Uživatelské menu",
+    settings: "Nastavení",
+    logout: "Odhlásit",
+    saved: "Uloženo",
+    saving: "Ukládám",
+    saveFailed: "Chyba uložení",
+    workspaceTitle: "AKL pracovní plocha",
+    workspaceSubtitle: "Dokumenty, workflow a znalosti",
+    workspaceFooter: "STRATOS jednotné rozhraní",
+    collapseSidebar: "Zasunout submenu",
+    expandSidebar: "Rozbalit submenu",
+    moduleDocuments: "Dokumenty",
+    moduleOperations: "Provoz",
+    moduleAi: "AI",
+    moduleKnowledge: "Znalosti",
+    moduleGovernance: "Dohled",
+    groupWorkspace: "Pracovní plocha",
+    groupDocuments: "Dokumenty",
+    groupAi: "AI asistenti",
+    groupKnowledge: "Znalosti",
+    groupGovernance: "Dohled",
+    allowedActions: "Povolené akce",
     healthOk: "Stav OK",
     apiModeMock: "Mock API režim",
     apiModeProduction: "Produkční API klienti",
@@ -69,6 +112,42 @@ const shellCopy = {
     knowledgeManagement: "Knowledge management",
     help: "Help",
     searchPlaceholder: "Find document, version, citation, or audit event",
+    commandCenterOpen: "Open Command Center",
+    commandCenterTitle: "Command Center",
+    commandCenterPlaceholder: "Search AKL or run an action",
+    commandCenterPreview: "Select a result to open a page or run a quick action.",
+    commandCenterNoResults: "No result found.",
+    commandCenterActions: "Actions",
+    commandCenterClose: "Close Command Center",
+    commandOpen: "Open",
+    commandGo: "Go",
+    commandSections: "Sections",
+    commandTools: "Tools",
+    commandKnowledge: "Knowledge",
+    stratosApplications: "STRATOS applications",
+    appComingSoon: "Coming soon",
+    userMenu: "User menu",
+    settings: "Settings",
+    logout: "Logout",
+    saved: "Saved",
+    saving: "Saving",
+    saveFailed: "Save failed",
+    workspaceTitle: "AKL workspace",
+    workspaceSubtitle: "Documents, workflow and knowledge",
+    workspaceFooter: "STRATOS unified interface",
+    collapseSidebar: "Collapse submenu",
+    expandSidebar: "Expand submenu",
+    moduleDocuments: "Documents",
+    moduleOperations: "Operations",
+    moduleAi: "AI",
+    moduleKnowledge: "Knowledge",
+    moduleGovernance: "Governance",
+    groupWorkspace: "Workspace",
+    groupDocuments: "Documents",
+    groupAi: "AI assistants",
+    groupKnowledge: "Knowledge",
+    groupGovernance: "Governance",
+    allowedActions: "Allowed actions",
     healthOk: "Health OK",
     apiModeMock: "Mock API mode",
     apiModeProduction: "Production API clients",
@@ -76,6 +155,24 @@ const shellCopy = {
     authModeOidc: "OIDC auth"
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
+
+type ShellModuleId = "documents" | "operations" | "ai" | "knowledge" | "governance";
+
+const moduleRouteGroups: Record<ShellModuleId, string[]> = {
+  documents: ["/documents", "/upload", "/ingestion"],
+  operations: ["/", "/tasks"],
+  ai: ["/assistant", "/chat", "/help"],
+  knowledge: [],
+  governance: ["/audit"]
+};
+
+const moduleRootRoutes: Record<ShellModuleId, string> = {
+  documents: "/documents",
+  operations: "/tasks",
+  ai: "/chat",
+  knowledge: "/chat",
+  governance: "/audit"
+};
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -93,115 +190,316 @@ export function AppShell({ children, apiMode, authMode }: AppShellProps) {
 
 function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { language, setLanguage } = useLanguage();
   const copy = shellCopy[language];
   const apiModeLabel = apiMode === "mock" ? copy.apiModeMock : copy.apiModeProduction;
   const authModeLabel = authMode === "mock" ? copy.authModeMock : copy.authModeOidc;
+  const [activeModule, setActiveModule] = useState<ShellModuleId>(() => moduleForPath(pathname));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [commandCenterOpen, setCommandCenterOpen] = useState(false);
+  const [commandCenterQuery, setCommandCenterQuery] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  if (pathname.startsWith("/assistant")) {
-    return (
-      <div className="employee-shell">
-        <header className="employee-topbar">
-          <Link className="employee-brand" href="/assistant">
-            <span className="brand__mark">ČSÚ</span>
-            <span>
-              <strong>{copy.assistantBrand}</strong>
-              <small>{copy.assistantSubtitle}</small>
-            </span>
-          </Link>
-          <div className="employee-topbar__actions">
-            <LanguageSwitcher language={language} setLanguage={setLanguage} />
-            <span className="topbar__chip">
-              <Activity size={15} aria-hidden="true" />
-              {copy.serviceAvailable}
-            </span>
-            <Link className="button" href="/help">
-              <CircleHelp size={15} aria-hidden="true" />
-              {copy.help}
-            </Link>
-            <Link className="button" href="/">
-              <Settings size={15} aria-hidden="true" />
-              {copy.knowledgeManagement}
-            </Link>
-          </div>
-        </header>
-        <main className="employee-content">{children}</main>
-      </div>
-    );
-  }
+  useEffect(() => {
+    setActiveModule(moduleForPath(pathname));
+  }, [pathname]);
 
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <Link className="brand" href="/">
-          <span className="brand__mark">AKL</span>
-          <span>
-            <strong>AKL Platform</strong>
-            <small>AI Knowledge Library</small>
-          </span>
-        </Link>
-        <nav className="nav-list" aria-label="Primary">
-          {navigation[language].map((item) => {
-            const Icon = item.icon;
-            const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
-            return (
-              <Link className={`nav-item ${active ? "nav-item--active" : ""}`} href={item.href} key={item.href}>
-                <Icon size={17} strokeWidth={2} aria-hidden="true" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="sidebar__footer">
-          <div className="health-dot" aria-hidden="true" />
-          <span>{apiModeLabel} · {authModeLabel}</span>
-        </div>
-      </aside>
-      <div className="workspace">
-        <header className="topbar">
-          <div className="topbar__search">
-            <Search size={17} strokeWidth={2} aria-hidden="true" />
-            <span>{copy.searchPlaceholder}</span>
-          </div>
-          <div className="topbar__status">
-            <LanguageSwitcher language={language} setLanguage={setLanguage} />
-            <span className="topbar__chip">
-              <Activity size={15} aria-hidden="true" />
-              {copy.healthOk}
-            </span>
-            <span className="topbar__chip">
-              <Gauge size={15} aria-hidden="true" />
-              Europe/Prague
-            </span>
-          </div>
-        </header>
-        <main className="main-content">{children}</main>
-      </div>
-    </div>
+  const railItems = [
+    { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database },
+    { id: "operations", href: moduleRootRoutes.operations, label: copy.moduleOperations, icon: ListChecks },
+    { id: "ai", href: moduleRootRoutes.ai, label: copy.moduleAi, icon: Bot },
+    { id: "governance", href: moduleRootRoutes.governance, label: copy.moduleGovernance, icon: ShieldCheck }
+  ].map((item) => ({
+    ...item,
+    onSelect: () => {
+      setActiveModule(item.id as ShellModuleId);
+      setSidebarCollapsed(false);
+    }
+  }));
+  const activeRailHref = moduleRootRoutes[activeModule];
+  const activeModuleLabel = railItems.find((item) => item.id === activeModule)?.label ?? copy.workspaceTitle;
+  const activeModuleRoutes = moduleRouteGroups[activeModule];
+  const activeSubmenuItem = navigation[language].find((item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)));
+  const activeTopbarContext = activeSubmenuItem?.label ?? activeModuleLabel;
+  const activeModuleActions = useMemo(
+    () => navigation[language].filter((item) => activeModuleRoutes.includes(item.href)).slice(0, 2),
+    [activeModuleRoutes, language]
   );
-}
+  const workspaceGroups = useMemo<StratosWorkspaceNavGroup[]>(() => {
+    const groupLabel = moduleGroupLabel(activeModule, copy);
+    return [
+      {
+        id: activeModule,
+        label: groupLabel,
+        items: navigation[language]
+          .filter((item) => activeModuleRoutes.includes(item.href))
+          .map((item) => navItemToWorkspaceItem(item, pathname))
+      }
+    ];
+  }, [activeModule, activeModuleRoutes, copy, language, pathname]);
+  const commandCenterItems = useMemo<CommandCenterItem[]>(() => {
+    const openRoute = (href: string) => {
+      router.push(href);
+      setCommandCenterOpen(false);
+    };
+    const navigationItems: CommandCenterItem[] = navigation[language].map((item) => {
+      const Icon = item.icon;
+      const moduleId = moduleForPath(item.href);
+      return {
+        id: `nav:${item.href}`,
+        type: item.href === "/" ? "dashboard" : "action",
+        title: item.label,
+        subtitle: moduleGroupLabel(moduleId, copy),
+        detail: item.href,
+        section: copy.commandSections,
+        icon: <Icon size={18} aria-hidden="true" />,
+        tone: moduleTone(moduleId),
+        keywords: [item.href, moduleId],
+        primaryAction: {
+          id: `open:${item.href}`,
+          label: copy.commandOpen,
+          hint: "Enter",
+          onSelect: () => openRoute(item.href)
+        },
+        actions: [
+          {
+            id: `go:${item.href}`,
+            label: copy.commandGo,
+            hint: "Enter",
+            onSelect: () => openRoute(item.href)
+          }
+        ]
+      };
+    });
+    return [
+      ...navigationItems,
+      {
+        id: "action:new-document",
+        type: "action",
+        title: language === "cs" ? "Nový koncept dokumentu" : "New document draft",
+        subtitle: copy.moduleDocuments,
+        detail: language === "cs" ? "Vytvořit řízený dokument v registru." : "Create a controlled document in the registry.",
+        section: copy.commandTools,
+        icon: <FilePlus2 size={18} aria-hidden="true" />,
+        tone: "green",
+        keywords: ["draft", "document", "koncept"],
+        primaryAction: {
+          id: "new-document",
+          label: copy.commandOpen,
+          hint: "Enter",
+          onSelect: () => openRoute("/documents/new")
+        }
+      },
+      {
+        id: "action:upload",
+        type: "action",
+        title: language === "cs" ? "Nahrát verzi dokumentu" : "Upload document version",
+        subtitle: copy.moduleDocuments,
+        detail: language === "cs" ? "Spustit upload a preflight zpracování." : "Start upload and preflight processing.",
+        section: copy.commandTools,
+        icon: <FilePlus2 size={18} aria-hidden="true" />,
+        tone: "blue",
+        keywords: ["upload", "ingestion", "nahrat"],
+        primaryAction: {
+          id: "upload-document",
+          label: copy.commandOpen,
+          hint: "Enter",
+          onSelect: () => openRoute("/upload")
+        }
+      },
+      {
+        id: "knowledge:chat",
+        type: "report",
+        title: language === "cs" ? "Dotaz se zdroji" : "Ask with citations",
+        subtitle: copy.moduleKnowledge,
+        detail: language === "cs" ? "Otevřít znalostní chat s citacemi." : "Open knowledge chat with citations.",
+        section: copy.commandKnowledge,
+        icon: <Bot size={18} aria-hidden="true" />,
+        tone: "purple",
+        keywords: ["rag", "citace", "citations", "chat"],
+        primaryAction: {
+          id: "open-chat",
+          label: copy.commandOpen,
+          hint: "Enter",
+          onSelect: () => openRoute("/chat")
+        }
+      }
+    ];
+  }, [copy, language, router]);
 
-interface LanguageSwitcherProps {
-  language: AklLanguage;
-  setLanguage: (language: AklLanguage) => void;
-}
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandCenterOpen(true);
+      }
+    };
 
-function LanguageSwitcher({ language, setLanguage }: LanguageSwitcherProps) {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
-    <div className="language-switcher" aria-label={language === "cs" ? "Jazyk aplikace" : "Application language"}>
-      <Languages size={15} aria-hidden="true" />
-      {(["cs", "en"] as const).map((item) => (
-        <button
-          className={`language-switcher__button ${language === item ? "language-switcher__button--active" : ""}`}
-          key={item}
-          type="button"
-          aria-pressed={language === item}
-          title={languageLabels[item]}
-          onClick={() => setLanguage(item)}
+    <StratosAppShell
+      sidebarCollapsed={sidebarCollapsed}
+      rail={
+        <StratosAppRail
+          activePathname={activeRailHref}
+          brandHref="/"
+          brandMark="AKL"
+          brandName="AKL Platform"
+          brandSubtitle="AI Knowledge Library"
+          items={railItems}
+          footer={
+            <>
+              <div className="health-dot" aria-hidden="true" />
+              <span>{apiModeLabel} · {authModeLabel}</span>
+            </>
+          }
+        />
+      }
+      sidebar={
+        <StratosWorkspaceSidebar
+          title={activeModuleLabel}
+          subtitle={copy.workspaceSubtitle}
+          collapsed={sidebarCollapsed}
+          footer={copy.workspaceFooter}
+          headerActions={
+            <div className="stratos-sidebar-hover-actions" aria-label={copy.allowedActions}>
+              {activeModuleActions.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    className="stratos-sidebar-action stratos-sidebar-action-link"
+                    href={item.href}
+                    key={item.href}
+                    title={item.label}
+                    aria-label={item.label}
+                    onClick={() => setSidebarCollapsed(false)}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                  </Link>
+                );
+              })}
+              <button
+                className="stratos-sidebar-action"
+                type="button"
+                aria-label={sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar}
+                title={sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar}
+                onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              >
+                {sidebarCollapsed ? <ChevronsRight size={16} aria-hidden="true" /> : <ChevronsLeft size={16} aria-hidden="true" />}
+              </button>
+            </div>
+          }
         >
-          {item.toUpperCase()}
-        </button>
-      ))}
-    </div>
+          <StratosWorkspaceNav
+            key={activeModule}
+            groups={workspaceGroups}
+            ariaLabel={language === "cs" ? "Navigace pracovní plochy" : "Workspace navigation"}
+          />
+        </StratosWorkspaceSidebar>
+      }
+      topbar={
+        <>
+          <ProjectTopbar
+            apiModeLabel={apiModeLabel}
+            authModeLabel={authModeLabel}
+            commandCenterLabel={copy.commandCenterOpen}
+            commandCenterPlaceholder={copy.commandCenterPlaceholder}
+            healthLabel={copy.healthOk}
+            labels={{
+              applications: copy.stratosApplications,
+              appComingSoon: copy.appComingSoon,
+              logout: copy.logout,
+              saved: copy.saved,
+              saveFailed: copy.saveFailed,
+              saving: copy.saving,
+              settings: copy.settings,
+              userMenu: copy.userMenu
+            }}
+            language={language}
+            onCommandCenterOpen={() => setCommandCenterOpen(true)}
+            onLanguageChange={setLanguage}
+            onSettingsOpen={() => setSettingsOpen(true)}
+            projectName={activeTopbarContext}
+            workspaceName={activeModuleLabel}
+          />
+          <CommandCenter
+            open={commandCenterOpen}
+            query={commandCenterQuery}
+            items={commandCenterItems}
+            labels={{
+              title: copy.commandCenterTitle,
+              placeholder: copy.commandCenterPlaceholder,
+              noResults: copy.commandCenterNoResults,
+              open: copy.commandCenterOpen,
+              close: copy.commandCenterClose,
+              actions: copy.commandCenterActions,
+              preview: copy.commandCenterPreview
+            }}
+            onQueryChange={setCommandCenterQuery}
+            onClose={() => setCommandCenterOpen(false)}
+          />
+          {settingsOpen ? <SettingsModal authModeLabel={authModeLabel} language={language} onClose={() => setSettingsOpen(false)} /> : null}
+        </>
+      }
+    >
+      {children}
+    </StratosAppShell>
   );
+}
+
+function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {
+  if (moduleId === "documents") {
+    return "blue";
+  }
+  if (moduleId === "ai") {
+    return "purple";
+  }
+  if (moduleId === "knowledge") {
+    return "purple";
+  }
+  if (moduleId === "governance") {
+    return "amber";
+  }
+  return "green";
+}
+
+function moduleForPath(pathname: string): ShellModuleId {
+  const entry = (Object.entries(moduleRouteGroups) as Array<[ShellModuleId, string[]]>).find(([, routes]) =>
+    routes.some((route) => pathname === route || (route !== "/" && pathname.startsWith(route)))
+  );
+  return entry?.[0] ?? "operations";
+}
+
+function moduleGroupLabel(moduleId: ShellModuleId, copy: Record<string, string>) {
+  if (moduleId === "documents") {
+    return copy.groupDocuments;
+  }
+  if (moduleId === "ai") {
+    return copy.groupAi;
+  }
+  if (moduleId === "knowledge") {
+    return copy.groupKnowledge;
+  }
+  if (moduleId === "governance") {
+    return copy.groupGovernance;
+  }
+  return copy.groupWorkspace;
+}
+
+function navItemToWorkspaceItem(
+  item: (typeof navigation)[AklLanguage][number],
+  pathname: string
+): StratosWorkspaceNavGroup["items"][number] {
+  const Icon = item.icon;
+  return {
+    id: item.href,
+    href: item.href,
+    label: item.label,
+    icon: <Icon size={16} aria-hidden="true" />,
+    active: pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+  };
 }

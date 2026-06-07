@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { CheckCircle2, FileUp, Fingerprint, Play, ShieldCheck, UploadCloud } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { StratosButton, StratosSelect } from "@/components/stratos";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
@@ -338,10 +339,9 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
             </div>
           ) : null}
 
-          <div className="field">
-            <label htmlFor="document">{copy.document}</label>
-            <select
+          <StratosSelect
               id="document"
+              label={copy.document}
               value={selectedDocumentId}
               onChange={(event) => {
                 const documentId = event.target.value;
@@ -355,8 +355,7 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
               {documents.map((document) => (
                 <option key={document.document_id} value={document.document_id}>{document.title}</option>
               ))}
-            </select>
-          </div>
+          </StratosSelect>
           <div className="form-grid form-grid--two">
             <div className="field">
               <label htmlFor="version">{copy.versionLabel}</label>
@@ -373,32 +372,26 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
             <small>{copy.sourceFileUriHint}</small>
           </div>
           <div className="form-grid form-grid--two">
-            <div className="field">
-              <label htmlFor="parser">{copy.parserProfile}</label>
-              <select id="parser" name="parser_profile" defaultValue="controlled_document">
+            <StratosSelect id="parser" name="parser_profile" label={copy.parserProfile} defaultValue="controlled_document">
                 <option value="controlled_document">controlled_document</option>
                 <option value="plain_text">plain_text</option>
                 <option value="ocr_heavy">ocr_heavy</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="chunking">{copy.chunkingStrategy}</label>
-              <select id="chunking" name="chunking_strategy" defaultValue="legal_structured">
+            </StratosSelect>
+            <StratosSelect id="chunking" name="chunking_strategy" label={copy.chunkingStrategy} defaultValue="legal_structured">
                 <option value="legal_structured">legal_structured</option>
                 <option value="semantic">semantic</option>
                 <option value="fixed_window">fixed_window</option>
-              </select>
-            </div>
+            </StratosSelect>
           </div>
           <div className="field">
             <label htmlFor="summary">{copy.changeSummary}</label>
             <textarea id="summary" name="change_summary" defaultValue={copy.defaultSummary} key={language} />
           </div>
           <input type="hidden" name="embedding_profile" value="default" />
-          <button className="button button--primary" type="submit" disabled={!canSubmit}>
+          <StratosButton tone="primary" type="submit" disabled={!canSubmit}>
             <Play size={16} aria-hidden="true" />
             {submitting ? copy.queueing : copy.submit}
-          </button>
+          </StratosButton>
           {error ? <p className="notice">{error}</p> : null}
         </div>
       </form>

@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 !.env.local-prod.example
+.npmrc
+apps/web/.npmrc
 
 # Python
 __pycache__/
@@ -50,5 +52,6 @@ volumes/
 
 # Local object/vector/database storage
 minio-data/
+object-storage/
 qdrant-data/
 postgres-data/

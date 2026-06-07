@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200" role="img" aria-label="Onboarding knowledge base scanned page">
+  <rect width="900" height="1200" fill="#fbfdfd"/>
+  <rect x="70" y="70" width="760" height="1060" rx="18" fill="#ffffff" stroke="#c9d7da" stroke-width="4"/>
+  <rect x="120" y="130" width="430" height="28" rx="14" fill="#d7e4e7"/>
+  <rect x="120" y="205" width="650" height="18" rx="9" fill="#e4ecee"/>
+  <rect x="120" y="245" width="610" height="18" rx="9" fill="#e4ecee"/>
+  <rect x="120" y="285" width="680" height="18" rx="9" fill="#e4ecee"/>
+  <rect x="120" y="360" width="300" height="22" rx="11" fill="#d7e4e7"/>
+  <rect x="120" y="420" width="660" height="26" rx="13" fill="#fff1b8"/>
+  <rect x="120" y="468" width="620" height="20" rx="10" fill="#e4ecee"/>
+  <rect x="120" y="508" width="650" height="20" rx="10" fill="#e4ecee"/>
+  <rect x="120" y="590" width="300" height="22" rx="11" fill="#d7e4e7"/>
+  <rect x="120" y="650" width="680" height="20" rx="10" fill="#e4ecee"/>
+  <rect x="120" y="690" width="600" height="20" rx="10" fill="#e4ecee"/>
+  <rect x="120" y="730" width="650" height="20" rx="10" fill="#e4ecee"/>
+  <rect x="120" y="850" width="680" height="120" rx="14" fill="#eef5f5" stroke="#c9d7da" stroke-width="3"/>
+  <rect x="160" y="890" width="240" height="18" rx="9" fill="#d7e4e7"/>
+  <rect x="160" y="930" width="540" height="18" rx="9" fill="#d7e4e7"/>
+  <text x="120" y="150" fill="#334044" font-family="Arial, sans-serif" font-size="28" font-weight="700">Prirucka pro onboarding znalostni baze</text>
+  <text x="120" y="438" fill="#3d3420" font-family="Arial, sans-serif" font-size="24" font-weight="700">Spravce musi potvrdit vlastnika, gestora a workflow task.</text>
+</svg>

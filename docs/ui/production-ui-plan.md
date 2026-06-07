@@ -56,7 +56,7 @@ The Citation Viewer now represents the first Document Viewer increment:
 RAG answer -> citation -> open citation -> source-context -> exact chunk text
 ```
 
-For Markdown/text sources it displays the extracted source paragraph/chunk. For PDF/DOCX it shows the extracted text context and source metadata; richer native previews remain future work.
+Markdown sources render as formatted documents with GFM tables, a generated contents panel and citation highlighting. Text sources display the extracted paragraph/chunk. PDF sources can render the cited page through pdf.js with text/bbox highlighting. DOCX/XLSX/PPTX sources currently use structured extraction rather than pixel-perfect Office rendering.
 
 ### Document Workbench
 
@@ -68,6 +68,12 @@ Phase 05 introduces the Document Workbench direction:
 - `/help` provides in-app help for document managers, owners/gestors, and auditors.
 
 The current upload bridge stores the source object in shared local object storage, creates a draft version and queues ingestion. Publishing is separated behind the Registry API approval state and publish gate.
+
+### STRATOS UI Adapter
+
+AKL now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search and view tabs while `@stratos/ui` is distributed through GitHub Packages and still needs a read-only `read:packages` token in AKL local/CI builds.
+
+The adapter keeps `stratos-*` class names and maps AKL theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, and `@stratos/ui/styles.css`.
 
 ### Workflow Inbox
 
@@ -106,7 +112,7 @@ Ingestion-owned operational tasks are still merged in the web layer until Ingest
 ## Viewer Roadmap
 
 - Markdown/text: rendered Markdown, raw text, highlighted chunk, section jump.
-- PDF: browser PDF preview, page jump, text-side citation panel, OCR bbox when available.
+- PDF: pdf.js citation-page render, page jump, text-side citation panel, source-location bbox overlay and text-layer highlighting when available.
 - DOCX/ODT/RTF: extracted structured text and optional HTML preview.
 - HTML: sanitized preview with highlighted chunk.
 - CSV/XLS/XLSX: sheet/table context.

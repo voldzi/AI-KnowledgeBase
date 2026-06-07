@@ -69,11 +69,18 @@ const EXTENSION_MIME_TYPES = new Map<string, string>([
   [".csv", "text/csv"],
   [".doc", "application/msword"],
   [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  [".gif", "image/gif"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
   [".md", "text/markdown"],
   [".markdown", "text/markdown"],
   [".pdf", "application/pdf"],
+  [".png", "image/png"],
+  [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   [".rtf", "application/rtf"],
+  [".svg", "image/svg+xml"],
   [".txt", "text/plain"],
+  [".webp", "image/webp"],
   [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]
 ]);
 
@@ -213,6 +220,19 @@ export async function readSourceObject(
     });
   }
   return { bytes, mime_type: payload.file_type, filename: payload.file_name, sha256 };
+}
+
+export function sourceContentTypeHeader(mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (
+    normalized.startsWith("text/") ||
+    normalized === "application/rtf" ||
+    normalized === "application/xml" ||
+    normalized === "image/svg+xml"
+  ) {
+    return `${mimeType}; charset=utf-8`;
+  }
+  return mimeType;
 }
 
 function signSourceDownloadToken(payload: SourceDownloadTokenPayload, settings: SourceDownloadSettings): string {

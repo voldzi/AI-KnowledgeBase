@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -29,6 +30,7 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { StratosButton, StratosButtonLink, StratosSelect, StratosViewTabs, type StratosViewTab } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AssignmentSubjectType,
@@ -79,12 +81,83 @@ interface AuditTrace {
   scopes: string[];
 }
 
+interface ProposedDocumentInsight {
+  insight_id: string;
+  kind: "obligation" | "role" | "deadline" | "risk";
+  title: string;
+  summary: string;
+  status: "proposed";
+  confidence: "medium" | "low";
+  citations: GovernanceCitation[];
+  warnings: string[];
+}
+
 interface SourceContextSignal {
   chunkId: string;
   title: string;
   detail: string;
   createdAt: string;
 }
+
+type NativePreviewKind = "waiting" | "pdf" | "image" | "text" | "markdown" | "csv" | "docx" | "xlsx" | "presentation" | "unsupported";
+
+type PdfJsModule = typeof import("pdfjs-dist");
+
+interface PdfTextHighlight {
+  id: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  text: string;
+}
+
+interface MarkdownHeading {
+  id: string;
+  level: number;
+  text: string;
+}
+
+interface RehypeElementNode {
+  type: "element";
+  tagName: string;
+  properties?: Record<string, unknown>;
+  children?: RehypeNode[];
+}
+
+interface RehypeTextNode {
+  type: "text";
+  value: string;
+}
+
+type RehypeNode = RehypeElementNode | RehypeTextNode | { type: string; children?: RehypeNode[] };
+
+type NativeStructuredPreview =
+  | {
+      kind: "docx";
+      filename: string;
+      paragraphs: Array<{ index: number; text: string; style: string | null }>;
+      truncated: boolean;
+      warnings: string[];
+    }
+  | {
+      kind: "xlsx";
+      filename: string;
+      sheets: Array<{ name: string; rows: string[][]; truncated: boolean }>;
+      warnings: string[];
+    }
+  | {
+      kind: "presentation";
+      filename: string;
+      slides: Array<{ slide_number: number; title: string | null; text: string[] }>;
+      truncated: boolean;
+      warnings: string[];
+    }
+  | {
+      kind: "unsupported";
+      filename: string;
+      warnings: string[];
+    };
 
 const detailCopy = {
   cs: {
@@ -121,6 +194,30 @@ const detailCopy = {
     downloadSignedSource: "Stáhnout zdroj",
     openCitationPage: "Otevřít stranu citace",
     citationPageUnavailable: "Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.",
+    nativePreviewTitle: "Nativní preview",
+    nativePreviewDetail: "Preview používá pouze podepsanou URL pro aktuální dokumentovou verzi.",
+    nativePreviewWaiting: "Nejprve připravte podepsaný zdroj v panelu Zdroj.",
+    nativePreviewUnavailable: "Nativní preview není dostupné, protože zdrojový objekt není ve storage.",
+    nativePreviewLoading: "Načítám preview zdroje.",
+    nativePreviewError: "Preview zdroje se nepodařilo načíst.",
+    nativePreviewUnsupported: "Tento typ zdroje zatím nemá nativní renderer. Použijte podepsané otevření nebo stažení zdroje.",
+    nativePreviewTruncated: "Preview je zkrácené pro rychlé zobrazení.",
+    nativePreviewPdfFallback: "PDF preview nelze zobrazit ve vestavěném prohlížeči.",
+    nativePreviewPdfRenderedTitle: "Vykreslená strana citace",
+    nativePreviewPdfRenderedDetail: "PDF stránka je vykreslená přes pdf.js. Citace se zvýrazní textovou vrstvou a případně přes source-location bbox.",
+    nativePreviewImageAlt: "Náhled zdrojového obrázku",
+    nativePreviewOcrBbox: "OCR oblast citace",
+    nativePreviewPdfBbox: "Metadata oblast citace v PDF",
+    nativePreviewPdfTextHighlight: "Textová shoda citace v PDF",
+    nativePreviewPdfLocatorTitle: "Lokace v PDF podle metadat",
+    nativePreviewPdfLocatorDetail: "Mini mapa stránky používá source-location metadata jako fallback, pokud PDF textová vrstva nemá přesnou shodu.",
+    nativePreviewCitationLocation: "Lokace citace",
+    nativePreviewExactHighlight: "Zvýrazněný citovaný úsek",
+    nativePreviewMarkdownToc: "Obsah dokumentu",
+    nativePreviewMarkdownNoHeadings: "Markdown dokument neobsahuje nadpisy pro obsah.",
+    nativePreviewStructuredEmpty: "Strukturovaný náhled neobsahuje žádný extrahovatelný text.",
+    nativePreviewSheet: "List",
+    nativePreviewSlide: "Slide",
     expiresAt: "Expirace",
     storageAvailability: "Dostupnost ve storage",
     available: "dostupné",
@@ -203,6 +300,14 @@ const detailCopy = {
     actionAccess: "Ověřit přístupové politiky pro citlivou klasifikaci.",
     noActions: "Nejsou detekované prioritní kroky.",
     insightsTitle: "Navržené znalostní výstupy",
+    insightsGenerate: "Navrhnout insighty",
+    insightsGenerating: "Generuji",
+    insightsGenerated: "Návrhy insightů byly vytvořené ze zdrojového textu.",
+    insightsFailed: "Návrhy insightů se nepodařilo vytvořit.",
+    insightsNotPersisted: "Návrhy jsou pracovní podklad pro revizi. Autoritativní uložení a schvalování v Registry bude další krok.",
+    insightsEmpty: "Zatím nejsou vygenerované žádné návrhy.",
+    insightCitation: "Citace",
+    insightWarnings: "Omezení",
     insightObligation: "Povinnosti",
     insightObligationDetail: "Extrahovat normativní požadavky s citací na oddíl dokumentu.",
     insightRoles: "Role a odpovědnosti",
@@ -298,6 +403,30 @@ const detailCopy = {
     downloadSignedSource: "Download source",
     openCitationPage: "Open citation page",
     citationPageUnavailable: "Opening the exact citation page will be available after the signed source is available.",
+    nativePreviewTitle: "Native preview",
+    nativePreviewDetail: "Preview uses only the signed URL for the current document version.",
+    nativePreviewWaiting: "Prepare the signed source in the Source panel first.",
+    nativePreviewUnavailable: "Native preview is not available because the source object is not in storage.",
+    nativePreviewLoading: "Loading source preview.",
+    nativePreviewError: "Source preview could not be loaded.",
+    nativePreviewUnsupported: "This source type does not have a native renderer yet. Use signed opening or source download.",
+    nativePreviewTruncated: "Preview is truncated for fast rendering.",
+    nativePreviewPdfFallback: "PDF preview cannot be displayed in the embedded viewer.",
+    nativePreviewPdfRenderedTitle: "Rendered citation page",
+    nativePreviewPdfRenderedDetail: "The PDF page is rendered through pdf.js. Citations are highlighted through the text layer and, when available, source-location bbox metadata.",
+    nativePreviewImageAlt: "Source image preview",
+    nativePreviewOcrBbox: "OCR citation area",
+    nativePreviewPdfBbox: "PDF citation metadata area",
+    nativePreviewPdfTextHighlight: "PDF citation text match",
+    nativePreviewPdfLocatorTitle: "PDF metadata location",
+    nativePreviewPdfLocatorDetail: "The page minimap uses source-location metadata as a fallback when the PDF text layer has no exact match.",
+    nativePreviewCitationLocation: "Citation location",
+    nativePreviewExactHighlight: "Highlighted cited segment",
+    nativePreviewMarkdownToc: "Document contents",
+    nativePreviewMarkdownNoHeadings: "The Markdown document has no headings for a table of contents.",
+    nativePreviewStructuredEmpty: "Structured preview contains no extractable text.",
+    nativePreviewSheet: "Sheet",
+    nativePreviewSlide: "Slide",
     expiresAt: "Expires",
     storageAvailability: "Storage availability",
     available: "available",
@@ -380,6 +509,14 @@ const detailCopy = {
     actionAccess: "Review access policies for sensitive classification.",
     noActions: "No priority actions detected.",
     insightsTitle: "Proposed knowledge outputs",
+    insightsGenerate: "Propose insights",
+    insightsGenerating: "Generating",
+    insightsGenerated: "Insight proposals were generated from source text.",
+    insightsFailed: "Insight proposals could not be generated.",
+    insightsNotPersisted: "Proposals are review working material. Authoritative Registry persistence and approval is the next step.",
+    insightsEmpty: "No proposals have been generated yet.",
+    insightCitation: "Citation",
+    insightWarnings: "Limitations",
     insightObligation: "Obligations",
     insightObligationDetail: "Extract normative requirements with source-section citations.",
     insightRoles: "Roles and responsibilities",
@@ -459,6 +596,7 @@ export function DocumentDetail({
 }: DocumentDetailProps) {
   const { language } = useLanguage();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const copy = detailCopy[language];
   const relatedJobs = jobs.filter((job) => job.document_id === document.document_id);
   const sortedWorkflowTasks = useMemo(
@@ -486,7 +624,8 @@ export function DocumentDetail({
     assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
   );
   const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
-  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  const [activeTab, setActiveTab] = useState<DetailTab>(() => (searchParams.get("tab") === "viewer" ? "viewer" : "overview"));
+  const loadedRequestedChunkRef = useRef<string | null>(null);
   const [workflowAction, setWorkflowAction] = useState<"publish" | "archive" | null>(null);
   const [workflowFeedback, setWorkflowFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [savingAssignments, setSavingAssignments] = useState(false);
@@ -500,6 +639,9 @@ export function DocumentDetail({
   const [sourceOpen, setSourceOpen] = useState<DocumentSourceOpenDecision | null>(null);
   const [sourceOpenAction, setSourceOpenAction] = useState(false);
   const [sourceOpenFeedback, setSourceOpenFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [proposedInsights, setProposedInsights] = useState<ProposedDocumentInsight[] | null>(null);
+  const [insightsAction, setInsightsAction] = useState(false);
+  const [insightsFeedback, setInsightsFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -516,6 +658,20 @@ export function DocumentDetail({
       !["valid", "superseded", "archived", "cancelled"].includes(currentVersion.status)
   );
   const canArchiveCurrentVersion = Boolean(authorization.can_publish && currentVersion?.status === "valid");
+
+  useEffect(() => {
+    const requestedTab = searchParams.get("tab");
+    const requestedChunkId = searchParams.get("chunk_id")?.trim();
+    if (requestedTab === "viewer") {
+      setActiveTab("viewer");
+    }
+    if (!requestedChunkId || loadedRequestedChunkRef.current === requestedChunkId) {
+      return;
+    }
+    loadedRequestedChunkRef.current = requestedChunkId;
+    setActiveTab("viewer");
+    void openDocumentChunkContext(requestedChunkId);
+  }, [searchParams]);
 
   async function submitVersionAction(action: "publish" | "archive") {
     if (!currentVersion || workflowAction) {
@@ -619,16 +775,16 @@ export function DocumentDetail({
     }
   }
 
-  async function openDocumentSourceContext(signal: SourceContextSignal) {
+  async function openDocumentChunkContext(chunkId: string) {
     if (openingSourceChunkId) {
       return;
     }
 
-    setOpeningSourceChunkId(signal.chunkId);
+    setOpeningSourceChunkId(chunkId);
     setSourceContextFeedback(null);
     try {
       const response = await fetch(
-        `/api/documents/${encodeURIComponent(document.document_id)}/source-context?chunk_id=${encodeURIComponent(signal.chunkId)}`,
+        `/api/documents/${encodeURIComponent(document.document_id)}/source-context?chunk_id=${encodeURIComponent(chunkId)}`,
         { method: "GET" }
       );
       if (!response.ok) {
@@ -642,6 +798,10 @@ export function DocumentDetail({
     } finally {
       setOpeningSourceChunkId(null);
     }
+  }
+
+  async function openDocumentSourceContext(signal: SourceContextSignal) {
+    await openDocumentChunkContext(signal.chunkId);
   }
 
   async function prepareSignedSourceOpen() {
@@ -673,12 +833,37 @@ export function DocumentDetail({
     }
   }
 
+  async function proposeDocumentInsights() {
+    if (insightsAction) {
+      return;
+    }
+
+    setInsightsAction(true);
+    setInsightsFeedback(null);
+    try {
+      const response = await fetch(`/api/documents/${encodeURIComponent(document.document_id)}/insights/propose`, {
+        method: "POST"
+      });
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      const payload = (await response.json()) as { insights: ProposedDocumentInsight[] };
+      setProposedInsights(payload.insights);
+      setInsightsFeedback({ tone: "success", message: copy.insightsGenerated });
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setInsightsFeedback({ tone: "error", message: `${copy.insightsFailed}${suffix}` });
+    } finally {
+      setInsightsAction(false);
+    }
+  }
+
   return (
     <div className="stack">
-      <Link className="button" href="/documents">
+      <StratosButtonLink href="/documents">
         <ArrowLeft size={16} aria-hidden="true" />
         {copy.back}
-      </Link>
+      </StratosButtonLink>
 
       <section className="panel">
         <div className="panel__body grid grid--two">
@@ -718,30 +903,22 @@ export function DocumentDetail({
         </div>
       </section>
 
-      <nav className="tab-list" aria-label={language === "cs" ? "Sekce dokumentu" : "Document sections"}>
-        {[
-          ["overview", copy.overview, FileSearch],
-          ["viewer", copy.viewer, BookOpenCheck],
-          ["workflow", copy.workflow, ClipboardCheck],
-          ["insights", copy.insights, Brain],
-          ["versions", copy.versionsTab, Layers3],
-          ["ingestion", copy.ingestionTab, FileClock],
-          ["audit", copy.auditTab, ShieldCheck]
-        ].map(([tab, label, Icon]) => {
-          const TypedIcon = Icon as typeof FileSearch;
-          return (
-            <button
-              className={`tab-button ${activeTab === tab ? "tab-button--active" : ""}`}
-              key={String(tab)}
-              type="button"
-              onClick={() => setActiveTab(tab as DetailTab)}
-            >
-              <TypedIcon size={16} aria-hidden="true" />
-              {String(label)}
-            </button>
-          );
-        })}
-      </nav>
+      <StratosViewTabs
+        ariaLabel={language === "cs" ? "Sekce dokumentu" : "Document sections"}
+        value={activeTab}
+        onValueChange={setActiveTab}
+        items={
+          [
+            { value: "overview", label: copy.overview, icon: FileSearch },
+            { value: "viewer", label: copy.viewer, icon: BookOpenCheck },
+            { value: "workflow", label: copy.workflow, icon: ClipboardCheck },
+            { value: "insights", label: copy.insights, icon: Brain },
+            { value: "versions", label: copy.versionsTab, icon: Layers3 },
+            { value: "ingestion", label: copy.ingestionTab, icon: FileClock },
+            { value: "audit", label: copy.auditTab, icon: ShieldCheck }
+          ] satisfies Array<StratosViewTab<DetailTab>>
+        }
+      />
 
       {activeTab === "overview" ? (
         <section className="grid grid--two">
@@ -821,6 +998,7 @@ export function DocumentDetail({
                   {sourceContextFeedback.message}
                 </p>
               ) : null}
+              <DocumentNativePreview copy={copy} sourceContext={sourceContext} sourceOpen={sourceOpen} />
             </div>
           </div>
           <aside className="panel">
@@ -1039,38 +1217,36 @@ export function DocumentDetail({
                 <div className="assignment-editor">
                   {assignmentRows.map((row, index) => (
                     <div className="assignment-row" key={row.id}>
-                      <label className="field">
-                        <span>{copy.assignmentRole}</span>
-                        <select
-                          aria-label={`${copy.assignmentRole} ${index + 1}`}
-                          value={row.role}
-                          onChange={(event) =>
-                            updateAssignmentRow(row.id, { role: event.target.value as DocumentAssignmentRole })
-                          }
-                        >
+                      <StratosSelect
+                        id={`assignment-role-${row.id}`}
+                        label={copy.assignmentRole}
+                        aria-label={`${copy.assignmentRole} ${index + 1}`}
+                        value={row.role}
+                        onChange={(event) =>
+                          updateAssignmentRow(row.id, { role: event.target.value as DocumentAssignmentRole })
+                        }
+                      >
                           {assignmentRoles.map((role) => (
                             <option key={role} value={role}>
                               {assignmentRoleLabel(role, language)}
                             </option>
                           ))}
-                        </select>
-                      </label>
-                      <label className="field">
-                        <span>{copy.assignmentSubjectType}</span>
-                        <select
-                          aria-label={`${copy.assignmentSubjectType} ${index + 1}`}
-                          value={row.subject_type}
-                          onChange={(event) =>
-                            updateAssignmentRow(row.id, { subject_type: event.target.value as AssignmentSubjectType })
-                          }
-                        >
+                      </StratosSelect>
+                      <StratosSelect
+                        id={`assignment-subject-type-${row.id}`}
+                        label={copy.assignmentSubjectType}
+                        aria-label={`${copy.assignmentSubjectType} ${index + 1}`}
+                        value={row.subject_type}
+                        onChange={(event) =>
+                          updateAssignmentRow(row.id, { subject_type: event.target.value as AssignmentSubjectType })
+                        }
+                      >
                           {assignmentSubjectTypes.map((subjectType) => (
                             <option key={subjectType} value={subjectType}>
                               {subjectType}
                             </option>
                           ))}
-                        </select>
-                      </label>
+                      </StratosSelect>
                       <label className="field">
                         <span>{copy.assignmentSubjectId}</span>
                         <input
@@ -1098,24 +1274,23 @@ export function DocumentDetail({
                           onChange={(event) => updateAssignmentRow(row.id, { sla_days: event.target.value })}
                         />
                       </label>
-                      <label className="field">
-                        <span>{copy.assignmentEscalationType}</span>
-                        <select
-                          aria-label={`${copy.assignmentEscalationType} ${index + 1}`}
-                          value={row.escalation_subject_type}
-                          onChange={(event) =>
-                            updateAssignmentRow(row.id, {
-                              escalation_subject_type: event.target.value as AssignmentSubjectType
-                            })
-                          }
-                        >
+                      <StratosSelect
+                        id={`assignment-escalation-subject-type-${row.id}`}
+                        label={copy.assignmentEscalationType}
+                        aria-label={`${copy.assignmentEscalationType} ${index + 1}`}
+                        value={row.escalation_subject_type}
+                        onChange={(event) =>
+                          updateAssignmentRow(row.id, {
+                            escalation_subject_type: event.target.value as AssignmentSubjectType
+                          })
+                        }
+                      >
                           {assignmentSubjectTypes.map((subjectType) => (
                             <option key={subjectType} value={subjectType}>
                               {subjectType}
                             </option>
                           ))}
-                        </select>
-                      </label>
+                      </StratosSelect>
                       <label className="field">
                         <span>{copy.assignmentEscalationId}</span>
                         <input
@@ -1283,22 +1458,38 @@ export function DocumentDetail({
       {activeTab === "insights" ? (
         <section className="panel">
           <div className="panel__header">
-            <h2>{copy.insightsTitle}</h2>
-            <Brain size={18} aria-hidden="true" />
+            <div>
+              <h2>{copy.insightsTitle}</h2>
+              <p>{copy.insightsNotPersisted}</p>
+            </div>
+            <StratosButton type="button" onClick={() => void proposeDocumentInsights()} disabled={insightsAction}>
+              <Brain size={18} aria-hidden="true" />
+              {insightsAction ? copy.insightsGenerating : copy.insightsGenerate}
+            </StratosButton>
           </div>
-          <div className="panel__body insight-grid">
-            {[
-              [copy.insightObligation, copy.insightObligationDetail],
-              [copy.insightRoles, copy.insightRolesDetail],
-              [copy.insightDeadlines, copy.insightDeadlinesDetail],
-              [copy.insightRisk, copy.insightRiskDetail]
-            ].map(([title, detail]) => (
-              <article className="insight-item" key={title}>
-                <StatusBadge value="draft" label={copy.proposed} />
-                <strong>{title}</strong>
-                <p>{detail}</p>
-              </article>
-            ))}
+          <div className="panel__body stack">
+            {insightsFeedback ? (
+              <div className={`notice ${insightsFeedback.tone === "error" ? "notice--danger" : ""}`} role={insightsFeedback.tone === "error" ? "alert" : "status"}>
+                {insightsFeedback.message}
+              </div>
+            ) : null}
+            <div className="insight-grid">
+              {(proposedInsights ?? defaultInsightPlaceholders(copy)).map((insight) => (
+                <article className="insight-item" key={insight.insight_id}>
+                  <StatusBadge value="draft" label={copy.proposed} />
+                  <strong>{insight.title}</strong>
+                  <p>{insight.summary}</p>
+                  {"confidence" in insight ? <small>Confidence: {insight.confidence}</small> : null}
+                  {"citations" in insight && insight.citations.length > 0 ? (
+                    <small>{copy.insightCitation}: {insight.citations[0]?.section_path.join(" / ")}</small>
+                  ) : null}
+                  {"warnings" in insight && insight.warnings.length > 0 ? (
+                    <small>{copy.insightWarnings}: {insight.warnings.join(", ")}</small>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+            {proposedInsights?.length === 0 ? <div className="empty-state">{copy.insightsEmpty}</div> : null}
           </div>
         </section>
       ) : null}
@@ -1308,10 +1499,10 @@ export function DocumentDetail({
           <div className="panel__header">
             <h2>{copy.versionHistory}</h2>
             {authorization.can_ingest ? (
-              <Link className="button" href="/upload">
+              <StratosButtonLink href="/upload">
                 <UploadCloud size={16} aria-hidden="true" />
                 {copy.upload}
-              </Link>
+              </StratosButtonLink>
             ) : null}
           </div>
           <table className="data-table">
@@ -1669,6 +1860,51 @@ function KeyValue({ label, value }: { label: string; value: string }) {
   );
 }
 
+function defaultInsightPlaceholders(copy: Record<string, string>): ProposedDocumentInsight[] {
+  return [
+    {
+      insight_id: "placeholder_obligation",
+      kind: "obligation",
+      title: copy.insightObligation,
+      summary: copy.insightObligationDetail,
+      status: "proposed",
+      confidence: "low",
+      citations: [],
+      warnings: []
+    },
+    {
+      insight_id: "placeholder_roles",
+      kind: "role",
+      title: copy.insightRoles,
+      summary: copy.insightRolesDetail,
+      status: "proposed",
+      confidence: "low",
+      citations: [],
+      warnings: []
+    },
+    {
+      insight_id: "placeholder_deadlines",
+      kind: "deadline",
+      title: copy.insightDeadlines,
+      summary: copy.insightDeadlinesDetail,
+      status: "proposed",
+      confidence: "low",
+      citations: [],
+      warnings: []
+    },
+    {
+      insight_id: "placeholder_risks",
+      kind: "risk",
+      title: copy.insightRisk,
+      summary: copy.insightRiskDetail,
+      status: "proposed",
+      confidence: "low",
+      citations: [],
+      warnings: []
+    }
+  ];
+}
+
 function GovernanceAction({
   action,
   detail,
@@ -1699,9 +1935,8 @@ function GovernanceAction({
         <strong>{label}</strong>
         <span>{detail}</span>
       </span>
-      <button
+      <StratosButton
         aria-label={`${runLabel} ${label}`}
-        className="button"
         disabled={!enabled || running}
         type="button"
         onClick={() => {
@@ -1709,7 +1944,7 @@ function GovernanceAction({
         }}
       >
         {running ? runningLabel : enabled ? runLabel : unavailableLabel}
-      </button>
+      </StratosButton>
     </div>
   );
 }
@@ -1795,6 +2030,706 @@ function GovernanceList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function DocumentNativePreview({
+  copy,
+  sourceContext,
+  sourceOpen
+}: {
+  copy: Record<string, string>;
+  sourceContext: SourceContext | null;
+  sourceOpen: DocumentSourceOpenDecision | null;
+}) {
+  const [preview, setPreview] = useState<{ status: "idle" | "loading" | "ready" | "error"; text: string; truncated: boolean }>({
+    status: "idle",
+    text: "",
+    truncated: false
+  });
+  const [structuredPreview, setStructuredPreview] = useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    preview: NativeStructuredPreview | null;
+  }>({
+    status: "idle",
+    preview: null
+  });
+  const sourceUrl = sourceOpen?.download_url ?? null;
+  const sourcePreviewUrl = sourceUrl ? sourcePreviewUrlForSourceUrl(sourceUrl) : null;
+  const previewUrl =
+    sourceUrl && sourceContext?.location.page_number ? sourceUrlWithPageFragment(sourceUrl, sourceContext.location.page_number) : sourceUrl;
+  const previewKind = sourceOpen ? nativePreviewKind(sourceOpen) : "waiting";
+  const locationParts = sourceContext ? sourceContextLocationParts(sourceContext, copy) : [];
+
+  useEffect(() => {
+    if (!sourceUrl || !sourceOpen?.available || !sourcePreviewNeedsFetch(previewKind)) {
+      setPreview({ status: "idle", text: "", truncated: false });
+      return;
+    }
+
+    let cancelled = false;
+    setPreview({ status: "loading", text: "", truncated: false });
+
+    fetch(sourceUrl, { headers: { Accept: "text/plain, text/markdown, text/csv, */*" } })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.text();
+      })
+      .then((text) => {
+        if (cancelled) return;
+        const maxPreviewLength = 18_000;
+        setPreview({
+          status: "ready",
+          text: text.slice(0, maxPreviewLength),
+          truncated: text.length > maxPreviewLength
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPreview({ status: "error", text: "", truncated: false });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewKind, sourceOpen?.available, sourceUrl]);
+
+  useEffect(() => {
+    if (!sourcePreviewUrl || !sourceOpen?.available || !sourcePreviewNeedsStructuredFetch(previewKind)) {
+      setStructuredPreview({ status: "idle", preview: null });
+      return;
+    }
+
+    let cancelled = false;
+    setStructuredPreview({ status: "loading", preview: null });
+
+    fetch(sourcePreviewUrl, { headers: { Accept: "application/json" } })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json() as Promise<{ source_preview: NativeStructuredPreview }>;
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        setStructuredPreview({ status: "ready", preview: payload.source_preview });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStructuredPreview({ status: "error", preview: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewKind, sourceOpen?.available, sourcePreviewUrl]);
+
+  return (
+    <section className="native-preview" aria-label={copy.nativePreviewTitle}>
+      <div className="native-preview__header">
+        <div>
+          <h3>{copy.nativePreviewTitle}</h3>
+          <p>{copy.nativePreviewDetail}</p>
+        </div>
+        <StatusBadge value={sourceOpen?.available ? "online" : "queued"} label={sourceOpen?.viewer_mode ?? "pending"} />
+      </div>
+      {locationParts.length > 0 ? (
+        <div className="source-viewer__meta" aria-label={copy.nativePreviewCitationLocation}>
+          <strong>{copy.nativePreviewCitationLocation}</strong>
+          {locationParts.map((part) => (
+            <span key={part}>{part}</span>
+          ))}
+        </div>
+      ) : null}
+      {!sourceOpen ? (
+        <div className="empty-state empty-state--inline">
+          <FileSearch size={22} aria-hidden="true" />
+          {copy.nativePreviewWaiting}
+        </div>
+      ) : null}
+      {sourceOpen && !sourceOpen.available ? (
+        <div className="empty-state empty-state--inline">
+          <AlertTriangle size={22} aria-hidden="true" />
+          {copy.nativePreviewUnavailable}
+        </div>
+      ) : null}
+      {sourceOpen?.available && previewKind === "pdf" && previewUrl ? (
+        <>
+          <PdfRenderedPreview copy={copy} sourceContext={sourceContext} sourceUrl={previewUrl} />
+          <PdfCitationLocator copy={copy} sourceContext={sourceContext} />
+        </>
+      ) : null}
+      {sourceOpen?.available && previewKind === "image" && previewUrl ? (
+        <ImageNativePreview copy={copy} sourceContext={sourceContext} sourceUrl={previewUrl} />
+      ) : null}
+      {sourceOpen?.available && sourcePreviewNeedsFetch(previewKind) ? (
+        <TextualNativePreview copy={copy} preview={preview} previewKind={previewKind} sourceContext={sourceContext} />
+      ) : null}
+      {sourceOpen?.available && sourcePreviewNeedsStructuredFetch(previewKind) ? (
+        <StructuredNativePreview copy={copy} preview={structuredPreview} sourceContext={sourceContext} />
+      ) : null}
+      {sourceOpen?.available && previewKind === "unsupported" ? (
+        <div className="empty-state empty-state--inline">
+          <FileText size={22} aria-hidden="true" />
+          {copy.nativePreviewUnsupported}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function PdfRenderedPreview({
+  copy,
+  sourceContext,
+  sourceUrl
+}: {
+  copy: Record<string, string>;
+  sourceContext: SourceContext | null;
+  sourceUrl: string;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
+  const [renderState, setRenderState] = useState<{
+    status: "loading" | "ready" | "error";
+    pageNumber: number;
+    pageCount: number | null;
+    width: number;
+    height: number;
+    textHighlights: PdfTextHighlight[];
+  }>({
+    status: "loading",
+    pageNumber: Math.max(1, Math.trunc(sourceContext?.location.page_number ?? 1)),
+    pageCount: null,
+    width: 0,
+    height: 0,
+    textHighlights: []
+  });
+
+  const bbox = sourceContext?.location.bbox ? bboxToPercentStyle(sourceContext.location.bbox) : null;
+  const pageNumber = Math.max(1, Math.trunc(sourceContext?.location.page_number ?? 1));
+  const sourceUrlWithoutFragment = stripUrlFragment(sourceUrl);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    let cancelled = false;
+    let cleanupDocument: (() => void) | null = null;
+    let cleanupRender: (() => void) | null = null;
+    const renderPdf = async () => {
+      renderTaskRef.current?.cancel();
+      renderTaskRef.current = null;
+      setRenderState({
+        status: "loading",
+        pageNumber,
+        pageCount: null,
+        width: 0,
+        height: 0,
+        textHighlights: []
+      });
+
+      try {
+        const pdfjs = await loadPdfJs();
+        if (cancelled) return;
+        const response = await fetch(sourceUrlWithoutFragment, { headers: { Accept: "application/pdf" } });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const pdfBytes = await response.arrayBuffer();
+        if (cancelled) return;
+        const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBytes) });
+        cleanupDocument = () => {
+          void loadingTask.destroy();
+        };
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        const safePageNumber = Math.min(Math.max(1, pageNumber), pdf.numPages);
+        const page = await pdf.getPage(safePageNumber);
+        if (cancelled) return;
+        const viewport = page.getViewport({ scale: 1.35 });
+        const context = canvas.getContext("2d");
+        if (!context) {
+          throw new Error("Canvas context unavailable");
+        }
+
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+        context.clearRect(0, 0, viewport.width, viewport.height);
+
+        const renderTask = page.render({ canvas, canvasContext: context, viewport });
+        renderTaskRef.current = renderTask;
+        cleanupRender = () => {
+          renderTask.cancel();
+          if (renderTaskRef.current === renderTask) {
+            renderTaskRef.current = null;
+          }
+        };
+        await renderTask.promise;
+        if (renderTaskRef.current === renderTask) {
+          renderTaskRef.current = null;
+        }
+        if (cancelled) return;
+        const textContent = await page.getTextContent();
+        const textHighlights = pdfTextHighlights({
+          chunkText: sourceContext?.chunk_text ?? "",
+          items: textContent.items,
+          pdfjs,
+          viewportHeight: viewport.height,
+          viewportTransform: viewport.transform,
+          viewportWidth: viewport.width
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setRenderState({
+          status: "ready",
+          pageNumber: safePageNumber,
+          pageCount: pdf.numPages,
+          width: viewport.width,
+          height: viewport.height,
+          textHighlights
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("PDF native preview failed", error);
+          setRenderState({
+            status: "error",
+            pageNumber,
+            pageCount: null,
+            width: 0,
+            height: 0,
+            textHighlights: []
+          });
+        }
+      }
+    };
+
+    void renderPdf();
+
+    return () => {
+      cancelled = true;
+      cleanupRender?.();
+      cleanupDocument?.();
+    };
+  }, [pageNumber, sourceContext?.chunk_text, sourceUrlWithoutFragment]);
+
+  if (renderState.status === "error") {
+    return (
+      <div className="notice notice--danger">
+        <ShieldAlert size={16} aria-hidden="true" />
+        {copy.nativePreviewPdfFallback}
+      </div>
+    );
+  }
+
+  return (
+    <div className="native-preview__pdf-rendered">
+      <div className="native-preview__pdf-rendered-header">
+        <div>
+          <strong>{copy.nativePreviewPdfRenderedTitle}</strong>
+          <p>{copy.nativePreviewPdfRenderedDetail}</p>
+        </div>
+        <span>
+          {copy.page} {renderState.pageNumber}
+          {renderState.pageCount ? ` / ${renderState.pageCount}` : ""}
+        </span>
+      </div>
+      <div className="native-preview__pdf-page-scroll">
+        <div
+          className="native-preview__pdf-page"
+          style={renderState.width > 0 && renderState.height > 0 ? { width: renderState.width, height: renderState.height } : undefined}
+        >
+          <canvas ref={canvasRef} />
+          {renderState.status === "loading" ? (
+            <div className="native-preview__pdf-loading">
+              <FileSearch size={22} aria-hidden="true" />
+              {copy.nativePreviewLoading}
+            </div>
+          ) : null}
+          {renderState.textHighlights.map((highlight) => (
+            <span
+              aria-label={copy.nativePreviewPdfTextHighlight}
+              className="native-preview__pdf-text-highlight"
+              key={highlight.id}
+              role="mark"
+              style={highlightToPercentStyle(highlight)}
+              title={highlight.text}
+            />
+          ))}
+          {bbox ? (
+            <span
+              aria-label={copy.nativePreviewPdfBbox}
+              className="native-preview__bbox native-preview__bbox--pdf-page"
+              role="img"
+              style={bbox}
+              title={copy.nativePreviewPdfBbox}
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImageNativePreview({
+  copy,
+  sourceContext,
+  sourceUrl
+}: {
+  copy: Record<string, string>;
+  sourceContext: SourceContext | null;
+  sourceUrl: string;
+}) {
+  const bbox = sourceContext?.location.bbox ? bboxToPercentStyle(sourceContext.location.bbox) : null;
+
+  return (
+    <div className="native-preview__image-frame">
+      <img alt={copy.nativePreviewImageAlt} className="native-preview__image" src={sourceUrl} />
+      {bbox ? (
+        <span
+          aria-label={copy.nativePreviewOcrBbox}
+          className="native-preview__bbox"
+          role="img"
+          style={bbox}
+          title={copy.nativePreviewOcrBbox}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PdfCitationLocator({
+  copy,
+  sourceContext
+}: {
+  copy: Record<string, string>;
+  sourceContext: SourceContext | null;
+}) {
+  if (!sourceContext?.location.page_number && !sourceContext?.location.bbox) {
+    return null;
+  }
+
+  const bbox = sourceContext.location.bbox ? bboxToPercentStyle(sourceContext.location.bbox) : null;
+  return (
+    <div className="native-preview__pdf-locator">
+      <div>
+        <strong>{copy.nativePreviewPdfLocatorTitle}</strong>
+        <p>{copy.nativePreviewPdfLocatorDetail}</p>
+      </div>
+      <div className="native-preview__page-map" aria-label={copy.nativePreviewPdfLocatorTitle}>
+        <span>{sourceContext.location.page_number ? `${copy.page} ${sourceContext.location.page_number}` : copy.page}</span>
+        {bbox ? <span className="native-preview__bbox native-preview__bbox--pdf" style={bbox} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function TextualNativePreview({
+  copy,
+  preview,
+  previewKind,
+  sourceContext
+}: {
+  copy: Record<string, string>;
+  preview: { status: "idle" | "loading" | "ready" | "error"; text: string; truncated: boolean };
+  previewKind: NativePreviewKind;
+  sourceContext: SourceContext | null;
+}) {
+  if (preview.status === "loading") {
+    return (
+      <div className="empty-state empty-state--inline">
+        <FileSearch size={22} aria-hidden="true" />
+        {copy.nativePreviewLoading}
+      </div>
+    );
+  }
+
+  if (preview.status === "error") {
+    return (
+      <div className="notice notice--danger">
+        <ShieldAlert size={16} aria-hidden="true" />
+        {copy.nativePreviewError}
+      </div>
+    );
+  }
+
+  if (preview.status !== "ready") {
+    return null;
+  }
+
+  if (previewKind === "csv") {
+    return (
+      <>
+        <CsvPreview text={preview.text} activeRow={sourceContext?.location.row_number ?? null} />
+        {preview.truncated ? <p className="notice">{copy.nativePreviewTruncated}</p> : null}
+      </>
+    );
+  }
+
+  if (previewKind === "markdown") {
+    return (
+      <>
+        <MarkdownNativePreview copy={copy} text={preview.text} chunkText={sourceContext?.chunk_text ?? ""} />
+        {preview.truncated ? <p className="notice">{copy.nativePreviewTruncated}</p> : null}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <pre className="native-preview__text">
+        <HighlightedPreviewText text={preview.text} chunkText={sourceContext?.chunk_text ?? ""} copy={copy} />
+      </pre>
+      {preview.truncated ? <p className="notice">{copy.nativePreviewTruncated}</p> : null}
+    </>
+  );
+}
+
+function MarkdownNativePreview({
+  chunkText,
+  copy,
+  text
+}: {
+  chunkText: string;
+  copy: Record<string, string>;
+  text: string;
+}) {
+  const headings = useMemo(() => markdownHeadings(text), [text]);
+  const highlightPlugin = useMemo(() => rehypeCitationHighlight(chunkText), [chunkText]);
+
+  return (
+    <div className="native-preview__markdown-shell">
+      <aside className="native-preview__markdown-toc" aria-label={copy.nativePreviewMarkdownToc}>
+        <strong>{copy.nativePreviewMarkdownToc}</strong>
+        {headings.length > 0 ? (
+          <nav>
+            {headings.map((heading) => (
+              <a className={`native-preview__markdown-toc-link native-preview__markdown-toc-link--h${heading.level}`} href={`#${heading.id}`} key={heading.id}>
+                {heading.text}
+              </a>
+            ))}
+          </nav>
+        ) : (
+          <p>{copy.nativePreviewMarkdownNoHeadings}</p>
+        )}
+      </aside>
+      <article className="native-preview__markdown">
+        <ReactMarkdown components={markdownComponents} rehypePlugins={[highlightPlugin]} remarkPlugins={[remarkGfm]}>
+          {text}
+        </ReactMarkdown>
+      </article>
+    </div>
+  );
+}
+
+function StructuredNativePreview({
+  copy,
+  preview,
+  sourceContext
+}: {
+  copy: Record<string, string>;
+  preview: { status: "idle" | "loading" | "ready" | "error"; preview: NativeStructuredPreview | null };
+  sourceContext: SourceContext | null;
+}) {
+  if (preview.status === "loading") {
+    return (
+      <div className="empty-state empty-state--inline">
+        <FileSearch size={22} aria-hidden="true" />
+        {copy.nativePreviewLoading}
+      </div>
+    );
+  }
+  if (preview.status === "error") {
+    return (
+      <div className="notice notice--danger">
+        <ShieldAlert size={16} aria-hidden="true" />
+        {copy.nativePreviewError}
+      </div>
+    );
+  }
+  if (preview.status !== "ready" || !preview.preview) {
+    return null;
+  }
+
+  if (preview.preview.kind === "docx") {
+    return <DocxNativePreview copy={copy} preview={preview.preview} sourceContext={sourceContext} />;
+  }
+  if (preview.preview.kind === "xlsx") {
+    return <XlsxNativePreview copy={copy} preview={preview.preview} sourceContext={sourceContext} />;
+  }
+  if (preview.preview.kind === "presentation") {
+    return <PresentationNativePreview copy={copy} preview={preview.preview} sourceContext={sourceContext} />;
+  }
+  return (
+    <div className="empty-state empty-state--inline">
+      <FileText size={22} aria-hidden="true" />
+      {copy.nativePreviewUnsupported}
+    </div>
+  );
+}
+
+function DocxNativePreview({
+  copy,
+  preview,
+  sourceContext
+}: {
+  copy: Record<string, string>;
+  preview: Extract<NativeStructuredPreview, { kind: "docx" }>;
+  sourceContext: SourceContext | null;
+}) {
+  const activeParagraph = sourceContext?.location.paragraph_number ? Number(sourceContext.location.paragraph_number) : null;
+  if (preview.paragraphs.length === 0) {
+    return <div className="empty-state empty-state--inline">{copy.nativePreviewStructuredEmpty}</div>;
+  }
+  return (
+    <div className="native-preview__doc">
+      {preview.paragraphs.map((paragraph) => (
+        <p
+          className={activeParagraph === paragraph.index ? "native-preview__paragraph native-preview__paragraph--active" : "native-preview__paragraph"}
+          key={paragraph.index}
+        >
+          {paragraph.style ? <strong>{paragraph.style}: </strong> : null}
+          {paragraph.text}
+        </p>
+      ))}
+      {preview.truncated ? <p className="notice">{copy.nativePreviewTruncated}</p> : null}
+      <GovernanceList title={copy.governanceWarnings} items={preview.warnings} />
+    </div>
+  );
+}
+
+function XlsxNativePreview({
+  copy,
+  preview,
+  sourceContext
+}: {
+  copy: Record<string, string>;
+  preview: Extract<NativeStructuredPreview, { kind: "xlsx" }>;
+  sourceContext: SourceContext | null;
+}) {
+  if (preview.sheets.length === 0) {
+    return <div className="empty-state empty-state--inline">{copy.nativePreviewStructuredEmpty}</div>;
+  }
+  return (
+    <div className="stack">
+      {preview.sheets.map((sheet) => (
+        <div className="native-preview__sheet" key={sheet.name}>
+          <strong>{copy.nativePreviewSheet}: {sheet.name}</strong>
+          <CsvPreview text={sheet.rows.map((row) => row.join(",")).join("\n")} activeRow={sourceContext?.location.row_number ?? null} />
+          {sheet.truncated ? <p className="notice">{copy.nativePreviewTruncated}</p> : null}
+        </div>
+      ))}
+      <GovernanceList title={copy.governanceWarnings} items={preview.warnings} />
+    </div>
+  );
+}
+
+function PresentationNativePreview({
+  copy,
+  preview,
+  sourceContext
+}: {
+  copy: Record<string, string>;
+  preview: Extract<NativeStructuredPreview, { kind: "presentation" }>;
+  sourceContext: SourceContext | null;
+}) {
+  const activeSlide = sourceContext?.location.slide_number ?? null;
+  if (preview.slides.length === 0) {
+    return <div className="empty-state empty-state--inline">{copy.nativePreviewStructuredEmpty}</div>;
+  }
+  return (
+    <div className="native-preview__slides">
+      {preview.slides.map((slide) => (
+        <section
+          className={activeSlide === slide.slide_number ? "native-preview__slide native-preview__slide--active" : "native-preview__slide"}
+          key={slide.slide_number}
+        >
+          <strong>{copy.nativePreviewSlide} {slide.slide_number}</strong>
+          {slide.title ? <h4>{slide.title}</h4> : null}
+          {slide.text.slice(slide.title ? 1 : 0).map((text) => (
+            <p key={text}>{text}</p>
+          ))}
+        </section>
+      ))}
+      {preview.truncated ? <p className="notice">{copy.nativePreviewTruncated}</p> : null}
+      <GovernanceList title={copy.governanceWarnings} items={preview.warnings} />
+    </div>
+  );
+}
+
+function HighlightedPreviewText({
+  chunkText,
+  copy,
+  text
+}: {
+  chunkText: string;
+  copy: Record<string, string>;
+  text: string;
+}) {
+  const normalizedChunk = chunkText.trim();
+  if (!normalizedChunk) {
+    return <>{text}</>;
+  }
+
+  const matchIndex = text.indexOf(normalizedChunk);
+  if (matchIndex === -1) {
+    return <>{text}</>;
+  }
+
+  const before = text.slice(0, matchIndex);
+  const highlighted = text.slice(matchIndex, matchIndex + normalizedChunk.length);
+  const after = text.slice(matchIndex + normalizedChunk.length);
+  return (
+    <>
+      {before}
+      <mark title={copy.nativePreviewExactHighlight}>{highlighted}</mark>
+      {after}
+    </>
+  );
+}
+
+function CsvPreview({ activeRow, text }: { activeRow: number | null; text: string }) {
+  const rows = parseCsvRows(text).slice(0, 25);
+  const [header, ...bodyRows] = rows;
+  if (!header || header.length === 0) {
+    return <pre className="native-preview__text">{text}</pre>;
+  }
+
+  return (
+    <div className="native-preview__table-scroll">
+      <table className="native-preview__table">
+        <thead>
+          <tr>
+            {header.map((cell, index) => (
+              <th key={`${cell}-${index}`}>{cell || `Column ${index + 1}`}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyRows.map((row, rowIndex) => {
+            const sourceRowNumber = rowIndex + 2;
+            return (
+              <tr className={activeRow === sourceRowNumber ? "native-preview__row--active" : ""} key={`${sourceRowNumber}-${row.join("|")}`}>
+                {header.map((_, cellIndex) => (
+                  <td key={`${sourceRowNumber}-${cellIndex}`}>{row[cellIndex] ?? ""}</td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DocumentSourceContextViewer({
   copy,
   sourceContext
@@ -1828,14 +2763,14 @@ function DocumentSourceContextViewer({
       {sourceContext.before_text ? (
         <div className="source-context-block">
           <strong>{copy.beforeContext}</strong>
-          <pre className="chunk-text chunk-text--context">{sourceContext.before_text}</pre>
+          <DocumentSourceContextText sourceContext={sourceContext} text={sourceContext.before_text} contextual />
         </div>
       ) : null}
-      <pre className="chunk-text">{sourceContext.chunk_text}</pre>
+      <DocumentSourceContextText sourceContext={sourceContext} text={sourceContext.chunk_text} />
       {sourceContext.after_text ? (
         <div className="source-context-block">
           <strong>{copy.afterContext}</strong>
-          <pre className="chunk-text chunk-text--context">{sourceContext.after_text}</pre>
+          <DocumentSourceContextText sourceContext={sourceContext} text={sourceContext.after_text} contextual />
         </div>
       ) : null}
       <div className="source-viewer__actions">
@@ -1858,6 +2793,26 @@ function DocumentSourceContextViewer({
       ) : null}
     </div>
   );
+}
+
+function DocumentSourceContextText({
+  contextual = false,
+  sourceContext,
+  text
+}: {
+  contextual?: boolean;
+  sourceContext: SourceContext;
+  text: string;
+}) {
+  if (sourceContext.viewer_mode === "markdown") {
+    return (
+      <article className={`native-preview__markdown native-preview__markdown--citation ${contextual ? "native-preview__markdown--context" : ""}`.trim()}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      </article>
+    );
+  }
+
+  return <pre className={`chunk-text ${contextual ? "chunk-text--context" : ""}`.trim()}>{text}</pre>;
 }
 
 function sourceContextLocationParts(sourceContext: SourceContext, copy: Record<string, string>): string[] {
@@ -1887,6 +2842,423 @@ function sourceUrlWithPageFragment(sourceUrl: string, pageNumber: number): strin
   const page = Math.max(1, Math.trunc(pageNumber));
   const [baseUrl] = sourceUrl.split("#");
   return `${baseUrl}#page=${page}`;
+}
+
+function stripUrlFragment(sourceUrl: string): string {
+  const [baseUrl] = sourceUrl.split("#");
+  return baseUrl;
+}
+
+function sourcePreviewUrlForSourceUrl(sourceUrl: string): string {
+  const [baseUrl, fragment] = sourceUrl.split("#");
+  const previewUrl = baseUrl.replace("/api/documents/source/content", "/api/documents/source/preview");
+  return fragment ? `${previewUrl}#${fragment}` : previewUrl;
+}
+
+function bboxToPercentStyle(bbox: Record<string, number>): CSSProperties {
+  const left = normalizeBboxPercent(bbox.x ?? bbox.left ?? 0);
+  const top = normalizeBboxPercent(bbox.y ?? bbox.top ?? 0);
+  const width = normalizeBboxPercent(bbox.width ?? bbox.w ?? 0);
+  const height = normalizeBboxPercent(bbox.height ?? bbox.h ?? 0);
+  return {
+    left: `${left}%`,
+    top: `${top}%`,
+    width: `${Math.max(width, 1)}%`,
+    height: `${Math.max(height, 1)}%`
+  };
+}
+
+function normalizeBboxPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  const percent = value > 0 && value <= 1 ? value * 100 : value;
+  return Math.min(100, Math.max(0, percent));
+}
+
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
+
+function loadPdfJs(): Promise<PdfJsModule> {
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import("pdfjs-dist").then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+      return pdfjs;
+    });
+  }
+  return pdfJsModulePromise;
+}
+
+function pdfTextHighlights({
+  chunkText,
+  items,
+  pdfjs,
+  viewportHeight,
+  viewportTransform,
+  viewportWidth
+}: {
+  chunkText: string;
+  items: unknown[];
+  pdfjs: PdfJsModule;
+  viewportHeight: number;
+  viewportTransform: number[];
+  viewportWidth: number;
+}): PdfTextHighlight[] {
+  const normalizedChunk = normalizeSearchText(chunkText);
+  if (!normalizedChunk || viewportWidth <= 0 || viewportHeight <= 0) {
+    return [];
+  }
+
+  const viewportScale = Math.max(Math.hypot(viewportTransform[0] ?? 1, viewportTransform[1] ?? 0), 1);
+  return items.flatMap((item, index) => {
+    if (!isPdfTextItem(item) || !pdfTextMatchesChunk(item.str, normalizedChunk)) {
+      return [];
+    }
+
+    const transform = pdfjs.Util.transform(viewportTransform, item.transform);
+    const left = Number(transform[4] ?? 0);
+    const baselineTop = Number(transform[5] ?? 0);
+    const height = Math.max(Math.abs(item.height * viewportScale), Math.hypot(Number(transform[2] ?? 0), Number(transform[3] ?? 0)), 8);
+    const width = Math.max(Math.abs(item.width * viewportScale), 8);
+    return [
+      {
+        id: `${index}-${item.str}`,
+        left: clampPercent((left / viewportWidth) * 100),
+        top: clampPercent(((baselineTop - height) / viewportHeight) * 100),
+        width: clampPercent((width / viewportWidth) * 100),
+        height: clampPercent((height / viewportHeight) * 100),
+        text: item.str
+      }
+    ];
+  });
+}
+
+function isPdfTextItem(item: unknown): item is { str: string; transform: number[]; width: number; height: number } {
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    "str" in item &&
+    typeof item.str === "string" &&
+    "transform" in item &&
+    Array.isArray(item.transform) &&
+    "width" in item &&
+    typeof item.width === "number" &&
+    "height" in item &&
+    typeof item.height === "number"
+  );
+}
+
+function pdfTextMatchesChunk(text: string, normalizedChunk: string): boolean {
+  const normalizedText = normalizeSearchText(text);
+  if (normalizedText.length < 4) {
+    return false;
+  }
+  if (normalizedChunk.includes(normalizedText) || normalizedText.includes(normalizedChunk)) {
+    return true;
+  }
+
+  const chunkTokens = new Set(normalizedChunk.split(" ").filter((token) => token.length >= 4));
+  const textTokens = normalizedText.split(" ").filter((token) => token.length >= 4);
+  if (textTokens.length === 0) {
+    return false;
+  }
+  const matches = textTokens.filter((token) => chunkTokens.has(token)).length;
+  return matches >= Math.min(2, textTokens.length);
+}
+
+function normalizeSearchText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function highlightToPercentStyle(highlight: PdfTextHighlight): CSSProperties {
+  return {
+    left: `${highlight.left}%`,
+    top: `${highlight.top}%`,
+    width: `${Math.max(highlight.width, 1)}%`,
+    height: `${Math.max(highlight.height, 1)}%`
+  };
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, value));
+}
+
+const markdownComponents: Components = {
+  a: ({ children, href, node: _node, ...props }) => {
+    const safeHref = safeMarkdownHref(href);
+    if (!safeHref) {
+      return <span>{children}</span>;
+    }
+    const isExternal = /^https?:\/\//i.test(safeHref);
+    return (
+      <a {...props} href={safeHref} rel={isExternal ? "noopener noreferrer" : undefined} target={isExternal ? "_blank" : undefined}>
+        {children}
+      </a>
+    );
+  },
+  h1: ({ children, node: _node, ...props }) => (
+    <h1 {...props} id={slugifyMarkdownHeading(textFromReactChildren(children))}>
+      {children}
+    </h1>
+  ),
+  h2: ({ children, node: _node, ...props }) => (
+    <h2 {...props} id={slugifyMarkdownHeading(textFromReactChildren(children))}>
+      {children}
+    </h2>
+  ),
+  h3: ({ children, node: _node, ...props }) => (
+    <h3 {...props} id={slugifyMarkdownHeading(textFromReactChildren(children))}>
+      {children}
+    </h3>
+  ),
+  h4: ({ children, node: _node, ...props }) => (
+    <h4 {...props} id={slugifyMarkdownHeading(textFromReactChildren(children))}>
+      {children}
+    </h4>
+  ),
+  h5: ({ children, node: _node, ...props }) => (
+    <h5 {...props} id={slugifyMarkdownHeading(textFromReactChildren(children))}>
+      {children}
+    </h5>
+  ),
+  h6: ({ children, node: _node, ...props }) => (
+    <h6 {...props} id={slugifyMarkdownHeading(textFromReactChildren(children))}>
+      {children}
+    </h6>
+  )
+};
+
+function markdownHeadings(text: string): MarkdownHeading[] {
+  const headings: MarkdownHeading[] = [];
+  const slugCounts = new Map<string, number>();
+  let inFence = false;
+
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      continue;
+    }
+    const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (!match) {
+      continue;
+    }
+
+    const level = match[1].length;
+    const headingText = match[2].replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`~]/g, "").trim();
+    const baseSlug = slugifyMarkdownHeading(headingText);
+    const count = slugCounts.get(baseSlug) ?? 0;
+    slugCounts.set(baseSlug, count + 1);
+    headings.push({
+      id: count === 0 ? baseSlug : `${baseSlug}-${count + 1}`,
+      level,
+      text: headingText
+    });
+  }
+
+  return headings.slice(0, 24);
+}
+
+function slugifyMarkdownHeading(value: string): string {
+  const slug = normalizeSearchText(value).replace(/\s+/g, "-");
+  return slug || "section";
+}
+
+function safeMarkdownHref(href: string | undefined): string | null {
+  if (!href) {
+    return null;
+  }
+  const trimmed = href.trim();
+  if (/^(https?:|mailto:)/i.test(trimmed) || trimmed.startsWith("#") || trimmed.startsWith("/")) {
+    return trimmed;
+  }
+  return null;
+}
+
+function textFromReactChildren(children: ReactNode): string {
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map(textFromReactChildren).join("");
+  }
+  return "";
+}
+
+function rehypeCitationHighlight(chunkText: string) {
+  const normalizedChunk = chunkText.trim();
+  return function citationHighlightPlugin() {
+    return function transform(tree: RehypeNode): void {
+      if (!normalizedChunk) {
+        return;
+      }
+      visitRehypeNode(tree, normalizedChunk);
+    };
+  };
+}
+
+function visitRehypeNode(node: RehypeNode, chunkText: string): void {
+  if (!node || !("children" in node) || !node.children) {
+    return;
+  }
+
+  node.children = node.children.flatMap((child) => {
+    if (isRehypeTextNode(child)) {
+      return highlightMarkdownTextNode(child, chunkText);
+    }
+    visitRehypeNode(child, chunkText);
+    return [child];
+  });
+}
+
+function isRehypeTextNode(node: RehypeNode): node is RehypeTextNode {
+  return node.type === "text" && "value" in node && typeof node.value === "string";
+}
+
+function highlightMarkdownTextNode(node: RehypeTextNode, chunkText: string): RehypeNode[] {
+  const exactIndex = node.value.toLowerCase().indexOf(chunkText.toLowerCase());
+  if (exactIndex !== -1) {
+    const before = node.value.slice(0, exactIndex);
+    const highlighted = node.value.slice(exactIndex, exactIndex + chunkText.length);
+    const after = node.value.slice(exactIndex + chunkText.length);
+    return [
+      ...(before ? [{ type: "text" as const, value: before }] : []),
+      markdownMarkNode(highlighted),
+      ...(after ? [{ type: "text" as const, value: after }] : [])
+    ];
+  }
+
+  if (markdownTextMatchesChunk(node.value, chunkText)) {
+    return [markdownMarkNode(node.value)];
+  }
+
+  return [node];
+}
+
+function markdownMarkNode(value: string): RehypeElementNode {
+  return {
+    type: "element",
+    tagName: "mark",
+    properties: { className: ["native-preview__markdown-citation"] },
+    children: [{ type: "text", value }]
+  };
+}
+
+function markdownTextMatchesChunk(text: string, chunkText: string): boolean {
+  const normalizedText = normalizeSearchText(text);
+  const normalizedChunk = normalizeSearchText(chunkText);
+  if (!normalizedText || !normalizedChunk) {
+    return false;
+  }
+  if (normalizedText.includes(normalizedChunk) || normalizedChunk.includes(normalizedText)) {
+    return true;
+  }
+
+  const chunkTokens = new Set(normalizedChunk.split(" ").filter((token) => token.length >= 4));
+  const textTokens = normalizedText.split(" ").filter((token) => token.length >= 4);
+  if (chunkTokens.size === 0 || textTokens.length === 0) {
+    return false;
+  }
+  const matches = textTokens.filter((token) => chunkTokens.has(token)).length;
+  return matches >= Math.min(4, Math.ceil(Math.min(chunkTokens.size, textTokens.length) * 0.6));
+}
+
+function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePreviewKind {
+  const mimeType = sourceOpen.file.mime_type.toLowerCase();
+  const filename = sourceOpen.file.filename.toLowerCase();
+  if (sourceOpen.viewer_mode === "pdf" || mimeType === "application/pdf" || filename.endsWith(".pdf")) {
+    return "pdf";
+  }
+  if (sourceOpen.viewer_mode === "image" || sourceOpen.viewer_mode === "ocr" || mimeType.startsWith("image/")) {
+    return "image";
+  }
+  if (filename.endsWith(".docx") || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return "docx";
+  }
+  if (filename.endsWith(".xlsx") || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    return "xlsx";
+  }
+  if (filename.endsWith(".pptx") || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
+    return "presentation";
+  }
+  if (mimeType === "text/csv" || filename.endsWith(".csv")) {
+    return "csv";
+  }
+  if (sourceOpen.viewer_mode === "markdown" || mimeType === "text/markdown" || filename.endsWith(".md") || filename.endsWith(".markdown")) {
+    return "markdown";
+  }
+  if (
+    mimeType.startsWith("text/") ||
+    mimeType === "application/json" ||
+    filename.endsWith(".txt")
+  ) {
+    return "text";
+  }
+  return "unsupported";
+}
+
+function sourcePreviewNeedsFetch(kind: NativePreviewKind): boolean {
+  return kind === "text" || kind === "markdown" || kind === "csv";
+}
+
+function sourcePreviewNeedsStructuredFetch(kind: NativePreviewKind): boolean {
+  return kind === "docx" || kind === "xlsx" || kind === "presentation";
+}
+
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const nextCharacter = text[index + 1];
+
+    if (character === '"' && inQuotes && nextCharacter === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+    if (character === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (character === "," && !inQuotes) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if ((character === "\n" || character === "\r") && !inQuotes) {
+      if (character === "\r" && nextCharacter === "\n") {
+        index += 1;
+      }
+      row.push(cell);
+      if (row.some((value) => value.trim())) {
+        rows.push(row);
+      }
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += character;
+  }
+
+  row.push(cell);
+  if (row.some((value) => value.trim())) {
+    rows.push(row);
+  }
+  return rows;
 }
 
 function governanceMetrics(result: GovernanceServiceResponse): string[] {
@@ -1973,11 +3345,17 @@ function viewerModeFor(uri: string): string {
   if (value.endsWith(".pdf")) {
     return "pdf";
   }
+  if (value.match(/\.(png|jpe?g|gif|webp|svg)$/)) {
+    return "image";
+  }
   if (value.endsWith(".md") || value.endsWith(".markdown")) {
     return "markdown";
   }
   if (value.endsWith(".docx") || value.endsWith(".doc") || value.endsWith(".odt")) {
     return "text";
+  }
+  if (value.endsWith(".pptx")) {
+    return "presentation";
   }
   if (value.endsWith(".xlsx") || value.endsWith(".csv")) {
     return "table";

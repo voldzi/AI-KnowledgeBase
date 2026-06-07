@@ -9,6 +9,7 @@ import {
   createSourceOpenDecision,
   readSourceObject,
   SourceDownloadError,
+  sourceContentTypeHeader,
   verifySourceDownloadToken,
   type SourceDownloadSettings
 } from "../src/lib/upload/source-download";
@@ -63,6 +64,43 @@ describe("source download", () => {
     assert.equal(decision.download_url, null);
     assert.equal(decision.unavailable_reason, "SOURCE_OBJECT_NOT_FOUND");
     assert.equal(decision.file.sha256, null);
+  });
+
+  it("detects image source MIME types for native previews", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akl-source-image-"));
+    const settings = testSettings(root);
+    const content = new TextEncoder().encode("<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+    const sha256 = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+    const objectKey = "doc_123/ver_456/scan.svg";
+    const targetPath = path.join(root, "akl-documents", ...objectKey.split("/"));
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, content);
+
+    const decision = await createSourceOpenDecision(
+      {
+        document_id: "doc_123",
+        document_version_id: "ver_456",
+        source_file_uri: `s3://akl-documents/${objectKey}`,
+        file_hash: sha256,
+        viewer_mode: "image"
+      },
+      settings
+    );
+
+    assert.equal(decision.available, true);
+    assert.equal(decision.file.filename, "scan.svg");
+    assert.equal(decision.file.mime_type, "image/svg+xml");
+  });
+
+  it("adds UTF-8 charset only for directly opened text-like source types", () => {
+    assert.equal(sourceContentTypeHeader("text/markdown"), "text/markdown; charset=utf-8");
+    assert.equal(sourceContentTypeHeader("text/csv"), "text/csv; charset=utf-8");
+    assert.equal(sourceContentTypeHeader("image/svg+xml"), "image/svg+xml; charset=utf-8");
+    assert.equal(sourceContentTypeHeader("application/pdf"), "application/pdf");
+    assert.equal(
+      sourceContentTypeHeader("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
   });
 
   it("rejects tampered source download tokens", async () => {

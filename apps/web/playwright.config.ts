@@ -25,6 +25,7 @@ export default defineConfig({
       AKL_API_CLIENT_MODE: "mock",
       AKL_AUTH_MODE: "mock",
       AKL_ENV: "test",
+      AKL_WEB_OBJECT_STORAGE_ROOT: "../../object-storage",
       NEXT_TELEMETRY_DISABLED: "1"
     },
     reuseExistingServer: !process.env.CI,

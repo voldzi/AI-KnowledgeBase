@@ -62,6 +62,12 @@ python3 scripts/phase_02_llm_gateway_smoke.py
 python3 scripts/phase_02_controlled_document_smoke.py
 ```
 
+Registry API schema changes should also be verified against PostgreSQL, which is the production database runtime:
+
+```bash
+python3 scripts/registry_postgres_smoke.py
+```
+
 Import AKL project documentation as the first local knowledge base:
 
 ```bash
