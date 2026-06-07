@@ -16,6 +16,7 @@ import {
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosButtonLink, StratosSearchBox, StratosSelect } from "@/components/stratos";
+import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   ApplyWorkflowTaskActionRequest,
@@ -441,7 +442,7 @@ function TaskDetail({
     }
 
     try {
-      const response = await fetch(`/api/workflow/tasks/${encodeURIComponent(task.registry_task_id)}/actions`, {
+      const response = await fetch(withAppBasePath(`/api/workflow/tasks/${encodeURIComponent(task.registry_task_id)}/actions`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

@@ -31,6 +31,12 @@
 		respond "AKL Platform reverse proxy" 200
 	}
 
+	handle /akb /akb/* {
+		reverse_proxy {$WEB_UPSTREAM:web:3000} {
+			import correlation_headers
+		}
+	}
+
 	handle /health {
 		reverse_proxy {$PLATFORM_STATUS_UPSTREAM:platform-status:8080} {
 			import correlation_headers

@@ -5,6 +5,7 @@ import { CheckCircle2, FileUp, Fingerprint, Play, ShieldCheck, UploadCloud } fro
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosSelect } from "@/components/stratos";
+import { withAppBasePath } from "@/lib/app-url";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
@@ -151,7 +152,7 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
       setUploadPhase("preflight");
       setError(null);
 
-      const response = await fetch("/api/controlled-document/upload/preflight", {
+      const response = await fetch(withAppBasePath("/api/controlled-document/upload/preflight"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -243,7 +244,7 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
               file_size: uploaded.file.size_bytes,
               file_type: uploaded.file.mime_type
             };
-            const workflowResponse = await fetch("/api/controlled-document/ingestion", {
+            const workflowResponse = await fetch(withAppBasePath("/api/controlled-document/ingestion"), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload)

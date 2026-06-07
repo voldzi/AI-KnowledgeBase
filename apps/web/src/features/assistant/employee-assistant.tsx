@@ -7,6 +7,7 @@ import { BookOpen, CheckCircle2, HelpCircle, LifeBuoy, Send, ShieldAlert } from 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosSelect } from "@/components/stratos";
 import { CitationList, SourceContextCard } from "@/features/citations/citation-viewer";
+import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AssistantChatResponse,
@@ -129,7 +130,7 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
     setQuestion(assistantCopy[language].defaultQuestion);
     setResponse(null);
     setSourceContext(null);
-    fetch(`/api/assistant/suggestions?language=${language}`, { headers: { Accept: "application/json" } })
+    fetch(withAppBasePath(`/api/assistant/suggestions?language=${language}`), { headers: { Accept: "application/json" } })
       .then(async (httpResponse) => {
         if (!httpResponse.ok) {
           return;
@@ -159,7 +160,7 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
     setStatusMessage(null);
     setSourceContext(null);
     try {
-      const httpResponse = await fetch(endpoint, {
+      const httpResponse = await fetch(withAppBasePath(endpoint), {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
@@ -202,7 +203,7 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
     setOpeningSourceId(citation.chunk_id);
     setStatusMessage(null);
     try {
-      const httpResponse = await fetch(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/open`, {
+      const httpResponse = await fetch(withAppBasePath(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/open`), {
         method: "GET",
         headers: { Accept: "application/json" }
       });

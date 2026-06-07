@@ -6,6 +6,7 @@ import { Bot, Send, ShieldAlert } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton } from "@/components/stratos";
 import { CitationList, SourceContextCard } from "@/features/citations/citation-viewer";
+import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { Citation, RagAnswer, SourceContext } from "@/lib/types";
 
@@ -108,7 +109,7 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
   function openCitation(citation: Citation) {
     setOpeningChunkId(citation.chunk_id);
     setSourceError(null);
-    fetch(`/api/controlled-document/citations/${encodeURIComponent(citation.chunk_id)}/open`, {
+    fetch(withAppBasePath(`/api/controlled-document/citations/${encodeURIComponent(citation.chunk_id)}/open`), {
       method: "GET",
       headers: { Accept: "application/json" }
     })
@@ -143,7 +144,7 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
               event.preventDefault();
               setSubmitting(true);
               setError(null);
-              fetch("/api/controlled-document/query", {
+              fetch(withAppBasePath("/api/controlled-document/query"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
