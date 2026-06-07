@@ -132,7 +132,7 @@ def verify_external_document_api(database_url: str) -> None:
 
     payload = {
         "tenant_id": "default",
-        "source_system": "STRATOS_BUDGET",
+        "external_system": "STRATOS_BUDGET",
         "external_ref": "contract:postgres-smoke:main",
         "entity_type": "Contract",
         "entity_id": "contract-postgres-smoke",

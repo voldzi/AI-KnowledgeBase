@@ -7,19 +7,21 @@ test.describe("Document Workbench product paths", () => {
     await page.goto("/documents");
 
     await expect(page).toHaveTitle(/AKL Platform/);
-    await expect(page.getByText("Mock API režim")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Registr dokumentů" }).first()).toBeVisible();
     await expect(page.getByText("Smernice pro spravu rizene dokumentace")).toBeVisible();
 
     await page.getByPlaceholder("Název, ID, gestor, vlastník nebo štítek").fill("bezpecnostnich");
-    await expect(page.locator("tbody tr")).toHaveCount(1);
+    await expect(page.getByText("Zobrazeno 1 z 9")).toBeVisible();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel")).toBeVisible();
 
-    await page.getByLabel("Klasifikace").selectOption("restricted");
+    await page.locator("#document-registry-classification").click();
+    await page.getByRole("option", { name: /restricted/ }).click();
+    await page.getByRole("button", { name: "Zavřít filtr" }).click();
     await expect(page.getByText("Zobrazeno 1 z 9")).toBeVisible();
 
     await page.getByRole("button", { name: "Vyčistit" }).click();
-    await expect(page.locator("tbody tr")).toHaveCount(9);
+    await expect(page.getByText("Zobrazeno 9 z 9")).toBeVisible();
+    await expect(page.locator("#document-registry-classification")).toHaveText("Vše");
   });
 
   test("DW-06, DW-07, DW-09, DW-12, DW-13 and DW-19 detail shows viewer, workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
@@ -28,7 +30,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("heading", { name: "Detail dokumentu" })).toBeVisible();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Viewer" }).click();
+    await page.getByRole("button", { name: "Viewer", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Source-context" })).toBeVisible();
     await expect(page.getByText("Dostupné source-context signály")).toBeVisible();
     await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
@@ -41,7 +43,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByLabel("Lokace citace").getByText("Sekce: Cl. 4 / Odst. 2")).toBeVisible();
     await expect(page.getByText("Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.")).toBeVisible();
 
-    await page.getByRole("button", { name: "Workflow" }).click();
+    await page.getByRole("button", { name: "Workflow", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Publish gate" })).toBeVisible();
     await expect(page.getByText("Publikační akce nejsou pro tuto relaci povolené.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Publikovat schválenou verzi" })).toBeDisabled();
@@ -54,9 +56,9 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Spustit Kontrola compliance" }).click();
     await expect(page.getByRole("heading", { name: "Výsledek governance kontroly" })).toBeVisible();
     await expect(page.getByText("governance_compliance_mock")).toBeVisible();
-    await expect(page.getByText("WEB_BRIDGE_METADATA_CONTENT_ONLY")).toHaveCount(2);
+    await expect(page.getByText("WEB_BRIDGE_METADATA_CONTENT_ONLY")).toBeVisible();
 
-    await page.getByRole("button", { name: "Audit" }).click();
+    await page.getByRole("button", { name: "Audit", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Auditní stopa dokumentu" })).toBeVisible();
     await expect(page.getByText("document.assignments.updated")).toBeVisible();
     await expect(page.getByText("workflow.task.approve")).toBeVisible();
@@ -67,7 +69,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-07 native preview opens an available signed image source with OCR bbox", async ({ page }) => {
     await page.goto("/documents/doc_103");
 
-    await page.getByRole("button", { name: "Viewer" }).click();
+    await page.getByRole("button", { name: "Viewer", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Nativní preview" })).toBeVisible();
     await expect(page.getByText("Nejprve připravte podepsaný zdroj v panelu Zdroj.")).toBeVisible();
 
@@ -86,7 +88,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-07 native preview renders Markdown as a structured document", async ({ page }) => {
     await page.goto("/documents/doc_109");
 
-    await page.getByRole("button", { name: "Viewer" }).click();
+    await page.getByRole("button", { name: "Viewer", exact: true }).click();
     await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
     await expect(page.getByText("Podepsaný zdroj je připravený.")).toBeVisible();
     await expect(page.locator(".native-preview__markdown h1")).toHaveText("Markdown preview fixture");
@@ -102,7 +104,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-12A insight proposals are generated from source text", async ({ page }) => {
     await page.goto("/documents/doc_109");
 
-    await page.getByRole("button", { name: "Insighty" }).click();
+    await page.getByRole("button", { name: "Insighty", exact: true }).click();
     await expect(page.getByText("Autoritativní uložení a schvalování v Registry bude další krok.")).toBeVisible();
     await page.getByRole("button", { name: "Navrhnout insighty" }).click();
 
@@ -130,7 +132,7 @@ test.describe("Document Workbench product paths", () => {
 
     for (const previewCase of cases) {
       await page.goto(`/documents/${previewCase.documentId}`);
-      await page.getByRole("button", { name: "Viewer" }).click();
+      await page.getByRole("button", { name: "Viewer", exact: true }).click();
       await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
       await expect(page.getByText("Podepsaný zdroj je připravený.")).toBeVisible();
       for (const expectedText of previewCase.expected) {
@@ -142,7 +144,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-07 PDF preview renders citation page with bbox metadata", async ({ page }) => {
     await page.goto("/documents/doc_108");
 
-    await page.getByRole("button", { name: "Viewer" }).click();
+    await page.getByRole("button", { name: "Viewer", exact: true }).click();
     await page.getByRole("button", { name: "Připravit podepsaný zdroj" }).click();
     await expect(page.getByText("Podepsaný zdroj je připravený.")).toBeVisible();
     await page.getByRole("button", { name: "Otevřít source-context chunk_pdf_108" }).click();
@@ -181,7 +183,7 @@ test.describe("Document Workbench product paths", () => {
     );
 
     await page.goto("/documents/doc_102?tab=viewer&chunk_id=chunk_789");
-    await expect(page.getByRole("button", { name: "Viewer" })).toHaveClass(/tab-button--active/);
+    await expect(page.getByRole("button", { name: "Viewer", exact: true })).toHaveClass(/stratos-view-tabs__button--active/);
     await expect(page.getByText("Chunk chunk_789")).toBeVisible();
   });
 
