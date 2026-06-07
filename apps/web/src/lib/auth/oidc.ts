@@ -68,7 +68,9 @@ export async function exchangeAuthorizationCode(config: AklConfig, code: string)
     body
   });
   if (!response.ok) {
-    throw new Error(`OIDC token exchange failed with ${response.status}`);
+    const detail = await response.text().catch(() => "");
+    const summary = detail ? `: ${detail.slice(0, 300)}` : "";
+    throw new Error(`OIDC token exchange failed with ${response.status}${summary}`);
   }
   return (await response.json()) as OidcCallbackTokens;
 }
