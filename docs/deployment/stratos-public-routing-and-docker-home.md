@@ -64,9 +64,28 @@ Pro aplikace bez nativni podpory path base je nutne pred nasazenim doplnit podpo
 
 ### Nginx Příkaz Pro dmz.home.cz
 
-HTTP bootstrap bez TLS:
+STRATOS verejny nginx se nesmi dlouhodobe spravovat jako jeden sdileny soubor, do ktereho soucasne zasahuji vsechny aplikace. Stabilni model je:
+
+```text
+/etc/nginx/sites-available/stratos.zeleznalady.cz     # pouze server/TLS kostra
+/etc/nginx/stratos-locations.d/10-akb.conf            # vlastni AKB tym
+/etc/nginx/stratos-locations.d/20-projectflow.conf    # vlastni ProjectFlow tym
+/etc/nginx/stratos-locations.d/30-archflow.conf       # vlastni ArchFlow tym
+/etc/nginx/stratos-locations.d/90-budget-contract.conf # vlastni Budget & Contract tym, root fallback
+```
+
+Pravidla vlastnictvi:
+
+- aplikace smi menit pouze vlastni soubor v `stratos-locations.d`,
+- nikdo mimo provozni spravu nemeni hlavni `sites-available/stratos.zeleznalady.cz`,
+- po kazde zmene se spousti `sudo nginx -t && sudo systemctl reload nginx`,
+- root fallback `location /` musi zustat posledni, proto ma prefix `90-`.
+
+HTTP bootstrap bez TLS pro prvni vydani certifikatu:
 
 ```bash
+sudo mkdir -p /etc/nginx/stratos-locations.d
+
 sudo tee /etc/nginx/sites-available/stratos.zeleznalady.cz >/dev/null <<'EOF'
 server {
     listen 80;
@@ -74,80 +93,12 @@ server {
 
     server_name stratos.zeleznalady.cz;
 
-    client_max_body_size 350m;
-    send_timeout 120s;
-    proxy_read_timeout 300s;
-    proxy_connect_timeout 300s;
-    proxy_send_timeout 300s;
-
     location /.well-known/acme-challenge/ {
         root /var/www/html;
     }
 
-    location = /akb {
-        proxy_pass http://docker.home.cz:3220;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Prefix /akb;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto http;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
-    location /akb/ {
-        proxy_pass http://docker.home.cz:3220;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto http;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
-    location /project/ {
-        proxy_pass http://docker.home.cz:3231/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto http;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
-    location /arch/ {
-        proxy_pass http://docker.home.cz:3232/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto http;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
     location / {
-        proxy_pass http://docker.home.cz:3230/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto http;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
+        return 301 https://$host$request_uri;
     }
 }
 EOF
@@ -163,9 +114,135 @@ Let's Encrypt:
 sudo certbot certonly --webroot -w /var/www/html -d stratos.zeleznalady.cz
 ```
 
-Final HTTPS konfigurace:
+AKB location soubor vlastneny AKB:
 
 ```bash
+sudo tee /etc/nginx/stratos-locations.d/10-akb.conf >/dev/null <<'EOF'
+location = /akb {
+    proxy_pass http://docker.home.cz:3220;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /akb;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+
+location /akb/ {
+    proxy_pass http://docker.home.cz:3220;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /akb;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+ProjectFlow location soubor vlastneny ProjectFlow:
+
+```bash
+sudo tee /etc/nginx/stratos-locations.d/20-projectflow.conf >/dev/null <<'EOF'
+location = /project {
+    return 308 /project/;
+}
+
+location /project/ {
+    proxy_pass http://docker.home.cz:3231;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /project;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+ArchFlow location soubor vlastneny ArchFlow:
+
+```bash
+sudo tee /etc/nginx/stratos-locations.d/30-archflow.conf >/dev/null <<'EOF'
+location = /arch {
+    return 308 /arch/;
+}
+
+location /arch/ {
+    proxy_pass http://docker.home.cz:3232;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /arch;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Budget & Contract root fallback soubor vlastneny Budget & Contract:
+
+```bash
+sudo tee /etc/nginx/stratos-locations.d/90-budget-contract.conf >/dev/null <<'EOF'
+location / {
+    proxy_pass http://docker.home.cz:3230/;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Jednorazovy prikaz pro migraci ze stareho monolitickeho souboru na include model:
+
+```bash
+sudo mkdir -p /etc/nginx/stratos-locations.d
+
 sudo tee /etc/nginx/sites-available/stratos.zeleznalady.cz >/dev/null <<'EOF'
 server {
     listen 80;
@@ -200,76 +277,91 @@ server {
     proxy_connect_timeout 300s;
     proxy_send_timeout 300s;
 
-    location = /akb {
-        proxy_pass http://docker.home.cz:3220;
-        proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Prefix /akb;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
-    location /akb/ {
-        proxy_pass http://docker.home.cz:3220;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
-    location /project/ {
-        proxy_pass http://docker.home.cz:3231/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
-    location /arch/ {
-        proxy_pass http://docker.home.cz:3232/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-
-    location / {
-        proxy_pass http://docker.home.cz:3230/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
+    include /etc/nginx/stratos-locations.d/*.conf;
 }
 EOF
 
+sudo tee /etc/nginx/stratos-locations.d/10-akb.conf >/dev/null <<'EOF'
+location = /akb {
+    proxy_pass http://docker.home.cz:3220;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /akb;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+
+location /akb/ {
+    proxy_pass http://docker.home.cz:3220;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /akb;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo tee /etc/nginx/stratos-locations.d/20-projectflow.conf >/dev/null <<'EOF'
+location = /project { return 308 /project/; }
+location /project/ {
+    proxy_pass http://docker.home.cz:3231;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /project;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo tee /etc/nginx/stratos-locations.d/30-archflow.conf >/dev/null <<'EOF'
+location = /arch { return 308 /arch/; }
+location /arch/ {
+    proxy_pass http://docker.home.cz:3232;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /arch;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo tee /etc/nginx/stratos-locations.d/90-budget-contract.conf >/dev/null <<'EOF'
+location / {
+    proxy_pass http://docker.home.cz:3230/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_request_buffering off;
+    proxy_buffering off;
+}
+EOF
+
+sudo ln -sf /etc/nginx/sites-available/stratos.zeleznalady.cz /etc/nginx/sites-enabled/stratos.zeleznalady.cz
 sudo nginx -t
 sudo systemctl reload nginx
 ```
