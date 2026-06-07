@@ -45,10 +45,10 @@ DMZ nginx se nastavuje samostatne. Aplikace nemaji predpokladat, ze samy vlastni
 Minimalni routovani:
 
 ```text
-/          -> Budget & Contract upstream
-/akb/      -> AKB upstream, aktualne docker.home.cz:3220
-/project/  -> ProjectFlow upstream
-/arch/     -> ArchFlow upstream
+/          -> Budget & Contract upstream, docker.home.cz:3230
+/akb/      -> AKB upstream, docker.home.cz:3220
+/project/  -> ProjectFlow upstream, docker.home.cz:3231
+/arch/     -> ArchFlow upstream, docker.home.cz:3232
 ```
 
 Proxy musi predavat standardni forwarded headers:
@@ -61,6 +61,188 @@ X-Real-IP
 ```
 
 Pro aplikace bez nativni podpory path base je nutne pred nasazenim doplnit podporu `basePath` nebo equivalentni konfiguraci asset prefixu. Browser assety, callbacky a API cesty nesmi odkazovat na root `/`, pokud aplikace bezi pod `/akb`, `/project` nebo `/arch`.
+
+### Nginx Příkaz Pro dmz.home.cz
+
+HTTP bootstrap bez TLS:
+
+```bash
+sudo tee /etc/nginx/sites-available/stratos.zeleznalady.cz >/dev/null <<'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name stratos.zeleznalady.cz;
+
+    client_max_body_size 350m;
+    send_timeout 120s;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location /akb/ {
+        proxy_pass http://docker.home.cz:3220/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
+    location /project/ {
+        proxy_pass http://docker.home.cz:3231/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
+    location /arch/ {
+        proxy_pass http://docker.home.cz:3232/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
+    location / {
+        proxy_pass http://docker.home.cz:3230/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+}
+EOF
+
+sudo ln -sf /etc/nginx/sites-available/stratos.zeleznalady.cz /etc/nginx/sites-enabled/stratos.zeleznalady.cz
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Let's Encrypt:
+
+```bash
+sudo certbot certonly --webroot -w /var/www/html -d stratos.zeleznalady.cz
+```
+
+Final HTTPS konfigurace:
+
+```bash
+sudo tee /etc/nginx/sites-available/stratos.zeleznalady.cz >/dev/null <<'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name stratos.zeleznalady.cz;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+
+    server_name stratos.zeleznalady.cz;
+
+    ssl_certificate     /etc/letsencrypt/live/stratos.zeleznalady.cz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/stratos.zeleznalady.cz/privkey.pem;
+
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 350m;
+    send_timeout 120s;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+
+    location /akb/ {
+        proxy_pass http://docker.home.cz:3220/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
+    location /project/ {
+        proxy_pass http://docker.home.cz:3231/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
+    location /arch/ {
+        proxy_pass http://docker.home.cz:3232/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
+    location / {
+        proxy_pass http://docker.home.cz:3230/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
 
 ## Keycloak STRATOS Realm
 
@@ -211,6 +393,27 @@ Aktualni pilot:
 - PostgreSQL: `haproxy.home.cz:5000`,
 - Ollama pilot: `http://192.168.200.2:11434` pres VPN notebook,
 - object storage bridge: `/srv/seaweedfs/akl`.
+
+## Povinné Porty Na docker.home.cz
+
+Porty byly overene jako volne na `docker.home.cz` a jsou rezervovane pro STRATOS public routing. Aplikace je musi pouzit pro sve verejne/pilotni reverse-proxy vstupy:
+
+```text
+3220  AKB / AI KnowledgeBase
+3230  Budget & Contract
+3231  ProjectFlow
+3232  ArchFlow
+```
+
+Obsazene porty v okoli pri kontrole:
+
+```text
+3218  stratos-web
+3219  stratos-project-control
+3220  AKB
+```
+
+Ostatni STRATOS aplikace nesmi bez dohody pouzit `3218`, `3219`, `3220`, `3230`, `3231` ani `3232`.
 
 Health kontroly z `docker.home.cz`:
 
