@@ -1,6 +1,16 @@
 # AKL Keycloak
 
-`realm-akl.json` defines the AKL realm, baseline roles, public web client, and service account clients.
+`realm-akl.json` defines the standalone local AKL realm, baseline roles, public web client, and service account clients.
+
+`realm-stratos.json` defines the production STRATOS realm shape used when AKL runs as one STRATOS application. It includes:
+
+- public `akl-web` OIDC client,
+- confidential `akl-api` service client,
+- confidential `stratos-akl-adapter` service client,
+- AKL realm roles prefixed with `akl_`,
+- `loginTheme=stratos`.
+
+The STRATOS login theme lives in `themes/stratos` and follows the same Keycloak theme structure as the COP reference application.
 
 No client secrets are stored in this repository. For real deployments, generate confidential client secrets in Keycloak or inject them through a secret manager and service-specific environment variables.
 
@@ -38,3 +48,17 @@ RAG Retrieval, Ingestion, and LLM Gateway support `AKL_AUTH_MODE=oidc` as a bear
 - The browser OIDC login flow is not implemented yet.
 - RAG Retrieval, Ingestion, and LLM Gateway do not locally validate JWT signatures; they require and forward bearer tokens.
 - Service account secrets are intentionally absent from this repository and must be injected by local shell, compose env file, or a secret manager.
+
+## STRATOS production profile
+
+On `docker.home.cz`, Keycloak is a shared STRATOS service. AKL does not start its own Keycloak container. Import `realm-stratos.json` into the shared Keycloak instance and mount the theme directory into the Keycloak container:
+
+```text
+/srv/akl/repo/infra/keycloak/themes/stratos:/opt/keycloak/themes/stratos:ro
+```
+
+The AKL production issuer is expected to be:
+
+```text
+https://login.zeleznalady.cz/realms/stratos
+```

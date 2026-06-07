@@ -241,7 +241,6 @@ Veřejně vystavit jen web a případné bezpečně chráněné API endpointy pr
 cd /srv/akl/repo
 DOCKER_BUILDKIT=1 docker compose \
   --env-file /srv/akl/env/akl.prod.env \
-  -f infra/docker-compose/docker-compose.dev.yml \
   -f infra/docker-compose/docker-compose.docker-home.yml \
   build --secret id=npmrc,src=/srv/akl/secrets/npmrc
 ```
@@ -252,7 +251,6 @@ DOCKER_BUILDKIT=1 docker compose \
 ```bash
 docker compose \
   --env-file /srv/akl/env/akl.prod.env \
-  -f infra/docker-compose/docker-compose.dev.yml \
   -f infra/docker-compose/docker-compose.docker-home.yml \
   up -d
 ```
@@ -294,9 +292,9 @@ Obnova se provádí z prázdného checkoutu `main`, obnovy DB/object storage/Qdr
 
 ## 10. Blokery Před Produkčním Go-Live
 
-- Vytvořit `infra/keycloak/themes/stratos` a `realm-stratos.json`.
+- Importovat připravený `infra/keycloak/realm-stratos.json` a namountovat `infra/keycloak/themes/stratos`.
 - Rozhodnout, zda SeaweedFS bude připojený přes S3 gateway nebo filesystem mount. Pro dlouhodobý provoz preferovat S3 adapter.
-- Doplnit produkční compose override pro `docker.home.cz`.
+- Nasadit přes připravený standalone compose profil `infra/docker-compose/docker-compose.docker-home.yml`.
 - Ověřit dostupnost `@stratos/ui` z GitHub Packages pomocí read-only tokenu.
 - Doplnit OIDC produkční konfiguraci do webu a služeb.
 - Připravit monitoring a log retention pro `/srv/akl/data/logs`.
