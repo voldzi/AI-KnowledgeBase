@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildPublicAppUrl,
   contextFromOidcSession,
   openSession,
   sealSession,
@@ -39,6 +40,30 @@ describe("OIDC web session", () => {
     assert.deepEqual(opened?.groups, []);
     assert.equal(openSession(sealed, "wrong-secret", 2_000), null);
     assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1), null);
+  });
+
+  it("builds post-login redirects from the configured public base URL", () => {
+    const config = {
+      environment: "production",
+      apiClientMode: "production",
+      authMode: "oidc",
+      serviceBaseUrls: {
+        registry: "http://registry/api/v1",
+        ingestion: "http://ingestion/api/v1",
+        rag: "http://rag/api/v1",
+        governance: "http://governance/api/v1"
+      },
+      oidc: {
+        issuer: "https://login.example/realms/stratos",
+        clientId: "akl-web",
+        redirectUri: "https://stratos.example/akb/api/auth/callback",
+        scopes: "openid profile email",
+        sessionSecret: "test-secret"
+      }
+    } as const;
+
+    assert.equal(buildPublicAppUrl(config, "/"), "https://stratos.example/akb/");
+    assert.equal(buildPublicAppUrl(config, "/assistant"), "https://stratos.example/akb/assistant");
   });
 });
 

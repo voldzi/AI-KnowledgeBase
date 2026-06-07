@@ -43,6 +43,13 @@ export function buildLogoutUrl(config: AklConfig): string {
   return url.toString();
 }
 
+export function buildPublicAppUrl(config: AklConfig, path: string): string {
+  const oidc = requireOidcConfig(config);
+  const publicBaseUrl = oidc.redirectUri.replace(/\/api\/auth\/callback$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${publicBaseUrl}${normalizedPath === "/" ? "/" : normalizedPath}`;
+}
+
 export async function exchangeAuthorizationCode(config: AklConfig, code: string): Promise<OidcCallbackTokens> {
   const oidc = requireOidcConfig(config);
   const body = new URLSearchParams({
