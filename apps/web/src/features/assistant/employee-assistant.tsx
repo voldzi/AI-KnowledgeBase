@@ -24,7 +24,7 @@ interface EmployeeAssistantProps {
 const assistantCopy = {
   cs: {
     defaultQuestion: "Jaká je architektura AKL platformy?",
-    title: "ČSÚ znalostní asistent",
+    title: "Znalostní asistent STRATOS",
     subtitle: "Odpovídá z platných dokumentů a u odpovědi ukazuje použité zdroje.",
     ready: "Připraven",
     questionPanel: "Dotaz",
@@ -67,7 +67,7 @@ const assistantCopy = {
   },
   en: {
     defaultQuestion: "What is the architecture of the AKL platform?",
-    title: "CSO knowledge assistant",
+    title: "STRATOS knowledge assistant",
     subtitle: "Answers from valid documents and shows the sources used for each answer.",
     ready: "Ready",
     questionPanel: "Question",
