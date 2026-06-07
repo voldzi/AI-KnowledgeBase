@@ -27,6 +27,7 @@ printf 'Env:  %s\n' "$ENV_FILE"
 
 require_cmd docker
 require_cmd curl
+require_cmd python3
 require_file "$ENV_FILE" "Production env file"
 require_file "$NPMRC_FILE" "GitHub Packages npmrc secret"
 
@@ -34,10 +35,23 @@ if grep -E 'replace-with|<user>|<password>|long-random|prod-password' "$ENV_FILE
   fail "Production env file still contains placeholder values."
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+eval "$(
+  ENV_FILE="$ENV_FILE" python3 - <<'PY'
+import os
+import shlex
+from pathlib import Path
+
+for raw_line in Path(os.environ["ENV_FILE"]).read_text().splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    key = key.strip()
+    if not key.replace("_", "").isalnum() or key[0].isdigit():
+        continue
+    print(f"export {key}={shlex.quote(value.strip().strip(chr(34)).strip(chr(39)))}")
+PY
+)"
 
 : "${AKL_REGISTRY_DATABASE_URL:?AKL_REGISTRY_DATABASE_URL must be set}"
 : "${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}"
@@ -51,7 +65,7 @@ printf 'Checking docker compose render...\n'
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >/tmp/akl-docker-home-preflight.yml
 
 printf 'Checking PostgreSQL HAProxy TCP endpoint...\n'
-python - <<'PY'
+python3 - <<'PY'
 import socket
 host = "haproxy.home.cz"
 port = 5000
