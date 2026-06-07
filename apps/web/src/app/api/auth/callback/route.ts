@@ -6,6 +6,7 @@ import {
   exchangeAuthorizationCode,
   OIDC_SESSION_COOKIE,
   OIDC_STATE_COOKIE,
+  buildPublicAppUrl,
   parseState,
   requireOidcConfig,
   sealSession,
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
   const tokens = await exchangeAuthorizationCode(config, code);
   const session = sessionFromTokens(tokens);
   const { returnTo } = parseState(state);
-  const response = NextResponse.redirect(new URL(returnTo, request.nextUrl.origin));
+  const response = NextResponse.redirect(buildPublicAppUrl(config, returnTo));
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.set(OIDC_SESSION_COOKIE, sealSession(session, oidc.sessionSecret), cookieOptions(config));
   return response;
