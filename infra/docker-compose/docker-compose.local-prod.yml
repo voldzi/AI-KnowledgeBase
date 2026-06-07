@@ -36,7 +36,7 @@ services:
 
   web:
     environment:
-      AKL_WEB_API_CLIENT_MODE: ${AKL_WEB_API_CLIENT_MODE:-production}
-      AKL_WEB_AUTH_MODE: ${AKL_WEB_AUTH_MODE:-mock}
+      AKL_API_CLIENT_MODE: ${AKL_API_CLIENT_MODE:-production}
+      AKL_AUTH_MODE: ${AKL_AUTH_MODE:-mock}
       AKL_WEB_DEV_SUBJECT: ${AKL_WEB_DEV_SUBJECT:-user_dev}
       AKL_WEB_DEV_ROLES: ${AKL_WEB_DEV_ROLES:-admin,document_manager,reader}
