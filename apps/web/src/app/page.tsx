@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-
 import { PageHeader } from "@/components/page-header";
 import { DashboardOverview } from "@/features/dashboard/dashboard-overview";
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
@@ -10,9 +8,6 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContext();
-  if (_shouldUseEmployeeAssistant(context.roles ?? [])) {
-    redirect("/assistant");
-  }
   const [documents, jobs, auditEvents, registryTasks, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
     clients.ingestion.listJobs(context),
@@ -40,19 +35,6 @@ export default async function DashboardPage() {
       />
     </>
   );
-}
-
-function _shouldUseEmployeeAssistant(roles: string[]) {
-  const normalized = new Set(roles.map((role) => role.trim().toLowerCase()).filter(Boolean));
-  const adminRoles = new Set([
-    "admin",
-    "global_admin",
-    "knowledge_admin",
-    "document_manager",
-    "it_manager",
-    "auditor"
-  ]);
-  return normalized.size > 0 && [...normalized].every((role) => !adminRoles.has(role));
 }
 
 async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {
