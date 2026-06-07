@@ -64,6 +64,54 @@ PY
 printf 'Checking docker compose render...\n'
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >/tmp/akl-docker-home-preflight.yml
 
+printf 'Checking AKL Docker bridge subnet reservations...\n'
+python3 - <<'PY'
+import ipaddress
+import re
+import subprocess
+from pathlib import Path
+
+rendered = Path("/tmp/akl-docker-home-preflight.yml").read_text()
+reserved_site_networks = [
+    ipaddress.ip_network("192.168.1.0/24"),
+    ipaddress.ip_network("192.168.10.0/24"),
+    ipaddress.ip_network("192.168.100.0/24"),
+]
+current_network_name = ""
+
+docker_networks = subprocess.check_output(
+    [
+        "docker",
+        "network",
+        "inspect",
+        *subprocess.check_output(["docker", "network", "ls", "-q"], text=True).splitlines(),
+    ],
+    text=True,
+)
+for line in docker_networks.splitlines():
+    name_match = re.search(r'"Name":\s*"([^"]+)"', line)
+    if name_match:
+        current_network_name = name_match.group(1)
+        continue
+    subnet_match = re.search(r'"Subnet":\s*"([^"]+)"', line)
+    if subnet_match and not current_network_name.startswith("akl_"):
+        reserved_site_networks.append(ipaddress.ip_network(subnet_match.group(1), strict=False))
+
+subnets = []
+for match in re.finditer(r"^\s*-?\s*subnet:\s+([^\s#]+)\s*$", rendered, re.MULTILINE):
+    subnets.append(ipaddress.ip_network(match.group(1), strict=False))
+
+if not subnets:
+    raise SystemExit("No AKL Docker network subnets found in rendered compose config.")
+
+for subnet in subnets:
+    for reserved in reserved_site_networks:
+        if subnet.overlaps(reserved):
+            raise SystemExit(f"AKL Docker subnet {subnet} overlaps reserved site VLAN {reserved}.")
+
+print("ok: " + ", ".join(str(subnet) for subnet in subnets))
+PY
+
 printf 'Checking PostgreSQL HAProxy TCP endpoint...\n'
 python3 - <<'PY'
 import socket

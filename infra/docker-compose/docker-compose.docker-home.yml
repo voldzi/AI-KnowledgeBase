@@ -250,7 +250,8 @@ services:
       AKL_SERVICE_NAME: evaluation-service
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
-      AKL_AUTH_MODE: ${AKL_EVAL_AUTH_MODE:-oidc}
+      AKL_AUTH_MODE: ${AKL_EVAL_AUTH_MODE:-bearer}
+      AKL_SERVICE_TOKEN: ${AKL_EVAL_SERVICE_TOKEN:?AKL_EVAL_SERVICE_TOKEN must be set}
       AKL_EVAL_DEPENDENCY_MODE: http
       AKL_EVAL_RAG_CLIENT_MODE: http
       AKL_EVAL_REGISTRY_CLIENT_MODE: http
@@ -278,7 +279,8 @@ services:
       AKL_SERVICE_NAME: governance-service
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
-      AKL_AUTH_MODE: ${AKL_GOVERNANCE_AUTH_MODE:-oidc}
+      AKL_AUTH_MODE: ${AKL_GOVERNANCE_AUTH_MODE:-bearer}
+      AKL_SERVICE_TOKEN: ${AKL_GOVERNANCE_SERVICE_TOKEN:?AKL_GOVERNANCE_SERVICE_TOKEN must be set}
       AKL_GOVERNANCE_DEPENDENCY_MODE: http
       AKL_GOVERNANCE_REGISTRY_CLIENT_MODE: http
       AKL_GOVERNANCE_RAG_CLIENT_MODE: http
@@ -306,16 +308,31 @@ services:
 networks:
   public_zone:
     driver: bridge
+    ipam:
+      config:
+        - subnet: ${AKL_PUBLIC_ZONE_SUBNET:-10.246.240.0/24}
   app_zone:
     driver: bridge
+    ipam:
+      config:
+        - subnet: ${AKL_APP_ZONE_SUBNET:-10.246.241.0/24}
   data_zone:
     driver: bridge
     internal: true
+    ipam:
+      config:
+        - subnet: ${AKL_DATA_ZONE_SUBNET:-10.246.242.0/24}
   ai_compute_zone:
     driver: bridge
     internal: true
+    ipam:
+      config:
+        - subnet: ${AKL_AI_COMPUTE_ZONE_SUBNET:-10.246.243.0/24}
   management_zone:
     driver: bridge
+    ipam:
+      config:
+        - subnet: ${AKL_MANAGEMENT_ZONE_SUBNET:-10.246.244.0/24}
 
 volumes:
   caddy-data:
