@@ -39,7 +39,8 @@ export function buildAuthorizationUrl(config: AklConfig, state: string): string 
 export function buildLogoutUrl(config: AklConfig): string {
   const oidc = requireOidcConfig(config);
   const url = new URL(`${oidc.issuer}/protocol/openid-connect/logout`);
-  url.searchParams.set("post_logout_redirect_uri", oidc.redirectUri.replace("/api/auth/callback", "/"));
+  url.searchParams.set("client_id", oidc.clientId);
+  url.searchParams.set("post_logout_redirect_uri", oidc.redirectUri.replace(/\/api\/auth\/callback$/, ""));
   return url.toString();
 }
 
@@ -47,7 +48,7 @@ export function buildPublicAppUrl(config: AklConfig, path: string): string {
   const oidc = requireOidcConfig(config);
   const publicBaseUrl = oidc.redirectUri.replace(/\/api\/auth\/callback$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${publicBaseUrl}${normalizedPath === "/" ? "/" : normalizedPath}`;
+  return `${publicBaseUrl}${normalizedPath === "/" ? "" : normalizedPath}`;
 }
 
 export async function exchangeAuthorizationCode(config: AklConfig, code: string): Promise<OidcCallbackTokens> {
@@ -85,8 +86,6 @@ export function sessionFromTokens(tokens: OidcCallbackTokens, nowMs = Date.now()
 
   return {
     accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    idToken: tokens.id_token,
     expiresAt: nowMs + Math.max(tokens.expires_in ?? 300, 30) * 1000,
     subjectId,
     roles: extractRoles(claims),

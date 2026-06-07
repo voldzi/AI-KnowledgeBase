@@ -62,7 +62,7 @@ describe("OIDC web session", () => {
       }
     } as const;
 
-    assert.equal(buildPublicAppUrl(config, "/"), "https://stratos.example/akb/");
+    assert.equal(buildPublicAppUrl(config, "/"), "https://stratos.example/akb");
     assert.equal(buildPublicAppUrl(config, "/assistant"), "https://stratos.example/akb/assistant");
     assert.equal(
       buildPublicAppUrl(config, "/api/auth/login?return_to=%2F"),

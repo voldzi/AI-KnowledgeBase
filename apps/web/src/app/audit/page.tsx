@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { AuditViewer } from "@/features/audit/audit-viewer";
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { ApiClientError, type AuditEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export default async function AuditPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContext();
   const [events, authorization] = await Promise.all([
-    clients.registry.listAuditEvents(context),
+    listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
     clients.registry.getAuthorizationHints(context)
   ]);
 
@@ -24,4 +25,15 @@ export default async function AuditPage() {
       <AuditViewer events={events} authorization={authorization} />
     </>
   );
+}
+
+async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 403) {
+      return [];
+    }
+    throw error;
+  }
 }
