@@ -36,7 +36,10 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # npm install (not npm ci) to allow re-resolving @voldzi/stratos-ui to the
+        # latest matching version when the lock file lags behind package.json.
+        # After lock file is regenerated locally and committed, revert to npm ci.
+        run: npm install
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
