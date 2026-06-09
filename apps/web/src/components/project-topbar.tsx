@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Check, ChevronDown, Clock, Loader2, Search, X } from "lucide-react";
+import { Activity, Check, Clock, Loader2, X } from "lucide-react";
+import { GlobalTopbar, buildStratosTopbarApps } from "@voldzi/stratos-ui";
 
-import { StratosGlobalTopbar, type StratosGlobalTopbarApp } from "@/components/stratos";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import type { AklLanguage } from "@/lib/i18n";
 
@@ -74,36 +74,15 @@ export function ProjectTopbar({
     return () => window.clearInterval(interval);
   }, []);
 
-  const stratosApps: StratosGlobalTopbarApp[] = [
-    {
-      id: "akl",
-      label: "AKB",
-      shortLabel: "AK",
-      active: true,
-      href: "https://stratos.zeleznalady.cz/akb"
-    },
-    {
-      id: "budget-contract",
-      label: "Budget & Contract",
-      shortLabel: "BC",
-      href: "https://stratos.zeleznalady.cz/"
-    },
-    {
-      id: "projectflow",
-      label: "ProjectFlow",
-      shortLabel: "PF",
-      href: "https://stratos.zeleznalady.cz/project"
-    },
-    {
-      id: "archflow",
-      label: "ArchFlow",
-      shortLabel: "AF",
-      href: "https://stratos.zeleznalady.cz/arch"
-    }
-  ];
+  const stratosApps = buildStratosTopbarApps("akb", {
+    "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
+    projectflow:       process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
+    archflow:          process.env.NEXT_PUBLIC_ARCHFLOW_URL,
+    processforge:      process.env.NEXT_PUBLIC_PROCESSFORGE_URL,
+  });
 
   return (
-    <StratosGlobalTopbar
+    <GlobalTopbar
       apps={stratosApps}
       labels={{
         applications: labels.applications,
@@ -122,12 +101,10 @@ export function ProjectTopbar({
           <span>{workspaceName}</span>
           <span>/</span>
           <strong>{projectName}</strong>
-          <ChevronDown size={16} aria-hidden="true" />
         </div>
       }
       center={
         <button type="button" className="search-box command-search-trigger" aria-label={commandCenterLabel} onClick={onCommandCenterOpen}>
-          <Search size={16} aria-hidden="true" />
           <span>{commandCenterPlaceholder}</span>
           <kbd>⌘K</kbd>
         </button>
