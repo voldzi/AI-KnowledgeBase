@@ -7,13 +7,16 @@ import type {
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
+  DirectoryUser,
   Document,
   DocumentAssignment,
   DocumentVersion,
+  RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
-  WorkflowTaskListOptions,
-  RegistryApiClient
+  RoleMapping,
+  UpsertRoleMappingRequest,
+  WorkflowTaskListOptions
 } from "@/lib/types";
 import { ApiClientError } from "@/lib/types";
 
@@ -398,6 +401,46 @@ export class MockRegistryClient implements RegistryApiClient {
     };
     this.auditEvents.unshift(event);
     return cloneMock(event);
+  }
+
+  async searchDirectoryUsers(_query: string, _context: ApiRequestContext, _limit = 20): Promise<DirectoryUser[]> {
+    return [
+      { subject_id: "mock-user-1", display_name: "Jan Novák", email: "jan.novak@example.cz", groups: ["staff"] },
+      { subject_id: "mock-user-2", display_name: "Eva Horáková", email: "eva.horakova@example.cz", groups: ["staff", "admins"] }
+    ];
+  }
+
+  async listRoleMappings(_context: ApiRequestContext, _includeRemoved = false): Promise<RoleMapping[]> {
+    return [];
+  }
+
+  async importDirectoryUser(subjectId: string, _context: ApiRequestContext): Promise<DirectoryUser> {
+    return { subject_id: subjectId, display_name: null, email: null, groups: [] };
+  }
+
+  async upsertRoleMapping(request: UpsertRoleMappingRequest, _context: ApiRequestContext): Promise<RoleMapping> {
+    const now = new Date().toISOString();
+    return {
+      role_mapping_id: `rm_mock_${Date.now()}`,
+      ...request,
+      display_name: null,
+      created_at: now,
+      updated_at: now
+    };
+  }
+
+  async updateRoleMappingStatus(roleMappingId: string, status: string, _context: ApiRequestContext): Promise<RoleMapping> {
+    const now = new Date().toISOString();
+    return {
+      role_mapping_id: roleMappingId,
+      subject_type: "user",
+      subject_id: "unknown",
+      role: "unknown",
+      status,
+      display_name: null,
+      created_at: now,
+      updated_at: now
+    };
   }
 
   private requireDocument(documentId: string): Document {

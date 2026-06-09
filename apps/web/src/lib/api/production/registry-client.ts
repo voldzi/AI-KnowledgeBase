@@ -7,13 +7,16 @@ import type {
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
+  DirectoryUser,
   Document,
   DocumentAssignment,
   DocumentVersion,
+  RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
-  WorkflowTaskListOptions,
-  RegistryApiClient
+  RoleMapping,
+  UpsertRoleMappingRequest,
+  WorkflowTaskListOptions
 } from "@/lib/types";
 
 import type { AklFetch } from "../http-client";
@@ -237,6 +240,48 @@ export class ProductionRegistryClient implements RegistryApiClient {
     return this.post<AuditEvent>("/audit/events", request, "createAuditEvent", context);
   }
 
+  async searchDirectoryUsers(query: string, context: ApiRequestContext, limit = 20): Promise<DirectoryUser[]> {
+    const params = new URLSearchParams({ query, limit: String(limit) });
+    const response = await this.get<{ users: DirectoryUser[] }>(
+      `/admin/directory/users?${params}`,
+      "searchDirectoryUsers",
+      context
+    );
+    return response.users;
+  }
+
+  async listRoleMappings(context: ApiRequestContext, includeRemoved = false): Promise<RoleMapping[]> {
+    const params = new URLSearchParams({ include_removed: String(includeRemoved) });
+    const response = await this.get<{ members: RoleMapping[] }>(
+      `/admin/role-mappings?${params}`,
+      "listRoleMappings",
+      context
+    );
+    return response.members;
+  }
+
+  importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser> {
+    return this.post<DirectoryUser>(
+      "/admin/directory/users/import",
+      { subject_id: subjectId },
+      "importDirectoryUser",
+      context
+    );
+  }
+
+  upsertRoleMapping(request: UpsertRoleMappingRequest, context: ApiRequestContext): Promise<RoleMapping> {
+    return this.post<RoleMapping>("/admin/role-mappings", request, "upsertRoleMapping", context);
+  }
+
+  updateRoleMappingStatus(roleMappingId: string, status: string, context: ApiRequestContext): Promise<RoleMapping> {
+    return this.patch<RoleMapping>(
+      `/admin/role-mappings/${encodeURIComponent(roleMappingId)}/status`,
+      { status },
+      "updateRoleMappingStatus",
+      context
+    );
+  }
+
   private get<T>(path: string, operation: string, context: ApiRequestContext): Promise<T> {
     return requestJson<T>({
       service: "registry-api",
@@ -268,6 +313,19 @@ export class ProductionRegistryClient implements RegistryApiClient {
       baseUrl: this.baseUrl,
       path,
       method: "PUT",
+      body,
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  private patch<T>(path: string, body: unknown, operation: string, context: ApiRequestContext): Promise<T> {
+    return requestJson<T>({
+      service: "registry-api",
+      operation,
+      baseUrl: this.baseUrl,
+      path,
+      method: "PATCH",
       body,
       context,
       fetcher: this.fetcher
