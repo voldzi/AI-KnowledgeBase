@@ -29,6 +29,31 @@ import type {
 } from "./rag";
 import type { AklLanguage } from "../language";
 
+export interface DirectoryUser {
+  subject_id: string;
+  display_name: string | null;
+  email: string | null;
+  groups: string[];
+}
+
+export interface RoleMapping {
+  role_mapping_id: string;
+  subject_type: string;
+  subject_id: string;
+  role: string;
+  status: string;
+  display_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertRoleMappingRequest {
+  subject_type: string;
+  subject_id: string;
+  role: string;
+  status: string;
+}
+
 export interface ApiRequestContext {
   subjectId: string;
   roles?: string[];
@@ -82,6 +107,11 @@ export interface RegistryApiClient {
   ): Promise<RegistryWorkflowTask>;
   listAuditEvents(context: ApiRequestContext, options?: AuditEventListOptions): Promise<AuditEvent[]>;
   createAuditEvent(request: CreateAuditEventRequest, context: ApiRequestContext): Promise<AuditEvent>;
+  searchDirectoryUsers(query: string, context: ApiRequestContext, limit?: number): Promise<DirectoryUser[]>;
+  listRoleMappings(context: ApiRequestContext, includeRemoved?: boolean): Promise<RoleMapping[]>;
+  importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser>;
+  upsertRoleMapping(request: UpsertRoleMappingRequest, context: ApiRequestContext): Promise<RoleMapping>;
+  updateRoleMappingStatus(roleMappingId: string, status: string, context: ApiRequestContext): Promise<RoleMapping>;
 }
 
 export interface IngestionApiClient {
