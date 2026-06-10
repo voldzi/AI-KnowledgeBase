@@ -5,8 +5,9 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
+from typing import AsyncIterator
 
-from answer_composer.composer import AnswerComposer
+from answer_composer.composer import AnswerComposer, StreamEvent
 from app.config import Settings
 from app.errors import RetrievalError
 from app.llm_client import LLMGatewayClient
@@ -158,6 +159,96 @@ class RagRetrievalService:
             len(answer.warnings),
         )
         return answer
+
+    async def query_stream(
+        self,
+        payload: RagQueryRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        if payload.answer_mode == "compare":
+            raise RetrievalError(
+                "NOT_IMPLEMENTED",
+                "Document comparison is outside this retrieval-only implementation.",
+                status_code=501,
+            )
+
+        query_id = _query_id()
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=payload.query,
+                filters=payload.filters,
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        decision = self._no_answer_policy.evaluate(
+            chunks=run.response.chunks,
+            had_candidates=run.had_candidates,
+            denied_document_ids=run.denied_document_ids,
+        )
+        if not decision.can_answer:
+            answer = self._no_answer_policy.no_answer(
+                query_id=query_id,
+                decision=decision,
+                response_language=payload.response_language,
+            )
+            await self._audit_answer(
+                actor_id=payload.subject_id,
+                event_type="rag.query_stream.executed",
+                answer=answer,
+                auth_context=auth_context,
+            )
+            yield StreamEvent(kind="done", answer=answer)
+            return
+
+        if payload.answer_mode == "retrieve_only":
+            answer = _retrieval_only_answer(
+                query_id=query_id,
+                chunks=run.response.chunks,
+                confidence=decision.confidence,
+                warnings=decision.warnings,
+                response_language=payload.response_language,
+            )
+            await self._audit_answer(
+                actor_id=payload.subject_id,
+                event_type="rag.query_stream.executed",
+                answer=answer,
+                auth_context=auth_context,
+            )
+            yield StreamEvent(kind="done", answer=answer)
+            return
+
+        final_answer: RagAnswer | None = None
+        async for event in self._answer_composer.compose_stream(
+            query_id=query_id,
+            query=payload.query,
+            chunks=run.response.chunks,
+            confidence=decision.confidence,
+            warnings=decision.warnings,
+            max_chunks=payload.max_chunks,
+            answer_mode=payload.answer_mode,
+            response_language=payload.response_language,
+            auth_context=auth_context,
+        ):
+            if event.kind == "done":
+                final_answer = event.answer
+            yield event
+
+        if final_answer is not None:
+            await self._audit_answer(
+                actor_id=payload.subject_id,
+                event_type="rag.query_stream.executed",
+                answer=final_answer,
+                auth_context=auth_context,
+            )
+        logger.info(
+            "rag_query_stream_completed query_id=%s confidence=%s",
+            query_id,
+            final_answer.confidence if final_answer else "unknown",
+        )
 
     async def answer(
         self,

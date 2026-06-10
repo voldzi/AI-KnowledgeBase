@@ -265,6 +265,44 @@ def test_check_compliance_forwards_to_governance(monkeypatch) -> None:
     assert str(captured["url"]).endswith("/governance/check-compliance")
 
 
+def test_query_stream_returns_sse_with_meta_and_done_events() -> None:
+    with make_client() as client:
+        response = client.post("/api/v1/rag/query-stream", json=_query_payload("Kdo schvaluje vyjimku?"))
+
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers.get("content-type", "")
+    events = _parse_sse_events(response.text)
+    kinds = [evt.get("kind") for evt in events]
+    assert "meta" in kinds
+    assert "done" in kinds
+    done = next(evt for evt in events if evt.get("kind") == "done")
+    assert done["answer"]["query_id"].startswith("query_")
+    assert done["answer"]["confidence"] in {"high", "medium", "low", "insufficient_source"}
+
+
+def test_query_stream_no_answer_yields_single_done_event() -> None:
+    with make_client() as client:
+        response = client.post("/api/v1/rag/query-stream", json=_query_payload("xyzzy plugh abrakadabra"))
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    kinds = [evt.get("kind") for evt in events]
+    assert kinds == ["done"]
+    assert events[0]["answer"]["confidence"] == "insufficient_source"
+
+
+def _parse_sse_events(body: str) -> list[dict[str, object]]:
+    import json
+
+    events: list[dict[str, object]] = []
+    for line in body.splitlines():
+        if line.startswith("data: "):
+            raw = line[6:].strip()
+            if raw:
+                events.append(json.loads(raw))
+    return events
+
+
 def test_oidc_auth_mode_requires_bearer_token() -> None:
     with make_client({"AKL_AUTH_MODE": "oidc"}) as client:
         response = client.post("/api/v1/rag/query", json=_query_payload("Kdo schvaluje vyjimku?"))

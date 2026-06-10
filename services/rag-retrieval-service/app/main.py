@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from answer_composer.composer import AnswerComposer
+from answer_composer.composer import AnswerComposer, StreamEvent
 from app.config import ConfigError, Settings, load_settings
 from app.errors import (
     RetrievalError,
@@ -122,6 +124,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload.max_chunks,
         )
         return await _service(request).query(payload, auth_context=auth_context)
+
+    @app.post("/api/v1/rag/query-stream", tags=["rag"])
+    async def query_stream(payload: RagQueryRequest, request: Request) -> StreamingResponse:
+        auth_context = _guard_request(request)
+        logger.info(
+            "rag_query_stream_requested subject_id=%s answer_mode=%s max_chunks=%s query_text_logged=false",
+            payload.subject_id,
+            payload.answer_mode,
+            payload.max_chunks,
+        )
+        service = _service(request)
+
+        async def _events() -> AsyncIterator[str]:
+            async for event in service.query_stream(payload, auth_context=auth_context):
+                data = json.dumps(
+                    {
+                        "kind": event.kind,
+                        "delta": event.delta,
+                        "answer": event.answer.model_dump() if event.answer is not None else None,
+                    }
+                )
+                yield f"data: {data}\n\n"
+
+        return StreamingResponse(
+            _events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/api/v1/rag/answer", response_model=RagAnswer, tags=["rag"])
     async def answer(payload: AnswerRequest, request: Request) -> RagAnswer:
