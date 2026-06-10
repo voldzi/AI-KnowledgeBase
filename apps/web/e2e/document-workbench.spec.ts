@@ -6,7 +6,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-01 registry renders and filters controlled documents", async ({ page }) => {
     await page.goto("/documents");
 
-    await expect(page).toHaveTitle(/AKL Platform/);
+    await expect(page).toHaveTitle(/AKB Platform/);
     await expect(page.getByRole("heading", { name: "Registr dokumentů" }).first()).toBeVisible();
     await expect(page.getByText("Smernice pro spravu rizene dokumentace")).toBeVisible();
 
