@@ -51,6 +51,39 @@ cd /srv/akl/repo
 git checkout main
 ```
 
+Docker Compose na `docker.home.cz` při použití `-f infra/docker-compose/docker-compose.docker-home.yml` automaticky načítá `.env` podle compose project adresáře. Produkční hodnoty proto patří mimo Git do `/srv/akl/env/akl.prod.env` a do checkoutu se zkopírují pouze jako lokální necommitované soubory `.env`.
+
+Po klonování nebo po čistém bootstrapu checkoutu spustit jeden příkaz:
+
+```bash
+cd /srv/akl/repo
+./scripts/bootstrap_docker_home_checkout.sh /srv/akl/env/akl.prod.env
+```
+
+Tento bootstrap:
+
+- nainstaluje repozitářové hooky,
+- vytvoří lokální `.env` kopie pro Compose,
+- připraví checkout na přímé `docker compose` použití.
+
+Pokud je potřeba jednotlivé kroky spustit samostatně:
+
+```bash
+cd /srv/akl/repo
+./scripts/install_git_hooks.sh
+./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
+```
+
+Hooky po merge, `git pull`, `git switch` nebo `git checkout` automaticky spustí `scripts/link_docker_home_env.sh`, pokud na serveru existuje `/srv/akl/env/akl.prod.env`. Jinými slovy: produkční hodnoty se dál spravují jen v `/srv/akl/env/akl.prod.env`, ale pracovní checkout si z nich po aktualizaci sám obnoví lokální `.env` kopie.
+
+Tím začne fungovat i přímé spuštění:
+
+```bash
+docker compose -f infra/docker-compose/docker-compose.docker-home.yml config
+```
+
+bez doplňování `--env-file`.
+
 ## 2. PostgreSQL
 
 Použít PostgreSQL, ne SQLite.
@@ -224,6 +257,28 @@ AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_QDRANT_COLLECTION=akl_document_chunks
 ```
 
+Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`:
+
+- `AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb`
+- `AKL_WEB_SESSION_SECRET=<long random secret>`
+- `AKL_WEB_UPLOAD_SIGNING_SECRET=<long random secret>`
+- `AKL_EVAL_SERVICE_TOKEN=<long random service token>`
+- `AKL_GOVERNANCE_SERVICE_TOKEN=<long random service token>`
+
+Vzor je v `infra/docker-compose/docker-home.env.example`. Ten je šablona, ne produkční soubor.
+
+Bezpečné vygenerování tokenů:
+
+```bash
+openssl rand -hex 32
+```
+
+Pro `AKL_WEB_SESSION_SECRET` je vhodné použít delší base64 hodnotu:
+
+```bash
+openssl rand -base64 48
+```
+
 ## 6. Reverse Proxy A DNS
 
 Navržené endpointy:
@@ -254,7 +309,29 @@ AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
 ./scripts/docker_home_preflight.sh
 ```
 
-8. Sestavit image:
+8. Pro plný nasazovací běh lze použít jednotný deploy skript:
+
+```bash
+cd /srv/akl/repo
+./scripts/deploy_docker_home.sh
+```
+
+Skript provede:
+
+- bootstrap checkoutu,
+- preflight,
+- compose render,
+- image build,
+- `docker compose up -d`.
+
+9. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
+
+```bash
+cd /srv/akl/repo
+docker compose -f infra/docker-compose/docker-compose.docker-home.yml config >/tmp/akl-compose-rendered.yml
+```
+
+10. Sestavit image:
 
 ```bash
 cd /srv/akl/repo
@@ -264,8 +341,8 @@ DOCKER_BUILDKIT=1 docker compose \
   build --secret id=npmrc,src=/srv/akl/secrets/npmrc
 ```
 
-9. Spustit DB migrace.
-10. Spustit služby:
+11. Spustit DB migrace.
+12. Spustit služby:
 
 ```bash
 docker compose \
@@ -274,7 +351,7 @@ docker compose \
   up -d
 ```
 
-11. Připojit reverse proxy.
+13. Připojit reverse proxy.
 
 ## 8. Smoke Testy Po Nasazení
 

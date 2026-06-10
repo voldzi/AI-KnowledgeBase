@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [[ -z "${ROOT_DIR}" ]]; then
+  exit 0
+fi
+
+ENV_FILE="${AKL_PROD_ENV_FILE:-/srv/akl/env/akl.prod.env}"
+LINK_SCRIPT="${ROOT_DIR}/scripts/link_docker_home_env.sh"
+
+if [[ ! -x "${LINK_SCRIPT}" ]]; then
+  exit 0
+fi
+
+if [[ -f "${ENV_FILE}" ]]; then
+  printf '[akl post-merge] refreshing docker-home env files from %s\n' "${ENV_FILE}"
+  "${LINK_SCRIPT}" "${ENV_FILE}"
+else
+  printf '[akl post-merge] skipped: %s not found\n' "${ENV_FILE}"
+fi

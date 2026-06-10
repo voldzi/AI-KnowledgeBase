@@ -57,13 +57,14 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
 
 ### Documentation And QA
 
-- Startovni dokumentace: `README.md` a `docs/README_START_HERE.md`.
+- Startovni dokumentace: `README.md` a `docs/README.md`.
+- Zachovany bootstrap/thread onboarding je v `docs/CODEX_THREADS/README.md` a `docs/CODEX_THREADS/bootstrap/`.
 - Product status: tento dokument.
 - Product QA gate: `docs/qa/document-workbench-product-qa.md`.
 - Release proces: `docs/maintenance/release-process.md`.
 - Code health baseline: `docs/maintenance/code-health.md`.
 - UI smer: `docs/ui/document-workbench.md`, `docs/ui/workflow-inbox.md`, `docs/ui/production-ui-plan.md`.
-- Phase stav: `docs/integration/PHASE_05_DOCUMENT_WORKBENCH.md`.
+- Current integration/workbench state: `docs/integration/document-workbench.md`.
 
 ## Current Known Gaps
 

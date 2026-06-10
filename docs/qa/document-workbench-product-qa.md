@@ -33,7 +33,7 @@ Required evidence:
 - screenshots or screen recordings for the critical document paths,
 - browser and viewport matrix,
 - performance observations,
-- known production gaps confirmed against `docs/integration/PHASE_05_DOCUMENT_WORKBENCH.md`.
+- known production gaps confirmed against `docs/integration/document-workbench.md`.
 
 ### Production Readiness Gate
 

@@ -85,3 +85,33 @@ docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --
 ```
 
 Use detached tag checkout only for verification or emergency local recovery. Normal development continues from `main`.
+
+## docker.home.cz Checkout Refresh
+
+The `docker-home` checkout depends on local, untracked `.env` files generated from `/srv/akl/env/akl.prod.env`. Bootstrap the checkout once:
+
+```bash
+cd /srv/akl/repo
+./scripts/bootstrap_docker_home_checkout.sh /srv/akl/env/akl.prod.env
+```
+
+After that, every `git pull`, merge, `git switch`, or `git checkout` refreshes:
+
+- `/srv/akl/repo/.env`
+- `/srv/akl/repo/infra/docker-compose/.env`
+
+If the hook is not installed, run this manually after updating the checkout:
+
+```bash
+cd /srv/akl/repo
+./scripts/install_git_hooks.sh
+./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
+```
+
+For the standard server update flow on `docker.home.cz`, prefer:
+
+```bash
+cd /srv/akl/repo
+git pull --ff-only
+./scripts/deploy_docker_home.sh
+```

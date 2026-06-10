@@ -89,16 +89,10 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 
 Služby nesmí importovat interní Python kód registry API; komunikace je přes REST/OpenAPI.
 
-## OpenAPI
-
-Statický kontrakt služby je v:
+## Canonical Sources
 
 ```text
+services/registry-api/README.md
 services/registry-api/openapi.yaml
-```
-
-Runtime kontrakt:
-
-```text
 GET /openapi.json
 ```

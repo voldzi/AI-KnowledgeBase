@@ -60,6 +60,8 @@ PY
 : "${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}"
 : "${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}"
 : "${AKL_WEB_UPLOAD_SIGNING_SECRET:?AKL_WEB_UPLOAD_SIGNING_SECRET must be set}"
+: "${AKL_EVAL_SERVICE_TOKEN:?AKL_EVAL_SERVICE_TOKEN must be set}"
+: "${AKL_GOVERNANCE_SERVICE_TOKEN:?AKL_GOVERNANCE_SERVICE_TOKEN must be set}"
 
 printf 'Checking docker compose render...\n'
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >/tmp/akl-docker-home-preflight.yml
