@@ -138,3 +138,45 @@ def test_validity_alerts_return_authorized_registry_metadata_sources() -> None:
     assert all(alert["document_id"] != "doc_denied" for alert in body["alerts"])
     assert body["citations"][0]["chunk_id"].startswith("registry:")
     assert body["confidence"] == "high"
+
+
+def test_non_compliant_check_writes_warning_audit_event(monkeypatch) -> None:
+    captured: list[dict[str, object]] = []
+
+    from app import registry_client as registry_module
+
+    original = registry_module.MockRegistryClient.write_audit_event
+
+    async def capture(self, *, actor_id, event_type, resource_id, metadata, severity="info"):
+        captured.append({"event_type": event_type, "severity": severity, "metadata": metadata})
+        return await original(
+            self,
+            actor_id=actor_id,
+            event_type=event_type,
+            resource_id=resource_id,
+            metadata=metadata,
+            severity=severity,
+        )
+
+    monkeypatch.setattr(registry_module.MockRegistryClient, "write_audit_event", capture)
+
+    payload = {
+        "subject_id": "user_123",
+        "draft": {
+            "document_id": "doc_999",
+            "title": "Navrh smernice pro vyjimky",
+            "document_type": "directive",
+            "classification": "internal",
+            "content": "Navrh popisuje vyjimku pro tym. Zadost obsahuje duvod a rozsah.",
+        },
+    }
+
+    with make_client() as client:
+        response = client.post("/api/v1/governance/check-compliance", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "non_compliant"
+    compliance_events = [item for item in captured if item["event_type"] == "governance.check_compliance.executed"]
+    assert len(compliance_events) == 1
+    assert compliance_events[0]["severity"] == "warning"
+    assert compliance_events[0]["metadata"]["document_id"] == "doc_999"
