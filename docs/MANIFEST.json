@@ -3,11 +3,13 @@
   "date": "2026-06-06",
   "architecture": "service-oriented distributed architecture",
   "files": [
-    "00_CENTRALNI_ZADANI_AKL_PLATFORM.md",
-    "08_INTEGRATION_RULES_FOR_CODEX_THREADS.md",
-    "09_DEFINITION_OF_DONE.md",
-    "10_PLAN_SPUSTENI_CODEX_VLAKEN.md",
-    "11_COPY_PASTE_PROMPTY_PRO_CODEX.md",
+    "README.md",
+    "CODEX_THREADS/README.md",
+    "CODEX_THREADS/bootstrap/00_CENTRALNI_ZADANI_AKL_PLATFORM.md",
+    "CODEX_THREADS/bootstrap/08_INTEGRATION_RULES_FOR_CODEX_THREADS.md",
+    "CODEX_THREADS/bootstrap/09_DEFINITION_OF_DONE.md",
+    "CODEX_THREADS/bootstrap/10_PLAN_SPUSTENI_CODEX_VLAKEN.md",
+    "CODEX_THREADS/bootstrap/11_COPY_PASTE_PROMPTY_PRO_CODEX.md",
     "ARCHITECTURE/01_ARCHITEKTURA_DISTRIBUOVANYCH_SLUZEB.md",
     "ARCHITECTURE/02_SERVICE_BOUNDARIES.md",
     "ARCHITECTURE/ADR_TEMPLATE.md",
@@ -29,6 +31,18 @@
     "maintenance/project-status.md",
     "maintenance/release-process.md",
     "OPERATIONS/07_DEPLOYMENT_MODEL.md",
-    "README_START_HERE.md"
+    "api/README.md",
+    "api/platform-status.md",
+    "api/registry-api.md",
+    "api/ingestion-service.md",
+    "api/rag-retrieval-service.md",
+    "api/llm-gateway-service.md",
+    "api/evaluation-service.md",
+    "api/governance-service.md",
+    "integration/README.md",
+    "integration/local-production-runbook.md",
+    "integration/enterprise-pilot-assistant.md",
+    "integration/document-workbench.md",
+    "integration/STRATOS_EXTERNAL_DOCUMENTS_API.md"
   ]
 }

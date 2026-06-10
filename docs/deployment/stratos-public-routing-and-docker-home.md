@@ -30,6 +30,7 @@ Pozor na preklep: pouzivat `stratos.zeleznalady.cz`, ne `startos.zeleznalady.cz`
 - pouziva PostgreSQL pres `haproxy.home.cz:5000`,
 - pouziva sdileny Keycloak realm `stratos`,
 - vystavuje interni nebo pilotni aplikační porty, napr. AKB na `3220`.
+- AKB checkout v `/srv/akl/repo` ma po bootstrapu nainstalovane git hooky, ktere po `git pull`, `git switch` a `git checkout` automaticky obnovuji lokalni `.env` kopie z `/srv/akl/env/akl.prod.env`.
 
 `dmz.home.cz`:
 

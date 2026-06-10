@@ -38,6 +38,9 @@ logs/
 data/
 reports/
 tmp/
+.tmp/
+.chroma-state/
+.mcp.json
 *.sqlite
 *.db
 services/evaluation-service/reports/*.json
