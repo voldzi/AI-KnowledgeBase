@@ -466,6 +466,17 @@ class RagRetrievalService:
             )
 
         response = _source_context_from_chunk(chunk)
+        neighbor_getter = getattr(self._retriever, "get_neighbors", None)
+        if neighbor_getter is not None:
+            try:
+                before_text, after_text = await neighbor_getter(chunk)
+                response = response.model_copy(update={"before_text": before_text, "after_text": after_text})
+            except Exception as exc:
+                logger.warning(
+                    "source_context_neighbors_failed chunk_id=%s reason=%s",
+                    chunk_id,
+                    exc.__class__.__name__,
+                )
         await self._audit_source_opened(
             actor_id=subject_id,
             event_type=event_type,

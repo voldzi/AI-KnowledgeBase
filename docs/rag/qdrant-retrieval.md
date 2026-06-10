@@ -63,11 +63,38 @@ The retriever preserves these fields in `RetrievedChunk.citation`; answer citati
 ## Query Flow
 
 1. RAG creates a query embedding through LLM Gateway.
-2. Qdrant `/collections/{collection}/points/search` returns candidate points.
-3. Metadata filters restrict classification, document type, tags, and validity.
-4. Registry API authz filters candidate document IDs with action `rag.query`.
-5. Lexical reranking is applied inside the RAG service.
-6. Answer composer receives only authorized chunks above `AKL_RAG_NO_ANSWER_MIN_SCORE`.
+2. Two Qdrant calls run in parallel: dense `points/search` and a lexical
+   `points/scroll` fulltext match on `normalized_text`.
+3. Dense and lexical rankings are fused with Reciprocal Rank Fusion (RRF,
+   k=60). The fused order decides ranking; `chunk.score` keeps the calibrated
+   hybrid value used by the no-answer policy and confidence thresholds. The
+   RRF value is exposed as `metadata.rrf_score`.
+4. Metadata filters restrict classification, document type, tags, and validity.
+5. Registry API authz filters candidate document IDs with action `rag.query`.
+6. Lexical reranking is applied inside the RAG service.
+7. Answer composer receives only authorized chunks above `AKL_RAG_NO_ANSWER_MIN_SCORE`.
+
+## Text Normalization and Czech Recall
+
+Ingestion stores `normalized_text` with whitespace collapsed, lowercased, and
+diacritics stripped — the same normalization the retrieval side applies to the
+query. The lexical scroll matches both the diacritics-stripped and the
+lowercase-original query variants (`should` clause), so documents indexed
+before the normalization was unified keep matching until they are reindexed.
+
+The sparse lexical score is inflection-tolerant for fusional languages: query
+and text tokens match when they share a prefix of at least 4 characters and
+differ only in a suffix of up to 3 characters (vyjimka/vyjimku,
+smernice/smernici). Term-frequency adds a small saturated bonus.
+
+## Source Context Neighbours
+
+`GET /api/v1/citations/{chunk_id}/open` and the chunk source-context endpoint
+fill `before_text` and `after_text` from the chunks adjacent to the cited
+chunk (`metadata.chunk_index` ± 1 within the same `document_version_id`).
+Ingestion creates an integer payload index on `metadata.chunk_index` to keep
+the neighbour lookup efficient. Neighbour lookup failures degrade gracefully
+to empty context.
 
 ## Empty Results
 

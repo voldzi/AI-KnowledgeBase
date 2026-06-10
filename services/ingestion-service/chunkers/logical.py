@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -202,7 +203,12 @@ class LogicalStructureChunker:
 
 
 def normalize_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip().lower()
+    # Diacritics must be stripped the same way rag-retrieval-service normalizes
+    # queries (retrievers/scoring.normalize_text), otherwise Czech fulltext
+    # matches on the indexed normalized_text field never hit.
+    collapsed = re.sub(r"\s+", " ", text).strip().lower()
+    decomposed = unicodedata.normalize("NFKD", collapsed)
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
 def _text_length(blocks: list[ParsedBlock]) -> int:

@@ -54,17 +54,56 @@ def tokenize(value: str) -> list[str]:
     return TOKEN_RE.findall(normalize_text(value))
 
 
+STEM_MATCH_WEIGHT = 0.85
+STEM_MIN_PREFIX = 4
+STEM_MAX_SUFFIX = 3
+
+
 def sparse_score(query: str, text: str) -> float:
     query_tokens = set(tokenize(query))
     if not query_tokens:
         return 0.0
-    text_tokens = set(tokenize(text))
-    if not text_tokens:
+    text_counts = Counter(tokenize(text))
+    if not text_counts:
         return 0.0
+    text_tokens = set(text_counts)
 
-    overlap = len(query_tokens & text_tokens) / len(query_tokens)
+    matched_weight = 0.0
+    matched_tf = 0
+    for token in query_tokens:
+        if token in text_counts:
+            matched_weight += 1.0
+            matched_tf += text_counts[token]
+            continue
+        stem_tf = _stem_match_tf(token, text_counts)
+        if stem_tf:
+            matched_weight += STEM_MATCH_WEIGHT
+            matched_tf += stem_tf
+
+    coverage = matched_weight / len(query_tokens)
+    tf_bonus = min(0.08, 0.02 * math.log1p(matched_tf))
     phrase_bonus = 0.15 if normalize_text(query).strip() in normalize_text(text) else 0.0
-    return min(1.0, overlap + phrase_bonus + _concept_bonus(query_tokens, text_tokens))
+    return min(1.0, coverage + tf_bonus + phrase_bonus + _concept_bonus(query_tokens, text_tokens))
+
+
+def _stem_match_tf(query_token: str, text_counts: Counter[str]) -> int:
+    """Inflection-tolerant match for fusional languages (Czech): two tokens
+    match when they share a prefix of at least STEM_MIN_PREFIX chars and
+    differ only in a short suffix (vyjimka/vyjimku, smernice/smernici)."""
+    if len(query_token) < STEM_MIN_PREFIX:
+        return 0
+    total = 0
+    for text_token, count in text_counts.items():
+        if len(text_token) < STEM_MIN_PREFIX:
+            continue
+        longest = max(len(query_token), len(text_token))
+        required_prefix = max(STEM_MIN_PREFIX, longest - STEM_MAX_SUFFIX)
+        shortest = min(len(query_token), len(text_token))
+        if shortest < required_prefix:
+            continue
+        if query_token[:required_prefix] == text_token[:required_prefix]:
+            total += count
+    return total
 
 
 def _concept_bonus(query_tokens: set[str], text_tokens: set[str]) -> float:
