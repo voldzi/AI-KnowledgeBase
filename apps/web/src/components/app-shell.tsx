@@ -403,7 +403,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
           brandHref="/"
           brandMark="AKB"
           brandName="AKB Platform"
-          brandSubtitle="AI Knowledge Library"
+          brandSubtitle="AI Knowledge Base"
           items={railItems}
           footer={
             <>
