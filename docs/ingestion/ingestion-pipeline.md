@@ -9,7 +9,7 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 3. Pipeline zavolá Registry API authz check pro `document.ingest`.
 4. Pipeline načte metadata dokumentu a verze přes Registry API.
 5. Object storage klient načte zdrojový soubor.
-6. Parser router zvolí TXT/MD, PDF nebo DOCX parser.
+6. Parser router zvolí HTML/HTM, XLSX/XLSM, TXT/MD, PDF nebo DOCX parser. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích.
 7. OCR fallback se použije při selhání parseru nebo nízkém množství extrahovaného textu.
 8. Logical chunker vytvoří `DocumentChunk` objekty s citovatelnými metadaty.
 9. Embedding klient pošle normalizované texty na LLM Gateway `/api/v1/embeddings`.
