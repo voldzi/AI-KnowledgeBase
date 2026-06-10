@@ -1046,7 +1046,7 @@ export function DocumentDetail({
                 ) : null}
                 {sourceOpen?.available && sourceOpen.download_url ? (
                   <div className="source-viewer__actions">
-                    <a className="button button--primary" href={sourceOpen.download_url} target="_blank" rel="noreferrer">
+                    <a className="button button--primary" href={withAppBasePath(sourceOpen.download_url)} target="_blank" rel="noreferrer">
                       <ExternalLink size={16} aria-hidden="true" />
                       {copy.openSignedSource}
                     </a>
@@ -1056,7 +1056,7 @@ export function DocumentDetail({
                         {copy.openCitationPage}
                       </a>
                     ) : null}
-                    <a className="button" href={sourceOpen.download_url} download={sourceOpen.file.filename}>
+                    <a className="button" href={withAppBasePath(sourceOpen.download_url)} download={sourceOpen.file.filename}>
                       <Download size={16} aria-hidden="true" />
                       {copy.downloadSignedSource}
                     </a>
