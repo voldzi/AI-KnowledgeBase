@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, Send, ShieldAlert } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
-import { StratosButton } from "@/components/stratos";
+import { StratosButton, StratosSelect } from "@/components/stratos";
 import { CitationModal } from "@/features/citations/citation-viewer";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
@@ -12,6 +12,7 @@ import type { Citation, RagAnswer, SourceContext } from "@/lib/types";
 
 interface KnowledgeChatProps {
   initialAnswer: RagAnswer;
+  availableTags?: string[];
 }
 
 const chatCopy = {
@@ -21,6 +22,7 @@ const chatCopy = {
     notice: "Odpovědi musí obsahovat citace. Pokud zdroje nestačí, zůstane viditelný stav bez odpovědi.",
     question: "Dotaz",
     scope: "Rozsah znalostí",
+    scopeAll: "Všechny znalosti",
     asking: "Odesílám",
     ask: "Zeptat se s citacemi",
     answer: "Odpověď",
@@ -54,6 +56,7 @@ const chatCopy = {
     notice: "Answers must include citations. No-answer states remain visible when sources are insufficient.",
     question: "Question",
     scope: "Knowledge scope",
+    scopeAll: "All knowledge",
     asking: "Asking",
     ask: "Ask with citations",
     answer: "Answer",
@@ -83,11 +86,11 @@ const chatCopy = {
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
-export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
+export function KnowledgeChat({ initialAnswer, availableTags = [] }: KnowledgeChatProps) {
   const { language } = useLanguage();
   const copy = chatCopy[language];
   const [question, setQuestion] = useState(copy.defaultQuestion);
-  const [tags, setTags] = useState("akl-docs");
+  const [tags, setTags] = useState("");
   const [answer, setAnswer] = useState(initialAnswer);
   const [streamingText, setStreamingText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -212,8 +215,17 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
               <textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} />
             </div>
             <div className="field">
-              <label htmlFor="tags-filter">{copy.scope}</label>
-              <input id="tags-filter" value={tags} onChange={(event) => setTags(event.target.value)} />
+              <StratosSelect
+                id="tags-filter"
+                label={copy.scope}
+                value={tags}
+                onChange={(event) => setTags(event.target.value)}
+              >
+                <option value="">{copy.scopeAll}</option>
+                {availableTags.map((tag) => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+              </StratosSelect>
             </div>
             <StratosButton tone="primary" type="submit" disabled={submitting}>
               <Send size={16} aria-hidden="true" />

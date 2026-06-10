@@ -22,7 +22,7 @@ interface SettingsModalProps {
 const settingsCopy = {
   cs: {
     title: "Všechna nastavení",
-    subtitle: "Nastavení aplikace AKL ve společném STRATOS povrchu.",
+    subtitle: "Nastavení aplikace AKB ve společném STRATOS povrchu.",
     search: "Hledat nastavení",
     empty: "Nenalezeno žádné nastavení.",
     admin: "Admin",
@@ -48,13 +48,13 @@ const settingsCopy = {
     sidebar: "Postranní panel",
     unsavedChanges: "Máte neuložené změny. Zavřít bez uložení?",
     accountTitle: "Účet",
-    accountDescription: "Základní pracovní identita pro AKL.",
+    accountDescription: "Základní pracovní identita pro AKB.",
     interfaceTitle: "Rozhraní",
     interfaceDescription: "Dočasné aplikační hodnoty do dodání centrálních STRATOS nastavení."
   },
   en: {
     title: "All settings",
-    subtitle: "AKL application settings in the shared STRATOS surface.",
+    subtitle: "AKB application settings in the shared STRATOS surface.",
     search: "Search settings",
     empty: "No settings found.",
     admin: "Admin",
@@ -80,7 +80,7 @@ const settingsCopy = {
     sidebar: "Sidebar",
     unsavedChanges: "You have unsaved changes. Close anyway?",
     accountTitle: "Account",
-    accountDescription: "Basic working identity for AKL.",
+    accountDescription: "Basic working identity for AKB.",
     interfaceTitle: "Interface",
     interfaceDescription: "Temporary app values until central STRATOS settings are delivered."
   }

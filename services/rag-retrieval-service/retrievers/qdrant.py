@@ -132,6 +132,42 @@ class QdrantHybridRetriever:
                 after_text = text
         return before_text, after_text
 
+    async def list_document_titles(self, *, limit: int = 64) -> list[dict[str, str]]:
+        """Return distinct documents present in the index as
+        [{"document_title": ..., "document_type": ...}], newest-first by scroll order."""
+        payload = await request_json_with_retry(
+            dependency="qdrant",
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
+            json_body={
+                "limit": 512,
+                "with_payload": ["document_id", "document_title", "document_type", "metadata"],
+                "with_vector": False,
+            },
+        )
+        result = payload.get("result", {})
+        points = result.get("points", []) if isinstance(result, dict) else []
+        seen: dict[str, dict[str, str]] = {}
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            point_payload = point.get("payload", {})
+            if not isinstance(point_payload, dict):
+                continue
+            metadata = point_payload.get("metadata") if isinstance(point_payload.get("metadata"), dict) else {}
+            document_id = str(point_payload.get("document_id") or "")
+            title = str(point_payload.get("document_title") or metadata.get("document_title") or "").strip()
+            if not document_id or not title or document_id in seen:
+                continue
+            seen[document_id] = {
+                "document_title": title,
+                "document_type": str(point_payload.get("document_type") or metadata.get("document_type") or ""),
+            }
+            if len(seen) >= limit:
+                break
+        return list(seen.values())
+
     async def readiness(self) -> str:
         try:
             await request_json_with_retry(
