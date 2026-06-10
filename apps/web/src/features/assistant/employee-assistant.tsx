@@ -6,7 +6,7 @@ import { BookOpen, CheckCircle2, HelpCircle, LifeBuoy, Send, ShieldAlert } from 
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosSelect } from "@/components/stratos";
-import { CitationList, SourceContextCard } from "@/features/citations/citation-viewer";
+import { CitationList, CitationModal } from "@/features/citations/citation-viewer";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
@@ -119,6 +119,8 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
   const [localizedSuggestions, setLocalizedSuggestions] = useState(suggestions);
   const [clarificationValues, setClarificationValues] = useState<Record<string, string>>({});
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [citationModalOpen, setCitationModalOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [openingSourceId, setOpeningSourceId] = useState<string | null>(null);
@@ -130,6 +132,7 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
     setQuestion(assistantCopy[language].defaultQuestion);
     setResponse(null);
     setSourceContext(null);
+    setSourceError(null);
     fetch(withAppBasePath(`/api/assistant/suggestions?language=${language}`), { headers: { Accept: "application/json" } })
       .then(async (httpResponse) => {
         if (!httpResponse.ok) {
@@ -202,25 +205,28 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
   async function openSource(citation: Citation) {
     setOpeningSourceId(citation.chunk_id);
     setStatusMessage(null);
+    setSourceError(null);
+    setCitationModalOpen(true);
     try {
       const httpResponse = await fetch(withAppBasePath(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/open`), {
         method: "GET",
         headers: { Accept: "application/json" }
       });
       if (!httpResponse.ok) {
-        setStatusMessage(`${copy.sourceOpenFailedStatus} ${httpResponse.status}.`);
+        setSourceError(`${copy.sourceOpenFailedStatus} ${httpResponse.status}.`);
         return;
       }
       const payload = (await httpResponse.json()) as { source_context: SourceContext };
       setSourceContext(payload.source_context);
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : copy.sourceOpenFailed);
+      setSourceError(error instanceof Error ? error.message : copy.sourceOpenFailed);
     } finally {
       setOpeningSourceId(null);
     }
   }
 
   return (
+    <>
     <section className="assistant-workspace">
       <div className="assistant-main">
         <header className="assistant-header">
@@ -298,24 +304,21 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
           </section>
         )}
       </div>
-
-      <aside className="assistant-source-panel">
-        <div className="assistant-source-panel__header">
-          <h2>{copy.sourceTitle}</h2>
-          <StatusBadge value={sourceContext ? "valid" : "insufficient_source"} label={sourceContext ? copy.sourceOpen : copy.sourceWaiting} />
-        </div>
-        {sourceContext ? (
-          <div className="assistant-source-panel__body">
-            <SourceContextCard labels={copy} sourceContext={sourceContext} />
-          </div>
-        ) : (
-          <div className="assistant-source-empty">
-            <BookOpen size={20} aria-hidden="true" />
-            <span>{copy.sourceEmpty}</span>
-          </div>
-        )}
-      </aside>
     </section>
+    <CitationModal
+      open={citationModalOpen}
+      onClose={() => setCitationModalOpen(false)}
+      title={copy.sourceTitle}
+      citations={response?.citations ?? []}
+      activeChunkId={sourceContext?.chunk_id}
+      openingChunkId={openingSourceId}
+      sourceContext={sourceContext}
+      sourceError={sourceError}
+      emptyLabel={copy.noPreciseSource}
+      labels={copy}
+      onOpenCitation={openSource}
+    />
+    </>
   );
 }
 

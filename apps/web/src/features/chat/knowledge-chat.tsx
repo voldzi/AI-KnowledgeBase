@@ -5,7 +5,7 @@ import { Bot, Send, ShieldAlert } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton } from "@/components/stratos";
-import { CitationList, SourceContextCard } from "@/features/citations/citation-viewer";
+import { CitationModal } from "@/features/citations/citation-viewer";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { Citation, RagAnswer, SourceContext } from "@/lib/types";
@@ -95,20 +95,15 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [openingChunkId, setOpeningChunkId] = useState<string | null>(null);
-  const sourceViewerRef = useRef<HTMLElement | null>(null);
+  const [citationModalOpen, setCitationModalOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setQuestion(chatCopy[language].defaultQuestion);
   }, [language]);
 
-  useEffect(() => {
-    if (sourceContext) {
-      sourceViewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [sourceContext]);
-
   function openCitation(citation: Citation) {
+    setCitationModalOpen(true);
     setOpeningChunkId(citation.chunk_id);
     setSourceError(null);
     fetch(withAppBasePath(`/api/controlled-document/citations/${encodeURIComponent(citation.chunk_id)}/open`), {
@@ -132,7 +127,8 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
   }
 
   return (
-    <section className="grid grid--two">
+    <>
+    <section className="grid">
       <div className="panel">
         <div className="panel__header">
           <h2>{copy.title}</h2>
@@ -229,6 +225,15 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
             <div className="answer-block__header">
               <h3>{copy.answer}</h3>
               <StatusBadge value={answer.confidence} />
+              {answer.citations.length > 0 ? (
+                <button
+                  type="button"
+                  className="citation-trigger-btn"
+                  onClick={() => setCitationModalOpen(true)}
+                >
+                  {copy.citationViewer} ({answer.citations.length})
+                </button>
+              ) : null}
             </div>
             <div className="answer-block__body stack">
               <ReadableAnswer text={streamingText || answer.answer} />
@@ -243,26 +248,21 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
           </article>
         </div>
       </div>
-
-      <aside className="panel">
-        <div className="panel__header">
-          <h2>{copy.citationViewer}</h2>
-          <StatusBadge value={answer.citations.length > 0 ? "valid" : "insufficient_source"} label={`${answer.citations.length} ${copy.citations}`} />
-        </div>
-        <div className="panel__body stack">
-          <CitationList
-            citations={answer.citations}
-            activeChunkId={sourceContext?.chunk_id}
-            openingChunkId={openingChunkId}
-            emptyLabel={copy.noCitation}
-            labels={copy}
-            onOpenCitation={openCitation}
-          />
-          {sourceError ? <div className="notice">{sourceError}</div> : null}
-          {sourceContext ? <SourceContextCard labels={copy} ref={sourceViewerRef} sourceContext={sourceContext} /> : null}
-        </div>
-      </aside>
     </section>
+    <CitationModal
+      open={citationModalOpen}
+      onClose={() => setCitationModalOpen(false)}
+      title={copy.citationViewer}
+      citations={answer.citations}
+      activeChunkId={sourceContext?.chunk_id}
+      openingChunkId={openingChunkId}
+      sourceContext={sourceContext}
+      sourceError={sourceError}
+      emptyLabel={copy.noCitation}
+      labels={copy}
+      onOpenCitation={openCitation}
+    />
+    </>
   );
 }
 

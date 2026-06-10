@@ -1,11 +1,12 @@
 "use client";
 
-import { forwardRef } from "react";
-import { Copy, ExternalLink, FileText, ShieldAlert } from "lucide-react";
+import { forwardRef, useEffect, useState } from "react";
+import { Copy, ExternalLink, FileText, Maximize2, PanelRightOpen, ShieldAlert, Square, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { StatusBadge } from "@/components/status-badge";
+import { withAppBasePath } from "@/lib/app-url";
 import type { Citation, SourceContext } from "@/lib/types";
 
 export interface CitationViewerLabels {
@@ -39,12 +40,127 @@ interface SourceContextCardProps {
   showStatus?: boolean;
 }
 
+type CitationDisplayMode = "modal" | "sidebar" | "fullscreen";
+
+export interface CitationModalProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  citations: Citation[];
+  activeChunkId?: string | null;
+  openingChunkId?: string | null;
+  sourceContext: SourceContext | null;
+  sourceError?: string | null;
+  emptyLabel: string;
+  labels: CitationViewerLabels;
+  onOpenCitation: (citation: Citation) => void;
+}
+
 export function citationDocumentViewerHref(citation: Citation) {
   const params = new URLSearchParams({
     tab: "viewer",
     chunk_id: citation.chunk_id
   });
-  return `/documents/${encodeURIComponent(citation.document_id)}?${params.toString()}`;
+  return withAppBasePath(`/documents/${encodeURIComponent(citation.document_id)}?${params.toString()}`);
+}
+
+export function CitationModal({
+  open,
+  onClose,
+  title,
+  citations,
+  activeChunkId,
+  openingChunkId,
+  sourceContext,
+  sourceError,
+  emptyLabel,
+  labels,
+  onOpenCitation
+}: CitationModalProps) {
+  const [mode, setMode] = useState<CitationDisplayMode>("sidebar");
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className={`citation-backdrop citation-backdrop--${mode}`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div className={`citation-modal citation-modal--${mode}`}>
+        <div className="citation-modal__header">
+          <span className="citation-modal__title">{title}</span>
+          <div className="citation-modal__modes">
+            <button
+              type="button"
+              className={`citation-mode-btn ${mode === "modal" ? "is-active" : ""}`}
+              title="Okno"
+              onClick={() => setMode("modal")}
+            >
+              <Square size={14} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`citation-mode-btn ${mode === "sidebar" ? "is-active" : ""}`}
+              title="Panel"
+              onClick={() => setMode("sidebar")}
+            >
+              <PanelRightOpen size={14} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`citation-mode-btn ${mode === "fullscreen" ? "is-active" : ""}`}
+              title="Celá obrazovka"
+              onClick={() => setMode("fullscreen")}
+            >
+              <Maximize2 size={14} aria-hidden="true" />
+            </button>
+          </div>
+          <button
+            type="button"
+            className="citation-modal__close"
+            onClick={onClose}
+            aria-label="Zavřít"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="citation-modal__body">
+          <div className="citation-modal__list-pane">
+            <CitationList
+              citations={citations}
+              activeChunkId={activeChunkId}
+              openingChunkId={openingChunkId}
+              emptyLabel={emptyLabel}
+              labels={labels}
+              onOpenCitation={onOpenCitation}
+            />
+          </div>
+          {(sourceContext || sourceError) ? (
+            <div className="citation-modal__context-pane">
+              {sourceError ? <div className="notice">{sourceError}</div> : null}
+              {sourceContext ? (
+                <SourceContextCard labels={labels} sourceContext={sourceContext} showStatus={false} />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function CitationList({
