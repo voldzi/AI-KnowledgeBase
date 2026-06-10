@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Check, Clock, Loader2, X } from "lucide-react";
+import { Activity, Check, Clock, Loader2, Menu, X } from "lucide-react";
 import { GlobalTopbar, buildStratosTopbarApps } from "@voldzi/stratos-ui";
 
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -25,6 +25,7 @@ interface ProjectTopbarProps {
   onCommandCenterOpen: () => void;
   onLogout: () => void;
   onLanguageChange: (language: AklLanguage) => void;
+  onMobileMenuOpen?: () => void;
   onSettingsOpen?: () => void;
   projectName: string;
   saveState?: SaveState;
@@ -53,6 +54,7 @@ export function ProjectTopbar({
   onCommandCenterOpen,
   onLogout,
   onLanguageChange,
+  onMobileMenuOpen,
   onSettingsOpen,
   projectName,
   saveState = "saved",
@@ -84,6 +86,16 @@ export function ProjectTopbar({
   return (
     <GlobalTopbar
       apps={stratosApps}
+      mobileMenuTrigger={onMobileMenuOpen ? (
+        <button
+          type="button"
+          className="akl-mobile-menu-trigger"
+          aria-label={language === "cs" ? "Otevřít navigaci" : "Open navigation"}
+          onClick={onMobileMenuOpen}
+        >
+          <Menu size={20} aria-hidden="true" />
+        </button>
+      ) : undefined}
       labels={{
         applications: labels.applications,
         userMenu: labels.userMenu,

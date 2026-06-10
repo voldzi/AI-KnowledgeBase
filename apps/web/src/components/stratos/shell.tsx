@@ -12,14 +12,29 @@ export interface StratosNavItem {
 interface StratosAppShellProps {
   children: React.ReactNode;
   sidebarCollapsed?: boolean;
+  mobileSidebarOpen?: boolean;
+  onMobileSidebarClose?: () => void;
   rail: React.ReactNode;
   sidebar?: React.ReactNode;
   topbar: React.ReactNode;
 }
 
-export function StratosAppShell({ children, rail, sidebar, sidebarCollapsed = false, topbar }: StratosAppShellProps) {
+export function StratosAppShell({
+  children,
+  mobileSidebarOpen = false,
+  onMobileSidebarClose,
+  rail,
+  sidebar,
+  sidebarCollapsed = false,
+  topbar
+}: StratosAppShellProps) {
   return (
-    <div className="stratos-app-shell" data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}>
+    <div
+      className="stratos-app-shell"
+      data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+      data-mobile-sidebar-open={mobileSidebarOpen ? "true" : "false"}
+    >
+      <div className="akl-sidebar-backdrop" aria-hidden="true" onClick={onMobileSidebarClose} />
       <div className="stratos-app-shell__topbar">{topbar}</div>
       {rail}
       {sidebar}

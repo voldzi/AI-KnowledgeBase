@@ -499,6 +499,47 @@ button {
   min-width: 0;
 }
 
+/* Hamburger trigger — hidden on desktop, shown ≤1100px where the workspace
+   sidebar becomes an overlay drawer. */
+.stratos-global-topbar-mobile-trigger {
+  display: none;
+}
+
+.akl-mobile-menu-trigger {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+  width: 36px;
+}
+
+.akl-mobile-menu-trigger:hover {
+  background: var(--surface-2);
+}
+
+/* Drawer backdrop — shown only while the mobile drawer is open. */
+.akl-sidebar-backdrop {
+  -webkit-tap-highlight-color: transparent;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  display: none;
+  inset: 0;
+  position: fixed;
+  top: 48px;
+  z-index: 94; /* below the drawer (z-index 95) */
+}
+
+/* Mobile module switcher inside the drawer — replaces the hidden AppRail. */
+.sidebar-mobile-sections {
+  display: none;
+}
+
 .stratos-global-topbar-center {
   justify-content: center;
   min-width: 0;
@@ -4221,31 +4262,49 @@ button {
   min-height: 150px;
 }
 
+/* ─── Tablet (≤1100px): rail stays as icon column, workspace sidebar becomes
+       a fixed overlay drawer with backdrop — same pattern as ProjectFlow and
+       Budget. The hamburger in the topbar opens it; backdrop click, navigation
+       or module switch closes it. ─────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .app-shell,
-  .stratos-app-shell {
-    grid-template-columns: 1fr;
+  .stratos-app-shell,
+  .stratos-app-shell[data-sidebar-collapsed="true"] {
+    grid-template-columns: var(--stratos-rail-width) minmax(0, 1fr);
   }
 
-  .stratos-app-shell__topbar,
+  .stratos-app-shell__topbar {
+    grid-column: 1 / -1;
+  }
+
   .stratos-workspace {
-    grid-column: 1;
-  }
-
-  .sidebar,
-  .stratos-app-rail {
-    min-height: auto;
-    position: static;
+    grid-column: 2;
   }
 
   .stratos-workspace-sidebar {
-    min-height: auto;
-    position: static;
+    position: fixed;
+    z-index: 95;
+    top: 48px;
+    bottom: 0;
+    left: var(--stratos-rail-width);
+    min-height: 0;
+    width: min(284px, calc(100vw - var(--stratos-rail-width)));
+    box-shadow: 18px 0 34px rgba(17, 24, 39, 0.14);
+    transition: transform 200ms ease, opacity 200ms ease;
   }
 
-  .nav-list,
-  .stratos-nav-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .stratos-app-shell[data-mobile-sidebar-open="false"] .stratos-workspace-sidebar {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-105%);
+  }
+
+  .stratos-app-shell[data-mobile-sidebar-open="true"] .akl-sidebar-backdrop {
+    display: block;
+  }
+
+  .stratos-global-topbar-mobile-trigger {
+    display: flex;
   }
 
   .sidebar__footer,
@@ -4285,6 +4344,93 @@ button {
 
   .assistant-source-panel {
     position: static;
+  }
+}
+
+/* ─── Phone (≤768px): rail hidden entirely, single-column shell. The drawer
+       slides in from the left edge and contains a module switcher that
+       replaces the rail. Topbar collapses to [hamburger+switcher | avatar]. ── */
+@media (max-width: 768px) {
+  .app-shell,
+  .stratos-app-shell,
+  .stratos-app-shell[data-sidebar-collapsed="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stratos-workspace {
+    grid-column: 1;
+  }
+
+  .sidebar,
+  .stratos-app-rail {
+    display: none;
+  }
+
+  .stratos-workspace-sidebar {
+    left: 0;
+    width: min(288px, 86vw);
+  }
+
+  /* Topbar: hide the command bar (center) and status chips — keep hamburger,
+     app switcher and avatar. */
+  .stratos-global-topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0 8px;
+  }
+
+  .stratos-global-topbar-center,
+  .akl-topbar-status {
+    display: none;
+  }
+
+  .stratos-global-topbar-context .breadcrumb {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .stratos-global-topbar-context .breadcrumb strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Module switcher in the drawer: stretch over the body padding (12px).
+     2×2 grid — four labels don't fit side by side in a 288px drawer. */
+  .sidebar-mobile-sections {
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    flex-shrink: 0;
+    gap: 5px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0 -12px;
+    padding: 6px 12px 8px;
+  }
+
+  .sidebar-mobile-section-btn {
+    align-items: center;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 1;
+    font-size: 11px;
+    font-weight: 750;
+    gap: 4px;
+    justify-content: center;
+    min-height: 34px;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 4px;
+    transition: background 120ms, color 120ms, border-color 120ms;
+    white-space: nowrap;
+  }
+
+  .sidebar-mobile-section-btn.is-active {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-color: var(--accent);
+    color: var(--stratos-color-accent-strong);
+    font-weight: 800;
   }
 }
 
