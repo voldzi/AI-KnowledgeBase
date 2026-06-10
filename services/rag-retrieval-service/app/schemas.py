@@ -244,7 +244,7 @@ class AssistantSuggestionsResponse(BaseModel):
 
 class AssistantConversationResponse(BaseModel):
     conversation_id: str
-    status: Literal["ephemeral"]
+    status: Literal["ephemeral", "persisted"]
     messages: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 

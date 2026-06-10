@@ -528,3 +528,38 @@ class UpsertRoleMappingRequest(BaseModel):
 
 class RoleMappingStatusPatch(BaseModel):
     status: str = Field(pattern="^(active|removed)$")
+
+
+class AssistantMessageCreate(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1)
+    response_type: str | None = Field(default=None, max_length=64)
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantMessageAppendRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=128)
+    messages: list[AssistantMessageCreate] = Field(min_length=1, max_length=10)
+    title: str | None = Field(default=None, max_length=300)
+
+
+class AssistantMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    message_id: str
+    role: str
+    content: str
+    response_type: str | None = None
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+
+
+class AssistantConversationDetailResponse(BaseModel):
+    conversation_id: str
+    user_id: str
+    status: str
+    title: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    messages: list[AssistantMessageResponse]

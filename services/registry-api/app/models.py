@@ -270,6 +270,49 @@ class RoleMapping(Base):
     )
 
 
+class AssistantConversation(Base, TimestampMixin):
+    __tablename__ = "assistant_conversations"
+
+    conversation_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    messages: Mapped[list["AssistantMessage"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="AssistantMessage.created_at",
+    )
+
+
+class AssistantMessage(Base):
+    __tablename__ = "assistant_messages"
+    __table_args__ = (
+        Index("ix_assistant_messages_conversation_created", "conversation_id", "created_at"),
+    )
+
+    message_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("msg")
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        String(80),
+        ForeignKey("assistant_conversations.conversation_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    response_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    citations: Mapped[list[dict[str, object]]] = mapped_column(
+        MutableList.as_mutable(json_type()), nullable=False, default=list
+    )
+    message_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    conversation: Mapped[AssistantConversation] = relationship(back_populates="messages")
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     __table_args__ = (

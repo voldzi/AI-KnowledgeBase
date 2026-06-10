@@ -356,6 +356,13 @@ class RagRetrievalService:
                 metadata={"question_ids": [question.id for question in questions]},
                 auth_context=auth_context,
             )
+            await self._persist_conversation_turn(
+                conversation_id=conversation_id,
+                user_id=payload.user_id,
+                user_message=payload.message,
+                response=response,
+                auth_context=auth_context,
+            )
             return response
 
         rag_answer = await self.query(
@@ -396,6 +403,13 @@ class RagRetrievalService:
                 metadata={"citation_count": len(rag_answer.citations), "confidence": rag_answer.confidence},
                 auth_context=auth_context,
             )
+            await self._persist_conversation_turn(
+                conversation_id=conversation_id,
+                user_id=payload.user_id,
+                user_message=payload.message,
+                response=response,
+                auth_context=auth_context,
+            )
             return response
 
         response_type = "handoff_recommended" if rag_answer.confidence == "insufficient_source" else "no_answer"
@@ -423,18 +437,91 @@ class RagRetrievalService:
             metadata={"warnings": rag_answer.warnings, "missing_information": rag_answer.missing_information},
             auth_context=auth_context,
         )
+        await self._persist_conversation_turn(
+            conversation_id=conversation_id,
+            user_id=payload.user_id,
+            user_message=payload.message,
+            response=response,
+            auth_context=auth_context,
+        )
         return response
 
     async def assistant_suggestions(self, response_language: ResponseLanguage = "cs") -> AssistantSuggestionsResponse:
         return AssistantSuggestionsResponse(suggestions=_assistant_suggestions(response_language))
 
-    async def assistant_conversation(self, conversation_id: str) -> AssistantConversationResponse:
+    async def assistant_conversation(
+        self,
+        conversation_id: str,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> AssistantConversationResponse:
+        try:
+            stored = await self._registry_client.fetch_conversation(
+                conversation_id=conversation_id,
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "assistant_conversation_fetch_failed conversation_id=%s reason=%s",
+                conversation_id,
+                exc.__class__.__name__,
+            )
+            stored = None
+        if stored is None:
+            return AssistantConversationResponse(
+                conversation_id=conversation_id,
+                status="ephemeral",
+                messages=[],
+                warnings=["CONVERSATION_HISTORY_NOT_PERSISTED"],
+            )
+        messages = stored.get("messages", [])
         return AssistantConversationResponse(
             conversation_id=conversation_id,
-            status="ephemeral",
-            messages=[],
-            warnings=["CONVERSATION_HISTORY_NOT_PERSISTED"],
+            status="persisted",
+            messages=messages if isinstance(messages, list) else [],
+            warnings=[],
         )
+
+    async def _persist_conversation_turn(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        user_message: str,
+        response: AssistantChatResponse,
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        assistant_content = response.answer or response.message or ""
+        try:
+            await self._registry_client.append_conversation_messages(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": user_message,
+                        "citations": [],
+                        "metadata": {},
+                    },
+                    {
+                        "role": "assistant",
+                        "content": assistant_content or "(empty)",
+                        "response_type": response.response_type,
+                        "citations": [citation.model_dump(mode="json") for citation in response.citations],
+                        "metadata": {
+                            "confidence": response.confidence,
+                            "warnings": response.warnings,
+                        },
+                    },
+                ],
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "assistant_conversation_persist_failed conversation_id=%s reason=%s",
+                conversation_id,
+                exc.__class__.__name__,
+            )
 
     async def source_context(
         self,

@@ -72,6 +72,20 @@ GET  /api/v1/assistant/citations/{chunk_id}/open
 
 The assistant wraps retrieval, no-answer policy, answer composition, and citation opening in a plain-language contract for employees. It asks clarifying questions for vague access, incident, and approval requests before it retrieves.
 
+## Conversation Persistence
+
+Assistant conversations are persisted in Registry API
+(`assistant_conversations` and `assistant_messages` tables, migration 0006).
+After every chat turn the RAG service appends the user message and the
+assistant response (including response type, citations, confidence, and
+warnings) via `POST /api/v1/assistant/conversations/{conversation_id}/messages`.
+`GET /api/v1/assistant/conversations/{conversation_id}` on the RAG service
+returns `status: "persisted"` with the full message history; when the
+conversation does not exist or Registry API is unavailable, the response
+degrades to `status: "ephemeral"` with the
+`CONVERSATION_HISTORY_NOT_PERSISTED` warning. Persistence failures never block
+the chat response itself.
+
 ## Language Contract
 
 RAG answers and Employee Assistant responses support Czech and English:

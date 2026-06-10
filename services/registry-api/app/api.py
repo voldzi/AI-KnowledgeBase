@@ -1868,3 +1868,89 @@ def update_role_mapping_status(
 
     profile = db.get(UserProfile, mapping.subject_id) if mapping.subject_type == "user" else None
     return _role_mapping_response(mapping, profile.display_name if profile else None)
+
+
+from app.models import AssistantConversation, AssistantMessage
+from app.schemas import (
+    AssistantConversationDetailResponse,
+    AssistantMessageAppendRequest,
+    AssistantMessageResponse,
+)
+
+
+def _conversation_response(conversation: AssistantConversation) -> AssistantConversationDetailResponse:
+    return AssistantConversationDetailResponse(
+        conversation_id=conversation.conversation_id,
+        user_id=conversation.user_id,
+        status=conversation.status,
+        title=conversation.title,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        messages=[AssistantMessageResponse.model_validate(message) for message in conversation.messages],
+    )
+
+
+@router.post(
+    "/assistant/conversations/{conversation_id}/messages",
+    response_model=AssistantConversationDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def append_assistant_messages(
+    conversation_id: str,
+    payload: AssistantMessageAppendRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationDetailResponse:
+    require_global_action(principal, Action.rag_query)
+    conversation = db.get(AssistantConversation, conversation_id)
+    if conversation is None:
+        conversation = AssistantConversation(
+            conversation_id=conversation_id,
+            user_id=payload.user_id,
+            title=payload.title,
+        )
+        db.add(conversation)
+    elif conversation.user_id != payload.user_id:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_user_mismatch",
+            "Conversation belongs to a different user",
+        )
+    if payload.title and not conversation.title:
+        conversation.title = payload.title
+
+    for message in payload.messages:
+        db.add(
+            AssistantMessage(
+                conversation_id=conversation_id,
+                role=message.role,
+                content=message.content,
+                response_type=message.response_type,
+                citations=message.citations,
+                message_metadata=message.metadata,
+            )
+        )
+    conversation.updated_at = utcnow()
+    db.commit()
+    db.refresh(conversation)
+    return _conversation_response(conversation)
+
+
+@router.get(
+    "/assistant/conversations/{conversation_id}",
+    response_model=AssistantConversationDetailResponse,
+)
+def get_assistant_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationDetailResponse:
+    require_global_action(principal, Action.rag_query)
+    conversation = db.get(AssistantConversation, conversation_id)
+    if conversation is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "conversation_not_found",
+            "Assistant conversation was not found",
+        )
+    return _conversation_response(conversation)

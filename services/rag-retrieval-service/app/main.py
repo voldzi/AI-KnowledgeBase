@@ -232,8 +232,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["assistant"],
     )
     async def assistant_conversation(conversation_id: str, request: Request) -> AssistantConversationResponse:
-        _guard_request(request)
-        return await _service(request).assistant_conversation(conversation_id)
+        auth_context = _guard_request(request)
+        return await _service(request).assistant_conversation(conversation_id, auth_context=auth_context)
 
     @app.post(
         "/api/v1/rag/compare-documents",

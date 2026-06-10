@@ -303,6 +303,39 @@ def _parse_sse_events(body: str) -> list[dict[str, object]]:
     return events
 
 
+def test_assistant_conversation_round_trip_is_persisted() -> None:
+    with make_client() as client:
+        chat = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Kdo schvaluje výjimku ze směrnice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        )
+        assert chat.status_code == 200
+        conversation_id = chat.json()["conversation_id"]
+
+        fetched = client.get(f"/api/v1/assistant/conversations/{conversation_id}")
+
+    assert fetched.status_code == 200
+    body = fetched.json()
+    assert body["status"] == "persisted"
+    roles = [message["role"] for message in body["messages"]]
+    assert roles == ["user", "assistant"]
+    assert body["warnings"] == []
+
+
+def test_unknown_assistant_conversation_reports_ephemeral() -> None:
+    with make_client() as client:
+        response = client.get("/api/v1/assistant/conversations/conv_unknown")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ephemeral"
+    assert "CONVERSATION_HISTORY_NOT_PERSISTED" in body["warnings"]
+
+
 def test_oidc_auth_mode_requires_bearer_token() -> None:
     with make_client({"AKL_AUTH_MODE": "oidc"}) as client:
         response = client.post("/api/v1/rag/query", json=_query_payload("Kdo schvaluje vyjimku?"))
