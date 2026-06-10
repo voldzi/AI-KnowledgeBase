@@ -146,7 +146,7 @@ export function SettingsModal({ authModeLabel, language, onClose, onLogout, user
         navItemId: "appearance",
         title: copy.interfaceTitle,
         description: copy.interfaceDescription,
-        children: <p className="akl-settings-note">STRATOS / AKL</p>
+        children: <p className="akl-settings-note">STRATOS / AKB</p>
       },
       {
         id: "preferences-basic",
