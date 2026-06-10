@@ -182,12 +182,9 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
       "href",
-      "/documents/doc_102?tab=viewer&chunk_id=chunk_789"
+      "/api/assistant/citations/chunk_789/document"
     );
-
-    await page.goto("/documents/doc_102?tab=viewer&chunk_id=chunk_789");
-    await expect(page.getByRole("button", { name: "Viewer", exact: true })).toHaveClass(/stratos-view-tabs__button--active/);
-    await expect(page.getByText("Chunk chunk_789")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
   });
 
   test("DW-16 help center renders role-based guidance", async ({ page }) => {
