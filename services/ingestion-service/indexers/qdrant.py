@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -9,6 +10,8 @@ import httpx
 from app.config import Settings
 from app.errors import IngestionError
 from app.schemas import DocumentChunk
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,7 @@ class QdrantIndexer:
 
         vector_size = self._validate_vector_sizes(vectors, embedding_model=embedding_model)
         await self._ensure_collection(vector_size)
+        await self._ensure_text_index()
         if self.settings.qdrant_delete_existing_version:
             await self._delete_existing_version(chunks[0].document_version_id)
         await self._upsert_points(
@@ -140,6 +144,35 @@ class QdrantIndexer:
                     status_code=502,
                     details={"status_code": create_response.status_code},
                 )
+
+    async def _ensure_text_index(self) -> None:
+        """Create a fulltext payload index on normalized_text for native lexical search.
+
+        The index is idempotent – safe to call on every ingestion.  Without it,
+        retrieval falls back to a full collection scan (slower, still correct).
+        Index creation is non-fatal: a warning is logged but indexing continues.
+        """
+        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            response = await client.put(
+                f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/index",
+                headers=self._headers(),
+                json={
+                    "field_name": "normalized_text",
+                    "field_schema": {
+                        "type": "text",
+                        "tokenizer": "word",
+                        "min_token_len": 2,
+                        "lowercase": True,
+                    },
+                },
+            )
+        if response.status_code >= 400:
+            logger.warning(
+                "Failed to create fulltext payload index on normalized_text "
+                "(status %d) — lexical search will fall back to full collection scan: %s",
+                response.status_code,
+                response.text,
+            )
 
     async def _delete_existing_version(self, document_version_id: str) -> None:
         payload = {

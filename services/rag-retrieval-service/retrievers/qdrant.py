@@ -6,7 +6,7 @@ from typing import Any
 from app.config import Settings
 from app.http_utils import request_json_with_retry
 from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
-from retrievers.scoring import CLASSIFICATION_ORDER, deterministic_embedding, hybrid_score, sparse_score
+from retrievers.scoring import CLASSIFICATION_ORDER, deterministic_embedding, hybrid_score, normalize_text, sparse_score
 
 
 class QdrantHybridRetriever:
@@ -41,7 +41,7 @@ class QdrantHybridRetriever:
             points=payload.get("result", []),
             dense_weight=self._settings.hybrid_dense_weight,
         )
-        lexical_chunks = await self._retrieve_lexical_candidates(query=query, filters=filters, limit=max(1000, limit * 20))
+        lexical_chunks = await self._retrieve_lexical_candidates(query=query, filters=filters, limit=max(limit * 3, 50))
         return _merge_ranked_chunks([*vector_chunks, *lexical_chunks])[:limit]
 
     async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
@@ -92,6 +92,18 @@ class QdrantHybridRetriever:
         filters: RagQueryFilters,
         limit: int,
     ) -> list[RetrievedChunk]:
+        # Normalize the query to match the indexed normalized_text field
+        # (lowercase + diacritics removed).  Qdrant word tokenizer is
+        # case-insensitive, but the stored field has diacritics stripped by our
+        # normalize_text(), so we must normalize the query the same way.
+        normalized_query = normalize_text(query)
+        base_must = _qdrant_filter(filters).get("must", [])
+        combined_filter: dict[str, Any] = {
+            "must": [
+                *base_must,
+                {"key": "normalized_text", "match": {"text": normalized_query}},
+            ]
+        }
         payload = await request_json_with_retry(
             dependency="qdrant",
             settings=self._settings,
@@ -101,7 +113,7 @@ class QdrantHybridRetriever:
                 "limit": limit,
                 "with_payload": True,
                 "with_vector": False,
-                "filter": _qdrant_filter(filters),
+                "filter": combined_filter,
             },
         )
         result = payload.get("result", {})
