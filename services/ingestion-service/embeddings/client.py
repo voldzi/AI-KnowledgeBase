@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from dataclasses import dataclass
 from typing import Any
@@ -49,10 +50,21 @@ class EmbeddingClient:
                 vectors=[_deterministic_embedding(text, model, self.settings.mock_embedding_dimensions) for text in texts],
             )
 
+        batches = [
+            texts[start : start + self.settings.embedding_batch_size]
+            for start in range(0, len(texts), self.settings.embedding_batch_size)
+        ]
+        semaphore = asyncio.Semaphore(self.settings.embedding_concurrency)
+
+        async def _bounded(batch: list[str]) -> list[list[float]]:
+            async with semaphore:
+                return await self._embed_batch(batch, model=model, auth_context=auth_context)
+
+        # gather preserves input order, so vectors stay aligned with texts
+        results = await asyncio.gather(*(_bounded(batch) for batch in batches))
         vectors: list[list[float]] = []
-        for start in range(0, len(texts), self.settings.embedding_batch_size):
-            batch = texts[start : start + self.settings.embedding_batch_size]
-            vectors.extend(await self._embed_batch(batch, model=model, auth_context=auth_context))
+        for result in results:
+            vectors.extend(result)
         return EmbeddingBatch(model=model, vectors=vectors)
 
     async def _embed_batch(

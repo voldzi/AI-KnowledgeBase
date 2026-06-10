@@ -7,6 +7,7 @@ from parsers.docx import DocxParser
 from parsers.html import HtmlParser
 from parsers.ocr import OcrProvider
 from parsers.pdf import PdfParser
+from parsers.pptx import PptxParser
 from parsers.text import TextParser
 from parsers.xlsx import XlsxParser
 
@@ -17,6 +18,7 @@ class ParserRouter:
         self.parsers: list[DocumentParser] = [
             HtmlParser(),
             XlsxParser(),
+            PptxParser(),
             TextParser(),
             PdfParser(),
             DocxParser(),

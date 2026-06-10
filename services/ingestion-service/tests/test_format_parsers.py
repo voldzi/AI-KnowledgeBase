@@ -109,3 +109,50 @@ def test_xlsx_parser_repeats_header_in_continuation_blocks() -> None:
     assert len(result.blocks) > 1
     for block in result.blocks[1:]:
         assert block.text.splitlines()[0] == "ID | Hodnota"
+
+
+def test_pptx_parser_extracts_slides_with_titles_and_notes() -> None:
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    from parsers.pptx import PptxParser
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+    slide.shapes.title.text = "Architektura platformy"
+    slide.placeholders[1].text = "Platforma se skládá z dokumentového registru a vyhledávání."
+    slide.notes_slide.notes_text_frame.text = "Zmínit governance proces."
+
+    table_slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    rows, cols = 2, 2
+    table_shape = table_slide.shapes.add_table(rows, cols, Inches(1), Inches(1), Inches(4), Inches(1))
+    table_shape.table.cell(0, 0).text = "Role"
+    table_shape.table.cell(0, 1).text = "Odpovědnost"
+    table_shape.table.cell(1, 0).text = "Gestor"
+    table_shape.table.cell(1, 1).text = "Schvaluje výjimky"
+
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+
+    parser = PptxParser()
+    source = _source(
+        "architektura.pptx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        buffer.getvalue(),
+    )
+
+    assert parser.supports(source)
+    result = parser.parse(source, parser_profile="default")
+
+    assert result.pages_processed == 2
+    assert result.tables_detected == 1
+
+    slide1_blocks = [block for block in result.blocks if block.page_number == 1]
+    assert any(block.block_type == "heading" and block.text == "Architektura platformy" for block in slide1_blocks)
+    assert any("dokumentového registru" in block.text for block in slide1_blocks)
+    assert any(block.text.startswith("Poznámky:") for block in slide1_blocks)
+    assert all(block.section_path == ["Architektura platformy"] for block in slide1_blocks)
+
+    table_blocks = [block for block in result.blocks if block.block_type == "table"]
+    assert len(table_blocks) == 1
+    assert "Gestor | Schvaluje výjimky" in table_blocks[0].text
