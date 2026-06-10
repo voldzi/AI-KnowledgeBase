@@ -253,7 +253,7 @@ export class MockRagClient implements RagApiClient {
           { label: "New access", prompt: "How do I request new access?", domain: "Service Desk", audience: "employee" },
           { label: "Report incident", prompt: "How do I report an incident?", domain: "IT Operations", audience: "employee" },
           { label: "Who approves exception", prompt: "Who approves an exception to a directive?", domain: "Documentation", audience: "employee" },
-          { label: "Platform architecture", prompt: "What is the architecture of the AKL platform?", domain: "Documentation", audience: "employee" }
+          { label: "Platform architecture", prompt: "What is the architecture of the AKB platform?", domain: "Documentation", audience: "employee" }
         ]
       };
     }
@@ -262,7 +262,7 @@ export class MockRagClient implements RagApiClient {
         { label: "Nový přístup", prompt: "Jak požádám o nový přístup?", domain: "Service Desk", audience: "employee" },
         { label: "Nahlásit incident", prompt: "Jak nahlásím incident?", domain: "IT Operations", audience: "employee" },
         { label: "Kdo schvaluje výjimku", prompt: "Kdo schvaluje výjimku ze směrnice?", domain: "Dokumentace", audience: "employee" },
-        { label: "Architektura platformy", prompt: "Jaká je architektura AKL platformy?", domain: "Dokumentace", audience: "employee" }
+        { label: "Architektura platformy", prompt: "Jaká je architektura AKB platformy?", domain: "Dokumentace", audience: "employee" }
       ]
     };
   }

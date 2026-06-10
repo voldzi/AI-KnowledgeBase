@@ -6,8 +6,8 @@ import { getAklConfig } from "@/lib/api/config";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AKL Platform",
-  description: "Web Frontend for AI Knowledge Library"
+  title: "AKB Platform",
+  description: "Web Frontend for AI Knowledge Base"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

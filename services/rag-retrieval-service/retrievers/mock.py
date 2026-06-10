@@ -50,6 +50,22 @@ class MockHybridRetriever:
     async def readiness(self) -> str:
         return "ready"
 
+    async def list_document_titles(self, *, limit: int = 64) -> list[dict[str, str]]:
+        seen: dict[str, dict[str, str]] = {}
+        for chunk in self._chunks:
+            payload = chunk.get("payload", {})
+            document_id = str(payload.get("document_id") or "")
+            title = str(payload.get("document_title") or "").strip()
+            if not document_id or not title or document_id in seen:
+                continue
+            seen[document_id] = {
+                "document_title": title,
+                "document_type": str(payload.get("document_type") or ""),
+            }
+            if len(seen) >= limit:
+                break
+        return list(seen.values())
+
     async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
         for chunk in self._chunks:
             if chunk["chunk_id"] == chunk_id:
@@ -165,7 +181,7 @@ def _mock_chunks() -> list[dict[str, Any]]:
             "payload": {
                 "document_id": "doc_125",
                 "document_version_id": "ver_458",
-                "document_title": "Jak hledat dokumenty v AKL",
+                "document_title": "Jak hledat dokumenty v AKB",
                 "version_label": "1.0",
                 "document_type": "knowledge_base_article",
                 "classification": "public",

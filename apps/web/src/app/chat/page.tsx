@@ -8,23 +8,26 @@ export const dynamic = "force-dynamic";
 export default async function ChatPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContext();
-  const answer = await loadInitialAnswer(
-    clients.rag.query(
-      {
-        subject_id: context.subjectId,
-        query: "Jak se schvaluje vyjimka z bezpecnostnich pravidel?",
-        filters: {
-          document_types: ["directive", "methodology"],
-          only_valid: true,
-          classification_max: "internal",
-          tags: []
+  const [availableTags, answer] = await Promise.all([
+    loadAvailableTags(),
+    loadInitialAnswer(
+      clients.rag.query(
+        {
+          subject_id: context.subjectId,
+          query: "Jak se schvaluje vyjimka z bezpecnostnich pravidel?",
+          filters: {
+            document_types: ["directive", "methodology"],
+            only_valid: true,
+            classification_max: "internal",
+            tags: []
+          },
+          answer_mode: "normative_with_citations",
+          max_chunks: 8
         },
-        answer_mode: "normative_with_citations",
-        max_chunks: 8
-      },
-      context
+        context
+      )
     )
-  );
+  ]);
 
   return (
     <>
@@ -35,9 +38,24 @@ export default async function ChatPage() {
           en: "RAG query surface with visible confidence, warnings and citations for every sourced answer."
         }}
       />
-      <KnowledgeChat initialAnswer={answer} />
+      <KnowledgeChat initialAnswer={answer} availableTags={availableTags} />
     </>
   );
+
+  async function loadAvailableTags(): Promise<string[]> {
+    try {
+      const documents = await clients.registry.listDocuments(context);
+      const tags = new Set<string>();
+      for (const document of documents) {
+        for (const tag of document.tags) {
+          tags.add(tag);
+        }
+      }
+      return Array.from(tags).sort();
+    } catch {
+      return [];
+    }
+  }
 }
 
 async function loadInitialAnswer(request: Promise<RagAnswer>): Promise<RagAnswer> {

@@ -30,7 +30,15 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
-import { StratosButton, StratosButtonLink, StratosSelect, StratosViewTabs, type StratosViewTab } from "@/components/stratos";
+import {
+  StratosButton,
+  StratosButtonLink,
+  StratosDataTable,
+  StratosSelect,
+  StratosViewTabs,
+  type StratosDataTableColumn,
+  type StratosViewTab
+} from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
@@ -1506,33 +1514,45 @@ export function DocumentDetail({
               </StratosButtonLink>
             ) : null}
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{copy.version}</th>
-                <th>{copy.status}</th>
-                <th>{copy.validity}</th>
-                <th>{copy.changeSummary}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {versions.map((version) => (
-                <tr key={version.document_version_id}>
-                  <td>
-                    <span className="cell-title">
-                      <strong>{version.version_label}</strong>
-                      <span>{version.document_version_id}</span>
-                    </span>
-                  </td>
-                  <td>
-                    <StatusBadge value={version.status} />
-                  </td>
-                  <td>{formatDate(version.valid_from, language)} - {formatDate(version.valid_to, language)}</td>
-                  <td>{version.change_summary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <StratosDataTable
+            aria-label={copy.versionHistory}
+            rows={versions}
+            getRowId={(version) => version.document_version_id}
+            columns={[
+              {
+                id: "version",
+                label: copy.version,
+                sortable: true,
+                sortAccessor: (version) => version.version_label,
+                render: (version) => (
+                  <span className="cell-title">
+                    <strong>{version.version_label}</strong>
+                    <span>{version.document_version_id}</span>
+                  </span>
+                )
+              },
+              {
+                id: "status",
+                label: copy.status,
+                width: 130,
+                sortable: true,
+                sortAccessor: (version) => version.status,
+                render: (version) => <StatusBadge value={version.status} />
+              },
+              {
+                id: "validity",
+                label: copy.validity,
+                sortable: true,
+                sortAccessor: (version) => version.valid_from,
+                render: (version) => `${formatDate(version.valid_from, language)} - ${formatDate(version.valid_to, language)}`
+              },
+              {
+                id: "changeSummary",
+                label: copy.changeSummary,
+                render: (version) => version.change_summary
+              }
+            ]}
+          />
         </section>
       ) : null}
 
@@ -1586,51 +1606,12 @@ export function DocumentDetail({
               </div>
             </div>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{copy.auditEvent}</th>
-                  <th>{copy.auditSeverity}</th>
-                  <th>{copy.auditActor}</th>
-                  <th>{copy.auditResource}</th>
-                  <th>{copy.auditScope}</th>
-                  <th>{copy.auditCorrelation}</th>
-                  <th>{copy.auditCreated}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documentAuditTraces.map((trace) => (
-                  <tr key={trace.event.audit_event_id}>
-                    <td>
-                      <span className="cell-title">
-                        <strong>{trace.event.event_type}</strong>
-                        <span>{trace.event.audit_event_id}</span>
-                        <span>{copy.auditMetadata}: {auditMetadataSummary(trace.event.metadata)}</span>
-                      </span>
-                    </td>
-                    <td>
-                      <StatusBadge value={trace.event.severity} />
-                    </td>
-                    <td>{trace.event.actor_id}</td>
-                    <td>
-                      <span className="cell-title">
-                        <strong>{trace.event.resource_type}</strong>
-                        <span>{trace.event.resource_id}</span>
-                      </span>
-                    </td>
-                    <td>
-                      <div className="tag-list">
-                        {trace.scopes.map((scope) => (
-                          <span className="tag" key={`${trace.event.audit_event_id}-${scope}`}>{scope}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>{trace.event.correlation_id}</td>
-                    <td>{formatDateTime(trace.event.created_at, language)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <StratosDataTable
+              aria-label={copy.auditTitle}
+              rows={documentAuditTraces}
+              getRowId={(trace) => trace.event.audit_event_id}
+              columns={auditTraceColumns(copy, language)}
+            />
           )}
         </section>
       ) : null}
@@ -1773,6 +1754,76 @@ function auditMetadataSummary(metadata: AuditEvent["metadata"]): string {
     .slice(0, 4)
     .map(([key, value]) => `${key}=${String(value)}`);
   return entries.length > 0 ? entries.join(", ") : "n/a";
+}
+
+function auditTraceColumns(
+  copy: (typeof detailCopy)[AklLanguage],
+  language: AklLanguage
+): Array<StratosDataTableColumn<AuditTrace>> {
+  return [
+    {
+      id: "event",
+      label: copy.auditEvent,
+      sortable: true,
+      sortAccessor: (trace) => trace.event.event_type,
+      render: (trace) => (
+        <span className="cell-title">
+          <strong>{trace.event.event_type}</strong>
+          <span>{trace.event.audit_event_id}</span>
+          <span>{copy.auditMetadata}: {auditMetadataSummary(trace.event.metadata)}</span>
+        </span>
+      )
+    },
+    {
+      id: "severity",
+      label: copy.auditSeverity,
+      width: 120,
+      sortable: true,
+      sortAccessor: (trace) => trace.event.severity,
+      render: (trace) => <StatusBadge value={trace.event.severity} />
+    },
+    {
+      id: "actor",
+      label: copy.auditActor,
+      sortable: true,
+      sortAccessor: (trace) => trace.event.actor_id,
+      render: (trace) => trace.event.actor_id
+    },
+    {
+      id: "resource",
+      label: copy.auditResource,
+      render: (trace) => (
+        <span className="cell-title">
+          <strong>{trace.event.resource_type}</strong>
+          <span>{trace.event.resource_id}</span>
+        </span>
+      )
+    },
+    {
+      id: "scope",
+      label: copy.auditScope,
+      render: (trace) => (
+        <div className="tag-list">
+          {trace.scopes.map((scope) => (
+            <span className="tag" key={`${trace.event.audit_event_id}-${scope}`}>{scope}</span>
+          ))}
+        </div>
+      )
+    },
+    {
+      id: "correlation",
+      label: copy.auditCorrelation,
+      render: (trace) => trace.event.correlation_id
+    },
+    {
+      id: "created",
+      label: copy.auditCreated,
+      width: 170,
+      sortable: true,
+      sortAccessor: (trace) => trace.event.created_at,
+      render: (trace) => formatDateTime(trace.event.created_at, language)
+    }
+  ];
 }
 
 function assignmentRowsFrom(assignments: DocumentAssignment[], documentId: string): AssignmentFormRow[] {

@@ -66,7 +66,7 @@ const shellCopy = {
     searchPlaceholder: "Najít dokument, verzi, citaci nebo auditní událost",
     commandCenterOpen: "Otevřít Command Center",
     commandCenterTitle: "Command Center",
-    commandCenterPlaceholder: "Hledat v AKL nebo spustit akci",
+    commandCenterPlaceholder: "Hledat v AKB nebo spustit akci",
     commandCenterPreview: "Vyberte výsledek pro rychlé otevření nebo spuštění akce.",
     commandCenterNoResults: "Nenalezen žádný výsledek.",
     commandCenterActions: "Akce",
@@ -84,7 +84,7 @@ const shellCopy = {
     saved: "Uloženo",
     saving: "Ukládám",
     saveFailed: "Chyba uložení",
-    workspaceTitle: "AKL pracovní plocha",
+    workspaceTitle: "AKB pracovní plocha",
     workspaceSubtitle: "Dokumenty, workflow a znalosti",
     workspaceFooter: "STRATOS jednotné rozhraní",
     collapseSidebar: "Zasunout submenu",
@@ -115,7 +115,7 @@ const shellCopy = {
     searchPlaceholder: "Find document, version, citation, or audit event",
     commandCenterOpen: "Open Command Center",
     commandCenterTitle: "Command Center",
-    commandCenterPlaceholder: "Search AKL or run an action",
+    commandCenterPlaceholder: "Search AKB or run an action",
     commandCenterPreview: "Select a result to open a page or run a quick action.",
     commandCenterNoResults: "No result found.",
     commandCenterActions: "Actions",
@@ -133,7 +133,7 @@ const shellCopy = {
     saved: "Saved",
     saving: "Saving",
     saveFailed: "Save failed",
-    workspaceTitle: "AKL workspace",
+    workspaceTitle: "AKB workspace",
     workspaceSubtitle: "Documents, workflow and knowledge",
     workspaceFooter: "STRATOS unified interface",
     collapseSidebar: "Collapse submenu",
@@ -210,7 +210,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
-    name: authMode === "mock" ? "AKL Dev User" : "AKL",
+    name: authMode === "mock" ? "AKB Dev User" : "AKB",
     email: authMode === "mock" ? "dev@akl.local" : undefined,
     initials: authMode === "mock" ? "AD" : "AK",
     roles: []
@@ -237,7 +237,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
         if (!active || !payload?.user) {
           return;
         }
-        const name = String(payload.user.name || payload.user.email || payload.user.subjectId || "AKL");
+        const name = String(payload.user.name || payload.user.email || payload.user.subjectId || "AKB");
         const email = typeof payload.user.email === "string" ? payload.user.email : undefined;
         const roles = Array.isArray(payload.user.roles) ? payload.user.roles.filter((role: unknown): role is string => typeof role === "string") : [];
         setUserProfile({
@@ -401,8 +401,8 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
         <StratosAppRail
           activePathname={activeRailHref}
           brandHref="/"
-          brandMark="AKL"
-          brandName="AKL Platform"
+          brandMark="AKB"
+          brandName="AKB Platform"
           brandSubtitle="AI Knowledge Library"
           items={railItems}
           footer={
@@ -449,7 +449,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
           }
         >
           {/* Mobile-only: section switcher that replaces the hidden AppRail on small screens */}
-          <nav className="sidebar-mobile-sections" aria-label={language === "cs" ? "Moduly AKL" : "AKL modules"}>
+          <nav className="sidebar-mobile-sections" aria-label={language === "cs" ? "Moduly AKB" : "AKB modules"}>
             {railItems.map((item) => {
               const Icon = item.icon;
               return (

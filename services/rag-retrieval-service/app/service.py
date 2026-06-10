@@ -447,7 +447,37 @@ class RagRetrievalService:
         return response
 
     async def assistant_suggestions(self, response_language: ResponseLanguage = "cs") -> AssistantSuggestionsResponse:
+        dynamic = await self._content_based_suggestions(response_language)
+        if dynamic:
+            return AssistantSuggestionsResponse(suggestions=dynamic)
         return AssistantSuggestionsResponse(suggestions=_assistant_suggestions(response_language))
+
+    async def _content_based_suggestions(self, response_language: ResponseLanguage) -> list[AssistantSuggestion]:
+        """Derive suggested questions from documents actually present in the
+        search index, so the assistant promotes real stored content instead
+        of a generic IT-support catalogue."""
+        list_titles = getattr(self._retriever, "list_document_titles", None)
+        if list_titles is None:
+            return []
+        try:
+            documents = await list_titles(limit=64)
+        except Exception:
+            logger.warning("assistant_suggestions_index_lookup_failed", exc_info=True)
+            return []
+        suggestions: list[AssistantSuggestion] = []
+        for document in documents[:8]:
+            title = document.get("document_title", "").strip()
+            if not title:
+                continue
+            domain = _suggestion_domain(document.get("document_type", ""), response_language)
+            if response_language == "en":
+                prompt = f"What does the document “{title}” regulate and what are its key obligations?"
+            else:
+                prompt = f"Co upravuje dokument „{title}“ a jaké jsou jeho klíčové povinnosti?"
+            suggestions.append(
+                AssistantSuggestion(label=_shorten_title(title), prompt=prompt, domain=domain)
+            )
+        return suggestions
 
     async def assistant_conversation(
         self,
@@ -1259,12 +1289,45 @@ def _follow_up_questions(message: str, response_language: ResponseLanguage = "cs
     ]
 
 
+_SUGGESTION_DOMAINS = {
+    "cs": {
+        "law": "Legislativa",
+        "regulation": "Legislativa",
+        "directive": "Směrnice",
+        "methodology": "Metodiky",
+        "policy": "Politiky",
+        "knowledge_base_article": "Znalostní báze",
+        "project_documentation": "Projektová dokumentace",
+    },
+    "en": {
+        "law": "Legislation",
+        "regulation": "Legislation",
+        "directive": "Directives",
+        "methodology": "Methodologies",
+        "policy": "Policies",
+        "knowledge_base_article": "Knowledge base",
+        "project_documentation": "Project documentation",
+    },
+}
+
+
+def _suggestion_domain(document_type: str, response_language: ResponseLanguage) -> str:
+    domains = _SUGGESTION_DOMAINS["en" if response_language == "en" else "cs"]
+    return domains.get(document_type, "Dokumenty" if response_language != "en" else "Documents")
+
+
+def _shorten_title(title: str, max_length: int = 48) -> str:
+    if len(title) <= max_length:
+        return title
+    return title[: max_length - 1].rstrip() + "…"
+
+
 def _assistant_suggestions(response_language: ResponseLanguage = "cs") -> list[AssistantSuggestion]:
     if response_language == "en":
         return [
             AssistantSuggestion(label="New access", prompt="How do I request new access?", domain="Service Desk"),
             AssistantSuggestion(label="Report incident", prompt="How do I report an incident?", domain="IT Operations"),
-            AssistantSuggestion(label="Platform architecture", prompt="What is the architecture of the AKL platform?", domain="Documentation"),
+            AssistantSuggestion(label="Platform architecture", prompt="What is the architecture of the AKB platform?", domain="Documentation"),
             AssistantSuggestion(label="Teams rules", prompt="Where can I find the Teams rules?", domain="M365 / Collaboration"),
             AssistantSuggestion(label="Service Desk", prompt="How do I create a Service Desk request?", domain="Service Desk"),
             AssistantSuggestion(label="Application owner", prompt="Who is the owner of a specific application?", domain="Applications"),
@@ -1274,7 +1337,7 @@ def _assistant_suggestions(response_language: ResponseLanguage = "cs") -> list[A
     return [
         AssistantSuggestion(label="Nový přístup", prompt="Jak požádám o nový přístup?", domain="Service Desk"),
         AssistantSuggestion(label="Nahlásit incident", prompt="Jak nahlásím incident?", domain="IT Operations"),
-        AssistantSuggestion(label="Architektura platformy", prompt="Jaká je architektura AKL platformy?", domain="Dokumentace"),
+        AssistantSuggestion(label="Architektura platformy", prompt="Jaká je architektura AKB platformy?", domain="Dokumentace"),
         AssistantSuggestion(label="Pravidla Teams", prompt="Kde najdu pravidla pro Teams?", domain="M365 / Collaboration"),
         AssistantSuggestion(label="Service Desk", prompt="Jak založím požadavek na Service Desk?", domain="Service Desk"),
         AssistantSuggestion(label="Gestor aplikace", prompt="Kdo je gestor konkrétní aplikace?", domain="Applications"),

@@ -3,6 +3,7 @@
 import { ShieldCheck } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { StratosDataTable, type StratosDataTableColumn } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuditEvent, AuthorizationHint } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
@@ -21,7 +22,8 @@ const auditCopy = {
     actor: "Aktér",
     resource: "Zdroj",
     correlation: "Korelace",
-    created: "Vytvořeno"
+    created: "Vytvořeno",
+    empty: "Žádné auditní události."
   },
   en: {
     hidden: "Audit viewer is hidden because Registry API did not grant audit.read.",
@@ -31,7 +33,8 @@ const auditCopy = {
     actor: "Actor",
     resource: "Resource",
     correlation: "Correlation",
-    created: "Created"
+    created: "Created",
+    empty: "No audit events."
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
@@ -50,43 +53,67 @@ export function AuditViewer({ events, authorization }: AuditViewerProps) {
     );
   }
 
+  const columns: Array<StratosDataTableColumn<AuditEvent>> = [
+    {
+      id: "event",
+      label: copy.event,
+      sortable: true,
+      sortAccessor: (event) => event.event_type,
+      render: (event) => (
+        <span className="cell-title">
+          <strong>{event.event_type}</strong>
+          <span>{event.audit_event_id}</span>
+        </span>
+      )
+    },
+    {
+      id: "severity",
+      label: copy.severity,
+      width: 130,
+      sortable: true,
+      sortAccessor: (event) => event.severity,
+      render: (event) => <StatusBadge value={event.severity} />
+    },
+    {
+      id: "actor",
+      label: copy.actor,
+      sortable: true,
+      sortAccessor: (event) => event.actor_id,
+      render: (event) => event.actor_id
+    },
+    {
+      id: "resource",
+      label: copy.resource,
+      render: (event) => `${event.resource_type} / ${event.resource_id}`
+    },
+    {
+      id: "correlation",
+      label: copy.correlation,
+      render: (event) => event.correlation_id
+    },
+    {
+      id: "created",
+      label: copy.created,
+      width: 170,
+      sortable: true,
+      sortAccessor: (event) => event.created_at,
+      render: (event) => formatDateTime(event.created_at, language)
+    }
+  ];
+
   return (
     <section className="panel">
       <div className="panel__header">
         <h2>{copy.title}</h2>
         <ShieldCheck size={18} aria-hidden="true" />
       </div>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>{copy.event}</th>
-            <th>{copy.severity}</th>
-            <th>{copy.actor}</th>
-            <th>{copy.resource}</th>
-            <th>{copy.correlation}</th>
-            <th>{copy.created}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((event) => (
-            <tr key={event.audit_event_id}>
-              <td>
-                <span className="cell-title">
-                  <strong>{event.event_type}</strong>
-                  <span>{event.audit_event_id}</span>
-                </span>
-              </td>
-              <td>
-                <StatusBadge value={event.severity} />
-              </td>
-              <td>{event.actor_id}</td>
-              <td>{event.resource_type} / {event.resource_id}</td>
-              <td>{event.correlation_id}</td>
-              <td>{formatDateTime(event.created_at, language)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <StratosDataTable
+        aria-label={copy.title}
+        rows={events}
+        columns={columns}
+        getRowId={(event) => event.audit_event_id}
+        emptyLabel={copy.empty}
+      />
     </section>
   );
 }
