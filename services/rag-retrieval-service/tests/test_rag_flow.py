@@ -218,12 +218,51 @@ def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:
     )
 
 
-def test_compare_documents_is_explicitly_out_of_scope() -> None:
-    with make_client() as client:
-        response = client.post("/api/v1/rag/compare-documents", json={})
+def test_compare_documents_forwards_to_governance(monkeypatch) -> None:
+    captured: dict[str, object] = {}
 
-    assert response.status_code == 501
-    assert response.json()["error"]["code"] == "NOT_IMPLEMENTED"
+    async def fake_forward(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False):
+        captured["dependency"] = dependency
+        captured["method"] = method
+        captured["url"] = url
+        captured["json_body"] = json_body
+        return {"result_id": "cmp_test", "summary": "ok"}
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "request_json_with_retry", fake_forward)
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/rag/compare-documents",
+            json={"subject_id": "user_123", "left_version": {}, "right_version": {}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result_id"] == "cmp_test"
+    assert captured["dependency"] == "governance"
+    assert captured["method"] == "POST"
+    assert str(captured["url"]).endswith("/governance/compare-versions")
+
+
+def test_check_compliance_forwards_to_governance(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_forward(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False):
+        captured["url"] = url
+        return {"result_id": "cc_test", "status": "compliant"}
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "request_json_with_retry", fake_forward)
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/rag/check-compliance",
+            json={"subject_id": "user_123", "draft": {}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "compliant"
+    assert str(captured["url"]).endswith("/governance/check-compliance")
 
 
 def test_oidc_auth_mode_requires_bearer_token() -> None:

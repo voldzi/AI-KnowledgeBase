@@ -71,6 +71,7 @@ class Settings:
     qdrant_base_url: str
     qdrant_collection: str
     llm_gateway_base_url: str
+    governance_base_url: str
 
     request_timeout_seconds: float
     retry_attempts: int
@@ -191,6 +192,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         qdrant_collection=_get(source, "AKL_QDRANT_COLLECTION", "akl_document_chunks"),
         llm_gateway_base_url=_normalize_api_base_url(
             _get(source, "AKL_LLM_GATEWAY_BASE_URL", "http://localhost:8080/api/v1")
+        ),
+        governance_base_url=_normalize_api_base_url(
+            _get(source, "AKL_GOVERNANCE_BASE_URL", "http://governance-service:8080/api/v1")
         ),
         request_timeout_seconds=request_timeout_seconds,
         retry_attempts=retry_attempts,

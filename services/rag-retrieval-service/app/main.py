@@ -16,6 +16,7 @@ from app.errors import (
     retrieval_error_handler,
     validation_error_handler,
 )
+from app.http_utils import request_json_with_retry
 from app.llm_client import create_llm_client
 from app.logging import configure_logging
 from app.middleware import CorrelationIdMiddleware
@@ -207,32 +208,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post(
         "/api/v1/rag/compare-documents",
         tags=["rag"],
-        status_code=501,
-        responses={501: {"description": "Not implemented in this retrieval-only iteration."}},
+        responses={502: {"description": "Governance service is unavailable."}},
     )
-    async def compare_documents(_: dict[str, Any], request: Request) -> None:
-        _guard_request(request)
-        raise RetrievalError(
-            "NOT_IMPLEMENTED",
-            "Document comparison is outside this retrieval-only implementation.",
-            status_code=501,
+    async def compare_documents(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+        auth_context = _guard_request(request)
+        logger.info(
+            "rag_compare_documents_requested subject_id=%s content_logged=false",
+            payload.get("subject_id"),
+        )
+        return await _forward_to_governance(
+            request,
+            path="/governance/compare-versions",
+            payload=payload,
+            auth_context=auth_context,
         )
 
     @app.post(
         "/api/v1/rag/check-compliance",
         tags=["rag"],
-        status_code=501,
-        responses={501: {"description": "Not implemented in this retrieval-only iteration."}},
+        responses={502: {"description": "Governance service is unavailable."}},
     )
-    async def check_compliance(_: dict[str, Any], request: Request) -> None:
-        _guard_request(request)
-        raise RetrievalError(
-            "NOT_IMPLEMENTED",
-            "Compliance checking is outside this retrieval-only implementation.",
-            status_code=501,
+    async def check_compliance(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+        auth_context = _guard_request(request)
+        logger.info(
+            "rag_check_compliance_requested subject_id=%s content_logged=false",
+            payload.get("subject_id"),
+        )
+        return await _forward_to_governance(
+            request,
+            path="/governance/check-compliance",
+            payload=payload,
+            auth_context=auth_context,
         )
 
     return app
+
+
+async def _forward_to_governance(
+    request: Request,
+    *,
+    path: str,
+    payload: dict[str, Any],
+    auth_context: AuthContext,
+) -> dict[str, Any]:
+    settings = _settings(request)
+    return await request_json_with_retry(
+        dependency="governance",
+        settings=settings,
+        method="POST",
+        url=f"{settings.governance_base_url}{path}",
+        json_body=payload,
+        auth_context=auth_context,
+        prefer_upstream_token=True,
+    )
 
 
 def _settings(request: Request) -> Settings:
