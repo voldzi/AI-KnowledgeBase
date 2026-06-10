@@ -172,6 +172,9 @@ test.describe("Document Workbench product paths", () => {
     await page.goto("/chat");
 
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
+
+    // Citations are inside the modal — open it first via the trigger badge
+    await page.getByRole("button", { name: /Prohlížeč citací/ }).first().click();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
 
     await page.getByRole("button", { name: "Otevřít citaci" }).first().click();
