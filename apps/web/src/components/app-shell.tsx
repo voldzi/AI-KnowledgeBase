@@ -205,6 +205,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const authModeLabel = authMode === "mock" ? copy.authModeMock : copy.authModeOidc;
   const [activeModule, setActiveModule] = useState<ShellModuleId>(() => moduleForPath(pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -217,7 +218,16 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
 
   useEffect(() => {
     setActiveModule(moduleForPath(pathname));
+    // Navigation closes the mobile drawer so the destination page is visible.
+    setMobileSidebarOpen(false);
   }, [pathname]);
+
+  const openMobileSidebar = () => {
+    // The desktop "collapsed" state hides the sidebar body — undo it so the
+    // drawer always opens fully expanded on mobile.
+    setSidebarCollapsed(false);
+    setMobileSidebarOpen(true);
+  };
 
   useEffect(() => {
     let active = true;
@@ -385,6 +395,8 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   return (
     <StratosAppShell
       sidebarCollapsed={sidebarCollapsed}
+      mobileSidebarOpen={mobileSidebarOpen}
+      onMobileSidebarClose={() => setMobileSidebarOpen(false)}
       rail={
         <StratosAppRail
           activePathname={activeRailHref}
@@ -436,6 +448,24 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             </div>
           }
         >
+          {/* Mobile-only: section switcher that replaces the hidden AppRail on small screens */}
+          <nav className="sidebar-mobile-sections" aria-label={language === "cs" ? "Moduly AKL" : "AKL modules"}>
+            {railItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
+                  aria-current={activeModule === item.id ? "true" : undefined}
+                  onClick={() => setActiveModule(item.id as ShellModuleId)}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
           <StratosWorkspaceNav
             key={activeModule}
             groups={workspaceGroups}
@@ -465,6 +495,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             onCommandCenterOpen={() => setCommandCenterOpen(true)}
             onLanguageChange={setLanguage}
             onLogout={handleLogout}
+            onMobileMenuOpen={openMobileSidebar}
             onSettingsOpen={() => setSettingsOpen(true)}
             projectName={activeTopbarContext}
             user={userProfile}
