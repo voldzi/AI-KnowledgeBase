@@ -49,9 +49,23 @@ Registry API uz dodava prvni perzistentni workflow task kontrakt:
 
 Samotne dokumentove rozhodnuti, napr. realna publikace verze, zustava oddelene v dokumentovych endpointach. `workflow.task.publish` auditne zachycuje workflow rozhodnuti, ale nenahrazuje `/documents/{document_id}/versions/{version_id}/publish`.
 
+## SLA Eskalace
+
+Pri kazdem nacteni `GET /workflow/tasks` probehne eskalacni pruchod nad
+aktivnimi tasky (`open`, `waiting`, `blocked`):
+
+- task po terminu `due_at` dostane zvysenou prioritu (low → medium → high → critical),
+- pokud ma assignment nastaven eskalacni subjekt (`escalation_subject_id`),
+  task se preradi na nej a `owner_label` prevezme `escalation_label`,
+- do metadat tasku se zapise `sla_escalated`, `sla_escalated_at` a
+  `previous_owner_id`,
+- zapise se audit udalost `workflow.task.sla_escalated` se severitou `warning`.
+
+Eskalace je idempotentni — flag `sla_escalated` zajisti, ze probehne jen jednou.
+
 ## Dalsi Rez
 
 1. Governance Service: vracet vysledky compliance/conflict checks jako vstup do tasku.
 2. Ingestion Service: publikovat varovani do workflow tasku pres Registry API misto webove derivace.
-3. Registry API: pridat SLA, eskalace a viceurovnove schvalovatele.
+3. Registry API: viceurovnove schvalovatele (multi-step approval chains).
 4. Web UI: doplnit audit tab dokumentu s filtrovanou historii workflow a publikace.

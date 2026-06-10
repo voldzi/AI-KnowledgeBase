@@ -867,6 +867,60 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
         )
 
 
+_PRIORITY_ESCALATION = {
+    WorkflowTaskPriority.low.value: WorkflowTaskPriority.medium.value,
+    WorkflowTaskPriority.medium.value: WorkflowTaskPriority.high.value,
+    WorkflowTaskPriority.high.value: WorkflowTaskPriority.critical.value,
+    WorkflowTaskPriority.critical.value: WorkflowTaskPriority.critical.value,
+}
+
+
+def _escalate_overdue_tasks(db: Session) -> None:
+    """SLA escalation pass: overdue active tasks get a priority bump, are
+    reassigned to the configured escalation subject when one exists, and an
+    audit event is written. Idempotent via the sla_escalated metadata flag."""
+    now = utcnow()
+    tasks = db.execute(
+        select(WorkflowTask).where(WorkflowTask.status.in_(ACTIVE_TASK_STATUSES))
+    ).scalars()
+    for task in tasks:
+        metadata = dict(task.task_metadata or {})
+        if metadata.get("sla_escalated"):
+            continue
+        due_at = task.due_at
+        comparable_due_at = due_at if due_at.tzinfo is not None else due_at.replace(tzinfo=now.tzinfo)
+        if comparable_due_at >= now:
+            continue
+
+        previous_owner_id = task.owner_id
+        escalation_subject_id = metadata.get("escalation_subject_id")
+        if isinstance(escalation_subject_id, str) and escalation_subject_id:
+            task.owner_id = escalation_subject_id
+            task.owner_label = str(metadata.get("escalation_label") or escalation_subject_id)
+        task.priority = _PRIORITY_ESCALATION.get(task.priority, WorkflowTaskPriority.critical.value)
+        task.task_metadata = {
+            **metadata,
+            "sla_escalated": True,
+            "sla_escalated_at": now.isoformat(),
+            "previous_owner_id": previous_owner_id,
+        }
+        add_audit_event(
+            db,
+            actor_id="system",
+            event_type="workflow.task.sla_escalated",
+            resource_type="workflow_task",
+            resource_id=task.task_id,
+            severity="warning",
+            metadata={
+                "document_id": task.document_id,
+                "previous_owner_id": previous_owner_id,
+                "escalated_to": task.owner_id,
+                "due_at": due_at.isoformat(),
+                "priority": task.priority,
+            },
+        )
+
+
 def _get_workflow_task(db: Session, task_id: str) -> WorkflowTask:
     task = db.execute(select(WorkflowTask).where(WorkflowTask.task_id == task_id)).scalar_one_or_none()
     if task is None:
@@ -1482,6 +1536,7 @@ def list_workflow_tasks(
 ) -> WorkflowTaskListResponse:
     require_global_action(principal, Action.workflow_task_read)
     _sync_derived_workflow_tasks(db)
+    _escalate_overdue_tasks(db)
     _commit_or_conflict(db)
 
     stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at).limit(limit).offset(offset)
