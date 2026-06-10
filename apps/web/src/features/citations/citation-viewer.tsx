@@ -193,7 +193,12 @@ export function CitationList({
             <ExternalLink size={15} aria-hidden="true" />
             {openingChunkId === citation.chunk_id ? labels.opening : labels.openCitation}
           </button>
-          <a className="button" href={citationDocumentViewerHref(citation)}>
+          <a
+            className="button"
+            href={citationDocumentViewerHref(citation)}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
             <FileText size={15} aria-hidden="true" />
             {labels.openDocument}
           </a>
