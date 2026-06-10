@@ -279,3 +279,60 @@ def test_workflow_action_audit_keeps_assignment_context(client, admin_headers):
     assert event["metadata"]["assignment_id"] == reviewer_assignment["assignment_id"]
     assert event["metadata"]["assignment_role"] == "reviewer"
     assert event["metadata"]["escalation_subject_id"] == "user_escalation"
+
+
+def test_overdue_task_is_escalated_with_priority_bump_and_audit(client, admin_headers, db_session):
+    from datetime import timedelta
+
+    from app.models import WorkflowTask, AuditEvent, utcnow
+    from sqlalchemy import select
+
+    document = _create_document(client, admin_headers)
+    db_session.add(
+        WorkflowTask(
+            kind="review",
+            priority="medium",
+            status="open",
+            title="Overdue review",
+            description="Past due task for escalation test.",
+            source="test",
+            owner_id="user_owner",
+            owner_label="Owner",
+            role="Reviewer",
+            document_id=document["document_id"],
+            document_title=document["title"],
+            due_at=utcnow() - timedelta(days=2),
+            task_metadata={
+                "escalation_subject_id": "user_boss",
+                "escalation_label": "Vedouci odboru",
+            },
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/api/v1/workflow/tasks", headers=admin_headers)
+    assert response.status_code == 200, response.text
+    escalated = next(task for task in response.json()["items"] if task["title"] == "Overdue review")
+
+    assert escalated["priority"] == "high"
+    assert escalated["owner_id"] == "user_boss"
+    assert escalated["owner_label"] == "Vedouci odboru"
+    assert escalated["metadata"]["sla_escalated"] is True
+    assert escalated["metadata"]["previous_owner_id"] == "user_owner"
+
+    events = list(
+        db_session.execute(
+            select(AuditEvent).where(AuditEvent.event_type == "workflow.task.sla_escalated")
+        ).scalars()
+    )
+    assert len(events) == 1
+    assert events[0].event_metadata["escalated_to"] == "user_boss"
+
+    # second listing must not escalate again
+    client.get("/api/v1/workflow/tasks", headers=admin_headers)
+    events_after = list(
+        db_session.execute(
+            select(AuditEvent).where(AuditEvent.event_type == "workflow.task.sla_escalated")
+        ).scalars()
+    )
+    assert len(events_after) == 1

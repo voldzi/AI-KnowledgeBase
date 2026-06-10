@@ -173,6 +173,22 @@ class QdrantIndexer:
                 response.status_code,
                 response.text,
             )
+        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            index_response = await client.put(
+                f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/index",
+                headers=self._headers(),
+                json={
+                    "field_name": "metadata.chunk_index",
+                    "field_schema": "integer",
+                },
+            )
+        if index_response.status_code >= 400:
+            logger.warning(
+                "Failed to create integer payload index on metadata.chunk_index "
+                "(status %d) — neighbour-context lookups will scan the collection: %s",
+                index_response.status_code,
+                index_response.text,
+            )
 
     async def _delete_existing_version(self, document_version_id: str) -> None:
         payload = {

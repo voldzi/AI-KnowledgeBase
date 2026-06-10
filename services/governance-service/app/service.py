@@ -120,10 +120,12 @@ class GovernanceService:
             event_type="governance.check_compliance.executed",
             resource_id=result_id,
             response=response,
+            severity="warning" if response.status == "non_compliant" else "info",
             metadata={
                 "status": response.status,
                 "finding_count": len(response.findings),
                 "control_chunk_count": len(control_sources),
+                "document_id": payload.draft.document_id,
             },
         )
         logger.info(
@@ -165,9 +167,11 @@ class GovernanceService:
             event_type="governance.detect_conflicts.executed",
             resource_id=result_id,
             response=response,
+            severity="warning" if response.conflicts else "info",
             metadata={
                 "conflict_count": len(response.conflicts),
                 "authorized_document_count": len(allowed_documents),
+                "document_id": allowed_documents[0].document_id if allowed_documents else None,
             },
         )
         logger.info(
@@ -302,6 +306,7 @@ class GovernanceService:
         resource_id: str,
         response: object,
         metadata: dict[str, object],
+        severity: str = "info",
     ) -> None:
         citations = getattr(response, "citations", [])
         warnings = getattr(response, "warnings", [])
@@ -311,6 +316,7 @@ class GovernanceService:
             actor_id=actor_id,
             event_type=event_type,
             resource_id=resource_id,
+            severity=severity,
             metadata={
                 **metadata,
                 "confidence": confidence,

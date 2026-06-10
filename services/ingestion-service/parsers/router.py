@@ -4,15 +4,21 @@ from app.config import Settings
 from app.object_storage import SourceObject
 from parsers.base import DocumentParser, ParserError, ParserResult
 from parsers.docx import DocxParser
+from parsers.html import HtmlParser
 from parsers.ocr import OcrProvider
 from parsers.pdf import PdfParser
+from parsers.pptx import PptxParser
 from parsers.text import TextParser
+from parsers.xlsx import XlsxParser
 
 
 class ParserRouter:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.parsers: list[DocumentParser] = [
+            HtmlParser(),
+            XlsxParser(),
+            PptxParser(),
             TextParser(),
             PdfParser(),
             DocxParser(),

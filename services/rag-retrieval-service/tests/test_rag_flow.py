@@ -218,12 +218,122 @@ def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:
     )
 
 
-def test_compare_documents_is_explicitly_out_of_scope() -> None:
-    with make_client() as client:
-        response = client.post("/api/v1/rag/compare-documents", json={})
+def test_compare_documents_forwards_to_governance(monkeypatch) -> None:
+    captured: dict[str, object] = {}
 
-    assert response.status_code == 501
-    assert response.json()["error"]["code"] == "NOT_IMPLEMENTED"
+    async def fake_forward(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False):
+        captured["dependency"] = dependency
+        captured["method"] = method
+        captured["url"] = url
+        captured["json_body"] = json_body
+        return {"result_id": "cmp_test", "summary": "ok"}
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "request_json_with_retry", fake_forward)
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/rag/compare-documents",
+            json={"subject_id": "user_123", "left_version": {}, "right_version": {}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result_id"] == "cmp_test"
+    assert captured["dependency"] == "governance"
+    assert captured["method"] == "POST"
+    assert str(captured["url"]).endswith("/governance/compare-versions")
+
+
+def test_check_compliance_forwards_to_governance(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_forward(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False):
+        captured["url"] = url
+        return {"result_id": "cc_test", "status": "compliant"}
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "request_json_with_retry", fake_forward)
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/rag/check-compliance",
+            json={"subject_id": "user_123", "draft": {}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "compliant"
+    assert str(captured["url"]).endswith("/governance/check-compliance")
+
+
+def test_query_stream_returns_sse_with_meta_and_done_events() -> None:
+    with make_client() as client:
+        response = client.post("/api/v1/rag/query-stream", json=_query_payload("Kdo schvaluje vyjimku?"))
+
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers.get("content-type", "")
+    events = _parse_sse_events(response.text)
+    kinds = [evt.get("kind") for evt in events]
+    assert "meta" in kinds
+    assert "done" in kinds
+    done = next(evt for evt in events if evt.get("kind") == "done")
+    assert done["answer"]["query_id"].startswith("query_")
+    assert done["answer"]["confidence"] in {"high", "medium", "low", "insufficient_source"}
+
+
+def test_query_stream_no_answer_yields_single_done_event() -> None:
+    with make_client() as client:
+        response = client.post("/api/v1/rag/query-stream", json=_query_payload("xyzzy plugh abrakadabra"))
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    kinds = [evt.get("kind") for evt in events]
+    assert kinds == ["done"]
+    assert events[0]["answer"]["confidence"] == "insufficient_source"
+
+
+def _parse_sse_events(body: str) -> list[dict[str, object]]:
+    import json
+
+    events: list[dict[str, object]] = []
+    for line in body.splitlines():
+        if line.startswith("data: "):
+            raw = line[6:].strip()
+            if raw:
+                events.append(json.loads(raw))
+    return events
+
+
+def test_assistant_conversation_round_trip_is_persisted() -> None:
+    with make_client() as client:
+        chat = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Kdo schvaluje výjimku ze směrnice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        )
+        assert chat.status_code == 200
+        conversation_id = chat.json()["conversation_id"]
+
+        fetched = client.get(f"/api/v1/assistant/conversations/{conversation_id}")
+
+    assert fetched.status_code == 200
+    body = fetched.json()
+    assert body["status"] == "persisted"
+    roles = [message["role"] for message in body["messages"]]
+    assert roles == ["user", "assistant"]
+    assert body["warnings"] == []
+
+
+def test_unknown_assistant_conversation_reports_ephemeral() -> None:
+    with make_client() as client:
+        response = client.get("/api/v1/assistant/conversations/conv_unknown")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ephemeral"
+    assert "CONVERSATION_HISTORY_NOT_PERSISTED" in body["warnings"]
 
 
 def test_oidc_auth_mode_requires_bearer_token() -> None:

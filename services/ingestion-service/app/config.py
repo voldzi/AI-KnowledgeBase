@@ -90,6 +90,7 @@ class Settings:
     default_embedding_model: str
     embedding_profile_model_map: dict[str, str]
     embedding_batch_size: int
+    embedding_concurrency: int
     mock_embedding_dimensions: int
 
     indexer_mode: str
@@ -137,6 +138,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         max_chunk_chars = int(_get(source, "AKL_INGESTION_MAX_CHUNK_CHARS", "3000"))
         max_chunks_per_job = int(_get(source, "AKL_INGESTION_MAX_CHUNKS_PER_JOB", "5000"))
         embedding_batch_size = int(_get(source, "AKL_INGESTION_EMBEDDING_BATCH_SIZE", "32"))
+        embedding_concurrency = int(_get(source, "AKL_INGESTION_EMBEDDING_CONCURRENCY", "2"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
         qdrant_vector_size = int(_get(source, "AKL_QDRANT_VECTOR_SIZE", "1024"))
         request_timeout_seconds = float(_get(source, "AKL_INGESTION_REQUEST_TIMEOUT_SECONDS", "30"))
@@ -159,6 +161,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_MAX_CHUNKS_PER_JOB must be greater than zero")
     if embedding_batch_size <= 0:
         raise ConfigError("AKL_INGESTION_EMBEDDING_BATCH_SIZE must be greater than zero")
+    if embedding_concurrency <= 0 or embedding_concurrency > 16:
+        raise ConfigError("AKL_INGESTION_EMBEDDING_CONCURRENCY must be between 1 and 16")
     if mock_embedding_dimensions <= 0:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
     if qdrant_vector_size <= 0:
@@ -228,6 +232,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             "AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP",
         ),
         embedding_batch_size=embedding_batch_size,
+        embedding_concurrency=embedding_concurrency,
         mock_embedding_dimensions=mock_embedding_dimensions,
         indexer_mode=indexer_mode,
         qdrant_base_url=_get(source, "AKL_QDRANT_BASE_URL", "http://localhost:6333").rstrip("/"),

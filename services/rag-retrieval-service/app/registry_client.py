@@ -37,6 +37,24 @@ class RegistryClient(Protocol):
     ) -> None:
         ...
 
+    async def append_conversation_messages(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        messages: list[dict[str, object]],
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        ...
+
+    async def fetch_conversation(
+        self,
+        *,
+        conversation_id: str,
+        auth_context: AuthContext | None = None,
+    ) -> dict[str, object] | None:
+        ...
+
     async def readiness(self) -> str:
         ...
 
@@ -44,6 +62,7 @@ class RegistryClient(Protocol):
 class MockRegistryClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._conversations: dict[str, dict[str, object]] = {}
 
     async def filter_allowed_documents(
         self,
@@ -71,6 +90,28 @@ class MockRegistryClient:
         auth_context: AuthContext | None = None,
     ) -> None:
         return None
+
+    async def append_conversation_messages(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        messages: list[dict[str, object]],
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        conversation = self._conversations.setdefault(
+            conversation_id,
+            {"conversation_id": conversation_id, "user_id": user_id, "status": "active", "messages": []},
+        )
+        conversation["messages"] = [*conversation["messages"], *messages]  # type: ignore[misc]
+
+    async def fetch_conversation(
+        self,
+        *,
+        conversation_id: str,
+        auth_context: AuthContext | None = None,
+    ) -> dict[str, object] | None:
+        return self._conversations.get(conversation_id)
 
     async def readiness(self) -> str:
         return "ready"
@@ -139,6 +180,46 @@ class HttpRegistryClient:
             prefer_upstream_token=True,
         )
 
+    async def append_conversation_messages(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        messages: list[dict[str, object]],
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        await request_json_with_retry(
+            dependency="registry-api",
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.registry_base_url}/assistant/conversations/{conversation_id}/messages",
+            json_body={"user_id": user_id, "messages": messages},
+            auth_context=auth_context,
+            prefer_upstream_token=True,
+        )
+
+    async def fetch_conversation(
+        self,
+        *,
+        conversation_id: str,
+        auth_context: AuthContext | None = None,
+    ) -> dict[str, object] | None:
+        from app.errors import RetrievalError
+
+        try:
+            return await request_json_with_retry(
+                dependency="registry-api",
+                settings=self._settings,
+                method="GET",
+                url=f"{self._settings.registry_base_url}/assistant/conversations/{conversation_id}",
+                auth_context=auth_context,
+                prefer_upstream_token=True,
+            )
+        except RetrievalError as exc:
+            if exc.status_code == 404 or (exc.details or {}).get("status_code") == 404:
+                return None
+            raise
+
     async def readiness(self) -> str:
         try:
             await request_json_with_retry(
@@ -184,6 +265,32 @@ class DevAuthzRegistryClient:
             resource_id=resource_id,
             metadata=metadata,
             resource_type=resource_type,
+            auth_context=auth_context,
+        )
+
+    async def append_conversation_messages(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        messages: list[dict[str, object]],
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        await self._audit_client.append_conversation_messages(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            messages=messages,
+            auth_context=auth_context,
+        )
+
+    async def fetch_conversation(
+        self,
+        *,
+        conversation_id: str,
+        auth_context: AuthContext | None = None,
+    ) -> dict[str, object] | None:
+        return await self._audit_client.fetch_conversation(
+            conversation_id=conversation_id,
             auth_context=auth_context,
         )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,6 +23,20 @@ class QdrantHybridRetriever:
         query_vector: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         vector = query_vector or deterministic_embedding(query)
+        vector_chunks, lexical_chunks = await asyncio.gather(
+            self._retrieve_vector_candidates(query=query, filters=filters, limit=limit, vector=vector),
+            self._retrieve_lexical_candidates(query=query, filters=filters, limit=max(limit * 3, 50)),
+        )
+        return _fuse_ranked_chunks(vector_chunks, lexical_chunks)[:limit]
+
+    async def _retrieve_vector_candidates(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+        vector: list[float],
+    ) -> list[RetrievedChunk]:
         body = {
             "vector": vector,
             "limit": limit,
@@ -36,13 +51,11 @@ class QdrantHybridRetriever:
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/search",
             json_body=body,
         )
-        vector_chunks = _points_to_hybrid_chunks(
+        return _points_to_hybrid_chunks(
             query=query,
             points=payload.get("result", []),
             dense_weight=self._settings.hybrid_dense_weight,
         )
-        lexical_chunks = await self._retrieve_lexical_candidates(query=query, filters=filters, limit=max(limit * 3, 50))
-        return _merge_ranked_chunks([*vector_chunks, *lexical_chunks])[:limit]
 
     async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
         payload = await request_json_with_retry(
@@ -73,6 +86,52 @@ class QdrantHybridRetriever:
             return None
         return _point_to_chunk(point_payload, score=1.0, dense_score=1.0, sparse_score=1.0)
 
+    async def get_neighbors(self, chunk: RetrievedChunk) -> tuple[str, str]:
+        """Return (before_text, after_text) from the chunks adjacent to the
+        given chunk inside the same document version, based on chunk_index."""
+        chunk_index = chunk.metadata.get("chunk_index")
+        document_version_id = chunk.citation.document_version_id
+        if not isinstance(chunk_index, int) or not document_version_id:
+            return "", ""
+        payload = await request_json_with_retry(
+            dependency="qdrant",
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
+            json_body={
+                "limit": 8,
+                "with_payload": True,
+                "with_vector": False,
+                "filter": {
+                    "must": [
+                        {"key": "document_version_id", "match": {"value": document_version_id}},
+                        {
+                            "key": "metadata.chunk_index",
+                            "range": {"gte": chunk_index - 1, "lte": chunk_index + 1},
+                        },
+                    ]
+                },
+            },
+        )
+        result = payload.get("result", {})
+        points = result.get("points", []) if isinstance(result, dict) else []
+        before_text = ""
+        after_text = ""
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            point_payload = point.get("payload", {})
+            if not isinstance(point_payload, dict):
+                continue
+            point_metadata = point_payload.get("metadata") if isinstance(point_payload.get("metadata"), dict) else {}
+            point_index = point_metadata.get("chunk_index")
+            text = str(point_payload.get("text") or "").strip()
+            if point_index == chunk_index - 1:
+                before_text = text
+            elif point_index == chunk_index + 1:
+                after_text = text
+        return before_text, after_text
+
     async def readiness(self) -> str:
         try:
             await request_json_with_retry(
@@ -92,17 +151,21 @@ class QdrantHybridRetriever:
         filters: RagQueryFilters,
         limit: int,
     ) -> list[RetrievedChunk]:
-        # Normalize the query to match the indexed normalized_text field
-        # (lowercase + diacritics removed).  Qdrant word tokenizer is
-        # case-insensitive, but the stored field has diacritics stripped by our
-        # normalize_text(), so we must normalize the query the same way.
+        # The indexed normalized_text field may contain diacritics (documents
+        # ingested before normalization was unified) or have them stripped
+        # (current ingestion).  Match both variants via a should clause so
+        # lexical recall works across both index generations.
         normalized_query = normalize_text(query)
+        lowercase_query = query.strip().lower()
+        text_conditions: list[dict[str, Any]] = [
+            {"key": "normalized_text", "match": {"text": normalized_query}},
+        ]
+        if lowercase_query and lowercase_query != normalized_query:
+            text_conditions.append({"key": "normalized_text", "match": {"text": lowercase_query}})
         base_must = _qdrant_filter(filters).get("must", [])
         combined_filter: dict[str, Any] = {
-            "must": [
-                *base_must,
-                {"key": "normalized_text", "match": {"text": normalized_query}},
-            ]
+            "must": base_must,
+            "should": text_conditions,
         }
         payload = await request_json_with_retry(
             dependency="qdrant",
@@ -177,18 +240,48 @@ def _points_to_lexical_chunks(*, query: str, points: Any) -> list[RetrievedChunk
     return chunks
 
 
-def _merge_ranked_chunks(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+RRF_K = 60
+
+
+def _fuse_ranked_chunks(
+    vector_chunks: list[RetrievedChunk],
+    lexical_chunks: list[RetrievedChunk],
+) -> list[RetrievedChunk]:
+    """Reciprocal Rank Fusion across the dense and lexical rankings.
+
+    RRF is scale-free, so it is robust against the incomparable score
+    distributions of cosine similarity vs lexical overlap.  The fused order
+    decides ranking; chunk.score keeps the calibrated hybrid value used by
+    the no-answer policy and confidence thresholds.
+    """
+    dense_ranked = sorted(vector_chunks, key=lambda item: item.metadata.get("dense_score", 0.0), reverse=True)
+    lexical_ranked = sorted(lexical_chunks, key=lambda item: item.metadata.get("sparse_score", 0.0), reverse=True)
+
+    rrf_scores: dict[str, float] = {}
+    for ranking in (dense_ranked, lexical_ranked):
+        for rank, chunk in enumerate(ranking):
+            rrf_scores[chunk.chunk_id] = rrf_scores.get(chunk.chunk_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+
     best_by_chunk_id: dict[str, RetrievedChunk] = {}
-    for chunk in chunks:
+    for chunk in [*vector_chunks, *lexical_chunks]:
         existing = best_by_chunk_id.get(chunk.chunk_id)
         if existing is None or (chunk.score, chunk.metadata.get("sparse_score", 0)) > (
             existing.score,
             existing.metadata.get("sparse_score", 0),
         ):
             best_by_chunk_id[chunk.chunk_id] = chunk
+
+    fused: list[RetrievedChunk] = []
+    for chunk in best_by_chunk_id.values():
+        rrf = round(rrf_scores.get(chunk.chunk_id, 0.0), 6)
+        fused.append(chunk.model_copy(update={"metadata": {**chunk.metadata, "rrf_score": rrf}}))
     return sorted(
-        best_by_chunk_id.values(),
-        key=lambda item: (item.score, item.metadata.get("sparse_score", 0)),
+        fused,
+        key=lambda item: (
+            item.metadata.get("rrf_score", 0.0),
+            item.score,
+            item.metadata.get("sparse_score", 0),
+        ),
         reverse=True,
     )
 
@@ -234,6 +327,7 @@ def _point_to_chunk(
             "section_title": payload.get("section_title"),
             "char_start": payload.get("char_start"),
             "char_end": payload.get("char_end"),
+            "chunk_index": chunk_metadata.get("chunk_index"),
         },
     )
 

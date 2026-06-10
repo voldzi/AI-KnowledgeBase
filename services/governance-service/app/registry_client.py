@@ -41,6 +41,7 @@ class RegistryClient(Protocol):
         event_type: str,
         resource_id: str,
         metadata: dict[str, object],
+        severity: str = "info",
     ) -> None:
         ...
 
@@ -81,6 +82,7 @@ class MockRegistryClient:
         event_type: str,
         resource_id: str,
         metadata: dict[str, object],
+        severity: str = "info",
     ) -> None:
         return None
 
@@ -155,6 +157,7 @@ class HttpRegistryClient:
         event_type: str,
         resource_id: str,
         metadata: dict[str, object],
+        severity: str = "info",
     ) -> None:
         await request_json_with_retry(
             dependency="registry-api",
@@ -166,7 +169,7 @@ class HttpRegistryClient:
                 "event_type": event_type,
                 "resource_type": "governance_result",
                 "resource_id": resource_id,
-                "severity": "info",
+                "severity": severity,
                 "correlation_id": get_correlation_id(),
                 "metadata": {"service": self._settings.service_name, **metadata},
             },

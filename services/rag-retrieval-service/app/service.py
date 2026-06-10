@@ -5,8 +5,9 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
+from typing import AsyncIterator
 
-from answer_composer.composer import AnswerComposer
+from answer_composer.composer import AnswerComposer, StreamEvent
 from app.config import Settings
 from app.errors import RetrievalError
 from app.llm_client import LLMGatewayClient
@@ -159,6 +160,96 @@ class RagRetrievalService:
         )
         return answer
 
+    async def query_stream(
+        self,
+        payload: RagQueryRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        if payload.answer_mode == "compare":
+            raise RetrievalError(
+                "NOT_IMPLEMENTED",
+                "Document comparison is outside this retrieval-only implementation.",
+                status_code=501,
+            )
+
+        query_id = _query_id()
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=payload.query,
+                filters=payload.filters,
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        decision = self._no_answer_policy.evaluate(
+            chunks=run.response.chunks,
+            had_candidates=run.had_candidates,
+            denied_document_ids=run.denied_document_ids,
+        )
+        if not decision.can_answer:
+            answer = self._no_answer_policy.no_answer(
+                query_id=query_id,
+                decision=decision,
+                response_language=payload.response_language,
+            )
+            await self._audit_answer(
+                actor_id=payload.subject_id,
+                event_type="rag.query_stream.executed",
+                answer=answer,
+                auth_context=auth_context,
+            )
+            yield StreamEvent(kind="done", answer=answer)
+            return
+
+        if payload.answer_mode == "retrieve_only":
+            answer = _retrieval_only_answer(
+                query_id=query_id,
+                chunks=run.response.chunks,
+                confidence=decision.confidence,
+                warnings=decision.warnings,
+                response_language=payload.response_language,
+            )
+            await self._audit_answer(
+                actor_id=payload.subject_id,
+                event_type="rag.query_stream.executed",
+                answer=answer,
+                auth_context=auth_context,
+            )
+            yield StreamEvent(kind="done", answer=answer)
+            return
+
+        final_answer: RagAnswer | None = None
+        async for event in self._answer_composer.compose_stream(
+            query_id=query_id,
+            query=payload.query,
+            chunks=run.response.chunks,
+            confidence=decision.confidence,
+            warnings=decision.warnings,
+            max_chunks=payload.max_chunks,
+            answer_mode=payload.answer_mode,
+            response_language=payload.response_language,
+            auth_context=auth_context,
+        ):
+            if event.kind == "done":
+                final_answer = event.answer
+            yield event
+
+        if final_answer is not None:
+            await self._audit_answer(
+                actor_id=payload.subject_id,
+                event_type="rag.query_stream.executed",
+                answer=final_answer,
+                auth_context=auth_context,
+            )
+        logger.info(
+            "rag_query_stream_completed query_id=%s confidence=%s",
+            query_id,
+            final_answer.confidence if final_answer else "unknown",
+        )
+
     async def answer(
         self,
         payload: AnswerRequest,
@@ -265,6 +356,13 @@ class RagRetrievalService:
                 metadata={"question_ids": [question.id for question in questions]},
                 auth_context=auth_context,
             )
+            await self._persist_conversation_turn(
+                conversation_id=conversation_id,
+                user_id=payload.user_id,
+                user_message=payload.message,
+                response=response,
+                auth_context=auth_context,
+            )
             return response
 
         rag_answer = await self.query(
@@ -305,6 +403,13 @@ class RagRetrievalService:
                 metadata={"citation_count": len(rag_answer.citations), "confidence": rag_answer.confidence},
                 auth_context=auth_context,
             )
+            await self._persist_conversation_turn(
+                conversation_id=conversation_id,
+                user_id=payload.user_id,
+                user_message=payload.message,
+                response=response,
+                auth_context=auth_context,
+            )
             return response
 
         response_type = "handoff_recommended" if rag_answer.confidence == "insufficient_source" else "no_answer"
@@ -332,18 +437,91 @@ class RagRetrievalService:
             metadata={"warnings": rag_answer.warnings, "missing_information": rag_answer.missing_information},
             auth_context=auth_context,
         )
+        await self._persist_conversation_turn(
+            conversation_id=conversation_id,
+            user_id=payload.user_id,
+            user_message=payload.message,
+            response=response,
+            auth_context=auth_context,
+        )
         return response
 
     async def assistant_suggestions(self, response_language: ResponseLanguage = "cs") -> AssistantSuggestionsResponse:
         return AssistantSuggestionsResponse(suggestions=_assistant_suggestions(response_language))
 
-    async def assistant_conversation(self, conversation_id: str) -> AssistantConversationResponse:
+    async def assistant_conversation(
+        self,
+        conversation_id: str,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> AssistantConversationResponse:
+        try:
+            stored = await self._registry_client.fetch_conversation(
+                conversation_id=conversation_id,
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "assistant_conversation_fetch_failed conversation_id=%s reason=%s",
+                conversation_id,
+                exc.__class__.__name__,
+            )
+            stored = None
+        if stored is None:
+            return AssistantConversationResponse(
+                conversation_id=conversation_id,
+                status="ephemeral",
+                messages=[],
+                warnings=["CONVERSATION_HISTORY_NOT_PERSISTED"],
+            )
+        messages = stored.get("messages", [])
         return AssistantConversationResponse(
             conversation_id=conversation_id,
-            status="ephemeral",
-            messages=[],
-            warnings=["CONVERSATION_HISTORY_NOT_PERSISTED"],
+            status="persisted",
+            messages=messages if isinstance(messages, list) else [],
+            warnings=[],
         )
+
+    async def _persist_conversation_turn(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        user_message: str,
+        response: AssistantChatResponse,
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        assistant_content = response.answer or response.message or ""
+        try:
+            await self._registry_client.append_conversation_messages(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": user_message,
+                        "citations": [],
+                        "metadata": {},
+                    },
+                    {
+                        "role": "assistant",
+                        "content": assistant_content or "(empty)",
+                        "response_type": response.response_type,
+                        "citations": [citation.model_dump(mode="json") for citation in response.citations],
+                        "metadata": {
+                            "confidence": response.confidence,
+                            "warnings": response.warnings,
+                        },
+                    },
+                ],
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "assistant_conversation_persist_failed conversation_id=%s reason=%s",
+                conversation_id,
+                exc.__class__.__name__,
+            )
 
     async def source_context(
         self,
@@ -375,6 +553,17 @@ class RagRetrievalService:
             )
 
         response = _source_context_from_chunk(chunk)
+        neighbor_getter = getattr(self._retriever, "get_neighbors", None)
+        if neighbor_getter is not None:
+            try:
+                before_text, after_text = await neighbor_getter(chunk)
+                response = response.model_copy(update={"before_text": before_text, "after_text": after_text})
+            except Exception as exc:
+                logger.warning(
+                    "source_context_neighbors_failed chunk_id=%s reason=%s",
+                    chunk_id,
+                    exc.__class__.__name__,
+                )
         await self._audit_source_opened(
             actor_id=subject_id,
             event_type=event_type,

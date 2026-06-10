@@ -34,3 +34,11 @@ Kazda compliance odpoved musi mit:
 ## Review Interpretace
 
 `non_compliant` znamena, ze sluzba nasla citovany problem pro review. Neznamena automaticke zamitnuti dokumentu. Autoritativni rozhodnuti musi probehnout pres Registry workflow a prislusne role.
+
+## Napojeni na Workflow
+
+Vysledek `non_compliant` (a nalezene konflikty z conflict detection) se zapisuje
+do Registry audit logu se severitou `warning` a s `document_id` draftu
+v metadatech. Registry API z audit udalosti se severitou warning a vyssi
+automaticky derivuje workflow task (kind `audit`), takze non-compliant draft
+se objevi ve workflow inboxu prislusneho auditora/gestora bez rucniho kroku.

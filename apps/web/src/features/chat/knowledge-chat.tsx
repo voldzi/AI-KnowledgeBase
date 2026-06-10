@@ -89,12 +89,14 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
   const [question, setQuestion] = useState(copy.defaultQuestion);
   const [tags, setTags] = useState("akl-docs");
   const [answer, setAnswer] = useState(initialAnswer);
+  const [streamingText, setStreamingText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [openingChunkId, setOpeningChunkId] = useState<string | null>(null);
   const sourceViewerRef = useRef<HTMLElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setQuestion(chatCopy[language].defaultQuestion);
@@ -142,35 +144,71 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
             className="form-grid"
             onSubmit={(event) => {
               event.preventDefault();
+              abortRef.current?.abort();
+              const controller = new AbortController();
+              abortRef.current = controller;
               setSubmitting(true);
+              setStreamingText("");
               setError(null);
-              fetch(withAppBasePath("/api/controlled-document/query"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  query: question,
-                  document_types: ["project_documentation", "directive", "methodology", "knowledge_base_article", "policy"],
-                  classification_max: "internal",
-                  tags,
-                  max_chunks: 8,
-                  response_language: language
-                })
-              })
-                .then(async (response) => {
-                  setSubmitting(false);
-                  if (!response.ok) {
-                    setError(`${copy.requestFailed} ${response.status}.`);
-                    return;
-                  }
-                  const payload = (await response.json()) as { answer: RagAnswer };
-                  setAnswer(payload.answer);
-                  setSourceContext(null);
-                  setSourceError(null);
-                })
-                .catch((reason: unknown) => {
-                  setSubmitting(false);
-                  setError(reason instanceof Error ? reason.message : copy.requestError);
+              setSourceContext(null);
+              setSourceError(null);
+
+              const run = async () => {
+                const response = await fetch(withAppBasePath("/api/controlled-document/query-stream"), {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    query: question,
+                    document_types: ["project_documentation", "directive", "methodology", "knowledge_base_article", "policy"],
+                    classification_max: "internal",
+                    tags,
+                    max_chunks: 8,
+                    response_language: language
+                  }),
+                  signal: controller.signal,
                 });
+
+                if (!response.ok || !response.body) {
+                  setError(`${copy.requestFailed} ${response.status}.`);
+                  setSubmitting(false);
+                  return;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split("\n");
+                  buffer = lines.pop() ?? "";
+                  for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+                    let evt: { kind: string; delta?: string; answer?: RagAnswer };
+                    try { evt = JSON.parse(raw) as typeof evt; } catch { continue; }
+                    if (evt.kind === "meta" && evt.answer) {
+                      setAnswer(evt.answer);
+                    } else if (evt.kind === "delta" && evt.delta) {
+                      setStreamingText((prev) => prev + evt.delta);
+                    } else if (evt.kind === "done" && evt.answer) {
+                      setAnswer(evt.answer);
+                      setStreamingText("");
+                      setSubmitting(false);
+                    }
+                  }
+                }
+                setSubmitting(false);
+              };
+
+              run().catch((reason: unknown) => {
+                if ((reason as { name?: string }).name === "AbortError") return;
+                setSubmitting(false);
+                setError(reason instanceof Error ? reason.message : copy.requestError);
+              });
             }}
           >
             <div className="field">
@@ -193,7 +231,7 @@ export function KnowledgeChat({ initialAnswer }: KnowledgeChatProps) {
               <StatusBadge value={answer.confidence} />
             </div>
             <div className="answer-block__body stack">
-              <ReadableAnswer text={answer.answer} />
+              <ReadableAnswer text={streamingText || answer.answer} />
               {answer.warnings.length > 0 ? (
                 <div className="notice">
                   <ShieldAlert size={16} aria-hidden="true" />

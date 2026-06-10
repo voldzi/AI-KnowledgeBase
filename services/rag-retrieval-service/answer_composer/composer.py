@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import AsyncIterator
+
 from app.config import Settings
 from app.llm_client import LLMGatewayClient
 from app.schemas import AnswerMode, Citation, Confidence, RagAnswer, ResponseLanguage, RetrievedChunk
 from app.security import AuthContext
 from policies.no_answer import NO_ANSWER_TEXT
+
+
+@dataclass
+class StreamEvent:
+    kind: str  # "meta" | "delta" | "done"
+    delta: str = field(default="")
+    answer: RagAnswer | None = field(default=None)
 
 
 class AnswerComposer:
@@ -72,6 +82,92 @@ class AnswerComposer:
             warnings=response_warnings,
             used_chunks=[chunk.chunk_id for chunk in selected],
             missing_information=None,
+        )
+
+    async def compose_stream(
+        self,
+        *,
+        query_id: str,
+        query: str,
+        chunks: list[RetrievedChunk],
+        confidence: Confidence,
+        warnings: list[str],
+        max_chunks: int,
+        answer_mode: AnswerMode = "normative_with_citations",
+        response_language: ResponseLanguage = "cs",
+        auth_context: AuthContext | None = None,
+    ) -> "AsyncIterator[StreamEvent]":
+        selected, truncated = self._select_context(chunks[:max_chunks])
+        response_warnings = [*warnings]
+        if truncated:
+            response_warnings.append("CONTEXT_TRUNCATED")
+
+        yield StreamEvent(
+            kind="meta",
+            answer=RagAnswer(
+                query_id=query_id,
+                answer="",
+                confidence=confidence,
+                citations=_citations(selected),
+                warnings=response_warnings,
+                used_chunks=[chunk.chunk_id for chunk in selected],
+                missing_information=None,
+            ),
+        )
+
+        messages = [
+            {
+                "role": "system",
+                "content": _system_prompt(answer_mode, response_language),
+            },
+            {
+                "role": "user",
+                "content": _build_user_prompt(query=query, chunks=selected, response_language=response_language),
+            },
+        ]
+        parts: list[str] = []
+        async for delta in self._llm_client.stream_chat_completion(
+            messages=messages,
+            metadata={
+                "purpose": "rag_answer_composition",
+                "answer_mode": answer_mode,
+                "response_language": response_language,
+                "query_id": query_id,
+                "chunk_count": len(selected),
+                "used_chunk_ids": [chunk.chunk_id for chunk in selected],
+            },
+            auth_context=auth_context,
+        ):
+            parts.append(delta)
+            yield StreamEvent(kind="delta", delta=delta)
+
+        answer_text = "".join(parts).strip()
+        if not answer_text:
+            yield StreamEvent(
+                kind="done",
+                answer=RagAnswer(
+                    query_id=query_id,
+                    answer=NO_ANSWER_TEXT,
+                    confidence="insufficient_source",
+                    citations=[],
+                    warnings=[*warnings, "LLM_EMPTY_ANSWER"],
+                    used_chunks=[],
+                    missing_information="LLM Gateway nevratil odpoved.",
+                ),
+            )
+            return
+
+        yield StreamEvent(
+            kind="done",
+            answer=RagAnswer(
+                query_id=query_id,
+                answer=answer_text,
+                confidence=confidence,
+                citations=_citations(selected),
+                warnings=response_warnings,
+                used_chunks=[chunk.chunk_id for chunk in selected],
+                missing_information=None,
+            ),
         )
 
     def _select_context(self, chunks: list[RetrievedChunk]) -> tuple[list[RetrievedChunk], bool]:

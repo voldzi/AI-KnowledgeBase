@@ -867,6 +867,60 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
         )
 
 
+_PRIORITY_ESCALATION = {
+    WorkflowTaskPriority.low.value: WorkflowTaskPriority.medium.value,
+    WorkflowTaskPriority.medium.value: WorkflowTaskPriority.high.value,
+    WorkflowTaskPriority.high.value: WorkflowTaskPriority.critical.value,
+    WorkflowTaskPriority.critical.value: WorkflowTaskPriority.critical.value,
+}
+
+
+def _escalate_overdue_tasks(db: Session) -> None:
+    """SLA escalation pass: overdue active tasks get a priority bump, are
+    reassigned to the configured escalation subject when one exists, and an
+    audit event is written. Idempotent via the sla_escalated metadata flag."""
+    now = utcnow()
+    tasks = db.execute(
+        select(WorkflowTask).where(WorkflowTask.status.in_(ACTIVE_TASK_STATUSES))
+    ).scalars()
+    for task in tasks:
+        metadata = dict(task.task_metadata or {})
+        if metadata.get("sla_escalated"):
+            continue
+        due_at = task.due_at
+        comparable_due_at = due_at if due_at.tzinfo is not None else due_at.replace(tzinfo=now.tzinfo)
+        if comparable_due_at >= now:
+            continue
+
+        previous_owner_id = task.owner_id
+        escalation_subject_id = metadata.get("escalation_subject_id")
+        if isinstance(escalation_subject_id, str) and escalation_subject_id:
+            task.owner_id = escalation_subject_id
+            task.owner_label = str(metadata.get("escalation_label") or escalation_subject_id)
+        task.priority = _PRIORITY_ESCALATION.get(task.priority, WorkflowTaskPriority.critical.value)
+        task.task_metadata = {
+            **metadata,
+            "sla_escalated": True,
+            "sla_escalated_at": now.isoformat(),
+            "previous_owner_id": previous_owner_id,
+        }
+        add_audit_event(
+            db,
+            actor_id="system",
+            event_type="workflow.task.sla_escalated",
+            resource_type="workflow_task",
+            resource_id=task.task_id,
+            severity="warning",
+            metadata={
+                "document_id": task.document_id,
+                "previous_owner_id": previous_owner_id,
+                "escalated_to": task.owner_id,
+                "due_at": due_at.isoformat(),
+                "priority": task.priority,
+            },
+        )
+
+
 def _get_workflow_task(db: Session, task_id: str) -> WorkflowTask:
     task = db.execute(select(WorkflowTask).where(WorkflowTask.task_id == task_id)).scalar_one_or_none()
     if task is None:
@@ -1482,6 +1536,7 @@ def list_workflow_tasks(
 ) -> WorkflowTaskListResponse:
     require_global_action(principal, Action.workflow_task_read)
     _sync_derived_workflow_tasks(db)
+    _escalate_overdue_tasks(db)
     _commit_or_conflict(db)
 
     stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at).limit(limit).offset(offset)
@@ -1680,3 +1735,277 @@ def get_audit_event(
     if event is None:
         raise problem(status.HTTP_404_NOT_FOUND, "audit_event_not_found", "Audit event was not found")
     return event
+
+
+# --- STRATOS identity & access administration ---
+
+from functools import lru_cache
+
+from app.keycloak_directory import DirectoryUser, KeycloakDirectoryAdapter
+from app.models import RoleMapping, UserProfile
+from app.schemas import (
+    DirectoryUserImportRequest,
+    DirectoryUserListResponse,
+    DirectoryUserResponse,
+    RoleMappingListResponse,
+    RoleMappingResponse,
+    RoleMappingStatusPatch,
+    UpsertRoleMappingRequest,
+)
+
+
+@lru_cache
+def _directory_adapter() -> KeycloakDirectoryAdapter:
+    return KeycloakDirectoryAdapter(get_settings())
+
+
+def _directory_user_response(user: DirectoryUser) -> DirectoryUserResponse:
+    return DirectoryUserResponse(
+        subject_id=user.subject,
+        display_name=user.name,
+        email=user.email,
+        username=user.username,
+        enabled=user.enabled,
+        groups=[],
+    )
+
+
+def _role_mapping_response(mapping: RoleMapping, display_name: str | None) -> RoleMappingResponse:
+    response = RoleMappingResponse.model_validate(mapping)
+    response.display_name = display_name
+    return response
+
+
+@router.get("/admin/directory/users", response_model=DirectoryUserListResponse)
+def search_directory_users(
+    query: str = Query(min_length=1, max_length=200),
+    limit: Limit = 20,
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserListResponse:
+    require_global_action(principal, Action.admin_manage)
+    users = _directory_adapter().search_users(query, max_results=min(limit, 50))
+    return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
+
+
+@router.post(
+    "/admin/directory/users/import",
+    response_model=DirectoryUserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_directory_user(
+    payload: DirectoryUserImportRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserResponse:
+    require_global_action(principal, Action.admin_manage)
+    user = _directory_adapter().get_user(payload.subject_id)
+    if user is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "directory_user_not_found",
+            "Directory user was not found in the identity provider",
+        )
+
+    profile = db.get(UserProfile, user.subject)
+    if profile is None:
+        profile = UserProfile(user_id=user.subject)
+        db.add(profile)
+    profile.display_name = user.name
+    profile.email = user.email
+    profile.username = user.username
+    profile.identity_source = "directory"
+    profile.provider = user.provider
+    profile.enabled = user.enabled
+    profile.status = "active" if user.enabled else "disabled"
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="admin.directory_user.imported",
+        resource_type="user_profile",
+        resource_id=user.subject,
+    )
+    db.commit()
+    return _directory_user_response(user)
+
+
+@router.get("/admin/role-mappings", response_model=RoleMappingListResponse)
+def list_role_mappings(
+    include_removed: bool = False,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> RoleMappingListResponse:
+    require_global_action(principal, Action.admin_manage)
+    stmt = select(RoleMapping).order_by(RoleMapping.subject_id, RoleMapping.role)
+    if not include_removed:
+        stmt = stmt.where(RoleMapping.status != "removed")
+    mappings = list(db.execute(stmt).scalars())
+
+    subject_ids = {mapping.subject_id for mapping in mappings if mapping.subject_type == "user"}
+    profiles: dict[str, str | None] = {}
+    if subject_ids:
+        rows = db.execute(select(UserProfile).where(UserProfile.user_id.in_(subject_ids))).scalars()
+        profiles = {row.user_id: row.display_name for row in rows}
+
+    return RoleMappingListResponse(
+        members=[
+            _role_mapping_response(mapping, profiles.get(mapping.subject_id))
+            for mapping in mappings
+        ]
+    )
+
+
+@router.post("/admin/role-mappings", response_model=RoleMappingResponse)
+def upsert_role_mapping(
+    payload: UpsertRoleMappingRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> RoleMappingResponse:
+    require_global_action(principal, Action.admin_manage)
+    mapping = db.execute(
+        select(RoleMapping).where(
+            RoleMapping.subject_type == payload.subject_type,
+            RoleMapping.subject_id == payload.subject_id,
+            RoleMapping.role == payload.role,
+        )
+    ).scalar_one_or_none()
+    if mapping is None:
+        mapping = RoleMapping(
+            subject_type=payload.subject_type,
+            subject_id=payload.subject_id,
+            role=payload.role,
+        )
+        db.add(mapping)
+    mapping.status = payload.status
+    mapping.assigned_by = principal.subject_id
+    mapping.updated_at = utcnow()
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="admin.role_mapping.upserted",
+        resource_type="role_mapping",
+        resource_id=f"{payload.subject_type}:{payload.subject_id}:{payload.role}",
+        metadata={"status": payload.status},
+    )
+    db.commit()
+    db.refresh(mapping)
+
+    profile = db.get(UserProfile, mapping.subject_id) if mapping.subject_type == "user" else None
+    return _role_mapping_response(mapping, profile.display_name if profile else None)
+
+
+@router.patch("/admin/role-mappings/{role_mapping_id}/status", response_model=RoleMappingResponse)
+def update_role_mapping_status(
+    role_mapping_id: str,
+    payload: RoleMappingStatusPatch,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> RoleMappingResponse:
+    require_global_action(principal, Action.admin_manage)
+    mapping = db.get(RoleMapping, role_mapping_id)
+    if mapping is None:
+        raise problem(status.HTTP_404_NOT_FOUND, "role_mapping_not_found", "Role mapping was not found")
+    mapping.status = payload.status
+    mapping.assigned_by = principal.subject_id
+    mapping.updated_at = utcnow()
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="admin.role_mapping.status_changed",
+        resource_type="role_mapping",
+        resource_id=role_mapping_id,
+        metadata={"status": payload.status},
+    )
+    db.commit()
+    db.refresh(mapping)
+
+    profile = db.get(UserProfile, mapping.subject_id) if mapping.subject_type == "user" else None
+    return _role_mapping_response(mapping, profile.display_name if profile else None)
+
+
+from app.models import AssistantConversation, AssistantMessage
+from app.schemas import (
+    AssistantConversationDetailResponse,
+    AssistantMessageAppendRequest,
+    AssistantMessageResponse,
+)
+
+
+def _conversation_response(conversation: AssistantConversation) -> AssistantConversationDetailResponse:
+    return AssistantConversationDetailResponse(
+        conversation_id=conversation.conversation_id,
+        user_id=conversation.user_id,
+        status=conversation.status,
+        title=conversation.title,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        messages=[AssistantMessageResponse.model_validate(message) for message in conversation.messages],
+    )
+
+
+@router.post(
+    "/assistant/conversations/{conversation_id}/messages",
+    response_model=AssistantConversationDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def append_assistant_messages(
+    conversation_id: str,
+    payload: AssistantMessageAppendRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationDetailResponse:
+    require_global_action(principal, Action.rag_query)
+    conversation = db.get(AssistantConversation, conversation_id)
+    if conversation is None:
+        conversation = AssistantConversation(
+            conversation_id=conversation_id,
+            user_id=payload.user_id,
+            title=payload.title,
+        )
+        db.add(conversation)
+    elif conversation.user_id != payload.user_id:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_user_mismatch",
+            "Conversation belongs to a different user",
+        )
+    if payload.title and not conversation.title:
+        conversation.title = payload.title
+
+    for message in payload.messages:
+        db.add(
+            AssistantMessage(
+                conversation_id=conversation_id,
+                role=message.role,
+                content=message.content,
+                response_type=message.response_type,
+                citations=message.citations,
+                message_metadata=message.metadata,
+            )
+        )
+    conversation.updated_at = utcnow()
+    db.commit()
+    db.refresh(conversation)
+    return _conversation_response(conversation)
+
+
+@router.get(
+    "/assistant/conversations/{conversation_id}",
+    response_model=AssistantConversationDetailResponse,
+)
+def get_assistant_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationDetailResponse:
+    require_global_action(principal, Action.rag_query)
+    conversation = db.get(AssistantConversation, conversation_id)
+    if conversation is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "conversation_not_found",
+            "Assistant conversation was not found",
+        )
+    return _conversation_response(conversation)
