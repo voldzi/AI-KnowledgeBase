@@ -74,8 +74,41 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
     const sourceContext = await clients.rag.openAssistantCitation(chunkId, requestContext);
+    const [document, versions, authorization] = await Promise.all([
+      clients.registry.getDocument(sourceContext.document_id, requestContext),
+      clients.registry.listDocumentVersions(sourceContext.document_id, requestContext),
+      clients.registry.getAuthorizationHints(requestContext)
+    ]);
 
-    if (!sourceContext.source_file_uri) {
+    if (!authorization.can_read) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "FORBIDDEN",
+            message: "Document read is not allowed in this session.",
+            trace_id: "web-assistant-source-document"
+          }
+        },
+        { status: 403 }
+      );
+    }
+
+    const version = versions.find((candidate) => candidate.document_version_id === sourceContext.document_version_id);
+
+    if (!version || version.document_id !== document.document_id) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "DOCUMENT_VERSION_NOT_FOUND",
+            message: "Document version does not belong to the cited document.",
+            trace_id: "web-assistant-source-document"
+          }
+        },
+        { status: 404 }
+      );
+    }
+
+    if (!version.source_file_uri) {
       return NextResponse.json(
         {
           error: {
@@ -89,11 +122,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     const sourceOpen = await createSourceOpenDecision({
-      document_id: sourceContext.document_id,
-      document_version_id: sourceContext.document_version_id,
-      source_file_uri: sourceContext.source_file_uri,
-      file_hash: sourceContext.source_sha256,
-      viewer_mode: viewerModeForSource(sourceContext.source_file_uri, sourceContext.source_mime_type)
+      document_id: document.document_id,
+      document_version_id: version.document_version_id,
+      source_file_uri: version.source_file_uri,
+      file_hash: version.file_hash,
+      viewer_mode: viewerModeForSource(version.source_file_uri, sourceContext.source_mime_type)
     });
 
     if (!sourceOpen.available || !sourceOpen.download_url) {
