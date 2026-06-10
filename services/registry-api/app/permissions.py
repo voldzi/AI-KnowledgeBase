@@ -175,6 +175,7 @@ def context_for_subject(
         select(RoleMapping).where(
             RoleMapping.subject_type.in_(["user", "service"]),
             RoleMapping.subject_id == subject_id,
+            RoleMapping.status == "active",
         )
     ).scalars()
     collected_roles.update(row.role for row in direct_role_rows)
@@ -184,6 +185,7 @@ def context_for_subject(
             select(RoleMapping).where(
                 RoleMapping.subject_type == "group",
                 RoleMapping.subject_id.in_(collected_groups),
+                RoleMapping.status == "active",
             )
         ).scalars()
         collected_roles.update(row.role for row in group_role_rows)

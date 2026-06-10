@@ -243,6 +243,11 @@ class UserProfile(Base, TimestampMixin):
     user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    identity_source: Mapped[str] = mapped_column(String(32), nullable=False, default="oidc", index=True)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
 
 
 class RoleMapping(Base):
@@ -257,7 +262,12 @@ class RoleMapping(Base):
     subject_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     subject_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class AuditEvent(Base):

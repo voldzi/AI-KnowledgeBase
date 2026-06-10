@@ -24,6 +24,18 @@ class Settings(BaseSettings):
     oidc_audience: str | None = Field(default=None, alias="AKL_OIDC_AUDIENCE")
     oidc_jwks_url: str | None = Field(default=None, alias="AKL_OIDC_JWKS_URL")
 
+    keycloak_admin_base_url: str | None = Field(default=None, alias="AKL_KEYCLOAK_ADMIN_BASE_URL")
+    keycloak_realm: str = Field(default="stratos", alias="AKL_KEYCLOAK_REALM")
+    keycloak_directory_client_id: str | None = Field(
+        default=None, alias="STRATOS_KEYCLOAK_DIRECTORY_CLIENT_ID"
+    )
+    keycloak_directory_client_secret: str | None = Field(
+        default=None, alias="STRATOS_KEYCLOAK_DIRECTORY_CLIENT_SECRET"
+    )
+    keycloak_directory_timeout_seconds: float = Field(
+        default=10.0, alias="AKL_KEYCLOAK_DIRECTORY_TIMEOUT_SECONDS"
+    )
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 
     @model_validator(mode="after")

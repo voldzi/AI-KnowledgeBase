@@ -1680,3 +1680,191 @@ def get_audit_event(
     if event is None:
         raise problem(status.HTTP_404_NOT_FOUND, "audit_event_not_found", "Audit event was not found")
     return event
+
+
+# --- STRATOS identity & access administration ---
+
+from functools import lru_cache
+
+from app.keycloak_directory import DirectoryUser, KeycloakDirectoryAdapter
+from app.models import RoleMapping, UserProfile
+from app.schemas import (
+    DirectoryUserImportRequest,
+    DirectoryUserListResponse,
+    DirectoryUserResponse,
+    RoleMappingListResponse,
+    RoleMappingResponse,
+    RoleMappingStatusPatch,
+    UpsertRoleMappingRequest,
+)
+
+
+@lru_cache
+def _directory_adapter() -> KeycloakDirectoryAdapter:
+    return KeycloakDirectoryAdapter(get_settings())
+
+
+def _directory_user_response(user: DirectoryUser) -> DirectoryUserResponse:
+    return DirectoryUserResponse(
+        subject_id=user.subject,
+        display_name=user.name,
+        email=user.email,
+        username=user.username,
+        enabled=user.enabled,
+        groups=[],
+    )
+
+
+def _role_mapping_response(mapping: RoleMapping, display_name: str | None) -> RoleMappingResponse:
+    response = RoleMappingResponse.model_validate(mapping)
+    response.display_name = display_name
+    return response
+
+
+@router.get("/admin/directory/users", response_model=DirectoryUserListResponse)
+def search_directory_users(
+    query: str = Query(min_length=1, max_length=200),
+    limit: Limit = 20,
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserListResponse:
+    require_global_action(principal, Action.admin_manage)
+    users = _directory_adapter().search_users(query, max_results=min(limit, 50))
+    return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
+
+
+@router.post(
+    "/admin/directory/users/import",
+    response_model=DirectoryUserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_directory_user(
+    payload: DirectoryUserImportRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserResponse:
+    require_global_action(principal, Action.admin_manage)
+    user = _directory_adapter().get_user(payload.subject_id)
+    if user is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "directory_user_not_found",
+            "Directory user was not found in the identity provider",
+        )
+
+    profile = db.get(UserProfile, user.subject)
+    if profile is None:
+        profile = UserProfile(user_id=user.subject)
+        db.add(profile)
+    profile.display_name = user.name
+    profile.email = user.email
+    profile.username = user.username
+    profile.identity_source = "directory"
+    profile.provider = user.provider
+    profile.enabled = user.enabled
+    profile.status = "active" if user.enabled else "disabled"
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="admin.directory_user.imported",
+        resource_type="user_profile",
+        resource_id=user.subject,
+    )
+    db.commit()
+    return _directory_user_response(user)
+
+
+@router.get("/admin/role-mappings", response_model=RoleMappingListResponse)
+def list_role_mappings(
+    include_removed: bool = False,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> RoleMappingListResponse:
+    require_global_action(principal, Action.admin_manage)
+    stmt = select(RoleMapping).order_by(RoleMapping.subject_id, RoleMapping.role)
+    if not include_removed:
+        stmt = stmt.where(RoleMapping.status != "removed")
+    mappings = list(db.execute(stmt).scalars())
+
+    subject_ids = {mapping.subject_id for mapping in mappings if mapping.subject_type == "user"}
+    profiles: dict[str, str | None] = {}
+    if subject_ids:
+        rows = db.execute(select(UserProfile).where(UserProfile.user_id.in_(subject_ids))).scalars()
+        profiles = {row.user_id: row.display_name for row in rows}
+
+    return RoleMappingListResponse(
+        members=[
+            _role_mapping_response(mapping, profiles.get(mapping.subject_id))
+            for mapping in mappings
+        ]
+    )
+
+
+@router.post("/admin/role-mappings", response_model=RoleMappingResponse)
+def upsert_role_mapping(
+    payload: UpsertRoleMappingRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> RoleMappingResponse:
+    require_global_action(principal, Action.admin_manage)
+    mapping = db.execute(
+        select(RoleMapping).where(
+            RoleMapping.subject_type == payload.subject_type,
+            RoleMapping.subject_id == payload.subject_id,
+            RoleMapping.role == payload.role,
+        )
+    ).scalar_one_or_none()
+    if mapping is None:
+        mapping = RoleMapping(
+            subject_type=payload.subject_type,
+            subject_id=payload.subject_id,
+            role=payload.role,
+        )
+        db.add(mapping)
+    mapping.status = payload.status
+    mapping.assigned_by = principal.subject_id
+    mapping.updated_at = utcnow()
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="admin.role_mapping.upserted",
+        resource_type="role_mapping",
+        resource_id=f"{payload.subject_type}:{payload.subject_id}:{payload.role}",
+        metadata={"status": payload.status},
+    )
+    db.commit()
+    db.refresh(mapping)
+
+    profile = db.get(UserProfile, mapping.subject_id) if mapping.subject_type == "user" else None
+    return _role_mapping_response(mapping, profile.display_name if profile else None)
+
+
+@router.patch("/admin/role-mappings/{role_mapping_id}/status", response_model=RoleMappingResponse)
+def update_role_mapping_status(
+    role_mapping_id: str,
+    payload: RoleMappingStatusPatch,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> RoleMappingResponse:
+    require_global_action(principal, Action.admin_manage)
+    mapping = db.get(RoleMapping, role_mapping_id)
+    if mapping is None:
+        raise problem(status.HTTP_404_NOT_FOUND, "role_mapping_not_found", "Role mapping was not found")
+    mapping.status = payload.status
+    mapping.assigned_by = principal.subject_id
+    mapping.updated_at = utcnow()
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="admin.role_mapping.status_changed",
+        resource_type="role_mapping",
+        resource_id=role_mapping_id,
+        metadata={"status": payload.status},
+    )
+    db.commit()
+    db.refresh(mapping)
+
+    profile = db.get(UserProfile, mapping.subject_id) if mapping.subject_type == "user" else None
+    return _role_mapping_response(mapping, profile.display_name if profile else None)

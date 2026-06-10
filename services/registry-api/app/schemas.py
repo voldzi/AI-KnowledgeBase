@@ -483,3 +483,48 @@ class WorkflowTaskActionRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
     assignee_id: str | None = Field(default=None, max_length=128)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DirectoryUserResponse(BaseModel):
+    subject_id: str
+    display_name: str | None = None
+    email: str | None = None
+    username: str | None = None
+    enabled: bool = True
+    groups: list[str] = Field(default_factory=list)
+
+
+class DirectoryUserListResponse(BaseModel):
+    users: list[DirectoryUserResponse]
+
+
+class DirectoryUserImportRequest(BaseModel):
+    subject_id: str = Field(min_length=1, max_length=128)
+
+
+class RoleMappingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    role_mapping_id: str
+    subject_type: str
+    subject_id: str
+    role: str
+    status: str
+    display_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RoleMappingListResponse(BaseModel):
+    members: list[RoleMappingResponse]
+
+
+class UpsertRoleMappingRequest(BaseModel):
+    subject_type: str = Field(default="user", pattern="^(user|group)$")
+    subject_id: str = Field(min_length=1, max_length=128)
+    role: str = Field(min_length=1, max_length=64)
+    status: str = Field(default="active", pattern="^(active|removed)$")
+
+
+class RoleMappingStatusPatch(BaseModel):
+    status: str = Field(pattern="^(active|removed)$")
