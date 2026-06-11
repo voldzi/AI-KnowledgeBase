@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3217";
-const healthURL = `${baseURL}/api/health`;
+const baseURL = (process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3217").replace(/\/+$/, "");
+const appBasePath = process.env.NEXT_PUBLIC_AKL_BASE_PATH?.replace(/\/+$/, "") ?? "";
+const healthURL = `${baseURL}${appBasePath}/api/health`;
 
 export default defineConfig({
   testDir: "./e2e",
