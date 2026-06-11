@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 
 import { ApiClientError } from "@/lib/types";
 
+function isNextRedirectError(error: unknown): boolean {
+  const digest = typeof error === "object" && error !== null && "digest" in error ? (error as { digest?: unknown }).digest : undefined;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
+
 export function badAssistantRequest(message: string) {
   return NextResponse.json(
     {
@@ -15,6 +20,10 @@ export function badAssistantRequest(message: string) {
 }
 
 export function assistantBridgeError(error: unknown) {
+  if (isNextRedirectError(error)) {
+    throw error;
+  }
+
   if (error instanceof ApiClientError) {
     return NextResponse.json(
       {
