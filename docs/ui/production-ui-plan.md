@@ -64,7 +64,7 @@ The Citation Viewer now represents the first Document Viewer increment:
 RAG answer -> citation -> open citation -> source-context -> exact chunk text
 ```
 
-Markdown sources render as formatted documents with GFM tables, a generated contents panel and citation highlighting. Text sources display the extracted paragraph/chunk. PDF sources can render the cited page through pdf.js with text/bbox highlighting. DOCX/XLSX/PPTX sources currently use structured extraction rather than pixel-perfect Office rendering.
+Markdown sources render as formatted documents with GFM tables, a generated contents panel and citation highlighting. Text sources display the extracted paragraph/chunk. PDF sources render the cited page through the STRATOS-compatible `StratosPdfViewer`, backed by pdf.js with text/bbox highlighting. DOCX/XLSX/PPTX sources currently use structured extraction rather than pixel-perfect Office rendering.
 
 ### Document Workbench
 
@@ -79,9 +79,9 @@ The current upload bridge stores the source object in shared local object storag
 
 ### STRATOS UI Adapter
 
-AKB now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search and view tabs while `@stratos/ui` is distributed through GitHub Packages and still needs a read-only `read:packages` token in AKB local/CI builds.
+AKB now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search, view tabs and document PDF viewing while `@stratos/ui` is distributed through GitHub Packages and still needs a read-only `read:packages` token in AKB local/CI builds.
 
-The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, and `@stratos/ui/styles.css`.
+The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, PDF citation-page rendering, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, `StratosPdfViewer`, and `@stratos/ui/styles.css`.
 
 ### Workflow Inbox
 
@@ -120,7 +120,7 @@ Ingestion-owned operational tasks are still merged in the web layer until Ingest
 ## Viewer Roadmap
 
 - Markdown/text: rendered Markdown, raw text, highlighted chunk, section jump.
-- PDF: pdf.js citation-page render, page jump, text-side citation panel, source-location bbox overlay and text-layer highlighting when available.
+- PDF: STRATOS-compatible pdf.js citation-page render, page jump, text-side citation panel, source-location bbox overlay and text-layer highlighting when available.
 - DOCX/ODT/RTF: extracted structured text and optional HTML preview.
 - HTML: sanitized preview with highlighted chunk.
 - CSV/XLS/XLSX: sheet/table context.

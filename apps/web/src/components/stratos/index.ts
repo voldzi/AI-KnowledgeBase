@@ -15,6 +15,9 @@ export type { CommandCenterAction, CommandCenterItem, CommandCenterItemType, Com
 // DataTable — local implementation
 export { StratosDataTable, type StratosDataTableColumn } from "./data-table";
 
+// PDF viewer — local STRATOS-compatible implementation, intended for shared stratos-ui extraction
+export { StratosPdfViewer, type StratosPdfViewerBbox, type StratosPdfViewerLabels } from "./pdf-viewer";
+
 // GlobalTopbar — from @voldzi/stratos-ui
 export { StratosGlobalTopbar } from "./global-topbar";
 export type { StratosGlobalTopbarApp, StratosGlobalTopbarLabels, StratosGlobalTopbarUser } from "./global-topbar";

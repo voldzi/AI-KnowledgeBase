@@ -21,6 +21,7 @@ Aktualni lokalni fallback je kompatibilni adapter v `apps/web/src/components/str
 - komponenty pouzivaji STRATOS nazvoslovi a CSS tridy `stratos-*`,
 - globalni CSS mapuje AKL tokeny na `--stratos-*`,
 - shell, rail, topbar, tlacitka, search box a view tabs maji stejnou strukturu jako cilovy STRATOS system,
+- dokumentovy PDF viewer je zapouzdreny jako `StratosPdfViewer`, aby stejny render citacni strany, textoveho highlightu a bbox overlaye mohl byt pozdeji prenesen do sdileneho STRATOS UI balicku,
 - feature komponenty nemusi znat, zda bezi nad lokalnim adapterem nebo budou pozdeji prepojeny na `@stratos/ui`.
 
 Fallback zustava jen do doby, nez bude `@stratos/ui` dostupne pro AKB CI/Docker build pres GitHub Packages token. V tomto prostredi `npm view @stratos/ui --registry=https://npm.pkg.github.com` zatim vraci `404`, tedy balicek neni dostupny bez dalsiho opravneni nebo publikace pod ocekavanym scope.
@@ -46,6 +47,7 @@ Prvni napojeni AKL pouzije tyto exporty z `@stratos/ui`:
 - `StratosViewTabs` pro taby v detailu dokumentu.
 - `StratosWorkspaceSidebar` a `StratosWorkspaceNav` pro druhe leve menu/submenu podle STRATOS workspace patternu.
 - `StratosDataTable` pro profesionalni tabulkove pohledy s deklarativnimi sloupci.
+- `StratosPdfViewer` pro vykresleni citacni PDF strany pres pdf.js, jemne textove zvyrazneni citace a source-location bbox overlay.
 
 ## Aktualni Napojeni V AKL
 
@@ -57,6 +59,7 @@ Adapter je zapojeny na techto plochach:
 - `/documents` registry tabulka pres `StratosDataTable`,
 - dashboard poslednich dokumentu pres `StratosDataTable`,
 - `/documents/[documentId]`: detailove taby, navrat do registru, upload verze, governance akce a generovani insightu,
+- `/documents/[documentId]` Viewer tab: `StratosPdfViewer` pro nativni PDF preview nad podepsanym zdrojem,
 - `/tasks`: search, select filtry, vycisteni filtru, detailove akce a rozhodovaci tlacitka,
 - `/ingestion`: tabulka uloh pres `StratosDataTable`,
 - `/upload`, `/chat`, `/assistant`, `/ingestion` a dashboard vybrane hlavni prikazy.

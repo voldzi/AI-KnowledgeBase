@@ -12,7 +12,7 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - Ingestion Service zpracovava zdrojove soubory, parser/chunking/OCR profil a indexing report.
 - RAG Retrieval Service vraci citace a source-context.
 - Web aplikace obsahuje Document Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Assistant.
-- Web shell a zakladni UI primitiva jsou sladene se STRATOS portfoliem pres lokalni `apps/web/src/components/stratos` adapter.
+- Web shell, zakladni UI primitiva a PDF viewer jsou sladene se STRATOS portfoliem pres lokalni `apps/web/src/components/stratos` adapter.
 - GitHub je stabilizovany pres chraneny `main`, PR workflow, CI gate a release proces.
 
 Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hlubsi viewer fidelity pro komplexni Office/PDF dokumenty, persistovane AI insighty, vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu mimo web bridge.
@@ -42,11 +42,11 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
 - `/chat` je hlavni AKB Assistant plocha s levym seznamem vlaken, chat transcriptem, composerem, pravym panelem zdroju a MVP share dialogem; dotazy jdou pres assistant API a vlákna jsou zatim klientsky/session stav bez serveroveho seznamu nebo backendoveho sdileni.
 - Citace z Knowledge Chat i Employee Assistant jsou sjednocene pres sdileny citation viewer. Otevreni citace zobrazi formatovany source-context a odkaz `Otevrit dokument` otevre v novem tabu primo originalni podepsany zdrojovy soubor pres assistant citation redirect, bez ztraty historie dotazu a bez vystaveni interniho Docker hostname. PDF redirect pridava `#page=N` a search fragment z textu citace; presne bbox/text-layer zvyrazneni zustava v AKB native preview.
 - Detail dokumentu ve Viewer tabu umi pripravit podepsane otevreni zdrojoveho objektu pres `/api/documents/{documentId}/versions/{versionId}/source/open`; content endpoint ověřuje HMAC token a cte pouze objekt z povoleneho storage bucketu. Pokud je otevreny source-context s `page_number`, UI umi z podepsane URL nabidnout page-jump odkaz `#page=N`.
-- Viewer ma nativni preview nad podepsanym zdrojem: PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem podle source-location.
+- Viewer ma nativni preview nad podepsanym zdrojem: PDF pres STRATOS-compatible `StratosPdfViewer` s pdf.js renderem citacni strany, textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem podle source-location.
 - Lokální dev/test fixtures pro pozitivni signed source tok jsou v `object-storage/akl-documents/doc_103`, `doc_105`, `doc_106`, `doc_107` a `doc_108`; mock metadata pouzivaji plny SHA-256 a content endpoint hash overuje.
 - `/upload` pouziva browser file preflight, SHA-256, podepsanou upload session a PUT upload do aplikacniho upload endpointu.
 - `/help` obsahuje napovedu pro dokumentove role, upload, viewer/citace, workflow, governance a troubleshooting.
-- UI zaklad pouziva STRATOS kompatibilni shell, rail, button, search a view tab komponenty. Lokalni adapter zustava nahraditelny sdilenym `@stratos/ui` balickem, az bude dostupny v AKL build contextu.
+- UI zaklad pouziva STRATOS kompatibilni shell, rail, button, search, view tab a PDF viewer komponenty. Lokalni adapter zustava nahraditelny sdilenym `@stratos/ui` balickem, az bude dostupny v AKL build contextu.
 
 ### Workflow
 
@@ -81,7 +81,7 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 8. Object storage contract: upload session zatim vlastni web bridge; cilovy stav je backend/Object Storage service kontrakt se signed upload/download a auditem.
 9. RAG quality: hybrid retrieval, reranking evaluation, citation accuracy a no-answer metriky potrebuji produkcni eval dataset.
 10. Security/compliance hardening: OIDC a dokumentova authz musi projit negativnimi testy na urovni dokumentu, chunku a source opening.
-11. STRATOS package integration: lokalni UI adapter je kompatibilni mezikrok; primy import `@stratos/ui` ceka na sjednoceny workspace nebo publikovany balicek dostupny pro Docker build.
+11. STRATOS package integration: lokalni UI adapter je kompatibilni mezikrok vcetne `StratosPdfViewer`; primy import `@stratos/ui` ceka na sjednoceny workspace nebo publikovany balicek dostupny pro Docker build.
 
 ## Next Recommended Implementation Slices
 
