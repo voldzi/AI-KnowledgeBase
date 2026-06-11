@@ -2929,7 +2929,12 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   if (filename.endsWith(".docx") || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     return "docx";
   }
-  if (filename.endsWith(".xlsx") || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+  if (
+    filename.endsWith(".xlsx") ||
+    filename.endsWith(".xlsm") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-excel.sheet.macroEnabled.12"
+  ) {
     return "xlsx";
   }
   if (filename.endsWith(".pptx") || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
@@ -2944,7 +2949,11 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   if (
     mimeType.startsWith("text/") ||
     mimeType === "application/json" ||
-    filename.endsWith(".txt")
+    mimeType === "application/xml" ||
+    mimeType === "application/xhtml+xml" ||
+    filename.endsWith(".json") ||
+    filename.endsWith(".txt") ||
+    filename.endsWith(".xml")
   ) {
     return "text";
   }

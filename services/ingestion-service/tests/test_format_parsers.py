@@ -7,6 +7,7 @@ from openpyxl import Workbook
 
 from app.object_storage import SourceObject
 from parsers.html import HtmlParser
+from parsers.text import TextParser
 from parsers.xlsx import XlsxParser
 
 
@@ -57,6 +58,20 @@ def test_html_parser_reports_empty_document() -> None:
     result = parser.parse(_source("empty.html", "text/html", b"<html><body></body></html>"), parser_profile="default")
     assert result.blocks == []
     assert ("NO_TEXT_EXTRACTED", "Parser did not extract readable text.") in result.warnings
+
+
+def test_text_parser_supports_csv_json_and_xml_sources() -> None:
+    parser = TextParser()
+    cases = [
+        _source("export.csv", "text/csv", b"role,owner\nGestor,Legal"),
+        _source("payload.json", "application/json", b'{"role":"owner","decision":"approve"}'),
+        _source("feed.xml", "application/xml", b"<root><role>auditor</role></root>"),
+    ]
+
+    for source in cases:
+        assert parser.supports(source)
+        result = parser.parse(source, parser_profile="default")
+        assert result.blocks
 
 
 def test_xlsx_parser_extracts_sheet_rows_as_table_blocks() -> None:

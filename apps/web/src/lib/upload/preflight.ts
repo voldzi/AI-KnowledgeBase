@@ -70,23 +70,52 @@ const DEFAULT_EXPIRES_IN_SECONDS = 15 * 60;
 const SHA256_PATTERN = /^sha256:[a-fA-F0-9]{64}$/;
 
 const ACCEPTED_MIME_TYPES = [
+  "application/json",
   "application/msword",
   "application/pdf",
   "application/rtf",
+  "application/vnd.ms-excel.sheet.macroEnabled.12",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/xhtml+xml",
+  "application/xml",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/svg+xml",
+  "image/webp",
+  "text/csv",
+  "text/html",
   "text/markdown",
   "text/plain",
-  "text/rtf"
+  "text/rtf",
+  "text/xml"
 ];
 
 const EXTENSION_MIME_TYPES = new Map<string, string>([
+  [".csv", "text/csv"],
   [".doc", "application/msword"],
   [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  [".gif", "image/gif"],
+  [".htm", "text/html"],
+  [".html", "text/html"],
+  [".jpeg", "image/jpeg"],
+  [".jpg", "image/jpeg"],
+  [".json", "application/json"],
   [".md", "text/markdown"],
   [".markdown", "text/markdown"],
   [".pdf", "application/pdf"],
+  [".png", "image/png"],
+  [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   [".rtf", "application/rtf"],
-  [".txt", "text/plain"]
+  [".svg", "image/svg+xml"],
+  [".txt", "text/plain"],
+  [".webp", "image/webp"],
+  [".xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"],
+  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  [".xhtml", "application/xhtml+xml"],
+  [".xml", "application/xml"]
 ]);
 
 export function getUploadSettings(env: Record<string, string | undefined> = process.env): UploadSettings {
@@ -343,7 +372,13 @@ function normalizeMimeType(filename: string, value?: string | null): string {
     return expected;
   }
 
-  if (provided === expected || (extension === ".rtf" && provided === "text/rtf")) {
+  if (
+    provided === expected ||
+    (extension === ".rtf" && provided === "text/rtf") ||
+    (extension === ".xml" && provided === "text/xml") ||
+    (extension === ".svg" && provided === "application/xml") ||
+    (extension === ".htm" && provided === "text/html")
+  ) {
     return provided;
   }
 

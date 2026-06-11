@@ -135,6 +135,8 @@ describe("source download", () => {
   it("adds UTF-8 charset only for directly opened text-like source types", () => {
     assert.equal(sourceContentTypeHeader("text/markdown"), "text/markdown; charset=utf-8");
     assert.equal(sourceContentTypeHeader("text/csv"), "text/csv; charset=utf-8");
+    assert.equal(sourceContentTypeHeader("application/json"), "application/json; charset=utf-8");
+    assert.equal(sourceContentTypeHeader("application/xml"), "application/xml; charset=utf-8");
     assert.equal(sourceContentTypeHeader("image/svg+xml"), "image/svg+xml; charset=utf-8");
     assert.equal(sourceContentTypeHeader("application/pdf"), "application/pdf");
     assert.equal(

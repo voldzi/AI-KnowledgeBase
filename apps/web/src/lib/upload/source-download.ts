@@ -70,18 +70,26 @@ const EXTENSION_MIME_TYPES = new Map<string, string>([
   [".doc", "application/msword"],
   [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   [".gif", "image/gif"],
+  [".htm", "text/html"],
+  [".html", "text/html"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
+  [".json", "application/json"],
   [".md", "text/markdown"],
   [".markdown", "text/markdown"],
   [".pdf", "application/pdf"],
   [".png", "image/png"],
+  [".ppt", "application/vnd.ms-powerpoint"],
   [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   [".rtf", "application/rtf"],
   [".svg", "image/svg+xml"],
   [".txt", "text/plain"],
   [".webp", "image/webp"],
-  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]
+  [".xls", "application/vnd.ms-excel"],
+  [".xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"],
+  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  [".xhtml", "application/xhtml+xml"],
+  [".xml", "application/xml"]
 ]);
 
 export function getSourceDownloadSettings(
@@ -233,7 +241,9 @@ export function sourceContentTypeHeader(mimeType: string): string {
   const normalized = mimeType.toLowerCase();
   if (
     normalized.startsWith("text/") ||
+    normalized === "application/json" ||
     normalized === "application/rtf" ||
+    normalized === "application/xhtml+xml" ||
     normalized === "application/xml" ||
     normalized === "image/svg+xml"
   ) {
