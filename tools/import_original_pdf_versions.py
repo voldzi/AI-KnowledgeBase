@@ -9,6 +9,8 @@ import json
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -73,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
                 print_summary(report)
                 return 1
             migration_result = run_registry_migration(plan, options)
+            enrich_qdrant_results(migration_result, options)
             report["migration"] = migration_result
             report["totals"]["created_versions"] = migration_result["totals"]["created_versions"]
             report["totals"]["ingested_versions"] = migration_result["totals"]["ingested_versions"]
@@ -228,7 +231,6 @@ def run_registry_migration(plan: list[dict[str, Any]], options: Options) -> dict
         qdrant_url=options.qdrant_url,
         qdrant_collection=options.qdrant_collection,
         timeout_seconds=options.timeout_seconds,
-        delete_superseded_qdrant=not options.keep_superseded_qdrant,
     )
     command = ["docker", "compose"]
     if options.env_file:
@@ -249,7 +251,6 @@ def registry_migration_code(
     qdrant_url: str,
     qdrant_collection: str,
     timeout_seconds: int,
-    delete_superseded_qdrant: bool,
 ) -> str:
     return f"""
 from __future__ import annotations
@@ -274,7 +275,6 @@ INGESTION_URL = {ingestion_url!r}
 QDRANT_URL = {qdrant_url!r}
 QDRANT_COLLECTION = {qdrant_collection!r}
 TIMEOUT_SECONDS = {int(timeout_seconds)!r}
-DELETE_SUPERSEDED_QDRANT = {bool(delete_superseded_qdrant)!r}
 
 
 def request_json(method, url, payload=None, expected_status=200):
@@ -303,23 +303,6 @@ def request_json(method, url, payload=None, expected_status=200):
     if status != expected_status:
         raise RuntimeError(f"{{method}} {{url}} returned HTTP {{status}}, expected {{expected_status}}: {{body}}")
     return body
-
-
-def qdrant_count(version_id):
-    body = request_json(
-        "POST",
-        f"{{QDRANT_URL}}/collections/{{QDRANT_COLLECTION}}/points/count",
-        {{"filter": {{"must": [{{"key": "document_version_id", "match": {{"value": version_id}}}}]}}, "exact": True}},
-    )
-    return int(body.get("result", {{}}).get("count", 0))
-
-
-def qdrant_delete(version_id):
-    request_json(
-        "POST",
-        f"{{QDRANT_URL}}/collections/{{QDRANT_COLLECTION}}/points/delete?wait=true",
-        {{"filter": {{"must": [{{"key": "document_version_id", "match": {{"value": version_id}}}}]}}}},
-    )
 
 
 def wait_for_ingestion(job_id):
@@ -455,7 +438,6 @@ for item in created:
         item["ingestion_job_id"] = job["job_id"]
         item["ingestion_status"] = report.get("status")
         item["chunks_created"] = int(report.get("chunks_created") or 0)
-        item["qdrant_points"] = qdrant_count(item["document_version_id"])
         item["status"] = "ingested"
     except Exception as exc:
         item["status"] = "failed"
@@ -508,19 +490,6 @@ with SessionLocal() as db:
             )
     db.commit()
 
-if DELETE_SUPERSEDED_QDRANT:
-    for item in created:
-        if item.get("status") != "ingested":
-            continue
-        deleted = []
-        for old_version_id in item["old_valid_version_ids"]:
-            try:
-                qdrant_delete(old_version_id)
-                deleted.append(old_version_id)
-            except Exception as exc:
-                item.setdefault("warnings", []).append(f"QDRANT_DELETE_FAILED {{old_version_id}}: {{exc}}")
-        item["deleted_qdrant_version_ids"] = deleted
-
 results.extend(created)
 output = {{
     "totals": {{
@@ -534,6 +503,105 @@ output = {{
 }}
 print(json.dumps(output, ensure_ascii=False, indent=2))
 """
+
+
+def enrich_qdrant_results(migration_result: dict[str, Any], options: Options) -> None:
+    documents = migration_result.get("documents", [])
+    ingested = [item for item in documents if item.get("status") == "ingested"]
+    if not ingested:
+        return
+    try:
+        qdrant_url = resolve_qdrant_url(options)
+    except Exception as exc:
+        migration_result.setdefault("warnings", []).append(
+            {"code": "QDRANT_URL_UNAVAILABLE", "message": str(exc)}
+        )
+        for item in ingested:
+            item.setdefault("warnings", []).append(f"QDRANT_URL_UNAVAILABLE: {exc}")
+        return
+
+    for item in ingested:
+        try:
+            item["qdrant_points"] = qdrant_count(qdrant_url, options.qdrant_collection, item["document_version_id"])
+        except Exception as exc:
+            item.setdefault("warnings", []).append(f"QDRANT_COUNT_FAILED {item['document_version_id']}: {exc}")
+        if options.keep_superseded_qdrant:
+            continue
+        deleted = []
+        for old_version_id in item.get("old_valid_version_ids", []):
+            try:
+                qdrant_delete(qdrant_url, options.qdrant_collection, old_version_id)
+                deleted.append(old_version_id)
+            except Exception as exc:
+                item.setdefault("warnings", []).append(f"QDRANT_DELETE_FAILED {old_version_id}: {exc}")
+        item["deleted_qdrant_version_ids"] = deleted
+
+
+def resolve_qdrant_url(options: Options) -> str:
+    candidates = [options.qdrant_url, "http://qdrant:6333", "http://akl-qdrant-1:6333"]
+    candidates.extend(qdrant_urls_from_docker())
+    seen: set[str] = set()
+    errors: list[str] = []
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            qdrant_request_json(candidate, "GET", f"/collections/{options.qdrant_collection}")
+            return candidate.rstrip("/")
+        except Exception as exc:
+            errors.append(f"{candidate}: {exc.__class__.__name__}")
+    raise RuntimeError(f"No reachable Qdrant endpoint found ({'; '.join(errors)})")
+
+
+def qdrant_urls_from_docker() -> list[str]:
+    command = [
+        "docker",
+        "inspect",
+        "-f",
+        "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
+        "akl-qdrant-1",
+    ]
+    completed = subprocess.run(command, text=True, capture_output=True)
+    if completed.returncode != 0:
+        return []
+    return [f"http://{ip}:6333" for ip in completed.stdout.split() if ip]
+
+
+def qdrant_request_json(base_url: str, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}{path}",
+        data=data,
+        method=method,
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8")
+        raise RuntimeError(f"Qdrant {method} {path} failed with HTTP {exc.code}: {raw}") from exc
+
+
+def qdrant_count(base_url: str, collection: str, version_id: str) -> int:
+    body = qdrant_request_json(
+        base_url,
+        "POST",
+        f"/collections/{collection}/points/count",
+        {"filter": {"must": [{"key": "document_version_id", "match": {"value": version_id}}]}, "exact": True},
+    )
+    return int(body.get("result", {}).get("count", 0))
+
+
+def qdrant_delete(base_url: str, collection: str, version_id: str) -> None:
+    qdrant_request_json(
+        base_url,
+        "POST",
+        f"/collections/{collection}/points/delete?wait=true",
+        {"filter": {"must": [{"key": "document_version_id", "match": {"value": version_id}}]}},
+    )
 
 
 def write_reports(report: dict[str, Any], json_path: Path) -> None:

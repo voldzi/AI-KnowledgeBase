@@ -38,7 +38,7 @@ The script is dry-run by default. It:
 - publishes the new PDF version only after ingestion creates chunks,
 - supersedes the previous valid Markdown version,
 - records audit events,
-- removes Qdrant points for superseded Markdown versions unless `--keep-superseded-qdrant` is set,
+- resolves Qdrant from the host side and removes points for superseded Markdown versions unless `--keep-superseded-qdrant` is set,
 - writes JSON and Markdown reports.
 
 Default production inputs:
@@ -57,7 +57,7 @@ Default production inputs:
 ```bash
 ssh docker.home.cz 'cd /srv/akl/repo && git rev-parse --short HEAD'
 ssh docker.home.cz 'cd /srv/akl/repo && docker compose --env-file /srv/akl/env/akl.prod.env -f infra/docker-compose/docker-compose.docker-home.yml ps'
-curl -fsS https://akb.zeleznalady.cz/akb/api/health
+curl -fsS https://stratos.zeleznalady.cz/akb/api/health
 ```
 
 - Do not print env files, tokens, database URLs, or service secrets.
@@ -93,6 +93,10 @@ ssh docker.home.cz 'cd /srv/akl/repo && python3 tools/import_original_pdf_versio
 ```
 
 The apply run is data-changing. It may take several minutes because each PDF is parsed, chunked, embedded, and written to Qdrant.
+
+On `docker.home.cz`, Registry API runs in the app network and Qdrant runs in data/management networks. The script
+therefore does not require Registry API to reach Qdrant directly; Qdrant point counts and superseded-point cleanup are
+performed by the host-side script after Registry publication.
 
 If a PDF ingestion fails, that new version is archived and the old valid Markdown version remains current. Check report errors before retrying.
 
