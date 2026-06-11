@@ -48,8 +48,9 @@ Na `docker.home.cz` připravit:
 ```
 
 Volitelný observability stack používá stejné checkout a env soubory. Hodnota
-`GRAFANA_ADMIN_PASSWORD` musí být nastavená v `/srv/akl/env/akl.prod.env`, ne v
-Gitu.
+`GRAFANA_ADMIN_USER` a `GRAFANA_ADMIN_PASSWORD` musí být nastavené v
+`/srv/akl/env/akl.prod.env`, ne v Gitu. Produkční admin účet pro Grafanu je
+`stratos_admin`; heslo se bere z `GRAFANA_ADMIN_PASSWORD`.
 
 Checkout:
 

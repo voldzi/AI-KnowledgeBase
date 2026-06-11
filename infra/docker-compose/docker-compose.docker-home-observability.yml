@@ -101,7 +101,7 @@ services:
     image: ${GRAFANA_IMAGE:-grafana/grafana:11.4.0}
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-stratos_admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set when observability is enabled}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://stratos.zeleznalady.cz/akb/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
