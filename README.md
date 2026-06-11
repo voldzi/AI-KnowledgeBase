@@ -1,6 +1,8 @@
-# AI KnowledgeBase / AKL
+# AI KnowledgeBase / AKB
 
-AKL is a local AI Knowledge Library for controlled documents, ingestion, embeddings, Qdrant-backed RAG retrieval, citations, and audit events.
+AKB is a local AI KnowledgeBase for controlled documents, ingestion, embeddings, Qdrant-backed RAG retrieval, citations, and audit events.
+
+The runtime still uses `AKL_*` environment variables and selected internal ids as technical compatibility prefixes. Do not rename them during ordinary feature work.
 
 ## Local Quickstart
 
@@ -68,7 +70,7 @@ Registry API schema changes should also be verified against PostgreSQL, which is
 python3 scripts/registry_postgres_smoke.py
 ```
 
-Import AKL project documentation as the first local knowledge base:
+Import AKB project documentation as the first local knowledge base:
 
 ```bash
 python3 tools/import_docs_folder.py \
@@ -85,7 +87,7 @@ python3 scripts/phase_04_employee_assistant_smoke.py
 
 ## Phase 04 Employee Assistant
 
-AKL now has a dual GUI model:
+AKB now has a dual GUI model:
 
 - Employee Assistant: `http://localhost:3002/assistant`
 - Knowledge Management/Admin GUI: `http://localhost:3002`

@@ -2,15 +2,15 @@ defaults:
   document_type: project_documentation
   classification: internal
   status: valid
-  owner: akl-team
+  owner: akb-team
   area: project
   domain: platform-knowledge
   language: cs
   source_system: git
   audience: [employee, knowledge-admin, document-manager, it-support]
-  steward: akl-team
+  steward: akb-team
   retention_class: project-documentation
-  tags: [akl-docs, project-documentation, csu-enterprise-kb]
+  tags: [akb-docs, project-documentation, stratos-knowledge-base]
 
 exclude:
   - "**/ADR_TEMPLATE.md"

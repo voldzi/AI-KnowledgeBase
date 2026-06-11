@@ -57,8 +57,8 @@ def check_english_assistant_suggestions() -> dict[str, Any]:
     suggestions = body.get("suggestions") or []
     if len(suggestions) < 1:
         raise RuntimeError(f"English assistant suggestions are empty: {body}")
-    if not any(suggestion.get("prompt") == "What is the architecture of the AKL platform?" for suggestion in suggestions):
-        raise RuntimeError(f"English assistant suggestions do not contain an AKL architecture prompt: {body}")
+    if any("platform architecture" in str(suggestion.get("prompt", "")).lower() for suggestion in suggestions):
+        raise RuntimeError(f"English assistant suggestions still contain a legacy platform architecture prompt: {body}")
     return body
 
 
@@ -108,9 +108,9 @@ def check_employee_answer_with_citation(conversation_id: str) -> dict[str, Any]:
         {
             "user_id": SUBJECT_ID,
             "conversation_id": conversation_id,
-            "message": "Jaká je architektura AKL platformy?",
+            "message": "Jaké povinnosti platí pro informační systémy veřejné správy?",
             "context": {
-                "system": "AKL",
+                "system": "ISVS",
                 "request_type": "informace",
                 "user_role": "employee",
             },
@@ -133,8 +133,8 @@ def check_web_assistant_api() -> None:
     suggestions = request_json("GET", f"{WEB_URL}/api/assistant/suggestions?language=en")
     if not suggestions.get("suggestions"):
         raise RuntimeError(f"Web assistant suggestions are empty: {suggestions}")
-    if not any(suggestion.get("prompt") == "What is the architecture of the AKL platform?" for suggestion in suggestions["suggestions"]):
-        raise RuntimeError(f"Web assistant suggestions are not localized to English: {suggestions}")
+    if any("platform architecture" in str(suggestion.get("prompt", "")).lower() for suggestion in suggestions["suggestions"]):
+        raise RuntimeError(f"Web assistant suggestions still contain a legacy platform architecture prompt: {suggestions}")
     body = request_json(
         "POST",
         f"{WEB_URL}/api/assistant/chat",

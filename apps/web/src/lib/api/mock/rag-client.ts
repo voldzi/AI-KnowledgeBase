@@ -19,12 +19,12 @@ export class MockRagClient implements RagApiClient {
     if (request.query.toLowerCase().includes("neznamy") || request.query.toLowerCase().includes("unknown")) {
       return {
         query_id: "query_no_answer",
-        answer: "K dotazu nebyl nalezen dostatecne oporyhodny zdroj.",
+        answer: "K dotazu nebyl nalezen dostatečně důvěryhodný zdroj.",
         confidence: "insufficient_source",
         citations: [],
         warnings: ["NO_AUTHORIZED_SOURCE"],
         used_chunks: [],
-        missing_information: "Chybi citovatelny chunk v povolenych dokumentech."
+        missing_information: "Chybí citovatelný chunk v povolených dokumentech."
       };
     }
     return {

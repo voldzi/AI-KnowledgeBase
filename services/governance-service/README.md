@@ -1,6 +1,6 @@
 # AKL Governance / Compliance Service
 
-Samostatne nasaditelna FastAPI sluzba pro pokrocile rizeni dokumentace v AKL Platform.
+Samostatne nasaditelna FastAPI sluzba pro pokrocile rizeni dokumentace v AKB Platform.
 
 Implementovany rozsah:
 

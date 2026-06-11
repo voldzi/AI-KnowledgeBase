@@ -1,4 +1,4 @@
-# AKL Web Frontend - Screens
+# AKB Web Frontend - Screens
 
 ## Dashboard
 

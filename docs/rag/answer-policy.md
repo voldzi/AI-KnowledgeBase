@@ -7,7 +7,7 @@ Tento dokument popisuje pravidla pro skladani odpovedi ve sluzbe RAG Retrieval S
 - Odpoved musi vychazet pouze z autorizovanych chunku.
 - Kazda odpoved s obsahem musi vratit citace.
 - Citace se berou z metadat `RetrievedChunk.citation`.
-- Pokud nejsou zdroje dostatecne, sluzba vrati no-answer odpoved.
+- Pokud nejsou zdroje dostatečné, služba vrátí no-answer odpověď.
 - Query text, prompt ani plna odpoved se neloguji do technickych logu.
 
 ## Prompting

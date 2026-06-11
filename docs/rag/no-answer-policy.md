@@ -1,39 +1,39 @@
 # RAG No-Answer Policy
 
-No-answer policy chrani pred odpovedmi bez dostatecne zdrojove opory.
+No-answer policy chrání před odpověďmi bez dostatečné zdrojové opory.
 
-## Kdy sluzba neodpovi vecnou odpovedi
+## Kdy služba neodpoví věcnou odpovědí
 
-Sluzba vrati `confidence=insufficient_source`, pokud:
+Služba vrátí `confidence=insufficient_source`, pokud:
 
-- retrieval nenasel zadne kandidatni chunky,
-- vsechny kandidatni chunky byly odfiltrovany authz,
-- chunk nema citacni metadata,
-- nejlepsi rerank score je pod `AKL_RAG_NO_ANSWER_MIN_SCORE`,
-- LLM Gateway vrati prazdnou odpoved.
+- retrieval nenašel žádné kandidátní chunky,
+- všechny kandidátní chunky byly odfiltrovány authz,
+- chunk nemá citační metadata,
+- nejlepší rerank score je pod `AKL_RAG_NO_ANSWER_MIN_SCORE`,
+- LLM Gateway vrátí prázdnou odpověď.
 
-## Tvar no-answer odpovedi
+## Tvar no-answer odpovědi
 
 ```json
 {
-  "answer": "K dotazu nebyl nalezen dostatecne oporyhodny zdroj v povolenych dokumentech.",
+  "answer": "K dotazu nebyl nalezen dostatečně důvěryhodný zdroj v povolených dokumentech.",
   "confidence": "insufficient_source",
   "citations": [],
   "used_chunks": [],
-  "missing_information": "Chybi citovatelny chunk v povolenych dokumentech."
+  "missing_information": "Chybí citovatelný chunk v povolených dokumentech."
 }
 ```
 
-## Warning kody
+## Warning kódy
 
-- `NO_RETRIEVAL_MATCH`: retrieval nevratil zadne kandidatni chunky.
-- `NO_AUTHORIZED_SOURCE`: kandidatni chunky existovaly, ale zadny autorizovany zdroj nezustal.
-- `AUTHZ_FILTERED_SOURCES`: cast zdroju byla odfiltrovana Registry API.
-- `MISSING_CITATION`: chunk nema potrebna citacni metadata.
-- `LOW_RELEVANCE`: nejlepsi autorizovany chunk je pod relevance prahem.
-- `LLM_EMPTY_ANSWER`: LLM Gateway vratil prazdny obsah.
-- `CONTEXT_TRUNCATED`: kontext byl zkracen podle limitu.
+- `NO_RETRIEVAL_MATCH`: retrieval nevrátil žádné kandidátní chunky.
+- `NO_AUTHORIZED_SOURCE`: kandidátní chunky existovaly, ale žádný autorizovaný zdroj nezůstal.
+- `AUTHZ_FILTERED_SOURCES`: část zdrojů byla odfiltrována Registry API.
+- `MISSING_CITATION`: chunk nemá potřebná citační metadata.
+- `LOW_RELEVANCE`: nejlepší autorizovaný chunk je pod relevance prahem.
+- `LLM_EMPTY_ANSWER`: LLM Gateway vrátil prázdný obsah.
+- `CONTEXT_TRUNCATED`: kontext byl zkrácen podle limitu.
 
-## Bezpecnostni pravidlo
+## Bezpečnostní pravidlo
 
-No-answer policy se vyhodnocuje az po authz filtru. To znamena, ze existence neautorizovaneho zdroje nesmi sama o sobe vest k vecne odpovedi.
+No-answer policy se vyhodnocuje až po authz filtru. To znamená, že existence neautorizovaného zdroje nesmí sama o sobě vést k věcné odpovědi.

@@ -114,7 +114,7 @@ restricted
 handoff_recommended
 ```
 
-Conversation history is currently ephemeral. The endpoint returns a conversation id for correlation and future persistence.
+Conversation history is persisted through Registry API when Registry is reachable. The endpoint returns a conversation id for correlation and later retrieval. If persistence is unavailable, RAG returns an explicit `ephemeral` status and `CONVERSATION_HISTORY_NOT_PERSISTED` warning instead of hiding the degradation.
 
 ## Source Context Contract
 
@@ -140,13 +140,15 @@ Conversation history is currently ephemeral. The endpoint returns a conversation
     "bbox": null
   },
   "chunk_text": "...",
-  "before_text": "",
-  "after_text": "",
+  "before_text": "Previous chunk context when available.",
+  "after_text": "Following chunk context when available.",
   "warnings": []
 }
 ```
 
 Unsupported location fields are returned as `null`; the system must not invent page, bbox, slide, sheet, or paragraph positions.
+
+`before_text` and `after_text` are assembled from neighboring chunks inside the same `document_version_id`. The default window is one chunk on each side and can be raised with `AKL_RAG_SOURCE_CONTEXT_WINDOW` when a deployment needs wider document context.
 
 ## Insights Architecture
 

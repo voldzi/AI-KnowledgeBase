@@ -167,3 +167,44 @@ def test_get_neighbors_without_chunk_index_returns_empty(monkeypatch) -> None:
 
     assert before == ""
     assert after == ""
+
+
+def test_get_neighbors_uses_configured_context_window(monkeypatch) -> None:
+    settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "mock", "AKL_RAG_SOURCE_CONTEXT_WINDOW": "2"})
+    retriever = QdrantHybridRetriever(settings)
+
+    chunk = _point_to_chunk(
+        {
+            "chunk_id": "chunk_mid",
+            "document_id": "doc_n",
+            "document_version_id": "ver_n",
+            "text": "Prostredni cast.",
+            "metadata": {"chunk_index": 5},
+        },
+        score=0.9,
+        dense_score=0.9,
+        sparse_score=0.9,
+    )
+
+    async def fake_scroll(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False):
+        range_filter = json_body["filter"]["must"][1]["range"]
+        assert range_filter == {"gte": 3, "lte": 7}
+        return {
+            "result": {
+                "points": [
+                    {"payload": {"text": "Cast 3.", "metadata": {"chunk_index": 3}}},
+                    {"payload": {"text": "Cast 4.", "metadata": {"chunk_index": 4}}},
+                    {"payload": {"text": "Cast 5.", "metadata": {"chunk_index": 5}}},
+                    {"payload": {"text": "Cast 6.", "metadata": {"chunk_index": 6}}},
+                    {"payload": {"text": "Cast 7.", "metadata": {"chunk_index": 7}}},
+                ]
+            }
+        }
+
+    import retrievers.qdrant as qdrant_module
+
+    monkeypatch.setattr(qdrant_module, "request_json_with_retry", fake_scroll)
+    before, after = asyncio.run(retriever.get_neighbors(chunk))
+
+    assert before == "Cast 3.\n\nCast 4."
+    assert after == "Cast 6.\n\nCast 7."

@@ -80,6 +80,7 @@ class Settings:
     default_max_chunks: int
     retrieval_candidate_limit: int
     max_context_chars: int
+    source_context_window: int
     answer_max_tokens: int
     hybrid_dense_weight: float
     no_answer_min_score: float
@@ -122,6 +123,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             _get(source, "AKL_RAG_RETRIEVAL_CANDIDATE_LIMIT", str(max(24, default_max_chunks * 3)))
         )
         max_context_chars = int(_get(source, "AKL_RAG_MAX_CONTEXT_CHARS", "12000"))
+        source_context_window = int(_get(source, "AKL_RAG_SOURCE_CONTEXT_WINDOW", "1"))
         answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "512"))
         hybrid_dense_weight = float(_get(source, "AKL_RAG_HYBRID_DENSE_WEIGHT", "0.35"))
         no_answer_min_score = float(_get(source, "AKL_RAG_NO_ANSWER_MIN_SCORE", "0.35"))
@@ -142,6 +144,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_RETRIEVAL_CANDIDATE_LIMIT must be at least AKL_RAG_DEFAULT_MAX_CHUNKS")
     if max_context_chars <= 0:
         raise ConfigError("AKL_RAG_MAX_CONTEXT_CHARS must be greater than zero")
+    if source_context_window < 0 or source_context_window > 5:
+        raise ConfigError("AKL_RAG_SOURCE_CONTEXT_WINDOW must be between 0 and 5")
     if answer_max_tokens <= 0:
         raise ConfigError("AKL_RAG_ANSWER_MAX_TOKENS must be greater than zero")
     if not 0 <= hybrid_dense_weight <= 1:
@@ -202,6 +206,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         default_max_chunks=default_max_chunks,
         retrieval_candidate_limit=retrieval_candidate_limit,
         max_context_chars=max_context_chars,
+        source_context_window=source_context_window,
         answer_max_tokens=answer_max_tokens,
         hybrid_dense_weight=hybrid_dense_weight,
         no_answer_min_score=no_answer_min_score,

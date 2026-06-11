@@ -1,7 +1,7 @@
 {
   "realm": "akl",
   "enabled": true,
-  "displayName": "AKL Platform",
+  "displayName": "AKB Platform",
   "registrationAllowed": false,
   "resetPasswordAllowed": false,
   "loginWithEmailAllowed": true,
@@ -57,7 +57,7 @@
   "clients": [
     {
       "clientId": "akl-web",
-      "name": "AKL Web Frontend",
+      "name": "AKB Web Frontend",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,

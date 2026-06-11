@@ -7,7 +7,7 @@ Tento plán popisuje první produkční nasazení AKL / AI KnowledgeBase jako so
 - AKL běží z větve `main` stažené z GitHubu do `/srv/akl`.
 - PostgreSQL je jediná produkční relační databáze. SQLite se v produkci nepoužívá.
 - Dokumentové binární zdroje jsou oddělené od databáze a ukládají se do dedikovaného AKL prostoru nad SeaweedFS.
-- Keycloak používá STRATOS realm a STRATOS login theme. AKL je klient v tomto realm.
+- Keycloak používá STRATOS realm a STRATOS login theme. AKB je klient v tomto realm.
 - STRATOS aplikace nevolají AKL z browseru přímo. Volají serverový STRATOS adapter podle `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`.
 - Build webu používá `@stratos/ui` přes GitHub Packages a read-only `read:packages` token uložený jen jako serverový secret.
 

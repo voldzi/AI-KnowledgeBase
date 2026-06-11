@@ -18,7 +18,7 @@ Phase 04 adds a dual GUI model:
 
 ### Knowledge Chat
 
-- Default scope is `akl-docs` for imported project documentation.
+- Default scope is all authorized knowledge. Imported project documentation uses the `akb-docs` tag when the local docs import manifest is used.
 - `project_documentation` is included in default document types.
 - Citations are clickable.
 - Clicking a citation opens the source-context panel.
@@ -71,9 +71,9 @@ The current upload bridge stores the source object in shared local object storag
 
 ### STRATOS UI Adapter
 
-AKL now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search and view tabs while `@stratos/ui` is distributed through GitHub Packages and still needs a read-only `read:packages` token in AKL local/CI builds.
+AKB now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search and view tabs while `@stratos/ui` is distributed through GitHub Packages and still needs a read-only `read:packages` token in AKB local/CI builds.
 
-The adapter keeps `stratos-*` class names and maps AKL theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, and `@stratos/ui/styles.css`.
+The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, and `@stratos/ui/styles.css`.
 
 ### Workflow Inbox
 

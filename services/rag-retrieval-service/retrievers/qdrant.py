@@ -87,11 +87,14 @@ class QdrantHybridRetriever:
         return _point_to_chunk(point_payload, score=1.0, dense_score=1.0, sparse_score=1.0)
 
     async def get_neighbors(self, chunk: RetrievedChunk) -> tuple[str, str]:
-        """Return (before_text, after_text) from the chunks adjacent to the
-        given chunk inside the same document version, based on chunk_index."""
+        """Return (before_text, after_text) from chunks around the given chunk
+        inside the same document version, based on chunk_index."""
         chunk_index = chunk.metadata.get("chunk_index")
         document_version_id = chunk.citation.document_version_id
         if not isinstance(chunk_index, int) or not document_version_id:
+            return "", ""
+        window = self._settings.source_context_window
+        if window == 0:
             return "", ""
         payload = await request_json_with_retry(
             dependency="qdrant",
@@ -99,7 +102,7 @@ class QdrantHybridRetriever:
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
             json_body={
-                "limit": 8,
+                "limit": max(8, window * 2 + 1),
                 "with_payload": True,
                 "with_vector": False,
                 "filter": {
@@ -107,7 +110,7 @@ class QdrantHybridRetriever:
                         {"key": "document_version_id", "match": {"value": document_version_id}},
                         {
                             "key": "metadata.chunk_index",
-                            "range": {"gte": chunk_index - 1, "lte": chunk_index + 1},
+                            "range": {"gte": chunk_index - window, "lte": chunk_index + window},
                         },
                     ]
                 },
@@ -115,8 +118,8 @@ class QdrantHybridRetriever:
         )
         result = payload.get("result", {})
         points = result.get("points", []) if isinstance(result, dict) else []
-        before_text = ""
-        after_text = ""
+        before: list[tuple[int, str]] = []
+        after: list[tuple[int, str]] = []
         for point in points:
             if not isinstance(point, dict):
                 continue
@@ -126,10 +129,14 @@ class QdrantHybridRetriever:
             point_metadata = point_payload.get("metadata") if isinstance(point_payload.get("metadata"), dict) else {}
             point_index = point_metadata.get("chunk_index")
             text = str(point_payload.get("text") or "").strip()
-            if point_index == chunk_index - 1:
-                before_text = text
-            elif point_index == chunk_index + 1:
-                after_text = text
+            if not text or not isinstance(point_index, int):
+                continue
+            if chunk_index - window <= point_index < chunk_index:
+                before.append((point_index, text))
+            elif chunk_index < point_index <= chunk_index + window:
+                after.append((point_index, text))
+        before_text = "\n\n".join(text for _, text in sorted(before))
+        after_text = "\n\n".join(text for _, text in sorted(after))
         return before_text, after_text
 
     async def list_document_titles(self, *, limit: int = 64) -> list[dict[str, str]]:

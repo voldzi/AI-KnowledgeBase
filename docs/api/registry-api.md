@@ -1,6 +1,6 @@
 # Registry API
 
-`services/registry-api` implementuje Identity & Document Registry API pro AKL Platform.
+`services/registry-api` implementuje Identity & Document Registry API pro AKB Platform.
 
 ## Rozsah
 

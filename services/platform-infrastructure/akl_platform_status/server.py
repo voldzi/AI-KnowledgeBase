@@ -53,9 +53,9 @@ REQUEST_COUNTERS: dict[tuple[str, int], int] = {}
 OPENAPI_DOCUMENT: dict[str, Any] = {
     "openapi": "3.1.0",
     "info": {
-        "title": "AKL Platform Infrastructure Status API",
+        "title": "AKB Platform Infrastructure Status API",
         "version": "0.1.0",
-        "description": "Operational health API for the AKL Platform infrastructure thread.",
+        "description": "Operational health API for the AKB Platform infrastructure thread.",
     },
     "paths": {
         "/health": {

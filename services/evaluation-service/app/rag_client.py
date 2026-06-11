@@ -43,7 +43,7 @@ class MockRagClient:
         if not chunks:
             return RagAnswer(
                 query_id=query_id,
-                answer="K dotazu nebyl nalezen dostatecne oporyhodny zdroj.",
+                answer="K dotazu nebyl nalezen dostatečně důvěryhodný zdroj.",
                 confidence="insufficient_source",
                 citations=[],
                 warnings=["LOW_RELEVANCE"],

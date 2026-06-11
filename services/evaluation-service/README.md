@@ -1,6 +1,6 @@
 # AKL Evaluation Service
 
-Samostatne nasaditelna FastAPI sluzba pro mereni kvality RAG odpovedi, citaci a retrievalu v AKL Platform.
+Samostatne nasaditelna FastAPI sluzba pro mereni kvality RAG odpovedi, citaci a retrievalu v AKB Platform.
 
 Implementovany rozsah:
 

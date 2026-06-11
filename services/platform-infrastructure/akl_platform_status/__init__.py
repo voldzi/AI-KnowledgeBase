@@ -1,1 +1,1 @@
-"""AKL Platform Infrastructure status service."""
+"""AKB Platform Infrastructure status service."""

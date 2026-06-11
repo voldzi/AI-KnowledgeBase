@@ -13,6 +13,7 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.retriever_mode == "mock"
     assert settings.llm_client_mode == "mock"
     assert settings.answer_max_tokens == 512
+    assert settings.source_context_window == 1
 
 
 def test_production_rejects_mock_clients() -> None:
@@ -37,6 +38,11 @@ def test_invalid_answer_max_tokens_is_rejected() -> None:
         load_settings({"AKL_RAG_ANSWER_MAX_TOKENS": "0"})
 
 
+def test_invalid_source_context_window_is_rejected() -> None:
+    with pytest.raises(ConfigError, match="AKL_RAG_SOURCE_CONTEXT_WINDOW"):
+        load_settings({"AKL_RAG_SOURCE_CONTEXT_WINDOW": "6"})
+
+
 def test_current_http_profile_uses_explicit_akl_env_names() -> None:
     settings = load_settings(
         {
@@ -52,6 +58,7 @@ def test_current_http_profile_uses_explicit_akl_env_names() -> None:
             "AKL_RAG_NO_ANSWER_MIN_SCORE": "0.15",
             "AKL_RAG_AUTHZ_MODE": "registry",
             "AKL_RAG_ENABLE_RERANKING": "false",
+            "AKL_RAG_SOURCE_CONTEXT_WINDOW": "2",
         }
     )
 
@@ -65,3 +72,4 @@ def test_current_http_profile_uses_explicit_akl_env_names() -> None:
     assert settings.default_max_chunks == 6
     assert settings.no_answer_min_score == 0.15
     assert settings.enable_reranking is False
+    assert settings.source_context_window == 2

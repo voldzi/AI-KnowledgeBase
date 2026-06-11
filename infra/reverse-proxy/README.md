@@ -1,6 +1,6 @@
 # AKL Reverse Proxy
 
-The reverse proxy is owned by the Platform / Infrastructure thread. It routes stable path prefixes to independently deployable AKL services without importing service internals.
+The reverse proxy is owned by the Platform / Infrastructure thread. It routes stable path prefixes to independently deployable AKB services without importing service internals.
 
 | Public path | Upstream env var | Default upstream |
 |---|---|---|

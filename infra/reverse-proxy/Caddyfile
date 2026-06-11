@@ -28,7 +28,7 @@
 	}
 
 	handle / {
-		respond "AKL Platform reverse proxy" 200
+		respond "AKB Platform reverse proxy" 200
 	}
 
 	@akb path /akb /akb/*

@@ -1325,22 +1325,46 @@ def _shorten_title(title: str, max_length: int = 48) -> str:
 def _assistant_suggestions(response_language: ResponseLanguage = "cs") -> list[AssistantSuggestion]:
     if response_language == "en":
         return [
-            AssistantSuggestion(label="New access", prompt="How do I request new access?", domain="Service Desk"),
-            AssistantSuggestion(label="Report incident", prompt="How do I report an incident?", domain="IT Operations"),
-            AssistantSuggestion(label="Platform architecture", prompt="What is the architecture of the AKB platform?", domain="Documentation"),
-            AssistantSuggestion(label="Teams rules", prompt="Where can I find the Teams rules?", domain="M365 / Collaboration"),
-            AssistantSuggestion(label="Service Desk", prompt="How do I create a Service Desk request?", domain="Service Desk"),
-            AssistantSuggestion(label="Application owner", prompt="Who is the owner of a specific application?", domain="Applications"),
-            AssistantSuggestion(label="Employee onboarding", prompt="What is the procedure for onboarding a new employee?", domain="Onboarding"),
-            AssistantSuggestion(label="Request status", prompt="How do I check the status of my request?", domain="Service Desk"),
+            AssistantSuggestion(
+                label="ISVS obligations",
+                prompt="What obligations apply to public administration information systems?",
+                domain="Digital governance",
+            ),
+            AssistantSuggestion(
+                label="Cybersecurity duties",
+                prompt="Which cybersecurity obligations follow from the indexed documents?",
+                domain="Security",
+            ),
+            AssistantSuggestion(
+                label="Classified information",
+                prompt="What duties apply when working with classified or restricted information?",
+                domain="Compliance",
+            ),
+            AssistantSuggestion(
+                label="Document controls",
+                prompt="Which evidence, approval, and audit controls are required?",
+                domain="Governance",
+            ),
         ]
     return [
-        AssistantSuggestion(label="Nový přístup", prompt="Jak požádám o nový přístup?", domain="Service Desk"),
-        AssistantSuggestion(label="Nahlásit incident", prompt="Jak nahlásím incident?", domain="IT Operations"),
-        AssistantSuggestion(label="Architektura platformy", prompt="Jaká je architektura AKB platformy?", domain="Dokumentace"),
-        AssistantSuggestion(label="Pravidla Teams", prompt="Kde najdu pravidla pro Teams?", domain="M365 / Collaboration"),
-        AssistantSuggestion(label="Service Desk", prompt="Jak založím požadavek na Service Desk?", domain="Service Desk"),
-        AssistantSuggestion(label="Gestor aplikace", prompt="Kdo je gestor konkrétní aplikace?", domain="Applications"),
-        AssistantSuggestion(label="Nástup zaměstnance", prompt="Jaký je postup při nástupu zaměstnance?", domain="Onboarding"),
-        AssistantSuggestion(label="Stav požadavku", prompt="Jak zjistím stav svého požadavku?", domain="Service Desk"),
+        AssistantSuggestion(
+            label="Povinnosti ISVS",
+            prompt="Jaké povinnosti platí pro informační systémy veřejné správy?",
+            domain="Digitální správa",
+        ),
+        AssistantSuggestion(
+            label="Kybernetická bezpečnost",
+            prompt="Jaké povinnosti kybernetické bezpečnosti vyplývají z uložených dokumentů?",
+            domain="Bezpečnost",
+        ),
+        AssistantSuggestion(
+            label="Utajované informace",
+            prompt="Jaké povinnosti platí při práci s utajovanými nebo omezenými informacemi?",
+            domain="Compliance",
+        ),
+        AssistantSuggestion(
+            label="Kontroly dokumentů",
+            prompt="Jaké evidence, schválení a auditní kontroly jsou vyžadované?",
+            domain="Governance",
+        ),
     ]

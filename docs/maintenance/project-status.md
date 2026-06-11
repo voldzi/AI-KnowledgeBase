@@ -2,7 +2,7 @@
 
 Validated: 2026-06-06.
 
-Tento dokument je konsolidovany stav praci pro AKL Platform. Slouzi jako jedna startovni pravda pro navazujici vyvoj, PR review a predani mezi Codex vlakny.
+Tento dokument je konsolidovany stav praci pro AKB Platform. Slouzi jako jedna startovni pravda pro navazujici vyvoj, PR review a predani mezi Codex vlakny.
 
 ## Executive Summary
 

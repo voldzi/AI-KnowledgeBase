@@ -1,6 +1,6 @@
-# AKL Web Frontend
+# AKB Web Frontend
 
-Next.js frontend for AKL Platform, focused on controlled documentation, ingestion visibility, citation-backed RAG answers, audit review and administration skeletons.
+Next.js frontend for AKB Platform, focused on controlled documentation, ingestion visibility, citation-backed RAG answers, audit review and administration skeletons.
 
 ## Responsibility
 
@@ -77,7 +77,7 @@ Copy `.env.example` to `.env.local` for local overrides.
 | `AKL_WEB_UPLOAD_BUCKET` | Allowed storage bucket for uploaded and opened source objects |
 | `AKL_WEB_DOWNLOAD_SIGNING_SECRET` | Optional HMAC secret for signed source opening; falls back to upload/dev secret |
 | `AKL_WEB_DOWNLOAD_TOKEN_TTL_SECONDS` | Optional signed source opening token TTL |
-| `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` | Optional same-origin content endpoint path for signed source opening |
+| `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` | Optional same-origin content endpoint path for signed source opening; defaults to `${NEXT_PUBLIC_AKL_BASE_PATH}/api/documents/source/content` |
 
 Production refuses to start when `AKL_API_CLIENT_MODE=mock` or `AKL_AUTH_MODE=mock`.
 

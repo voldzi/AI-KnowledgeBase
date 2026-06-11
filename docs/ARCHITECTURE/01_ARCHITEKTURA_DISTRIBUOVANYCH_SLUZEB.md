@@ -1,6 +1,6 @@
 # Architektura distribuovaných služeb
 
-Tento dokument definuje cílovou architekturu AKL Platform jako sadu samostatně nasaditelných služeb.
+Tento dokument definuje cílovou architekturu AKB Platform jako sadu samostatně nasaditelných služeb.
 
 Odkaz na centrální zadání: `../00_CENTRALNI_ZADANI_AKL_PLATFORM.md`
 
@@ -8,7 +8,7 @@ Odkaz na centrální zadání: `../00_CENTRALNI_ZADANI_AKL_PLATFORM.md`
 
 ## 1. Architektonický styl
 
-AKL Platform používá service-oriented architekturu.
+AKB Platform používá service-oriented architekturu.
 
 Služby musí být:
 

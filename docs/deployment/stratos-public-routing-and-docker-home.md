@@ -518,6 +518,11 @@ Aktualni pilot:
 - Ollama pilot: `http://192.168.200.2:11434` pres VPN notebook,
 - object storage bridge: `/srv/seaweedfs/akl`.
 
+AKB web derives signed source-download URLs from `NEXT_PUBLIC_AKL_BASE_PATH`
+by default. For `/akb` deployments the generated source endpoint is
+`/akb/api/documents/source/content`; `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` is
+only an explicit override.
+
 ## Povinné Porty Na docker.home.cz
 
 Porty byly overene jako volne na `docker.home.cz` a jsou rezervovane pro STRATOS public routing. Aplikace je musi pouzit pro sve verejne/pilotni reverse-proxy vstupy:

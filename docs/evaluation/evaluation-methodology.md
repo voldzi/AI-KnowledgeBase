@@ -1,6 +1,6 @@
 # Evaluation methodology
 
-Tento dokument popisuje metodiku Evaluation Service pro AKL Platform.
+Tento dokument popisuje metodiku Evaluation Service pro AKB Platform.
 
 ## Cil
 
