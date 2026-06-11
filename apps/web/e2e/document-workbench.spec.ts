@@ -187,6 +187,19 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
   });
 
+  test("DW-15 mobile workspace navigation closes after one tap", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/assistant");
+
+    await page.getByLabel("Otevřít navigaci").click();
+    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "true");
+
+    await page.getByLabel("Navigace pracovní plochy").getByRole("link", { name: "Znalostní chat" }).click();
+    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "false");
+    await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
+  });
+
   test("DW-16 help center renders role-based guidance", async ({ page }) => {
     await page.goto("/help");
 
