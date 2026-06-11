@@ -95,6 +95,10 @@ ssh docker.home.cz 'cd /srv/akl/repo && python3 tools/import_original_pdf_versio
 
 The apply run is data-changing. It may take several minutes because each PDF is parsed, chunked, embedded, and written to Qdrant.
 
+In OIDC production profiles, the Ingestion Service propagates the caller bearer token to Registry API for
+`document.ingest` authorization. Use `--ingestion-bearer-token` or export `AKL_IMPORT_BEARER_TOKEN` /
+`AKL_IMPORT_INGESTION_BEARER_TOKEN` with a Registry-valid service JWT before running `--apply`.
+
 On `docker.home.cz`, Registry API runs in the app network and Qdrant runs in data/management networks. The script
 therefore does not require Registry API to reach Qdrant directly; Qdrant point counts and superseded-point cleanup are
 performed by the host-side script after Registry publication.

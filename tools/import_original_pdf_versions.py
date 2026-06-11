@@ -151,7 +151,12 @@ def parse_args(argv: list[str] | None) -> Options:
         keep_superseded_qdrant=bool(args.keep_superseded_qdrant),
         storage_writer_service=args.storage_writer_service,
         storage_container_root=PurePosixPath(args.storage_container_root),
-        ingestion_bearer_token=args.ingestion_bearer_token or os.environ.get("AKL_IMPORT_INGESTION_BEARER_TOKEN") or args.actor_id,
+        ingestion_bearer_token=(
+            args.ingestion_bearer_token
+            or os.environ.get("AKL_IMPORT_INGESTION_BEARER_TOKEN")
+            or os.environ.get("AKL_IMPORT_BEARER_TOKEN")
+            or args.actor_id
+        ),
     )
 
 
