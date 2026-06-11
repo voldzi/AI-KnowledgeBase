@@ -18,10 +18,18 @@ Phase 04 adds a dual GUI model:
 
 ### Knowledge Chat
 
+- Route: `/chat`.
+- Primary AKB Assistant surface for user-owned threads, thread switching, citation review, and share-thread controls.
 - Default scope is all authorized knowledge. Imported project documentation uses the `akb-docs` tag when the local docs import manifest is used.
 - `project_documentation` is included in default document types.
+- Suggested questions are loaded from `GET /api/v1/assistant/suggestions`.
+- Questions are sent through `POST /api/v1/assistant/chat`.
+- Clarifying answers continue through `POST /api/v1/assistant/clarify`.
 - Citations are clickable.
 - Clicking a citation opens the source-context panel.
+- The document action opens the original signed source document through the assistant citation redirect.
+- For PDF sources, the redirect includes the cited page and a search phrase from the citation text so supported PDF viewers can highlight the cited text; exact bbox/text-layer highlighting remains available in the AKB source-context/native preview.
+- Thread sharing is represented in the UI as session-local MVP state until a dedicated backend sharing contract is added.
 - The source-context panel shows:
   - document title,
   - version id,

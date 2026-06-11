@@ -59,13 +59,40 @@ function viewerModeForSource(sourceFileUri: string | null, sourceMimeType: strin
   return "binary";
 }
 
-function sourceUrlWithPageFragment(sourceUrl: string, pageNumber: number | null): string {
-  if (!pageNumber || !Number.isFinite(pageNumber)) {
-    return sourceUrl;
+function pdfSearchPhrase(chunkText: string): string | null {
+  const normalized = chunkText
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s.,:;!?()[\]{}'"-]/gu, "")
+    .trim();
+  if (!normalized) {
+    return null;
   }
-  const page = Math.max(1, Math.trunc(pageNumber));
+  return normalized.length > 96 ? normalized.slice(0, 96).trim() : normalized;
+}
+
+function sourceUrlWithPdfFragment({
+  chunkText,
+  pageNumber,
+  sourceUrl,
+  viewerMode
+}: {
+  chunkText: string;
+  pageNumber: number | null;
+  sourceUrl: string;
+  viewerMode: string;
+}): string {
   const [baseUrl] = sourceUrl.split("#");
-  return `${baseUrl}#page=${page}`;
+  const fragmentParts: string[] = [];
+  if (pageNumber && Number.isFinite(pageNumber)) {
+    fragmentParts.push(`page=${Math.max(1, Math.trunc(pageNumber))}`);
+  }
+  if (viewerMode === "pdf") {
+    const searchPhrase = pdfSearchPhrase(chunkText);
+    if (searchPhrase) {
+      fragmentParts.push(`search=${encodeURIComponent(searchPhrase)}`);
+    }
+  }
+  return fragmentParts.length ? `${baseUrl}#${fragmentParts.join("&")}` : sourceUrl;
 }
 
 function sourceRedirectResponse(sourceUrl: string): Response {
@@ -131,12 +158,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
+    const viewerMode = viewerModeForSource(version.source_file_uri, sourceContext.source_mime_type);
     const sourceOpen = await createSourceOpenDecision({
       document_id: document.document_id,
       document_version_id: version.document_version_id,
       source_file_uri: version.source_file_uri,
       file_hash: version.file_hash,
-      viewer_mode: viewerModeForSource(version.source_file_uri, sourceContext.source_mime_type)
+      viewer_mode: viewerMode
     });
 
     if (!sourceOpen.available || !sourceOpen.download_url) {
@@ -152,7 +180,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const redirectUrl = sourceUrlWithPageFragment(sourceOpen.download_url, sourceContext.location.page_number);
+    const redirectUrl = sourceUrlWithPdfFragment({
+      chunkText: sourceContext.chunk_text,
+      pageNumber: sourceContext.location.page_number,
+      sourceUrl: sourceOpen.download_url,
+      viewerMode
+    });
     return sourceRedirectResponse(redirectUrl);
   } catch (error) {
     if (error instanceof SourceDownloadError) {

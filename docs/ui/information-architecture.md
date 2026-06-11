@@ -86,10 +86,13 @@ Purpose:
 
 Purpose:
 
-- ask RAG Retrieval Service for answers
-- show confidence
-- show warnings and no-answer states
+- provide a ChatGPT/Copilot-like AKB Assistant surface at `/chat`
+- let users start and return to assistant threads
+- keep share-thread controls visible as the product path for collaborative work
+- ask RAG Retrieval Service for answers through the assistant API
+- show confidence, warnings and no-answer states inside the active thread
 - display citations with document id, version id, section path, page and chunk id
+- keep source-context and direct source-document opening available from the answer
 
 ### Audit
 

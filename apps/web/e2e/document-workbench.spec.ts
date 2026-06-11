@@ -179,19 +179,22 @@ test.describe("Document Workbench product paths", () => {
     await page.goto(appPath("/chat"));
 
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
+    await page.getByRole("button", { name: /Kdo schvaluje výjimku/ }).click();
+    await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();
 
     // Citations are inside the modal — open it first via the trigger badge
     await page.getByRole("button", { name: /Prohlížeč citací/ }).first().click();
-    await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
+    const citationDialog = page.getByRole("dialog", { name: "Zdroj odpovědi" });
+    await expect(citationDialog.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Otevřít citaci" }).first().click();
-    await expect(page.getByText("Chunk chunk_789")).toBeVisible();
-    await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
+    await citationDialog.getByRole("button", { name: "Otevřít citaci" }).first().click();
+    await expect(citationDialog.getByText("Chunk chunk_789")).toBeVisible();
+    await expect(citationDialog.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
+    await expect(citationDialog.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
       "href",
       appPath("/api/assistant/citations/chunk_789/document")
     );
-    await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
+    await expect(citationDialog.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
   });
 
   test("DW-14A assistant citation document endpoint redirects to signed source content", async ({ page }) => {
@@ -212,6 +215,18 @@ test.describe("Document Workbench product paths", () => {
     expect(response.status()).toBe(307);
     expect(location).toContain(appPath("/api/documents/source/content"));
     expect(location).not.toContain("ff6f9ebba65c");
+  });
+
+  test("DW-14C assistant PDF document redirect opens the source page with citation search", async ({ request }) => {
+    const response = await request.get(appPath("/api/assistant/citations/chunk_pdf_108/document"), {
+      maxRedirects: 0
+    });
+    const location = response.headers().location ?? "";
+
+    expect(response.status()).toBe(307);
+    expect(location).toContain(appPath("/api/documents/source/content"));
+    expect(location).toContain("#page=1");
+    expect(decodeURIComponent(location)).toContain("search=PDF citation area for controlled document preview.");
   });
 
   test("DW-15 mobile workspace navigation closes after one tap", async ({ page }) => {
