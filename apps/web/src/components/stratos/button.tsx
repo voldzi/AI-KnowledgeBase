@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ComponentPropsWithoutRef } from "react";
 
+import { withAppBasePath } from "@/lib/app-url";
+
 type ButtonTone = "default" | "primary" | "danger";
 
 function buttonClassName(tone: ButtonTone, className?: string) {
@@ -21,10 +23,14 @@ type StratosButtonLinkProps = ComponentPropsWithoutRef<typeof Link> & {
   tone?: ButtonTone;
 };
 
-export function StratosButtonLink({ className, tone = "default", ...props }: StratosButtonLinkProps) {
-  return <Link className={buttonClassName(tone, className)} {...props} />;
+function normalizeLinkHref(href: ComponentPropsWithoutRef<typeof Link>["href"]) {
+  return typeof href === "string" ? withAppBasePath(href) : href;
 }
 
-export function StratosIconButtonLink({ className, ...props }: ComponentPropsWithoutRef<typeof Link>) {
-  return <Link className={["stratos-icon-button", className ?? ""].filter(Boolean).join(" ")} {...props} />;
+export function StratosButtonLink({ className, tone = "default", href, ...props }: StratosButtonLinkProps) {
+  return <Link className={buttonClassName(tone, className)} href={normalizeLinkHref(href)} {...props} />;
+}
+
+export function StratosIconButtonLink({ className, href, ...props }: ComponentPropsWithoutRef<typeof Link>) {
+  return <Link className={["stratos-icon-button", className ?? ""].filter(Boolean).join(" ")} href={normalizeLinkHref(href)} {...props} />;
 }

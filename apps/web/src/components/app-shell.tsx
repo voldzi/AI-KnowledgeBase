@@ -263,6 +263,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     onSelect: () => {
       setActiveModule(item.id as ShellModuleId);
       setSidebarCollapsed(false);
+      setMobileSidebarOpen(false);
     }
   }));
   const activeRailHref = moduleRootRoutes[activeModule];
@@ -426,11 +427,14 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
                 return (
                   <Link
                     className="stratos-sidebar-action stratos-sidebar-action-link"
-                    href={item.href}
+                    href={withAppBasePath(item.href)}
                     key={item.href}
                     title={item.label}
                     aria-label={item.label}
-                    onClick={() => setSidebarCollapsed(false)}
+                    onClick={() => {
+                      setSidebarCollapsed(false);
+                      setMobileSidebarOpen(false);
+                    }}
                   >
                     <Icon size={16} aria-hidden="true" />
                   </Link>
@@ -470,6 +474,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             key={activeModule}
             groups={workspaceGroups}
             ariaLabel={language === "cs" ? "Navigace pracovní plochy" : "Workspace navigation"}
+            onNavigate={() => setMobileSidebarOpen(false)}
           />
         </StratosWorkspaceSidebar>
       }

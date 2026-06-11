@@ -73,7 +73,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const { chunkId } = await context.params;
     const requestContext = await getServerRequestContext();
     const clients = getServerApiClients();
-    const sourceContext = await clients.rag.openAssistantCitation(chunkId, requestContext);
+    const sourceContext = await clients.rag.openCitation(chunkId, requestContext);
     const [document, versions, authorization] = await Promise.all([
       clients.registry.getDocument(sourceContext.document_id, requestContext),
       clients.registry.listDocumentVersions(sourceContext.document_id, requestContext),
