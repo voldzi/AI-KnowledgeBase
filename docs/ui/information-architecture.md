@@ -1,4 +1,4 @@
-# AKL Web Frontend - Information Architecture
+# AKB Web Frontend - Information Architecture
 
 ## App Shell
 

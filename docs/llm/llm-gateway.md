@@ -1,6 +1,6 @@
 # LLM Gateway Service
 
-LLM Gateway Service je samostatně nasaditelná FastAPI služba AKL Platform. Poskytuje jednotné API nad lokálními nebo OpenAI-compatible LLM runtime:
+LLM Gateway Service je samostatně nasaditelná FastAPI služba AKB Platform. Poskytuje jednotné API nad lokálními nebo OpenAI-compatible LLM runtime:
 
 - Ollama
 - vLLM / OpenAI-compatible endpoint

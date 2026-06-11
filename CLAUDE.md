@@ -2,7 +2,9 @@
 
 ## Mission
 
-This repository builds and operates AI KnowledgeBase / AKL, a local AI Knowledge Library for controlled documents, ingestion, embeddings, Qdrant-backed RAG retrieval, citations, audit events, and dual GUI workflows.
+This repository builds and operates AI KnowledgeBase / AKB, a local knowledge base for controlled documents, ingestion, embeddings, Qdrant-backed RAG retrieval, citations, audit events, and STRATOS workflows.
+
+The product-facing name is **AKB**. Existing `AKL_*` environment variables, service ids, bucket names, and selected internal package names are technical compatibility prefixes unless a migration explicitly changes them.
 
 The goal in this repository is:
 
@@ -22,6 +24,7 @@ The goal in this repository is:
   - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" reindex --root .`
 - This repository ships a repo-local Chroma override in `.chroma-dev.yaml`. The standard `chroma-dev.sh ... --root .` command auto-loads it; do not pass a separate config unless you intentionally want a different indexing scope.
 - If retrieval tools are unavailable, Chroma is down, or the index returns no useful hits, fall back to direct repository inspection and state that retrieval was unavailable or insufficient.
+- Never print unredacted secrets, passwords, bearer tokens, session secrets, private keys, or full connection strings from env files or production commands. Prefer key names plus redacted values.
 
 ## Source of Truth
 
@@ -54,8 +57,9 @@ The goal in this repository is:
 
 - `git push` is allowed when the change has been intentionally prepared and the task requires publishing or syncing the branch.
 - `ssh docker.home.cz` is allowed when the task requires access to the production or remote environment on that host.
-- Do not invent or substitute `docker-codex`; the correct host name is `docker.home.cz`.
+- The correct production host name is `docker.home.cz`.
 - Do not manipulate VPN, VLAN, firewall, or network segmentation.
+- On `docker.home.cz`, verify deployment state with non-destructive checks first: git HEAD, `docker compose ps`, service `/health`, public `/akb/api/health`, and a narrow assistant/source smoke before changing configuration.
 
 ## Documentation Rules
 

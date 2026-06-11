@@ -1,6 +1,6 @@
 # AKL RAG Retrieval Service
 
-Samostatne nasaditelna FastAPI sluzba pro RAG retrieval tok v AKL Platform.
+Samostatne nasaditelna FastAPI sluzba pro RAG retrieval tok v AKB Platform.
 
 Implementovany rozsah teto iterace:
 
@@ -60,7 +60,7 @@ OpenAPI specifikace je v `openapi.yaml`.
 6. Zahodi neautorizovane chunky pred rerankingem a pred LLM.
 7. Provede reranking.
 8. Vyhodnoti no-answer policy.
-9. Pokud jsou zdroje dostatecne, sestavi prompt a zavola LLM Gateway chat completion.
+9. Pokud jsou zdroje dostatečné, sestaví prompt a zavolá LLM Gateway chat completion.
 10. Vrati odpoved, confidence, citace, `used_chunks`, warnings a `missing_information`.
 11. Zapise audit event pres Registry API. Do auditu jde hash odpovedi, ID chunku a ID dokumentu, ne plny text odpovedi.
 

@@ -76,7 +76,7 @@ python3 scripts/phase_03_docs_import_smoke.py
 The smoke test imports a limited subset of `docs/`, verifies Qdrant points, and asks RAG:
 
 ```text
-Jaká je architektura AKL platformy?
+Jak funguje RAG retrieval a citace?
 ```
 
 The answer must include citations.

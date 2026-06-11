@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 
 import {
   createSourceOpenDecision,
+  getSourceDownloadSettings,
   readSourceObject,
   SourceDownloadError,
   sourceContentTypeHeader,
@@ -90,6 +91,45 @@ describe("source download", () => {
     assert.equal(decision.available, true);
     assert.equal(decision.file.filename, "scan.svg");
     assert.equal(decision.file.mime_type, "image/svg+xml");
+  });
+
+  it("preserves deployment base path in signed source URLs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akl-source-basepath-"));
+    const settings = {
+      ...testSettings(root),
+      publicDownloadBasePath: "/akb/api/documents/source/content"
+    };
+    const content = new TextEncoder().encode("# Source\n\nBase path source body.");
+    const sha256 = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+    const objectKey = "doc_123/ver_456/source.md";
+    const targetPath = path.join(root, "akl-documents", ...objectKey.split("/"));
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, content);
+
+    const decision = await createSourceOpenDecision(
+      {
+        document_id: "doc_123",
+        document_version_id: "ver_456",
+        source_file_uri: `s3://akl-documents/${objectKey}`,
+        file_hash: sha256,
+        viewer_mode: "markdown"
+      },
+      settings
+    );
+
+    assert.equal(decision.available, true);
+    assert.match(decision.download_url ?? "", /^\/akb\/api\/documents\/source\/content\?token=/);
+  });
+
+  it("derives source download base path from the app base path", () => {
+    const settings = getSourceDownloadSettings({
+      NEXT_PUBLIC_AKL_BASE_PATH: "/akb/",
+      AKL_WEB_OBJECT_STORAGE_ROOT: "/tmp/source-download-base-path",
+      AKL_WEB_UPLOAD_BUCKET: "akl-documents",
+      AKL_WEB_DOWNLOAD_SIGNING_SECRET: "test-download-secret"
+    });
+
+    assert.equal(settings.publicDownloadBasePath, "/akb/api/documents/source/content");
   });
 
   it("adds UTF-8 charset only for directly opened text-like source types", () => {

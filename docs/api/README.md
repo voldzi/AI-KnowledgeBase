@@ -1,6 +1,6 @@
 # API Documentation
 
-This section is the current-state API map for AKL services.
+This section is the current-state API map for AKB services.
 
 Use it as the first stop when you need:
 

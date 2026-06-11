@@ -70,7 +70,7 @@ class MockLLMGatewayClient:
         if not first_sentence:
             if metadata.get("response_language") == "en":
                 return "No sufficiently reliable source was found for the question."
-            return "K dotazu nebyl nalezen dostatecne oporyhodny zdroj."
+            return "K dotazu nebyl nalezen dostatečně důvěryhodný zdroj."
         if metadata.get("response_language") == "en":
             return f"According to the cited sources: {first_sentence}."
         return f"Podle citovanych zdroju: {first_sentence}."

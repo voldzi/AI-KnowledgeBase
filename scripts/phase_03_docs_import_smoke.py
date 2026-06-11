@@ -22,6 +22,8 @@ RAG_URL = os.getenv("AKL_SMOKE_RAG_URL", "http://localhost:8082").rstrip("/")
 LLM_URL = os.getenv("AKL_SMOKE_LLM_URL", "http://localhost:8083").rstrip("/")
 QDRANT_URL = os.getenv("AKL_SMOKE_QDRANT_URL", "http://localhost:6333").rstrip("/")
 QDRANT_COLLECTION = os.getenv("AKL_QDRANT_COLLECTION", "akl_document_chunks")
+DOCS_TAG = os.getenv("AKL_PHASE_03_DOCS_TAG", "akb-docs")
+DOCS_QUERY = os.getenv("AKL_PHASE_03_DOCS_QUERY", "Jak funguje RAG retrieval a citace?")
 INGESTION_CONTAINER = os.getenv("AKL_SMOKE_INGESTION_CONTAINER", "akl-ingestion-service-1")
 SUBJECT_ID = os.getenv("AKL_SMOKE_SUBJECT_ID", "user_dev")
 ROLES = os.getenv("AKL_SMOKE_ROLES", "admin,document_manager,reader")
@@ -108,7 +110,7 @@ def verify_docs_qdrant_points() -> int:
             "filter": {
                 "must": [
                     {"key": "document_type", "match": {"value": "project_documentation"}},
-                    {"key": "tags", "match": {"value": "akl-docs"}},
+                    {"key": "tags", "match": {"value": DOCS_TAG}},
                 ]
             },
             "exact": True,
@@ -127,12 +129,12 @@ def query_rag_architecture() -> dict[str, Any]:
         f"{RAG_URL}/api/v1/rag/query",
         {
             "subject_id": SUBJECT_ID,
-            "query": "Jaká je architektura AKL platformy?",
+            "query": DOCS_QUERY,
             "filters": {
                 "document_types": ["project_documentation"],
                 "only_valid": True,
                 "classification_max": "internal",
-                "tags": ["akl-docs"],
+                "tags": [DOCS_TAG],
             },
             "answer_mode": "normative_with_citations",
             "max_chunks": 6,

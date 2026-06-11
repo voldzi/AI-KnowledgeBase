@@ -1,6 +1,6 @@
 # Governance / Compliance Service
 
-Governance Service je samostatna sluzba AKL Platform pro analyzu rizene dokumentace. Nepatri ji Registry data ani workflow publikace; ty zustavaji v Registry API.
+Governance Service je samostatna sluzba AKB Platform pro analyzu rizene dokumentace. Nepatri ji Registry data ani workflow publikace; ty zustavaji v Registry API.
 
 ## Odpovednost
 

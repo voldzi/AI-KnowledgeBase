@@ -73,7 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=resolved_settings.service_version,
         description=(
             "Hybrid retrieval, permission-aware reranking, answer composition, citations, "
-            "confidence, and no-answer policy for AKL Platform."
+            "confidence, and no-answer policy for AKB Platform."
         ),
         lifespan=lifespan,
     )

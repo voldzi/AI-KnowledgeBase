@@ -49,6 +49,7 @@ Real local RAG používá:
 - `AKL_RAG_CHAT_MODEL=gemma4:12b`
 - `AKL_RAG_EMBEDDING_MODEL=bge-m3`
 - `AKL_RAG_ANSWER_MAX_TOKENS=512`
+- `AKL_RAG_SOURCE_CONTEXT_WINDOW=1`
 - `AKL_RAG_AUTHZ_MODE=dev`
 - Qdrant kolekci `akl_document_chunks` s vektorem velikosti `1024` a distance `Cosine`
 

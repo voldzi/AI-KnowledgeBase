@@ -1,6 +1,6 @@
 # Multi-Server Deployment
 
-AKL Platform is designed as independently deployable services connected by contracts, not by shared code imports or shared runtime objects.
+AKB Platform is designed as independently deployable services connected by contracts, not by shared code imports or shared runtime objects.
 
 ## Reference Topology
 

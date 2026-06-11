@@ -1,13 +1,13 @@
 # STRATOS External Documents API
 
-Tento dokument je interní kontrakt pro STRATOS aplikace, které potřebují uložit nebo číst dokumenty přes AI KnowledgeBase / AKL. Frontendy STRATOS nevolají AKL přímo. Volání jde přes serverový adapter ve STRATOS `apps/api`, který zajistí autentizaci, audit, tenant a mapování oprávnění.
+Tento dokument je interní kontrakt pro STRATOS aplikace, které potřebují uložit nebo číst dokumenty přes AI KnowledgeBase / AKB. Frontendy STRATOS nevolají AKB přímo. Volání jde přes serverový adapter ve STRATOS `apps/api`, který zajistí autentizaci, audit, tenant a mapování oprávnění.
 
 ## Stav kontraktu
 
 Implementovaná část:
 
 - idempotentní registrace externího dokumentu,
-- získání externí reference a navázaného AKL dokumentu,
+- získání externí reference a navázaného AKB dokumentu,
 - unikátní vazba `tenant_id + external_system + external_ref`,
 - audit vytvoření externí reference.
 
@@ -23,15 +23,15 @@ Navazující části budou doplněné v dalších fázích:
 ## Zásady
 
 - Source of truth pro obchodní objekty zůstává v aplikacích STRATOS.
-- AKL drží dokument, verze, souborová metadata, OCR/text/chunky, index a citace.
+- AKB drží dokument, verze, souborová metadata, OCR/text/chunky, index a citace.
 - `external_ref` musí být stabilní a idempotentní.
-- Stejné `tenant_id`, `external_system` a `external_ref` nesmí vytvořit druhý AKL dokument.
+- Stejné `tenant_id`, `external_system` a `external_ref` nesmí vytvořit druhý AKB dokument.
 - AI výstupy jsou návrhy s citací, ne přímý zápis do Budget, ProjectFlow nebo jiného source-of-truth modelu.
 - Browser klient STRATOS nesmí volat tyto endpointy přímo.
 - Veřejný kontrakt používá `external_system`.
 - `source_location`, `akb_source_uri`, `citation_base_url` a `preview_url` mají oddělený význam:
   - `source_location` popisuje původ dokumentu ve STRATOS nebo externím úložišti.
-  - `akb_source_uri` je interní AKL uložený zdroj, pokud už existuje.
+  - `akb_source_uri` je interní AKB uložený zdroj, pokud už existuje.
   - `citation_base_url` je báze pro otevření citací uživatelem.
   - `preview_url` je volitelný náhled dokumentu pro uživatele nebo adapter.
 
@@ -48,7 +48,7 @@ X-Request-ID: <request id>
 X-Correlation-ID: <correlation id propagated across STRATOS>
 ```
 
-V lokálním mock/dev režimu mohou být použité `X-AKL-*` hlavičky. Produkční režim musí používat OIDC/service token podle bezpečnostní konfigurace AKL.
+V lokálním mock/dev režimu mohou být použité `X-AKL-*` hlavičky. Produkční režim musí používat OIDC/service token podle bezpečnostní konfigurace AKB.
 
 ## Endpointy
 
@@ -212,7 +212,7 @@ Neznámá hodnota je odmítnutá validační chybou `422`.
 
 ## Povolené typy dokumentů
 
-AKL Registry aktuálně podporuje:
+AKB Registry aktuálně podporuje:
 
 - `directive`
 - `regulation`

@@ -43,7 +43,7 @@ GET /openapi.json
 ## Integration Notes
 
 - Reverse proxy and Docker Compose healthchecks depend on this surface.
-- `PLATFORM_READY_CHECKS` can aggregate shallow readiness probes for downstream AKL services.
+- `PLATFORM_READY_CHECKS` can aggregate shallow readiness probes for downstream AKB services.
 - This service must stay small and must not become an application gateway.
 
 ## Canonical Sources

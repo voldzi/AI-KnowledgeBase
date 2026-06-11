@@ -1,6 +1,6 @@
-# AKL Platform Infrastructure
+# AKB Platform Infrastructure
 
-This directory contains the operational foundation for AKL Platform:
+This directory contains the operational foundation for AKB Platform:
 
 - Docker Compose for local development and prod-like deployments,
 - Caddy reverse proxy,

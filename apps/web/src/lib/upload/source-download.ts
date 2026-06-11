@@ -97,11 +97,13 @@ export function getSourceDownloadSettings(
     );
   }
 
+  const basePath = env.NEXT_PUBLIC_AKL_BASE_PATH?.replace(/\/+$/, "") ?? "";
+
   return {
     objectStorageRoot: env.AKL_WEB_OBJECT_STORAGE_ROOT ?? "./object-storage",
     bucket: env.AKL_WEB_UPLOAD_BUCKET ?? "akl-documents",
     signingSecret: signingSecret || "akl-local-download-signing-secret",
-    publicDownloadBasePath: env.AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH ?? "/api/documents/source/content",
+    publicDownloadBasePath: env.AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH ?? `${basePath}/api/documents/source/content`,
     expiresInSeconds: parsePositiveInteger(env.AKL_WEB_DOWNLOAD_TOKEN_TTL_SECONDS, DEFAULT_EXPIRES_IN_SECONDS)
   };
 }

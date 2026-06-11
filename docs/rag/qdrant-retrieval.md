@@ -90,8 +90,9 @@ smernice/smernici). Term-frequency adds a small saturated bonus.
 ## Source Context Neighbours
 
 `GET /api/v1/citations/{chunk_id}/open` and the chunk source-context endpoint
-fill `before_text` and `after_text` from the chunks adjacent to the cited
-chunk (`metadata.chunk_index` ± 1 within the same `document_version_id`).
+fill `before_text` and `after_text` from neighboring chunks inside the same
+`document_version_id`, based on `metadata.chunk_index`. The default window is
+one chunk on each side and can be changed with `AKL_RAG_SOURCE_CONTEXT_WINDOW`.
 Ingestion creates an integer payload index on `metadata.chunk_index` to keep
 the neighbour lookup efficient. Neighbour lookup failures degrade gracefully
 to empty context.

@@ -6,7 +6,7 @@ Odkaz na centrální zadání: `../00_CENTRALNI_ZADANI_AKL_PLATFORM.md`
 
 ## 1. Cíl
 
-AKL Platform musí jít spustit:
+AKB Platform musí jít spustit:
 
 1. lokálně v Docker Compose,
 2. na jednom serveru,

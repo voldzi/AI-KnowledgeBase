@@ -2,7 +2,7 @@
 
 Odkaz na centrální zadání: `../00_CENTRALNI_ZADANI_AKL_PLATFORM.md`
 
-Tento dokument definuje hranice služeb AKL Platform.
+Tento dokument definuje hranice služeb AKB Platform.
 
 ---
 

@@ -289,6 +289,7 @@ def test_query_stream_no_answer_yields_single_done_event() -> None:
     kinds = [evt.get("kind") for evt in events]
     assert kinds == ["done"]
     assert events[0]["answer"]["confidence"] == "insufficient_source"
+    assert events[0]["answer"]["answer"] == "K dotazu nebyl nalezen dostatečně důvěryhodný zdroj v povolených dokumentech."
 
 
 def _parse_sse_events(body: str) -> list[dict[str, object]]:

@@ -1,6 +1,6 @@
 # Phase 03 Local Production
 
-Phase 03 turns the Phase 02 Controlled Document MVP into a locally useful knowledge base by importing AKL project documentation from `docs/`.
+Phase 03 turns the Phase 02 Controlled Document MVP into a locally useful knowledge base by importing AKB project documentation from `docs/`.
 
 ## Scope
 
@@ -66,9 +66,9 @@ docker compose --env-file .env.local-prod \
 - Report `qdrant_points` is greater than `0`.
 - Qdrant contains payloads with:
   - `document_type=project_documentation`
-  - `tags` including `akl-docs`
+  - `tags` including `akb-docs`
   - `document_version_id` matching imported Registry versions
-- RAG answers the architecture query with at least one citation.
+- RAG answers the configured smoke query with at least one citation.
 - `GET /api/v1/citations/{chunk_id}/open` returns `source_file_uri`, `viewer_mode`, and `chunk_text`.
 - `GET /assistant` renders the Employee Assistant UI.
 - `POST /api/v1/assistant/chat` returns either clarification or a cited answer, depending on question specificity.

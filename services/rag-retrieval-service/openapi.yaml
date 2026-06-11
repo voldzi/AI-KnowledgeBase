@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: AKL RAG Retrieval Service
   description: Hybrid retrieval, permission-aware reranking, answer composition, citations,
-    confidence, and no-answer policy for AKL Platform.
+    confidence, and no-answer policy for AKB Platform.
   version: dev
 paths:
   /health:

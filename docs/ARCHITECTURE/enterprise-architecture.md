@@ -137,4 +137,4 @@ Response types:
 - `restricted`,
 - `handoff_recommended`.
 
-The first implementation keeps conversation history ephemeral. Persistent conversations are a future enterprise feature.
+Assistant conversation history is persisted in Registry API when available. RAG returns an explicit ephemeral status and warning only when the Registry history lookup or append fails.

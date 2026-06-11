@@ -1,6 +1,6 @@
 # Local Development Deployment
 
-This document describes the Platform / Infrastructure owned local environment for AKL Platform.
+This document describes the Platform / Infrastructure owned local environment for AKB Platform.
 
 ## Prerequisites
 
