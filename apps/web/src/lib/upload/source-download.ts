@@ -183,13 +183,9 @@ export function verifySourceDownloadToken(
     throw new SourceDownloadError(401, "INVALID_SOURCE_DOWNLOAD_TOKEN", "Source download token payload is invalid.");
   }
 
-  if (new Date(payload.expires_at).getTime() <= Date.now()) {
-    throw new SourceDownloadError(410, "SOURCE_DOWNLOAD_TOKEN_EXPIRED", "Source download token has expired.");
-  }
-
-  normalizeId(payload.document_id, "document_id");
-  normalizeId(payload.document_version_id, "document_version_id");
-  normalizeId(payload.source_open_id, "source_open_id");
+  const documentId = normalizeId(payload.document_id, "document_id");
+  const versionId = normalizeId(payload.document_version_id, "document_version_id");
+  const sourceOpenId = normalizeId(payload.source_open_id, "source_open_id");
   normalizeFilename(payload.file_name);
   normalizeOptionalSha256(payload.sha256);
   if (payload.bucket !== settings.bucket) {
@@ -200,6 +196,15 @@ export function verifySourceDownloadToken(
   }
   mimeTypeFor(payload.file_name);
   resolveObjectPath({ bucket: payload.bucket, object_key: payload.object_key }, settings);
+  const expiresAtMillis = new Date(payload.expires_at).getTime();
+  if (!Number.isFinite(expiresAtMillis) || expiresAtMillis <= Date.now()) {
+    throw new SourceDownloadError(410, "SOURCE_DOWNLOAD_TOKEN_EXPIRED", "Source download token has expired.", {
+      document_id: documentId,
+      document_version_id: versionId,
+      source_open_id: sourceOpenId,
+      expires_at: payload.expires_at
+    });
+  }
   return payload;
 }
 

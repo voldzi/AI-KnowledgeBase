@@ -189,7 +189,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
       "href",
-      appPath("/api/assistant/citations/chunk_789/document")
+      appPath("/documents/doc_102?tab=viewer&chunk_id=chunk_789")
     );
     await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
   });
@@ -200,6 +200,18 @@ test.describe("Document Workbench product paths", () => {
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/api/documents/source/content"));
     await expect(page.getByText("Markdown preview fixture")).toBeVisible();
     await expect(page.getByText("Citation target")).toBeVisible();
+  });
+
+  test("DW-14B assistant citation redirect does not leak internal Docker host", async ({ request }) => {
+    const response = await request.get(appPath("/api/assistant/citations/chunk_md_109/document"), {
+      headers: { Host: "ff6f9ebba65c:3000" },
+      maxRedirects: 0
+    });
+    const location = response.headers().location ?? "";
+
+    expect(response.status()).toBe(307);
+    expect(location).toContain(appPath("/api/documents/source/content"));
+    expect(location).not.toContain("ff6f9ebba65c");
   });
 
   test("DW-15 mobile workspace navigation closes after one tap", async ({ page }) => {
@@ -213,6 +225,19 @@ test.describe("Document Workbench product paths", () => {
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/chat"));
     await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "false");
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
+  });
+
+  test("DW-15A mobile module switcher activates a module with one tap", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(appPath("/tasks"));
+
+    await page.getByLabel("Otevřít navigaci").click();
+    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "true");
+
+    await page.locator(".sidebar-mobile-sections").getByRole("button", { name: "Dokumenty" }).click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/documents"));
+    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "false");
+    await expect(page.getByRole("heading", { name: "Registr dokumentů" }).first()).toBeVisible();
   });
 
   test("DW-17 STRATOS rail navigation does not duplicate the configured base path", async ({ page }) => {

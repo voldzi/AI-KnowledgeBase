@@ -659,7 +659,9 @@ GET  /api/documents/source/content?token={downloadToken}
 
 `source/open` nacte dokument, verze a `document.read` hint z Registry API. Pokud verze patri k dokumentu, vytvori kratkodoby HMAC token vazany na `document_id`, `document_version_id`, `source_file_uri`, bucket, object key, filename, MIME typ, volitelny SHA-256 a expiraci. Odpoved vraci `source_open.available=false` a `unavailable_reason=SOURCE_OBJECT_NOT_FOUND`, pokud objekt neni ve storage fyzicky dostupny; browser pak nesmi predstirat funkcni download.
 
-`source/content` token overi, odmita cizi bucket/object traversal, cte pouze z nakonfigurovaneho object-storage rootu a vraci objekt s `Cache-Control: private, no-store`, `Content-Disposition: inline`, `X-AKL-Source-Open-Id` a `X-Content-Type-Options: nosniff`. Pokud Registry metadata obsahuji plny SHA-256, content endpoint kontroluje hash pred vracenim obsahu. `source.open_requested` a `source.opened` jsou zapisovane do Registry audit logu best-effort.
+`source/content` token overi, odmita cizi bucket/object traversal, cte pouze z nakonfigurovaneho object-storage rootu a vraci objekt s `Cache-Control: private, no-store`, `Content-Disposition: inline`, `X-AKL-Source-Open-Id` a `X-Content-Type-Options: nosniff`. Pokud Registry metadata obsahuji plny SHA-256, content endpoint kontroluje hash pred vracenim obsahu. Pri HTML navigaci s validne podepsanym, ale expirovanym tokenem endpoint presmeruje na detail dokumentu ve viewer tabu; API/fetch volani nadale dostanou strukturovanou `410 SOURCE_DOWNLOAD_TOKEN_EXPIRED` chybu. `source.open_requested` a `source.opened` jsou zapisovane do Registry audit logu best-effort.
+
+Assistant citation direct-source redirect vraci relativni `Location` na `source/content`, aby reverse proxy nebo Next runtime nemohly do browseru propustit interni Docker hostname. Browser URL se proto resi proti verejnemu originu, na kterem uzivatel AKB skutecne otevrel.
 
 ---
 

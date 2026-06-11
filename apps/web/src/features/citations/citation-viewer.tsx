@@ -57,7 +57,11 @@ export interface CitationModalProps {
 }
 
 export function citationDocumentViewerHref(citation: Citation) {
-  return withAppBasePath(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/document`);
+  const params = new URLSearchParams({
+    tab: "viewer",
+    chunk_id: citation.chunk_id
+  });
+  return withAppBasePath(`/documents/${encodeURIComponent(citation.document_id)}?${params.toString()}`);
 }
 
 export function CitationModal({

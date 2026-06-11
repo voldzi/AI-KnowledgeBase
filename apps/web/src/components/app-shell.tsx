@@ -462,7 +462,12 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
                   type="button"
                   className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
                   aria-current={activeModule === item.id ? "true" : undefined}
-                  onClick={() => setActiveModule(item.id as ShellModuleId)}
+                  onClick={() => {
+                    setActiveModule(item.id as ShellModuleId);
+                    setSidebarCollapsed(false);
+                    setMobileSidebarOpen(false);
+                    router.push(item.href);
+                  }}
                 >
                   <Icon size={15} aria-hidden="true" />
                   {item.label}

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -171,7 +171,42 @@ describe("source download", () => {
         error.code === "INVALID_SOURCE_DOWNLOAD_TOKEN"
     );
   });
+
+  it("returns document context for expired source download tokens", () => {
+    const settings = testSettings(path.join(tmpdir(), `akl-source-expired-${Date.now()}`));
+    const token = signTestSourceToken(
+      {
+        source_open_id: "src_expired",
+        document_id: "doc_123",
+        document_version_id: "ver_456",
+        bucket: "akl-documents",
+        object_key: "doc_123/ver_456/source.md",
+        source_file_uri: "s3://akl-documents/doc_123/ver_456/source.md",
+        file_name: "source.md",
+        file_type: "text/markdown",
+        sha256: null,
+        expires_at: "2000-01-01T00:00:00.000Z"
+      },
+      settings.signingSecret
+    );
+
+    assert.throws(
+      () => verifySourceDownloadToken(token, settings),
+      (error: unknown) =>
+        error instanceof SourceDownloadError &&
+        error.status === 410 &&
+        error.code === "SOURCE_DOWNLOAD_TOKEN_EXPIRED" &&
+        error.details.document_id === "doc_123" &&
+        error.details.document_version_id === "ver_456"
+    );
+  });
 });
+
+function signTestSourceToken(payload: Record<string, unknown>, secret: string): string {
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", secret).update(encodedPayload).digest("base64url");
+  return `${encodedPayload}.${signature}`;
+}
 
 function testSettings(root: string): SourceDownloadSettings {
   return {

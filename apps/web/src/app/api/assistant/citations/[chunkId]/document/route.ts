@@ -68,11 +68,17 @@ function sourceUrlWithPageFragment(sourceUrl: string, pageNumber: number | null)
   return `${baseUrl}#page=${page}`;
 }
 
-function absoluteRedirectUrl(sourceUrl: string, request: NextRequest): URL {
-  return new URL(sourceUrl, request.url);
+function sourceRedirectResponse(sourceUrl: string): Response {
+  return new Response(null, {
+    status: 307,
+    headers: {
+      "Cache-Control": "private, no-store",
+      Location: sourceUrl
+    }
+  });
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { chunkId } = await context.params;
     const requestContext = await getServerRequestContext();
@@ -147,7 +153,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const redirectUrl = sourceUrlWithPageFragment(sourceOpen.download_url, sourceContext.location.page_number);
-    return NextResponse.redirect(absoluteRedirectUrl(redirectUrl, request), { status: 307 });
+    return sourceRedirectResponse(redirectUrl);
   } catch (error) {
     if (error instanceof SourceDownloadError) {
       return sourceDownloadErrorResponse(error);
