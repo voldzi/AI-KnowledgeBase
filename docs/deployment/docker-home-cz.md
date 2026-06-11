@@ -18,11 +18,16 @@ Tento plán popisuje první produkční nasazení AKL / AI KnowledgeBase jako so
    - scope: `read:packages`,
    - bez zápisu do repozitářů,
    - uložit mimo Git, například `/srv/akl/secrets/npmrc`.
-3. Pro build nepoužívat `.npmrc` v repozitáři. Použít Docker BuildKit secret:
+3. Pro build nepoužívat `.npmrc` v repozitáři. Použít Docker BuildKit secret deklarovaný v `infra/docker-compose/docker-compose.docker-home.yml`:
 
 ```bash
-docker compose build --secret id=npmrc,src=/srv/akl/secrets/npmrc web
+AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
+DOCKER_BUILDKIT=1 docker compose \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  build web
 ```
+
+`scripts/deploy_docker_home.sh` umí při novější verzi Docker Compose použít i CLI volbu `build --secret`. Pokud ji serverová verze Compose nepodporuje, automaticky použije `build.secrets` z Compose souboru.
 
 ## 1. Serverová Struktura
 
@@ -335,10 +340,11 @@ docker compose -f infra/docker-compose/docker-compose.docker-home.yml config >/t
 
 ```bash
 cd /srv/akl/repo
+AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
 DOCKER_BUILDKIT=1 docker compose \
   --env-file /srv/akl/env/akl.prod.env \
   -f infra/docker-compose/docker-compose.docker-home.yml \
-  build --secret id=npmrc,src=/srv/akl/secrets/npmrc
+  build
 ```
 
 11. Spustit DB migrace.

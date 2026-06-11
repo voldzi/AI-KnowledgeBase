@@ -21,9 +21,16 @@ printf 'Rendering docker compose config...\n'
 docker compose -f "${COMPOSE_FILE}" config >/tmp/akl-compose-rendered.yml
 
 printf 'Building images...\n'
-DOCKER_BUILDKIT=1 docker compose \
-  -f "${COMPOSE_FILE}" \
-  build --secret "id=npmrc,src=${NPMRC_FILE}"
+if docker compose build --help 2>/dev/null | grep -q -- '--secret'; then
+  DOCKER_BUILDKIT=1 docker compose \
+    -f "${COMPOSE_FILE}" \
+    build --secret "id=npmrc,src=${NPMRC_FILE}"
+else
+  printf 'docker compose build --secret is not supported by this Compose version; using build.secrets from %s.\n' "${COMPOSE_FILE}"
+  DOCKER_BUILDKIT=1 docker compose \
+    -f "${COMPOSE_FILE}" \
+    build
+fi
 
 printf 'Starting services...\n'
 docker compose -f "${COMPOSE_FILE}" up -d
