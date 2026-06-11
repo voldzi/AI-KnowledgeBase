@@ -210,7 +210,20 @@ jobs:
       - name: Validate docker.home.cz compose config
         run: |
           printf '@voldzi:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=dummy\n' >/tmp/akl-npmrc
-          AKL_NPMRC_SECRET_FILE=/tmp/akl-npmrc docker compose \
+          AKL_NPMRC_SECRET_FILE=/tmp/akl-npmrc \
+          GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
+          docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \
             config >/tmp/akl-compose-docker-home.yml
+
+      - name: Validate docker.home.cz observability compose config
+        run: |
+          printf '@voldzi:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=dummy\n' >/tmp/akl-npmrc
+          AKL_NPMRC_SECRET_FILE=/tmp/akl-npmrc \
+          GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
+          docker compose \
+            --env-file infra/docker-compose/docker-home.env.example \
+            -f infra/docker-compose/docker-compose.docker-home.yml \
+            -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+            config >/tmp/akl-compose-docker-home-observability.yml

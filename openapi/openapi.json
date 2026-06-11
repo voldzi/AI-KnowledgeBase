@@ -10123,6 +10123,12 @@
               "null"
             ]
           },
+          "ollama_base_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "ollama_think": {
             "type": "boolean"
           },

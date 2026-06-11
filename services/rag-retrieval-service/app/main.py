@@ -40,6 +40,7 @@ from app.schemas import (
 )
 from app.security import AuthContext, auth_context_for_request, require_service_auth
 from app.service import RagRetrievalService
+from app.telemetry import configure_telemetry
 from policies.no_answer import NoAnswerPolicy
 from rerankers.lexical import LexicalReranker
 from retrievers.qdrant import create_retriever
@@ -81,6 +82,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RetrievalError, retrieval_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_error_handler)
+    configure_telemetry(
+        app,
+        service_name=resolved_settings.service_name,
+        service_version=resolved_settings.service_version,
+    )
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health(request: Request) -> HealthResponse:

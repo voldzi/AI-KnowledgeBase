@@ -35,6 +35,7 @@ from app.schemas import (
 )
 from app.security import AuthContext, auth_context_for_request, require_service_auth
 from app.store import JobStore
+from app.telemetry import configure_telemetry
 from chunkers.logical import LogicalStructureChunker
 from embeddings.client import EmbeddingClient
 from indexers.qdrant import QdrantIndexer
@@ -82,6 +83,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_error_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
+    configure_telemetry(
+        app,
+        service_name=resolved_settings.service_name,
+        service_version=resolved_settings.service_version,
+    )
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health(request: Request) -> HealthResponse:

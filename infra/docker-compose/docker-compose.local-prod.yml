@@ -9,6 +9,7 @@ services:
       AKL_LLM_DEFAULT_EMBEDDING_MODEL: ${AKL_LLM_DEFAULT_EMBEDDING_MODEL:-bge-m3}
       AKL_LLM_DEFAULT_MAX_TOKENS: ${AKL_LLM_DEFAULT_MAX_TOKENS:-512}
       AKL_OLLAMA_BASE_URL: ${AKL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AKL_OLLAMA_BASE_URLS: ${AKL_OLLAMA_BASE_URLS:-http://host.docker.internal:11434}
       AKL_OLLAMA_THINK: ${AKL_OLLAMA_THINK:-false}
 
   ingestion-service:

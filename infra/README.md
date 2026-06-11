@@ -23,6 +23,8 @@ infra/keycloak/
 infra/monitoring/prometheus/
 infra/monitoring/grafana/
 infra/monitoring/loki/
+infra/monitoring/otel-collector/
+infra/monitoring/tempo/
 infra/postgres/init/
 infra/backup/
 ```

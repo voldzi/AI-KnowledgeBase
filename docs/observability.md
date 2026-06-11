@@ -52,9 +52,53 @@ observability experiments and dashboards.
 
 ## Tracing
 
-AKB currently relies on request id and correlation id propagation as the
-documented tracing alternative. OpenTelemetry is a planned hardening item and
-must be introduced consistently across services when adopted.
+AKB keeps request id and correlation id propagation in the application code and
+adds OpenTelemetry tracing when `OTEL_SDK_DISABLED=false`. The docker-home
+deployment has an optional OpenTelemetry foundation:
+
+- `otel-collector` receives OTLP traces, metrics and logs inside Docker networks,
+- `tempo` stores traces,
+- `prometheus` scrapes platform metrics and the collector metrics exporter,
+- `grafana` is provisioned with Prometheus, Loki and Tempo datasources,
+- `loki` is available for controlled log ingestion.
+
+The optional production override is:
+
+```bash
+docker compose \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  up -d
+```
+
+The collector is intentionally not exposed through the public reverse proxy.
+Grafana is reachable through the AKB Caddy `/grafana/` route on the docker-home
+AKB port when the observability override is enabled and
+`GRAFANA_ADMIN_PASSWORD` is set outside Git. Do not route public STRATOS
+`/akb/*` traffic to Grafana.
+
+Application services do not depend on the collector for startup. If the
+observability stack is unavailable, AKB services should continue to run and keep
+using health/readiness plus request/correlation ids.
+
+The following Python FastAPI services emit inbound HTTP spans and `httpx`
+outbound client spans when tracing is enabled:
+
+- Registry API,
+- Ingestion Service,
+- RAG Retrieval Service,
+- LLM Gateway Service,
+- Evaluation Service,
+- Governance Service.
+
+The next observability rollout steps are:
+
+1. Next.js web bridge spans for `/akb/api/*`, especially STRATOS upload,
+   source open, viewer, citation and RAG flows.
+2. Domain metrics for ingestion duration, retrieval latency, LLM latency,
+   citation coverage, source-open failures and authorization denied counts.
+3. Logs enriched with `trace_id` and `span_id` while preserving the existing
+   AKB `trace_id` error field compatibility.
 
 ## Health And Readiness
 
