@@ -8,7 +8,7 @@ import type { ApiRequestContext } from "@/lib/types";
 import { createApiClients } from ".";
 import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
-import { contextFromOidcSession, readSessionCookie } from "../auth/oidc";
+import { buildPublicAppUrl, contextFromOidcSession, readSessionCookie } from "../auth/oidc";
 
 export function getServerApiClients() {
   return createApiClients();
@@ -20,7 +20,7 @@ export async function getServerRequestContext(): Promise<ApiRequestContext> {
   if (config.authMode === "oidc") {
     const session = readSessionCookie(await cookies(), config);
     if (!session) {
-      redirect("/api/auth/login");
+      redirect(buildPublicAppUrl(config, "/api/auth/login"));
     }
     return contextFromOidcSession(session);
   }
