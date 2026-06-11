@@ -122,9 +122,15 @@ scripts/backup_local_prod.sh
 RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<backup-directory>
 ```
 
-Details: `docs/deployment/local-production.md`.
-Enterprise architecture: `docs/ARCHITECTURE/enterprise-architecture.md`.
-Security model: `docs/security/enterprise-security-model.md`.
+Documentation entry point: `docs/README.md`.
+Architecture: `docs/architecture.md`.
+API contract: `docs/api.md` and `openapi/openapi.json`.
+Security model: `docs/security.md`.
+Operations: `docs/operations.md`.
+Observability: `docs/observability.md`.
+Runbook: `docs/runbook.md`.
+Local production details: `docs/deployment/local-production.md`.
+STRATOS shared library standard: `docs/29_STRATOS_SHARED_LIBRARIES.md`.
 Code health baseline: `docs/maintenance/code-health.md`.
 Project status: `docs/maintenance/project-status.md`.
 Release process: `docs/maintenance/release-process.md`.

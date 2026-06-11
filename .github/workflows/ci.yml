@@ -16,6 +16,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  standards:
+    name: Repository Standards
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Validate skeleton
+        run: bash scripts/validate-skeleton.sh
+
+      - name: Verify generated OpenAPI is current
+        run: ruby scripts/generate_openapi_index.rb --check
+
+      - name: Validate OpenAPI JSON
+        run: python3 -m json.tool openapi/openapi.json >/tmp/akb-openapi.json
+
+      - name: Lint OpenAPI
+        run: npx --yes @redocly/cli lint openapi/openapi.json
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   web:
     name: Web
     runs-on: ubuntu-latest

@@ -748,6 +748,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/external-documents/{external_document_id}/current:
+    patch:
+      summary: Update External Document Current
+      operationId: update_external_document_current_api_v1_external_documents__external_document_id__current_patch
+      parameters:
+      - name: external_document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: External Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalDocumentCurrentUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalDocumentResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AccessPolicyCreate:
@@ -1595,6 +1625,11 @@ components:
         document_id:
           type: string
           title: Document Id
+        file_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Id
         version_label:
           type: string
           title: Version Label
@@ -2203,3 +2238,41 @@ components:
       - resolved
       - cancelled
       title: WorkflowTaskStatus
+    ExternalDocumentCurrentUpdateRequest:
+      properties:
+        current_document_version_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Current Document Version Id
+        current_file_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Current File Id
+        current_ingestion_job_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Current Ingestion Job Id
+        current_ingestion_status:
+          anyOf:
+          - type: string
+            maxLength: 40
+          - type: 'null'
+          title: Current Ingestion Status
+        akb_source_uri:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Akb Source Uri
+        source_location:
+          anyOf:
+          - $ref: '#/components/schemas/SourceLocation'
+          - type: 'null'
+      type: object
+      title: ExternalDocumentCurrentUpdateRequest

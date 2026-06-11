@@ -74,6 +74,7 @@ export interface Document {
   owner: string;
   gestor_unit: string | null;
   tags: string[];
+  metadata?: Record<string, unknown>;
   assignments?: DocumentAssignment[];
   created_at: string;
   updated_at: string;
@@ -82,6 +83,7 @@ export interface Document {
 export interface DocumentVersion {
   document_version_id: string;
   document_id: string;
+  file_id?: string | null;
   version_label: string;
   status: DocumentStatus;
   valid_from: string | null;

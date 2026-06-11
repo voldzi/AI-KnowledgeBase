@@ -200,6 +200,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { language, setLanguage } = useLanguage();
+  const isEmbeddedPath = pathname === "/embed" || pathname.startsWith("/embed/") || pathname === "/akb/embed" || pathname.startsWith("/akb/embed/");
   const copy = shellCopy[language];
   const apiModeLabel = apiMode === "mock" ? copy.apiModeMock : copy.apiModeProduction;
   const authModeLabel = authMode === "mock" ? copy.authModeMock : copy.authModeOidc;
@@ -392,6 +393,10 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const handleLogout = () => {
     window.location.assign(withAppBasePath("/api/auth/logout"));
   };
+
+  if (isEmbeddedPath) {
+    return <main className="akb-embed-shell">{children}</main>;
+  }
 
   return (
     <StratosAppShell
