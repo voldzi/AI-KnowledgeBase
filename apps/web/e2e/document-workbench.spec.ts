@@ -194,6 +194,14 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
   });
 
+  test("DW-14A assistant citation document endpoint redirects to signed source content", async ({ page }) => {
+    await page.goto(appPath("/api/assistant/citations/chunk_md_109/document"));
+
+    await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/api/documents/source/content"));
+    await expect(page.getByText("Markdown preview fixture")).toBeVisible();
+    await expect(page.getByText("Citation target")).toBeVisible();
+  });
+
   test("DW-15 mobile workspace navigation closes after one tap", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(appPath("/assistant"));
