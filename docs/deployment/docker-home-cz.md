@@ -120,7 +120,7 @@ Před zapnutím Grafana OIDC vytvořit nebo aktualizovat Keycloak klienta:
 
 ```bash
 cd /srv/akl/repo
-KEYCLOAK_ADMIN_PASSWORD=<keycloak-admin-password> \
+KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
   ./scripts/ensure_grafana_keycloak_client.sh
 ./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
 AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc docker compose \

@@ -104,12 +104,14 @@ To create or update the Keycloak client and write the generated secret into the
 docker-home env file, run:
 
 ```bash
-KEYCLOAK_ADMIN_PASSWORD=<keycloak-admin-password> \
+KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
   ./scripts/ensure_grafana_keycloak_client.sh
 ```
 
-The script sets `GRAFANA_OAUTH_ENABLED=true` in `/srv/akl/env/akl.prod.env`.
-Restart the Grafana service after running it.
+If bootstrap admin service creation is not allowed in the environment, provide a
+realm admin password instead with `KEYCLOAK_ADMIN_PASSWORD`. The script sets
+`GRAFANA_OAUTH_ENABLED=true` in `/srv/akl/env/akl.prod.env`. Restart the
+Grafana service after running it.
 
 Application services do not depend on the collector for startup. If the
 observability stack is unavailable, AKB services should continue to run and keep
