@@ -6,13 +6,14 @@ import base64
 import datetime as dt
 import hashlib
 import json
+import shlex
 import shutil
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -38,6 +39,8 @@ class Options:
     qdrant_collection: str
     timeout_seconds: int
     keep_superseded_qdrant: bool
+    storage_writer_service: str
+    storage_container_root: PurePosixPath
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,6 +117,8 @@ def parse_args(argv: list[str] | None) -> Options:
     parser.add_argument("--qdrant-collection", default="akl_document_chunks")
     parser.add_argument("--timeout-seconds", type=int, default=300)
     parser.add_argument("--keep-superseded-qdrant", action="store_true", help="Do not delete old Markdown Qdrant points after successful PDF ingestion.")
+    parser.add_argument("--storage-writer-service", default="web", help="Compose service used as fallback writer when the host user cannot write object storage.")
+    parser.add_argument("--storage-container-root", default="/data/object-storage", help="Object-storage mount path inside the fallback writer service.")
     args = parser.parse_args(argv)
 
     report_path = Path(args.report)
@@ -141,6 +146,8 @@ def parse_args(argv: list[str] | None) -> Options:
         qdrant_collection=args.qdrant_collection,
         timeout_seconds=args.timeout_seconds,
         keep_superseded_qdrant=bool(args.keep_superseded_qdrant),
+        storage_writer_service=args.storage_writer_service,
+        storage_container_root=PurePosixPath(args.storage_container_root),
     )
 
 
@@ -212,12 +219,51 @@ def copy_pdf_objects(plan: list[dict[str, Any]], options: Options) -> dict[str, 
                 if current_hash != item["sha256"]:
                     raise RuntimeError(f"Existing object hash differs for {item['object_key']}")
             else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, target)
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, target)
+                except PermissionError:
+                    copy_pdf_object_via_container(source, item, options)
                 copied += 1
         except Exception as exc:
             errors.append({"source_path": item["source_path"], "code": exc.__class__.__name__, "message": str(exc)})
     return {"copied_objects": copied, "errors": errors}
+
+
+def copy_pdf_object_via_container(source: Path, item: dict[str, Any], options: Options) -> None:
+    target = options.storage_container_root / options.bucket / item["object_key"]
+    target_parent = target.parent
+    quoted_parent = shlex.quote(str(target_parent))
+    quoted_target = shlex.quote(str(target))
+    shell_script = (
+        "set -eu\n"
+        f"mkdir -p -- {quoted_parent}\n"
+        f"tmp={quoted_target}.tmp.$$\n"
+        'cat > "$tmp"\n'
+        'chmod 0644 "$tmp"\n'
+        'chown 100:101 "$tmp" 2>/dev/null || true\n'
+        f"mv \"$tmp\" {quoted_target}\n"
+    )
+    command = ["docker", "compose"]
+    if options.env_file:
+        command.extend(["--env-file", str(options.env_file)])
+    command.extend(
+        [
+            "-f",
+            str(options.compose_file),
+            "exec",
+            "-T",
+            options.storage_writer_service,
+            "sh",
+            "-lc",
+            shell_script,
+        ]
+    )
+    completed = subprocess.run(command, input=source.read_bytes(), capture_output=True)
+    if completed.returncode != 0:
+        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+        stdout = completed.stdout.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Container object copy failed for {item['object_key']}: {stderr or stdout}")
 
 
 def run_registry_migration(plan: list[dict[str, Any]], options: Options) -> dict[str, Any]:

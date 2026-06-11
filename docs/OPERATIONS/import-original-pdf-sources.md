@@ -48,6 +48,7 @@ Default production inputs:
 - bucket: `akl-documents`
 - domains: `cz-digital-governance`, `security-compliance-cz`
 - report: `reports/original_pdf_import_report.json`
+- object-storage writer fallback: compose service `web` with mount `/data/object-storage`
 
 ## Prerequisites
 
@@ -97,6 +98,9 @@ The apply run is data-changing. It may take several minutes because each PDF is 
 On `docker.home.cz`, Registry API runs in the app network and Qdrant runs in data/management networks. The script
 therefore does not require Registry API to reach Qdrant directly; Qdrant point counts and superseded-point cleanup are
 performed by the host-side script after Registry publication.
+
+The object storage root is owned by the runtime storage user/group. If the SSH user cannot write a new object directly,
+the script streams the PDF into the `web` service storage mount and sets readable object permissions.
 
 If a PDF ingestion fails, that new version is archived and the old valid Markdown version remains current. Check report errors before retrying.
 
