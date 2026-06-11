@@ -1,8 +1,6 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 
-import { withAppBasePath } from "@/lib/app-url";
-
 export interface StratosNavItem {
   href: string;
   label: string;
@@ -68,7 +66,7 @@ export function StratosAppRail({
 }: StratosAppRailProps) {
   return (
     <aside className="stratos-app-rail">
-      <Link className="stratos-brand" href={withAppBasePath(brandHref)}>
+      <Link className="stratos-brand" href={brandHref}>
         <span className="stratos-brand__mark">{brandMark}</span>
         <span>
           <strong>{brandName}</strong>
@@ -82,7 +80,7 @@ export function StratosAppRail({
           return (
             <Link
               className={`stratos-nav-item ${active ? "stratos-nav-item--active" : ""}`}
-              href={withAppBasePath(item.href)}
+              href={item.href}
               key={item.href}
               title={item.label}
               onClick={() => item.onSelect?.(item)}

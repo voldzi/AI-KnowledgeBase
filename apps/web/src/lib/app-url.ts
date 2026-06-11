@@ -1,8 +1,10 @@
-const rawBasePath = process.env.NEXT_PUBLIC_AKL_BASE_PATH?.replace(/\/+$/, "") ?? "";
-
 export function withAppBasePath(path: string): string {
-  if (!rawBasePath || /^https?:\/\//.test(path)) {
+  const basePath = process.env.NEXT_PUBLIC_AKL_BASE_PATH?.replace(/\/+$/, "") ?? "";
+  if (!basePath || /^https?:\/\//.test(path)) {
     return path;
   }
-  return `${rawBasePath}${path.startsWith("/") ? path : `/${path}`}`;
+  if (path === basePath || path.startsWith(`${basePath}/`) || path.startsWith(`${basePath}?`) || path.startsWith(`${basePath}#`)) {
+    return path;
+  }
+  return `${basePath}${path.startsWith("/") ? path : `/${path}`}`;
 }

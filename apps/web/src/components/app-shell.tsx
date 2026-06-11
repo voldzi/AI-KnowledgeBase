@@ -427,7 +427,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
                 return (
                   <Link
                     className="stratos-sidebar-action stratos-sidebar-action-link"
-                    href={withAppBasePath(item.href)}
+                    href={item.href}
                     key={item.href}
                     title={item.label}
                     aria-label={item.label}
