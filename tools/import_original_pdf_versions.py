@@ -6,6 +6,7 @@ import base64
 import datetime as dt
 import hashlib
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -41,6 +42,7 @@ class Options:
     keep_superseded_qdrant: bool
     storage_writer_service: str
     storage_container_root: PurePosixPath
+    ingestion_bearer_token: str
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,6 +121,7 @@ def parse_args(argv: list[str] | None) -> Options:
     parser.add_argument("--keep-superseded-qdrant", action="store_true", help="Do not delete old Markdown Qdrant points after successful PDF ingestion.")
     parser.add_argument("--storage-writer-service", default="web", help="Compose service used as fallback writer when the host user cannot write object storage.")
     parser.add_argument("--storage-container-root", default="/data/object-storage", help="Object-storage mount path inside the fallback writer service.")
+    parser.add_argument("--ingestion-bearer-token", default=None, help="Bearer token used for Ingestion Service job requests. Defaults to AKL_IMPORT_INGESTION_BEARER_TOKEN or actor id.")
     args = parser.parse_args(argv)
 
     report_path = Path(args.report)
@@ -148,6 +151,7 @@ def parse_args(argv: list[str] | None) -> Options:
         keep_superseded_qdrant=bool(args.keep_superseded_qdrant),
         storage_writer_service=args.storage_writer_service,
         storage_container_root=PurePosixPath(args.storage_container_root),
+        ingestion_bearer_token=args.ingestion_bearer_token or os.environ.get("AKL_IMPORT_INGESTION_BEARER_TOKEN") or args.actor_id,
     )
 
 
@@ -277,6 +281,7 @@ def run_registry_migration(plan: list[dict[str, Any]], options: Options) -> dict
         qdrant_url=options.qdrant_url,
         qdrant_collection=options.qdrant_collection,
         timeout_seconds=options.timeout_seconds,
+        ingestion_bearer_token=options.ingestion_bearer_token,
     )
     command = ["docker", "compose"]
     if options.env_file:
@@ -297,6 +302,7 @@ def registry_migration_code(
     qdrant_url: str,
     qdrant_collection: str,
     timeout_seconds: int,
+    ingestion_bearer_token: str,
 ) -> str:
     return f"""
 from __future__ import annotations
@@ -321,6 +327,7 @@ INGESTION_URL = {ingestion_url!r}
 QDRANT_URL = {qdrant_url!r}
 QDRANT_COLLECTION = {qdrant_collection!r}
 TIMEOUT_SECONDS = {int(timeout_seconds)!r}
+INGESTION_BEARER_TOKEN = {ingestion_bearer_token!r}
 
 
 def request_json(method, url, payload=None, expected_status=200):
@@ -332,6 +339,7 @@ def request_json(method, url, payload=None, expected_status=200):
         headers={{
             "Accept": "application/json",
             "Content-Type": "application/json",
+            "Authorization": f"Bearer {{INGESTION_BEARER_TOKEN}}",
             "X-Request-ID": "original-pdf-import",
             "X-Correlation-ID": "original-pdf-import",
             "X-AKL-Subject": ACTOR_ID,
@@ -395,6 +403,7 @@ with SessionLocal() as db:
             existing_pdf = [
                 version for version in versions
                 if version.source_file_uri == item["pdf_source_uri"] and version.file_hash == item["sha256"]
+                and version.status != "archived"
             ]
             if existing_pdf:
                 results.append({{
