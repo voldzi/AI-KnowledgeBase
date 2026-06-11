@@ -26,7 +26,7 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - audit tab filtrovany podle dokumentu, verzi, workflow tasku, assignmentu, ingestion jobu a source-context metadat,
   - workflow task historie filtrovana na dany dokument,
   - publish gate panel pro publikaci `approved` dokumentu a archivaci aktualni `valid` verze.
-- Citace z Knowledge Chat a Employee Assistant oteviraji uzivatelsky detail dokumentu pres `/documents/{documentId}?tab=viewer&chunk_id={chunkId}`. Samostatny assistant citation redirect na podepsany zdroj zustava API kompatibilni pro primy source open.
+- Citace z Knowledge Chat a Employee Assistant oteviraji zdrojovy dokument pres assistant citation redirect `/api/assistant/citations/{chunkId}/document`, ktery vytvori cerstvy signed source open a vrati relativni redirect na `source/content`.
 - `/upload`:
   - lokalni file preflight,
   - SHA-256 hash pres browser `crypto.subtle`,

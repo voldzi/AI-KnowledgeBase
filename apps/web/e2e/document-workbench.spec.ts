@@ -189,7 +189,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
       "href",
-      appPath("/documents/doc_102?tab=viewer&chunk_id=chunk_789")
+      appPath("/api/assistant/citations/chunk_789/document")
     );
     await expect(page.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
   });
