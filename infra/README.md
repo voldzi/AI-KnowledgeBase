@@ -29,6 +29,9 @@ infra/postgres/init/
 infra/backup/
 ```
 
+Prometheus alert rules live under `infra/monitoring/prometheus/rules/`.
+Grafana dashboards live under `infra/monitoring/grafana/dashboards/`.
+
 ## Service Routes
 
 All service routes are path-prefixed through the reverse proxy:

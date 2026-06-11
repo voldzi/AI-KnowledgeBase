@@ -50,6 +50,21 @@ Important platform metrics:
 Prometheus/Grafana/Loki are included in the local deployment stack for
 observability experiments and dashboards.
 
+Provisioned dashboards:
+
+- `AKB Platform Health` for target health and platform status request rate.
+- `AKB Observability` for target health, OpenTelemetry accepted spans, trace
+  exporter throughput, span errors, and platform status request rate.
+
+Provisioned Prometheus alert rules are stored in
+`infra/monitoring/prometheus/rules/akb-alerts.yml` and cover:
+
+- down monitoring targets,
+- platform status 5xx responses,
+- refused spans,
+- failed span export,
+- trace exporter queue backlog.
+
 ## Tracing
 
 AKB keeps request id and correlation id propagation in the application code and

@@ -1,0 +1,52 @@
+groups:
+  - name: akb-platform
+    rules:
+      - alert: AkbTargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: akb
+        annotations:
+          summary: "AKB monitoring target is down"
+          description: "Prometheus target {{ $labels.job }} / {{ $labels.instance }} has been down for more than 2 minutes."
+
+      - alert: AkbPlatformStatusErrors
+        expr: sum(rate(akl_platform_status_http_requests_total{status_code=~"5.."}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "AKB platform status reports 5xx responses"
+          description: "Platform status service has emitted HTTP 5xx responses for 5 minutes."
+
+      - alert: AkbOtelReceiverRefusedSpans
+        expr: increase(otelcol_receiver_refused_spans_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "AKB OpenTelemetry collector refused spans"
+          description: "Collector refused spans on receiver {{ $labels.receiver }} over the last 5 minutes."
+
+      - alert: AkbOtelExporterFailedSpans
+        expr: increase(otelcol_exporter_send_failed_spans_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "AKB OpenTelemetry collector failed to export spans"
+          description: "Collector failed to export spans through exporter {{ $labels.exporter }} over the last 5 minutes."
+
+      - alert: AkbOtelExporterQueueBacklog
+        expr: otelcol_exporter_queue_size{data_type="traces"} > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "AKB OpenTelemetry trace exporter queue backlog"
+          description: "Trace exporter {{ $labels.exporter }} queue has more than 100 batches pending for 5 minutes."

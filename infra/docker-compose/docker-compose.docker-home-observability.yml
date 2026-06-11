@@ -86,6 +86,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ../monitoring/prometheus/docker-home.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     depends_on:
       otel-collector:
