@@ -49,8 +49,9 @@ Na `docker.home.cz` připravit:
 
 Volitelný observability stack používá stejné checkout a env soubory. Hodnota
 `GRAFANA_ADMIN_USER` a `GRAFANA_ADMIN_PASSWORD` musí být nastavené v
-`/srv/akl/env/akl.prod.env`, ne v Gitu. Produkční admin účet pro Grafanu je
-`stratos_admin`; heslo se bere z `GRAFANA_ADMIN_PASSWORD`.
+`/srv/akl/env/akl.prod.env`, ne v Gitu. Tento účet je jen break-glass přístup.
+Cílové přihlašování Grafany používá STRATOS Keycloak realm přes klienta
+`akb-grafana`; role `stratos_admin` se mapuje na Grafana `GrafanaAdmin`.
 
 Checkout:
 
@@ -114,6 +115,20 @@ Tento override přidá `otel-collector`, `tempo`, `prometheus`, `grafana` a
 Grafana je dostupná přes AKB Caddy trasu `/akb/grafana/`, pokud je override
 spuštěný. Nepřesměrovávat veřejné STRATOS aplikace přímo na Prometheus, Tempo
 nebo Loki.
+
+Před zapnutím Grafana OIDC vytvořit nebo aktualizovat Keycloak klienta:
+
+```bash
+cd /srv/akl/repo
+KEYCLOAK_ADMIN_PASSWORD=<keycloak-admin-password> \
+  ./scripts/ensure_grafana_keycloak_client.sh
+./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
+AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc docker compose \
+  --env-file /srv/akl/env/akl.prod.env \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  up -d grafana
+```
 
 ## 2. PostgreSQL
 

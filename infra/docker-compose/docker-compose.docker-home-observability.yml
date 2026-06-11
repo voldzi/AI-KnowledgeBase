@@ -106,6 +106,19 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://stratos.zeleznalady.cz/akb/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_GENERIC_OAUTH_ENABLED: ${GRAFANA_OAUTH_ENABLED:-false}
+      GF_AUTH_GENERIC_OAUTH_NAME: ${GRAFANA_OAUTH_NAME:-STRATOS}
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: ${GRAFANA_OAUTH_ALLOW_SIGN_UP:-true}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: ${GRAFANA_OAUTH_CLIENT_ID:-akb-grafana}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${GRAFANA_OAUTH_CLIENT_SECRET:-}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: ${GRAFANA_OAUTH_SCOPES:-openid profile email roles}
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: ${GRAFANA_OAUTH_AUTH_URL:-https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/auth}
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: ${GRAFANA_OAUTH_TOKEN_URL:-https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token}
+      GF_AUTH_GENERIC_OAUTH_API_URL: ${GRAFANA_OAUTH_API_URL:-https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/userinfo}
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: ${GRAFANA_OAUTH_ROLE_ATTRIBUTE_PATH:-contains(realm_access.roles[*], 'stratos_admin') && 'GrafanaAdmin' || contains(realm_access.roles[*], 'stratos_auditor') && 'Viewer' || contains(realm_access.roles[*], 'stratos_user') && 'Viewer' || 'None'}
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT: ${GRAFANA_OAUTH_ROLE_ATTRIBUTE_STRICT:-false}
+      GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: ${GRAFANA_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN:-true}
+      GF_AUTH_DISABLE_LOGIN_FORM: ${GRAFANA_DISABLE_LOGIN_FORM:-false}
     volumes:
       - grafana-data:/var/lib/grafana
       - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

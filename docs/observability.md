@@ -88,10 +88,28 @@ docker compose \
 
 The collector is intentionally not exposed through the public reverse proxy.
 Grafana is reachable through the AKB Caddy `/akb/grafana/` route when the
-observability override is enabled. The docker-home Grafana admin login is
-`stratos_admin`; the password comes from `GRAFANA_ADMIN_PASSWORD` outside Git.
-Do not route public STRATOS application traffic directly to Prometheus, Tempo or
-Loki.
+observability override is enabled. The target production login model is STRATOS
+Keycloak OIDC through the `akb-grafana` client:
+
+- Keycloak realm: `stratos`
+- Grafana callback: `/akb/grafana/login/generic_oauth`
+- Keycloak role `stratos_admin` maps to Grafana `GrafanaAdmin`
+- Keycloak roles `stratos_auditor` and `stratos_user` map to Grafana `Viewer`
+
+Keep the local Grafana admin login configured through `GRAFANA_ADMIN_USER` and
+`GRAFANA_ADMIN_PASSWORD` as a break-glass account. Do not route public STRATOS
+application traffic directly to Prometheus, Tempo or Loki.
+
+To create or update the Keycloak client and write the generated secret into the
+docker-home env file, run:
+
+```bash
+KEYCLOAK_ADMIN_PASSWORD=<keycloak-admin-password> \
+  ./scripts/ensure_grafana_keycloak_client.sh
+```
+
+The script sets `GRAFANA_OAUTH_ENABLED=true` in `/srv/akl/env/akl.prod.env`.
+Restart the Grafana service after running it.
 
 Application services do not depend on the collector for startup. If the
 observability stack is unavailable, AKB services should continue to run and keep
