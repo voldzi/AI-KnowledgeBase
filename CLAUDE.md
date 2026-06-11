@@ -20,6 +20,10 @@ The goal in this repository is:
   - `search_docs` for documentation lookup
   - `search_all` when the location is unclear
   - `get_file_context` only after selecting a relevant hit
+- If MCP tools are not exposed as native tools in the current agent session, use the CLI fallback:
+  - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`
+  - then read only the selected files or ranges directly
+- CLI fallback is still compliant retrieval-first behavior. Mention it once if relevant; do not repeat it as a blocker when retrieval succeeded.
 - If the index may be stale after meaningful repository changes, use `reindex_repo` when MCP tools are available, otherwise run:
   - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" reindex --root .`
 - This repository ships a repo-local Chroma override in `.chroma-dev.yaml`. The standard `chroma-dev.sh ... --root .` command auto-loads it; do not pass a separate config unless you intentionally want a different indexing scope.
@@ -75,6 +79,7 @@ The goal in this repository is:
   - APIs, contracts, UI, integration flows: `docs/api/`, `docs/CONTRACTS/`, `docs/ui/`, `docs/integration/`
   - test and product QA evidence: `docs/qa/`, `docs/evaluation/`
 - Keep historical working notes, temporary analyses, and superseded implementation material out of the active top-level docs flow unless the repo already explicitly preserves them, for example `docs/CODEX_THREADS/`.
+- For new documentation areas without an existing AKB-specific home, follow the app template taxonomy: `docs/explanation/`, `docs/how-to/`, `docs/reference/`, `docs/runbooks/`, `docs/tutorials/`, `docs/adr/`, and `docs/archive/`.
 
 ## Validation
 
