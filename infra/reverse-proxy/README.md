@@ -12,6 +12,7 @@ The reverse proxy is owned by the Platform / Infrastructure thread. It routes st
 | `/llm-gateway/*` | `LLM_GATEWAY_UPSTREAM` | `llm-gateway-service:8080` |
 | `/evaluation/*` | `EVALUATION_UPSTREAM` | `evaluation-service:8080` |
 | `/governance/*` | `GOVERNANCE_UPSTREAM` | `governance-service:8080` |
+| `/akb/grafana/*` | `GRAFANA_UPSTREAM` | `grafana:3000` |
 | `/grafana/*` | `GRAFANA_UPSTREAM` | `grafana:3000` |
 
 `handle_path` strips service prefixes before proxying. For example, `GET /registry/health` becomes `GET /health` on `registry-api`.

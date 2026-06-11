@@ -17,7 +17,7 @@
       "title": "Tempo Explore",
       "tooltip": "Open Tempo datasource",
       "type": "link",
-      "url": "/grafana/explore?left={\"datasource\":\"akl-tempo\"}"
+      "url": "/akb/grafana/explore?left={\"datasource\":\"akl-tempo\"}"
     }
   ],
   "liveNow": false,

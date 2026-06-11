@@ -31,6 +31,12 @@
 		respond "AKB Platform reverse proxy" 200
 	}
 
+	handle /akb/grafana/* {
+		reverse_proxy {$GRAFANA_UPSTREAM:grafana:3000} {
+			import correlation_headers
+		}
+	}
+
 	@akb path /akb /akb/*
 	handle @akb {
 		reverse_proxy {$WEB_UPSTREAM:web:3000} {

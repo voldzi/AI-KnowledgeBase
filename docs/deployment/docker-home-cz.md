@@ -110,9 +110,9 @@ docker compose \
 
 Tento override přidá `otel-collector`, `tempo`, `prometheus`, `grafana` a
 `loki` pouze do Docker management sítí. OTLP collector se nevystavuje veřejně.
-Grafana je dostupná přes AKB Caddy trasu `/grafana/` na interním docker-home
-AKB portu, pokud je override spuštěný. Nepřesměrovávat veřejné STRATOS
-`/akb/*` cesty na Grafanu.
+Grafana je dostupná přes AKB Caddy trasu `/akb/grafana/`, pokud je override
+spuštěný. Nepřesměrovávat veřejné STRATOS aplikace přímo na Prometheus, Tempo
+nebo Loki.
 
 ## 2. PostgreSQL
 

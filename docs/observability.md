@@ -87,10 +87,10 @@ docker compose \
 ```
 
 The collector is intentionally not exposed through the public reverse proxy.
-Grafana is reachable through the AKB Caddy `/grafana/` route on the docker-home
-AKB port when the observability override is enabled and
-`GRAFANA_ADMIN_PASSWORD` is set outside Git. Do not route public STRATOS
-`/akb/*` traffic to Grafana.
+Grafana is reachable through the AKB Caddy `/akb/grafana/` route when the
+observability override is enabled and `GRAFANA_ADMIN_PASSWORD` is set outside
+Git. Do not route public STRATOS application traffic directly to Prometheus,
+Tempo or Loki.
 
 Application services do not depend on the collector for startup. If the
 observability stack is unavailable, AKB services should continue to run and keep
