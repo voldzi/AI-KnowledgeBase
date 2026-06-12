@@ -262,9 +262,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   ].map((item) => ({
     ...item,
     onSelect: () => {
-      setActiveModule(item.id as ShellModuleId);
-      setSidebarCollapsed(false);
-      setMobileSidebarOpen(false);
+      selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: false });
     }
   }));
   const activeRailHref = moduleRootRoutes[activeModule];
@@ -468,10 +466,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
                   className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
                   aria-current={activeModule === item.id ? "true" : undefined}
                   onClick={() => {
-                    setActiveModule(item.id as ShellModuleId);
-                    setSidebarCollapsed(false);
-                    setMobileSidebarOpen(false);
-                    router.push(item.href);
+                    selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: true });
                   }}
                 >
                   <Icon size={15} aria-hidden="true" />
@@ -541,6 +536,12 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
       {children}
     </StratosAppShell>
   );
+
+  function selectShellModule(moduleId: ShellModuleId, { keepMobileSidebarOpen }: { keepMobileSidebarOpen: boolean }) {
+    setActiveModule(moduleId);
+    setSidebarCollapsed(false);
+    setMobileSidebarOpen(keepMobileSidebarOpen);
+  }
 }
 
 function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {

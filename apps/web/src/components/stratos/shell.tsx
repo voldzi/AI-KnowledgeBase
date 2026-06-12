@@ -32,6 +32,7 @@ export function StratosAppShell({
     <div
       className="stratos-app-shell"
       data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+      data-sidebar-open={mobileSidebarOpen ? "true" : "false"}
       data-mobile-sidebar-open={mobileSidebarOpen ? "true" : "false"}
     >
       <div className="akl-sidebar-backdrop" aria-hidden="true" onClick={onMobileSidebarClose} />

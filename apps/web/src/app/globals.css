@@ -4808,6 +4808,13 @@ button {
     transform: translateX(-105%);
   }
 
+  .stratos-app-shell[data-mobile-sidebar-open="true"] .stratos-workspace-sidebar,
+  .stratos-app-shell[data-sidebar-open="true"] .stratos-workspace-sidebar {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateX(0) !important;
+  }
+
   .stratos-app-shell[data-mobile-sidebar-open="true"] .akl-sidebar-backdrop {
     display: block;
   }
@@ -4985,6 +4992,7 @@ button {
 
   .registry-toolbar,
   .registry-filter-grid,
+  .table-toolbar,
   .preflight-card,
   .governance-action,
   .source-context-signal,
