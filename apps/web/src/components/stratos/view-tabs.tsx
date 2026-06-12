@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { ViewTabs } from "@voldzi/stratos-ui";
 
 export interface StratosViewTab<TValue extends string> {
   value: TValue;
@@ -20,21 +21,18 @@ export function StratosViewTabs<TValue extends string>({
   value
 }: StratosViewTabsProps<TValue>) {
   return (
-    <nav className="stratos-view-tabs" aria-label={ariaLabel}>
-      {items.map((item) => {
+    <ViewTabs
+      ariaLabel={ariaLabel}
+      activeTabId={value}
+      tabs={items.map((item) => {
         const Icon = item.icon;
-        return (
-          <button
-            className={`stratos-view-tabs__button ${value === item.value ? "stratos-view-tabs__button--active" : ""}`}
-            key={item.value}
-            type="button"
-            onClick={() => onValueChange(item.value)}
-          >
-            {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-            {item.label}
-          </button>
-        );
+        return {
+          id: item.value,
+          label: item.label,
+          icon: Icon ? <Icon size={16} aria-hidden="true" /> : undefined
+        };
       })}
-    </nav>
+      onTabChange={(nextValue) => onValueChange(nextValue as TValue)}
+    />
   );
 }
