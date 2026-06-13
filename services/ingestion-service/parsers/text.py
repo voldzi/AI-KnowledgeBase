@@ -6,8 +6,12 @@ from app.object_storage import SourceObject
 from parsers.base import DocumentParser, ParsedBlock, ParserResult
 
 TEXT_MIME_TYPES = {
+    "application/json",
+    "application/xml",
     "text/plain",
+    "text/csv",
     "text/markdown",
+    "text/xml",
     "text/x-markdown",
     "application/markdown",
 }
@@ -18,7 +22,7 @@ class TextParser(DocumentParser):
 
     def supports(self, source: SourceObject) -> bool:
         filename = source.filename.lower()
-        return source.mime_type in TEXT_MIME_TYPES or filename.endswith((".txt", ".md", ".markdown"))
+        return source.mime_type in TEXT_MIME_TYPES or filename.endswith((".csv", ".json", ".txt", ".md", ".markdown", ".xml"))
 
     def parse(self, source: SourceObject, *, parser_profile: str) -> ParserResult:
         return parse_text(source.content, parser_name=self.name, parser_profile=parser_profile)

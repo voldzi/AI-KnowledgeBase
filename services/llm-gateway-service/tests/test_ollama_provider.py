@@ -81,6 +81,46 @@ async def test_ollama_provider_uses_default_max_tokens(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
+async def test_ollama_provider_falls_back_to_next_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    async def fake_request_json_with_retry(**kwargs):
+        url = kwargs["url"]
+        calls.append(url)
+        if url.startswith("http://unavailable-ollama:11434"):
+            raise GatewayError(
+                "LLM_PROVIDER_ERROR",
+                "LLM provider is not reachable",
+                status_code=502,
+                details={"provider": "ollama"},
+            )
+        return {
+            "message": {"content": "Hotovo."},
+            "done_reason": "stop",
+            "prompt_eval_count": 2,
+            "eval_count": 1,
+        }
+
+    monkeypatch.setattr(ollama_module, "request_json_with_retry", fake_request_json_with_retry)
+    provider = OllamaProvider(
+        ollama_settings(
+            AKL_OLLAMA_BASE_URL="http://unavailable-ollama:11434",
+            AKL_OLLAMA_BASE_URLS="http://unavailable-ollama:11434,http://192.168.1.176:11434",
+        )
+    )
+
+    response = await provider.chat_completion(
+        ChatCompletionRequest(model="gemma4:12b", messages=[{"role": "user", "content": "Test"}])
+    )
+
+    assert calls == [
+        "http://unavailable-ollama:11434/api/chat",
+        "http://192.168.1.176:11434/api/chat",
+    ]
+    assert response.content == "Hotovo."
+
+
+@pytest.mark.asyncio
 async def test_ollama_provider_env_false_overrides_request_think_true(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 

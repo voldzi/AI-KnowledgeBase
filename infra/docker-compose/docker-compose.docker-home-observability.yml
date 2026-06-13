@@ -1,0 +1,152 @@
+name: ${COMPOSE_PROJECT_NAME:-akl}
+
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-otel-env: &otel-env
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+  OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+  OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=production,service.namespace=akb}
+
+services:
+  web:
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: akb-web
+
+  registry-api:
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: akb-registry-api
+
+  ingestion-service:
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: akb-ingestion-service
+
+  rag-retrieval-service:
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: akb-rag-retrieval-service
+
+  llm-gateway-service:
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: akb-llm-gateway-service
+
+  evaluation-service:
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: akb-evaluation-service
+
+  governance-service:
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: akb-governance-service
+
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.114.0}
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ../monitoring/otel-collector/config.yml:/etc/otelcol/config.yml:ro
+    depends_on:
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+    networks:
+      - app_zone
+      - data_zone
+      - management_zone
+    logging: *json-logging
+
+  tempo:
+    image: ${TEMPO_IMAGE:-grafana/tempo:2.6.1}
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ../monitoring/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    networks:
+      - management_zone
+    logging: *json-logging
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.55.1}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ../monitoring/prometheus/docker-home.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - app_zone
+      - data_zone
+      - management_zone
+    logging: *json-logging
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:11.4.0}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-stratos_admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set when observability is enabled}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://stratos.zeleznalady.cz/akb/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_GENERIC_OAUTH_ENABLED: ${GRAFANA_OAUTH_ENABLED:-false}
+      GF_AUTH_GENERIC_OAUTH_NAME: ${GRAFANA_OAUTH_NAME:-STRATOS}
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: ${GRAFANA_OAUTH_ALLOW_SIGN_UP:-true}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: ${GRAFANA_OAUTH_CLIENT_ID:-akb-grafana}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${GRAFANA_OAUTH_CLIENT_SECRET:-}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: ${GRAFANA_OAUTH_SCOPES:-openid profile email roles}
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: ${GRAFANA_OAUTH_AUTH_URL:-https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/auth}
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: ${GRAFANA_OAUTH_TOKEN_URL:-https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token}
+      GF_AUTH_GENERIC_OAUTH_API_URL: ${GRAFANA_OAUTH_API_URL:-https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/userinfo}
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: ${GRAFANA_OAUTH_ROLE_ATTRIBUTE_PATH:-contains(realm_access.roles[*], 'stratos_admin') && 'GrafanaAdmin' || contains(realm_access.roles[*], 'stratos_auditor') && 'Viewer' || contains(realm_access.roles[*], 'stratos_user') && 'Viewer' || 'None'}
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT: ${GRAFANA_OAUTH_ROLE_ATTRIBUTE_STRICT:-false}
+      GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: ${GRAFANA_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN:-true}
+      GF_AUTH_DISABLE_LOGIN_FORM: ${GRAFANA_DISABLE_LOGIN_FORM:-false}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+    networks:
+      - management_zone
+    logging: *json-logging
+
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:3.3.2}
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ../monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - management_zone
+    logging: *json-logging
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  tempo-data:

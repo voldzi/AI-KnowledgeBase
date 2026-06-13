@@ -34,7 +34,7 @@ class OllamaProvider(LLMProvider):
         self.settings = settings
 
     async def list_models(self) -> list[ModelInfo]:
-        models = await self._fetch_model_items(allow_empty=False)
+        models, _ = await self._fetch_model_items(allow_empty=False)
 
         return [
             ModelInfo(
@@ -49,7 +49,7 @@ class OllamaProvider(LLMProvider):
 
     async def provider_info(self, enabled: bool, active: bool) -> ProviderInfo:
         try:
-            await self._fetch_model_items(allow_empty=True)
+            _, active_base_url = await self._fetch_model_items(allow_empty=True)
             return ProviderInfo(
                 name="ollama",
                 enabled=enabled,
@@ -59,7 +59,7 @@ class OllamaProvider(LLMProvider):
                 supports_embeddings=True,
                 supports_model_pull=True,
                 supports_model_delete=False,
-                base_url=self.settings.ollama_base_url,
+                base_url=active_base_url,
             )
         except Exception as exc:
             return ProviderInfo(
@@ -85,12 +85,12 @@ class OllamaProvider(LLMProvider):
                 message="Model pull is disabled. Set AKL_LLM_ALLOW_MODEL_PULL=true to enable it.",
             )
 
-        async with httpx.AsyncClient(timeout=self.settings.model_pull_timeout_seconds) as client:
-            response = await client.post(
-                f"{self.settings.ollama_base_url}/api/pull",
-                headers=outgoing_headers(self.settings),
-                json={"name": model_name, "stream": False},
-            )
+        response = await self._post_with_endpoint_fallback(
+            path="/api/pull",
+            headers=outgoing_headers(self.settings),
+            json_body={"name": model_name, "stream": False},
+            timeout=self.settings.model_pull_timeout_seconds,
+        )
 
         if response.status_code >= 400:
             raise provider_error(
@@ -106,12 +106,10 @@ class OllamaProvider(LLMProvider):
             message="Model pull completed.",
         )
 
-    async def _fetch_model_items(self, allow_empty: bool) -> list[dict[str, Any]]:
-        data = await request_json_with_retry(
-            provider=self.name,
-            settings=self.settings,
+    async def _fetch_model_items(self, allow_empty: bool) -> tuple[list[dict[str, Any]], str]:
+        data, active_base_url = await self._request_json_with_endpoint_fallback(
             method="GET",
-            url=f"{self.settings.ollama_base_url}/api/tags",
+            path="/api/tags",
             headers=outgoing_headers(self.settings),
         )
         models = data.get("models", [])
@@ -122,14 +120,12 @@ class OllamaProvider(LLMProvider):
                 self.name,
                 "Ollama returned no models; pull at least one model for the selected profile",
             )
-        return [item for item in models if isinstance(item, dict)]
+        return [item for item in models if isinstance(item, dict)], active_base_url
 
     async def chat_completion(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
-        data = await request_json_with_retry(
-            provider=self.name,
-            settings=self.settings,
+        data, _ = await self._request_json_with_endpoint_fallback(
             method="POST",
-            url=f"{self.settings.ollama_base_url}/api/chat",
+            path="/api/chat",
             headers=outgoing_headers(self.settings),
             json_body=_chat_payload(request, self.settings, stream=False),
         )
@@ -170,10 +166,11 @@ class OllamaProvider(LLMProvider):
         request: ChatCompletionRequest,
     ) -> AsyncIterator[ChatCompletionChunk]:
         completion_id = f"cmpl_{uuid.uuid4().hex}"
+        stream_url = await self._resolve_stream_url("/api/chat")
         async for item in _stream_json_lines(
             provider=self.name,
             settings=self.settings,
-            url=f"{self.settings.ollama_base_url}/api/chat",
+            url=stream_url,
             headers=outgoing_headers(self.settings),
             json_body=_chat_payload(request, self.settings, stream=True),
         ):
@@ -189,11 +186,9 @@ class OllamaProvider(LLMProvider):
             )
 
     async def embeddings(self, request: EmbeddingsRequest) -> EmbeddingsResponse:
-        data = await request_json_with_retry(
-            provider=self.name,
-            settings=self.settings,
+        data, _ = await self._request_json_with_endpoint_fallback(
             method="POST",
-            url=f"{self.settings.ollama_base_url}/api/embed",
+            path="/api/embed",
             headers=outgoing_headers(self.settings),
             json_body={"model": request.model, "input": request.input},
         )
@@ -217,6 +212,71 @@ class OllamaProvider(LLMProvider):
             return True
         except Exception:
             return False
+
+    async def _request_json_with_endpoint_fallback(
+        self,
+        *,
+        method: str,
+        path: str,
+        headers: dict[str, str],
+        json_body: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str]:
+        last_error: GatewayError | None = None
+        for base_url in self.settings.ollama_base_urls:
+            try:
+                data = await request_json_with_retry(
+                    provider=self.name,
+                    settings=self.settings,
+                    method=method,
+                    url=f"{base_url}{path}",
+                    headers=headers,
+                    json_body=json_body,
+                )
+                return data, base_url
+            except GatewayError as exc:
+                last_error = exc
+                continue
+
+        if last_error is not None:
+            details = dict(last_error.details)
+            details["candidate_count"] = len(self.settings.ollama_base_urls)
+            raise GatewayError(last_error.code, last_error.message, last_error.status_code, details)
+        raise provider_error(self.name, "Ollama provider has no configured endpoints")
+
+    async def _post_with_endpoint_fallback(
+        self,
+        *,
+        path: str,
+        headers: dict[str, str],
+        json_body: dict[str, Any],
+        timeout: float,
+    ) -> httpx.Response:
+        last_error: Exception | None = None
+        for base_url in self.settings.ollama_base_urls:
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.post(f"{base_url}{path}", headers=headers, json=json_body)
+                if response.status_code < 500:
+                    return response
+                last_error = provider_error(self.name, "Ollama endpoint returned a server error")
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_error = exc
+                continue
+        if isinstance(last_error, GatewayError):
+            raise last_error
+        raise provider_error(
+            self.name,
+            "Ollama provider is not reachable",
+            {"reason": last_error.__class__.__name__ if last_error else "unknown"},
+        )
+
+    async def _resolve_stream_url(self, path: str) -> str:
+        _, active_base_url = await self._request_json_with_endpoint_fallback(
+            method="GET",
+            path="/api/tags",
+            headers=outgoing_headers(self.settings),
+        )
+        return f"{active_base_url}{path}"
 
 
 def _chat_payload(request: ChatCompletionRequest, settings: Settings, stream: bool) -> dict[str, Any]:

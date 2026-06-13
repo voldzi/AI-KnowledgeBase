@@ -47,6 +47,12 @@ Na `docker.home.cz` připravit:
   backups/
 ```
 
+Volitelný observability stack používá stejné checkout a env soubory. Hodnota
+`GRAFANA_ADMIN_USER` a `GRAFANA_ADMIN_PASSWORD` musí být nastavené v
+`/srv/akl/env/akl.prod.env`, ne v Gitu. Tento účet je jen break-glass přístup.
+Cílové přihlašování Grafany používá STRATOS Keycloak realm přes klienta
+`akb-grafana`; role `stratos_admin` se mapuje na Grafana `GrafanaAdmin`.
+
 Checkout:
 
 ```bash
@@ -88,6 +94,41 @@ docker compose -f infra/docker-compose/docker-compose.docker-home.yml config
 ```
 
 bez doplňování `--env-file`.
+
+Volitelný OpenTelemetry/observability override:
+
+```bash
+cd /srv/akl/repo
+docker compose \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  config
+
+docker compose \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  up -d
+```
+
+Tento override přidá `otel-collector`, `tempo`, `prometheus`, `grafana` a
+`loki` pouze do Docker management sítí. OTLP collector se nevystavuje veřejně.
+Grafana je dostupná přes AKB Caddy trasu `/akb/grafana/`, pokud je override
+spuštěný. Nepřesměrovávat veřejné STRATOS aplikace přímo na Prometheus, Tempo
+nebo Loki.
+
+Před zapnutím Grafana OIDC vytvořit nebo aktualizovat Keycloak klienta:
+
+```bash
+cd /srv/akl/repo
+KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
+  ./scripts/ensure_grafana_keycloak_client.sh
+./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
+AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc docker compose \
+  --env-file /srv/akl/env/akl.prod.env \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  up -d grafana
+```
 
 ## 2. PostgreSQL
 
@@ -261,6 +302,17 @@ AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_QDRANT_COLLECTION=akl_document_chunks
 ```
+
+Pokud Ollama běží mimo AKB compose stack, nastavte explicitní kandidátní
+endpointy. AKB neprohledává lokální síť; zkusí pouze uvedené URL v pořadí:
+
+```env
+AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.1.176:11434
+```
+
+Stanice `192.168.1.176` musí mít Ollama dostupnou na síťovém rozhraní
+dosažitelném z `docker.home.cz`, nejen na `127.0.0.1`.
 
 Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`:
 

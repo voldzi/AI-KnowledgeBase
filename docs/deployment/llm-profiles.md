@@ -32,6 +32,7 @@ AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_LLM_DEFAULT_MAX_TOKENS=512
 AKL_OLLAMA_THINK=false
+AKL_OLLAMA_BASE_URLS=http://ollama:11434
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_INGESTION_INDEXER_MODE=qdrant
@@ -90,6 +91,18 @@ If Ollama runs on the host instead of the compose `ai` profile, point LLM Gatewa
 ```bash
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
+
+For a controlled failover list, set `AKL_OLLAMA_BASE_URLS` to the ordered
+candidate URLs. The gateway tries those explicit endpoints and uses the first
+one that responds. It does not scan LAN ranges.
+
+```bash
+AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.1.176:11434
+```
+
+For the local LAN station at `192.168.1.176`, Ollama must listen on an address
+reachable from the AKB host, not only on `127.0.0.1`.
 
 On macOS with a local Ollama service:
 

@@ -70,18 +70,26 @@ const EXTENSION_MIME_TYPES = new Map<string, string>([
   [".doc", "application/msword"],
   [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   [".gif", "image/gif"],
+  [".htm", "text/html"],
+  [".html", "text/html"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
+  [".json", "application/json"],
   [".md", "text/markdown"],
   [".markdown", "text/markdown"],
   [".pdf", "application/pdf"],
   [".png", "image/png"],
+  [".ppt", "application/vnd.ms-powerpoint"],
   [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   [".rtf", "application/rtf"],
   [".svg", "image/svg+xml"],
   [".txt", "text/plain"],
   [".webp", "image/webp"],
-  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]
+  [".xls", "application/vnd.ms-excel"],
+  [".xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"],
+  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  [".xhtml", "application/xhtml+xml"],
+  [".xml", "application/xml"]
 ]);
 
 export function getSourceDownloadSettings(
@@ -183,13 +191,9 @@ export function verifySourceDownloadToken(
     throw new SourceDownloadError(401, "INVALID_SOURCE_DOWNLOAD_TOKEN", "Source download token payload is invalid.");
   }
 
-  if (new Date(payload.expires_at).getTime() <= Date.now()) {
-    throw new SourceDownloadError(410, "SOURCE_DOWNLOAD_TOKEN_EXPIRED", "Source download token has expired.");
-  }
-
-  normalizeId(payload.document_id, "document_id");
-  normalizeId(payload.document_version_id, "document_version_id");
-  normalizeId(payload.source_open_id, "source_open_id");
+  const documentId = normalizeId(payload.document_id, "document_id");
+  const versionId = normalizeId(payload.document_version_id, "document_version_id");
+  const sourceOpenId = normalizeId(payload.source_open_id, "source_open_id");
   normalizeFilename(payload.file_name);
   normalizeOptionalSha256(payload.sha256);
   if (payload.bucket !== settings.bucket) {
@@ -200,6 +204,15 @@ export function verifySourceDownloadToken(
   }
   mimeTypeFor(payload.file_name);
   resolveObjectPath({ bucket: payload.bucket, object_key: payload.object_key }, settings);
+  const expiresAtMillis = new Date(payload.expires_at).getTime();
+  if (!Number.isFinite(expiresAtMillis) || expiresAtMillis <= Date.now()) {
+    throw new SourceDownloadError(410, "SOURCE_DOWNLOAD_TOKEN_EXPIRED", "Source download token has expired.", {
+      document_id: documentId,
+      document_version_id: versionId,
+      source_open_id: sourceOpenId,
+      expires_at: payload.expires_at
+    });
+  }
   return payload;
 }
 
@@ -228,7 +241,9 @@ export function sourceContentTypeHeader(mimeType: string): string {
   const normalized = mimeType.toLowerCase();
   if (
     normalized.startsWith("text/") ||
+    normalized === "application/json" ||
     normalized === "application/rtf" ||
+    normalized === "application/xhtml+xml" ||
     normalized === "application/xml" ||
     normalized === "image/svg+xml"
   ) {

@@ -156,6 +156,7 @@ class EffectiveConfigResponse(BaseModel):
     allow_model_pull: bool
     allow_model_delete: bool
     ollama_base_url: str | None
+    ollama_base_urls: list[str]
     ollama_think: bool
     openai_base_url: str | None
     openai_api_key_configured: bool

@@ -16,6 +16,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  standards:
+    name: Repository Standards
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Validate skeleton
+        run: bash scripts/validate-skeleton.sh
+
+      - name: Verify generated OpenAPI is current
+        run: ruby scripts/generate_openapi_index.rb --check
+
+      - name: Validate OpenAPI JSON
+        run: python3 -m json.tool openapi/openapi.json >/tmp/akb-openapi.json
+
+      - name: Lint OpenAPI
+        run: npx --yes @redocly/cli lint openapi/openapi.json
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   web:
     name: Web
     runs-on: ubuntu-latest
@@ -173,7 +210,20 @@ jobs:
       - name: Validate docker.home.cz compose config
         run: |
           printf '@voldzi:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=dummy\n' >/tmp/akl-npmrc
-          AKL_NPMRC_SECRET_FILE=/tmp/akl-npmrc docker compose \
+          AKL_NPMRC_SECRET_FILE=/tmp/akl-npmrc \
+          GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
+          docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \
             config >/tmp/akl-compose-docker-home.yml
+
+      - name: Validate docker.home.cz observability compose config
+        run: |
+          printf '@voldzi:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=dummy\n' >/tmp/akl-npmrc
+          AKL_NPMRC_SECRET_FILE=/tmp/akl-npmrc \
+          GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
+          docker compose \
+            --env-file infra/docker-compose/docker-home.env.example \
+            -f infra/docker-compose/docker-compose.docker-home.yml \
+            -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+            config >/tmp/akl-compose-docker-home-observability.yml

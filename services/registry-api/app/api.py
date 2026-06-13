@@ -58,6 +58,7 @@ from app.schemas import (
     DocumentVersionCreate,
     DocumentVersionListResponse,
     DocumentVersionResponse,
+    ExternalDocumentCurrentUpdateRequest,
     ExternalDocumentResponse,
     ExternalDocumentRefResponse,
     ExternalDocumentUpsertRequest,
@@ -1064,6 +1065,69 @@ def get_external_document(
     return _external_document_response(external_ref, created=False)
 
 
+@router.patch(
+    "/external-documents/{external_document_id}/current",
+    response_model=ExternalDocumentResponse,
+)
+def update_external_document_current(
+    external_document_id: str,
+    payload: ExternalDocumentCurrentUpdateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentResponse:
+    external_ref = _get_external_document_ref(db, external_document_id)
+    require_document_action(principal, Action.document_ingest, external_ref.document)
+
+    if "current_document_version_id" in payload.model_fields_set:
+        if payload.current_document_version_id is not None:
+            _get_version(db, external_ref.document_id, payload.current_document_version_id)
+        external_ref.current_document_version_id = payload.current_document_version_id
+
+    if "current_file_id" in payload.model_fields_set:
+        if payload.current_file_id is not None:
+            file = db.execute(
+                select(DocumentFile).where(
+                    DocumentFile.file_id == payload.current_file_id,
+                    DocumentFile.document_id == external_ref.document_id,
+                )
+            ).scalar_one_or_none()
+            if file is None:
+                raise problem(status.HTTP_404_NOT_FOUND, "document_file_not_found", "Document file was not found")
+        external_ref.current_file_id = payload.current_file_id
+
+    if "current_ingestion_job_id" in payload.model_fields_set:
+        external_ref.current_ingestion_job_id = payload.current_ingestion_job_id
+    if "current_ingestion_status" in payload.model_fields_set:
+        external_ref.current_ingestion_status = payload.current_ingestion_status
+    if "akb_source_uri" in payload.model_fields_set:
+        external_ref.akb_source_uri = payload.akb_source_uri
+    if "source_location" in payload.model_fields_set:
+        external_ref.source_location = (
+            payload.source_location.model_dump(mode="json", exclude_none=True)
+            if payload.source_location is not None
+            else None
+        )
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="external_document.current_updated",
+        resource_type="external_document",
+        resource_id=external_ref.external_document_id,
+        correlation_id=get_correlation_id(),
+        metadata={
+            "document_id": external_ref.document_id,
+            "current_document_version_id": external_ref.current_document_version_id,
+            "current_file_id": external_ref.current_file_id,
+            "current_ingestion_job_id": external_ref.current_ingestion_job_id,
+            "current_ingestion_status": external_ref.current_ingestion_status,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(external_ref)
+    return _external_document_response(external_ref, created=False)
+
+
 @router.post(
     "/documents",
     response_model=DocumentResponse,
@@ -1319,7 +1383,7 @@ def create_document_version(
     payload: DocumentVersionCreate,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> DocumentVersion:
+) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_version_create, document)
 
@@ -1340,19 +1404,19 @@ def create_document_version(
         change_summary=payload.change_summary,
     )
     db.add(version)
+    file: DocumentFile | None = None
     if payload.file is not None:
-        db.add(
-            DocumentFile(
-                document_id=document.document_id,
-                document_version=version,
-                uri=payload.source_file_uri,
-                filename=payload.file.filename,
-                mime_type=payload.file.mime_type,
-                size_bytes=payload.file.size_bytes,
-                sha256=payload.file.sha256 or payload.file_hash,
-                uploaded_by=payload.file.uploaded_by or principal.subject_id,
-            )
+        file = DocumentFile(
+            document_id=document.document_id,
+            document_version=version,
+            uri=payload.source_file_uri,
+            filename=payload.file.filename,
+            mime_type=payload.file.mime_type,
+            size_bytes=payload.file.size_bytes,
+            sha256=payload.file.sha256 or payload.file_hash,
+            uploaded_by=payload.file.uploaded_by or principal.subject_id,
         )
+        db.add(file)
     add_audit_event(
         db,
         actor_id=principal.subject_id,
@@ -1363,7 +1427,8 @@ def create_document_version(
     )
     _commit_or_conflict(db)
     db.refresh(version)
-    return version
+    response = DocumentVersionResponse.model_validate(version)
+    return response.model_copy(update={"file_id": file.file_id if file is not None else None})
 
 
 @router.get("/documents/{document_id}/versions", response_model=DocumentVersionListResponse)

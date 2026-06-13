@@ -122,6 +122,71 @@ def test_document_version_accepts_source_location(client, admin_headers):
     assert response.json()["source_location"]["storage_ref"] == "stratos-budget/contracts/256-2022-S.pdf"
 
 
+def test_external_document_current_can_be_updated_after_ingestion_start(client, admin_headers, reader_headers):
+    created = client.post("/api/v1/external-documents/upsert", headers=admin_headers, json=_external_payload())
+    assert created.status_code == 200, created.text
+    external_document_id = created.json()["external_document"]["external_document_id"]
+    document_id = created.json()["document"]["document_id"]
+
+    version = client.post(
+        f"/api/v1/documents/{document_id}/versions",
+        headers=admin_headers,
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
+            "file_hash": "sha256:" + "c" * 64,
+            "file": {
+                "filename": "256-2022-S.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 123456,
+                "sha256": "sha256:" + "c" * 64,
+                "uploaded_by": "user_admin",
+            },
+        },
+    )
+    assert version.status_code == 201, version.text
+    assert version.json()["file_id"].startswith("file_")
+
+    forbidden = client.patch(
+        f"/api/v1/external-documents/{external_document_id}/current",
+        headers=reader_headers,
+        json={"current_document_version_id": version.json()["document_version_id"]},
+    )
+    assert forbidden.status_code == 403
+
+    response = client.patch(
+        f"/api/v1/external-documents/{external_document_id}/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "current_file_id": version.json()["file_id"],
+            "current_ingestion_job_id": "job_stratos_123",
+            "current_ingestion_status": "INGESTING",
+            "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
+            "source_location": {
+                "kind": "object_storage",
+                "uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
+                "storage_ref": "stratos/contracts/256-2022-S.pdf",
+                "file_name": "256-2022-S.pdf",
+                "content_type": "application/pdf",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    current = response.json()["external_document"]
+    assert current["current_document_version_id"] == version.json()["document_version_id"]
+    assert current["current_file_id"] == version.json()["file_id"]
+    assert current["current_ingestion_job_id"] == "job_stratos_123"
+    assert current["current_ingestion_status"] == "INGESTING"
+    assert current["akb_source_uri"] == "s3://akl-documents/stratos/contracts/256-2022-S.pdf"
+    assert current["source_location"]["kind"] == "object_storage"
+
+    audit = client.get("/api/v1/audit/events?event_type=external_document.current_updated", headers=admin_headers)
+    assert audit.status_code == 200
+    assert audit.json()["items"][0]["resource_id"] == external_document_id
+
+
 def test_external_document_can_be_opened_by_authorized_reader(client, admin_headers, reader_headers):
     created = client.post("/api/v1/external-documents/upsert", headers=admin_headers, json=_external_payload())
     assert created.status_code == 200, created.text

@@ -34,6 +34,7 @@ import {
   StratosButton,
   StratosButtonLink,
   StratosDataTable,
+  StratosPdfViewer,
   StratosSelect,
   StratosViewTabs,
   type StratosDataTableColumn,
@@ -109,17 +110,6 @@ interface SourceContextSignal {
 }
 
 type NativePreviewKind = "waiting" | "pdf" | "image" | "text" | "markdown" | "csv" | "docx" | "xlsx" | "presentation" | "unsupported";
-
-type PdfJsModule = typeof import("pdfjs-dist");
-
-interface PdfTextHighlight {
-  id: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  text: string;
-}
 
 interface MarkdownHeading {
   id: string;
@@ -2206,7 +2196,21 @@ function DocumentNativePreview({
       ) : null}
       {sourceOpen?.available && previewKind === "pdf" && previewUrl ? (
         <>
-          <PdfRenderedPreview copy={copy} sourceContext={sourceContext} sourceUrl={previewUrl} />
+          <StratosPdfViewer
+            bbox={sourceContext?.location.bbox ?? undefined}
+            highlightText={sourceContext?.chunk_text ?? ""}
+            labels={{
+              title: copy.nativePreviewPdfRenderedTitle,
+              detail: copy.nativePreviewPdfRenderedDetail,
+              loading: copy.nativePreviewLoading,
+              error: copy.nativePreviewPdfFallback,
+              page: copy.page,
+              textHighlight: copy.nativePreviewPdfTextHighlight,
+              bbox: copy.nativePreviewPdfBbox
+            }}
+            pageNumber={sourceContext?.location.page_number ?? 1}
+            sourceUrl={withAppBasePath(previewUrl)}
+          />
           <PdfCitationLocator copy={copy} sourceContext={sourceContext} />
         </>
       ) : null}
@@ -2226,208 +2230,6 @@ function DocumentNativePreview({
         </div>
       ) : null}
     </section>
-  );
-}
-
-function PdfRenderedPreview({
-  copy,
-  sourceContext,
-  sourceUrl
-}: {
-  copy: Record<string, string>;
-  sourceContext: SourceContext | null;
-  sourceUrl: string;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
-  const [renderState, setRenderState] = useState<{
-    status: "loading" | "ready" | "error";
-    pageNumber: number;
-    pageCount: number | null;
-    width: number;
-    height: number;
-    textHighlights: PdfTextHighlight[];
-  }>({
-    status: "loading",
-    pageNumber: Math.max(1, Math.trunc(sourceContext?.location.page_number ?? 1)),
-    pageCount: null,
-    width: 0,
-    height: 0,
-    textHighlights: []
-  });
-
-  const bbox = sourceContext?.location.bbox ? bboxToPercentStyle(sourceContext.location.bbox) : null;
-  const pageNumber = Math.max(1, Math.trunc(sourceContext?.location.page_number ?? 1));
-  const sourceUrlWithoutFragment = stripUrlFragment(sourceUrl);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return;
-    }
-
-    let cancelled = false;
-    let cleanupDocument: (() => void) | null = null;
-    let cleanupRender: (() => void) | null = null;
-    const renderPdf = async () => {
-      renderTaskRef.current?.cancel();
-      renderTaskRef.current = null;
-      setRenderState({
-        status: "loading",
-        pageNumber,
-        pageCount: null,
-        width: 0,
-        height: 0,
-        textHighlights: []
-      });
-
-      try {
-        const pdfjs = await loadPdfJs();
-        if (cancelled) return;
-        const response = await fetch(withAppBasePath(sourceUrlWithoutFragment), { headers: { Accept: "application/pdf" } });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const pdfBytes = await response.arrayBuffer();
-        if (cancelled) return;
-        const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBytes) });
-        cleanupDocument = () => {
-          void loadingTask.destroy();
-        };
-        const pdf = await loadingTask.promise;
-        if (cancelled) return;
-        const safePageNumber = Math.min(Math.max(1, pageNumber), pdf.numPages);
-        const page = await pdf.getPage(safePageNumber);
-        if (cancelled) return;
-        const viewport = page.getViewport({ scale: 1.35 });
-        const context = canvas.getContext("2d");
-        if (!context) {
-          throw new Error("Canvas context unavailable");
-        }
-
-        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-        context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
-        context.clearRect(0, 0, viewport.width, viewport.height);
-
-        const renderTask = page.render({ canvas, canvasContext: context, viewport });
-        renderTaskRef.current = renderTask;
-        cleanupRender = () => {
-          renderTask.cancel();
-          if (renderTaskRef.current === renderTask) {
-            renderTaskRef.current = null;
-          }
-        };
-        await renderTask.promise;
-        if (renderTaskRef.current === renderTask) {
-          renderTaskRef.current = null;
-        }
-        if (cancelled) return;
-        const textContent = await page.getTextContent();
-        const textHighlights = pdfTextHighlights({
-          chunkText: sourceContext?.chunk_text ?? "",
-          items: textContent.items,
-          pdfjs,
-          viewportHeight: viewport.height,
-          viewportTransform: viewport.transform,
-          viewportWidth: viewport.width
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        setRenderState({
-          status: "ready",
-          pageNumber: safePageNumber,
-          pageCount: pdf.numPages,
-          width: viewport.width,
-          height: viewport.height,
-          textHighlights
-        });
-      } catch (error) {
-        if (!cancelled) {
-          console.warn("PDF native preview failed", error);
-          setRenderState({
-            status: "error",
-            pageNumber,
-            pageCount: null,
-            width: 0,
-            height: 0,
-            textHighlights: []
-          });
-        }
-      }
-    };
-
-    void renderPdf();
-
-    return () => {
-      cancelled = true;
-      cleanupRender?.();
-      cleanupDocument?.();
-    };
-  }, [pageNumber, sourceContext?.chunk_text, sourceUrlWithoutFragment]);
-
-  if (renderState.status === "error") {
-    return (
-      <div className="notice notice--danger">
-        <ShieldAlert size={16} aria-hidden="true" />
-        {copy.nativePreviewPdfFallback}
-      </div>
-    );
-  }
-
-  return (
-    <div className="native-preview__pdf-rendered">
-      <div className="native-preview__pdf-rendered-header">
-        <div>
-          <strong>{copy.nativePreviewPdfRenderedTitle}</strong>
-          <p>{copy.nativePreviewPdfRenderedDetail}</p>
-        </div>
-        <span>
-          {copy.page} {renderState.pageNumber}
-          {renderState.pageCount ? ` / ${renderState.pageCount}` : ""}
-        </span>
-      </div>
-      <div className="native-preview__pdf-page-scroll">
-        <div
-          className="native-preview__pdf-page"
-          style={renderState.width > 0 && renderState.height > 0 ? { width: renderState.width, height: renderState.height } : undefined}
-        >
-          <canvas ref={canvasRef} />
-          {renderState.status === "loading" ? (
-            <div className="native-preview__pdf-loading">
-              <FileSearch size={22} aria-hidden="true" />
-              {copy.nativePreviewLoading}
-            </div>
-          ) : null}
-          {renderState.textHighlights.map((highlight) => (
-            <span
-              aria-label={copy.nativePreviewPdfTextHighlight}
-              className="native-preview__pdf-text-highlight"
-              key={highlight.id}
-              role="mark"
-              style={highlightToPercentStyle(highlight)}
-              title={highlight.text}
-            />
-          ))}
-          {bbox ? (
-            <span
-              aria-label={copy.nativePreviewPdfBbox}
-              className="native-preview__bbox native-preview__bbox--pdf-page"
-              role="img"
-              style={bbox}
-              title={copy.nativePreviewPdfBbox}
-            />
-          ) : null}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -2896,11 +2698,6 @@ function sourceUrlWithPageFragment(sourceUrl: string, pageNumber: number): strin
   return `${baseUrl}#page=${page}`;
 }
 
-function stripUrlFragment(sourceUrl: string): string {
-  const [baseUrl] = sourceUrl.split("#");
-  return baseUrl;
-}
-
 function sourcePreviewUrlForSourceUrl(sourceUrl: string): string {
   const [baseUrl, fragment] = sourceUrl.split("#");
   const previewUrl = baseUrl.replace("/api/documents/source/content", "/api/documents/source/preview");
@@ -2928,95 +2725,6 @@ function normalizeBboxPercent(value: number): number {
   return Math.min(100, Math.max(0, percent));
 }
 
-let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
-
-function loadPdfJs(): Promise<PdfJsModule> {
-  if (!pdfJsModulePromise) {
-    pdfJsModulePromise = import("pdfjs-dist").then((pdfjs) => {
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
-      return pdfjs;
-    });
-  }
-  return pdfJsModulePromise;
-}
-
-function pdfTextHighlights({
-  chunkText,
-  items,
-  pdfjs,
-  viewportHeight,
-  viewportTransform,
-  viewportWidth
-}: {
-  chunkText: string;
-  items: unknown[];
-  pdfjs: PdfJsModule;
-  viewportHeight: number;
-  viewportTransform: number[];
-  viewportWidth: number;
-}): PdfTextHighlight[] {
-  const normalizedChunk = normalizeSearchText(chunkText);
-  if (!normalizedChunk || viewportWidth <= 0 || viewportHeight <= 0) {
-    return [];
-  }
-
-  const viewportScale = Math.max(Math.hypot(viewportTransform[0] ?? 1, viewportTransform[1] ?? 0), 1);
-  return items.flatMap((item, index) => {
-    if (!isPdfTextItem(item) || !pdfTextMatchesChunk(item.str, normalizedChunk)) {
-      return [];
-    }
-
-    const transform = pdfjs.Util.transform(viewportTransform, item.transform);
-    const left = Number(transform[4] ?? 0);
-    const baselineTop = Number(transform[5] ?? 0);
-    const height = Math.max(Math.abs(item.height * viewportScale), Math.hypot(Number(transform[2] ?? 0), Number(transform[3] ?? 0)), 8);
-    const width = Math.max(Math.abs(item.width * viewportScale), 8);
-    return [
-      {
-        id: `${index}-${item.str}`,
-        left: clampPercent((left / viewportWidth) * 100),
-        top: clampPercent(((baselineTop - height) / viewportHeight) * 100),
-        width: clampPercent((width / viewportWidth) * 100),
-        height: clampPercent((height / viewportHeight) * 100),
-        text: item.str
-      }
-    ];
-  });
-}
-
-function isPdfTextItem(item: unknown): item is { str: string; transform: number[]; width: number; height: number } {
-  return (
-    typeof item === "object" &&
-    item !== null &&
-    "str" in item &&
-    typeof item.str === "string" &&
-    "transform" in item &&
-    Array.isArray(item.transform) &&
-    "width" in item &&
-    typeof item.width === "number" &&
-    "height" in item &&
-    typeof item.height === "number"
-  );
-}
-
-function pdfTextMatchesChunk(text: string, normalizedChunk: string): boolean {
-  const normalizedText = normalizeSearchText(text);
-  if (normalizedText.length < 4) {
-    return false;
-  }
-  if (normalizedChunk.includes(normalizedText) || normalizedText.includes(normalizedChunk)) {
-    return true;
-  }
-
-  const chunkTokens = new Set(normalizedChunk.split(" ").filter((token) => token.length >= 4));
-  const textTokens = normalizedText.split(" ").filter((token) => token.length >= 4);
-  if (textTokens.length === 0) {
-    return false;
-  }
-  const matches = textTokens.filter((token) => chunkTokens.has(token)).length;
-  return matches >= Math.min(2, textTokens.length);
-}
-
 function normalizeSearchText(text: string): string {
   return text
     .normalize("NFD")
@@ -3025,22 +2733,6 @@ function normalizeSearchText(text: string): string {
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
-}
-
-function highlightToPercentStyle(highlight: PdfTextHighlight): CSSProperties {
-  return {
-    left: `${highlight.left}%`,
-    top: `${highlight.top}%`,
-    width: `${Math.max(highlight.width, 1)}%`,
-    height: `${Math.max(highlight.height, 1)}%`
-  };
-}
-
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.min(100, Math.max(0, value));
 }
 
 const markdownComponents: Components = {
@@ -3237,7 +2929,12 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   if (filename.endsWith(".docx") || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     return "docx";
   }
-  if (filename.endsWith(".xlsx") || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+  if (
+    filename.endsWith(".xlsx") ||
+    filename.endsWith(".xlsm") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-excel.sheet.macroEnabled.12"
+  ) {
     return "xlsx";
   }
   if (filename.endsWith(".pptx") || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
@@ -3252,7 +2949,11 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   if (
     mimeType.startsWith("text/") ||
     mimeType === "application/json" ||
-    filename.endsWith(".txt")
+    mimeType === "application/xml" ||
+    mimeType === "application/xhtml+xml" ||
+    filename.endsWith(".json") ||
+    filename.endsWith(".txt") ||
+    filename.endsWith(".xml")
   ) {
     return "text";
   }

@@ -23,9 +23,14 @@ infra/keycloak/
 infra/monitoring/prometheus/
 infra/monitoring/grafana/
 infra/monitoring/loki/
+infra/monitoring/otel-collector/
+infra/monitoring/tempo/
 infra/postgres/init/
 infra/backup/
 ```
+
+Prometheus alert rules live under `infra/monitoring/prometheus/rules/`.
+Grafana dashboards live under `infra/monitoring/grafana/dashboards/`.
 
 ## Service Routes
 

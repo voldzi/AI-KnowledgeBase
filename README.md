@@ -87,12 +87,13 @@ python3 scripts/phase_04_employee_assistant_smoke.py
 
 ## Phase 04 Employee Assistant
 
-AKB now has a dual GUI model:
+AKB now has a multi-surface GUI model:
 
+- AKB Assistant / Knowledge Chat: `http://localhost:3002/chat`
 - Employee Assistant: `http://localhost:3002/assistant`
 - Knowledge Management/Admin GUI: `http://localhost:3002`
 
-The Employee Assistant is a thin web client. Workstations do not run local models, Qdrant, PostgreSQL, or object storage. Central backend services handle retrieval, permissions, model calls, citations, source opening, and audit events.
+The assistant web surfaces are thin clients. Workstations do not run local models, Qdrant, PostgreSQL, or object storage. Central backend services handle retrieval, permissions, model calls, citations, source opening, and audit events. `/chat` is the primary thread-oriented AKB Assistant surface; `/assistant` remains the plain-language employee surface.
 
 Assistant API:
 
@@ -121,9 +122,15 @@ scripts/backup_local_prod.sh
 RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<backup-directory>
 ```
 
-Details: `docs/deployment/local-production.md`.
-Enterprise architecture: `docs/ARCHITECTURE/enterprise-architecture.md`.
-Security model: `docs/security/enterprise-security-model.md`.
+Documentation entry point: `docs/README.md`.
+Architecture: `docs/architecture.md`.
+API contract: `docs/api.md` and `openapi/openapi.json`.
+Security model: `docs/security.md`.
+Operations: `docs/operations.md`.
+Observability: `docs/observability.md`.
+Runbook: `docs/runbook.md`.
+Local production details: `docs/deployment/local-production.md`.
+STRATOS shared library standard: `docs/29_STRATOS_SHARED_LIBRARIES.md`.
 Code health baseline: `docs/maintenance/code-health.md`.
 Project status: `docs/maintenance/project-status.md`.
 Release process: `docs/maintenance/release-process.md`.
@@ -131,7 +138,7 @@ Document Workbench QA: `docs/qa/document-workbench-product-qa.md`.
 
 ## Document Viewer
 
-RAG citations in Knowledge Chat are clickable. Opening a citation calls `GET /api/v1/citations/{chunk_id}/open` and shows the exact indexed chunk, source URI, viewer mode, section path, page if known, and source metadata.
+RAG citations in Knowledge Chat are clickable. Opening a citation calls the assistant citation source-context bridge and shows the exact indexed chunk, source URI, viewer mode, section path, page if known, and source metadata. The document action opens the original signed source file through the assistant citation document redirect; PDF redirects include a page fragment and citation search phrase when available.
 
 ## Profiles
 

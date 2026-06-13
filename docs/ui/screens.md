@@ -80,11 +80,15 @@ Route: `/chat`
 
 Content:
 
-- question composer
-- answer panel
+- AKB Assistant thread list
+- new-thread action
+- share-thread dialog
+- chat transcript and composer
+- answer panel in the active thread
 - confidence badge
 - warning/no-answer state
-- citation viewer
+- right-side citation/source panel
+- citation viewer and direct source document opening
 
 ## Audit Viewer
 

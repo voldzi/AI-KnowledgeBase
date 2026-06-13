@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { withAppBasePath } from "@/lib/app-url";
 import {
   readSourceObject,
   SourceDownloadError,
@@ -25,6 +26,28 @@ function sourceDownloadErrorResponse(error: SourceDownloadError) {
 function contentDispositionFilename(filename: string): string {
   const safeFilename = filename.replace(/["\\\r\n]/g, "_");
   return `inline; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+function acceptsHtml(request: NextRequest): boolean {
+  return (request.headers.get("accept") ?? "").toLowerCase().includes("text/html");
+}
+
+function expiredSourceRedirect(error: SourceDownloadError, request: NextRequest): Response | null {
+  if (error.code !== "SOURCE_DOWNLOAD_TOKEN_EXPIRED" || !acceptsHtml(request)) {
+    return null;
+  }
+  const documentId = typeof error.details.document_id === "string" ? error.details.document_id : null;
+  if (!documentId) {
+    return null;
+  }
+  const target = withAppBasePath(`/documents/${encodeURIComponent(documentId)}?tab=viewer`);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      "Cache-Control": "private, no-store",
+      Location: target
+    }
+  });
 }
 
 export const runtime = "nodejs";
@@ -71,6 +94,10 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof SourceDownloadError) {
+      const redirect = expiredSourceRedirect(error, request);
+      if (redirect) {
+        return redirect;
+      }
       return sourceDownloadErrorResponse(error);
     }
     return NextResponse.json(

@@ -99,6 +99,15 @@ max_tokens: 512
 ollama_think: false
 ```
 
+Ollama endpoint může být jeden nebo řízený failover seznam:
+
+```text
+AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.1.176:11434
+```
+
+`AKL_OLLAMA_BASE_URLS` je explicitní allowlist. Gateway neprohledává lokální síť; pouze zkusí nakonfigurované URL v pořadí.
+
 Pro thinking-capable Ollama modely gateway podporuje:
 
 ```json

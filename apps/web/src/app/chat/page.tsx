@@ -1,82 +1,26 @@
-import { PageHeader } from "@/components/page-header";
-import { KnowledgeChat } from "@/features/chat/knowledge-chat";
+import { AkbAssistantApp } from "@/features/assistant/akb-assistant-app";
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
-import { ApiClientError, type RagAnswer } from "@/lib/types";
+import type { AssistantSuggestion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+const FALLBACK_SUGGESTIONS: AssistantSuggestion[] = [
+  { label: "Nový přístup", prompt: "Jak požádám o nový přístup?", domain: "Service Desk", audience: "employee" },
+  { label: "Nahlásit incident", prompt: "Jak nahlásím incident?", domain: "IT Operations", audience: "employee" },
+  { label: "Kdo schvaluje výjimku", prompt: "Kdo schvaluje výjimku ze směrnice?", domain: "Dokumentace", audience: "employee" },
+  { label: "Architektura platformy", prompt: "Jaká je architektura AKB platformy?", domain: "Dokumentace", audience: "employee" }
+];
 
 export default async function ChatPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContext();
-  const [availableTags, answer] = await Promise.all([
-    loadAvailableTags(),
-    loadInitialAnswer(
-      clients.rag.query(
-        {
-          subject_id: context.subjectId,
-          query: "Jak se schvaluje vyjimka z bezpecnostnich pravidel?",
-          filters: {
-            document_types: ["directive", "methodology"],
-            only_valid: true,
-            classification_max: "internal",
-            tags: []
-          },
-          answer_mode: "normative_with_citations",
-          max_chunks: 8
-        },
-        context
-      )
-    )
-  ]);
+  let suggestions = FALLBACK_SUGGESTIONS;
 
-  return (
-    <>
-      <PageHeader
-        title={{ cs: "Znalostní chat", en: "Knowledge chat" }}
-        description={{
-          cs: "RAG dotazovací plocha s viditelnou důvěryhodností, varováními a citacemi u každé odpovědi se zdroji.",
-          en: "RAG query surface with visible confidence, warnings and citations for every sourced answer."
-        }}
-      />
-      <KnowledgeChat initialAnswer={answer} availableTags={availableTags} />
-    </>
-  );
-
-  async function loadAvailableTags(): Promise<string[]> {
-    try {
-      const documents = await clients.registry.listDocuments(context);
-      const tags = new Set<string>();
-      for (const document of documents) {
-        for (const tag of document.tags) {
-          tags.add(tag);
-        }
-      }
-      return Array.from(tags).sort();
-    } catch {
-      return [];
-    }
-  }
-}
-
-async function loadInitialAnswer(request: Promise<RagAnswer>): Promise<RagAnswer> {
   try {
-    return await request;
-  } catch (error) {
-    if (error instanceof ApiClientError && error.status >= 500) {
-      return unavailableInitialAnswer(error);
-    }
-    throw error;
+    suggestions = (await clients.rag.assistantSuggestions(context)).suggestions;
+  } catch {
+    suggestions = FALLBACK_SUGGESTIONS;
   }
-}
 
-function unavailableInitialAnswer(error: ApiClientError): RagAnswer {
-  return {
-    query_id: error.traceId,
-    answer: "Znalostní vyhledávání je dočasně nedostupné. Stránka je načtená, zkuste dotaz znovu později nebo ověřte stav RAG/Qdrant služby.",
-    confidence: "insufficient_source",
-    citations: [],
-    warnings: [error.code || "RAG_UPSTREAM_UNAVAILABLE"],
-    used_chunks: [],
-    missing_information: error.message
-  };
+  return <AkbAssistantApp suggestions={suggestions} />;
 }

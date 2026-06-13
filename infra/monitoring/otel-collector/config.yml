@@ -1,0 +1,92 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - 127.0.0.1:8888
+        - job_name: platform-status
+          metrics_path: /metrics
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - platform-status:8080
+        - job_name: reverse-proxy
+          metrics_path: /metrics
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - reverse-proxy:2019
+        - job_name: qdrant
+          metrics_path: /metrics
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - qdrant:6333
+        - job_name: loki
+          metrics_path: /metrics
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - loki:3100
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:9464
+  debug:
+    verbosity: basic
+
+service:
+  extensions:
+    - health_check
+  pipelines:
+    traces:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - batch
+      exporters:
+        - otlp/tempo
+    metrics:
+      receivers:
+        - otlp
+        - prometheus
+      processors:
+        - memory_limiter
+        - batch
+      exporters:
+        - prometheus
+    logs:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - batch
+      exporters:
+        - debug

@@ -298,6 +298,15 @@ class ExternalDocumentUpsertRequest(BaseModel):
     assignments: list[DocumentAssignmentCreate] | None = None
 
 
+class ExternalDocumentCurrentUpdateRequest(BaseModel):
+    current_document_version_id: str | None = Field(default=None, max_length=64)
+    current_file_id: str | None = Field(default=None, max_length=64)
+    current_ingestion_job_id: str | None = Field(default=None, max_length=128)
+    current_ingestion_status: str | None = Field(default=None, max_length=40)
+    akb_source_uri: str | None = Field(default=None, max_length=1024)
+    source_location: SourceLocation | None = None
+
+
 class ExternalDocumentRefResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -365,6 +374,7 @@ class DocumentVersionResponse(BaseModel):
 
     document_version_id: str
     document_id: str
+    file_id: str | None = None
     version_label: str
     status: DocumentStatus
     valid_from: date | None

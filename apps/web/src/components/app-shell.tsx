@@ -200,6 +200,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { language, setLanguage } = useLanguage();
+  const isEmbeddedPath = pathname === "/embed" || pathname.startsWith("/embed/") || pathname === "/akb/embed" || pathname.startsWith("/akb/embed/");
   const copy = shellCopy[language];
   const apiModeLabel = apiMode === "mock" ? copy.apiModeMock : copy.apiModeProduction;
   const authModeLabel = authMode === "mock" ? copy.authModeMock : copy.authModeOidc;
@@ -261,9 +262,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   ].map((item) => ({
     ...item,
     onSelect: () => {
-      setActiveModule(item.id as ShellModuleId);
-      setSidebarCollapsed(false);
-      setMobileSidebarOpen(false);
+      selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: false });
     }
   }));
   const activeRailHref = moduleRootRoutes[activeModule];
@@ -393,6 +392,10 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     window.location.assign(withAppBasePath("/api/auth/logout"));
   };
 
+  if (isEmbeddedPath) {
+    return <main className="akb-embed-shell">{children}</main>;
+  }
+
   return (
     <StratosAppShell
       sidebarCollapsed={sidebarCollapsed}
@@ -462,7 +465,9 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
                   type="button"
                   className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
                   aria-current={activeModule === item.id ? "true" : undefined}
-                  onClick={() => setActiveModule(item.id as ShellModuleId)}
+                  onClick={() => {
+                    selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: true });
+                  }}
                 >
                   <Icon size={15} aria-hidden="true" />
                   {item.label}
@@ -531,6 +536,12 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
       {children}
     </StratosAppShell>
   );
+
+  function selectShellModule(moduleId: ShellModuleId, { keepMobileSidebarOpen }: { keepMobileSidebarOpen: boolean }) {
+    setActiveModule(moduleId);
+    setSidebarCollapsed(false);
+    setMobileSidebarOpen(keepMobileSidebarOpen);
+  }
 }
 
 function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {

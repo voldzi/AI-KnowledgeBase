@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { MetricCard as StratosMetricCard, type MetricCardTone } from "@voldzi/stratos-ui";
 
 interface MetricCardProps {
   label: string;
@@ -8,17 +9,23 @@ interface MetricCardProps {
   tone?: "default" | "success" | "attention" | "danger";
 }
 
+const toneMap: Record<NonNullable<MetricCardProps["tone"]>, MetricCardTone> = {
+  default: "neutral",
+  success: "good",
+  attention: "warning",
+  danger: "danger"
+};
+
 export function MetricCard({ label, value, detail, icon: Icon, tone = "default" }: MetricCardProps) {
   return (
-    <article className={`metric-card metric-card--${tone}`}>
-      <div className="metric-card__icon" aria-hidden="true">
-        <Icon size={18} strokeWidth={2} />
-      </div>
-      <div>
-        <p className="metric-card__label">{label}</p>
-        <strong className="metric-card__value">{value}</strong>
-        <p className="metric-card__detail">{detail}</p>
-      </div>
-    </article>
+    <StratosMetricCard
+      icon={Icon}
+      label={label}
+      value={value}
+      detail={detail}
+      tone={toneMap[tone]}
+      variant="command"
+      interactive={false}
+    />
   );
 }
