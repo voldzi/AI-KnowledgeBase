@@ -98,10 +98,10 @@ one that responds. It does not scan LAN ranges.
 
 ```bash
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
-AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
 ```
 
-For the local LAN station at `192.168.1.176`, Ollama must listen on an address
+For local LAN stations such as `192.168.200.2` or `192.168.1.176`, Ollama must listen on an address
 reachable from the AKB host, not only on `127.0.0.1`.
 
 On macOS with a local Ollama service:

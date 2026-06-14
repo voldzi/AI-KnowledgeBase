@@ -99,7 +99,7 @@ AKL_LLM_DEFAULT_PROVIDER=openai
 AKL_LLM_ENABLED_PROVIDERS=ollama,openai
 AKL_OPENAI_COMPAT_BASE_URL=http://vllm:8000
 AKL_OLLAMA_BASE_URL=http://ollama:11434
-AKL_OLLAMA_BASE_URLS=http://ollama:11434,http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URLS=http://ollama:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
 AKL_LLM_MODEL_PROVIDER_MAP={
   "bge-m3": "ollama",
   "nomic-embed-text": "ollama",
