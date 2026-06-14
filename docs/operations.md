@@ -124,3 +124,4 @@ Detailed references:
 - `docs/deployment/docker-home-cz.md`
 - `docs/OPERATIONS/07_DEPLOYMENT_MODEL.md`
 - `docs/OPERATIONS/backup-restore.md`
+- `docs/OPERATIONS/reset-pdf-first-corpus.md`
