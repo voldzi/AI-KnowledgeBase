@@ -12,8 +12,9 @@ It does not reset Keycloak, user profiles, role mappings, Grafana, observability
 `tools/import_original_pdf_versions.py` upgrades existing Markdown-backed documents to PDF-backed versions. That is not
 enough for a clean start, because after deleting documents there are no Markdown documents to upgrade.
 
-`tools/reset_pdf_first_corpus.py` creates new documents directly from PDF sources when a matching raw PDF exists. Markdown
-derivatives are used only as import metadata and text-source provenance.
+`tools/prepare_public_pdf_corpus.py` discovers and downloads a curated public PDF corpus into the AKB import workspace.
+`tools/reset_pdf_first_corpus.py` then creates new documents directly from those PDF sources when a matching raw PDF exists.
+Markdown derivatives are used only as import metadata and text-source provenance.
 
 ## StrategicViewer Scope
 
@@ -25,19 +26,59 @@ not a ready PDF corpus:
 - AKB should import official PDFs where they exist and separately report records that need PDF acquisition or an approved
   PDF snapshot policy.
 
-Current AKB import workspace status on `docker.home.cz`:
+Previous AKB import workspace status on `docker.home.cz` before the public PDF expansion:
 
 - 20 matching raw PDFs are available under `/srv/akl/imports/*/raw`,
 - 3 Markdown derivatives still have no same-stem raw PDF,
 - the next corpus expansion should use StrategicViewer as the candidate list, then resolve each candidate to an official
   PDF or mark it as non-PDF backlog.
 
-## Tool
+The expanded workflow targets about 150 public PDF sources from official domains such as DIA, NÚKIB, NKÚ, MPO,
+archi.gov.cz, data.gov.cz, Digital Strategy EU, and related government endpoints. The preparation step validates each
+selected item by downloading it and checking that the response is a PDF.
+
+## Prepare Public PDF Corpus
+
+Dry-run:
+
+```bash
+python3 tools/prepare_public_pdf_corpus.py \
+  --target-count 150 \
+  --max-pages 900 \
+  --report reports/public_pdf_corpus_prepare_report.dry-run.json
+```
+
+Download into the production import workspace:
+
+```bash
+python3 tools/prepare_public_pdf_corpus.py \
+  --download \
+  --clean \
+  --target-count 150 \
+  --max-pages 900 \
+  --imports-root /srv/akl/imports \
+  --domain public-digitalization-corpus \
+  --report reports/public_pdf_corpus_prepare_report.json
+```
+
+The tool can optionally read the StrategicViewer public digitalization seed file when it exists locally. If the file is
+not present, the built-in curated official seed URLs are sufficient for the 150-PDF baseline.
+
+Output layout:
+
+- `/srv/akl/imports/public-digitalization-corpus/raw/*.pdf`
+- `/srv/akl/imports/public-digitalization-corpus/source/<group>/*.md`
+
+Each Markdown file contains title, classification, language, canonical URL, source PDF URL, SHA-256 and import
+provenance. It is not the primary user-facing document; the PDF is.
+
+## Reset Tool
 
 Dry-run is the default:
 
 ```bash
 python3 tools/reset_pdf_first_corpus.py \
+  --domain public-digitalization-corpus \
   --report reports/pdf_first_corpus_reset_report.dry-run.json
 ```
 
@@ -45,17 +86,19 @@ Apply requires explicit confirmation:
 
 ```bash
 python3 tools/reset_pdf_first_corpus.py \
+  --domain public-digitalization-corpus \
   --apply \
   --confirm reset-documents \
   --report reports/pdf_first_corpus_reset_report.json
 ```
 
-Default production inputs:
+Default production inputs for the reset tool:
 
 - imports root: `/srv/akl/imports`
 - object storage root: `/srv/seaweedfs/akl`
 - bucket: `akl-documents`
-- domains: `cz-digital-governance`, `security-compliance-cz`
+- default domains: `cz-digital-governance`, `security-compliance-cz`
+- expanded public corpus domain: `public-digitalization-corpus`
 - compose file: `infra/docker-compose/docker-compose.docker-home.yml`
 - env file: `/srv/akl/env/akl.prod.env`
 
@@ -93,14 +136,14 @@ Registry/Qdrant checks:
 
 ## Expansion To About 150 Documents
 
-Use StrategicViewer as a candidate catalog, then add a resolver step:
+Use StrategicViewer as a candidate catalog where available, then run the resolver step:
 
 1. export StrategicViewer corpus records with title, owner, section, URL, category, and keywords,
-2. resolve each URL to an official PDF, preferably `e-sbirka.gov.cz`, DIA, NÚKIB, NKÚ, EU, or ministry sources,
-3. download PDFs into `/srv/akl/imports/<domain>/raw`,
+2. resolve official PDFs from DIA, NÚKIB, NKÚ, MPO, archi.gov.cz, data.gov.cz, Digital Strategy EU and related sources,
+3. download PDFs into `/srv/akl/imports/public-digitalization-corpus/raw`,
 4. keep Markdown derivatives only as extraction/provenance helpers,
-5. rerun this PDF-first reset/import,
-6. keep a report of records that remain HTML-only or catalog-only.
+5. rerun this PDF-first reset/import for `--domain public-digitalization-corpus`,
+6. keep the preparation and reset reports as operational evidence.
 
 Do not silently generate PDF snapshots for HTML pages. If snapshots are accepted, mark them as `source_kind=pdf_snapshot`
 and keep the canonical URL in metadata so users can distinguish official PDFs from generated convenience PDFs.

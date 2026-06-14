@@ -105,6 +105,18 @@ scripts/backup_local_prod.sh
 RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<backup-directory>
 ```
 
+## Document Corpus Reset
+
+For pre-pilot document reloads, prepare the public PDF corpus first and then reset/import only the document corpus:
+
+```bash
+python3 tools/prepare_public_pdf_corpus.py --download --clean --target-count 150 --max-pages 900
+python3 tools/reset_pdf_first_corpus.py --domain public-digitalization-corpus --apply --confirm reset-documents
+```
+
+The workflow keeps user profiles, roles, Keycloak, observability and STRATOS application data intact. Details:
+`docs/OPERATIONS/reset-pdf-first-corpus.md`.
+
 ## Validation Commands
 
 Smallest relevant checks first:
