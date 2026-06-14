@@ -146,6 +146,7 @@ EXCLUDED_CANDIDATE_TERMS = {
     "analyza barier vavai",
     "aktuality",
     "auditni kompendium verejne zdravi",
+    "akcni plan 2021 2025",
     "covid 19",
     "crm jednotny registracni formular",
     "dr 700",
@@ -165,6 +166,7 @@ EXCLUDED_CANDIDATE_TERMS = {
     "imprimir como pdf",
     "izdrukat pdf",
     "navod k vyplneni",
+    "narodni strategie kb 2020 2025 cr",
     "novinky",
     "op tak",
     "odpovedny zastupce",
@@ -179,12 +181,14 @@ EXCLUDED_CANDIDATE_TERMS = {
     "program technologie a aplikace pro konkurenceschopnost",
     "prohlaseni odpovedneho zastupce",
     "ris3",
+    "rocni zprava",
     "seznam partneru",
     "statutarni organ",
     "struktura udaju o provedene atestaci",
     "tisknout jako pdf",
     "vertical domains of specialization",
     "vyjadreni mzp",
+    "vyrocni zprava nku",
     "zivnostenske podnikani",
     "zmenovy list",
     "zvlastni priloha",
@@ -496,7 +500,7 @@ def extract_page_candidates(url: str, depth: int, seed: SeedRecord, options: Opt
         if not is_allowed_url(absolute_url):
             continue
         if looks_like_pdf_link(absolute_url, label):
-            link_label = page_title if is_generic_pdf_label(label) else label
+            link_label = page_title if should_use_page_title_for_pdf(final_url, absolute_url, label) else label
             result["candidates"].append(candidate_from_link(absolute_url, final_url, link_label, seed, "link", depth))
         elif depth < options.max_depth and looks_like_follow_link(absolute_url, label):
             result["follow_pages"].append((absolute_url, depth + 1, seed))
@@ -582,6 +586,16 @@ def is_generic_pdf_label(label: str) -> bool:
         "dostupna ke stazeni zde",
         "dostupne ke stazeni zde",
     }
+
+
+def should_use_page_title_for_pdf(page_url: str, pdf_url: str, label: str) -> bool:
+    if not is_generic_pdf_label(label):
+        return False
+    parsed_pdf = urllib.parse.urlparse(pdf_url)
+    if parsed_pdf.netloc.lower() == "digital-strategy.ec.europa.eu" and "/printable/pdf" in parsed_pdf.path:
+        return True
+    parsed_page = urllib.parse.urlparse(page_url)
+    return parsed_pdf.netloc.lower() == parsed_page.netloc.lower() and parsed_pdf.path.rstrip("/") == parsed_page.path.rstrip("/")
 
 
 def candidate_from_link(pdf_url: str, source_page_url: str, label: str, seed: SeedRecord, source_kind: str, depth: int) -> Candidate:
