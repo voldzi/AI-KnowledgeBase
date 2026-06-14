@@ -416,7 +416,7 @@ class RagRetrievalService:
         response = AssistantChatResponse(
             response_type=response_type,
             conversation_id=conversation_id,
-            answer=_localized(payload.response_language, "no_precise_source"),
+            answer=_assistant_no_source_message(payload.mode, payload.response_language),
             citations=[],
             confidence=rag_answer.confidence,
             warnings=rag_answer.warnings,
@@ -887,13 +887,18 @@ def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
         tags.extend(str(tag).strip() for tag in context_tags if str(tag).strip())
     return RagQueryFilters(
         document_types=[
-            "project_documentation",
             "directive",
+            "regulation",
             "methodology",
             "policy",
             "procedure",
             "manual",
             "knowledge_base_article",
+            "project_documentation",
+            "meeting_record",
+            "contract",
+            "attachment",
+            "other",
         ],
         only_valid=True,
         classification_max="internal",
@@ -935,6 +940,7 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "open_source": "Otevřít zdroj",
         "ask_followup": "Položit doplňující dotaz",
         "no_precise_source": "Nepodařilo se najít dostatečně přesný a citovatelný postup.",
+        "no_precise_document_source": "Nepodařilo se najít dostatečně přesný a citovatelný zdroj v dokumentech.",
         "service_desk_handoff": "Založit požadavek na Service Desk",
         "followup_owner": "Chcete zjistit, kdo je vlastník systému?",
         "followup_request_text": "Chcete připravit text žádosti?",
@@ -969,6 +975,7 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "open_source": "Open source",
         "ask_followup": "Ask follow-up",
         "no_precise_source": "I could not find a sufficiently precise and citable procedure.",
+        "no_precise_document_source": "I could not find a sufficiently precise and citable document source.",
         "service_desk_handoff": "Create a Service Desk request",
         "followup_owner": "Do you want to identify the system owner?",
         "followup_request_text": "Do you want to draft the request text?",
@@ -982,6 +989,11 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
 
 def _localized(language: ResponseLanguage, key: str) -> str:
     return LOCALIZED_TEXT[language][key]
+
+
+def _assistant_no_source_message(answer_mode: str, language: ResponseLanguage) -> str:
+    key = "no_precise_source" if answer_mode == "it_support_answer" else "no_precise_document_source"
+    return _localized(language, key)
 
 
 def _clarification_questions(

@@ -392,7 +392,17 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
     if filters.only_valid:
         today = datetime.now(UTC).date().isoformat()
         must.append({"key": "status", "match": {"value": "valid"}})
-        must.append({"key": "valid_from", "range": {"lte": today}})
+        must.append(
+            {
+                "min_should": {
+                    "conditions": [
+                        {"key": "valid_from", "range": {"lte": today}},
+                        {"is_empty": {"key": "valid_from"}},
+                    ],
+                    "min_count": 1,
+                }
+            }
+        )
 
     return {"must": must}
 

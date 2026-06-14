@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.service import _employee_answer
+from app.service import _assistant_filters, _employee_answer
 from tests.conftest import make_client
 
 
@@ -196,6 +196,13 @@ def test_assistant_chat_returns_cited_answer_when_context_is_specific() -> None:
     body = response.json()
     assert body["response_type"] == "answer"
     assert body["citations"][0]["chunk_id"] == "chunk_789"
+
+
+def test_assistant_filters_include_pdf_corpus_document_types() -> None:
+    filters = _assistant_filters({})
+
+    assert "regulation" in filters.document_types
+    assert "other" in filters.document_types
 
 
 def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:

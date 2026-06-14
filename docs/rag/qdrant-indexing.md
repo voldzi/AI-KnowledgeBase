@@ -73,7 +73,8 @@ RAG Retrieval builds Qdrant filters from request filters:
 - `classification_max` maps to allowed classifications.
 - `document_types` matches payload `document_type`.
 - `tags` matches payload `tags`.
-- `only_valid=true` requires `status=valid` and `valid_from <= today`.
+- `only_valid=true` requires `status=valid`. When `valid_from` is present it must be
+  less than or equal to today; missing `valid_from` is treated as immediately valid.
 
 ## Collection Bootstrap
 

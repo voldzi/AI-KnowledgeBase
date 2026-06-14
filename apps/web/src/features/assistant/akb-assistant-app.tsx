@@ -291,7 +291,7 @@ export function AkbAssistantApp({ suggestions }: AkbAssistantAppProps) {
           message: trimmed,
           conversation_id: activeThread.conversationId,
           context: nextContext,
-          mode: "it_support_answer",
+          mode: "ask",
           response_language: language
         })
       });
