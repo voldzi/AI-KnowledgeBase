@@ -21,8 +21,8 @@ export default async function DashboardPage() {
       <PageHeader
         title={{ cs: "Provozní přehled", en: "Operational dashboard" }}
         description={{
-          cs: "Řízená dokumentace, ingestion úlohy, připravenost RAG s citacemi a auditní signály v jednom pracovním prostoru.",
-          en: "Controlled documentation, ingestion jobs, citation-backed RAG readiness and audit signals in one workspace."
+          cs: "Přehled dokumentů, zpracování, otevřených úkolů, citací a auditních signálů v jednom pracovním prostoru.",
+          en: "Documents, processing, open tasks, citations and audit signals in one workspace."
         }}
       />
       <DashboardOverview

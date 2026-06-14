@@ -3439,6 +3439,24 @@ button {
   padding: 24px;
 }
 
+.stratos-view-tabs {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  width: 100%;
+}
+
+.stratos-view-tabs-list {
+  min-width: 100%;
+  width: max-content;
+}
+
+.stratos-view-tab {
+  white-space: nowrap;
+}
+
 .tab-list {
   align-items: center;
   display: flex;
@@ -3586,6 +3604,45 @@ button {
 .workflow-rail {
   display: grid;
   gap: 12px;
+}
+
+.version-guidance-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.version-guidance-card {
+  background: #f8fbfb;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+}
+
+.version-guidance-card > span,
+.summary-preview > span,
+.guided-step small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.version-guidance-card strong,
+.summary-preview strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.version-guidance-card p,
+.guided-change p,
+.guided-step p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
 }
 
 .workflow-step {
@@ -3822,6 +3879,67 @@ button {
   gap: 7px;
   grid-column: 1 / -1;
   min-width: 0;
+}
+
+.guided-change {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.guided-change > div:first-child strong {
+  display: block;
+  font-size: 13px;
+}
+
+.summary-preview {
+  background: #f8fbfb;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.guided-steps {
+  display: grid;
+  gap: 10px;
+}
+
+.guided-step {
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  padding: 12px;
+}
+
+.guided-step > span {
+  align-items: center;
+  background: #edf2f4;
+  border-radius: 50%;
+  color: var(--muted);
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.guided-step--active {
+  border-color: #b8dfe2;
+}
+
+.guided-step--done {
+  border-color: #cbe9d8;
+}
+
+.guided-step--done > span {
+  background: #e8f6ef;
+  color: var(--success);
 }
 
 .help-lead {
@@ -4131,6 +4249,10 @@ button {
 
 .form-grid--two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .field {
@@ -4983,7 +5105,9 @@ button {
   .grid--metrics,
   .grid--three,
   .form-grid--two,
+  .form-grid--three,
   .detail-kv-grid,
+  .version-guidance-grid,
   .insight-grid,
   .assistant-suggestions,
   .clarification-grid {

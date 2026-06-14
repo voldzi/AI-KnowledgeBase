@@ -39,8 +39,8 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
         <PageHeader
           title={{ cs: "Detail dokumentu", en: "Document detail" }}
           description={{
-            cs: "Metadata dokumentu, aktuální platnost, historie verzí a navázaný stav ingestion pipeline.",
-            en: "Document metadata, current validity, version history and linked ingestion pipeline state."
+            cs: "Metadata dokumentu, aktuální platnost, historie verzí, zpracování, citace a schvalovací kroky.",
+            en: "Document metadata, current validity, version history, processing, citations and approval steps."
           }}
         />
         <DocumentDetail

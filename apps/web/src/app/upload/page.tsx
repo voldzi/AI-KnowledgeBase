@@ -15,10 +15,10 @@ export default async function UploadPage() {
   return (
     <>
       <PageHeader
-        title={{ cs: "Průvodce nahráním", en: "Upload wizard" }}
+        title={{ cs: "Nahrání nové verze", en: "Upload a new version" }}
         description={{
-          cs: "Ověří soubor, vytvoří podepsanou upload session, uloží zdrojový objekt a zařadí ingestion bez přímého přístupu k databázi, Qdrantu nebo LLM runtime.",
-          en: "Validate a file, create a signed upload session, store the source object and queue ingestion without direct database, Qdrant or LLM runtime access."
+          cs: "Vyberte dokument a originální soubor. AKB soubor ověří, bezpečně uloží, založí verzi a spustí zpracování pro citace.",
+          en: "Choose a document and original file. AKB verifies and stores the file securely, creates a version and starts citation processing."
         }}
       />
       <UploadWizard documents={documents} authorization={authorization} />

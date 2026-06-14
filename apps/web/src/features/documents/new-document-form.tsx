@@ -15,7 +15,7 @@ interface NewDocumentFormProps {
 
 const newDocumentCopy = {
   cs: {
-    title: "Metadata konceptu",
+    title: "Založení dokumentu",
     titleLabel: "Název",
     titlePlaceholder: "Název dokumentu",
     type: "Typ dokumentu",
@@ -23,18 +23,18 @@ const newDocumentCopy = {
     gestorUnit: "Gestorská jednotka",
     tags: "Štítky",
     saving: "Ukládám",
-    save: "Uložit metadata konceptu",
-    registryError: "Registry API vrátilo HTTP",
-    disabled: "Akce je vypnutá, protože Registry API neudělilo document.update.",
+    save: "Založit dokument",
+    registryError: "Založení dokumentu selhalo s HTTP",
+    disabled: "Založení dokumentu není pro tuto relaci povolené.",
     created: "Vytvořeno",
-    continue: "Pokračujte nahráním verze a ingestion.",
+    continue: "Pokračujte nahráním originálního souboru jako první verze.",
     public: "veřejné",
     internal: "interní",
     restricted: "omezené",
     confidential: "důvěrné"
   },
   en: {
-    title: "Draft metadata",
+    title: "Create document",
     titleLabel: "Title",
     titlePlaceholder: "Document title",
     type: "Document type",
@@ -42,11 +42,11 @@ const newDocumentCopy = {
     gestorUnit: "Gestor unit",
     tags: "Tags",
     saving: "Saving",
-    save: "Save draft metadata",
-    registryError: "Registry API returned HTTP",
-    disabled: "Action disabled because Registry API did not grant document.update.",
+    save: "Create document",
+    registryError: "Document creation failed with HTTP",
+    disabled: "Document creation is not allowed for this session.",
     created: "Created",
-    continue: "Continue with upload/version ingestion.",
+    continue: "Continue by uploading the original file as the first version.",
     public: "public",
     internal: "internal",
     restricted: "restricted",
@@ -112,7 +112,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
         </div>
         <div className="field">
           <label htmlFor="tags">{copy.tags}</label>
-          <input id="tags" name="tags" defaultValue="controlled-document,phase02" />
+          <input id="tags" name="tags" defaultValue="controlled-document,akb" />
         </div>
         <StratosButton tone="primary" type="submit" disabled={!authorization.can_update || submitting}>
           <Save size={16} aria-hidden="true" />

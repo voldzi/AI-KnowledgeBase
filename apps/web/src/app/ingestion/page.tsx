@@ -19,8 +19,8 @@ export default async function IngestionPage() {
       <PageHeader
         title={{ cs: "Stav zpracování", en: "Ingestion status" }}
         description={{
-          cs: "Provozní pohled na úlohy ve frontě, běžící úlohy, chyby a varování hlášené Ingestion Service.",
-          en: "Operational view over queued, running, failed and warning states reported by the Ingestion Service."
+          cs: "Sledujte, zda AKB dokument přečetla, připravila citace a jestli je potřeba vyřešit varování nebo chybu.",
+          en: "Track whether AKB read the document, prepared citations and needs a warning or error resolved."
         }}
       />
       <IngestionBoard documents={documents} jobs={jobs} reports={reports} />

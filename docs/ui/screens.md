@@ -35,6 +35,7 @@ Content:
 - current version
 - version history
 - linked ingestion status
+- guided version panel with current state and recommended next step
 
 ## New Document Draft
 
@@ -59,8 +60,8 @@ Content:
 - signed source URI
 - parser profile
 - chunking strategy
-- change summary
-- mock submission state
+- guided change type, impact and next-step selectors that produce `change_summary`
+- upload/process submission state
 
 ## Ingestion Status
 

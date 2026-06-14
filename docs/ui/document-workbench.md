@@ -29,9 +29,11 @@ Implementovano ve web aplikaci:
 - nativni preview nad signed source zobrazuje PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
+- verze zalozka detailu dokumentu obsahuje navodny panel s aktualnim stavem verze, doporucenym dalsim krokem a vysvetlenim, ze nova verze ma vznikat pres originalni soubor a rizene volby zmeny, ne jako volna poznamka,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
 - podepsana upload session na `/api/controlled-document/upload/preflight` a PUT do `/api/controlled-document/upload/sessions/{sessionId}/content`,
 - ulozeni zdrojoveho souboru do sdileneho object-storage volume, ze ktereho Ingestion Service cte `s3://akl-documents/...`,
+- upload formular sklada `change_summary` z rizene volby typu zmeny, dopadu zmeny a doporuceneho dalsiho kroku; uzivatel nepise souhrn zmeny do volneho textu,
 - aplikacni napoveda na `/help`,
 - dokumentace ciloveho workflow a dalsich kroku.
 

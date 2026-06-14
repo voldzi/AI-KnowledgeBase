@@ -17,7 +17,7 @@ interface IngestionBoardProps {
 
 const ingestionCopy = {
   cs: {
-    title: "Ingestion úlohy",
+    title: "Zpracování dokumentů",
     refresh: "Obnovit",
     job: "Úloha",
     document: "Dokument",
@@ -27,20 +27,20 @@ const ingestionCopy = {
     started: "Spuštěno",
     action: "Akce",
     searchLabel: "Hledat úlohy",
-    searchPlaceholder: "Úloha, dokument, stav, profil nebo strategie",
+    searchPlaceholder: "Úloha, dokument, stav nebo způsob čtení",
     all: "Vše",
     clearFilter: "Zrušit filtr",
     closeFilter: "Zavřít filtr",
     filterTitlePrefix: "Filtr",
     noFilterResults: "Nenalezena žádná hodnota.",
     pages: "stran",
-    chunks: "chunků",
+    chunks: "úseků",
     processing: "Zpracovává se",
-    noJobs: "Nenalezena žádná ingestion úloha pro aktuální filtr.",
+    noJobs: "Nenalezena žádná úloha zpracování pro aktuální filtr.",
     cancel: "Zrušit"
   },
   en: {
-    title: "Ingestion jobs",
+    title: "Document processing",
     refresh: "Refresh",
     job: "Job",
     document: "Document",
@@ -57,9 +57,9 @@ const ingestionCopy = {
     filterTitlePrefix: "Filter",
     noFilterResults: "No value found.",
     pages: "pages",
-    chunks: "chunks",
+    chunks: "segments",
     processing: "Processing",
-    noJobs: "No ingestion job matches the current filter.",
+    noJobs: "No processing job matches the current filter.",
     cancel: "Cancel"
   }
 } satisfies Record<AklLanguage, Record<string, string>>;

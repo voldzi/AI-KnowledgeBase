@@ -29,7 +29,7 @@ Phase 04 adds a dual GUI model:
 - Clicking a citation opens the source-context panel.
 - The document action opens the original signed source document through the assistant citation redirect.
 - For PDF sources, the redirect includes the cited page and a search phrase from the citation text so supported PDF viewers can highlight the cited text; exact bbox/text-layer highlighting remains available in the AKB source-context/native preview.
-- Thread sharing is represented in the UI as session-local MVP state until a dedicated backend sharing contract is added.
+- Thread sharing is represented in the UI as session-local working state until a dedicated backend sharing contract is added.
 - The source-context panel shows:
   - document title,
   - version id,

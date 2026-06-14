@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         owner_id: String(body.owner_id ?? context.subjectId).trim(),
         gestor_unit: String(body.gestor_unit ?? "").trim(),
         classification,
-        tags: _csv(String(body.tags ?? "controlled-document,phase02")),
+        tags: _csv(String(body.tags ?? "controlled-document,akb")),
         metadata: {
           source: "web-controlled-document-workflow"
         },

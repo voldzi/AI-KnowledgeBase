@@ -14,8 +14,8 @@ export default async function NewDocumentPage() {
       <PageHeader
         title={{ cs: "Nový koncept dokumentu", en: "New document draft" }}
         description={{
-          cs: "Nejprve vytvoří metadata v registru. Nahrání a ingestion probíhá přes podepsané URI a Ingestion Service.",
-          en: "Create the registry metadata first. Upload and ingestion happen through a signed URI and the Ingestion Service."
+          cs: "Nejdřív založte srozumitelná metadata. Potom nahrajte originální soubor jako první verzi a předejte dokument ke kontrole.",
+          en: "Create clear metadata first. Then upload the original file as the first version and send the document for review."
         }}
       />
       <NewDocumentForm authorization={authorization} />
