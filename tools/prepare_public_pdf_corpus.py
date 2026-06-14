@@ -204,6 +204,16 @@ HOST_CAPS = {
     "odok.gov.cz": 10,
 }
 
+GROUP_CAPS = {
+    "security": 55,
+    "architecture": 35,
+    "digital-government": 35,
+    "data-ai": 30,
+    "audit": 25,
+    "legislation": 25,
+    "reference": 15,
+}
+
 
 @dataclass(frozen=True)
 class SeedRecord:
@@ -285,6 +295,7 @@ def main(argv: list[str] | None = None) -> int:
         "selected_count": len(selected),
         "valid_pdf_count": validation["valid_pdf_count"],
         "downloaded_count": validation["downloaded_count"],
+        "duplicate_pdf_count": validation["duplicate_pdf_count"],
         "errors": validation["errors"],
         "blocking_errors": validation["blocking_errors"],
         "host_distribution": distribution_by_host(selected),
@@ -507,13 +518,22 @@ def fetch(url: str, timeout_seconds: int, max_bytes: int | None = None) -> dict[
             return {
                 "status": response.status,
                 "content_type": response.headers.get("content-type", ""),
-                "content_length": response.headers.get("content-length", ""),
+        "content_length": response.headers.get("content-length", ""),
+        "content_disposition": response.headers.get("content-disposition", ""),
                 "final_url": response.geturl(),
                 "data": data,
                 "error": "",
             }
     except Exception as exc:  # noqa: BLE001 - report network variability, do not fail crawl.
-        return {"status": 0, "content_type": "", "content_length": "", "final_url": url, "data": b"", "error": str(exc)}
+        return {
+            "status": 0,
+            "content_type": "",
+            "content_length": "",
+            "content_disposition": "",
+            "final_url": url,
+            "data": b"",
+            "error": str(exc),
+        }
 
 
 def safe_url(url: str) -> str:
@@ -550,7 +570,18 @@ def extract_page_title(html: str) -> str:
 
 
 def is_generic_pdf_label(label: str) -> bool:
-    return normalize_key(label) in {"stahnout pdf", "ulozit do pdf", "pdf", "download pdf", "print as pdf"}
+    return normalize_key(label) in {
+        "stahnout pdf",
+        "ulozit do pdf",
+        "pdf",
+        "download pdf",
+        "print as pdf",
+        "zde",
+        "zde.",
+        "ke stazeni zde",
+        "dostupna ke stazeni zde",
+        "dostupne ke stazeni zde",
+    }
 
 
 def candidate_from_link(pdf_url: str, source_page_url: str, label: str, seed: SeedRecord, source_kind: str, depth: int) -> Candidate:
@@ -595,7 +626,7 @@ def select_candidates(candidates: list[Candidate], target_count: int, *, diversi
         host = urllib.parse.urlparse(candidate.pdf_url).netloc.lower()
         group = candidate.group
         host_cap = max(HOST_CAPS.get(host, 25), cap_target // 4)
-        group_cap = max(18, cap_target // 3)
+        group_cap = GROUP_CAPS.get(group, max(18, cap_target // 3))
         if host_counts.get(host, 0) >= host_cap:
             continue
         if group_counts.get(group, 0) >= group_cap:
@@ -622,6 +653,8 @@ def validate_and_optionally_download(candidates: list[Candidate], options: Optio
     errors: list[dict[str, str]] = []
     blocking_errors: list[dict[str, str]] = []
     selected: list[Candidate] = []
+    seen_sha256: set[str] = set()
+    duplicate_pdf_count = 0
     valid_pdf_count = 0
     downloaded_count = 0
 
@@ -640,6 +673,10 @@ def validate_and_optionally_download(candidates: list[Candidate], options: Optio
             if len(selected) >= options.target_count:
                 break
             if ok:
+                if candidate.sha256 in seen_sha256:
+                    duplicate_pdf_count += 1
+                    continue
+                seen_sha256.add(candidate.sha256)
                 valid_pdf_count += 1
                 candidate.selected = True
                 selected.append(candidate)
@@ -660,6 +697,7 @@ def validate_and_optionally_download(candidates: list[Candidate], options: Optio
         "selected": selected,
         "valid_pdf_count": valid_pdf_count,
         "downloaded_count": downloaded_count,
+        "duplicate_pdf_count": duplicate_pdf_count,
         "errors": errors,
         "blocking_errors": blocking_errors,
     }
@@ -679,6 +717,7 @@ def fetch_candidate_pdf(candidate: Candidate, options: Options) -> tuple[Candida
         return candidate, None, False, response["error"]
     data = response["data"]
     content_type = response["content_type"]
+    content_disposition = response.get("content_disposition", "")
     final_url = response["final_url"]
     if len(data) > options.max_file_mb * 1024 * 1024:
         return candidate, None, False, f"File exceeds --max-file-mb ({len(data)} bytes)."
@@ -689,6 +728,9 @@ def fetch_candidate_pdf(candidate: Candidate, options: Options) -> tuple[Candida
     candidate.content_type = content_type
     candidate.size_bytes = len(data)
     candidate.sha256 = hashlib.sha256(data).hexdigest()
+    header_title = title_from_content_disposition(content_disposition)
+    if header_title and is_generic_pdf_label(candidate.title):
+        candidate.title = header_title
     candidate.slug = unique_slug(candidate, data[:2048])
     return candidate, data, True, ""
 
@@ -753,6 +795,7 @@ def write_report(report: dict[str, Any], report_path: Path) -> None:
         f"- Valid PDFs: {report['valid_pdf_count']}",
         f"- Downloaded: {report['downloaded_count']}",
         f"- Errors: {len(report['errors'])}",
+        f"- Duplicate PDFs skipped: {report.get('duplicate_pdf_count', 0)}",
         "",
         "## Host Distribution",
         "",
@@ -787,6 +830,7 @@ def print_summary(report: dict[str, Any]) -> None:
                 "selected": report["selected_count"],
                 "valid_pdfs": report["valid_pdf_count"],
                 "downloaded": report["downloaded_count"],
+                "duplicates_skipped": report.get("duplicate_pdf_count", 0),
                 "errors": len(report["errors"]),
                 "report": str(Path(report["imports_root"]).parent / "repo" / "reports" / Path("public_pdf_corpus_prepare_report.json").name)
                 if str(report["imports_root"]).startswith("/srv/")
@@ -950,6 +994,12 @@ def score_candidate(candidate: Candidate) -> int:
         score -= 40
     if "stahnout pdf" == normalize_key(candidate.label) or "ulozit do pdf" == normalize_key(candidate.label):
         score -= 2
+    if normalize_key(candidate.title) in {"zde", "download"}:
+        score -= 20
+    if "nabidka cloud computingu" in searchable:
+        score -= 12
+    if "poptavka" in searchable and "cloud" in searchable:
+        score -= 8
     return score
 
 
@@ -998,6 +1048,18 @@ def title_from_candidate(*, label: str, pdf_url: str, origin_title: str) -> str:
     if filename_title and len(filename_title) > 5:
         return filename_title
     return clean_title(origin_title)
+
+
+def title_from_content_disposition(value: str) -> str:
+    if not value:
+        return ""
+    match = re.search(r"filename\\*=UTF-8''([^;]+)", value, re.IGNORECASE)
+    if match:
+        return clean_title(re.sub(r"\.pdf$", "", urllib.parse.unquote(match.group(1)), flags=re.IGNORECASE))
+    match = re.search(r'filename="?([^";]+)"?', value, re.IGNORECASE)
+    if match:
+        return clean_title(re.sub(r"\.pdf$", "", urllib.parse.unquote(match.group(1)), flags=re.IGNORECASE))
+    return ""
 
 
 def title_from_url(url: str) -> str:
