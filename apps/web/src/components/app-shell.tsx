@@ -504,7 +504,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
                   className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
                   aria-current={activeModule === item.id ? "true" : undefined}
                   onClick={() => {
-                    selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: true });
+                    selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: false });
                   }}
                 >
                   <Icon size={15} aria-hidden="true" />
@@ -589,9 +589,13 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   );
 
   function selectShellModule(moduleId: ShellModuleId, { keepMobileSidebarOpen }: { keepMobileSidebarOpen: boolean }) {
+    const targetHref = moduleRootRoutes[moduleId];
     setActiveModule(moduleId);
     setSidebarCollapsed(false);
     setMobileSidebarOpen(keepMobileSidebarOpen);
+    if (pathname !== targetHref) {
+      router.push(targetHref);
+    }
   }
 }
 
