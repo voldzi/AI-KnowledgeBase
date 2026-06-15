@@ -46,13 +46,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["document_id"],
             ["documents.document_id"],
-            name="fk_document_extractions_document_id_documents",
+            name="fk_doc_ext_document",
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["document_version_id"],
             ["document_versions.document_version_id"],
-            name="fk_document_extractions_document_version_id_document_versions",
+            name="fk_doc_ext_document_version",
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("extraction_id", name="pk_document_extractions"),
@@ -100,7 +100,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["extraction_id"],
             ["document_extractions.extraction_id"],
-            name="fk_document_extraction_feedback_extraction_id_document_extractions",
+            name="fk_doc_ext_feedback_extraction",
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("feedback_id", name="pk_document_extraction_feedback"),
