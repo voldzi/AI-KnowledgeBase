@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { getAklConfig } from "@/lib/api/config";
 
 import "@voldzi/stratos-ui/styles.css";
+import "@voldzi/stratos-ui/tokens.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

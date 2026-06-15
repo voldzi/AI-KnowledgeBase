@@ -11,6 +11,7 @@ Služba neparsuje dokumenty, nevytváří embeddingy, nevolá LLM, neodpovídá 
 - Perzistentni organizacni prirazeni dokumentu: owner, gestor, reviewer, approver, auditor a steward.
 - Document-level access policies.
 - Authorization check API pro frontend, ingestion, RAG, evaluation a governance služby.
+- Perzistence Document AI extraction vysledku a feedbacku.
 - Audit API a interní auditní body pro změny dokumentů a verzí.
 - Health/readiness endpointy a correlation id.
 
@@ -82,6 +83,10 @@ POST   /api/v1/audit/events
 GET    /api/v1/audit/events
 GET    /api/v1/audit/events/{event_id}
 
+POST   /api/v1/document-extractions
+GET    /api/v1/document-extractions/{extraction_id}
+POST   /api/v1/document-extractions/{extraction_id}/feedback
+
 GET    /health
 GET    /ready
 ```
@@ -123,6 +128,15 @@ Pokud při vytvoření dokumentu nejsou policies předané, služba vytvoří de
 - role `reader` může číst a používat dokument pro `rag.query` do klasifikace dokumentu.
 
 Authorization API smí volat service account, admin, document manager, nebo uživatel pro vlastní `subject_id`.
+
+## Document AI Extractions
+
+`document_extractions` a `document_extraction_feedback` jsou genericke
+perzistentni tabulky pro AKB Document AI navrhy. Registry je pouze uklada a
+audituje; retrieval a extrakci provadi RAG Retrieval Service. Idempotence je
+dana kombinaci `tenant_id`, `external_system`, `external_ref`, `document_id`,
+`document_version_id`, `profile` a `profile_version`. Nova verze dokumentu
+oznaci starsi nefinalni vysledky jako `SUPERSEDED`.
 
 ## Audit
 

@@ -1692,6 +1692,171 @@
         }
       ]
     },
+    "/api/v1/document-extractions": {
+      "post": {
+        "summary": "Store Document Extraction",
+        "operationId": "registry_api_store_document_extraction_api_v1_document_extractions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiDocumentExtractionStoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionStoreResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/document-extractions/{extraction_id}": {
+      "get": {
+        "summary": "Get Document Extraction",
+        "operationId": "registry_api_get_document_extraction_api_v1_document_extractions__extraction_id__get",
+        "parameters": [
+          {
+            "name": "extraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Extraction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/document-extractions/{extraction_id}/feedback": {
+      "post": {
+        "summary": "Store Document Extraction Feedback",
+        "operationId": "registry_api_store_document_extraction_feedback_api_v1_document_extractions__extraction_id__feedback_post",
+        "parameters": [
+          {
+            "name": "extraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Extraction Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackStoreResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/ingestion/jobs": {
       "get": {
         "tags": [
@@ -2056,6 +2221,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RagRetrievalServiceRagAnswer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
+    "/api/v1/rag/query-stream": {
+      "post": {
+        "tags": [
+          "RAG Retrieval Service",
+          "rag"
+        ],
+        "summary": "Query Stream",
+        "operationId": "rag_retrieval_service_query_stream_api_v1_rag_query_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagRetrievalServiceRagQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
                 }
               }
             }
@@ -2539,6 +2755,206 @@
         }
       ]
     },
+    "/api/v1/stratos/extractions/profiles": {
+      "get": {
+        "tags": [
+          "RAG Retrieval Service",
+          "stratos-extractions"
+        ],
+        "summary": "Stratos Extraction Profiles",
+        "operationId": "rag_retrieval_service_stratos_extraction_profiles_api_v1_stratos_extractions_profiles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionProfilesResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
+    "/api/v1/stratos/extractions/contracts/propose": {
+      "post": {
+        "tags": [
+          "RAG Retrieval Service",
+          "stratos-extractions"
+        ],
+        "summary": "Propose Contract Extraction",
+        "operationId": "rag_retrieval_service_propose_contract_extraction_api_v1_stratos_extractions_contracts_propose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionProposeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
+    "/api/v1/stratos/extractions/{extraction_id}": {
+      "get": {
+        "tags": [
+          "RAG Retrieval Service",
+          "stratos-extractions"
+        ],
+        "summary": "Get Stratos Extraction",
+        "operationId": "rag_retrieval_service_get_stratos_extraction_api_v1_stratos_extractions__extraction_id__get",
+        "parameters": [
+          {
+            "name": "extraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Extraction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
+    "/api/v1/stratos/extractions/{extraction_id}/feedback": {
+      "post": {
+        "tags": [
+          "RAG Retrieval Service",
+          "stratos-extractions"
+        ],
+        "summary": "Record Stratos Extraction Feedback",
+        "operationId": "rag_retrieval_service_record_stratos_extraction_feedback_api_v1_stratos_extractions__extraction_id__feedback_post",
+        "parameters": [
+          {
+            "name": "extraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Extraction Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionFeedbackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
     "/api/v1/rag/compare-documents": {
       "post": {
         "tags": [
@@ -2553,21 +2969,27 @@
               "schema": {
                 "additionalProperties": true,
                 "type": "object",
-                "title": " "
+                "title": "Payload"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "501": {
-            "description": "Not implemented in this retrieval-only iteration.",
+          "200": {
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Compare Documents Api V1 Rag Compare Documents Post"
                 }
               }
             }
+          },
+          "502": {
+            "description": "Governance service is unavailable."
           },
           "422": {
             "description": "Validation Error",
@@ -2606,21 +3028,27 @@
               "schema": {
                 "additionalProperties": true,
                 "type": "object",
-                "title": " "
+                "title": "Payload"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "501": {
-            "description": "Not implemented in this retrieval-only iteration.",
+          "200": {
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Check Compliance Api V1 Rag Check Compliance Post"
                 }
               }
             }
+          },
+          "502": {
+            "description": "Governance service is unavailable."
           },
           "422": {
             "description": "Validation Error",
@@ -8138,6 +8566,488 @@
         "type": "object",
         "title": "ExternalDocumentCurrentUpdateRequest"
       },
+      "RegistryApiDocumentExtractionStoreRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
+          },
+          "external_ref": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "profile": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Profile Version",
+            "default": "1"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionStatus",
+            "default": "PROPOSED"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/RegistryApiClassification",
+            "default": "internal"
+          },
+          "requested_by": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requested By"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "result": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "profile",
+          "requested_by"
+        ],
+        "title": "DocumentExtractionStoreRequest"
+      },
+      "RegistryApiDocumentExtractionFeedbackCreate": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "ai_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Value"
+          },
+          "final_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Value"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackDecision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "actor": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor"
+          },
+          "source_app": {
+            "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
+          },
+          "source_entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Entity Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "decision",
+          "actor",
+          "source_app",
+          "source_entity_id"
+        ],
+        "title": "DocumentExtractionFeedbackCreate"
+      },
+      "RegistryApiDocumentExtractionStoreResponse": {
+        "properties": {
+          "extraction": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
+          },
+          "created": {
+            "type": "boolean",
+            "title": "Created",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "extraction"
+        ],
+        "title": "DocumentExtractionStoreResponse"
+      },
+      "RegistryApiDocumentExtractionFeedbackResponse": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id"
+          },
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "ai_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Value"
+          },
+          "final_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Value"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackDecision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id"
+          },
+          "source_app": {
+            "type": "string",
+            "title": "Source App"
+          },
+          "source_entity_id": {
+            "type": "string",
+            "title": "Source Entity Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "extraction_id",
+          "tenant_id",
+          "field",
+          "decision",
+          "reason",
+          "actor_id",
+          "source_app",
+          "source_entity_id",
+          "correlation_id",
+          "created_at"
+        ],
+        "title": "DocumentExtractionFeedbackResponse"
+      },
+      "RegistryApiDocumentExtractionResponse": {
+        "properties": {
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "title": "External System"
+          },
+          "external_ref": {
+            "type": "string",
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "title": "Profile Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionStatus"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/RegistryApiClassification"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "result": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "extraction_id",
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "profile",
+          "profile_version",
+          "status",
+          "classification",
+          "requested_by",
+          "correlation_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentExtractionResponse"
+      },
+      "RegistryApiDocumentExtractionStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "RUNNING",
+          "PROPOSED",
+          "PARTIAL",
+          "FAILED",
+          "SUPERSEDED",
+          "ACCEPTED_IN_SOURCE_APP",
+          "REJECTED_IN_SOURCE_APP"
+        ],
+        "title": "DocumentExtractionStatus"
+      },
+      "RegistryApiDocumentExtractionFeedbackDecision": {
+        "type": "string",
+        "enum": [
+          "accepted",
+          "rejected",
+          "edited"
+        ],
+        "title": "DocumentExtractionFeedbackDecision"
+      },
+      "RegistryApiDocumentExtractionFeedbackStoreResponse": {
+        "properties": {
+          "feedback": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackResponse"
+          },
+          "extraction": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback",
+          "extraction"
+        ],
+        "title": "DocumentExtractionFeedbackStoreResponse"
+      },
       "IngestionServiceHTTPValidationError": {
         "properties": {
           "detail": {
@@ -8833,7 +9743,10 @@
           },
           "status": {
             "type": "string",
-            "const": "ephemeral",
+            "enum": [
+              "ephemeral",
+              "persisted"
+            ],
             "title": "Status"
           },
           "messages": {
@@ -9121,6 +10034,561 @@
           "type"
         ],
         "title": "ClarificationQuestion"
+      },
+      "RagRetrievalServiceContractExtractionCitation": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "section_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Section Path"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "quoted_text": {
+            "type": "string",
+            "title": "Quoted Text"
+          },
+          "viewer_url": {
+            "type": "string",
+            "title": "Viewer Url"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_version_id",
+          "chunk_id",
+          "quoted_text",
+          "viewer_url"
+        ],
+        "title": "ContractExtractionCitation"
+      },
+      "RagRetrievalServiceContractExtractionFeedbackRequest": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "ai_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Value"
+          },
+          "final_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Value"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected",
+              "edited"
+            ],
+            "title": "Decision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "actor": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor"
+          },
+          "source_app": {
+            "type": "string",
+            "const": "STRATOS_BUDGET",
+            "title": "Source App",
+            "default": "STRATOS_BUDGET"
+          },
+          "source_entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Entity Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "decision",
+          "actor",
+          "source_entity_id"
+        ],
+        "title": "ContractExtractionFeedbackRequest"
+      },
+      "RagRetrievalServiceContractExtractionFeedbackResponse": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id"
+          },
+          "extraction": {
+            "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "extraction"
+        ],
+        "title": "ContractExtractionFeedbackResponse"
+      },
+      "RagRetrievalServiceContractExtractionProfile": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "title": "Profile Version"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "supported_external_systems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported External Systems"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile",
+          "profile_version",
+          "title",
+          "description",
+          "supported_external_systems",
+          "fields"
+        ],
+        "title": "ContractExtractionProfile"
+      },
+      "RagRetrievalServiceContractExtractionProfilesResponse": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionProfile"
+            },
+            "type": "array",
+            "title": "Profiles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profiles"
+        ],
+        "title": "ContractExtractionProfilesResponse"
+      },
+      "RagRetrievalServiceContractExtractionProposeRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "const": "STRATOS_BUDGET",
+            "title": "External System",
+            "default": "STRATOS_BUDGET"
+          },
+          "external_ref": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Subject Id"
+          },
+          "profile": {
+            "type": "string",
+            "const": "contract_financial_v1",
+            "title": "Profile",
+            "default": "contract_financial_v1"
+          },
+          "profile_version": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Profile Version",
+            "default": "1"
+          },
+          "classification_max": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "restricted",
+              "confidential"
+            ],
+            "title": "Classification Max",
+            "default": "internal"
+          },
+          "context_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Context Tags"
+          },
+          "max_chunks": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Chunks",
+            "default": 12
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "subject_id"
+        ],
+        "title": "ContractExtractionProposeRequest"
+      },
+      "RagRetrievalServiceContractExtractionResponse": {
+        "properties": {
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "title": "External System"
+          },
+          "external_ref": {
+            "type": "string",
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "title": "Profile Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "PROPOSED",
+              "PARTIAL",
+              "FAILED",
+              "SUPERSEDED",
+              "ACCEPTED_IN_SOURCE_APP",
+              "REJECTED_IN_SOURCE_APP"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "restricted",
+              "confidential"
+            ],
+            "title": "Classification"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceContractFieldProposal"
+            },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "source_chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Chunk Ids"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "extraction_id",
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "profile",
+          "profile_version",
+          "status",
+          "classification",
+          "requested_by"
+        ],
+        "title": "ContractExtractionResponse"
+      },
+      "RagRetrievalServiceContractFieldProposal": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "proposed_value": {
+            "title": "Proposed Value"
+          },
+          "normalized_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Value"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "insufficient_source",
+              "conflicting_sources"
+            ],
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "const": "proposed",
+            "title": "Status",
+            "default": "proposed"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionCitation"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "proposed_value",
+          "confidence",
+          "reason",
+          "citation"
+        ],
+        "title": "ContractFieldProposal"
       },
       "RagRetrievalServiceHTTPValidationError": {
         "properties": {

@@ -50,6 +50,18 @@ ViewerMode = Literal["pdf", "markdown", "text", "html", "table", "presentation",
 ResponseLanguage = Literal["cs", "en"]
 AssistantResponseType = Literal["answer", "clarification_needed", "no_answer", "restricted", "handoff_recommended"]
 ClarificationQuestionType = Literal["free_text", "single_choice"]
+ExtractionStatus = Literal[
+    "PENDING",
+    "RUNNING",
+    "PROPOSED",
+    "PARTIAL",
+    "FAILED",
+    "SUPERSEDED",
+    "ACCEPTED_IN_SOURCE_APP",
+    "REJECTED_IN_SOURCE_APP",
+]
+ExtractionFieldStatus = Literal["proposed"]
+ExtractionFeedbackDecision = Literal["accepted", "rejected", "edited"]
 
 
 class RagQueryFilters(BaseModel):
@@ -247,6 +259,104 @@ class AssistantConversationResponse(BaseModel):
     status: Literal["ephemeral", "persisted"]
     messages: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class ContractExtractionProposeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: Literal["STRATOS_BUDGET"] = "STRATOS_BUDGET"
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: str = Field(min_length=1, max_length=80)
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    subject_id: str = Field(min_length=1, max_length=128)
+    profile: Literal["contract_financial_v1"] = "contract_financial_v1"
+    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    classification_max: Classification = "internal"
+    context_tags: list[str] = Field(default_factory=list)
+    max_chunks: int = Field(default=12, ge=1, le=20)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContractExtractionCitation(BaseModel):
+    document_id: str
+    document_version_id: str
+    chunk_id: str
+    page_number: int | None = Field(default=None, ge=1)
+    section_path: list[str] = Field(default_factory=list)
+    section: str | None = None
+    quoted_text: str
+    viewer_url: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ContractFieldProposal(BaseModel):
+    field: str
+    proposed_value: Any
+    normalized_value: Any | None = None
+    unit: str | None = None
+    confidence: Confidence
+    status: ExtractionFieldStatus = "proposed"
+    reason: str
+    citation: ContractExtractionCitation
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ContractExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    proposals: list[ContractFieldProposal] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContractExtractionProfile(BaseModel):
+    profile: str
+    profile_version: str
+    title: str
+    description: str
+    supported_external_systems: list[str]
+    fields: list[str]
+
+
+class ContractExtractionProfilesResponse(BaseModel):
+    profiles: list[ContractExtractionProfile]
+
+
+class ContractExtractionFeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(min_length=1, max_length=160)
+    ai_value: Any | None = None
+    final_value: Any | None = None
+    decision: ExtractionFeedbackDecision
+    reason: str | None = Field(default=None, max_length=2000)
+    actor: str = Field(min_length=1, max_length=128)
+    source_app: Literal["STRATOS_BUDGET"] = "STRATOS_BUDGET"
+    source_entity_id: str = Field(min_length=1, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContractExtractionFeedbackResponse(BaseModel):
+    feedback_id: str
+    extraction: ContractExtractionResponse
 
 
 class HealthResponse(BaseModel):

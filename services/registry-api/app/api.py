@@ -18,6 +18,8 @@ from app.models import (
     Document,
     DocumentAccessPolicy,
     DocumentAssignment,
+    DocumentExtraction,
+    DocumentExtractionFeedback,
     DocumentFile,
     DocumentVersion,
     ExternalDocumentRef,
@@ -48,6 +50,13 @@ from app.schemas import (
     DocumentAssignmentCreate,
     DocumentAssignmentListResponse,
     DocumentAssignmentReplaceRequest,
+    DocumentExtractionFeedbackCreate,
+    DocumentExtractionFeedbackResponse,
+    DocumentExtractionFeedbackStoreResponse,
+    DocumentExtractionResponse,
+    DocumentExtractionStatus,
+    DocumentExtractionStoreRequest,
+    DocumentExtractionStoreResponse,
     DocumentAssignmentRole,
     DocumentCreate,
     DocumentListResponse,
@@ -81,6 +90,14 @@ ACTIVE_TASK_STATUSES = {
     WorkflowTaskStatus.open.value,
     WorkflowTaskStatus.waiting.value,
     WorkflowTaskStatus.blocked.value,
+}
+
+SUPERSEDABLE_EXTRACTION_STATUSES = {
+    DocumentExtractionStatus.pending.value,
+    DocumentExtractionStatus.running.value,
+    DocumentExtractionStatus.proposed.value,
+    DocumentExtractionStatus.partial.value,
+    DocumentExtractionStatus.failed.value,
 }
 
 DEFAULT_ASSIGNMENT_SLA_DAYS = {
@@ -447,6 +464,35 @@ def _get_external_document_ref(db: Session, external_document_id: str) -> Extern
             "External document reference was not found",
         )
     return external_ref
+
+
+def _get_document_extraction(db: Session, extraction_id: str) -> DocumentExtraction:
+    extraction = db.execute(
+        select(DocumentExtraction).where(DocumentExtraction.extraction_id == extraction_id)
+    ).scalar_one_or_none()
+    if extraction is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "document_extraction_not_found",
+            "Document extraction was not found",
+        )
+    return extraction
+
+
+def _require_document_extraction_access(principal: Principal, extraction: DocumentExtraction) -> None:
+    context = context_for_principal(principal)
+    service_roles = {role for role in context.roles if role.startswith("service_")}
+    if (
+        principal.subject_id == extraction.requested_by
+        or {"admin", "document_manager", "stratos_service"} & context.roles
+        or service_roles
+    ):
+        return
+    raise problem(
+        status.HTTP_403_FORBIDDEN,
+        "forbidden",
+        "Only the requester, STRATOS services, admins, document managers, or service roles can access this extraction",
+    )
 
 
 def _external_document_response(
@@ -1126,6 +1172,177 @@ def update_external_document_current(
     _commit_or_conflict(db)
     db.refresh(external_ref)
     return _external_document_response(external_ref, created=False)
+
+
+@router.post(
+    "/document-extractions",
+    response_model=DocumentExtractionStoreResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def store_document_extraction(
+    payload: DocumentExtractionStoreRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentExtractionStoreResponse:
+    require_global_action(principal, Action.rag_query)
+    _get_version(db, payload.document_id, payload.document_version_id)
+
+    existing = db.execute(
+        select(DocumentExtraction).where(
+            DocumentExtraction.tenant_id == payload.tenant_id,
+            DocumentExtraction.external_system == payload.external_system.value,
+            DocumentExtraction.external_ref == payload.external_ref,
+            DocumentExtraction.document_id == payload.document_id,
+            DocumentExtraction.document_version_id == payload.document_version_id,
+            DocumentExtraction.profile == payload.profile,
+            DocumentExtraction.profile_version == payload.profile_version,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return DocumentExtractionStoreResponse(extraction=DocumentExtractionResponse.model_validate(existing), created=False)
+
+    older_extractions = list(
+        db.execute(
+            select(DocumentExtraction).where(
+                DocumentExtraction.tenant_id == payload.tenant_id,
+                DocumentExtraction.external_system == payload.external_system.value,
+                DocumentExtraction.external_ref == payload.external_ref,
+                DocumentExtraction.document_id == payload.document_id,
+                DocumentExtraction.document_version_id != payload.document_version_id,
+                DocumentExtraction.profile == payload.profile,
+                DocumentExtraction.profile_version == payload.profile_version,
+                DocumentExtraction.status.in_(SUPERSEDABLE_EXTRACTION_STATUSES),
+            )
+        ).scalars()
+    )
+    for older in older_extractions:
+        older.status = DocumentExtractionStatus.superseded.value
+
+    extraction = DocumentExtraction(
+        extraction_id=make_id("extract"),
+        tenant_id=payload.tenant_id,
+        external_system=payload.external_system.value,
+        external_ref=payload.external_ref,
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        document_id=payload.document_id,
+        document_version_id=payload.document_version_id,
+        profile=payload.profile,
+        profile_version=payload.profile_version,
+        status=payload.status.value,
+        classification=payload.classification.value,
+        requested_by=payload.requested_by,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        result=payload.result,
+        missing_information=payload.missing_information,
+        warnings=payload.warnings,
+        extraction_metadata=payload.metadata,
+    )
+    db.add(extraction)
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="document_extraction.stored",
+        resource_type="document_extraction",
+        resource_id=extraction.extraction_id,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        metadata={
+            "tenant_id": payload.tenant_id,
+            "external_system": payload.external_system.value,
+            "external_ref": payload.external_ref,
+            "document_id": payload.document_id,
+            "document_version_id": payload.document_version_id,
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "status": payload.status.value,
+            "superseded_extraction_ids": [item.extraction_id for item in older_extractions],
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(extraction)
+    return DocumentExtractionStoreResponse(extraction=DocumentExtractionResponse.model_validate(extraction), created=True)
+
+
+@router.get(
+    "/document-extractions/{extraction_id}",
+    response_model=DocumentExtractionResponse,
+)
+def get_document_extraction(
+    extraction_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentExtractionResponse:
+    extraction = _get_document_extraction(db, extraction_id)
+    _require_document_extraction_access(principal, extraction)
+    return DocumentExtractionResponse.model_validate(extraction)
+
+
+@router.post(
+    "/document-extractions/{extraction_id}/feedback",
+    response_model=DocumentExtractionFeedbackStoreResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def store_document_extraction_feedback(
+    extraction_id: str,
+    payload: DocumentExtractionFeedbackCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentExtractionFeedbackStoreResponse:
+    extraction = _get_document_extraction(db, extraction_id)
+    _require_document_extraction_access(principal, extraction)
+    if payload.source_app.value != extraction.external_system:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "source_app_mismatch",
+            "Feedback source_app must match extraction external_system",
+        )
+
+    feedback = DocumentExtractionFeedback(
+        feedback_id=make_id("extfb"),
+        extraction_id=extraction.extraction_id,
+        tenant_id=extraction.tenant_id,
+        field=payload.field,
+        ai_value=payload.ai_value,
+        final_value=payload.final_value,
+        decision=payload.decision.value,
+        reason=payload.reason,
+        actor_id=payload.actor,
+        source_app=payload.source_app.value,
+        source_entity_id=payload.source_entity_id,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        feedback_metadata=payload.metadata,
+    )
+    db.add(feedback)
+    if payload.decision.value in {"accepted", "edited"}:
+        extraction.status = DocumentExtractionStatus.accepted_in_source_app.value
+    elif payload.decision.value == "rejected":
+        extraction.status = DocumentExtractionStatus.rejected_in_source_app.value
+    extraction.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=payload.actor,
+        event_type="document_extraction.feedback_recorded",
+        resource_type="document_extraction",
+        resource_id=extraction.extraction_id,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        metadata={
+            "tenant_id": extraction.tenant_id,
+            "external_system": extraction.external_system,
+            "external_ref": extraction.external_ref,
+            "field": payload.field,
+            "decision": payload.decision.value,
+            "source_entity_id": payload.source_entity_id,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(feedback)
+    db.refresh(extraction)
+    return DocumentExtractionFeedbackStoreResponse(
+        feedback=DocumentExtractionFeedbackResponse.model_validate(feedback),
+        extraction=DocumentExtractionResponse.model_validate(extraction),
+    )
 
 
 @router.post(

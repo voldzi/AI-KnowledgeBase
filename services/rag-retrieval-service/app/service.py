@@ -9,6 +9,7 @@ from typing import AsyncIterator
 
 from answer_composer.composer import AnswerComposer, StreamEvent
 from app.config import Settings
+from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
 from app.errors import RetrievalError
 from app.llm_client import LLMGatewayClient
 from app.registry_client import RegistryClient
@@ -21,6 +22,11 @@ from app.schemas import (
     AssistantSuggestionsResponse,
     AssistantSuggestedAction,
     ClarificationQuestion,
+    ContractExtractionFeedbackRequest,
+    ContractExtractionFeedbackResponse,
+    ContractExtractionProfilesResponse,
+    ContractExtractionProposeRequest,
+    ContractExtractionResponse,
     RagAnswer,
     RagQueryRequest,
     RagQueryFilters,
@@ -312,6 +318,192 @@ class RagRetrievalService:
             "retriever": await self._retriever.readiness(),
             "llm-gateway": await self._llm_client.readiness(),
         }
+
+    async def extraction_profiles(self) -> ContractExtractionProfilesResponse:
+        return ContractExtractionProfilesResponse(profiles=contract_extraction_profiles())
+
+    async def propose_contract_extraction(
+        self,
+        payload: ContractExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ContractExtractionResponse:
+        query_id = _query_id()
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.started",
+            resource_id=f"{payload.external_system}:{payload.external_ref}:{payload.profile}",
+            metadata={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": payload.document_id,
+                "document_version_id": payload.document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+            },
+            auth_context=auth_context,
+        )
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=_contract_extraction_query(payload),
+                filters=RagQueryFilters(
+                    document_types=["contract", "attachment", "other"],
+                    only_valid=True,
+                    classification_max=payload.classification_max,
+                    tags=payload.context_tags,
+                ),
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        if payload.document_id in run.denied_document_ids:
+            await self._audit_extraction(
+                actor_id=payload.subject_id,
+                event_type="document_extraction.permission_denied",
+                resource_id=payload.document_id,
+                metadata={
+                    "tenant_id": payload.tenant_id,
+                    "external_system": payload.external_system,
+                    "external_ref": payload.external_ref,
+                    "document_version_id": payload.document_version_id,
+                    "profile": payload.profile,
+                },
+                auth_context=auth_context,
+            )
+            raise RetrievalError(
+                "DOCUMENT_ACCESS_DENIED",
+                "The subject is not authorized to extract from this document.",
+                status_code=403,
+                details={"document_id": payload.document_id},
+            )
+
+        chunks = [
+            chunk
+            for chunk in run.response.chunks
+            if chunk.citation.document_id == payload.document_id
+            and chunk.citation.document_version_id == payload.document_version_id
+        ]
+        proposals, missing_information, extraction_warnings = extract_contract_financial_proposals(chunks=chunks)
+        warnings = [*run.response.warnings, *extraction_warnings]
+        if not chunks and "TARGET_DOCUMENT_NOT_RETRIEVED" not in warnings:
+            warnings.append("TARGET_DOCUMENT_NOT_RETRIEVED")
+        status = "PROPOSED" if proposals and not missing_information else "PARTIAL"
+        result = {
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+            "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "query_id": query_id,
+        }
+        stored = await self._registry_client.store_document_extraction(
+            payload={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": payload.document_id,
+                "document_version_id": payload.document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+                "status": status,
+                "classification": payload.classification_max,
+                "requested_by": payload.subject_id,
+                "correlation_id": payload.correlation_id,
+                "result": result,
+                "missing_information": missing_information,
+                "warnings": warnings,
+                "metadata": {
+                    "query_id": query_id,
+                    "context_tags": payload.context_tags,
+                    **payload.metadata,
+                },
+            },
+            auth_context=auth_context,
+        )
+        response = _contract_extraction_response_from_registry(stored.get("extraction", stored))
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.proposed",
+            resource_id=response.extraction_id,
+            metadata={
+                "tenant_id": response.tenant_id,
+                "external_system": response.external_system,
+                "external_ref": response.external_ref,
+                "document_id": response.document_id,
+                "document_version_id": response.document_version_id,
+                "profile": response.profile,
+                "status": response.status,
+                "proposal_count": len(response.proposals),
+                "missing_information": response.missing_information,
+                "warnings": response.warnings,
+            },
+            auth_context=auth_context,
+        )
+        return response
+
+    async def document_extraction(
+        self,
+        extraction_id: str,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ContractExtractionResponse:
+        stored = await self._registry_client.fetch_document_extraction(
+            extraction_id=extraction_id,
+            auth_context=auth_context,
+        )
+        if stored is None:
+            raise RetrievalError(
+                "DOCUMENT_EXTRACTION_NOT_FOUND",
+                "Document extraction was not found.",
+                status_code=404,
+                details={"extraction_id": extraction_id},
+            )
+        return _contract_extraction_response_from_registry(stored)
+
+    async def record_document_extraction_feedback(
+        self,
+        extraction_id: str,
+        payload: ContractExtractionFeedbackRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ContractExtractionFeedbackResponse:
+        stored = await self._registry_client.record_document_extraction_feedback(
+            extraction_id=extraction_id,
+            payload=payload.model_dump(mode="json"),
+            auth_context=auth_context,
+        )
+        if not stored:
+            raise RetrievalError(
+                "DOCUMENT_EXTRACTION_NOT_FOUND",
+                "Document extraction was not found.",
+                status_code=404,
+                details={"extraction_id": extraction_id},
+            )
+        extraction = _contract_extraction_response_from_registry(stored["extraction"])
+        feedback = stored.get("feedback", {})
+        await self._audit_extraction(
+            actor_id=payload.actor,
+            event_type="document_extraction.feedback_recorded",
+            resource_id=extraction_id,
+            metadata={
+                "field": payload.field,
+                "decision": payload.decision,
+                "source_app": payload.source_app,
+                "source_entity_id": payload.source_entity_id,
+                "status": extraction.status,
+            },
+            auth_context=auth_context,
+        )
+        return ContractExtractionFeedbackResponse(
+            feedback_id=str(feedback.get("feedback_id", "")),
+            extraction=extraction,
+        )
 
     async def assistant_chat(
         self,
@@ -775,9 +967,71 @@ class RagRetrievalService:
                 exc.__class__.__name__,
             )
 
+    async def _audit_extraction(
+        self,
+        *,
+        actor_id: str,
+        event_type: str,
+        resource_id: str,
+        metadata: dict[str, object],
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        try:
+            await self._registry_client.write_audit_event(
+                actor_id=actor_id,
+                event_type=event_type,
+                resource_type="document_extraction",
+                resource_id=resource_id,
+                metadata=metadata,
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "document_extraction_audit_failed event_type=%s resource_id=%s reason=%s",
+                event_type,
+                resource_id,
+                exc.__class__.__name__,
+            )
+
 
 def _query_id() -> str:
     return f"query_{uuid.uuid4().hex[:12]}"
+
+
+def _contract_extraction_query(payload: ContractExtractionProposeRequest) -> str:
+    return (
+        "Smlouva contract financial extraction: číslo smlouvy dodavatel objednatel "
+        "cena bez DPH cena s DPH DPH splatnost měsíčně jednorázová plnění "
+        "indexace sankce SLA termín povinnost riziko VZ NEN RP cashflow. "
+        f"External ref: {payload.external_ref}. Entity: {payload.entity_type} {payload.entity_id}."
+    )
+
+
+def _contract_extraction_response_from_registry(payload: dict[str, object]) -> ContractExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    proposals = result_map.get("proposals", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return ContractExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system=str(payload.get("external_system", "")),
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        document_id=str(payload.get("document_id", "")),
+        document_version_id=str(payload.get("document_version_id", "")),
+        profile=str(payload.get("profile", "")),
+        profile_version=str(payload.get("profile_version", "")),
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        proposals=proposals if isinstance(proposals, list) else [],
+        missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
 
 
 def _retrieval_only_answer(

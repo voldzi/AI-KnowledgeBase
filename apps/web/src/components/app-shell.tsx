@@ -17,8 +17,14 @@ import {
   UserRound
 } from "lucide-react";
 
+import {
+  AppSettingsSurface,
+  type SettingsSurfaceMode,
+  type StratosSettingsCoreValue,
+  type StratosSettingsCoreValueKey,
+  type StratosSettingsCoreValues
+} from "@/components/app-settings-surface";
 import { ProjectTopbar } from "@/components/project-topbar";
-import { SettingsModal } from "@/components/settings-modal";
 import {
   StratosAppRail,
   StratosAppShell,
@@ -210,12 +216,25 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsMode, setSettingsMode] = useState<SettingsSurfaceMode>("modal");
+  const [settingsDirty, setSettingsDirty] = useState(false);
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
     name: authMode === "mock" ? "AKB Dev User" : "AKB",
     email: authMode === "mock" ? "dev@akl.local" : undefined,
     initials: authMode === "mock" ? "AD" : "AK",
     roles: []
   }));
+  const [settingsValues, setSettingsValues] = useState<StratosSettingsCoreValues>(() =>
+    createSettingsValues({
+      authModeLabel,
+      language,
+      user: {
+        name: authMode === "mock" ? "AKB Dev User" : "AKB",
+        email: authMode === "mock" ? "dev@akl.local" : undefined,
+        roles: []
+      }
+    })
+  );
 
   useEffect(() => {
     setActiveModule(moduleForPath(pathname));
@@ -253,6 +272,13 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (settingsDirty) {
+      return;
+    }
+    setSettingsValues(createSettingsValues({ authModeLabel, language, user: userProfile }));
+  }, [authModeLabel, language, settingsDirty, userProfile]);
 
   const railItems = [
     { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database },
@@ -392,6 +418,18 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     window.location.assign(withAppBasePath("/api/auth/logout"));
   };
 
+  const handleSettingsValueChange = (key: StratosSettingsCoreValueKey, value: StratosSettingsCoreValue) => {
+    setSettingsValues((current) => ({ ...current, [key]: value }));
+    setSettingsDirty(true);
+  };
+
+  const handleSettingsSave = () => {
+    if (settingsValues.language === "cs" || settingsValues.language === "en") {
+      setLanguage(settingsValues.language);
+    }
+    setSettingsDirty(false);
+  };
+
   if (isEmbeddedPath) {
     return <main className="akb-embed-shell">{children}</main>;
   }
@@ -528,7 +566,20 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             onClose={() => setCommandCenterOpen(false)}
           />
           {settingsOpen ? (
-            <SettingsModal authModeLabel={authModeLabel} language={language} user={userProfile} onClose={() => setSettingsOpen(false)} onLogout={handleLogout} />
+            <AppSettingsSurface
+              apiModeLabel={apiModeLabel}
+              authModeLabel={authModeLabel}
+              dirty={settingsDirty}
+              language={language}
+              mode={settingsMode}
+              onClose={() => setSettingsOpen(false)}
+              onLogout={handleLogout}
+              onModeChange={setSettingsMode}
+              onSave={handleSettingsSave}
+              onValueChange={handleSettingsValueChange}
+              userInitials={userProfile.initials}
+              values={settingsValues}
+            />
           ) : null}
         </>
       }
@@ -581,6 +632,36 @@ function moduleGroupLabel(moduleId: ShellModuleId, copy: Record<string, string>)
     return copy.groupGovernance;
   }
   return copy.groupWorkspace;
+}
+
+function createSettingsValues({
+  authModeLabel,
+  language,
+  user
+}: {
+  authModeLabel: string;
+  language: AklLanguage;
+  user: Pick<AklUserProfile, "name" | "email" | "roles">;
+}): StratosSettingsCoreValues {
+  return {
+    displayName: user.name,
+    email: user.email ?? "",
+    role: user.roles.length > 0 ? user.roles.join(", ") : authModeLabel,
+    language,
+    theme: "system",
+    accent: "teal",
+    highContrast: false,
+    timezone: "Europe/Prague",
+    notifyTimezone: true,
+    weekStart: "monday",
+    timeFormat: "24h",
+    dateFormat: "dd.mm.yyyy",
+    compactMode: false,
+    commandHints: true,
+    flyoutToasts: true,
+    markdown: true,
+    keyboardShortcuts: true
+  };
 }
 
 function navItemToWorkspaceItem(

@@ -778,6 +778,83 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/document-extractions:
+    post:
+      summary: Store Document Extraction
+      operationId: store_document_extraction_api_v1_document_extractions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentExtractionStoreRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentExtractionStoreResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/document-extractions/{extraction_id}:
+    get:
+      summary: Get Document Extraction
+      operationId: get_document_extraction_api_v1_document_extractions__extraction_id__get
+      parameters:
+      - name: extraction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Extraction Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/document-extractions/{extraction_id}/feedback:
+    post:
+      summary: Store Document Extraction Feedback
+      operationId: store_document_extraction_feedback_api_v1_document_extractions__extraction_id__feedback_post
+      parameters:
+      - name: extraction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Extraction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentExtractionFeedbackCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentExtractionFeedbackStoreResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AccessPolicyCreate:
@@ -2276,3 +2353,348 @@ components:
           - type: 'null'
       type: object
       title: ExternalDocumentCurrentUpdateRequest
+    DocumentExtractionStoreRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        external_system:
+          $ref: '#/components/schemas/ExternalSourceSystem'
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+        profile:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Profile
+        profile_version:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Profile Version
+          default: '1'
+        status:
+          $ref: '#/components/schemas/DocumentExtractionStatus'
+          default: PROPOSED
+        classification:
+          $ref: '#/components/schemas/Classification'
+          default: internal
+        requested_by:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Requested By
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        result:
+          additionalProperties: true
+          type: object
+          title: Result
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - profile
+      - requested_by
+      title: DocumentExtractionStoreRequest
+    DocumentExtractionFeedbackCreate:
+      properties:
+        field:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Field
+        ai_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Ai Value
+        final_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Final Value
+        decision:
+          $ref: '#/components/schemas/DocumentExtractionFeedbackDecision'
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        actor:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor
+        source_app:
+          $ref: '#/components/schemas/ExternalSourceSystem'
+        source_entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Entity Id
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - field
+      - decision
+      - actor
+      - source_app
+      - source_entity_id
+      title: DocumentExtractionFeedbackCreate
+    DocumentExtractionStoreResponse:
+      properties:
+        extraction:
+          $ref: '#/components/schemas/DocumentExtractionResponse'
+        created:
+          type: boolean
+          title: Created
+          default: false
+      type: object
+      required:
+      - extraction
+      title: DocumentExtractionStoreResponse
+    DocumentExtractionFeedbackResponse:
+      properties:
+        feedback_id:
+          type: string
+          title: Feedback Id
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        field:
+          type: string
+          title: Field
+        ai_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Ai Value
+        final_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Final Value
+        decision:
+          $ref: '#/components/schemas/DocumentExtractionFeedbackDecision'
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        actor_id:
+          type: string
+          title: Actor Id
+        source_app:
+          type: string
+          title: Source App
+        source_entity_id:
+          type: string
+          title: Source Entity Id
+        correlation_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - feedback_id
+      - extraction_id
+      - tenant_id
+      - field
+      - decision
+      - reason
+      - actor_id
+      - source_app
+      - source_entity_id
+      - correlation_id
+      - created_at
+      title: DocumentExtractionFeedbackResponse
+    DocumentExtractionResponse:
+      properties:
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        external_system:
+          type: string
+          title: External System
+        external_ref:
+          type: string
+          title: External Ref
+        entity_type:
+          type: string
+          title: Entity Type
+        entity_id:
+          type: string
+          title: Entity Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        status:
+          $ref: '#/components/schemas/DocumentExtractionStatus'
+        classification:
+          $ref: '#/components/schemas/Classification'
+        requested_by:
+          type: string
+          title: Requested By
+        correlation_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Correlation Id
+        result:
+          additionalProperties: true
+          type: object
+          title: Result
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - extraction_id
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - profile
+      - profile_version
+      - status
+      - classification
+      - requested_by
+      - correlation_id
+      - created_at
+      - updated_at
+      title: DocumentExtractionResponse
+    DocumentExtractionStatus:
+      type: string
+      enum:
+      - PENDING
+      - RUNNING
+      - PROPOSED
+      - PARTIAL
+      - FAILED
+      - SUPERSEDED
+      - ACCEPTED_IN_SOURCE_APP
+      - REJECTED_IN_SOURCE_APP
+      title: DocumentExtractionStatus
+    DocumentExtractionFeedbackDecision:
+      type: string
+      enum:
+      - accepted
+      - rejected
+      - edited
+      title: DocumentExtractionFeedbackDecision
+    DocumentExtractionFeedbackStoreResponse:
+      properties:
+        feedback:
+          $ref: '#/components/schemas/DocumentExtractionFeedbackResponse'
+        extraction:
+          $ref: '#/components/schemas/DocumentExtractionResponse'
+      type: object
+      required:
+      - feedback
+      - extraction
+      title: DocumentExtractionFeedbackStoreResponse

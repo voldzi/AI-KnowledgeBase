@@ -1,6 +1,6 @@
 # AKL Project Status
 
-Validated: 2026-06-11.
+Validated: 2026-06-15.
 
 Tento dokument je konsolidovany stav praci pro AKB Platform. Slouzi jako jedna startovni pravda pro navazujici vyvoj, PR review a predani mezi Codex vlakny.
 
@@ -11,6 +11,9 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - Registry API vlastni dokumenty, verze, access policies, audit, workflow tasky a organizacni odpovednosti.
 - Ingestion Service zpracovava zdrojove soubory, parser/chunking/OCR profil a indexing report.
 - RAG Retrieval Service vraci citace a source-context.
+- RAG Retrieval Service obsahuje prvni STRATOS Document AI extraction profil
+  `contract_financial_v1` pro Budget smlouvy; vysledky a feedback se
+  perzistuji v Registry API jako navrhy s citacemi.
 - Web aplikace obsahuje Document Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Assistant.
 - Web shell, zakladni UI primitiva a PDF viewer jsou sladene se STRATOS portfoliem pres lokalni `apps/web/src/components/stratos` adapter.
 - Upload/source opening a native preview jsou rozsirene na bezne Office, PDF, obrazkove, textove a strukturovane typy; stare binarni Office formaty `.doc/.xls/.ppt` zustavaji pro plnohodnotnou ingestion/rendering konverzni backlog.
@@ -42,6 +45,14 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
 - Detail dokumentu spousti Governance Service pres web bridge pro compare versions, compliance check a conflict detection; bridge predava extrahovany text ze zdrojoveho objektu pro text/Markdown/CSV a DOCX/XLSX/PPTX, pri nedostupnem nebo nepodporovanem zdroji explicitne spadne na Registry metadata fallback. Vysledek ukazuje result ID, confidence, warnings, citace a zdrojova omezeni.
 - Detail dokumentu ve Viewer tabu otevre auditovany RAG source-context chunk pres `/api/documents/{documentId}/source-context` a zobrazi zdroj, verzi, stranu, sekci a citovatelny text.
 - `/chat` je hlavni AKB Assistant plocha s levym seznamem vlaken, chat transcriptem, composerem, pravym panelem zdroju a MVP share dialogem; dotazy jdou pres assistant API a vlákna jsou zatim klientsky/session stav bez serveroveho seznamu nebo backendoveho sdileni.
+- Budget contract extraction je dostupna pres
+  `/api/v1/stratos/extractions/contracts/propose`. Profil
+  `contract_financial_v1` vraci pouze navrzene hodnoty s citaci
+  (`document_id`, `document_version_id`, `chunk_id`, page/section,
+  `quoted_text`, `viewer_url`), uklada vysledek do Registry
+  `document_extractions` a prijima accepted/rejected/edited feedback pro
+  audit a evaluace. Budget zustava jedinym vlastnikem finalniho zapisu do
+  strukturovanych smluvnich entit.
 - Citace z Knowledge Chat i Employee Assistant jsou sjednocene pres sdileny citation viewer. Otevreni citace zobrazi formatovany source-context a odkaz `Otevrit dokument` otevre v novem tabu primo originalni podepsany zdrojovy soubor pres assistant citation redirect, bez ztraty historie dotazu a bez vystaveni interniho Docker hostname. PDF redirect pridava `#page=N` a search fragment z textu citace; presne bbox/text-layer zvyrazneni zustava v AKB native preview.
 - Detail dokumentu ve Viewer tabu umi pripravit podepsane otevreni zdrojoveho objektu pres `/api/documents/{documentId}/versions/{versionId}/source/open`; content endpoint ověřuje HMAC token a cte pouze objekt z povoleneho storage bucketu. Pokud je otevreny source-context s `page_number`, UI umi z podepsane URL nabidnout page-jump odkaz `#page=N`.
 - Viewer ma nativni preview nad podepsanym zdrojem: PDF pres STRATOS-compatible `StratosPdfViewer` s pdf.js renderem citacni strany, textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX/XLSM jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled, CSV jako tabulku s aktivnim radkem podle source-location a JSON/XML/HTML/XHTML jako textovy nebo HTML preview podle typu.
@@ -76,7 +87,7 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 
 1. Native viewer/rendering: PDF/image/OCR/DOCX/XLSX/XLSM/PPTX/text/Markdown/CSV/JSON/XML/HTML preview existuje nad signed source kontraktem, citace umi deep-link do vieweru na konkretni chunk a PDF umi render citacni strany s textovou vrstvou a bbox overlayem, ale Office preview je stale extrakcni, ne pixel-perfect. Stare binarni Office soubory `.doc/.xls/.ppt` jeste potrebuji konverzni vrstvu.
 2. Governance source fidelity: web bridge predava extrahovany source text pro textove a Office zdroje; PDF a dalsi binarni typy zatim zustavaji metadata fallback, dokud neni k dispozici serverova PDF/OCR textova extrakce.
-3. AI insights: povinnosti, role, lhuty a rizika se uz generuji jako pracovni `proposed` navrhy ze source textu, ale nejsou persistovane v Registry ani napojene na schvalovaci workflow.
+3. AI insights: Budget `contract_financial_v1` ma Registry persistence a feedback loop, ale obecne povinnosti, role, lhuty a rizika z dokumentoveho workbenche jeste nejsou napojene na plnohodnotny approval workflow ani sdileny review panel.
 4. Audit event coverage: audit tab existuje, ale produkcni hodnota zavisi na duslednem zapisu udalosti ze vsech sluzeb.
 5. Multi-step approvals: assignments existuji, ale workflow zatim nema sekvencni approval steps s explicitnim quorum/poradim.
 6. SLA escalation runtime: SLA a eskalacni metadata existuji, ale chybi scheduler/notifikace a automaticke eskalacni udalosti.
@@ -91,7 +102,7 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 
 1. Native viewer/rendering: pokrocila Office fidelity, konverze starsich `.doc/.xls/.ppt`, PDF textovy highlight primo ve vieweru a hlubsi citacni navigace nad existujicim signed source open/page-jump kontraktem.
 2. Governance workflow closure: propojit governance result ID na workflow task closure a audit review.
-3. Insight persistence and approval: pridat Registry model pro `document_insights`, stav `proposed/approved/rejected`, schvaleni vlastnikem a audit.
+3. Insight review UI: postavit sdileny STRATOS review panel pro accept/edit/reject/open citation nad existujici extraction persistence a potom jej rozsirit na obecne document insights.
 4. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
 5. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.
 6. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.

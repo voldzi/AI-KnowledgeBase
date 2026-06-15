@@ -83,6 +83,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/query-stream:
+    post:
+      tags:
+      - rag
+      summary: Query Stream
+      operationId: query_stream_api_v1_rag_query_stream_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RagQueryRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/rag/answer:
     post:
       tags:
@@ -313,6 +337,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/profiles:
+    get:
+      tags:
+      - stratos-extractions
+      summary: Stratos Extraction Profiles
+      operationId: stratos_extraction_profiles_api_v1_stratos_extractions_profiles_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractExtractionProfilesResponse'
+  /api/v1/stratos/extractions/contracts/propose:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Propose Contract Extraction
+      operationId: propose_contract_extraction_api_v1_stratos_extractions_contracts_propose_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractExtractionProposeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/{extraction_id}:
+    get:
+      tags:
+      - stratos-extractions
+      summary: Get Stratos Extraction
+      operationId: get_stratos_extraction_api_v1_stratos_extractions__extraction_id__get
+      parameters:
+      - name: extraction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Extraction Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/{extraction_id}/feedback:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Record Stratos Extraction Feedback
+      operationId: record_stratos_extraction_feedback_api_v1_stratos_extractions__extraction_id__feedback_post
+      parameters:
+      - name: extraction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Extraction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractExtractionFeedbackRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractExtractionFeedbackResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/rag/compare-documents:
     post:
       tags:
@@ -325,14 +445,19 @@ paths:
             schema:
               additionalProperties: true
               type: object
-              title: ' '
+              title: Payload
         required: true
       responses:
-        '501':
-          description: Not implemented in this retrieval-only iteration.
+        '200':
+          description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Compare Documents Api V1 Rag Compare Documents Post
+        '502':
+          description: Governance service is unavailable.
         '422':
           description: Validation Error
           content:
@@ -351,14 +476,19 @@ paths:
             schema:
               additionalProperties: true
               type: object
-              title: ' '
+              title: Payload
         required: true
       responses:
-        '501':
-          description: Not implemented in this retrieval-only iteration.
+        '200':
+          description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Check Compliance Api V1 Rag Check Compliance Post
+        '502':
+          description: Governance service is unavailable.
         '422':
           description: Validation Error
           content:
@@ -584,7 +714,9 @@ components:
           title: Conversation Id
         status:
           type: string
-          const: ephemeral
+          enum:
+          - ephemeral
+          - persisted
           title: Status
         messages:
           items:
@@ -778,6 +910,409 @@ components:
       - question
       - type
       title: ClarificationQuestion
+    ContractExtractionCitation:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        chunk_id:
+          type: string
+          title: Chunk Id
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        section:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Section
+        quoted_text:
+          type: string
+          title: Quoted Text
+        viewer_url:
+          type: string
+          title: Viewer Url
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - chunk_id
+      - quoted_text
+      - viewer_url
+      title: ContractExtractionCitation
+    ContractExtractionFeedbackRequest:
+      properties:
+        field:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Field
+        ai_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Ai Value
+        final_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Final Value
+        decision:
+          type: string
+          enum:
+          - accepted
+          - rejected
+          - edited
+          title: Decision
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        actor:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor
+        source_app:
+          type: string
+          const: STRATOS_BUDGET
+          title: Source App
+          default: STRATOS_BUDGET
+        source_entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Entity Id
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - field
+      - decision
+      - actor
+      - source_entity_id
+      title: ContractExtractionFeedbackRequest
+    ContractExtractionFeedbackResponse:
+      properties:
+        feedback_id:
+          type: string
+          title: Feedback Id
+        extraction:
+          $ref: '#/components/schemas/ContractExtractionResponse'
+      type: object
+      required:
+      - feedback_id
+      - extraction
+      title: ContractExtractionFeedbackResponse
+    ContractExtractionProfile:
+      properties:
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        title:
+          type: string
+          title: Title
+        description:
+          type: string
+          title: Description
+        supported_external_systems:
+          items:
+            type: string
+          type: array
+          title: Supported External Systems
+        fields:
+          items:
+            type: string
+          type: array
+          title: Fields
+      type: object
+      required:
+      - profile
+      - profile_version
+      - title
+      - description
+      - supported_external_systems
+      - fields
+      title: ContractExtractionProfile
+    ContractExtractionProfilesResponse:
+      properties:
+        profiles:
+          items:
+            $ref: '#/components/schemas/ContractExtractionProfile'
+          type: array
+          title: Profiles
+      type: object
+      required:
+      - profiles
+      title: ContractExtractionProfilesResponse
+    ContractExtractionProposeRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_BUDGET
+          title: External System
+          default: STRATOS_BUDGET
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        profile:
+          type: string
+          const: contract_financial_v1
+          title: Profile
+          default: contract_financial_v1
+        profile_version:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Profile Version
+          default: '1'
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        context_tags:
+          items:
+            type: string
+          type: array
+          title: Context Tags
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 12
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - subject_id
+      title: ContractExtractionProposeRequest
+    ContractExtractionResponse:
+      properties:
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        external_system:
+          type: string
+          title: External System
+        external_ref:
+          type: string
+          title: External Ref
+        entity_type:
+          type: string
+          title: Entity Type
+        entity_id:
+          type: string
+          title: Entity Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - PROPOSED
+          - PARTIAL
+          - FAILED
+          - SUPERSEDED
+          - ACCEPTED_IN_SOURCE_APP
+          - REJECTED_IN_SOURCE_APP
+          title: Status
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        requested_by:
+          type: string
+          title: Requested By
+        proposals:
+          items:
+            $ref: '#/components/schemas/ContractFieldProposal'
+          type: array
+          title: Proposals
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Source Chunk Ids
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - extraction_id
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - profile
+      - profile_version
+      - status
+      - classification
+      - requested_by
+      title: ContractExtractionResponse
+    ContractFieldProposal:
+      properties:
+        field:
+          type: string
+          title: Field
+        proposed_value:
+          title: Proposed Value
+        normalized_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Normalized Value
+        unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        status:
+          type: string
+          const: proposed
+          title: Status
+          default: proposed
+        reason:
+          type: string
+          title: Reason
+        citation:
+          $ref: '#/components/schemas/ContractExtractionCitation'
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - field
+      - proposed_value
+      - confidence
+      - reason
+      - citation
+      title: ContractFieldProposal
     HTTPValidationError:
       properties:
         detail:

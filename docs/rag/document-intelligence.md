@@ -24,6 +24,11 @@ Document Intelligence is the Phase 03 layer that turns ingested documents into s
 - RAG exposes:
   - `GET /api/v1/chunks/{chunk_id}/source-context`
   - `GET /api/v1/citations/{chunk_id}/open`
+- RAG exposes STRATOS extraction endpoints for Budget contract proposals:
+  - `GET /api/v1/stratos/extractions/profiles`
+  - `POST /api/v1/stratos/extractions/contracts/propose`
+  - `GET /api/v1/stratos/extractions/{extraction_id}`
+  - `POST /api/v1/stratos/extractions/{extraction_id}/feedback`
 - Citation opening is audited as `citation.opened`.
 - Chunk opening is audited as `chunk.opened`.
 
@@ -171,9 +176,33 @@ The target insight shape is:
 
 AI-produced insights must start as `proposed`; a human must accept or reject them before they become governed knowledge.
 
+## STRATOS Contract Extraction
+
+`contract_financial_v1` is the first controlled extraction profile for Budget &
+Contract. It extracts proposed field values only when an authorized chunk
+contains citeable evidence. Each proposal includes:
+
+- `field`, `proposed_value`, `normalized_value`, `unit`, `confidence`,
+  `status: "proposed"` and a reason,
+- citation with `document_id`, `document_version_id`, `chunk_id`, page/section
+  where available, `quoted_text`, `viewer_url`, and warnings,
+- extraction-level `missing_information`, `warnings`, `source_chunk_ids` and
+  status (`PROPOSED`, `PARTIAL`, `SUPERSEDED`, `ACCEPTED_IN_SOURCE_APP`,
+  `REJECTED_IN_SOURCE_APP`, etc.).
+
+Registry API persists extraction results in `document_extractions` and feedback
+in `document_extraction_feedback` (Alembic migration `0007`). The idempotency
+key is tenant-aware and includes the external app identity, document/version and
+profile. A new document version supersedes older non-final extraction results.
+
+AKB owns document AI extraction and audit. Budget owns final structured
+entities and is the only system allowed to write Budget contract tables after
+human confirmation. Budget must not store AKB binaries, extracted full text,
+chunks, embeddings, prompts, or second-source AI result copies.
+
 ## Next Steps
 
-- Persist insights in a dedicated service/table owned by the appropriate service boundary.
+- Add shared STRATOS review UI for accept/edit/reject/open citation workflows.
 - Add extraction jobs for obligations, risks, roles, deadlines, FAQ, glossary terms, and controls.
 - Add conflict and version comparison workflows.
 - Add exact source rendering for PDF coordinates, Office previews, tables, slides, and OCR bounding boxes.

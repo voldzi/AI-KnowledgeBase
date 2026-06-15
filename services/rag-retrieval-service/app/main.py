@@ -29,6 +29,11 @@ from app.schemas import (
     AssistantChatResponse,
     AssistantConversationResponse,
     AssistantSuggestionsResponse,
+    ContractExtractionFeedbackRequest,
+    ContractExtractionFeedbackResponse,
+    ContractExtractionProfilesResponse,
+    ContractExtractionProposeRequest,
+    ContractExtractionResponse,
     HealthResponse,
     RagAnswer,
     RagQueryRequest,
@@ -240,6 +245,71 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def assistant_conversation(conversation_id: str, request: Request) -> AssistantConversationResponse:
         auth_context = _guard_request(request)
         return await _service(request).assistant_conversation(conversation_id, auth_context=auth_context)
+
+    @app.get(
+        "/api/v1/stratos/extractions/profiles",
+        response_model=ContractExtractionProfilesResponse,
+        tags=["stratos-extractions"],
+    )
+    async def stratos_extraction_profiles(request: Request) -> ContractExtractionProfilesResponse:
+        _guard_request(request)
+        return await _service(request).extraction_profiles()
+
+    @app.post(
+        "/api/v1/stratos/extractions/contracts/propose",
+        response_model=ContractExtractionResponse,
+        tags=["stratos-extractions"],
+    )
+    async def propose_contract_extraction(
+        payload: ContractExtractionProposeRequest,
+        request: Request,
+    ) -> ContractExtractionResponse:
+        auth_context = _guard_request(request)
+        logger.info(
+            "stratos_contract_extraction_requested subject_id=%s tenant_id=%s external_system=%s "
+            "document_id=%s document_version_id=%s profile=%s content_logged=false",
+            payload.subject_id,
+            payload.tenant_id,
+            payload.external_system,
+            payload.document_id,
+            payload.document_version_id,
+            payload.profile,
+        )
+        return await _service(request).propose_contract_extraction(payload, auth_context=auth_context)
+
+    @app.get(
+        "/api/v1/stratos/extractions/{extraction_id}",
+        response_model=ContractExtractionResponse,
+        tags=["stratos-extractions"],
+    )
+    async def get_stratos_extraction(extraction_id: str, request: Request) -> ContractExtractionResponse:
+        auth_context = _guard_request(request)
+        return await _service(request).document_extraction(extraction_id, auth_context=auth_context)
+
+    @app.post(
+        "/api/v1/stratos/extractions/{extraction_id}/feedback",
+        response_model=ContractExtractionFeedbackResponse,
+        tags=["stratos-extractions"],
+    )
+    async def record_stratos_extraction_feedback(
+        extraction_id: str,
+        payload: ContractExtractionFeedbackRequest,
+        request: Request,
+    ) -> ContractExtractionFeedbackResponse:
+        auth_context = _guard_request(request)
+        logger.info(
+            "stratos_contract_extraction_feedback_received extraction_id=%s field=%s decision=%s "
+            "source_app=%s content_logged=false",
+            extraction_id,
+            payload.field,
+            payload.decision,
+            payload.source_app,
+        )
+        return await _service(request).record_document_extraction_feedback(
+            extraction_id,
+            payload,
+            auth_context=auth_context,
+        )
 
     @app.post(
         "/api/v1/rag/compare-documents",

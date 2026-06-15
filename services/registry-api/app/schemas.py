@@ -46,6 +46,23 @@ class ExternalSourceSystem(str, Enum):
     stratos_platform = "STRATOS_PLATFORM"
 
 
+class DocumentExtractionStatus(str, Enum):
+    pending = "PENDING"
+    running = "RUNNING"
+    proposed = "PROPOSED"
+    partial = "PARTIAL"
+    failed = "FAILED"
+    superseded = "SUPERSEDED"
+    accepted_in_source_app = "ACCEPTED_IN_SOURCE_APP"
+    rejected_in_source_app = "REJECTED_IN_SOURCE_APP"
+
+
+class DocumentExtractionFeedbackDecision(str, Enum):
+    accepted = "accepted"
+    rejected = "rejected"
+    edited = "edited"
+
+
 class SourceLocationKind(str, Enum):
     url = "url"
     uploaded_file = "uploaded_file"
@@ -334,6 +351,93 @@ class ExternalDocumentResponse(BaseModel):
     external_document: ExternalDocumentRefResponse
     document: DocumentResponse
     created: bool = False
+
+
+class DocumentExtractionStoreRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: ExternalSourceSystem
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: str = Field(min_length=1, max_length=80)
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    profile: str = Field(min_length=1, max_length=80)
+    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    status: DocumentExtractionStatus = DocumentExtractionStatus.proposed
+    classification: Classification = Classification.internal
+    requested_by: str = Field(min_length=1, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    result: dict[str, Any] = Field(default_factory=dict)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentExtractionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: DocumentExtractionStatus
+    classification: Classification
+    requested_by: str
+    correlation_id: str | None
+    result: dict[str, Any] = Field(default_factory=dict)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="extraction_metadata")
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentExtractionStoreResponse(BaseModel):
+    extraction: DocumentExtractionResponse
+    created: bool = False
+
+
+class DocumentExtractionFeedbackCreate(BaseModel):
+    field: str = Field(min_length=1, max_length=160)
+    ai_value: Any | None = None
+    final_value: Any | None = None
+    decision: DocumentExtractionFeedbackDecision
+    reason: str | None = Field(default=None, max_length=2000)
+    actor: str = Field(min_length=1, max_length=128)
+    source_app: ExternalSourceSystem
+    source_entity_id: str = Field(min_length=1, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentExtractionFeedbackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    feedback_id: str
+    extraction_id: str
+    tenant_id: str
+    field: str
+    ai_value: Any | None = None
+    final_value: Any | None = None
+    decision: DocumentExtractionFeedbackDecision
+    reason: str | None
+    actor_id: str
+    source_app: str
+    source_entity_id: str
+    correlation_id: str | None
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="feedback_metadata")
+    created_at: datetime
+
+
+class DocumentExtractionFeedbackStoreResponse(BaseModel):
+    feedback: DocumentExtractionFeedbackResponse
+    extraction: DocumentExtractionResponse
 
 
 class DocumentFileCreate(BaseModel):

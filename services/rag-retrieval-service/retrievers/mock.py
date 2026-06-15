@@ -123,6 +123,39 @@ def _to_retrieved_chunk(
 def _mock_chunks() -> list[dict[str, Any]]:
     return [
         {
+            "chunk_id": "chunk_contract_1",
+            "text": (
+                "Smlouva č.: 256-2022-S. Dodavatel: AUTOCONT a.s. Objednatel: Město Železná Lhota. "
+                "Datum podpisu: 1. 6. 2026. Účinnost od: 1. 7. 2026. "
+                "Cena bez DPH činí 1 200 000 Kč, cena včetně DPH činí 1 452 000 Kč. DPH 21 %. "
+                "Splatnost faktur je 30 dnů od doručení. Měsíčně bude hrazen paušál 100 000 Kč. "
+                "Smluvní pokuta za prodlení je 0,05 % denně. SLA dostupnost služby 99,5 %. "
+                "VZ: NEN-2026-001. RP: IT-2026-04."
+            ),
+            "payload": {
+                "document_id": "doc_contract",
+                "document_version_id": "ver_contract_1",
+                "document_title": "Smlouva 256-2022-S - Zajištění provozu služeb",
+                "version_label": "1.0",
+                "document_type": "contract",
+                "classification": "internal",
+                "status": "valid",
+                "tags": ["budget-contract:contract-uuid", "stratos_budget"],
+                "page_number": 2,
+                "section_path": ["Smluvní strany", "Cena a platební podmínky"],
+                "article_number": "3",
+                "paragraph_number": "1",
+                "source_file_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
+                "source_file_name": "256-2022-S.pdf",
+                "source_mime_type": "application/pdf",
+                "source_size_bytes": 4096,
+                "source_sha256": "sha256:contract-mock",
+                "section_title": "Cena a platební podmínky",
+                "char_start": 0,
+                "char_end": 650,
+            },
+        },
+        {
             "chunk_id": "chunk_789",
             "text": (
                 "Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu. "

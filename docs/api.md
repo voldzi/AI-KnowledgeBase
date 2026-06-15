@@ -18,7 +18,7 @@ AKB exposes several REST surfaces:
 | AKB web/API bridge | `/api/...` under the web app, `/akb/api/...` in production base-path deployment | Browser-safe bridge for AKB UI, assistant, source opening, upload, auth, workflow, and document viewer flows. |
 | Registry API | `/api/v1` | Documents, versions, assignments, external document refs, authz, workflow tasks, audit. |
 | Ingestion Service | `/api/v1` | Ingestion jobs, reports, cancellation, reindex. |
-| RAG Retrieval Service | `/api/v1` | Retrieval, answering, source context, citation opening, assistant APIs. |
+| RAG Retrieval Service | `/api/v1` | Retrieval, answering, source context, citation opening, assistant APIs, STRATOS extraction proposal API. |
 | LLM Gateway | `/api/v1` | Model routing, model management, chat completions, embeddings. |
 | Evaluation Service | `/api/v1` | Evaluation datasets, runs, reports. |
 | Governance Service | `/api/v1` | Version comparison, compliance, conflicts, KB drafts, validity alerts. |
@@ -75,6 +75,10 @@ Primary references:
 - `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`
 - `openapi/openapi.json`
+
+Budget & Contract uses `contract_financial_v1` through RAG Retrieval Service
+STRATOS extraction endpoints. AKB returns cited proposed values only; Budget
+owns human confirmation and final writes to its structured contract model.
 
 ## Client Generation
 

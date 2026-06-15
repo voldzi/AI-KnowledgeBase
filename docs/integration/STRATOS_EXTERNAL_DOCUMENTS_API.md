@@ -12,6 +12,9 @@ Implementovaná část:
 - audit vytvoření externí reference,
 - aktualizace aktuální verze, souboru a ingestion stavu externí reference
   po potvrzení uploadu,
+- řízená Budget contract extraction vrstva `contract_financial_v1`: návrhy
+  strukturovaných smluvních parametrů s citacemi, persistence výsledku a
+  feedback accepted/rejected/edited,
 - AKB web/API bridge pro sdílené STRATOS komponenty: picker search,
   upload preflight/session/content/confirm, vytvoření verze, spuštění
   ingestion jobu, ingestion status, retry ingestion, canonical open URL,
@@ -19,7 +22,7 @@ Implementovaná část:
 
 Navazující části budou doplněné v dalších fázích:
 
-- extrakce insightů,
+- další extraction profily a UI review panel nad sdílenými komponentami,
 - service-to-service endpointy pro by-ref, external-document search a
   external-document scoped ingestion status nad `external_document_id`.
 
@@ -223,6 +226,133 @@ Endpoint ověřuje oprávnění `document_ingest`, validuje, že verze a soubor 
 ke stejnému AKB dokumentu, zapisuje audit událost
 `external_document.current_updated` a vrací stejný tvar jako detail externího
 dokumentu.
+
+### Návrh strukturovaných smluvních parametrů pro Budget
+
+```http
+POST /api/v1/stratos/extractions/contracts/propose
+```
+
+Tento endpoint patří do RAG Retrieval Service. Budget jej volá server-side přes
+STRATOS adapter po tom, co má dokument v AKB, zná `document_id` a
+`document_version_id`, a chce uživateli nabídnout předvyplnění smlouvy.
+
+Payload:
+
+```json
+{
+  "tenant_id": "default",
+  "external_system": "STRATOS_BUDGET",
+  "external_ref": "contract:256-2022-S:main",
+  "entity_type": "Contract",
+  "entity_id": "contract-uuid",
+  "document_id": "doc_...",
+  "document_version_id": "ver_...",
+  "subject_id": "user-uuid",
+  "profile": "contract_financial_v1",
+  "profile_version": "1",
+  "classification_max": "internal",
+  "context_tags": ["budget-contract:contract-uuid"],
+  "max_chunks": 12,
+  "correlation_id": "corr_..."
+}
+```
+
+Odpověď:
+
+```json
+{
+  "extraction_id": "extract_...",
+  "tenant_id": "default",
+  "external_system": "STRATOS_BUDGET",
+  "external_ref": "contract:256-2022-S:main",
+  "entity_type": "Contract",
+  "entity_id": "contract-uuid",
+  "document_id": "doc_...",
+  "document_version_id": "ver_...",
+  "profile": "contract_financial_v1",
+  "profile_version": "1",
+  "status": "PROPOSED",
+  "classification": "internal",
+  "requested_by": "user-uuid",
+  "proposals": [
+    {
+      "field": "contract_number",
+      "proposed_value": "256-2022-S",
+      "normalized_value": "256-2022-S",
+      "unit": null,
+      "confidence": "high",
+      "status": "proposed",
+      "reason": "Explicit contract number label was found in the cited source.",
+      "citation": {
+        "document_id": "doc_...",
+        "document_version_id": "ver_...",
+        "chunk_id": "chunk_...",
+        "page_number": 2,
+        "section_path": ["Cena a platební podmínky"],
+        "quoted_text": "Smlouva č.: 256-2022-S.",
+        "viewer_url": "/akb/documents/doc_...?tab=viewer&chunk_id=chunk_...#page=2",
+        "warnings": []
+      },
+      "warnings": []
+    }
+  ],
+  "missing_information": [],
+  "warnings": [],
+  "source_chunk_ids": ["chunk_..."]
+}
+```
+
+Podporovaná pole profilu `contract_financial_v1` zahrnují:
+
+- `contract_number`, `title`, `supplier_name`, `customer_name`,
+- podpis/účinnost/platnost,
+- částky bez/s DPH, DPH, měnu,
+- splatnost, frekvenci plateb, paušály, jednorázové platby a payment schedule,
+- indexaci, sankce, SLA, termíny, povinnosti, rizika,
+- VZ/NEN a kandidáty pro RP/cashflow.
+
+Pokud AKB nenajde citovatelný zdroj, vrátí `PARTIAL` s `missing_information`
+nebo `INSUFFICIENT_CITABLE_CONTRACT_EVIDENCE`. Hodnoty bez citace se nevrací.
+
+### Načtení výsledku extrakce
+
+```http
+GET /api/v1/stratos/extractions/{extraction_id}
+```
+
+Vrací stejný tvar jako návrh. Opakované `propose` se stejným
+`tenant_id`, `external_system`, `external_ref`, `document_id`,
+`document_version_id`, `profile` a `profile_version` vrátí stejný uložený
+výsledek. Nová verze dokumentu označí starší nefinální výsledek jako
+`SUPERSEDED`.
+
+### Feedback z Budgetu
+
+```http
+POST /api/v1/stratos/extractions/{extraction_id}/feedback
+```
+
+Budget posílá feedback až po akci autorizovaného uživatele. Payload:
+
+```json
+{
+  "field": "contract_number",
+  "ai_value": "256-2022-S",
+  "final_value": "256/2022/S",
+  "decision": "edited",
+  "reason": "Budget canonical format",
+  "actor": "budget-approver",
+  "source_app": "STRATOS_BUDGET",
+  "source_entity_id": "contract-uuid",
+  "correlation_id": "corr_..."
+}
+```
+
+`decision` je `accepted`, `rejected` nebo `edited`. AKB tento feedback ukládá
+pro audit, měření přesnosti polí a budoucí eval dataset. Budget je jediný
+vlastník zápisu do `Contract`, `ContractLine`, `ContractPaymentRule`,
+`ContractCashflowPlan`, RP a VZ/NEN struktur.
 
 ## Povolené externí systémy
 
