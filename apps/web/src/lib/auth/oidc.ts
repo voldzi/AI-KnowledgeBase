@@ -104,6 +104,21 @@ export function contextFromOidcSession(session: OidcSession): ApiRequestContext 
   };
 }
 
+export function contextFromOidcAccessToken(accessToken: string): ApiRequestContext {
+  const claims = decodeJwtPayload(accessToken);
+  const subjectId = stringClaim(claims.sub) ?? stringClaim(claims.preferred_username);
+  if (!subjectId) {
+    throw new Error("OIDC bearer token does not contain a subject.");
+  }
+
+  return {
+    subjectId,
+    roles: extractRoles(claims),
+    groups: stringArrayClaim(claims.groups),
+    accessToken
+  };
+}
+
 export function createState(returnTo: string | null): string {
   const nonce = crypto.randomBytes(18).toString("base64url");
   return Buffer.from(JSON.stringify({ nonce, returnTo: returnTo || "/" }), "utf8").toString("base64url");

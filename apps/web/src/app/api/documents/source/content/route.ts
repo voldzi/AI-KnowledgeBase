@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { withAppBasePath } from "@/lib/app-url";
 import {
   readSourceObject,
@@ -58,25 +58,27 @@ export async function GET(request: NextRequest) {
     const token = request.nextUrl.searchParams.get("token") ?? "";
     const payload = verifySourceDownloadToken(token);
     const source = await readSourceObject(payload);
-    const clients = getServerApiClients();
-    const context = await getServerRequestContext();
-    void clients.registry.createAuditEvent(
-      {
-        actor_id: context.subjectId,
-        event_type: "source.opened",
-        resource_type: "document_version",
-        resource_id: payload.document_version_id,
-        severity: "info",
-        metadata: {
-          document_id: payload.document_id,
-          document_version_id: payload.document_version_id,
-          source_open_id: payload.source_open_id,
-          source_file_uri: payload.source_file_uri,
-          sha256: source.sha256
-        }
-      },
-      context
-    ).catch(() => undefined);
+    const context = await getOptionalServerRequestContext();
+    if (context) {
+      const clients = getServerApiClients();
+      void clients.registry.createAuditEvent(
+        {
+          actor_id: context.subjectId,
+          event_type: "source.opened",
+          resource_type: "document_version",
+          resource_id: payload.document_version_id,
+          severity: "info",
+          metadata: {
+            document_id: payload.document_id,
+            document_version_id: payload.document_version_id,
+            source_open_id: payload.source_open_id,
+            source_file_uri: payload.source_file_uri,
+            sha256: source.sha256
+          }
+        },
+        context
+      ).catch(() => undefined);
+    }
     const body = source.bytes.buffer.slice(
       source.bytes.byteOffset,
       source.bytes.byteOffset + source.bytes.byteLength

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { createIngestionRequest, latestVersion, mapIngestionStatus } from "@/lib/stratos/document-ai";
 import { ApiClientError } from "@/lib/types";
 
@@ -19,7 +19,7 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const requestContext = await getServerRequestContext();
+    const requestContext = await getServerRequestContextForRequest(request);
     const clients = getServerApiClients();
     const versions = await clients.registry.listDocumentVersions(documentId, requestContext);
     const version = latestVersion(versions);

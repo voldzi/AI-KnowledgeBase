@@ -117,6 +117,9 @@ Required behavior:
 - open by `documentId` and optional `documentVersionId`,
 - support citation, chunk, and page jumps,
 - open source/PDF preview through AKB authorized endpoints,
+- request source/PDF content through
+  `/akb/api/stratos/documents/{documentId}/source-open?version_id=...`, never
+  the internal document workflow endpoint,
 - do not pass binary content to ProjectFlow/Budget backends,
 - show document title, version, ingestion status, classification, and owner,
 - let AKB enforce permissions and audit source/citation opening.
@@ -224,14 +227,16 @@ POST /akb/api/stratos/upload/preflight
 PUT  /akb/api/stratos/upload/sessions/{upload_session_id}/content
 POST /akb/api/stratos/upload/sessions/{upload_session_id}/confirm
 GET  /akb/api/stratos/documents/{document_id}/open-url
+POST /akb/api/stratos/documents/{document_id}/source-open?version_id=...
 GET  /akb/api/stratos/documents/{document_id}/ingestion-status
 POST /akb/api/stratos/documents/{document_id}/retry-ingestion
 GET  /akb/api/stratos/citations/{chunk_id}/open-url
 GET  /akb/embed/documents/{document_id}
 ```
 
-The bridge uses the active AKB web session/OIDC context, never exposes internal
-storage credentials, and returns only metadata plus short-lived AKB URLs/tokens.
+The bridge uses the active AKB web session/OIDC context, or the current bearer
+token propagated by the STRATOS host application, never exposes internal storage
+credentials, and returns only metadata plus short-lived AKB URLs/tokens.
 
 ## ProjectFlow Context
 

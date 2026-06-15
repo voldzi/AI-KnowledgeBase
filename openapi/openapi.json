@@ -5345,6 +5345,66 @@
         }
       }
     },
+    "/api/stratos/documents/{documentId}/source-open": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "post": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "POST /api/stratos/documents/{documentId}/source-open",
+        "operationId": "web_post_api_stratos_documents_documentId_source_open",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/stratos/documents/search": {
       "servers": [
         {

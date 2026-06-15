@@ -57,7 +57,10 @@ The browser uses AKB web/API bridge routes only. It must not call:
 - Keycloak Admin API.
 
 Source preview and document viewer flows use AKB-authorized endpoints and
-short-lived signed source tokens where needed.
+short-lived signed source tokens where needed. Host STRATOS applications may
+propagate the current OIDC bearer token to AKB bridge routes; AKB forwards that
+token to backend services for authorization and never exposes persistent storage
+credentials to the browser.
 
 ## Audit
 

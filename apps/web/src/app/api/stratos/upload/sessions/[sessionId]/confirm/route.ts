@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { ApiClientError } from "@/lib/types";
 import {
   canonicalDocumentUrl,
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
   try {
     const { sessionId } = await routeContext.params;
     const body = await request.json() as Record<string, unknown>;
-    const context = await getServerRequestContext();
+    const context = await getServerRequestContextForRequest(request);
     const clients = getServerApiClients();
     const uploadToken = requiredString(body, "upload_token");
     const documentId = requiredString(body, "document_id");

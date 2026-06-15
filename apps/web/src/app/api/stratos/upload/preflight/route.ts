@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerRequestContext } from "@/lib/api/server";
+import { getServerRequestContextForRequest } from "@/lib/api/server";
 import {
   canonicalDocumentUrl,
   getStratosUploadSettings,
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>;
-    const context = await getServerRequestContext();
+    const context = await getServerRequestContextForRequest(request);
     const external = await upsertExternalDocument(body, context);
     const preflight = createUploadPreflightDecision(
       {

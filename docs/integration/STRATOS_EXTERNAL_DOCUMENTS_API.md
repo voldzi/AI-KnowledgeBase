@@ -473,6 +473,7 @@ POST /akb/api/stratos/upload/preflight
 PUT  /akb/api/stratos/upload/sessions/{upload_session_id}/content
 POST /akb/api/stratos/upload/sessions/{upload_session_id}/confirm
 GET  /akb/api/stratos/documents/{document_id}/open-url
+POST /akb/api/stratos/documents/{document_id}/source-open?version_id=...
 GET  /akb/api/stratos/documents/{document_id}/ingestion-status
 POST /akb/api/stratos/documents/{document_id}/retry-ingestion
 GET  /akb/api/stratos/citations/{chunk_id}/open-url
@@ -482,6 +483,8 @@ GET  /akb/embed/documents/{document_id}
 Bridge routy:
 
 - používají session/OIDC uživatele,
+- přijímají bearer token z hostitelské STRATOS aplikace, pokud není dostupná
+  AKB web session,
 - nikdy nevydávají trvalé storage credentials,
 - vrací metadata a krátkodobé AKB URL/tokeny,
 - zapisují audit source/citation open události.

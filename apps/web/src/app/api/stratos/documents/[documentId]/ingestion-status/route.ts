@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { latestVersion, mapIngestionStatus } from "@/lib/stratos/document-ai";
 
 import { stratosBridgeError } from "../../../errors";
@@ -14,10 +14,10 @@ interface RouteContext {
   }>;
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const requestContext = await getServerRequestContext();
+    const requestContext = await getServerRequestContextForRequest(request);
     const clients = getServerApiClients();
     const [document, versions, jobs] = await Promise.all([
       clients.registry.getDocument(documentId, requestContext),

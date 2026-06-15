@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import {
   filterSearchItems,
   latestVersion,
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>;
-    const context = await getServerRequestContext();
+    const context = await getServerRequestContextForRequest(request);
     const clients = getServerApiClients();
     const documents = await clients.registry.listDocuments(context);
     const requestedTags = new Set(stringList(body.context_tags));

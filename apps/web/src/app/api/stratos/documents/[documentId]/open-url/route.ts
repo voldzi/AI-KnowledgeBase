@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { canonicalDocumentUrl, embedDocumentUrl } from "@/lib/stratos/document-ai";
 
 import { stratosBridgeError } from "../../../errors";
@@ -17,7 +17,7 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const requestContext = await getServerRequestContext();
+    const requestContext = await getServerRequestContextForRequest(request);
     const clients = getServerApiClients();
     const document = await clients.registry.getDocument(documentId, requestContext);
     const documentVersionId = request.nextUrl.searchParams.get("version_id")?.trim() || null;
