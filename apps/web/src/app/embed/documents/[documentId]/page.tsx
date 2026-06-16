@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { DocumentDetail } from "@/features/documents/document-detail";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { ApiClientError } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ interface EmbeddedDocumentPageProps {
 export default async function EmbeddedDocumentPage({ params }: EmbeddedDocumentPageProps) {
   const { documentId } = await params;
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath(`/embed/documents/${documentId}`);
 
   try {
     const [document, assignments, versions, jobs, authorization, workflowTasks, auditEvents] = await Promise.all([

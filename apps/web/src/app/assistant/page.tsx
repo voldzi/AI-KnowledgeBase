@@ -1,5 +1,5 @@
 import { EmployeeAssistant } from "@/features/assistant/employee-assistant";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import type { AssistantSuggestion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ const FALLBACK_SUGGESTIONS: AssistantSuggestion[] = [
 
 export default async function AssistantPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/assistant");
   let suggestions = FALLBACK_SUGGESTIONS;
 
   try {

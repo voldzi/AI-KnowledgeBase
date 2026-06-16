@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/page-header";
 import { IngestionBoard } from "@/features/ingestion/ingestion-board";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function IngestionPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/ingestion");
   const [documents, jobs] = await Promise.all([clients.registry.listDocuments(context), clients.ingestion.listJobs(context)]);
   const reports = (
     await Promise.all(

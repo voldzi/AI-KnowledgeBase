@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/page-header";
 import { AdminSkeleton } from "@/features/admin/admin-skeleton";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/admin");
   const authorization = await clients.registry.getAuthorizationHints(context);
 
   return (

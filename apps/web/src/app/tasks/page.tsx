@@ -1,13 +1,13 @@
 import { PageHeader } from "@/components/page-header";
 import { WorkflowInbox } from "@/features/tasks/workflow-inbox";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { ApiClientError, type AuditEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function TasksPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/tasks");
   const [documents, jobs, auditEvents, registryTasks, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
     clients.ingestion.listJobs(context),

@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/page-header";
 import { NewDocumentForm } from "@/features/documents/new-document-form";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewDocumentPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/documents/new");
   const authorization = await clients.registry.getAuthorizationHints(context);
 
   return (

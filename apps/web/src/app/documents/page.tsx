@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/page-header";
 import { DocumentRegistry } from "@/features/documents/document-registry";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/documents");
   const [documents, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
     clients.registry.getAuthorizationHints(context)

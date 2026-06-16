@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
 import { DocumentDetail } from "@/features/documents/document-detail";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { ApiClientError } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ interface DocumentDetailPageProps {
 export default async function DocumentDetailPage({ params }: DocumentDetailPageProps) {
   const { documentId } = await params;
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath(`/documents/${documentId}`);
 
   try {
     const [document, assignments, versions, jobs, authorization, workflowTasks, auditEvents] = await Promise.all([
