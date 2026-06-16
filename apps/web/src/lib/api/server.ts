@@ -68,10 +68,22 @@ export async function getServerRequestContext(): Promise<ApiRequestContext> {
   redirect(buildPublicAppUrl(config, "/api/auth/login"));
 }
 
+export async function getServerRequestContextForPath(returnTo: string): Promise<ApiRequestContext> {
+  const context = await getOptionalServerRequestContext();
+  if (context) return context;
+
+  const config = getAklConfig();
+  redirect(buildPublicAppUrl(config, `/api/auth/login?return_to=${encodeURIComponent(normalizeReturnTo(returnTo))}`));
+}
+
 export async function getServerRequestContextForRequest(request: Request): Promise<ApiRequestContext> {
   const context = await getOptionalServerRequestContext(request);
   if (context) return context;
 
   const config = getAklConfig();
   redirect(buildPublicAppUrl(config, "/api/auth/login"));
+}
+
+function normalizeReturnTo(returnTo: string): string {
+  return returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
 }
