@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { isAklLanguage } from "@/lib/language";
 
-import { assistantBridgeError, badAssistantRequest } from "../errors";
+import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../errors";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const context = await getServerRequestContext();
+    const context = await getOptionalServerRequestContext(request);
+    if (!context) {
+      return unauthorizedAssistantRequest();
+    }
     const clients = getServerApiClients();
     const message = String(body.message ?? "").trim();
 

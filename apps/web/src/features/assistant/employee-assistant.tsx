@@ -133,7 +133,10 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
     setResponse(null);
     setSourceContext(null);
     setSourceError(null);
-    fetch(withAppBasePath(`/api/assistant/suggestions?language=${language}`), { headers: { Accept: "application/json" } })
+    fetch(withAppBasePath(`/api/assistant/suggestions?language=${language}`), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" }
+    })
       .then(async (httpResponse) => {
         if (!httpResponse.ok) {
           return;
@@ -165,6 +168,7 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
     try {
       const httpResponse = await fetch(withAppBasePath(endpoint), {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           message: trimmed,
@@ -210,6 +214,7 @@ export function EmployeeAssistant({ suggestions }: EmployeeAssistantProps) {
     try {
       const httpResponse = await fetch(withAppBasePath(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/open`), {
         method: "GET",
+        credentials: "same-origin",
         headers: { Accept: "application/json" }
       });
       if (!httpResponse.ok) {

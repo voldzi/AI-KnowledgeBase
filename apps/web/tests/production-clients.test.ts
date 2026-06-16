@@ -155,6 +155,19 @@ describe("production API clients", () => {
           warnings: []
         });
       }
+      if (String(input).includes("/assistant/chat")) {
+        return Response.json({
+          response_type: "answer",
+          conversation_id: "conv_test",
+          message: "Answered.",
+          answer: "Answered.",
+          citations: [],
+          confidence: "medium",
+          follow_up_questions: [],
+          suggested_actions: [],
+          current_context: {}
+        });
+      }
       return Response.json({
         suggestions: [
           {
@@ -176,14 +189,28 @@ describe("production API clients", () => {
 
     const response = await clients.rag.assistantSuggestions(context);
     const source = await clients.rag.openAssistantCitation("chunk_1", context);
+    const chat = await clients.rag.assistantChat(
+      {
+        user_id: "employee_1",
+        conversation_id: null,
+        message: "How do I request access?",
+        context: {},
+        mode: "ask",
+        response_language: "cs"
+      },
+      context
+    );
 
     assert.equal(response.suggestions[0].label, "Nový přístup");
     assert.equal(source.chunk_id, "chunk_1");
-    assert.equal(calls.length, 2);
+    assert.equal(chat.conversation_id, "conv_test");
+    assert.equal(calls.length, 3);
     assert.equal(calls[0][0], "https://rag.local/api/v1/assistant/suggestions");
     assert.equal(calls[0][1]?.method, "GET");
     assert.equal(calls[1][0], "https://rag.local/api/v1/assistant/citations/chunk_1/open?subject_id=employee_1");
     assert.equal(calls[1][1]?.method, "GET");
+    assert.equal(calls[2][0], "https://rag.local/api/v1/assistant/chat");
+    assert.equal(calls[2][1]?.method, "POST");
   });
 
   it("loads workflow tasks from the Registry API", async () => {

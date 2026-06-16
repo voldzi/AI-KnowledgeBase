@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 
-import { assistantBridgeError } from "../../../errors";
+import { assistantBridgeError, unauthorizedAssistantRequest } from "../../../errors";
 
 export const runtime = "nodejs";
 
@@ -12,10 +12,13 @@ interface RouteContext {
   }>;
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { chunkId } = await context.params;
-    const requestContext = await getServerRequestContext();
+    const requestContext = await getOptionalServerRequestContext(request);
+    if (!requestContext) {
+      return unauthorizedAssistantRequest();
+    }
     const clients = getServerApiClients();
     const sourceContext = await clients.rag.openAssistantCitation(chunkId, requestContext);
 

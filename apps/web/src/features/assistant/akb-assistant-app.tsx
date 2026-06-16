@@ -287,6 +287,7 @@ export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppP
     try {
       const httpResponse = await fetch(withAppBasePath(endpoint), {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           message: trimmed,
@@ -352,6 +353,7 @@ export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppP
     try {
       const httpResponse = await fetch(withAppBasePath(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/open`), {
         method: "GET",
+        credentials: "same-origin",
         headers: { Accept: "application/json" }
       });
       if (!httpResponse.ok) {

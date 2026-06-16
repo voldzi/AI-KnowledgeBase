@@ -19,6 +19,18 @@ export function badAssistantRequest(message: string) {
   );
 }
 
+export function unauthorizedAssistantRequest() {
+  return NextResponse.json(
+    {
+      error: {
+        code: "AUTH_REQUIRED",
+        message: "Assistant request requires an active session."
+      }
+    },
+    { status: 401 }
+  );
+}
+
 export function assistantBridgeError(error: unknown) {
   if (isNextRedirectError(error)) {
     throw error;
