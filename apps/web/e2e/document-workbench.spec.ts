@@ -249,7 +249,7 @@ test.describe("Document Workbench product paths", () => {
     await page.getByLabel("Otevřít navigaci").click();
     await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "true");
 
-    await page.locator(".sidebar-mobile-sections").getByRole("button", { name: "Dokumenty" }).click();
+    await page.locator(".sidebar-mobile-sections").getByRole("link", { name: "Dokumenty" }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/documents"));
     await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "false");
     await expect(page.getByRole("heading", { name: "Registr dokumentů" }).first()).toBeVisible();
