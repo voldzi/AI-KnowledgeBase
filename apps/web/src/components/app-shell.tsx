@@ -285,12 +285,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     { id: "operations", href: moduleRootRoutes.operations, label: copy.moduleOperations, icon: ListChecks },
     { id: "ai", href: moduleRootRoutes.ai, label: copy.moduleAi, icon: Bot },
     { id: "governance", href: moduleRootRoutes.governance, label: copy.moduleGovernance, icon: ShieldCheck }
-  ].map((item) => ({
-    ...item,
-    onSelect: () => {
-      selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: false });
-    }
-  }));
+  ];
   const activeRailHref = moduleRootRoutes[activeModule];
   const activeModuleLabel = railItems.find((item) => item.id === activeModule)?.label ?? copy.workspaceTitle;
   const activeModuleRoutes = moduleRouteGroups[activeModule];
@@ -498,18 +493,19 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             {railItems.map((item) => {
               const Icon = item.icon;
               return (
-                <button
+                <Link
                   key={item.id}
-                  type="button"
+                  href={item.href}
                   className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
                   aria-current={activeModule === item.id ? "true" : undefined}
                   onClick={() => {
-                    selectShellModule(item.id as ShellModuleId, { keepMobileSidebarOpen: false });
+                    setSidebarCollapsed(false);
+                    setMobileSidebarOpen(false);
                   }}
                 >
                   <Icon size={15} aria-hidden="true" />
                   {item.label}
-                </button>
+                </Link>
               );
             })}
           </nav>
@@ -588,15 +584,6 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     </StratosAppShell>
   );
 
-  function selectShellModule(moduleId: ShellModuleId, { keepMobileSidebarOpen }: { keepMobileSidebarOpen: boolean }) {
-    const targetHref = moduleRootRoutes[moduleId];
-    setActiveModule(moduleId);
-    setSidebarCollapsed(false);
-    setMobileSidebarOpen(keepMobileSidebarOpen);
-    if (pathname !== targetHref) {
-      router.push(targetHref);
-    }
-  }
 }
 
 function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {
