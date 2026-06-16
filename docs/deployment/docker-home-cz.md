@@ -242,6 +242,10 @@ Cílový realm:
   `scripts/stratos_source_open_smoke.py`. V Docker síti používejte
   `BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb`; metadata a registrace
   dál používají `AKL_REGISTRY_BASE_URL=http://registry-api:8000/api/v1`.
+  Skript umí číst STRATOS runtime proměnné `STRATOS_AKB_OIDC_TOKEN_URL`,
+  `STRATOS_AKB_OIDC_CLIENT_ID`, `STRATOS_AKB_OIDC_CLIENT_SECRET`,
+  `STRATOS_AKB_OIDC_AUDIENCE` a `STRATOS_AKB_OIDC_SCOPE` z
+  `/srv/STRATOS/deploy/.env`.
 
 Theme struktura v repu:
 

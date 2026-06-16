@@ -30,13 +30,23 @@ def main() -> int:
     )
     parser.add_argument(
         "--token-url",
-        default=os.getenv("AKB_OIDC_TOKEN_URL"),
+        default=first_env("STRATOS_AKB_OIDC_TOKEN_URL", "AKB_OIDC_TOKEN_URL"),
         help="OIDC token endpoint. Defaults to <issuer>/protocol/openid-connect/token.",
     )
     parser.add_argument(
         "--client-id",
-        default=os.getenv("AKB_SERVICE_CLIENT_ID") or "stratos-akb-service",
+        default=first_env("STRATOS_AKB_OIDC_CLIENT_ID", "AKB_SERVICE_CLIENT_ID") or "stratos-akb-service",
         help="OIDC confidential service client id.",
+    )
+    parser.add_argument(
+        "--scope",
+        default=first_env("STRATOS_AKB_OIDC_SCOPE", "AKB_OIDC_SCOPE"),
+        help="Optional OIDC scope for the client-credentials token request.",
+    )
+    parser.add_argument(
+        "--audience",
+        default=first_env("STRATOS_AKB_OIDC_AUDIENCE", "AKB_OIDC_AUDIENCE", "AKL_OIDC_AUDIENCE"),
+        help="Optional OIDC audience for the client-credentials token request.",
     )
     args = parser.parse_args()
 
@@ -46,15 +56,22 @@ def main() -> int:
         fail("Missing --version-id or AKB_SMOKE_DOCUMENT_VERSION_ID.")
 
     client_secret = (
-        os.getenv("AKB_SERVICE_CLIENT_SECRET")
+        os.getenv("STRATOS_AKB_OIDC_CLIENT_SECRET")
+        or os.getenv("AKB_SERVICE_CLIENT_SECRET")
         or os.getenv("STRATOS_AKB_SERVICE_CLIENT_SECRET")
         or os.getenv("STRATOS_AKB_CLIENT_SECRET")
     )
     if not client_secret:
-        fail("Missing AKB_SERVICE_CLIENT_SECRET or STRATOS_AKB_SERVICE_CLIENT_SECRET.")
+        fail("Missing STRATOS_AKB_OIDC_CLIENT_SECRET or AKB_SERVICE_CLIENT_SECRET.")
 
     token_url = args.token_url or token_url_from_issuer()
-    access_token = fetch_service_token(token_url, args.client_id, client_secret)
+    access_token = fetch_service_token(
+        token_url,
+        args.client_id,
+        client_secret,
+        scope=args.scope,
+        audience=args.audience,
+    )
 
     web_base_url = args.web_base_url.rstrip("/")
     source_open_url = (
@@ -123,18 +140,28 @@ def main() -> int:
 def token_url_from_issuer() -> str:
     issuer = (os.getenv("AKL_WEB_OIDC_ISSUER") or os.getenv("AKL_OIDC_ISSUER") or "").rstrip("/")
     if not issuer:
-        fail("Missing AKB_OIDC_TOKEN_URL or AKL_WEB_OIDC_ISSUER.")
+        fail("Missing STRATOS_AKB_OIDC_TOKEN_URL, AKB_OIDC_TOKEN_URL, or AKL_WEB_OIDC_ISSUER.")
     return f"{issuer}/protocol/openid-connect/token"
 
 
-def fetch_service_token(token_url: str, client_id: str, client_secret: str) -> str:
-    body = urllib.parse.urlencode(
-        {
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret,
-        }
-    ).encode("utf-8")
+def fetch_service_token(
+    token_url: str,
+    client_id: str,
+    client_secret: str,
+    *,
+    scope: str | None,
+    audience: str | None,
+) -> str:
+    token_request = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+    if scope:
+        token_request["scope"] = scope
+    if audience:
+        token_request["audience"] = audience
+    body = urllib.parse.urlencode(token_request).encode("utf-8")
     status, _headers, response_body = http_request(
         token_url,
         method="POST",
@@ -174,6 +201,14 @@ def redact_url(url: str) -> str:
         [(key, "REDACTED" if key.lower() in {"token", "access_token"} else value) for key, value in query]
     )
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, redacted_query, parsed.fragment))
+
+
+def first_env(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
 
 
 def fail(message: str) -> None:
