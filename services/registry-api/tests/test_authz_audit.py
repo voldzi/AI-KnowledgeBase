@@ -170,6 +170,63 @@ def test_document_list_and_detail_use_role_mapping(client, db_session, admin_hea
     assert detail.json()["document_id"] == document_id
 
 
+def test_document_list_paginates_after_authorization(client, db_session, admin_headers):
+    accessible = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        json={
+            "title": "Older mapped reader document",
+            "document_type": "manual",
+            "owner_id": "user_owner",
+            "classification": "public",
+            "access_policies": [
+                {
+                    "subjects": ["role:reader"],
+                    "actions": ["document.read", "rag.query"],
+                    "constraints": {"classification_max": "public"},
+                }
+            ],
+        },
+    )
+    assert accessible.status_code == 201, accessible.text
+    accessible_id = accessible.json()["document_id"]
+
+    newer_inaccessible = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        json={
+            "title": "Newer admin-only document",
+            "document_type": "manual",
+            "owner_id": "user_owner",
+            "classification": "confidential",
+            "access_policies": [
+                {
+                    "subjects": ["role:admin"],
+                    "actions": ["document.read", "rag.query"],
+                    "constraints": {"classification_max": "confidential"},
+                }
+            ],
+        },
+    )
+    assert newer_inaccessible.status_code == 201, newer_inaccessible.text
+
+    db_session.add(
+        RoleMapping(
+            subject_type="user",
+            subject_id="mapped_reader",
+            role="reader",
+            status="active",
+            assigned_by="user_admin",
+        )
+    )
+    db_session.commit()
+
+    mapped_headers = {"X-AKL-Subject": "mapped_reader", "X-AKL-Roles": "untrusted"}
+    listing = client.get("/api/v1/documents?limit=1", headers=mapped_headers)
+    assert listing.status_code == 200, listing.text
+    assert [item["document_id"] for item in listing.json()["items"]] == [accessible_id]
+
+
 def test_audit_write_and_read(client):
     auditor_headers = {
         "X-AKL-Subject": "user_auditor",

@@ -1413,8 +1413,6 @@ def list_documents(
         select(Document)
         .options(selectinload(Document.access_policies), selectinload(Document.assignments))
         .order_by(desc(Document.created_at))
-        .limit(limit)
-        .offset(offset)
     )
     if status_filter:
         stmt = stmt.where(Document.status == status_filter.value)
@@ -1434,7 +1432,7 @@ def list_documents(
         if decision.allowed:
             documents.append(document)
 
-    return DocumentListResponse(items=documents, limit=limit, offset=offset)
+    return DocumentListResponse(items=documents[offset : offset + limit], limit=limit, offset=offset)
 
 
 @router.get("/documents/{document_id}", response_model=DocumentResponse)
