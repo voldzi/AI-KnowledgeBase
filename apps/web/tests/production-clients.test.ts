@@ -18,28 +18,30 @@ const env = {
   AKL_WEB_SESSION_SECRET: "test-session-secret"
 };
 
+function documentFixture(documentId: string) {
+  return {
+    document_id: documentId,
+    title: `Document ${documentId}`,
+    document_type: "directive",
+    status: "valid",
+    classification: "internal",
+    owner_id: "user_1",
+    owner: "user_1",
+    gestor_unit: "IT",
+    tags: [],
+    created_at: "2026-06-05T10:00:00Z",
+    updated_at: "2026-06-05T10:00:00Z"
+  };
+}
+
 describe("production API clients", () => {
   it("uses service base URLs and required request headers", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {
       calls.push([input, init]);
       return Response.json({
-        items: [
-          {
-            document_id: "doc_1",
-            title: "Test",
-            document_type: "directive",
-            status: "valid",
-            classification: "internal",
-            owner_id: "user_1",
-            owner: "user_1",
-            gestor_unit: "IT",
-            tags: [],
-            created_at: "2026-06-05T10:00:00Z",
-            updated_at: "2026-06-05T10:00:00Z"
-          }
-        ],
-        limit: 100,
+        items: [documentFixture("doc_1")],
+        limit: 200,
         offset: 0
       });
     };
@@ -58,11 +60,34 @@ describe("production API clients", () => {
     const [url, init] = calls[0];
     const headers = init?.headers as Headers;
 
-    assert.equal(url, "https://registry.local/api/v1/documents");
+    assert.equal(url, "https://registry.local/api/v1/documents?limit=200&offset=0");
     assert.equal(headers.get("Authorization"), "Bearer test-token");
     assert.equal(headers.get("X-Request-ID"), "req_test");
     assert.equal(headers.get("X-Correlation-ID"), "corr_test");
     assert.equal(init?.cache, "no-store");
+  });
+
+  it("loads additional document pages when the first page is full", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+      const count = offset === 0 ? 200 : 22;
+      return Response.json({
+        items: Array.from({ length: count }, (_, index) => documentFixture(`doc_${offset + index + 1}`)),
+        limit: 200,
+        offset
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const documents = await clients.registry.listDocuments(createMockContext());
+
+    assert.equal(documents.length, 222);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0][0], "https://registry.local/api/v1/documents?limit=200&offset=0");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/documents?limit=200&offset=200");
   });
 
   it("maps upstream error bodies to ApiClientError", async () => {

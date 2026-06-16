@@ -30,6 +30,9 @@ interface ListEnvelope<T> {
   items: T[];
 }
 
+const DOCUMENT_PAGE_SIZE = 200;
+const DOCUMENT_PAGE_LIMIT = 10;
+
 export class ProductionRegistryClient implements RegistryApiClient {
   constructor(
     private readonly baseUrl: string,
@@ -37,8 +40,20 @@ export class ProductionRegistryClient implements RegistryApiClient {
   ) {}
 
   async listDocuments(context: ApiRequestContext): Promise<Document[]> {
-    const response = await this.get<ListEnvelope<Document>>("/documents", "listDocuments", context);
-    return response.items;
+    const documents: Document[] = [];
+    for (let page = 0; page < DOCUMENT_PAGE_LIMIT; page += 1) {
+      const offset = page * DOCUMENT_PAGE_SIZE;
+      const response = await this.get<ListEnvelope<Document>>(
+        `/documents?limit=${DOCUMENT_PAGE_SIZE}&offset=${offset}`,
+        "listDocuments",
+        context
+      );
+      documents.push(...response.items);
+      if (response.items.length < DOCUMENT_PAGE_SIZE) {
+        break;
+      }
+    }
+    return documents;
   }
 
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document> {
