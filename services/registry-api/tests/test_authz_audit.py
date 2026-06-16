@@ -1,3 +1,6 @@
+from app.models import RoleMapping
+
+
 def test_authz_check_and_filter_documents(client, admin_headers):
     response = client.post(
         "/api/v1/documents",
@@ -123,6 +126,48 @@ def test_authz_self_check_ignores_supplied_roles(client, admin_headers):
     assert response.status_code == 200
     assert response.json()["allowed"] is False
     assert response.json()["reason"] == "no role grants action document.read"
+
+
+def test_document_list_and_detail_use_role_mapping(client, db_session, admin_headers):
+    created = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        json={
+            "title": "Mapped reader document",
+            "document_type": "manual",
+            "owner_id": "user_owner",
+            "classification": "public",
+            "access_policies": [
+                {
+                    "subjects": ["role:reader"],
+                    "actions": ["document.read", "rag.query"],
+                    "constraints": {"classification_max": "public"},
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    document_id = created.json()["document_id"]
+
+    db_session.add(
+        RoleMapping(
+            subject_type="user",
+            subject_id="mapped_reader",
+            role="reader",
+            status="active",
+            assigned_by="user_admin",
+        )
+    )
+    db_session.commit()
+
+    mapped_headers = {"X-AKL-Subject": "mapped_reader", "X-AKL-Roles": "untrusted"}
+    listing = client.get("/api/v1/documents", headers=mapped_headers)
+    assert listing.status_code == 200, listing.text
+    assert [item["document_id"] for item in listing.json()["items"]] == [document_id]
+
+    detail = client.get(f"/api/v1/documents/{document_id}", headers=mapped_headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["document_id"] == document_id
 
 
 def test_audit_write_and_read(client):

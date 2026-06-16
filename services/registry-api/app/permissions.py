@@ -193,7 +193,10 @@ def context_for_subject(
     return SubjectContext(subject_id=subject_id, roles=collected_roles, groups=collected_groups)
 
 
-def context_for_principal(principal: Principal) -> SubjectContext:
+def context_for_principal(principal: Principal, db: Session | None = None) -> SubjectContext:
+    if db is not None:
+        return context_for_subject(db, principal.subject_id, principal.roles, principal.groups)
+
     return SubjectContext(
         subject_id=principal.subject_id,
         roles=set(principal.roles),
@@ -266,16 +269,18 @@ def evaluate_global_action(context: SubjectContext, action: str, classification:
     return Decision(True, f"role grants action {action}", constraints)
 
 
-def require_global_action(principal: Principal, action: Action) -> SubjectContext:
-    context = context_for_principal(principal)
+def require_global_action(principal: Principal, action: Action, db: Session | None = None) -> SubjectContext:
+    context = context_for_principal(principal, db)
     decision = evaluate_global_action(context, action.value)
     if not decision.allowed:
         raise problem(status.HTTP_403_FORBIDDEN, "forbidden", decision.reason, decision.constraints)
     return context
 
 
-def require_document_action(principal: Principal, action: Action, document: Document) -> SubjectContext:
-    context = context_for_principal(principal)
+def require_document_action(
+    principal: Principal, action: Action, document: Document, db: Session | None = None
+) -> SubjectContext:
+    context = context_for_principal(principal, db)
     decision = evaluate_document_access(context, action.value, document)
     if not decision.allowed:
         raise problem(status.HTTP_403_FORBIDDEN, "forbidden", decision.reason, decision.constraints)

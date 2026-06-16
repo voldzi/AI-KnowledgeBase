@@ -548,7 +548,7 @@ def _authz_subject_context(
     groups: list[str],
 ) -> SubjectContext:
     if principal.subject_id == subject_id:
-        caller = context_for_principal(principal)
+        caller = context_for_principal(principal, db)
         return context_for_subject(db, subject_id, caller.roles, caller.groups)
     return context_for_subject(db, subject_id, roles, groups)
 
@@ -1010,10 +1010,10 @@ def upsert_external_document(
         )
     ).scalar_one_or_none()
     if existing_ref is not None:
-        require_document_action(principal, Action.document_read, existing_ref.document)
+        require_document_action(principal, Action.document_read, existing_ref.document, db)
         return _external_document_response(existing_ref, created=False)
 
-    require_global_action(principal, Action.document_create)
+    require_global_action(principal, Action.document_create, db)
     document = Document(
         document_id=make_id("doc"),
         title=payload.title,
@@ -1107,7 +1107,7 @@ def get_external_document(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
     external_ref = _get_external_document_ref(db, external_document_id)
-    require_document_action(principal, Action.document_read, external_ref.document)
+    require_document_action(principal, Action.document_read, external_ref.document, db)
     return _external_document_response(external_ref, created=False)
 
 
@@ -1122,7 +1122,7 @@ def update_external_document_current(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
     external_ref = _get_external_document_ref(db, external_document_id)
-    require_document_action(principal, Action.document_ingest, external_ref.document)
+    require_document_action(principal, Action.document_ingest, external_ref.document, db)
 
     if "current_document_version_id" in payload.model_fields_set:
         if payload.current_document_version_id is not None:
@@ -1185,7 +1185,7 @@ def store_document_extraction(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentExtractionStoreResponse:
-    require_global_action(principal, Action.rag_query)
+    require_global_action(principal, Action.rag_query, db)
     _get_version(db, payload.document_id, payload.document_version_id)
 
     existing = db.execute(
@@ -1355,7 +1355,7 @@ def create_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
-    require_global_action(principal, Action.document_create)
+    require_global_action(principal, Action.document_create, db)
     document = Document(
         document_id=make_id("doc"),
         title=payload.title,
@@ -1425,7 +1425,7 @@ def list_documents(
     if owner_id:
         stmt = stmt.where(Document.owner_id == owner_id)
 
-    context = context_for_principal(principal)
+    context = context_for_principal(principal, db)
     documents = []
     for document in db.execute(stmt).scalars():
         if tag and tag not in document.tags:
@@ -1444,7 +1444,7 @@ def get_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
     return document
 
 
@@ -1455,7 +1455,7 @@ def list_document_assignments(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentAssignmentListResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
     items = sorted(
         document.assignments,
         key=lambda assignment: (
@@ -1476,7 +1476,7 @@ def replace_document_assignments(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentAssignmentListResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_update, document)
+    require_document_action(principal, Action.document_update, document, db)
     assignment_payloads = _validated_assignment_payloads(payload.assignments)
 
     document.assignments.clear()
@@ -1514,7 +1514,7 @@ def patch_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_update, document)
+    require_document_action(principal, Action.document_update, document, db)
 
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
@@ -1572,7 +1572,7 @@ def delete_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Response:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_delete, document)
+    require_document_action(principal, Action.document_delete, document, db)
     document.status = DocumentStatus.cancelled.value
     for version in document.versions:
         if version.status == DocumentStatus.valid.value:
@@ -1602,7 +1602,7 @@ def create_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_create, document)
+    require_document_action(principal, Action.document_version_create, document, db)
 
     version = DocumentVersion(
         document_version_id=make_id("ver"),
@@ -1659,7 +1659,7 @@ def list_document_versions(
     offset: Offset = 0,
 ) -> DocumentVersionListResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
 
     stmt = (
         select(DocumentVersion)
@@ -1690,7 +1690,7 @@ def get_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersion:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
     return _get_version(db, document_id, version_id)
 
 
@@ -1705,7 +1705,7 @@ def publish_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersion:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_publish, document)
+    require_document_action(principal, Action.document_version_publish, document, db)
     version = _get_version(db, document_id, version_id)
     _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
@@ -1724,7 +1724,7 @@ def archive_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersion:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_archive, document)
+    require_document_action(principal, Action.document_version_archive, document, db)
     version = _get_version(db, document_id, version_id)
 
     _archive_version(db, document=document, version=version, actor_id=principal.subject_id)
@@ -1816,7 +1816,7 @@ def list_workflow_tasks(
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> WorkflowTaskListResponse:
-    require_global_action(principal, Action.workflow_task_read)
+    require_global_action(principal, Action.workflow_task_read, db)
     _sync_derived_workflow_tasks(db)
     _escalate_overdue_tasks(db)
     _commit_or_conflict(db)
@@ -1836,7 +1836,7 @@ def list_workflow_tasks(
         stmt = stmt.where(WorkflowTask.owner_id == owner_id)
 
     tasks = list(db.execute(stmt).scalars())
-    context = context_for_principal(principal)
+    context = context_for_principal(principal, db)
     document_ids = {task.document_id for task in tasks if task.document_id}
     documents_by_id = {
         document.document_id: document
@@ -1870,12 +1870,12 @@ def apply_workflow_task_action(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> WorkflowTask:
-    require_global_action(principal, Action.workflow_task_write)
+    require_global_action(principal, Action.workflow_task_write, db)
     task = _get_workflow_task(db, task_id)
     document: Document | None = None
     if task.document_id:
         document = _get_document(db, task.document_id)
-        require_document_action(principal, Action.document_read, document)
+        require_document_action(principal, Action.document_read, document, db)
 
     now = utcnow()
     if payload.assignee_id:
@@ -1884,14 +1884,14 @@ def apply_workflow_task_action(
 
     if payload.action.value == "approve":
         if document is not None and task.kind == WorkflowTaskKind.review.value:
-            require_document_action(principal, Action.document_update, document)
+            require_document_action(principal, Action.document_update, document, db)
             _approve_document_for_publication(db, document)
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "publish":
         if document is None:
             raise problem(status.HTTP_409_CONFLICT, "workflow_task_without_document", "Workflow task has no document to publish")
-        require_document_action(principal, Action.document_version_publish, document)
+        require_document_action(principal, Action.document_version_publish, document, db)
         version = _workflow_action_version(db, task=task, payload=payload)
         if version is None:
             raise problem(status.HTTP_409_CONFLICT, "no_publishable_version", "Workflow task has no version to publish")
@@ -1902,7 +1902,7 @@ def apply_workflow_task_action(
     elif payload.action.value == "archive":
         if document is None:
             raise problem(status.HTTP_409_CONFLICT, "workflow_task_without_document", "Workflow task has no document to archive")
-        require_document_action(principal, Action.document_version_archive, document)
+        require_document_action(principal, Action.document_version_archive, document, db)
         version = _workflow_action_version(db, task=task, payload=payload, prefer_valid=True)
         if version is None:
             raise problem(status.HTTP_409_CONFLICT, "no_archivable_version", "Workflow task has no version to archive")
@@ -1915,7 +1915,7 @@ def apply_workflow_task_action(
         task.resolved_at = now
     elif payload.action.value == "request_changes":
         if document is not None:
-            require_document_action(principal, Action.document_update, document)
+            require_document_action(principal, Action.document_update, document, db)
             version = _workflow_action_version(db, task=task, payload=payload)
             _request_document_changes(document, version)
         task.status = WorkflowTaskStatus.open.value
@@ -1962,7 +1962,7 @@ def create_audit_event(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AuditEvent:
-    require_global_action(principal, Action.audit_write)
+    require_global_action(principal, Action.audit_write, db)
     event = add_audit_event(
         db,
         actor_id=payload.actor_id,
@@ -1989,7 +1989,7 @@ def list_audit_events(
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> AuditEventListResponse:
-    require_global_action(principal, Action.audit_read)
+    require_global_action(principal, Action.audit_read, db)
     stmt = select(AuditEvent).order_by(desc(AuditEvent.created_at)).limit(limit).offset(offset)
     if actor_id:
         stmt = stmt.where(AuditEvent.actor_id == actor_id)
@@ -2010,7 +2010,7 @@ def get_audit_event(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AuditEvent:
-    require_global_action(principal, Action.audit_read)
+    require_global_action(principal, Action.audit_read, db)
     event = db.execute(
         select(AuditEvent).where(AuditEvent.audit_event_id == event_id)
     ).scalar_one_or_none()
@@ -2062,9 +2062,10 @@ def _role_mapping_response(mapping: RoleMapping, display_name: str | None) -> Ro
 def search_directory_users(
     query: str = Query(min_length=1, max_length=200),
     limit: Limit = 20,
+    db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> DirectoryUserListResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     users = _directory_adapter().search_users(query, max_results=min(limit, 50))
     return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
 
@@ -2079,7 +2080,7 @@ def import_directory_user(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> DirectoryUserResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     user = _directory_adapter().get_user(payload.subject_id)
     if user is None:
         raise problem(
@@ -2117,7 +2118,7 @@ def list_role_mappings(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> RoleMappingListResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     stmt = select(RoleMapping).order_by(RoleMapping.subject_id, RoleMapping.role)
     if not include_removed:
         stmt = stmt.where(RoleMapping.status != "removed")
@@ -2143,7 +2144,7 @@ def upsert_role_mapping(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> RoleMappingResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     mapping = db.execute(
         select(RoleMapping).where(
             RoleMapping.subject_type == payload.subject_type,
@@ -2184,7 +2185,7 @@ def update_role_mapping_status(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> RoleMappingResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     mapping = db.get(RoleMapping, role_mapping_id)
     if mapping is None:
         raise problem(status.HTTP_404_NOT_FOUND, "role_mapping_not_found", "Role mapping was not found")
@@ -2238,7 +2239,7 @@ def append_assistant_messages(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
-    require_global_action(principal, Action.rag_query)
+    require_global_action(principal, Action.rag_query, db)
     conversation = db.get(AssistantConversation, conversation_id)
     if conversation is None:
         conversation = AssistantConversation(
@@ -2282,7 +2283,7 @@ def get_assistant_conversation(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
-    require_global_action(principal, Action.rag_query)
+    require_global_action(principal, Action.rag_query, db)
     conversation = db.get(AssistantConversation, conversation_id)
     if conversation is None:
         raise problem(

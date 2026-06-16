@@ -46,6 +46,8 @@ Role `admin` má plný přístup. Service role mají jen minimální akce potře
 
 Vlastník dokumentu má implicitně povolené základní owner akce nad vlastním dokumentem: `document.read`, `document.update`, `document.version.create` a `rag.query`.
 
+Registry při rozhodování sestavuje efektivní subject context z rolí/skupin v ověřeném tokenu a z aktivních záznamů `role_mappings`. Přímé role pro `user:<subject_id>` nebo `service:<subject_id>` a skupinové role pro `group:<group>` se slučují s rolemi z tokenu. To umožňuje centrálně spravovat STRATOS aplikační role bez nutnosti čekat na změnu Keycloak tokenů.
+
 ## Document-level policy
 
 Policy se ukládá u dokumentu:

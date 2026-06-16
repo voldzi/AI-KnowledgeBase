@@ -35,6 +35,7 @@ import type {
 } from "@/lib/types";
 
 interface AkbAssistantAppProps {
+  initialNowIso: string;
   suggestions: AssistantSuggestion[];
 }
 
@@ -201,10 +202,10 @@ const assistantAppCopy = {
   }
 } satisfies Record<AklLanguage, AssistantAppLabels>;
 
-export function AkbAssistantApp({ suggestions }: AkbAssistantAppProps) {
+export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppProps) {
   const { language } = useLanguage();
   const copy = assistantAppCopy[language];
-  const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language));
+  const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso));
   const [activeThreadId, setActiveThreadId] = useState(() => "thread-current");
   const [threadSearch, setThreadSearch] = useState("");
   const [composer, setComposer] = useState("");
@@ -842,8 +843,7 @@ function ClarificationField({
   );
 }
 
-function createInitialThreads(language: AklLanguage): AssistantThread[] {
-  const now = new Date().toISOString();
+function createInitialThreads(language: AklLanguage, now: string): AssistantThread[] {
   return [
     {
       id: "thread-current",
@@ -920,6 +920,7 @@ function formatThreadTime(value: string): string {
   }
   return new Intl.DateTimeFormat("cs-CZ", {
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: "Europe/Prague"
   }).format(date);
 }
