@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     const token = request.nextUrl.searchParams.get("token") ?? "";
     const payload = verifySourceDownloadToken(token);
     const source = await readSourceObject(payload);
-    const context = await getOptionalServerRequestContext();
+    const context = await getOptionalServerRequestContext(request);
     if (context) {
       const clients = getServerApiClients();
       void clients.registry.createAuditEvent(

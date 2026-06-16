@@ -40,11 +40,6 @@ export async function getOptionalServerRequestContext(request?: Request): Promis
   const config = getAklConfig();
 
   if (config.authMode === "oidc") {
-    const session = readSessionCookie(await cookies(), config);
-    if (session) {
-      return contextFromOidcSession(session);
-    }
-
     const bearerToken = bearerTokenFromRequest(request);
     if (bearerToken) {
       try {
@@ -52,6 +47,11 @@ export async function getOptionalServerRequestContext(request?: Request): Promis
       } catch {
         return null;
       }
+    }
+
+    const session = readSessionCookie(await cookies(), config);
+    if (session) {
+      return contextFromOidcSession(session);
     }
 
     return null;

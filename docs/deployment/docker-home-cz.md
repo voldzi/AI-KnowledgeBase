@@ -234,6 +234,14 @@ Cílový realm:
   - `akl_stratos_service`
 - AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`, `reader`, `auditor` a servisní role bez prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
 - `akl-web` a `stratos-akl-adapter` mají audience mapper na `akl-api`; Registry API v produkci validuje `AKL_OIDC_AUDIENCE=akl-api`.
+- Pokud AKB/Keycloak provozní skript zapisuje service client hodnoty pro STRATOS
+  aplikace, na `docker.home.cz` musí cílit na `/srv/STRATOS/deploy/.env`.
+  STRATOS compose čte `deploy/.env`, ne root `.env`; zápis jinam se nepropíše
+  do běžícího `stratos-api` kontejneru.
+- Source-open smoke pro Budget & Contract se spouští přes
+  `scripts/stratos_source_open_smoke.py`. V Docker síti používejte
+  `BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb`; metadata a registrace
+  dál používají `AKL_REGISTRY_BASE_URL=http://registry-api:8000/api/v1`.
 
 Theme struktura v repu:
 

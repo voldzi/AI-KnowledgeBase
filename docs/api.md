@@ -80,6 +80,21 @@ Budget & Contract uses `contract_financial_v1` through RAG Retrieval Service
 STRATOS extraction endpoints. AKB returns cited proposed values only; Budget
 owns human confirmation and final writes to its structured contract model.
 
+Budget & Contract also uses the AKB web/BFF bridge for source opening and
+binary document downloads:
+
+```text
+BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb
+POST /akb/api/stratos/documents/{documentId}/source-open?version_id={versionId}
+GET  /akb/api/documents/source/content?token=...
+```
+
+Use `AKL_REGISTRY_BASE_URL=http://registry-api:8000/api/v1` only for metadata,
+registration, ingestion and extraction operations. Use
+`BUDGET_AKB_WEB_BASE_URL` for source-open, preview, viewer and binary source
+download flows. Browsers must not call internal AKB storage or registry services
+directly.
+
 ## Client Generation
 
 Generate clients from `openapi/openapi.json` for repository-level integration.

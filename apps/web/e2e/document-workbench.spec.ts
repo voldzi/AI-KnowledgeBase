@@ -229,6 +229,34 @@ test.describe("Document Workbench product paths", () => {
     expect(decodeURIComponent(location)).toContain("search=PDF citation area for controlled document preview.");
   });
 
+  test("DW-14D STRATOS source-open bridge returns a signed PDF download", async ({ request }) => {
+    const sourceOpenResponse = await request.post(
+      appPath("/api/stratos/documents/doc_108/source-open?version_id=ver_108_1")
+    );
+
+    expect(sourceOpenResponse.status()).toBe(201);
+    expect(sourceOpenResponse.headers()["content-type"]).toContain("application/json");
+    const sourceOpenBody = (await sourceOpenResponse.json()) as {
+      source_open: {
+        available: boolean;
+        download_url: string | null;
+        file: {
+          filename: string;
+          mime_type: string;
+        };
+      };
+    };
+    expect(sourceOpenBody.source_open.available).toBe(true);
+    expect(sourceOpenBody.source_open.file.mime_type).toBe("application/pdf");
+    expect(sourceOpenBody.source_open.download_url).toContain(appPath("/api/documents/source/content?token="));
+
+    const sourceResponse = await request.get(sourceOpenBody.source_open.download_url ?? "");
+    expect(sourceResponse.status()).toBe(200);
+    expect(sourceResponse.headers()["content-type"]).toContain("application/pdf");
+    const bytes = await sourceResponse.body();
+    expect(bytes.subarray(0, 4).toString("utf8")).toBe("%PDF");
+  });
+
   test("DW-15 mobile workspace navigation closes after one tap", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(appPath("/assistant"));

@@ -619,6 +619,87 @@ Bridge routy:
 - vrací metadata a krátkodobé AKB URL/tokeny,
 - zapisují audit source/citation open události.
 
+### Source-open pro Budget & Contract
+
+Budget & Contract otevírá skutečný originální dokument přes AKB web/BFF vrstvu,
+ne přes Registry API ani storage. Stabilní interní base URL v Docker síti:
+
+```text
+BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb
+```
+
+Závazný endpoint:
+
+```http
+POST /akb/api/stratos/documents/{document_id}/source-open?version_id={document_version_id}
+Authorization: Bearer <OIDC service token>
+```
+
+Service token je vydaný pro STRATOS service identity, například
+`stratos-akb-service`, a musí mít audience `akl-api`. AKB web předá bearer token
+do interních API klientů, kde Registry API vynucuje oprávnění a audit.
+
+Úspěšná odpověď:
+
+```json
+{
+  "source_open": {
+    "available": true,
+    "download_url": "/akb/api/documents/source/content?token=...",
+    "file": {
+      "filename": "contract.pdf",
+      "mime_type": "application/pdf"
+    }
+  }
+}
+```
+
+`download_url` je relativní k AKB web vrstvě. Pro interní Docker volání jej
+klient resolve proti `BUDGET_AKB_WEB_BASE_URL`; výsledkem musí být AKB web URL
+pod `http://akl-web-1:3000/akb`, která vrací binární dokument:
+
+```http
+GET /akb/api/documents/source/content?token=...
+200 application/pdf
+```
+
+Browser nesmí volat interní storage, Registry, ani jiné privátní AKB služby
+napřímo. Browser může dostat pouze viewer/open URL z hostitelské aplikace nebo
+AKB web bridge podle oprávnění.
+
+Provozní smoke test tohoto kontraktu:
+
+```bash
+BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb \
+AKL_WEB_OIDC_ISSUER=https://login.zeleznalady.cz/realms/stratos \
+AKB_SERVICE_CLIENT_ID=stratos-akb-service \
+AKB_SERVICE_CLIENT_SECRET=... \
+AKB_SMOKE_DOCUMENT_ID=doc_... \
+AKB_SMOKE_DOCUMENT_VERSION_ID=ver_... \
+python3 scripts/stratos_source_open_smoke.py
+```
+
+Skript získá OIDC client-credentials token, zavolá `source-open`, ověří `201
+application/json`, následně stáhne vrácený `download_url` přes AKB web vrstvu a
+ověří `200 application/pdf`. Skript nevypisuje bearer token ani podepsaný
+download token.
+
+Rozlišení runtime base URL:
+
+```text
+AKL_REGISTRY_BASE_URL=http://registry-api:8000/api/v1
+```
+
+Používejte pro metadata, registraci externích dokumentů, verze, ingestion stav,
+extrakce a server-side Registry operace.
+
+```text
+BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb
+```
+
+Používejte pro `source-open`, preview, viewer a stažení binárního originálního
+dokumentu přes AKB web/BFF.
+
 ## Canonical Open URL
 
 Dokument se neotevírá obyčejným externím linkem. AKB vrací canonical viewer URL:
