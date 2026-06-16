@@ -245,7 +245,9 @@ Cílový realm:
   Skript umí číst STRATOS runtime proměnné `STRATOS_AKB_OIDC_TOKEN_URL`,
   `STRATOS_AKB_OIDC_CLIENT_ID`, `STRATOS_AKB_OIDC_CLIENT_SECRET`,
   `STRATOS_AKB_OIDC_AUDIENCE` a `STRATOS_AKB_OIDC_SCOPE` z
-  `/srv/STRATOS/deploy/.env`.
+  `/srv/STRATOS/deploy/.env`. Pro smoke používejte parametry `--env-file`;
+  nesourcujte STRATOS `.env` přímo v shellu, protože některé hodnoty mohou
+  obsahovat mezery.
 
 Theme struktura v repu:
 

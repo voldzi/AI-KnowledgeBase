@@ -671,14 +671,11 @@ Provozní smoke test tohoto kontraktu:
 
 ```bash
 BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb \
-STRATOS_AKB_OIDC_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token \
-STRATOS_AKB_OIDC_CLIENT_ID=stratos-akb-service \
-STRATOS_AKB_OIDC_CLIENT_SECRET=... \
-STRATOS_AKB_OIDC_AUDIENCE=akl-api \
-STRATOS_AKB_OIDC_SCOPE="openid profile email" \
 AKB_SMOKE_DOCUMENT_ID=doc_... \
 AKB_SMOKE_DOCUMENT_VERSION_ID=ver_... \
-python3 scripts/stratos_source_open_smoke.py
+python3 scripts/stratos_source_open_smoke.py \
+  --env-file /srv/akl/env/akl.prod.env \
+  --env-file /srv/STRATOS/deploy/.env
 ```
 
 Skript získá OIDC client-credentials token, zavolá `source-open`, ověří `201
@@ -686,6 +683,7 @@ application/json`, následně stáhne vrácený `download_url` přes AKB web vrs
 ověří `200 application/pdf`. Skript nevypisuje bearer token ani podepsaný
 download token. Na `docker.home.cz` jsou hodnoty servisního klienta pro STRATOS
 runtime v `/srv/STRATOS/deploy/.env`; root `.env` STRATOS compose nepoužívá.
+Skript načítá dotenv soubory sám a nespouští jejich obsah přes shell.
 
 Rozlišení runtime base URL:
 

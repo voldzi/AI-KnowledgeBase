@@ -16,7 +16,19 @@ import urllib.request
 
 
 def main() -> int:
+    preload_parser = argparse.ArgumentParser(add_help=False)
+    preload_parser.add_argument("--env-file", action="append", default=[])
+    preload_args, _remaining_args = preload_parser.parse_known_args()
+    for env_file in preload_args.env_file:
+        load_env_file(env_file)
+
     parser = argparse.ArgumentParser(description="Verify AKB STRATOS source-open and PDF download.")
+    parser.add_argument(
+        "--env-file",
+        action="append",
+        default=preload_args.env_file,
+        help="Optional dotenv file to load before reading smoke configuration. May be passed more than once.",
+    )
     parser.add_argument("--document-id", default=os.getenv("AKB_SMOKE_DOCUMENT_ID"), help="AKB document id.")
     parser.add_argument(
         "--version-id",
@@ -209,6 +221,29 @@ def first_env(*names: str) -> str | None:
         if value:
             return value
     return None
+
+
+def load_env_file(path: str) -> None:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export ") :].strip()
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if not key or not key.replace("_", "").isalnum() or key[0].isdigit():
+                    continue
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                    value = value[1:-1]
+                os.environ.setdefault(key, value)
+    except OSError as error:
+        fail(f"Unable to read env file {path!r}: {error.strerror}.")
 
 
 def fail(message: str) -> None:
