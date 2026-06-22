@@ -821,7 +821,11 @@ function ChatBubble({
           </span>
           {response?.confidence ? <StatusBadge value={response.confidence} /> : null}
         </div>
-        <ChatMessageContent role={message.role} content={message.content} />
+        <ChatMessageContent
+          role={message.role}
+          content={message.content}
+          hideMarkdownTables={Boolean(response?.report_artifacts.length)}
+        />
         {message.pending ? <div className="akb-chat-loader" /> : null}
         {response ? (
           <AssistantResponseTools
@@ -838,16 +842,66 @@ function ChatBubble({
   );
 }
 
-function ChatMessageContent({ role, content }: { role: ChatMessage["role"]; content: string }) {
+function ChatMessageContent({
+  role,
+  content,
+  hideMarkdownTables = false
+}: {
+  role: ChatMessage["role"];
+  content: string;
+  hideMarkdownTables?: boolean;
+}) {
   if (role !== "assistant") {
     return <p>{content}</p>;
   }
 
+  const displayContent = hideMarkdownTables ? stripMarkdownTables(content) : content;
+  if (!displayContent.trim()) {
+    return null;
+  }
+
   return (
     <div className="akb-chat-message__markdown">
-      <ReactMarkdown components={assistantMarkdownComponents} remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown components={assistantMarkdownComponents} remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
     </div>
   );
+}
+
+function stripMarkdownTables(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const output: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const nextLine = lines[index + 1] ?? "";
+    if (isMarkdownTableStart(line, nextLine)) {
+      index += 2;
+      while (index < lines.length && looksLikeMarkdownTableRow(lines[index] ?? "")) {
+        index += 1;
+      }
+      index -= 1;
+      continue;
+    }
+    output.push(line);
+  }
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function isMarkdownTableStart(line: string, nextLine: string): boolean {
+  return looksLikeMarkdownTableRow(line) && looksLikeMarkdownTableRow(nextLine) && isMarkdownTableSeparator(nextLine);
+}
+
+function looksLikeMarkdownTableRow(line: string): boolean {
+  return line.trim().includes("|") && line.replace(/\|/g, "").trim().length > 0;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
 function AssistantResponseTools({

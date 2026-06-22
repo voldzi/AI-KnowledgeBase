@@ -209,9 +209,8 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Odeslat" }).click();
 
     const assistantMessage = page.locator(".akb-chat-message--assistant").last();
-    await expect(assistantMessage.locator(".akb-chat-message__markdown table")).toBeVisible();
-    await expect(assistantMessage.locator(".akb-chat-message__markdown table")).toContainText("Právní povinnosti");
-    await expect(assistantMessage.locator(".akb-chat-message__markdown table")).toContainText("Obchodní tajemství");
+    await expect(assistantMessage.locator(".akb-chat-message__markdown")).toContainText("V citovaných zdrojích se objevují tyto oblasti povinností:");
+    await expect(assistantMessage.locator(".akb-chat-message__markdown table")).toHaveCount(0);
     await expect(assistantMessage.locator(".akb-chat-message__markdown")).not.toContainText("| :--- |");
 
     const report = assistantMessage.locator(".akb-chat-report");
