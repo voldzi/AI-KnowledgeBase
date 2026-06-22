@@ -190,7 +190,10 @@ test.describe("Document Workbench product paths", () => {
 
     await citationDialog.getByRole("button", { name: "Otevřít citaci" }).first().click();
     await expect(citationDialog.locator(".citation-modal__list-pane")).toHaveCount(0);
-    await expect(citationDialog.getByText("Chunk chunk_789")).toBeVisible();
+    await expect(citationDialog.getByText("Strana 7 · Cl. 4 / Odst. 2")).toBeVisible();
+    await expect(citationDialog.getByText("Chunk chunk_789")).toHaveCount(0);
+    await expect(citationDialog.locator(".source-viewer__technical")).toHaveCount(0);
+    await expect(citationDialog.locator(".source-uri")).toHaveCount(0);
     await expect(citationDialog.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
     await expect(citationDialog.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
       "href",

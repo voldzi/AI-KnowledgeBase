@@ -38,6 +38,7 @@ interface SourceContextCardProps {
   labels: CitationViewerLabels;
   className?: string;
   showStatus?: boolean;
+  showTechnicalDetails?: boolean;
 }
 
 type CitationDisplayMode = "modal" | "sidebar" | "fullscreen";
@@ -213,31 +214,31 @@ export function CitationList({
 }
 
 export const SourceContextCard = forwardRef<HTMLElement, SourceContextCardProps>(function SourceContextCard(
-  { sourceContext, labels, className = "", showStatus = true },
+  { sourceContext, labels, className = "", showStatus = true, showTechnicalDetails = false },
   ref
 ) {
+  const sectionLabel = sourceContext.location.section_path.join(" / ") || labels.noSection;
+  const locationLabel = `${labels.page} ${sourceContext.location.page_number ?? "n/a"} · ${sectionLabel}`;
+
   return (
     <article className={`source-viewer ${className}`.trim()} ref={ref}>
       <div className="source-viewer__header">
         <div>
           <h3>{sourceContext.document_title}</h3>
-          <span>
-            {sourceContext.viewer_mode} viewer - {sourceContext.source_file_name ?? labels.sourceUnavailable}
-          </span>
+          <span>{locationLabel}</span>
         </div>
         {showStatus ? <StatusBadge value="valid" label={sourceContext.viewer_mode} /> : null}
       </div>
-      <div className="notice" role="status">{labels.sourceOpened}</div>
-      <div className="source-viewer__meta">
-        <span>{labels.chunk} {sourceContext.chunk_id}</span>
-        <span>{labels.version} {sourceContext.document_version_id}</span>
-        <span>{labels.page} {sourceContext.location.page_number ?? "n/a"}</span>
-        <span>{sourceContext.location.section_path.join(" / ") || labels.noSection}</span>
-      </div>
-      {sourceContext.source_file_uri ? (
-        <div className="source-uri">
-          <FileText size={15} aria-hidden="true" />
-          <span>{sourceContext.source_file_uri}</span>
+      {showTechnicalDetails ? (
+        <div className="source-viewer__technical" aria-label="Technické údaje zdroje">
+          <span>
+            {sourceContext.viewer_mode} viewer - {sourceContext.source_file_name ?? labels.sourceUnavailable}
+          </span>
+          <span>{labels.chunk} {sourceContext.chunk_id}</span>
+          <span>{labels.version} {sourceContext.document_version_id}</span>
+          {sourceContext.source_file_uri ? (
+            <span>{sourceContext.source_file_uri}</span>
+          ) : null}
         </div>
       ) : null}
       {sourceContext.before_text ? (
