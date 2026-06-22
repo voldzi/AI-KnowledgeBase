@@ -4982,6 +4982,12 @@ button {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.citation-modal__body--detail,
+.citation-modal--sidebar .citation-modal__body--detail {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .citation-modal__list-pane {
   border-right: 1px solid var(--border);
   display: flex;

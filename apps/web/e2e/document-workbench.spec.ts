@@ -186,8 +186,10 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: /Prohlížeč citací/ }).first().click();
     const citationDialog = page.getByRole("dialog", { name: "Zdroj odpovědi" });
     await expect(citationDialog.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
+    await expect(citationDialog.locator(".citation-modal__list-pane")).toHaveCount(1);
 
     await citationDialog.getByRole("button", { name: "Otevřít citaci" }).first().click();
+    await expect(citationDialog.locator(".citation-modal__list-pane")).toHaveCount(0);
     await expect(citationDialog.getByText("Chunk chunk_789")).toBeVisible();
     await expect(citationDialog.getByText("Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu.")).toBeVisible();
     await expect(citationDialog.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute(
