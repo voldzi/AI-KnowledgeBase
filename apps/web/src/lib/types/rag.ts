@@ -146,6 +146,31 @@ export interface AssistantSuggestedAction {
   target: string | null;
 }
 
+export type AssistantReportColumnType = "text" | "number" | "date" | "url" | "currency" | "percent";
+
+export interface AssistantReportColumn {
+  key: string;
+  label: string;
+  type: AssistantReportColumnType;
+}
+
+export interface AssistantReportRow {
+  row_id: string;
+  cells: Record<string, string | number | boolean | null>;
+  citations: Citation[];
+}
+
+export interface AssistantReportArtifact {
+  artifact_id: string;
+  title: string;
+  description: string | null;
+  columns: AssistantReportColumn[];
+  rows: AssistantReportRow[];
+  export_formats: Array<"xlsx" | "pdf">;
+  source_citation_count: number;
+  warnings: string[];
+}
+
 export interface AssistantChatResponse {
   response_type: AssistantResponseType;
   conversation_id: string;
@@ -157,6 +182,7 @@ export interface AssistantChatResponse {
   citations: Citation[];
   follow_up_questions: string[];
   suggested_actions: AssistantSuggestedAction[];
+  report_artifacts: AssistantReportArtifact[];
   confidence: RagConfidence | null;
   warnings: string[];
   missing_information: string | null;

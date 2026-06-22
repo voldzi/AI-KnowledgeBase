@@ -1668,9 +1668,72 @@ button {
 }
 
 .akb-chat-answer-tools,
-.akb-chat-citations {
+.akb-chat-citations,
+.akb-chat-reports {
   display: grid;
   gap: 10px;
+}
+
+.akb-chat-reports h3 {
+  font-size: 13px;
+  margin: 0;
+}
+
+.akb-chat-report {
+  background: #fbfcfc;
+  border: 1px solid #d7e2e4;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.akb-chat-report__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.akb-chat-report__header h4 {
+  font-size: 14px;
+  line-height: 1.25;
+  margin: 4px 0 0;
+}
+
+.akb-chat-report__header p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 5px 0 0;
+}
+
+.akb-chat-report__actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.akb-chat-report__eyebrow {
+  align-items: center;
+  color: #46686c;
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+}
+
+.akb-chat-report__warnings {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .akb-chat-citations__header {
@@ -1960,6 +2023,15 @@ button {
     align-items: stretch;
     display: grid;
     gap: 8px;
+  }
+
+  .akb-chat-report__header {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .akb-chat-report__actions {
+    justify-content: stretch;
   }
 
   .akb-share-backdrop {

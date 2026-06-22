@@ -1,0 +1,54 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import {
+  assistantReportPdfMimeType,
+  buildAssistantReportPdf,
+  safeAssistantReportPdfFilename
+} from "@/lib/reporting/assistant-report-pdf";
+import {
+  AssistantReportValidationError,
+  assistantReportXlsxMimeType,
+  buildAssistantReportXlsx,
+  normalizeAssistantReportArtifact,
+  safeAssistantReportFilename
+} from "@/lib/reporting/assistant-report-xlsx";
+import { getOptionalServerRequestContext } from "@/lib/api/server";
+
+import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../../errors";
+
+export const runtime = "nodejs";
+
+export async function POST(request: NextRequest) {
+  try {
+    const context = await getOptionalServerRequestContext(request);
+    if (!context) {
+      return unauthorizedAssistantRequest();
+    }
+
+    const body = await request.json();
+    const bodyContext = _objectContext(body);
+    const report = normalizeAssistantReportArtifact(bodyContext.report ?? body);
+    const format = bodyContext.format === "pdf" ? "pdf" : "xlsx";
+    const file = format === "pdf" ? buildAssistantReportPdf(report) : buildAssistantReportXlsx(report);
+    const filename = format === "pdf" ? safeAssistantReportPdfFilename(report) : safeAssistantReportFilename(report);
+
+    return new NextResponse(new Uint8Array(file), {
+      status: 200,
+      headers: {
+        "Content-Type": format === "pdf" ? assistantReportPdfMimeType() : assistantReportXlsxMimeType(),
+        "Content-Disposition": `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff"
+      }
+    });
+  } catch (error) {
+    if (error instanceof AssistantReportValidationError) {
+      return badAssistantRequest(error.message);
+    }
+    return assistantBridgeError(error);
+  }
+}
+
+function _objectContext(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}

@@ -90,6 +90,47 @@ describe("production API clients", () => {
     assert.equal(calls[1][0], "https://registry.local/api/v1/documents?limit=200&offset=200");
   });
 
+  it("loads document metadata summary from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        total_visible_documents: 2,
+        total_matched_documents: 1,
+        topics: [
+          {
+            topic: "digitalizace",
+            document_count: 1,
+            valid_or_approved_count: 1,
+            document_types: [{ key: "methodology", label: "methodology", count: 1 }],
+            classifications: [{ key: "internal", label: "internal", count: 1 }],
+            statuses: [{ key: "valid", label: "valid", count: 1 }],
+            owners: [{ key: "IT", label: "IT", count: 1 }],
+            example_documents: ["Metodika digitalizace"]
+          }
+        ],
+        by_document_type: [],
+        by_classification: [],
+        by_status: [],
+        by_owner: [],
+        warnings: ["REGISTRY_METADATA_SUMMARY"]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const summary = await clients.registry.getDocumentMetadataSummary(createMockContext(), {
+      topics: ["digitalizace", "řízení projektů"],
+      classification: "internal"
+    });
+
+    assert.equal(summary.total_visible_documents, 2);
+    assert.equal(summary.topics[0].topic, "digitalizace");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents/metadata-summary?topic=digitalizace&topic=%C5%99%C3%ADzen%C3%AD+projekt%C5%AF&classification=internal"
+    );
+  });
+
   it("maps upstream error bodies to ApiClientError", async () => {
     const fetcher: AklFetch = async () =>
       Response.json(

@@ -196,6 +196,28 @@ def test_assistant_chat_returns_cited_answer_when_context_is_specific() -> None:
     body = response.json()
     assert body["response_type"] == "answer"
     assert body["citations"][0]["chunk_id"] == "chunk_789"
+    assert body["report_artifacts"] == []
+
+
+def test_assistant_chat_returns_report_artifact_for_table_request() -> None:
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Vytvoř tabulkovou sestavu do Excelu: kdo schvaluje výjimku ze směrnice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert body["report_artifacts"][0]["artifact_id"].startswith("rpt_")
+    assert body["report_artifacts"][0]["columns"][0]["key"] == "topic"
+    assert body["report_artifacts"][0]["export_formats"] == ["xlsx", "pdf"]
+    assert body["report_artifacts"][0]["rows"][0]["citations"][0]["chunk_id"] == "chunk_789"
+    assert body["suggested_actions"][0]["action_type"] == "export_report"
 
 
 def test_assistant_filters_include_pdf_corpus_document_types() -> None:

@@ -1,3 +1,6 @@
+import re
+import unicodedata
+from collections import Counter
 from datetime import date, timedelta
 from typing import Annotated
 
@@ -60,6 +63,9 @@ from app.schemas import (
     DocumentAssignmentRole,
     DocumentCreate,
     DocumentListResponse,
+    DocumentMetadataSummaryBucket,
+    DocumentMetadataSummaryResponse,
+    DocumentMetadataSummaryTopic,
     DocumentPatch,
     DocumentResponse,
     DocumentStatus,
@@ -1433,6 +1439,192 @@ def list_documents(
             documents.append(document)
 
     return DocumentListResponse(items=documents[offset : offset + limit], limit=limit, offset=offset)
+
+
+@router.get("/documents/metadata-summary", response_model=DocumentMetadataSummaryResponse)
+def document_metadata_summary(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+    status_filter: DocumentStatus | None = Query(default=None, alias="status"),
+    classification: Classification | None = None,
+    document_type: DocumentType | None = None,
+    owner_id: str | None = None,
+    tag: str | None = None,
+    topic: list[str] | None = Query(default=None),
+) -> DocumentMetadataSummaryResponse:
+    documents = _authorized_document_metadata_rows(
+        db=db,
+        principal=principal,
+        status_filter=status_filter,
+        classification=classification,
+        document_type=document_type,
+        owner_id=owner_id,
+        tag=tag,
+    )
+    topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
+    if not topics:
+        topics = ["all documents"]
+
+    topic_summaries: list[DocumentMetadataSummaryTopic] = []
+    matched_document_ids: set[str] = set()
+    for topic_label in topics[:12]:
+        topic_documents = (
+            documents
+            if _is_all_documents_topic(topic_label)
+            else [
+                document
+                for document in documents
+                if _document_matches_metadata_topic(document, topic_label)
+            ]
+        )
+        matched_document_ids.update(document.document_id for document in topic_documents)
+        topic_summaries.append(_document_metadata_topic_summary(topic_label, topic_documents))
+
+    return DocumentMetadataSummaryResponse(
+        total_visible_documents=len(documents),
+        total_matched_documents=len(matched_document_ids),
+        topics=topic_summaries,
+        by_document_type=_counter_buckets(Counter(document.document_type for document in documents)),
+        by_classification=_counter_buckets(Counter(document.classification for document in documents)),
+        by_status=_counter_buckets(Counter(document.status for document in documents)),
+        by_owner=_counter_buckets(
+            Counter((document.gestor_unit or document.owner_id) for document in documents)
+        ),
+        warnings=["REGISTRY_METADATA_SUMMARY"],
+    )
+
+
+def _authorized_document_metadata_rows(
+    *,
+    db: Session,
+    principal: Principal,
+    status_filter: DocumentStatus | None,
+    classification: Classification | None,
+    document_type: DocumentType | None,
+    owner_id: str | None,
+    tag: str | None,
+) -> list[Document]:
+    stmt = (
+        select(Document)
+        .options(selectinload(Document.access_policies), selectinload(Document.assignments))
+        .order_by(desc(Document.created_at))
+    )
+    if status_filter:
+        stmt = stmt.where(Document.status == status_filter.value)
+    if classification:
+        stmt = stmt.where(Document.classification == classification.value)
+    if document_type:
+        stmt = stmt.where(Document.document_type == document_type.value)
+    if owner_id:
+        stmt = stmt.where(Document.owner_id == owner_id)
+
+    context = context_for_principal(principal, db)
+    documents: list[Document] = []
+    for document in db.execute(stmt).scalars():
+        if tag and tag not in document.tags:
+            continue
+        decision = evaluate_document_access(context, Action.document_read.value, document)
+        if decision.allowed:
+            documents.append(document)
+    return documents
+
+
+def _document_metadata_topic_summary(
+    topic_label: str,
+    documents: list[Document],
+) -> DocumentMetadataSummaryTopic:
+    return DocumentMetadataSummaryTopic(
+        topic=topic_label,
+        document_count=len(documents),
+        valid_or_approved_count=len(
+            [
+                document
+                for document in documents
+                if document.status in {DocumentStatus.valid.value, DocumentStatus.approved.value}
+            ]
+        ),
+        document_types=_counter_buckets(Counter(document.document_type for document in documents)),
+        classifications=_counter_buckets(Counter(document.classification for document in documents)),
+        statuses=_counter_buckets(Counter(document.status for document in documents)),
+        owners=_counter_buckets(Counter((document.gestor_unit or document.owner_id) for document in documents)),
+        example_documents=[document.title for document in documents[:5]],
+    )
+
+
+def _counter_buckets(counter: Counter[str], limit: int = 12) -> list[DocumentMetadataSummaryBucket]:
+    return [
+        DocumentMetadataSummaryBucket(key=key, label=key, count=count)
+        for key, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))[:limit]
+        if key
+    ]
+
+
+def _document_matches_metadata_topic(document: Document, topic: str) -> bool:
+    topic_text = _normalize_metadata_text(topic)
+    if not topic_text:
+        return False
+    haystack = _document_metadata_search_text(document)
+    if topic_text in haystack:
+        return True
+    topic_tokens = [token for token in topic_text.split() if len(token) >= 3]
+    return bool(topic_tokens) and all(token in haystack for token in topic_tokens)
+
+
+def _document_metadata_search_text(document: Document) -> str:
+    parts: list[str] = [
+        document.document_id,
+        document.title,
+        document.document_type,
+        document.status,
+        document.classification,
+        document.owner_id,
+        document.gestor_unit or "",
+        *document.tags,
+        *_metadata_scalar_values(document.document_metadata),
+    ]
+    for assignment in document.assignments:
+        parts.extend(
+            [
+                assignment.role,
+                assignment.subject_type,
+                assignment.subject_id,
+                assignment.display_label or "",
+                *_metadata_scalar_values(assignment.assignment_metadata),
+            ]
+        )
+    return _normalize_metadata_text(" ".join(parts))
+
+
+def _metadata_scalar_values(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str | int | float | bool):
+        return [str(value)]
+    if isinstance(value, dict):
+        values: list[str] = []
+        for key, item in value.items():
+            values.append(str(key))
+            values.extend(_metadata_scalar_values(item))
+        return values
+    if isinstance(value, list):
+        values: list[str] = []
+        for item in value:
+            values.extend(_metadata_scalar_values(item))
+        return values
+    return []
+
+
+def _normalize_metadata_text(value: str) -> str:
+    without_marks = "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+    return re.sub(r"\s+", " ", re.sub(r"[^a-zA-Z0-9._/-]+", " ", without_marks).lower()).strip()
+
+
+def _is_all_documents_topic(topic: str) -> bool:
+    return _normalize_metadata_text(topic) in {"all documents", "vsechny dokumenty", "dokumenty"}
 
 
 @router.get("/documents/{document_id}", response_model=DocumentResponse)

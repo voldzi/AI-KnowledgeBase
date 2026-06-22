@@ -210,6 +210,7 @@ export class MockRagClient implements RagApiClient {
         citations: [],
         follow_up_questions: [],
         suggested_actions: [{ label: "Doplnit odpovědi", action_type: "continue_conversation", target: conversationId }],
+        report_artifacts: [],
         confidence: null,
         warnings: [],
         missing_information: null,
@@ -217,6 +218,8 @@ export class MockRagClient implements RagApiClient {
       };
     }
 
+    const citations = cloneMock(mockRagAnswer.citations);
+    const wantsReport = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled)/i.test(request.message);
     return {
       response_type: "answer",
       conversation_id: conversationId,
@@ -227,14 +230,45 @@ export class MockRagClient implements RagApiClient {
       questions: [],
       why_needed: null,
       current_context: request.context ?? {},
-      citations: cloneMock(mockRagAnswer.citations),
+      citations,
       follow_up_questions: language === "en"
         ? ["Do you want to open the source document?", "Do you want to ask a follow-up question?"]
         : ["Chcete otevřít zdrojový dokument?", "Chcete položit doplňující otázku?"],
       suggested_actions: [
+        ...(wantsReport ? [{ label: language === "en" ? "Export report" : "Exportovat sestavu", action_type: "export_report", target: "rpt_mock" }] : []),
         { label: language === "en" ? "Open source" : "Otevřít zdroj", action_type: "open_citation", target: null },
         { label: language === "en" ? "Ask follow-up" : "Položit doplňující dotaz", action_type: "ask_followup", target: null }
       ],
+      report_artifacts: wantsReport ? [
+        {
+          artifact_id: "rpt_mock",
+          title: language === "en" ? "AKB answer report" : "Sestava z odpovědi AKB",
+          description: language === "en"
+            ? "The table report is built from the cited answer."
+            : "Tabulková sestava je vytvořená z citované odpovědi.",
+          columns: [
+            { key: "topic", label: language === "en" ? "Topic" : "Téma", type: "text" },
+            { key: "summary", label: language === "en" ? "Summary" : "Závěr", type: "text" },
+            { key: "document", label: language === "en" ? "Source document" : "Zdrojový dokument", type: "text" },
+            { key: "page", label: language === "en" ? "Page" : "Strana", type: "number" }
+          ],
+          rows: citations.map((citation, index) => ({
+            row_id: `report_row_${index + 1}`,
+            cells: {
+              topic: request.message,
+              summary: language === "en"
+                ? "The document owner approves an exception after impact assessment."
+                : "Výjimku schvaluje gestor dokumentu po posouzení dopadu.",
+              document: citation.document_title,
+              page: citation.page_number
+            },
+            citations: [citation]
+          })),
+          export_formats: ["xlsx", "pdf"],
+          source_citation_count: citations.length,
+          warnings: ["REPORT_LIMITED_TO_CITED_SOURCES"]
+        }
+      ] : [],
       confidence: "medium",
       warnings: [],
       missing_information: null,

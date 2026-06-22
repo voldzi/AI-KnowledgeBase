@@ -855,6 +855,74 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/metadata-summary:
+    get:
+      summary: Document Metadata Summary
+      operationId: document_metadata_summary_api_v1_documents_metadata_summary_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentStatus'
+          - type: 'null'
+          title: Status
+      - name: classification
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Classification'
+          - type: 'null'
+          title: Classification
+      - name: document_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentType'
+          - type: 'null'
+          title: Document Type
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner Id
+      - name: tag
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tag
+      - name: topic
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          title: Topic
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentMetadataSummaryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AccessPolicyCreate:
@@ -2698,3 +2766,110 @@ components:
       - feedback
       - extraction
       title: DocumentExtractionFeedbackStoreResponse
+    DocumentMetadataSummaryBucket:
+      properties:
+        key:
+          type: string
+          title: Key
+        label:
+          type: string
+          title: Label
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - key
+      - label
+      - count
+      title: DocumentMetadataSummaryBucket
+    DocumentMetadataSummaryTopic:
+      properties:
+        topic:
+          type: string
+          title: Topic
+        document_count:
+          type: integer
+          title: Document Count
+        valid_or_approved_count:
+          type: integer
+          title: Valid Or Approved Count
+        document_types:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: Document Types
+        classifications:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: Classifications
+        statuses:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: Statuses
+        owners:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: Owners
+        example_documents:
+          items:
+            type: string
+          type: array
+          title: Example Documents
+      type: object
+      required:
+      - topic
+      - document_count
+      - valid_or_approved_count
+      title: DocumentMetadataSummaryTopic
+    DocumentMetadataSummaryResponse:
+      properties:
+        total_visible_documents:
+          type: integer
+          title: Total Visible Documents
+        total_matched_documents:
+          type: integer
+          title: Total Matched Documents
+        topics:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryTopic'
+          type: array
+          title: Topics
+        by_document_type:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: By Document Type
+        by_classification:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: By Classification
+        by_status:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: By Status
+        by_owner:
+          items:
+            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+          type: array
+          title: By Owner
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - total_visible_documents
+      - total_matched_documents
+      - topics
+      - by_document_type
+      - by_classification
+      - by_status
+      - by_owner
+      title: DocumentMetadataSummaryResponse

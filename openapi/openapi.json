@@ -1857,6 +1857,148 @@
         }
       ]
     },
+    "/api/v1/documents/metadata-summary": {
+      "get": {
+        "summary": "Document Metadata Summary",
+        "operationId": "registry_api_document_metadata_summary_api_v1_documents_metadata_summary_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegistryApiDocumentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "classification",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegistryApiClassification"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Classification"
+            }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegistryApiDocumentType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type"
+            }
+          },
+          {
+            "name": "owner_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner Id"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "name": "topic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/ingestion/jobs": {
       "get": {
         "tags": [
@@ -4323,6 +4465,56 @@
         ],
         "summary": "POST /api/assistant/clarify",
         "operationId": "web_post_api_assistant_clarify",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/reports/export": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "post": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "POST /api/assistant/reports/export",
+        "operationId": "web_post_api_assistant_reports_export",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -9048,6 +9240,152 @@
         ],
         "title": "DocumentExtractionFeedbackStoreResponse"
       },
+      "RegistryApiDocumentMetadataSummaryBucket": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "count"
+        ],
+        "title": "DocumentMetadataSummaryBucket"
+      },
+      "RegistryApiDocumentMetadataSummaryTopic": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "document_count": {
+            "type": "integer",
+            "title": "Document Count"
+          },
+          "valid_or_approved_count": {
+            "type": "integer",
+            "title": "Valid Or Approved Count"
+          },
+          "document_types": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Document Types"
+          },
+          "classifications": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Classifications"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Statuses"
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Owners"
+          },
+          "example_documents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Example Documents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "document_count",
+          "valid_or_approved_count"
+        ],
+        "title": "DocumentMetadataSummaryTopic"
+      },
+      "RegistryApiDocumentMetadataSummaryResponse": {
+        "properties": {
+          "total_visible_documents": {
+            "type": "integer",
+            "title": "Total Visible Documents"
+          },
+          "total_matched_documents": {
+            "type": "integer",
+            "title": "Total Matched Documents"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryTopic"
+            },
+            "type": "array",
+            "title": "Topics"
+          },
+          "by_document_type": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Document Type"
+          },
+          "by_classification": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Classification"
+          },
+          "by_status": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Status"
+          },
+          "by_owner": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Owner"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_visible_documents",
+          "total_matched_documents",
+          "topics",
+          "by_document_type",
+          "by_classification",
+          "by_status",
+          "by_owner"
+        ],
+        "title": "DocumentMetadataSummaryResponse"
+      },
       "IngestionServiceHTTPValidationError": {
         "properties": {
           "detail": {
@@ -9680,6 +10018,13 @@
             "type": "array",
             "title": "Suggested Actions"
           },
+          "report_artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceAssistantReportArtifact"
+            },
+            "type": "array",
+            "title": "Report Artifacts"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -9771,6 +10116,163 @@
           "status"
         ],
         "title": "AssistantConversationResponse"
+      },
+      "RagRetrievalServiceAssistantReportArtifact": {
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Artifact Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 600
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceAssistantReportColumn"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceAssistantReportRow"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Rows"
+          },
+          "export_formats": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "xlsx",
+                "pdf"
+              ]
+            },
+            "type": "array",
+            "title": "Export Formats"
+          },
+          "source_citation_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Source Citation Count",
+            "default": 0
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "title"
+        ],
+        "title": "AssistantReportArtifact"
+      },
+      "RagRetrievalServiceAssistantReportColumn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "number",
+              "date",
+              "url",
+              "currency",
+              "percent"
+            ],
+            "title": "Type",
+            "default": "text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AssistantReportColumn"
+      },
+      "RagRetrievalServiceAssistantReportRow": {
+        "properties": {
+          "row_id": {
+            "type": "string",
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Row Id"
+          },
+          "cells": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Cells"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceCitation"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "row_id"
+        ],
+        "title": "AssistantReportRow"
       },
       "RagRetrievalServiceAssistantSuggestedAction": {
         "properties": {

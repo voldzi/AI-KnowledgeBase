@@ -50,6 +50,7 @@ ViewerMode = Literal["pdf", "markdown", "text", "html", "table", "presentation",
 ResponseLanguage = Literal["cs", "en"]
 AssistantResponseType = Literal["answer", "clarification_needed", "no_answer", "restricted", "handoff_recommended"]
 ClarificationQuestionType = Literal["free_text", "single_choice"]
+AssistantReportColumnType = Literal["text", "number", "date", "url", "currency", "percent"]
 ExtractionStatus = Literal[
     "PENDING",
     "RUNNING",
@@ -226,6 +227,35 @@ class AssistantSuggestedAction(BaseModel):
     target: str | None = None
 
 
+class AssistantReportColumn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=120)
+    type: AssistantReportColumnType = "text"
+
+
+class AssistantReportRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_id: str = Field(min_length=1, max_length=96)
+    cells: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    citations: list[Citation] = Field(default_factory=list)
+
+
+class AssistantReportArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_id: str = Field(min_length=1, max_length=96)
+    title: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=600)
+    columns: list[AssistantReportColumn] = Field(default_factory=list, max_length=20)
+    rows: list[AssistantReportRow] = Field(default_factory=list, max_length=500)
+    export_formats: list[Literal["xlsx", "pdf"]] = Field(default_factory=lambda: ["xlsx", "pdf"])
+    source_citation_count: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class AssistantChatResponse(BaseModel):
     response_type: AssistantResponseType
     conversation_id: str
@@ -237,6 +267,7 @@ class AssistantChatResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     follow_up_questions: list[str] = Field(default_factory=list)
     suggested_actions: list[AssistantSuggestedAction] = Field(default_factory=list)
+    report_artifacts: list[AssistantReportArtifact] = Field(default_factory=list)
     confidence: Confidence | None = None
     warnings: list[str] = Field(default_factory=list)
     missing_information: str | None = None

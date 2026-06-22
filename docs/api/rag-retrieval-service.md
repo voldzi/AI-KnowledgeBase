@@ -60,6 +60,20 @@ GET  /health
 GET  /ready
 ```
 
+`/api/v1/assistant/chat` and `/api/v1/assistant/clarify` return the standard
+assistant answer contract. For report, table, overview, Excel, PDF, or export
+requests, the response may include `report_artifacts`. These artifacts are
+bounded table specifications with row-level citations. The AKB web BFF exports
+them as `.xlsx` or `.pdf` via `POST /api/assistant/reports/export`.
+
+Inventory-style document questions are handled by the AKB web BFF before RAG
+when the question can be answered from Registry API metadata, for example
+counts or tables by topic. Those responses include metadata breakdowns by type,
+classification, owner/steward, and status. They use the same assistant response
+and `report_artifacts` shape, but carry `answer_source:
+"registry_metadata_summary"` when backed by `GET
+/api/v1/documents/metadata-summary`, and no chunk citations.
+
 ## STRATOS Contract Extractions
 
 `POST /api/v1/stratos/extractions/contracts/propose` extracts cited proposed

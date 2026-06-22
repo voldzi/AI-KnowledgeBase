@@ -26,6 +26,26 @@ AKB exposes several REST surfaces:
 
 Service-level summaries remain in `docs/api/`.
 
+The web/API bridge may answer employee assistant inventory questions directly
+from Registry API metadata when the user asks for document counts, lists,
+tables, or exports by topic. The current metadata report includes breakdowns by
+status, type, classification, and owner/steward. These responses use the same
+assistant response shape and `report_artifacts` as RAG answers, but are marked
+with `answer_source: "registry_metadata"` and carry no chunk citations. Content
+interpretation questions still go through RAG Retrieval Service and must remain
+citation-bound.
+
+Registry API exposes the first enterprise metadata aggregate endpoint:
+
+```text
+GET /api/v1/documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
+```
+
+It returns permission-scoped counts and buckets by topic, document type,
+classification, status, and owner/steward. The web bridge uses it for chat
+inventory questions and falls back to paginated `/documents` only when an older
+registry deployment does not yet expose the endpoint.
+
 ## Authentication
 
 Production browser flows authenticate through STRATOS OIDC. Server-to-server

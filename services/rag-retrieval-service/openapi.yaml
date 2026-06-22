@@ -676,6 +676,11 @@ components:
             $ref: '#/components/schemas/AssistantSuggestedAction'
           type: array
           title: Suggested Actions
+        report_artifacts:
+          items:
+            $ref: '#/components/schemas/AssistantReportArtifact'
+          type: array
+          title: Report Artifacts
         confidence:
           anyOf:
           - type: string
@@ -734,6 +739,116 @@ components:
       - conversation_id
       - status
       title: AssistantConversationResponse
+    AssistantReportArtifact:
+      properties:
+        artifact_id:
+          type: string
+          maxLength: 96
+          minLength: 1
+          title: Artifact Id
+        title:
+          type: string
+          maxLength: 180
+          minLength: 1
+          title: Title
+        description:
+          anyOf:
+          - type: string
+            maxLength: 600
+          - type: 'null'
+          title: Description
+        columns:
+          items:
+            $ref: '#/components/schemas/AssistantReportColumn'
+          type: array
+          maxItems: 20
+          title: Columns
+        rows:
+          items:
+            $ref: '#/components/schemas/AssistantReportRow'
+          type: array
+          maxItems: 500
+          title: Rows
+        export_formats:
+          items:
+            type: string
+            enum:
+            - xlsx
+            - pdf
+          type: array
+          title: Export Formats
+        source_citation_count:
+          type: integer
+          minimum: 0.0
+          title: Source Citation Count
+          default: 0
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      additionalProperties: false
+      type: object
+      required:
+      - artifact_id
+      - title
+      title: AssistantReportArtifact
+    AssistantReportColumn:
+      properties:
+        key:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Key
+        label:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Label
+        type:
+          type: string
+          enum:
+          - text
+          - number
+          - date
+          - url
+          - currency
+          - percent
+          title: Type
+          default: text
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - label
+      title: AssistantReportColumn
+    AssistantReportRow:
+      properties:
+        row_id:
+          type: string
+          maxLength: 96
+          minLength: 1
+          title: Row Id
+        cells:
+          additionalProperties:
+            anyOf:
+            - type: string
+            - type: integer
+            - type: number
+            - type: boolean
+            - type: 'null'
+          type: object
+          title: Cells
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - row_id
+      title: AssistantReportRow
     AssistantSuggestedAction:
       properties:
         label:

@@ -289,6 +289,34 @@ class DocumentListResponse(BaseModel):
     offset: int
 
 
+class DocumentMetadataSummaryBucket(BaseModel):
+    key: str
+    label: str
+    count: int
+
+
+class DocumentMetadataSummaryTopic(BaseModel):
+    topic: str
+    document_count: int
+    valid_or_approved_count: int
+    document_types: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    classifications: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    statuses: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    owners: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    example_documents: list[str] = Field(default_factory=list)
+
+
+class DocumentMetadataSummaryResponse(BaseModel):
+    total_visible_documents: int
+    total_matched_documents: int
+    topics: list[DocumentMetadataSummaryTopic]
+    by_document_type: list[DocumentMetadataSummaryBucket]
+    by_classification: list[DocumentMetadataSummaryBucket]
+    by_status: list[DocumentMetadataSummaryBucket]
+    by_owner: list[DocumentMetadataSummaryBucket]
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ExternalDocumentOwner(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
     display_name: str | None = Field(default=None, max_length=200)

@@ -18,9 +18,13 @@ from app.schemas import (
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantConversationResponse,
+    AssistantReportArtifact,
+    AssistantReportColumn,
+    AssistantReportRow,
     AssistantSuggestion,
     AssistantSuggestionsResponse,
     AssistantSuggestedAction,
+    Citation,
     ClarificationQuestion,
     ContractExtractionFeedbackRequest,
     ContractExtractionFeedbackResponse,
@@ -569,22 +573,40 @@ class RagRetrievalService:
             auth_context=auth_context,
         )
         if rag_answer.citations:
+            report_artifacts = _assistant_report_artifacts(
+                message=payload.message,
+                answer=rag_answer.answer,
+                citations=rag_answer.citations,
+                confidence=rag_answer.confidence,
+                response_language=payload.response_language,
+            )
+            suggested_actions = [
+                AssistantSuggestedAction(
+                    label=_localized(payload.response_language, "open_source"),
+                    action_type="open_citation",
+                ),
+                AssistantSuggestedAction(
+                    label=_localized(payload.response_language, "ask_followup"),
+                    action_type="ask_followup",
+                ),
+            ]
+            if report_artifacts:
+                suggested_actions.insert(
+                    0,
+                    AssistantSuggestedAction(
+                        label=_localized(payload.response_language, "export_report"),
+                        action_type="export_report",
+                        target=report_artifacts[0].artifact_id,
+                    ),
+                )
             response = AssistantChatResponse(
                 response_type="answer",
                 conversation_id=conversation_id,
                 answer=_employee_answer(rag_answer.answer, payload.response_language),
                 citations=rag_answer.citations,
                 follow_up_questions=_follow_up_questions(payload.message, payload.response_language),
-                suggested_actions=[
-                    AssistantSuggestedAction(
-                        label=_localized(payload.response_language, "open_source"),
-                        action_type="open_citation",
-                    ),
-                    AssistantSuggestedAction(
-                        label=_localized(payload.response_language, "ask_followup"),
-                        action_type="ask_followup",
-                    ),
-                ],
+                suggested_actions=suggested_actions,
+                report_artifacts=report_artifacts,
                 confidence=rag_answer.confidence,
                 warnings=rag_answer.warnings,
             )
@@ -592,7 +614,11 @@ class RagRetrievalService:
                 actor_id=payload.user_id,
                 event_type="assistant.answer_returned",
                 conversation_id=conversation_id,
-                metadata={"citation_count": len(rag_answer.citations), "confidence": rag_answer.confidence},
+                metadata={
+                    "citation_count": len(rag_answer.citations),
+                    "confidence": rag_answer.confidence,
+                    "report_artifact_count": len(report_artifacts),
+                },
                 auth_context=auth_context,
             )
             await self._persist_conversation_turn(
@@ -733,6 +759,9 @@ class RagRetrievalService:
                         "metadata": {
                             "confidence": response.confidence,
                             "warnings": response.warnings,
+                            "report_artifacts": [
+                                artifact.model_dump(mode="json") for artifact in response.report_artifacts
+                            ],
                         },
                     },
                 ],
@@ -1192,6 +1221,7 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "scope_workplace": "celé pracoviště",
         "approval_subject_question": "Co konkrétně má být schváleno?",
         "open_source": "Otevřít zdroj",
+        "export_report": "Exportovat sestavu",
         "ask_followup": "Položit doplňující dotaz",
         "no_precise_source": "Nepodařilo se najít dostatečně přesný a citovatelný postup.",
         "no_precise_document_source": "Nepodařilo se najít dostatečně přesný a citovatelný zdroj v dokumentech.",
@@ -1227,6 +1257,7 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "scope_workplace": "whole workplace",
         "approval_subject_question": "What exactly needs to be approved?",
         "open_source": "Open source",
+        "export_report": "Export report",
         "ask_followup": "Ask follow-up",
         "no_precise_source": "I could not find a sufficiently precise and citable procedure.",
         "no_precise_document_source": "I could not find a sufficiently precise and citable document source.",
@@ -1248,6 +1279,102 @@ def _localized(language: ResponseLanguage, key: str) -> str:
 def _assistant_no_source_message(answer_mode: str, language: ResponseLanguage) -> str:
     key = "no_precise_source" if answer_mode == "it_support_answer" else "no_precise_document_source"
     return _localized(language, key)
+
+
+def _assistant_report_artifacts(
+    *,
+    message: str,
+    answer: str,
+    citations: list[Citation],
+    confidence: str,
+    response_language: ResponseLanguage,
+) -> list[AssistantReportArtifact]:
+    normalized = _normalize_for_assistant(message)
+    if not _is_report_request(normalized):
+        return []
+
+    columns = [
+        AssistantReportColumn(key="topic", label="Téma" if response_language == "cs" else "Topic"),
+        AssistantReportColumn(key="summary", label="Závěr" if response_language == "cs" else "Summary"),
+        AssistantReportColumn(key="document", label="Zdrojový dokument" if response_language == "cs" else "Source document"),
+        AssistantReportColumn(key="version", label="Verze" if response_language == "cs" else "Version"),
+        AssistantReportColumn(key="section", label="Oddíl" if response_language == "cs" else "Section"),
+        AssistantReportColumn(key="page", label="Strana" if response_language == "cs" else "Page", type="number"),
+        AssistantReportColumn(key="confidence", label="Spolehlivost" if response_language == "cs" else "Confidence"),
+    ]
+    summary = _short_report_text(_employee_answer(answer, response_language), max_length=520)
+    topic = _short_report_text(message, max_length=180)
+    rows: list[AssistantReportRow] = []
+    seen_chunks: set[str] = set()
+    for index, citation in enumerate(citations[:24], start=1):
+        if citation.chunk_id in seen_chunks:
+            continue
+        seen_chunks.add(citation.chunk_id)
+        rows.append(
+            AssistantReportRow(
+                row_id=f"report_row_{index}",
+                cells={
+                    "topic": topic,
+                    "summary": summary,
+                    "document": citation.document_title,
+                    "version": citation.version_label,
+                    "section": " / ".join(citation.section_path) if citation.section_path else "",
+                    "page": citation.page_number,
+                    "confidence": confidence,
+                },
+                citations=[citation],
+            )
+        )
+
+    if not rows:
+        return []
+
+    title = "Sestava z odpovědi AKB" if response_language == "cs" else "AKB answer report"
+    description = (
+        "Tabulková sestava je vytvořená z citované odpovědi. Hodnoty jsou omezené na zdroje,"
+        " které měl uživatel oprávnění číst."
+        if response_language == "cs"
+        else "The table report is built from the cited answer. Values are limited to sources the user was allowed to read."
+    )
+    warnings = ["REPORT_LIMITED_TO_CITED_SOURCES"]
+    if len(citations) > len(rows):
+        warnings.append("REPORT_CITATIONS_DEDUPLICATED")
+    return [
+        AssistantReportArtifact(
+            artifact_id=f"rpt_{uuid.uuid4().hex[:12]}",
+            title=title,
+            description=description,
+            columns=columns,
+            rows=rows,
+            source_citation_count=len(citations),
+            warnings=warnings,
+        )
+    ]
+
+
+def _is_report_request(value: str) -> bool:
+    return any(
+        term in value
+        for term in (
+            "sestav",
+            "report",
+            "tabulk",
+            "excel",
+            "xlsx",
+            "export",
+            "vyexport",
+            "prehled",
+            "spreadsheet",
+            "worksheet",
+        )
+    )
+
+
+def _short_report_text(value: str, *, max_length: int) -> str:
+    compact = re.sub(r"\s+", " ", value).strip()
+    if len(compact) <= max_length:
+        return compact
+    return f"{compact[: max_length - 3].rstrip()}..."
 
 
 def _clarification_questions(

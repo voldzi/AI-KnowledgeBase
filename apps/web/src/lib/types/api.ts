@@ -5,6 +5,8 @@ import type {
   CreateVersionRequest,
   Document,
   DocumentAssignment,
+  DocumentMetadataSummary,
+  DocumentMetadataSummaryOptions,
   DocumentVersion,
   ReplaceDocumentAssignmentsRequest
 } from "./documents";
@@ -74,6 +76,10 @@ export interface ApiErrorBody {
 
 export interface RegistryApiClient {
   listDocuments(context: ApiRequestContext): Promise<Document[]>;
+  getDocumentMetadataSummary(
+    context: ApiRequestContext,
+    options?: DocumentMetadataSummaryOptions
+  ): Promise<DocumentMetadataSummary>;
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document>;
   createDocument(request: CreateDocumentRequest, context: ApiRequestContext): Promise<Document>;
   listDocumentAssignments(documentId: string, context: ApiRequestContext): Promise<DocumentAssignment[]>;

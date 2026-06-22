@@ -10,6 +10,8 @@ import type {
   DirectoryUser,
   Document,
   DocumentAssignment,
+  DocumentMetadataSummary,
+  DocumentMetadataSummaryOptions,
   DocumentVersion,
   RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
@@ -31,7 +33,7 @@ interface ListEnvelope<T> {
 }
 
 const DOCUMENT_PAGE_SIZE = 200;
-const DOCUMENT_PAGE_LIMIT = 10;
+const DOCUMENT_PAGE_LIMIT = 100;
 
 export class ProductionRegistryClient implements RegistryApiClient {
   constructor(
@@ -54,6 +56,39 @@ export class ProductionRegistryClient implements RegistryApiClient {
       }
     }
     return documents;
+  }
+
+  getDocumentMetadataSummary(
+    context: ApiRequestContext,
+    options: DocumentMetadataSummaryOptions = {}
+  ): Promise<DocumentMetadataSummary> {
+    const params = new URLSearchParams();
+    for (const topic of options.topics ?? []) {
+      if (topic.trim()) {
+        params.append("topic", topic.trim());
+      }
+    }
+    if (options.status) {
+      params.set("status", options.status);
+    }
+    if (options.classification) {
+      params.set("classification", options.classification);
+    }
+    if (options.documentType) {
+      params.set("document_type", options.documentType);
+    }
+    if (options.ownerId) {
+      params.set("owner_id", options.ownerId);
+    }
+    if (options.tag) {
+      params.set("tag", options.tag);
+    }
+    const query = params.toString();
+    return this.get<DocumentMetadataSummary>(
+      `/documents/metadata-summary${query ? `?${query}` : ""}`,
+      "getDocumentMetadataSummary",
+      context
+    );
   }
 
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document> {

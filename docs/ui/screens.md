@@ -89,6 +89,9 @@ Content:
 - confidence badge
 - warning/no-answer state
 - right-side citation/source panel
+- report artifact preview for table/report/Excel/PDF requests
+- metadata inventory reports for document counts and lists by topic
+- Excel and PDF export from bounded report artifacts
 - citation viewer and direct source document opening
 
 ## Audit Viewer

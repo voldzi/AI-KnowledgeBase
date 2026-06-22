@@ -80,6 +80,43 @@ export interface Document {
   updated_at: string;
 }
 
+export interface DocumentMetadataSummaryBucket {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface DocumentMetadataSummaryTopic {
+  topic: string;
+  document_count: number;
+  valid_or_approved_count: number;
+  document_types: DocumentMetadataSummaryBucket[];
+  classifications: DocumentMetadataSummaryBucket[];
+  statuses: DocumentMetadataSummaryBucket[];
+  owners: DocumentMetadataSummaryBucket[];
+  example_documents: string[];
+}
+
+export interface DocumentMetadataSummary {
+  total_visible_documents: number;
+  total_matched_documents: number;
+  topics: DocumentMetadataSummaryTopic[];
+  by_document_type: DocumentMetadataSummaryBucket[];
+  by_classification: DocumentMetadataSummaryBucket[];
+  by_status: DocumentMetadataSummaryBucket[];
+  by_owner: DocumentMetadataSummaryBucket[];
+  warnings: string[];
+}
+
+export interface DocumentMetadataSummaryOptions {
+  topics?: string[];
+  status?: DocumentStatus;
+  classification?: Classification;
+  documentType?: DocumentType;
+  ownerId?: string;
+  tag?: string;
+}
+
 export interface DocumentVersion {
   document_version_id: string;
   document_id: string;

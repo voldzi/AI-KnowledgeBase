@@ -10,6 +10,10 @@ import type {
   DirectoryUser,
   Document,
   DocumentAssignment,
+  DocumentMetadataSummary,
+  DocumentMetadataSummaryBucket,
+  DocumentMetadataSummaryOptions,
+  DocumentMetadataSummaryTopic,
   DocumentVersion,
   RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
@@ -30,6 +34,40 @@ export class MockRegistryClient implements RegistryApiClient {
 
   async listDocuments(_context: ApiRequestContext): Promise<Document[]> {
     return cloneMock(this.documents);
+  }
+
+  async getDocumentMetadataSummary(
+    _context: ApiRequestContext,
+    options: DocumentMetadataSummaryOptions = {}
+  ): Promise<DocumentMetadataSummary> {
+    const topics = options.topics?.length ? options.topics : ["all documents"];
+    const documents = this.documents.filter((document) => documentMatchesSummaryOptions(document, options));
+    const topicSummaries = topics.map((topic) => {
+      const topicDocuments = isAllDocumentsTopic(topic)
+        ? documents
+        : documents.filter((document) => documentMatchesTopic(document, topic));
+      return documentMetadataSummaryTopic(topic, topicDocuments);
+    });
+    const matchedIds = new Set<string>();
+    topicSummaries.forEach((summary) => {
+      if (isAllDocumentsTopic(summary.topic)) {
+        documents.forEach((document) => matchedIds.add(document.document_id));
+      } else {
+        documents
+          .filter((document) => documentMatchesTopic(document, summary.topic))
+          .forEach((document) => matchedIds.add(document.document_id));
+      }
+    });
+    return {
+      total_visible_documents: documents.length,
+      total_matched_documents: matchedIds.size,
+      topics: topicSummaries,
+      by_document_type: summaryBuckets(documents.map((document) => document.document_type)),
+      by_classification: summaryBuckets(documents.map((document) => document.classification)),
+      by_status: summaryBuckets(documents.map((document) => document.status)),
+      by_owner: summaryBuckets(documents.map((document) => document.gestor_unit ?? document.owner ?? document.owner_id)),
+      warnings: ["REGISTRY_METADATA_SUMMARY"]
+    };
   }
 
   async getDocument(documentId: string, _context: ApiRequestContext): Promise<Document> {
@@ -488,6 +526,107 @@ function auditEventMatchesOptions(event: AuditEvent, options: AuditEventListOpti
     return false;
   }
   return true;
+}
+
+function documentMatchesSummaryOptions(document: Document, options: DocumentMetadataSummaryOptions): boolean {
+  if (options.status && document.status !== options.status) {
+    return false;
+  }
+  if (options.classification && document.classification !== options.classification) {
+    return false;
+  }
+  if (options.documentType && document.document_type !== options.documentType) {
+    return false;
+  }
+  if (options.ownerId && document.owner_id !== options.ownerId) {
+    return false;
+  }
+  if (options.tag && !document.tags.includes(options.tag)) {
+    return false;
+  }
+  return true;
+}
+
+function documentMetadataSummaryTopic(topic: string, documents: Document[]): DocumentMetadataSummaryTopic {
+  return {
+    topic,
+    document_count: documents.length,
+    valid_or_approved_count: documents.filter((document) => document.status === "valid" || document.status === "approved").length,
+    document_types: summaryBuckets(documents.map((document) => document.document_type)),
+    classifications: summaryBuckets(documents.map((document) => document.classification)),
+    statuses: summaryBuckets(documents.map((document) => document.status)),
+    owners: summaryBuckets(documents.map((document) => document.gestor_unit ?? document.owner ?? document.owner_id)),
+    example_documents: documents.slice(0, 5).map((document) => document.title)
+  };
+}
+
+function summaryBuckets(values: string[]): DocumentMetadataSummaryBucket[] {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (value) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "cs"))
+    .slice(0, 12)
+    .map(([key, count]) => ({ key, label: key, count }));
+}
+
+function documentMatchesTopic(document: Document, topic: string): boolean {
+  const topicText = normalizeSummaryText(topic);
+  if (!topicText) {
+    return false;
+  }
+  const haystack = normalizeSummaryText([
+    document.document_id,
+    document.title,
+    document.document_type,
+    document.status,
+    document.classification,
+    document.owner_id,
+    document.owner,
+    document.gestor_unit ?? "",
+    ...document.tags,
+    ...metadataSummaryValues(document.metadata)
+  ].join(" "));
+  if (haystack.includes(topicText)) {
+    return true;
+  }
+  const tokens = topicText.split(/\s+/).filter((token) => token.length >= 3);
+  return tokens.length > 0 && tokens.every((token) => haystack.includes(token));
+}
+
+function metadataSummaryValues(metadata: Record<string, unknown> | undefined): string[] {
+  if (!metadata) {
+    return [];
+  }
+  return Object.entries(metadata).flatMap(([key, value]) => {
+    if (value === null || value === undefined) {
+      return [key];
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return [key, String(value)];
+    }
+    if (Array.isArray(value)) {
+      return [key, ...value.filter((item) => ["string", "number", "boolean"].includes(typeof item)).map(String)];
+    }
+    return [key];
+  });
+}
+
+function normalizeSummaryText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._/-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isAllDocumentsTopic(topic: string): boolean {
+  return ["all documents", "vsechny dokumenty", "dokumenty"].includes(normalizeSummaryText(topic));
 }
 
 function assignmentFor(document: Document, roles: DocumentAssignment["role"][]): DocumentAssignment | undefined {

@@ -17,6 +17,9 @@ describe("mock API clients", () => {
     const context = createMockContext();
 
     const documents = await clients.registry.listDocuments(context);
+    const summary = await clients.registry.getDocumentMetadataSummary(context, {
+      topics: ["řízená dokumentace"]
+    });
     const createdVersion = await clients.registry.createDocumentVersion(
       documents[0].document_id,
       {
@@ -42,6 +45,8 @@ describe("mock API clients", () => {
     );
 
     assert.ok(documents.length > 0);
+    assert.equal(summary.warnings[0], "REGISTRY_METADATA_SUMMARY");
+    assert.ok(summary.topics[0].document_count >= 1);
     assert.equal(createdVersion.document_id, documents[0].document_id);
     assert.equal(job.status, "queued");
   });
@@ -109,11 +114,20 @@ describe("mock API clients", () => {
       context
     );
     const suggestions = await clients.rag.assistantSuggestions(context);
+    const reportAnswer = await clients.rag.assistantChat(
+      {
+        user_id: context.subjectId,
+        message: "Vytvoř tabulkovou sestavu do Excelu k výjimce ze směrnice.",
+        context: { approval_subject: "výjimka ze směrnice" }
+      },
+      context
+    );
 
     assert.equal(clarification.response_type, "clarification_needed");
     assert.ok(clarification.questions.some((question) => question.id === "system"));
     assert.equal(answer.response_type, "answer");
     assert.ok(answer.citations.length > 0);
+    assert.deepEqual(reportAnswer.report_artifacts[0]?.export_formats, ["xlsx", "pdf"]);
     assert.ok(suggestions.suggestions.length > 0);
   });
 

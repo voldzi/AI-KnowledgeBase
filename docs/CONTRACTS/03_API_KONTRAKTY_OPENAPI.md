@@ -456,10 +456,96 @@ Assistant response:
     }
   ],
   "citations": [],
+  "report_artifacts": [],
   "confidence": null,
   "warnings": []
 }
 ```
+
+For report/table/Excel/PDF requests, the same response may include bounded
+`report_artifacts`:
+
+```json
+{
+  "response_type": "answer",
+  "conversation_id": "conv_123",
+  "answer": "Souhrn odpovědi s citacemi.",
+  "citations": [
+    {
+      "document_id": "doc_123",
+      "document_version_id": "ver_456",
+      "document_title": "Směrnice",
+      "version_label": "1.0",
+      "document_version": "1.0",
+      "section_path": ["Čl. 4"],
+      "page_number": 7,
+      "chunk_id": "chunk_789"
+    }
+  ],
+  "report_artifacts": [
+    {
+      "artifact_id": "rpt_abc123",
+      "title": "Sestava z odpovědi AKB",
+      "description": "Tabulková sestava je vytvořená z citované odpovědi.",
+      "columns": [
+        { "key": "topic", "label": "Téma", "type": "text" },
+        { "key": "summary", "label": "Závěr", "type": "text" },
+        { "key": "document", "label": "Zdrojový dokument", "type": "text" }
+      ],
+      "rows": [
+        {
+          "row_id": "report_row_1",
+          "cells": {
+            "topic": "Kdo schvaluje výjimku",
+            "summary": "Výjimku schvaluje gestor dokumentu.",
+            "document": "Směrnice"
+          },
+          "citations": []
+        }
+      ],
+      "export_formats": ["xlsx", "pdf"],
+      "source_citation_count": 1,
+      "warnings": ["REPORT_LIMITED_TO_CITED_SOURCES"]
+    }
+  ],
+  "confidence": "medium",
+  "warnings": []
+}
+```
+
+The artifact source may be either:
+
+- cited RAG answer content, where rows carry chunk citations and warnings such
+  as `REPORT_LIMITED_TO_CITED_SOURCES`, or
+- Registry API metadata aggregation, where the web BFF answers inventory
+  questions such as document counts/lists by topic before calling RAG. Metadata
+  reports carry `answer_source: "registry_metadata_summary"` when backed by
+  `GET /documents/metadata-summary`, no chunk citations, and warnings such as
+  `REGISTRY_METADATA_REPORT`, `REGISTRY_METADATA_SUMMARY`, or
+  `REGISTRY_SCAN_LIMIT_REACHED`.
+
+Registry metadata summary:
+
+```text
+GET /documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
+```
+
+The endpoint is permission-scoped and returns `total_visible_documents`,
+`total_matched_documents`, topic rows, and buckets by document type,
+classification, status, and owner/steward. It is the preferred source for exact
+document inventory/count/list answers in chat.
+
+The AKB web BFF exports the artifact with:
+
+```text
+POST /api/assistant/reports/export
+```
+
+The request body is `{ "report": <report_artifact>, "format": "xlsx" }` or
+`{ "report": <report_artifact>, "format": "pdf" }`. The response is either
+`200 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` or
+`200 application/pdf`. The export is deterministic, bounded, and contains no
+macros, scripts, formulas, or external links.
 
 ---
 

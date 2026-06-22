@@ -7,6 +7,8 @@ import {
   Check,
   Clock3,
   Copy,
+  Download,
+  FileSpreadsheet,
   FileText,
   LifeBuoy,
   MessageSquare,
@@ -17,17 +19,20 @@ import {
   Send,
   Share2,
   ShieldAlert,
+  Table2,
   Users,
   X
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
-import { StratosButton, StratosSelect } from "@/components/stratos";
+import { StratosButton, StratosDataTable, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
 import { CitationList, CitationModal, SourceContextCard, type CitationViewerLabels } from "@/features/citations/citation-viewer";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AssistantChatResponse,
+  AssistantReportArtifact,
+  AssistantReportRow,
   AssistantSuggestion,
   Citation,
   ClarificationQuestion,
@@ -119,6 +124,15 @@ const assistantAppCopy = {
     result: "Výsledek",
     recommendation: "Doporučení:",
     followUps: "Navazující dotazy",
+    reports: "Sestavy",
+    exportXlsx: "Exportovat Excel",
+    exportPdf: "Exportovat PDF",
+    exportingReport: "Připravuji Excel",
+    exportingPdf: "Připravuji PDF",
+    exportReportFailedStatus: "Sestavu se nepodařilo exportovat. Kód odpovědi:",
+    exportReportFailed: "Sestavu se nepodařilo exportovat.",
+    reportRows: "řádků",
+    reportSources: "citovaných zdrojů",
     citationViewer: "Prohlížeč citací",
     shareTitle: "Sdílet vlákno",
     shareTarget: "Uživatel nebo skupina",
@@ -186,6 +200,15 @@ const assistantAppCopy = {
     result: "Result",
     recommendation: "Recommendation:",
     followUps: "Follow-up questions",
+    reports: "Reports",
+    exportXlsx: "Export Excel",
+    exportPdf: "Export PDF",
+    exportingReport: "Preparing Excel",
+    exportingPdf: "Preparing PDF",
+    exportReportFailedStatus: "The report could not be exported. Response code:",
+    exportReportFailed: "The report could not be exported.",
+    reportRows: "rows",
+    reportSources: "cited sources",
     citationViewer: "Citation viewer",
     shareTitle: "Share thread",
     shareTarget: "User or group",
@@ -782,6 +805,14 @@ function AssistantResponseTools({
           {response.warnings.join(", ")}
         </div>
       ) : null}
+      {response.report_artifacts.length > 0 ? (
+        <div className="akb-chat-reports">
+          <h3>{copy.reports}</h3>
+          {response.report_artifacts.map((report) => (
+            <AssistantReportPanel key={report.artifact_id} report={report} copy={copy} />
+          ))}
+        </div>
+      ) : null}
       {response.citations.length > 0 ? (
         <div className="akb-chat-citations">
           <div className="akb-chat-citations__header">
@@ -807,6 +838,92 @@ function AssistantResponseTools({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifact; copy: AssistantAppLabels }) {
+  const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const columns: Array<StratosDataTableColumn<AssistantReportRow>> = report.columns.map((column) => ({
+    id: column.key,
+    label: column.label,
+    minWidth: column.type === "number" ? 96 : 150,
+    width: column.key === "summary" ? "minmax(240px, 1.6fr)" : undefined,
+    sortable: true,
+    sortAccessor: (row) => sortableCellValue(row.cells[column.key]),
+    align: column.type === "number" || column.type === "currency" || column.type === "percent" ? "end" : "start",
+    render: (row) => formatReportCell(row.cells[column.key])
+  }));
+
+  async function exportReport(format: "xlsx" | "pdf") {
+    if (exporting) {
+      return;
+    }
+    setExporting(format);
+    setExportError(null);
+    try {
+      const response = await fetch(withAppBasePath("/api/assistant/reports/export"), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report, format })
+      });
+      if (!response.ok) {
+        setExportError(`${copy.exportReportFailedStatus} ${response.status}.`);
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filenameFromDisposition(response.headers.get("content-disposition")) ?? `akb-report.${format}`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : copy.exportReportFailed);
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  return (
+    <section className="akb-chat-report">
+      <div className="akb-chat-report__header">
+        <div>
+          <span className="akb-chat-report__eyebrow">
+            <Table2 size={14} aria-hidden="true" />
+            {report.rows.length} {copy.reportRows} · {report.source_citation_count} {copy.reportSources}
+          </span>
+          <h4>{report.title}</h4>
+          {report.description ? <p>{report.description}</p> : null}
+        </div>
+        <div className="akb-chat-report__actions">
+          {report.export_formats.includes("xlsx") ? (
+            <StratosButton type="button" onClick={() => void exportReport("xlsx")}>
+              {exporting === "xlsx" ? <FileSpreadsheet size={16} aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
+              {exporting === "xlsx" ? copy.exportingReport : copy.exportXlsx}
+            </StratosButton>
+          ) : null}
+          {report.export_formats.includes("pdf") ? (
+            <StratosButton type="button" onClick={() => void exportReport("pdf")}>
+              {exporting === "pdf" ? <FileText size={16} aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
+              {exporting === "pdf" ? copy.exportingPdf : copy.exportPdf}
+            </StratosButton>
+          ) : null}
+        </div>
+      </div>
+      <StratosDataTable
+        rows={report.rows}
+        columns={columns}
+        getRowId={(row) => row.row_id}
+        emptyLabel={copy.noPreciseSource}
+        aria-label={report.title}
+      />
+      {report.warnings.length ? <div className="akb-chat-report__warnings">{report.warnings.join(", ")}</div> : null}
+      {exportError ? <div className="notice">{exportError}</div> : null}
+    </section>
   );
 }
 
@@ -843,6 +960,41 @@ function ClarificationField({
       <input id={`akb-clarification-${question.id}`} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
+}
+
+function formatReportCell(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Ano" : "Ne";
+  }
+  return String(value);
+}
+
+function sortableCellValue(value: string | number | boolean | null | undefined): string | number | null {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  return value ? String(value) : null;
+}
+
+function filenameFromDisposition(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(value)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return null;
+    }
+  }
+  return /filename="([^"]+)"/i.exec(value)?.[1] ?? null;
 }
 
 function createInitialThreads(language: AklLanguage, now: string): AssistantThread[] {

@@ -77,13 +77,67 @@ GET  /api/v1/assistant/citations/{chunk_id}/open
 
 The assistant wraps retrieval, no-answer policy, answer composition, and citation opening in a plain-language contract for employees. It asks clarifying questions for vague access, incident, and approval requests before it retrieves.
 
+## Employee Assistant Report Artifacts
+
+When the employee asks for a table, report, overview, Excel/PDF export, or
+similar structured output, `POST /api/v1/assistant/chat` may return
+`report_artifacts` alongside the normal answer and citations. A report artifact
+is a bounded table specification:
+
+- `columns` defines stable keys, labels, and simple scalar types.
+- `rows` contains scalar cell values only.
+- each row may carry AKB citations back to document versions and chunks.
+- `export_formats` currently contains `xlsx` and `pdf`.
+
+The LLM does not execute spreadsheet code. AKB builds the artifact from the
+cited answer and authorized citations, and the web BFF exports it through:
+
+```text
+POST /api/assistant/reports/export
+```
+
+The export endpoint validates row/column limits and writes either a static
+`.xlsx` workbook with `Sestava` and `Citace` sheets or a static `.pdf` report
+with the same content. It returns the file as a private download. It does not
+call internal storage directly from the browser and does not create macros,
+formulas, scripts, or external links.
+
+## Registry Metadata Reports
+
+The employee assistant distinguishes content questions from registry inventory
+questions. When a user asks for counts, lists, tables, or exports over document
+topics, for example "kolik máme dokumentů na téma digitalizace a řízení
+projektů", the AKB web BFF answers from Registry API metadata summary before
+calling RAG. This keeps exact inventory work out of the LLM path:
+
+- Registry API still applies `document.read` authorization for the current
+  user.
+- The preferred path is
+  `GET /api/v1/documents/metadata-summary?topic=...`.
+- The answer is marked with `answer_source: "registry_metadata_summary"` when
+  the summary endpoint is used, or `answer_source: "registry_metadata"` when a
+  compatibility fallback scans `/documents`.
+- The returned `report_artifacts` contain no chunk citations because the result
+  is a metadata aggregation, not an interpretation of document content.
+- The audit event stores report metrics and a SHA-256 hash of the prompt, not
+  the prompt text or document content.
+- The compatibility fallback web registry client currently scans up to 20,000
+  permission-visible documents. If that ceiling is reached, the response
+  includes `REGISTRY_SCAN_LIMIT_REACHED`.
+
+For production use across very large document sets, the next step is a
+SQL-backed Registry API aggregate/search implementation that can group by
+topic, type, classification, owner, ingestion state, tenant, external system,
+and context tags without transferring all rows through the web layer.
+
 ## Conversation Persistence
 
 Assistant conversations are persisted in Registry API
 (`assistant_conversations` and `assistant_messages` tables, migration 0006).
 After every chat turn the RAG service appends the user message and the
-assistant response (including response type, citations, confidence, and
-warnings) via `POST /api/v1/assistant/conversations/{conversation_id}/messages`.
+assistant response (including response type, citations, confidence, warnings,
+and bounded report artifacts when present) via
+`POST /api/v1/assistant/conversations/{conversation_id}/messages`.
 `GET /api/v1/assistant/conversations/{conversation_id}` on the RAG service
 returns `status: "persisted"` with the full message history; when the
 conversation does not exist or Registry API is unavailable, the response
