@@ -10,6 +10,7 @@ import {
   registryReportKindFromMessage,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
+import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
 import type { Classification, Document, DocumentMetadataSummaryOptions, DocumentStatus, DocumentType } from "@/lib/types";
 
 import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../errors";
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
       context
     );
 
-    return NextResponse.json({ response });
+    return NextResponse.json({ response: normalizeAssistantAnswerReports(response, message, responseLanguage) });
   } catch (error) {
     return assistantBridgeError(error);
   }

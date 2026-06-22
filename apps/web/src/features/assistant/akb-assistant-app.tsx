@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Archive,
   Bot,
@@ -29,6 +31,7 @@ import { StratosButton, StratosDataTable, StratosSelect, type StratosDataTableCo
 import { CitationList, CitationModal, SourceContextCard, type CitationViewerLabels } from "@/features/citations/citation-viewer";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
+import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
 import type {
   AssistantChatResponse,
   AssistantConversationDetail,
@@ -74,6 +77,23 @@ interface AssistantThread {
 }
 
 type AssistantAppLabels = CitationViewerLabels & Record<string, string>;
+
+const assistantMarkdownComponents: Components = {
+  a({ children, href }) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    );
+  },
+  table({ children }) {
+    return (
+      <div className="akb-chat-message__table-wrap">
+        <table>{children}</table>
+      </div>
+    );
+  }
+};
 
 const assistantAppCopy = {
   cs: {
@@ -801,7 +821,7 @@ function ChatBubble({
           </span>
           {response?.confidence ? <StatusBadge value={response.confidence} /> : null}
         </div>
-        <p>{message.content}</p>
+        <ChatMessageContent role={message.role} content={message.content} />
         {message.pending ? <div className="akb-chat-loader" /> : null}
         {response ? (
           <AssistantResponseTools
@@ -815,6 +835,18 @@ function ChatBubble({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function ChatMessageContent({ role, content }: { role: ChatMessage["role"]; content: string }) {
+  if (role !== "assistant") {
+    return <p>{content}</p>;
+  }
+
+  return (
+    <div className="akb-chat-message__markdown">
+      <ReactMarkdown components={assistantMarkdownComponents} remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
   );
 }
 
@@ -1146,7 +1178,7 @@ function responseFromPersistedMessage(
   message: AssistantConversationMessage
 ): AssistantChatResponse {
   const metadata = message.metadata ?? {};
-  return {
+  const response: AssistantChatResponse = {
     response_type: message.response_type ?? "answer",
     conversation_id: conversationId,
     answer: message.content,
@@ -1163,6 +1195,7 @@ function responseFromPersistedMessage(
     missing_information: null,
     recommended_action: null
   };
+  return normalizeAssistantAnswerReports(response, "", "cs");
 }
 
 function threadIdFromConversationId(conversationId: string): string {

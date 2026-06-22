@@ -202,6 +202,26 @@ test.describe("Document Workbench product paths", () => {
     await expect(citationDialog.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
   });
 
+  test("DW-14F knowledge chat renders requested obligation tables as structured output", async ({ page }) => {
+    await page.goto(appPath("/chat"));
+
+    await page.getByLabel("Zeptejte se na dokument, postup nebo odpovědnost").fill("vytvoř tabulku kde bude seznam povinností");
+    await page.getByRole("button", { name: "Odeslat" }).click();
+
+    const assistantMessage = page.locator(".akb-chat-message--assistant").last();
+    await expect(assistantMessage.locator(".akb-chat-message__markdown table")).toBeVisible();
+    await expect(assistantMessage.locator(".akb-chat-message__markdown table")).toContainText("Právní povinnosti");
+    await expect(assistantMessage.locator(".akb-chat-message__markdown table")).toContainText("Obchodní tajemství");
+    await expect(assistantMessage.locator(".akb-chat-message__markdown")).not.toContainText("| :--- |");
+
+    const report = assistantMessage.locator(".akb-chat-report");
+    await expect(report.getByRole("heading", { name: "Seznam povinností" })).toBeVisible();
+    await expect(report).toContainText("4 řádků");
+    await expect(report).toContainText("Právní povinnosti");
+    await expect(report).toContainText("Jiné závazky");
+    await expect(report).not.toContainText("vytvoř tabulku kde bude seznam povinností");
+  });
+
   test("DW-14A assistant citation document endpoint redirects to signed source content", async ({ page }) => {
     await page.goto(appPath("/api/assistant/citations/chunk_md_109/document"));
 

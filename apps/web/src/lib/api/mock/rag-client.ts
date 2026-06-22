@@ -220,10 +220,15 @@ export class MockRagClient implements RagApiClient {
 
     const citations = cloneMock(mockRagAnswer.citations);
     const wantsReport = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled)/i.test(request.message);
+    const wantsObligationsTable = wantsReport && /(povinnost|obligation)/i.test(request.message);
     return {
       response_type: "answer",
       conversation_id: conversationId,
-      answer: language === "en"
+      answer: wantsObligationsTable
+        ? (language === "en"
+          ? "The obligations found in the cited sources are:\n\n| Obligation area | Practical meaning |\n| :--- | :--- |\n| Legal obligations | Verify statutory duties before approving the process. |\n| Business secret | Protect non-public information and limit access. |\n| Criminal-law proceedings | Escalate matters beyond standard safety assessment. |\n| Other commitments | Track related contractual or organizational duties. |"
+          : "V citovaných zdrojích se objevují tyto oblasti povinností:\n\n| Oblast povinnosti | Praktický význam |\n| :--- | :--- |\n| Právní povinnosti | Ověřit zákonné povinnosti před schválením postupu. |\n| Obchodní tajemství | Chránit neveřejné informace a omezit přístup. |\n| Trestně-právní řízení | Eskalovat věci nad rámec běžného bezpečnostního posouzení. |\n| Jiné závazky | Evidovat související smluvní nebo organizační povinnosti. |")
+        : language === "en"
         ? "The document owner approves an exception to the directive after impact assessment. The answer is supported by the source below."
         : "Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu. Odpověď je podložená citací níže.",
       message: null,
