@@ -63,7 +63,7 @@ audit_question
 
 Each mode uses a mode-specific instruction while retaining the same hard rule: no sourced answer without citations. `compare` and `compare_documents` are still explicit future work for multi-document diffing.
 
-## Employee Assistant API
+## Employee Chat API
 
 Phase 04 adds an employee-facing API on the RAG Retrieval Service:
 
@@ -77,7 +77,7 @@ GET  /api/v1/assistant/citations/{chunk_id}/open
 
 The assistant wraps retrieval, no-answer policy, answer composition, and citation opening in a plain-language contract for employees. It asks clarifying questions for vague access, incident, and approval requests before it retrieves.
 
-## Employee Assistant Report Artifacts
+## Employee Chat Report Artifacts
 
 When the employee asks for a table, report, overview, Excel/PDF export, or
 similar structured output, `POST /api/v1/assistant/chat` may return
@@ -104,7 +104,7 @@ formulas, scripts, or external links.
 
 ## Registry Metadata Reports
 
-The employee assistant distinguishes content questions from registry inventory
+The employee chat distinguishes content questions from registry inventory
 questions. When a user asks for counts, lists, tables, or exports over document
 topics, for example "kolik máme dokumentů na téma digitalizace a řízení
 projektů", the AKB web BFF answers from Registry API metadata summary before
@@ -178,7 +178,7 @@ the chat response itself.
 
 ## Language Contract
 
-RAG answers and Employee Assistant responses support Czech and English:
+RAG answers and Employee Chat Portal responses support Czech and English:
 
 - `response_language: "cs"` writes the final answer and assistant clarifications in Czech.
 - `response_language: "en"` writes the final answer and assistant clarifications in English.

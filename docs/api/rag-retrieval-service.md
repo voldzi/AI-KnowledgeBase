@@ -1,6 +1,6 @@
 # RAG Retrieval Service API
 
-`services/rag-retrieval-service` owns retrieval, answer composition, source-context opening, citation opening, and the employee assistant API.
+`services/rag-retrieval-service` owns retrieval, answer composition, source-context opening, citation opening, and the employee chat API.
 
 ## Scope
 
@@ -10,7 +10,7 @@ Implemented:
 - cited answer generation,
 - source context lookup,
 - citation opening,
-- employee assistant chat, clarification, suggestions, and conversation lookup.
+- employee chat, clarification, suggestions, and conversation lookup.
 - STRATOS contract extraction proposal API for `contract_financial_v1`.
 
 Contract stubs still present:
@@ -100,7 +100,7 @@ authorized human confirmation and sends feedback through
 - Filters candidate documents through Registry API authorization.
 - Calls LLM Gateway for answer generation and embeddings.
 - Reads chunks from Qdrant-compatible retrieval backends.
-- Provides the source-context and citation-open contract consumed by Knowledge Chat and Employee Assistant.
+- Provides the source-context and citation-open contract consumed by Employee Chat Portal.
 - Persists STRATOS extraction proposals and feedback through Registry API; the
   source app receives only metadata and cited proposals, never binary content,
   extracted full text, chunks, embeddings, or prompts.

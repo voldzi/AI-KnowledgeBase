@@ -12,7 +12,7 @@ Phase 03 turns the Phase 02 Controlled Document MVP into a locally useful knowle
 - Query RAG over imported project documentation and require citations.
 - Open a RAG citation through `source-context` and show the exact cited chunk.
 - Run the local production profile through `.env.local-prod` and compose override.
-- Verify Employee Assistant route `/assistant` for the Phase 04 dual GUI model.
+- Verify Employee Chat Portal route `/chat` and legacy `/assistant` redirect.
 
 ## Commands
 
@@ -70,7 +70,8 @@ docker compose --env-file .env.local-prod \
   - `document_version_id` matching imported Registry versions
 - RAG answers the configured smoke query with at least one citation.
 - `GET /api/v1/citations/{chunk_id}/open` returns `source_file_uri`, `viewer_mode`, and `chunk_text`.
-- `GET /assistant` renders the Employee Assistant UI.
+- `GET /chat` renders the Employee Chat Portal UI.
+- `GET /assistant` redirects to `/chat`.
 - `POST /api/v1/assistant/chat` returns either clarification or a cited answer, depending on question specificity.
 
 ## Operational Notes

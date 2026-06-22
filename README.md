@@ -85,15 +85,16 @@ python3 scripts/phase_03_local_production_smoke.py
 python3 scripts/phase_04_employee_assistant_smoke.py
 ```
 
-## Phase 04 Employee Assistant
+## Phase 04 Employee Chat Portal
 
-AKB now has a multi-surface GUI model:
+AKB now has one employee-facing chat portal and a separate knowledge-management
+workspace:
 
-- AKB Assistant / Knowledge Chat: `http://localhost:3002/chat`
-- Employee Assistant: `http://localhost:3002/assistant`
+- Employee Chat Portal / Knowledge Chat: `http://localhost:3002/chat`
+- Legacy assistant URL redirect: `http://localhost:3002/assistant` -> `/chat`
 - Knowledge Management/Admin GUI: `http://localhost:3002`
 
-The assistant web surfaces are thin clients. Workstations do not run local models, Qdrant, PostgreSQL, or object storage. Central backend services handle retrieval, permissions, model calls, citations, source opening, and audit events. `/chat` is the primary thread-oriented AKB Assistant surface; `/assistant` remains the plain-language employee surface.
+The assistant web surface is a thin client. Workstations do not run local models, Qdrant, PostgreSQL, or object storage. Central backend services handle retrieval, permissions, model calls, citations, source opening, and audit events. `/chat` is the single thread-oriented plain-language employee chat surface; `/assistant` remains only as a compatibility redirect.
 
 Assistant API:
 

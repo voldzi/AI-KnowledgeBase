@@ -20,7 +20,7 @@ The central backend owns:
 
 - Document Registry and governed metadata,
 - Ingestion Service and source parsing,
-- RAG Retrieval Service and employee assistant API,
+- RAG Retrieval Service and employee chat API,
 - LLM Gateway and model routing,
 - Qdrant vector storage,
 - PostgreSQL transactional storage,
@@ -106,14 +106,15 @@ tags
 
 The `docs/import-manifest.yaml` manifest assigns `domain`, `area`, `audience`, and tags for the project documentation knowledge base.
 
-## Dual GUI
+## User Surfaces
 
-AKL exposes two web surfaces:
+AKB exposes one employee-facing chat portal and a separate
+knowledge-management/admin workspace:
 
 - Knowledge Management/Admin GUI for document managers, knowledge admins, auditors, and IT managers.
-- Employee Assistant GUI for employees.
+- Employee Chat Portal for employees.
 
-The Employee Assistant GUI is intentionally plain-language. It must not expose implementation terms such as Qdrant, embeddings, chunks, or RAG in employee-facing copy. It asks clarifying questions for vague requests, returns cited answers when sources are sufficient, and recommends handoff when they are not.
+The Employee Chat Portal is intentionally plain-language. It must not expose implementation terms such as Qdrant, embeddings, chunks, or RAG in employee-facing copy. It asks clarifying questions for vague requests, returns cited answers when sources are sufficient, and recommends handoff when they are not.
 
 Current route split:
 
@@ -121,8 +122,7 @@ Current route split:
 - `/chat`: standalone Employee Chat Portal for ordinary users. Users with only
   chat roles are redirected away from knowledge-management/admin routes and see
   no side menu.
-- `/assistant`: legacy employee assistant/workspace surface for management
-  users during migration.
+- `/assistant`: legacy compatibility route that redirects to `/chat`.
 
 ## Assistant API
 

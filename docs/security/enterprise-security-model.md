@@ -21,7 +21,7 @@ Service-to-service calls must preserve correlation headers and must not log full
 
 Initial role model:
 
-- `employee`: can use Employee Assistant and open authorized sources.
+- `employee`: can use Employee Chat Portal and open authorized sources.
 - `reader`: can read allowed documents and ask sourced questions.
 - `document_manager`: can create documents, versions, imports, and reindex jobs.
 - `knowledge_admin`: can manage domains, metadata rules, and knowledge quality.
@@ -52,7 +52,7 @@ Documents use:
 - `restricted`,
 - `confidential`.
 
-Employee Assistant defaults to `classification_max=internal` until enterprise policy maps roles and groups to higher classifications.
+Employee Chat Portal defaults to `classification_max=internal` until enterprise policy maps roles and groups to higher classifications.
 
 ## Assistant Audit Events
 
@@ -65,7 +65,7 @@ The assistant workflow emits these event types:
 - `assistant.handoff_recommended`
 - `assistant.citation_opened`
 
-Employee Assistant source opening uses `GET /api/v1/assistant/citations/{chunk_id}/open` and audits `assistant.citation_opened`. Admin/technical citation viewer flows can still use the generic `citation.opened` event.
+Employee Chat Portal source opening uses `GET /api/v1/assistant/citations/{chunk_id}/open` and audits `assistant.citation_opened`. Admin/technical citation viewer flows can still use the generic `citation.opened` event.
 
 Audit metadata may include hashes, counts, ids, confidence, warnings, and cited document ids. It must not store full question or answer text by default.
 

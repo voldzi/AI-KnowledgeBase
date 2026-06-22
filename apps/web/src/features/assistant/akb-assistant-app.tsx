@@ -586,10 +586,8 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
                   key={message.id}
                   message={message}
                   copy={copy}
-                  openingSourceId={openingSourceId}
                   clarificationValues={clarificationValues}
                   setClarificationValues={setClarificationValues}
-                  onOpenSource={openSource}
                   onSubmitClarification={submitClarification}
                   onOpenCitationViewer={() => setCitationModalOpen(true)}
                 />
@@ -776,19 +774,15 @@ function ThreadGroup({
 function ChatBubble({
   message,
   copy,
-  openingSourceId,
   clarificationValues,
   setClarificationValues,
-  onOpenSource,
   onSubmitClarification,
   onOpenCitationViewer
 }: {
   message: ChatMessage;
   copy: AssistantAppLabels;
-  openingSourceId: string | null;
   clarificationValues: Record<string, string>;
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
-  onOpenSource: (citation: Citation) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
   onOpenCitationViewer: () => void;
 }) {
@@ -813,10 +807,8 @@ function ChatBubble({
           <AssistantResponseTools
             response={response}
             copy={copy}
-            openingSourceId={openingSourceId}
             clarificationValues={clarificationValues}
             setClarificationValues={setClarificationValues}
-            onOpenSource={onOpenSource}
             onSubmitClarification={onSubmitClarification}
             onOpenCitationViewer={onOpenCitationViewer}
           />
@@ -829,19 +821,15 @@ function ChatBubble({
 function AssistantResponseTools({
   response,
   copy,
-  openingSourceId,
   clarificationValues,
   setClarificationValues,
-  onOpenSource,
   onSubmitClarification,
   onOpenCitationViewer
 }: {
   response: AssistantChatResponse;
   copy: AssistantAppLabels;
-  openingSourceId: string | null;
   clarificationValues: Record<string, string>;
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
-  onOpenSource: (citation: Citation) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
   onOpenCitationViewer: () => void;
 }) {
@@ -895,20 +883,10 @@ function AssistantResponseTools({
         </div>
       ) : null}
       {response.citations.length > 0 ? (
-        <div className="akb-chat-citations">
-          <div className="akb-chat-citations__header">
-            <h3>{copy.sources}</h3>
-            <button type="button" className="citation-trigger-btn" onClick={onOpenCitationViewer}>
-              {copy.citationViewer} ({response.citations.length})
-            </button>
-          </div>
-          <CitationList
-            citations={response.citations}
-            openingChunkId={openingSourceId}
-            emptyLabel={copy.noPreciseSource}
-            labels={copy}
-            onOpenCitation={onOpenSource}
-          />
+        <div className="akb-chat-citations akb-chat-citations--compact">
+          <button type="button" className="citation-trigger-btn" onClick={onOpenCitationViewer}>
+            {copy.citationViewer} ({response.citations.length})
+          </button>
         </div>
       ) : null}
       {response.follow_up_questions.length > 0 ? (

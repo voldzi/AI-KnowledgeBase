@@ -229,7 +229,14 @@ test.describe("Document Workbench product paths", () => {
     expect(decodeURIComponent(location)).toContain("search=PDF citation area for controlled document preview.");
   });
 
-  test("DW-14D STRATOS source-open bridge returns a signed PDF download", async ({ request }) => {
+  test("DW-14D legacy assistant route redirects to the single chat portal", async ({ page }) => {
+    await page.goto(appPath("/assistant"));
+
+    await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/chat"));
+    await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
+  });
+
+  test("DW-14E STRATOS source-open bridge returns a signed PDF download", async ({ request }) => {
     const sourceOpenResponse = await request.post(
       appPath("/api/stratos/documents/doc_108/source-open?version_id=ver_108_1")
     );
@@ -259,7 +266,8 @@ test.describe("Document Workbench product paths", () => {
 
   test("DW-15 mobile workspace navigation closes after one tap", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(appPath("/assistant"));
+    await page.goto(appPath("/help"));
+    await expect(page.getByRole("heading", { name: "Nápověda" })).toBeVisible();
 
     await page.getByLabel("Otevřít navigaci").click();
     await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "true");

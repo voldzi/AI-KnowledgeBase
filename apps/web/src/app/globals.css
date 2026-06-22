@@ -1819,6 +1819,10 @@ button {
   margin: 0;
 }
 
+.akb-chat-citations--compact {
+  justify-items: end;
+}
+
 .akb-chat-clarification {
   display: grid;
   gap: 10px;

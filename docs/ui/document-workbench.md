@@ -24,7 +24,7 @@ Implementovano ve web aplikaci:
 - insights zalozka detailu dokumentu umi vytvorit pracovni `proposed` insighty ze zdrojoveho textu aktualni verze: povinnosti, role, lhuty a rizika; kazdy navrh ukazuje confidence, citaci a source warnings,
 - viewer zalozka detailu dokumentu nabizi auditovane source-context signaly a po otevreni chunku zobrazuje citovatelny text, zdroj, verzi, stranu a sekci,
 - viewer zalozka detailu dokumentu pripravuje signed source open URL pro zdrojovy objekt a ukazuje, zda je objekt ve storage fyzicky dostupny,
-- citace z Knowledge Chat i Employee Assistant pouzivaji jednotny citation viewer: hlavni odpoved zustava cista pro netechnicke role, technicke identifikatory jsou oddelene v detailu a akce `Otevrit dokument` otevre v novem tabu primo zdrojovy soubor pres assistant citation redirect,
+- citace z Employee Chat Portal pouzivaji jednotny citation viewer: hlavni odpoved zustava cista pro netechnicke role, technicke identifikatory jsou oddelene v detailu a akce `Otevrit dokument` otevre v novem tabu primo zdrojovy soubor pres assistant citation redirect,
 - pokud je podepsany zdroj dostupny a source-context obsahuje `page_number`, viewer nabidne otevreni zdroje na strance citace pomoci `#page=N`,
 - nativni preview nad signed source zobrazuje PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,

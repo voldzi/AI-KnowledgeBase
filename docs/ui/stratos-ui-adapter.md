@@ -54,7 +54,7 @@ Prvni napojeni AKL pouzije tyto exporty z `@stratos/ui`:
 Adapter je zapojeny na techto plochach:
 
 - hlavni spravcovsky shell, uzky levy rail a workspace submenu,
-- Employee Assistant horni akce,
+- Employee Chat Portal horni akce,
 - `/documents` registry toolbar: search, select filtry, primarni akce a ikonove akce,
 - `/documents` registry tabulka pres `StratosDataTable`,
 - dashboard poslednich dokumentu pres `StratosDataTable`,
@@ -62,7 +62,7 @@ Adapter je zapojeny na techto plochach:
 - `/documents/[documentId]` Viewer tab: `StratosPdfViewer` pro nativni PDF preview nad podepsanym zdrojem,
 - `/tasks`: search, select filtry, vycisteni filtru, detailove akce a rozhodovaci tlacitka,
 - `/ingestion`: tabulka uloh pres `StratosDataTable`,
-- `/upload`, `/chat`, `/assistant`, `/ingestion` a dashboard vybrane hlavni prikazy.
+- `/upload`, `/chat`, `/ingestion` a dashboard vybrane hlavni prikazy.
 
 Zbyvajici mista pouzivaji CSS kompatibilni `.button` aliasy, zejmena download/external anchor prvky a specializovane radkove akce v detailu dokumentu. Dalsi krok je pridat explicitni `StratosAnchorButton`, `UnifiedSelect` popover pro stav/typ/klasifikaci a `DateRangePicker` pro casove filtry.
 

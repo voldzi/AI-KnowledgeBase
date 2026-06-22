@@ -3,7 +3,6 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 
-import { withAppBasePath } from "@/lib/app-url";
 import {
   canUseAdminSurface,
   canUseEmployeeChat,
@@ -24,12 +23,12 @@ export function requirePageAccess(context: ApiRequestContext, access: PageAccess
   if (access === "admin" && canUseAdminSurface(context)) {
     return;
   }
-  redirect(withAppBasePath("/chat"));
+  redirect("/chat");
 }
 
 export function redirectEmployeeChatOnly(context: ApiRequestContext): void {
   if (isEmployeeChatOnly(context)) {
-    redirect(withAppBasePath("/chat"));
+    redirect("/chat");
   }
 }
 

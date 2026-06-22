@@ -41,7 +41,6 @@ import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
 
 const navigation = {
   cs: [
-    { href: "/assistant", label: "Asistent pro zaměstnance", icon: UserRound },
     { href: "/", label: "Přehled", icon: LayoutDashboard },
     { href: "/tasks", label: "Úkoly", icon: ListChecks },
     { href: "/documents", label: "Dokumenty", icon: Database },
@@ -52,7 +51,6 @@ const navigation = {
     { href: "/help", label: "Nápověda", icon: CircleHelp }
   ],
   en: [
-    { href: "/assistant", label: "Employee assistant", icon: UserRound },
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tasks", label: "Tasks", icon: ListChecks },
     { href: "/documents", label: "Documents", icon: Database },
@@ -170,7 +168,7 @@ type ShellModuleId = "documents" | "operations" | "ai" | "knowledge" | "governan
 const moduleRouteGroups: Record<ShellModuleId, string[]> = {
   documents: ["/documents", "/upload", "/ingestion"],
   operations: ["/", "/tasks"],
-  ai: ["/assistant", "/chat", "/help"],
+  ai: ["/chat", "/help"],
   knowledge: [],
   governance: ["/audit"]
 };

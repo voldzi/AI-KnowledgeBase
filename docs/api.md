@@ -26,7 +26,7 @@ AKB exposes several REST surfaces:
 
 Service-level summaries remain in `docs/api/`.
 
-The web/API bridge may answer employee assistant inventory questions directly
+The web/API bridge may answer employee chat inventory questions directly
 from Registry API metadata when the user asks for document counts, lists,
 tables, or exports by topic. The current metadata report includes breakdowns by
 status, type, classification, and owner/steward. These responses use the same

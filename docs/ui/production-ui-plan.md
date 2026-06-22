@@ -2,9 +2,11 @@
 
 The Web UI is organized as a local production work surface for knowledge and document operations.
 
-Phase 04 adds a dual GUI model:
+Phase 04+ uses one employee-facing chat portal and a separate knowledge-management
+workspace:
 
-- Employee Assistant for employees at `/assistant`.
+- Employee Chat Portal for ordinary users at `/chat`.
+- `/assistant` is a legacy compatibility route that redirects to `/chat`.
 - Knowledge Management/Admin GUI for document managers, knowledge admins, auditors, and IT/admin roles.
 
 ## Implemented Baseline
@@ -12,11 +14,11 @@ Phase 04 adds a dual GUI model:
 ### Language
 
 - The application has a global Czech/English switcher.
-- Selected language is stored in the browser and updates the shell, admin work surfaces, Employee Assistant, and Knowledge Chat labels.
-- Employee Assistant and Knowledge Chat send `response_language` to RAG so answers are generated in the selected language.
+- Selected language is stored in the browser and updates the shell, admin work surfaces, and Employee Chat Portal labels.
+- Employee Chat Portal sends `response_language` to RAG so answers are generated in the selected language.
 - Source excerpts remain in the original source language and are not translated by the viewer.
 
-### Knowledge Chat
+### Employee Chat Portal
 
 - Route: `/chat`.
 - Primary AKB Assistant surface for user-owned threads, thread switching, citation review, and share-thread controls.
@@ -39,15 +41,6 @@ Phase 04 adds a dual GUI model:
   - page if known,
   - exact chunk text,
   - warnings such as missing source metadata.
-
-### Employee Assistant
-
-- Route: `/assistant`.
-- Plain-language employee surface.
-- Suggested questions are loaded from `GET /api/v1/assistant/suggestions`.
-- Questions are sent through `POST /api/v1/assistant/chat`.
-- Clarifying answers continue through `POST /api/v1/assistant/clarify`.
-- Source opening uses `GET /api/v1/assistant/citations/{chunk_id}/open`.
 - The employee UI avoids implementation terms such as RAG, chunk, Qdrant, embeddings, retriever, and model provider.
 - The assistant can return:
   - answer,
@@ -85,7 +78,7 @@ Imported external corpora should preserve original sources. The Markdown folder 
 
 AKB now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search, view tabs and document PDF viewing while `@stratos/ui` is distributed through GitHub Packages and still needs a read-only `read:packages` token in AKB local/CI builds.
 
-The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, PDF citation-page rendering, workflow inbox filters/actions, upload/chat/assistant submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, `StratosPdfViewer`, and `@stratos/ui/styles.css`.
+The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, PDF citation-page rendering, workflow inbox filters/actions, upload/chat submits, ingestion refresh and dashboard inbox link. The target package exports for first integration are `ProjectTopbar`, `CommandCenter`, `UnifiedSelect`, `SettingsSurface`, `SurfaceModeMenu`, `DetailSurface`, `StratosPdfViewer`, and `@stratos/ui/styles.css`.
 
 ### Workflow Inbox
 
@@ -111,8 +104,7 @@ Ingestion-owned operational tasks are still merged in the web layer until Ingest
 - Document Detail: metadata, versions, ingestion report, chunks, citations, insights, relations, audit.
 - Upload / Import Wizard: preflight, signed upload session and import flow.
 - Ingestion Jobs: job state, reports, warnings, errors.
-- Knowledge Chat: answer modes, filters, citations, warnings, export.
-- Employee Assistant: simple chat, clarifying questions, cited answers, handoff.
+- Employee Chat Portal: answer modes, filters, citations, warnings, export, clarifying questions, cited answers, handoff.
 - Citation Viewer: source context and source metadata.
 - Document Insights: obligations, risks, roles, deadlines, FAQ, checklist.
 - Local AI Models: provider/model inventory and pull/test actions.

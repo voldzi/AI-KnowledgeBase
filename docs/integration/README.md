@@ -5,9 +5,9 @@ This section contains current integration-facing runbooks and contracts.
 ## Current Active Documents
 
 - `local-production-runbook.md`
-  - local AKB documentation import, local production-like profile, and employee assistant verification
+  - local AKB documentation import, local production-like profile, and employee chat verification
 - `enterprise-pilot-assistant.md`
-  - enterprise-pilot assistant surface, dual GUI expectations, and pilot readiness notes
+  - enterprise-pilot employee chat surface and pilot readiness notes
 - `document-workbench.md`
   - current Document Workbench implementation slice, gaps, and next recommended work
 - `STRATOS_EXTERNAL_DOCUMENTS_API.md`

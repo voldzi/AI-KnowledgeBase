@@ -1,16 +1,16 @@
 # Phase 04 CSU Enterprise Knowledge Platform
 
-Phase 04 prepares AKL for an enterprise pilot as a central knowledge platform with two user-facing surfaces:
+Phase 04 prepares AKB for an enterprise pilot as a central knowledge platform with one employee-facing chat portal and a knowledge-management workspace:
 
 - Knowledge Management/Admin GUI,
-- Employee Assistant GUI.
+- Employee Chat Portal.
 
 ## Implemented Scope
 
 - Central backend architecture documented for local development, local production, enterprise pilot, and enterprise production.
 - Knowledge domain metadata added to `docs/import-manifest.yaml`.
 - `tools/import_docs_folder.py` persists governance metadata from the manifest into Registry document metadata.
-- RAG Retrieval Service exposes Employee Assistant API endpoints:
+- RAG Retrieval Service exposes Employee Chat backend API endpoints:
   - `POST /api/v1/assistant/chat`
   - `POST /api/v1/assistant/clarify`
   - `GET /api/v1/assistant/suggestions`
@@ -22,7 +22,7 @@ Phase 04 prepares AKL for an enterprise pilot as a central knowledge platform wi
   - `GET /api/v1/assistant/conversation-history/{conversation_id}`
   - `PATCH /api/v1/assistant/conversation-history/{conversation_id}`
   - `PUT /api/v1/assistant/conversation-history/{conversation_id}/shares`
-- Employee Assistant supports:
+- Employee Chat Portal supports:
   - suggested questions,
   - clarifying questions for vague access, incident, and approval requests,
   - cited answers,
@@ -32,7 +32,8 @@ Phase 04 prepares AKL for an enterprise pilot as a central knowledge platform wi
 - Web UI route `/chat` provides the standalone Employee Chat Portal for ordinary
   users without side menu. Knowledge-management users can still access broader
   AKB workspace routes.
-- Web UI has a global Czech/English language switcher. Employee Assistant and Knowledge Chat pass the selected language to RAG through `response_language`.
+- Legacy route `/assistant` redirects to `/chat` for compatibility.
+- Web UI has a global Czech/English language switcher. The Employee Chat Portal passes the selected language to RAG through `response_language`.
 - Admin/knowledge-management routes remain available under `/`, `/documents`, `/upload`, `/ingestion`, `/chat`, `/audit`, and `/admin`.
 
 ## Assistant Request Example
@@ -95,7 +96,7 @@ python3 scripts/phase_03_document_viewer_smoke.py
 python3 scripts/phase_03_local_production_smoke.py
 ```
 
-Run the Phase 04 Employee Assistant smoke:
+Run the Phase 04 Employee Chat smoke:
 
 ```bash
 python3 scripts/phase_04_employee_assistant_smoke.py

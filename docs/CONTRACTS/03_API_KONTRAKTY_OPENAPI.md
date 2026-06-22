@@ -440,7 +440,7 @@ Source context response for `GET /citations/{chunk_id}/open`:
 }
 ```
 
-### 4.2 Employee Assistant
+### 4.2 Employee Chat API
 
 ```text
 POST /assistant/chat
