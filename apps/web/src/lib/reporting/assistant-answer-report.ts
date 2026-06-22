@@ -32,6 +32,9 @@ export function normalizeAssistantAnswerReports(
   if (!wantsStructuredOutput && response.report_artifacts.length === 0) {
     return response;
   }
+  if (response.report_artifacts.length > 0 && !shouldReplaceReportArtifacts(response.report_artifacts, message)) {
+    return response;
+  }
 
   const artifact = buildReportArtifactFromMarkdownTable({
     table: parsedTable,
@@ -48,6 +51,31 @@ export function normalizeAssistantAnswerReports(
     ...response,
     report_artifacts: [artifact]
   };
+}
+
+function shouldReplaceReportArtifacts(artifacts: AssistantReportArtifact[], message: string): boolean {
+  if (artifacts.length === 0) {
+    return true;
+  }
+  return artifacts.every((artifact) => isGenericAnswerReport(artifact, message));
+}
+
+function isGenericAnswerReport(artifact: AssistantReportArtifact, message: string): boolean {
+  const titleLooksGeneric = /sestava z odpovědi akb|akb answer report|table from akb answer/i.test(artifact.title);
+  const warningLooksGeneric = artifact.warnings.includes("REPORT_LIMITED_TO_CITED_SOURCES");
+  const normalizedMessage = normalizeComparableText(message);
+  const repeatsPrompt = normalizedMessage
+    ? artifact.rows.some((row) => Object.values(row.cells).some((value) => normalizeComparableText(value) === normalizedMessage))
+    : false;
+  const containsRawMarkdownTable = artifact.rows.some((row) => (
+    Object.values(row.cells).some((value) => typeof value === "string" && /\|\s*:?-{3}/.test(value))
+  ));
+
+  return titleLooksGeneric || warningLooksGeneric || repeatsPrompt || containsRawMarkdownTable;
+}
+
+function normalizeComparableText(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().toLowerCase() : "";
 }
 
 export function parseFirstMarkdownTable(markdown: string): ParsedMarkdownTable | null {

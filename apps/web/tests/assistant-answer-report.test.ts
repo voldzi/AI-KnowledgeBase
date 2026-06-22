@@ -132,4 +132,45 @@ describe("assistant answer report normalization", () => {
 
     assert.equal(normalized.report_artifacts.length, 0);
   });
+
+  it("keeps a non-generic report artifact from the retrieval service", () => {
+    const goodReport: AssistantReportArtifact = {
+      artifact_id: "rpt_good",
+      title: "Dopadová tabulka povinností",
+      description: "Report připravený retrieval službou.",
+      columns: [
+        { key: "obligation", label: "Povinnost", type: "text" },
+        { key: "owner", label: "Odpovědnost", type: "text" }
+      ],
+      rows: [
+        {
+          row_id: "good_1",
+          cells: {
+            obligation: "Právní povinnosti",
+            owner: "Gestor dokumentu"
+          },
+          citations: [citation]
+        }
+      ],
+      export_formats: ["xlsx", "pdf"],
+      source_citation_count: 1,
+      warnings: []
+    };
+    const response = responseFixture({
+      answer: [
+        "| Oblast povinnosti | Praktický význam |",
+        "| :--- | :--- |",
+        "| Právní povinnosti | Ověřit zákonné povinnosti. |"
+      ].join("\n"),
+      report_artifacts: [goodReport]
+    });
+
+    const normalized = normalizeAssistantAnswerReports(
+      response,
+      "vytvoř tabulku kde bude seznam povinností",
+      "cs"
+    );
+
+    assert.equal(normalized.report_artifacts[0], goodReport);
+  });
 });
