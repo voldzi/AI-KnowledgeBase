@@ -83,6 +83,8 @@ describe("assistant answer report normalization", () => {
     assert.deepEqual(table.headers, ["Oblasti posuzované v rámci kategorie povinností", "Odkaz na dokument"]);
     assert.equal(table.rows.length, 4);
     assert.equal(table.rows[0]?.[0], "právní povinnosti");
+    assert.equal(table.startLine, 2);
+    assert.equal(table.endLine, 7);
   });
 
   it("replaces a repeated citation report with rows extracted from a useful answer table", () => {
@@ -119,6 +121,9 @@ describe("assistant answer report normalization", () => {
     assert.equal(report?.source_citation_count, 1);
     assert.deepEqual(report?.export_formats, ["xlsx", "pdf"]);
     assert.equal(String(report?.rows[0]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti).includes("| :---"), false);
+    assert.match(normalized.answer ?? "", /V rámci kategorie povinností/);
+    assert.equal((normalized.answer ?? "").includes("| :---"), false);
+    assert.equal((normalized.answer ?? "").includes("| právní povinnosti |"), false);
   });
 
   it("does not turn a one-column list into an exportable report", () => {
@@ -157,6 +162,72 @@ describe("assistant answer report normalization", () => {
     const normalized = normalizeAssistantAnswerReports(response, "co znamená sloupec A?", "cs");
 
     assert.equal(normalized.report_artifacts.length, 0);
+  });
+
+  it("removes invalid report artifacts even when the answer has no markdown table", () => {
+    const response = responseFixture({
+      answer: "V rámci kategorie povinností se posuzují právní povinnosti a obchodní tajemství.",
+      report_artifacts: [
+        {
+          artifact_id: "rpt_one_column",
+          title: "Seznam povinností",
+          description: null,
+          columns: [{ key: "obligation", label: "Povinnost", type: "text" }],
+          rows: [
+            {
+              row_id: "row_1",
+              cells: { obligation: "právní povinnosti" },
+              citations: []
+            }
+          ],
+          export_formats: ["xlsx", "pdf"],
+          source_citation_count: 0,
+          warnings: []
+        }
+      ]
+    });
+
+    const normalized = normalizeAssistantAnswerReports(
+      response,
+      "vytvoř tabulku kde bude seznam povinností",
+      "cs"
+    );
+
+    assert.equal(normalized.report_artifacts.length, 0);
+  });
+
+  it("keeps registry metadata reports without chunk citations", () => {
+    const metadataReport: AssistantReportArtifact = {
+      artifact_id: "rpt_registry_documents",
+      title: "Inventura dokumentů podle témat",
+      description: "Metadatová sestava z registru.",
+      columns: [
+        { key: "topic", label: "Téma", type: "text" },
+        { key: "document_count", label: "Dokumentů", type: "number" }
+      ],
+      rows: [
+        {
+          row_id: "topic_1",
+          cells: {
+            topic: "digitalizace",
+            document_count: 12
+          },
+          citations: []
+        }
+      ],
+      export_formats: ["xlsx", "pdf"],
+      source_citation_count: 0,
+      warnings: ["REGISTRY_METADATA_REPORT"]
+    };
+    const response = responseFixture({
+      answer: "Na téma digitalizace máte 12 dokumentů.",
+      report_artifacts: [metadataReport],
+      citations: []
+    });
+
+    const normalized = normalizeAssistantAnswerReports(response, "kolik dokumentů máš na téma digitalizace", "cs");
+
+    assert.equal(normalized.report_artifacts[0], metadataReport);
   });
 
   it("keeps a non-generic report artifact from the retrieval service", () => {
@@ -198,5 +269,6 @@ describe("assistant answer report normalization", () => {
     );
 
     assert.equal(normalized.report_artifacts[0], goodReport);
+    assert.equal(normalized.answer, "Připravil jsem tabulku níže.");
   });
 });

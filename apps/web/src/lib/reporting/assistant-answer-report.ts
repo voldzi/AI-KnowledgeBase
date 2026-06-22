@@ -7,11 +7,18 @@ import type {
   ResponseLanguage
 } from "@/lib/types";
 
+import {
+  filterUsableAssistantReportArtifacts,
+  getAssistantReportQualityIssues
+} from "./assistant-report-quality";
+
 type CellValue = string | number | boolean | null;
 
 interface ParsedMarkdownTable {
   headers: string[];
   rows: string[][];
+  startLine: number;
+  endLine: number;
 }
 
 const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf)/i;
@@ -24,16 +31,20 @@ export function normalizeAssistantAnswerReports(
 ): AssistantChatResponse {
   const answer = response.answer ?? response.message ?? "";
   const parsedTable = parseFirstMarkdownTable(answer);
+  const usableExistingArtifacts = filterUsableAssistantReportArtifacts(response.report_artifacts, { message });
+  const responseWithUsableArtifacts = usableExistingArtifacts.length === response.report_artifacts.length
+    ? response
+    : { ...response, report_artifacts: usableExistingArtifacts };
   if (!parsedTable) {
-    return response;
+    return responseWithUsableArtifacts;
   }
 
   const wantsStructuredOutput = STRUCTURED_OUTPUT_RE.test(message);
-  if (!wantsStructuredOutput && response.report_artifacts.length === 0) {
-    return response;
+  if (!wantsStructuredOutput && usableExistingArtifacts.length === 0) {
+    return responseWithUsableArtifacts;
   }
-  if (response.report_artifacts.length > 0 && !shouldReplaceReportArtifacts(response.report_artifacts, message)) {
-    return response;
+  if (usableExistingArtifacts.length > 0 && !shouldReplaceReportArtifacts(usableExistingArtifacts, message)) {
+    return withDisplayAnswer(responseWithUsableArtifacts, stripFirstMarkdownTableFromAnswer(answer, parsedTable, language));
   }
   const shouldClearGenericReports = response.report_artifacts.length > 0;
 
@@ -44,12 +55,13 @@ export function normalizeAssistantAnswerReports(
     language
   });
 
-  if (!artifact) {
+  if (!artifact || getAssistantReportQualityIssues(artifact, { message }).length > 0) {
     return shouldClearGenericReports ? { ...response, report_artifacts: [] } : response;
   }
 
   return {
     ...response,
+    ...displayAnswerPatch(response, stripFirstMarkdownTableFromAnswer(answer, parsedTable, language)),
     report_artifacts: [artifact]
   };
 }
@@ -95,6 +107,7 @@ export function parseFirstMarkdownTable(markdown: string): ParsedMarkdownTable |
     }
 
     const rows: string[][] = [];
+    let endLine = index + 1;
     for (let rowIndex = index + 2; rowIndex < lines.length; rowIndex += 1) {
       const rowLine = lines[rowIndex]?.trim() ?? "";
       if (!looksLikeTableLine(rowLine)) {
@@ -102,17 +115,49 @@ export function parseFirstMarkdownTable(markdown: string): ParsedMarkdownTable |
       }
       const cells = splitMarkdownTableRow(rowLine).map(cleanMarkdownCell);
       rows.push(normalizeRowWidth(cells, headers.length));
+      endLine = rowIndex;
     }
 
     const nonEmptyRows = rows.filter((row) => row.some((cell) => cell.length > 0));
     if (nonEmptyRows.length > 0) {
       return {
         headers: normalizeRowWidth(headers, Math.max(headers.length, ...nonEmptyRows.map((row) => row.length))),
-        rows: nonEmptyRows
+        rows: nonEmptyRows,
+        startLine: index,
+        endLine
       };
     }
   }
   return null;
+}
+
+function stripFirstMarkdownTableFromAnswer(
+  answer: string,
+  table: ParsedMarkdownTable,
+  language: ResponseLanguage
+): string {
+  const lines = answer.split(/\r?\n/);
+  const before = lines.slice(0, table.startLine).join("\n").trim();
+  const after = lines.slice(table.endLine + 1).join("\n").trim();
+  const remaining = [before, after].filter(Boolean).join("\n\n").trim();
+  if (remaining) {
+    return remaining;
+  }
+  return language === "en" ? "I prepared the table below." : "Připravil jsem tabulku níže.";
+}
+
+function withDisplayAnswer(response: AssistantChatResponse, displayAnswer: string): AssistantChatResponse {
+  return {
+    ...response,
+    ...displayAnswerPatch(response, displayAnswer)
+  };
+}
+
+function displayAnswerPatch(response: AssistantChatResponse, displayAnswer: string): Pick<AssistantChatResponse, "answer" | "message"> {
+  if (response.answer !== null) {
+    return { answer: displayAnswer, message: response.message };
+  }
+  return { answer: response.answer, message: displayAnswer };
 }
 
 function buildReportArtifactFromMarkdownTable({
@@ -230,7 +275,9 @@ function removeEmptySourceColumns(table: ParsedMarkdownTable): ParsedMarkdownTab
 
   return {
     headers: keepIndexes.map((index) => table.headers[index] ?? ""),
-    rows: table.rows.map((row) => keepIndexes.map((index) => row[index] ?? ""))
+    rows: table.rows.map((row) => keepIndexes.map((index) => row[index] ?? "")),
+    startLine: table.startLine,
+    endLine: table.endLine
   };
 }
 

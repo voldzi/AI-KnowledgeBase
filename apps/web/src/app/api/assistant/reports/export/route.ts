@@ -6,12 +6,12 @@ import {
   safeAssistantReportPdfFilename
 } from "@/lib/reporting/assistant-report-pdf";
 import {
-  AssistantReportValidationError,
   assistantReportXlsxMimeType,
   buildAssistantReportXlsx,
   normalizeAssistantReportArtifact,
   safeAssistantReportFilename
 } from "@/lib/reporting/assistant-report-xlsx";
+import { AssistantReportValidationError } from "@/lib/reporting/assistant-report-validation-error";
 import { getOptionalServerRequestContext } from "@/lib/api/server";
 
 import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../../errors";

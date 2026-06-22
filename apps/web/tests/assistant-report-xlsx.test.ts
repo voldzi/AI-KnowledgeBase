@@ -16,7 +16,7 @@ describe("assistant report xlsx export", () => {
   it("builds bounded xlsx and pdf files with report and citation content", () => {
     const report = normalizeAssistantReportArtifact({
       artifact_id: "rpt_test",
-      title: "Sestava z odpovědi AKB",
+      title: "Seznam povinností",
       description: "Tabulková sestava s citacemi.",
       columns: [
         { key: "topic", label: "Téma", type: "text" },
@@ -46,7 +46,8 @@ describe("assistant report xlsx export", () => {
         }
       ],
       export_formats: ["xlsx", "pdf"],
-      warnings: ["REPORT_LIMITED_TO_CITED_SOURCES"]
+      source_citation_count: 1,
+      warnings: []
     });
 
     const workbook = buildAssistantReportXlsx(report);
@@ -57,15 +58,15 @@ describe("assistant report xlsx export", () => {
     assert.equal(workbook.subarray(0, 2).toString("utf-8"), "PK");
     assert.ok(workbookContent.includes("xl/worksheets/sheet1.xml"));
     assert.ok(workbookContent.includes("xl/worksheets/sheet2.xml"));
-    assert.ok(workbookContent.includes("Sestava z odpovědi AKB"));
+    assert.ok(workbookContent.includes("Seznam povinností"));
     assert.ok(workbookContent.includes("chunk_789"));
     assert.equal(pdf.subarray(0, 5).toString("utf-8"), "%PDF-");
     assert.ok(pdfContent.includes("xref"));
     assert.ok(pdfContent.includes("trailer"));
     assert.ok(pdfContent.includes("chunk_789"));
     assert.equal(assistantReportPdfMimeType(), "application/pdf");
-    assert.equal(safeAssistantReportFilename(report), "Sestava-z-odpovedi-AKB.xlsx");
-    assert.equal(safeAssistantReportPdfFilename(report), "Sestava-z-odpovedi-AKB.pdf");
+    assert.equal(safeAssistantReportFilename(report), "Seznam-povinnosti.xlsx");
+    assert.equal(safeAssistantReportPdfFilename(report), "Seznam-povinnosti.pdf");
   });
 
   it("rejects unbounded report payloads", () => {
@@ -77,6 +78,50 @@ describe("assistant report xlsx export", () => {
         rows: []
       }),
       /columns/
+    );
+  });
+
+  it("rejects one-column report artifacts before export", () => {
+    assert.throws(
+      () => normalizeAssistantReportArtifact({
+        artifact_id: "rpt_one_column",
+        title: "Seznam povinností",
+        columns: [{ key: "obligation", label: "Povinnost", type: "text" }],
+        rows: [
+          {
+            row_id: "row_1",
+            cells: { obligation: "právní povinnosti" },
+            citations: []
+          }
+        ],
+        warnings: []
+      }),
+      /at least two/
+    );
+  });
+
+  it("rejects generic cited-answer summary artifacts", () => {
+    assert.throws(
+      () => normalizeAssistantReportArtifact({
+        artifact_id: "rpt_generic",
+        title: "Sestava z odpovědi AKB",
+        columns: [
+          { key: "topic", label: "Téma", type: "text" },
+          { key: "summary", label: "Závěr", type: "text" }
+        ],
+        rows: [
+          {
+            row_id: "row_1",
+            cells: {
+              topic: "vytvoř tabulku kde bude seznam povinností",
+              summary: "Opakovaný text odpovědi."
+            },
+            citations: []
+          }
+        ],
+        warnings: ["REPORT_LIMITED_TO_CITED_SOURCES"]
+      }),
+      /generic cited-answer/
     );
   });
 });

@@ -158,6 +158,11 @@ const assistantAppCopy = {
     exportReportFailed: "Sestavu se nepodařilo exportovat.",
     reportRows: "řádků",
     reportSources: "citovaných zdrojů",
+    warningRowsTruncated: "Zobrazená sestava je zkrácená na bezpečný počet řádků.",
+    warningRegistryScanLimit: "Výsledek může být neúplný, protože prohledávání narazilo na provozní limit.",
+    warningConversationNotPersisted: "Odpověď je dostupná, ale vlákno se teď nepodařilo uložit.",
+    warningReportAdjusted: "Sestava byla upravena do bezpečného exportovatelného formátu.",
+    warningGeneric: "Odpověď obsahuje provozní upozornění.",
     citationViewer: "Prohlížeč citací",
     shareTitle: "Sdílet vlákno",
     shareTarget: "Uživatel nebo skupina",
@@ -234,6 +239,11 @@ const assistantAppCopy = {
     exportReportFailed: "The report could not be exported.",
     reportRows: "rows",
     reportSources: "cited sources",
+    warningRowsTruncated: "The report is truncated to a safe row limit.",
+    warningRegistryScanLimit: "The result may be incomplete because the scan reached an operational limit.",
+    warningConversationNotPersisted: "The answer is available, but the thread could not be saved right now.",
+    warningReportAdjusted: "The report was adjusted into a safe exportable format.",
+    warningGeneric: "The answer contains an operational notice.",
     citationViewer: "Citation viewer",
     shareTitle: "Share thread",
     shareTarget: "User or group",
@@ -919,6 +929,7 @@ function AssistantResponseTools({
   onSubmitClarification: (response: AssistantChatResponse) => void;
   onOpenCitationViewer: () => void;
 }) {
+  const visibleWarnings = visibleAssistantWarnings(response.warnings, copy);
   if (response.response_type === "clarification_needed") {
     return (
       <div className="akb-chat-clarification">
@@ -954,10 +965,10 @@ function AssistantResponseTools({
 
   return (
     <div className="akb-chat-answer-tools">
-      {response.warnings.length ? (
+      {visibleWarnings.length ? (
         <div className="notice">
           <ShieldAlert size={16} aria-hidden="true" />
-          {response.warnings.join(", ")}
+          {visibleWarnings.join(" ")}
         </div>
       ) : null}
       {response.report_artifacts.length > 0 ? (
@@ -989,6 +1000,7 @@ function AssistantResponseTools({
 function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifact; copy: AssistantAppLabels }) {
   const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const visibleWarnings = visibleAssistantWarnings(report.warnings, copy);
   const columns: Array<StratosDataTableColumn<AssistantReportRow>> = report.columns.map((column) => ({
     id: column.key,
     label: column.label,
@@ -1066,10 +1078,38 @@ function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifac
         emptyLabel={copy.noPreciseSource}
         aria-label={report.title}
       />
-      {report.warnings.length ? <div className="akb-chat-report__warnings">{report.warnings.join(", ")}</div> : null}
+      {visibleWarnings.length ? <div className="akb-chat-report__warnings">{visibleWarnings.join(" ")}</div> : null}
       {exportError ? <div className="notice">{exportError}</div> : null}
     </section>
   );
+}
+
+function visibleAssistantWarnings(warnings: string[], copy: AssistantAppLabels): string[] {
+  return Array.from(new Set(warnings.map((warning) => assistantWarningLabel(warning, copy)).filter(isPresentString)));
+}
+
+function assistantWarningLabel(warning: string, copy: AssistantAppLabels): string | null {
+  switch (warning) {
+    case "REGISTRY_METADATA_REPORT":
+    case "REGISTRY_METADATA_SUMMARY":
+    case "REGISTRY_DOCUMENT_LIST":
+      return null;
+    case "REPORT_ROWS_TRUNCATED":
+      return copy.warningRowsTruncated;
+    case "REGISTRY_SCAN_LIMIT_REACHED":
+      return copy.warningRegistryScanLimit;
+    case "CONVERSATION_HISTORY_NOT_PERSISTED":
+      return copy.warningConversationNotPersisted;
+    case "REPORT_LIMITED_TO_CITED_SOURCES":
+    case "REPORT_MARKDOWN_TABLE_PROMOTED":
+      return copy.warningReportAdjusted;
+    default:
+      return copy.warningGeneric;
+  }
+}
+
+function isPresentString(value: string | null): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function ClarificationField({
@@ -1200,12 +1240,19 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
 }
 
 function threadFromConversation(conversation: AssistantConversationDetail): AssistantThread {
+  let previousUserMessage = "";
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
     title: conversation.title ?? "AKB chat",
     context: {},
-    messages: conversation.messages.map((message) => messageFromConversationMessage(conversation.conversation_id, message)),
+    messages: conversation.messages.map((message) => {
+      const chatMessage = messageFromConversationMessage(conversation.conversation_id, message, previousUserMessage);
+      if (message.role === "user") {
+        previousUserMessage = message.content;
+      }
+      return chatMessage;
+    }),
     visibility: conversation.visibility,
     pinned: false,
     updatedAt: conversation.updated_at,
@@ -1217,19 +1264,24 @@ function threadFromConversation(conversation: AssistantConversationDetail): Assi
   };
 }
 
-function messageFromConversationMessage(conversationId: string, message: AssistantConversationMessage): ChatMessage {
+function messageFromConversationMessage(
+  conversationId: string,
+  message: AssistantConversationMessage,
+  previousUserMessage = ""
+): ChatMessage {
   return {
     id: message.message_id,
     role: message.role,
     content: message.content,
     createdAt: message.created_at,
-    response: message.role === "assistant" ? responseFromPersistedMessage(conversationId, message) : undefined
+    response: message.role === "assistant" ? responseFromPersistedMessage(conversationId, message, previousUserMessage) : undefined
   };
 }
 
 function responseFromPersistedMessage(
   conversationId: string,
-  message: AssistantConversationMessage
+  message: AssistantConversationMessage,
+  previousUserMessage: string
 ): AssistantChatResponse {
   const metadata = message.metadata ?? {};
   const response: AssistantChatResponse = {
@@ -1249,7 +1301,7 @@ function responseFromPersistedMessage(
     missing_information: null,
     recommended_action: null
   };
-  return normalizeAssistantAnswerReports(response, "", "cs");
+  return normalizeAssistantAnswerReports(response, previousUserMessage, "cs");
 }
 
 function threadIdFromConversationId(conversationId: string): string {

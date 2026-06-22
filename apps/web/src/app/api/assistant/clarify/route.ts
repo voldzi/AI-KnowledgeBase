@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
+import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
+import { ragContextForAssistantRoute, routeAssistantMessageForRag } from "@/lib/assistant/assistant-tool-router";
 import { isAklLanguage } from "@/lib/language";
 
 import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../errors";
@@ -20,20 +22,29 @@ export async function POST(request: NextRequest) {
     if (!message) {
       return badAssistantRequest("message is required.");
     }
+    const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
+    const assistantRoute = routeAssistantMessageForRag(message, responseLanguage);
 
     const response = await clients.rag.assistantClarify(
       {
         user_id: context.subjectId,
         conversation_id: typeof body.conversation_id === "string" ? body.conversation_id : null,
         message,
-        context: _objectContext(body.context),
+        context: ragContextForAssistantRoute(_objectContext(body.context), assistantRoute),
         mode: body.mode ?? "it_support_answer",
-        response_language: isAklLanguage(body.response_language) ? body.response_language : "cs"
+        response_language: responseLanguage
       },
       context
     );
 
-    return NextResponse.json({ response });
+    return NextResponse.json({
+      response: normalizeAssistantChatResponse({
+        response,
+        message,
+        language: responseLanguage,
+        route: assistantRoute
+      })
+    });
   } catch (error) {
     return assistantBridgeError(error);
   }

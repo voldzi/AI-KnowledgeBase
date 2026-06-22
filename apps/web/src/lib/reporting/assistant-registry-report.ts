@@ -231,7 +231,7 @@ export function isRegistryDocumentReportQuestion(message: string): boolean {
   if (!normalized) return false;
   const hasInventoryIntent = INVENTORY_INTENT_WORDS.some((word) => normalized.includes(word));
   const hasStructuredOutputIntent = STRUCTURED_OUTPUT_WORDS.some((word) => normalized.includes(word));
-  const hasDocumentOrDomain = DOCUMENT_OR_DOMAIN_WORDS.some((word) => normalized.includes(word));
+  const hasDocumentOrDomain = DOCUMENT_OR_DOMAIN_WORDS.some((word) => normalizedIncludesTerm(normalized, word));
   const asksForContentInterpretation = CONTENT_INTERPRETATION_WORDS.some((word) => normalized.includes(word));
   if (asksForContentInterpretation && !hasInventoryIntent) {
     return false;
@@ -817,6 +817,15 @@ function normalizeText(value: string): string {
     .replace(/[^a-z0-9&._/-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizedIncludesTerm(normalizedValue: string, term: string): boolean {
+  const normalizedTerm = normalizeText(term);
+  if (!normalizedTerm) return false;
+  if (normalizedTerm.length <= 2) {
+    return new RegExp(`(?:^|[^a-z0-9])${escapeRegex(normalizedTerm)}(?:[^a-z0-9]|$)`).test(normalizedValue);
+  }
+  return normalizedValue.includes(normalizedTerm);
 }
 
 function slugify(value: string): string {

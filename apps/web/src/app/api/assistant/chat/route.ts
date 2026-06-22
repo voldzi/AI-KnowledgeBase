@@ -1,24 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
+import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
+import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
 import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
   buildRegistryDocumentReportFromSummary,
-  extractRegistryDocumentTopics,
-  isRegistryDocumentReportQuestion,
-  registryReportKindFromMessage,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
-import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
 import type { Classification, Document, DocumentMetadataSummaryOptions, DocumentStatus, DocumentType } from "@/lib/types";
 
 import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../errors";
 
 export const runtime = "nodejs";
-
-const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf)/i;
-const OBLIGATION_OUTPUT_RE = /(povinnost|obligation)/i;
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,9 +31,10 @@ export async function POST(request: NextRequest) {
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
+    const assistantRoute = routeAssistantMessage(message, responseLanguage);
     const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
-    const registryReportKind = registryReportKindFromMessage(message);
-    const registryTopics = extractRegistryDocumentTopics(message, responseLanguage);
+    const registryReportKind = assistantRoute.registryReportKind ?? "document_inventory_summary";
+    const registryTopics = assistantRoute.registryTopics;
     const buildRegistryResponseFromMetadata = async () => {
       if (registryReportKind === "document_list") {
         const documents = await clients.registry.listDocuments(context, {
@@ -83,11 +79,17 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    if (isRegistryDocumentReportQuestion(message)) {
+    if (assistantRoute.tool === "registry_document_report") {
       const registryResponse = await buildRegistryResponseFromMetadata();
       if (registryResponse) {
+        const normalizedRegistryResponse = normalizeAssistantChatResponse({
+          response: registryResponse,
+          message,
+          language: responseLanguage,
+          route: assistantRoute
+        });
         await clients.registry.appendAssistantConversationMessages(
-          registryResponse.conversation_id,
+          normalizedRegistryResponse.conversation_id,
           {
             user_id: context.subjectId,
             title: titleFromMessage(message),
@@ -100,14 +102,16 @@ export async function POST(request: NextRequest) {
               },
               {
                 role: "assistant",
-                content: registryResponse.answer ?? registryResponse.message ?? registryResponse.recommended_action ?? "(empty)",
-                response_type: registryResponse.response_type,
-                citations: registryResponse.citations,
+                content: normalizedRegistryResponse.answer ?? normalizedRegistryResponse.message ?? normalizedRegistryResponse.recommended_action ?? "(empty)",
+                response_type: normalizedRegistryResponse.response_type,
+                citations: normalizedRegistryResponse.citations,
                 metadata: {
-                  confidence: registryResponse.confidence,
-                  current_context: registryResponse.current_context,
-                  report_artifacts: registryResponse.report_artifacts,
-                  warnings: registryResponse.warnings
+                  assistant_tool: assistantRoute.tool,
+                  assistant_tool_reason: assistantRoute.reason,
+                  confidence: normalizedRegistryResponse.confidence,
+                  current_context: normalizedRegistryResponse.current_context,
+                  report_artifacts: normalizedRegistryResponse.report_artifacts,
+                  warnings: normalizedRegistryResponse.warnings
                 }
               }
             ]
@@ -115,22 +119,25 @@ export async function POST(request: NextRequest) {
           context
         ).catch(() => undefined);
         const scannedDocumentCount =
-          typeof registryResponse.current_context.registry_report_scanned_document_count === "number"
-            ? registryResponse.current_context.registry_report_scanned_document_count
+          typeof normalizedRegistryResponse.current_context.registry_report_scanned_document_count === "number"
+            ? normalizedRegistryResponse.current_context.registry_report_scanned_document_count
             : 0;
-        const auditSummary = summarizeRegistryReportForAudit(registryResponse, message, scannedDocumentCount);
+        const auditSummary = summarizeRegistryReportForAudit(normalizedRegistryResponse, message, scannedDocumentCount);
         if (auditSummary) {
           await clients.registry.createAuditEvent(
             {
               actor_id: context.subjectId,
               event_type: "assistant.registry_report_returned",
               resource_type: "assistant_conversation",
-              resource_id: registryResponse.conversation_id,
-              severity: registryResponse.warnings.includes("REGISTRY_SCAN_LIMIT_REACHED") ? "warning" : "info",
+              resource_id: normalizedRegistryResponse.conversation_id,
+              severity: normalizedRegistryResponse.warnings.includes("REGISTRY_SCAN_LIMIT_REACHED") ? "warning" : "info",
               metadata: {
                 artifact_id: auditSummary.artifactId,
+                assistant_tool: assistantRoute.tool,
+                assistant_tool_reason: assistantRoute.reason,
                 document_count: auditSummary.documentCount,
                 message_sha256: auditSummary.messageHash,
+                registry_report_kind: registryReportKind,
                 scanned_document_count: auditSummary.scannedDocumentCount,
                 topic_count: auditSummary.topicCount,
                 warning_count: auditSummary.warningCount
@@ -139,7 +146,7 @@ export async function POST(request: NextRequest) {
             context
           ).catch(() => undefined);
         }
-        return NextResponse.json({ response: registryResponse });
+        return NextResponse.json({ response: normalizedRegistryResponse });
       }
     }
 
@@ -148,14 +155,21 @@ export async function POST(request: NextRequest) {
         user_id: context.subjectId,
         conversation_id: conversationId,
         message,
-        context: ragContextForStructuredOutput(requestContext, message, responseLanguage),
+        context: ragContextForAssistantRoute(requestContext, assistantRoute),
         mode: body.mode ?? "it_support_answer",
         response_language: responseLanguage
       },
       context
     );
 
-    return NextResponse.json({ response: normalizeAssistantAnswerReports(response, message, responseLanguage) });
+    return NextResponse.json({
+      response: normalizeAssistantChatResponse({
+        response,
+        message,
+        language: responseLanguage,
+        route: assistantRoute
+      })
+    });
   } catch (error) {
     return assistantBridgeError(error);
   }
@@ -163,38 +177,6 @@ export async function POST(request: NextRequest) {
 
 function _objectContext(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function ragContextForStructuredOutput(
-  context: Record<string, unknown>,
-  message: string,
-  language: "cs" | "en"
-): Record<string, unknown> {
-  if (!STRUCTURED_OUTPUT_RE.test(message)) {
-    return context;
-  }
-  const instruction = language === "en"
-    ? [
-        "Structured output requirement:",
-        "- If you answer with a table, return a Markdown table with at least two meaningful columns.",
-        "- For obligations, prefer columns: obligation/area, cited rule or source, practical meaning/note.",
-        "- Do not return a one-column list as a table. If a detail is not present in the cited source, write \"not stated\"."
-      ].join("\n")
-    : [
-        "Požadavek na strukturovaný výstup:",
-        "- Pokud odpovídáš tabulkou, vrať markdown tabulku s alespoň dvěma významovými sloupci.",
-        "- Pro povinnosti preferuj sloupce: povinnost/oblast, citované ustanovení nebo zdroj, praktický význam/poznámka.",
-        "- Nevracej jednosloupcový seznam jako tabulku. Pokud detail není v citovaném zdroji uvedený, napiš \"neuvedeno\"."
-      ].join("\n");
-  const obligationInstruction = OBLIGATION_OUTPUT_RE.test(message)
-    ? language === "en"
-      ? "\n- For every obligation row, include the best source-supported explanation available."
-      : "\n- U každého řádku povinnosti uveď nejlepší dostupné vysvětlení podložené zdrojem."
-    : "";
-  return {
-    ...context,
-    answer_format_instruction: `${instruction}${obligationInstruction}`
-  };
 }
 
 const DOCUMENT_TYPES: readonly DocumentType[] = [

@@ -1,5 +1,8 @@
 import type { AssistantReportArtifact, AssistantReportColumn, AssistantReportRow, Citation } from "@/lib/types";
 
+import { assertAssistantReportQuality } from "./assistant-report-quality";
+import { AssistantReportValidationError } from "./assistant-report-validation-error";
+
 type CellValue = string | number | boolean | null;
 
 export interface NormalizedReport {
@@ -22,13 +25,6 @@ const MAX_ROWS = 500;
 const MAX_CELL_TEXT_LENGTH = 2000;
 const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-export class AssistantReportValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AssistantReportValidationError";
-  }
-}
-
 export function assistantReportXlsxMimeType() {
   return XLSX_MIME_TYPE;
 }
@@ -50,7 +46,7 @@ export function normalizeAssistantReportArtifact(value: unknown): NormalizedRepo
   const input = value as Record<string, unknown>;
   const columns = normalizeColumns(input.columns);
   const rows = normalizeRows(input.rows, columns);
-  return {
+  const report = {
     artifact_id: boundedString(input.artifact_id, "artifact_id", 96),
     title: boundedString(input.title, "title", 180),
     description: optionalBoundedString(input.description, "description", 600),
@@ -58,6 +54,8 @@ export function normalizeAssistantReportArtifact(value: unknown): NormalizedRepo
     rows,
     warnings: normalizeStringList(input.warnings, 20, 160),
   };
+  assertAssistantReportQuality(report);
+  return report;
 }
 
 export function buildAssistantReportXlsx(report: NormalizedReport): Buffer {

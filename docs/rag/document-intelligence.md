@@ -77,6 +77,47 @@ GET  /api/v1/assistant/citations/{chunk_id}/open
 
 The assistant wraps retrieval, no-answer policy, answer composition, and citation opening in a plain-language contract for employees. It asks clarifying questions for vague access, incident, and approval requests before it retrieves.
 
+## Assistant Tool Router
+
+The AKB web/API bridge now routes each employee chat turn before it calls a
+backend tool. The router is intentionally small and auditable:
+
+- `registry_document_report` answers document inventory and list questions from
+  Registry API metadata, for example "kolik máme dokumentů na téma
+  digitalizace" or "seznam smluv do tabulky".
+- `rag_document_answer` answers document-content questions through RAG
+  Retrieval Service, including structured reports that interpret cited chunks,
+  for example "vytvoř sestavu z obsahu smlouvy".
+
+The router does not expose technical tool names in the user-facing answer and
+does not send registry routing metadata into the RAG prompt. For structured RAG
+answers it only adds a bounded `answer_format_instruction` to the assistant
+context, requiring meaningful multi-column tables and source-supported
+obligation rows when the user asks for obligations.
+
+Every response returned by the AKB web/API bridge carries the same internal
+enterprise envelope in `current_context`:
+
+- `assistant_contract_version`
+- `assistant_tool`
+- `assistant_tool_reason`
+- `answer_source`
+- `structured_output_requested`
+- `obligation_output_requested`
+- `report_artifact_count`
+
+These fields are for routing, continuation, audit, and diagnostics. They are not
+rendered as user-facing prose. Persisted conversation history is re-normalized
+with the preceding user prompt so a structured answer keeps the same report
+artifact and non-duplicated display text after a page reload.
+`POST /api/assistant/clarify` uses the same response normalizer as
+`POST /api/assistant/chat`; clarify turns are always kept on the RAG path
+because they continue an already-started document-content conversation.
+
+Internal warning flags such as registry/report routing markers are not rendered
+as raw codes in the Employee Chat Portal. The UI either hides purely technical
+flags or maps operational warnings to short user-facing messages.
+
 ## Employee Chat Report Artifacts
 
 When the employee asks for a table, report, overview, Excel/PDF export, or
@@ -101,6 +142,25 @@ The export endpoint validates row/column limits and writes either a static
 with the same content. It returns the file as a private download. It does not
 call internal storage directly from the browser and does not create macros,
 formulas, scripts, or external links.
+
+AKB now applies the Assistant Structured Artifact Protocol before a report is
+shown or exported:
+
+- reports need at least two meaningful columns and at least one row,
+- rows must contain at least two non-empty, non-placeholder values,
+- raw Markdown table syntax and repeated user prompts are rejected,
+- generic cited-answer summaries are rejected as report artifacts,
+- content reports must remain citation-bound,
+- Registry metadata reports are allowed without chunk citations because they
+  are permission-scoped metadata aggregations.
+
+Markdown table extraction is a compatibility bridge only. It can replace a bad
+generic report when the answer contains a useful table, but it is not the target
+enterprise report generation model. When AKB promotes a Markdown table into a
+valid report artifact, the display answer keeps the surrounding prose but
+removes the original Markdown table so the user sees the table only once in the
+report surface. See
+`docs/adr/0005-assistant-structured-artifact-protocol.md`.
 
 ## Registry Metadata Reports
 

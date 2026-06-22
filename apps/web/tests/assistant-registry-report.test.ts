@@ -96,6 +96,8 @@ describe("assistant registry report", () => {
   it("does not intercept content interpretation questions", () => {
     assert.equal(isRegistryDocumentReportQuestion("Jaký postup schvalování vyplývá ze smlouvy?"), false);
     assert.equal(isRegistryDocumentReportQuestion("Vytvoř sestavu z obsahu smlouvy o podpoře."), false);
+    assert.equal(isRegistryDocumentReportQuestion("Vytvoř tabulku kde bude seznam povinností."), false);
+    assert.equal(isRegistryDocumentReportQuestion("Vytvoř tabulku povinností podle citovaných zdrojů."), false);
     assert.equal(isRegistryDocumentReportQuestion("Seznam smluv vytvoř do tabulky."), true);
     assert.equal(isRegistryDocumentReportQuestion("Vytvoř tabulku smluv."), true);
     assert.equal(registryReportKindFromMessage("Seznam smluv vytvoř do tabulky."), "document_list");

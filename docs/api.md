@@ -35,6 +35,25 @@ with `answer_source: "registry_metadata"` and carry no chunk citations. Content
 interpretation questions still go through RAG Retrieval Service and must remain
 citation-bound.
 
+The bridge uses an internal Assistant Tool Router before backend dispatch:
+inventory/list intents go to Registry API metadata reports, while content
+interpretation and cited structured outputs go to RAG Retrieval Service. The
+router keeps technical routing metadata out of user-facing answers and only
+adds a bounded `answer_format_instruction` when a RAG answer needs a meaningful
+multi-column table or obligation report.
+
+Returned assistant responses include an internal enterprise envelope in
+`current_context` (`assistant_contract_version`, `assistant_tool`,
+`assistant_tool_reason`, `answer_source`, and report/request flags). STRATOS UI
+clients should treat these fields as machine-readable state for continuation,
+diagnostics, and audit context, not as text to render to end users.
+
+Employee chat `report_artifacts` are governed by the Assistant Structured
+Artifact Protocol. The web/API bridge filters invalid artifacts before they
+reach the UI and the export endpoint rejects the same invalid artifacts before
+creating XLSX/PDF files. A report needs meaningful multi-column data; a generic
+cited-answer summary or one-column list is not a valid enterprise artifact.
+
 Registry API exposes the first enterprise metadata aggregate endpoint:
 
 ```text
