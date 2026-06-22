@@ -85,7 +85,43 @@ describe("assistant answer report normalization", () => {
     assert.equal(table.rows[0]?.[0], "právní povinnosti");
   });
 
-  it("replaces a repeated citation report with rows extracted from the answer table", () => {
+  it("replaces a repeated citation report with rows extracted from a useful answer table", () => {
+    const response = responseFixture({
+      answer: [
+        "V rámci kategorie povinností se posuzují následující oblasti:",
+        "",
+        "| Oblasti posuzované v rámci kategorie povinností | Odpovídající ustanovení | Poznámka |",
+        "| :--- | :--- | :--- |",
+        "| právní povinnosti | VKB § 4 písm. a), b) | trestně-právní řízení je nad rámec VKB |",
+        "| obchodní tajemství | VKB § 4 písm. a), b) | - |",
+        "| trestně-právní řízení | VKB § 4 písm. a), b) | nad rámec běžného posouzení |",
+        "| jiné závazky | VKB § 4 písm. a), b) | - |"
+      ].join("\n"),
+      report_artifacts: [badRepeatedReport()]
+    });
+
+    const normalized = normalizeAssistantAnswerReports(
+      response,
+      "vytvoř tabulku kde bude seznam povinností",
+      "cs"
+    );
+
+    assert.equal(normalized.report_artifacts.length, 1);
+    const report = normalized.report_artifacts[0];
+    assert.equal(report?.title, "Seznam povinností");
+    assert.equal(report?.rows.length, 4);
+    assert.equal(report?.columns.length, 3);
+    assert.equal(report?.columns[0]?.label, "Oblasti posuzované v rámci kategorie povinností");
+    assert.equal(report?.columns[1]?.label, "Odpovídající ustanovení");
+    assert.equal(report?.rows[0]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti, "právní povinnosti");
+    assert.equal(report?.rows[0]?.cells.odpovidajici_ustanoveni, "VKB § 4 písm. a), b)");
+    assert.equal(report?.rows[1]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti, "obchodní tajemství");
+    assert.equal(report?.source_citation_count, 1);
+    assert.deepEqual(report?.export_formats, ["xlsx", "pdf"]);
+    assert.equal(String(report?.rows[0]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti).includes("| :---"), false);
+  });
+
+  it("does not turn a one-column list into an exportable report", () => {
     const response = responseFixture({
       answer: [
         "V rámci kategorie povinností se posuzují následující oblasti:",
@@ -106,17 +142,7 @@ describe("assistant answer report normalization", () => {
       "cs"
     );
 
-    assert.equal(normalized.report_artifacts.length, 1);
-    const report = normalized.report_artifacts[0];
-    assert.equal(report?.title, "Seznam povinností");
-    assert.equal(report?.rows.length, 4);
-    assert.equal(report?.columns.length, 1);
-    assert.equal(report?.columns[0]?.label, "Oblasti posuzované v rámci kategorie povinností");
-    assert.equal(report?.rows[0]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti, "právní povinnosti");
-    assert.equal(report?.rows[1]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti, "obchodní tajemství");
-    assert.equal(report?.source_citation_count, 1);
-    assert.deepEqual(report?.export_formats, ["xlsx", "pdf"]);
-    assert.equal(String(report?.rows[0]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti).includes("| :---"), false);
+    assert.equal(normalized.report_artifacts.length, 0);
   });
 
   it("does not create a report for ordinary answers without report intent", () => {

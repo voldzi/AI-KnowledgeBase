@@ -35,6 +35,7 @@ export function normalizeAssistantAnswerReports(
   if (response.report_artifacts.length > 0 && !shouldReplaceReportArtifacts(response.report_artifacts, message)) {
     return response;
   }
+  const shouldClearGenericReports = response.report_artifacts.length > 0;
 
   const artifact = buildReportArtifactFromMarkdownTable({
     table: parsedTable,
@@ -44,7 +45,7 @@ export function normalizeAssistantAnswerReports(
   });
 
   if (!artifact) {
-    return response;
+    return shouldClearGenericReports ? { ...response, report_artifacts: [] } : response;
   }
 
   return {
@@ -126,7 +127,7 @@ function buildReportArtifactFromMarkdownTable({
   language: ResponseLanguage;
 }): AssistantReportArtifact | null {
   const normalizedTable = removeEmptySourceColumns(table);
-  if (normalizedTable.headers.length === 0 || normalizedTable.rows.length === 0) {
+  if (normalizedTable.headers.length < 2 || normalizedTable.rows.length === 0) {
     return null;
   }
 

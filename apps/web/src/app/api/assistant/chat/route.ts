@@ -17,6 +17,9 @@ import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest
 
 export const runtime = "nodejs";
 
+const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf)/i;
+const OBLIGATION_OUTPUT_RE = /(povinnost|obligation)/i;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -145,7 +148,7 @@ export async function POST(request: NextRequest) {
         user_id: context.subjectId,
         conversation_id: conversationId,
         message,
-        context: requestContext,
+        context: ragContextForStructuredOutput(requestContext, message, responseLanguage),
         mode: body.mode ?? "it_support_answer",
         response_language: responseLanguage
       },
@@ -160,6 +163,38 @@ export async function POST(request: NextRequest) {
 
 function _objectContext(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function ragContextForStructuredOutput(
+  context: Record<string, unknown>,
+  message: string,
+  language: "cs" | "en"
+): Record<string, unknown> {
+  if (!STRUCTURED_OUTPUT_RE.test(message)) {
+    return context;
+  }
+  const instruction = language === "en"
+    ? [
+        "Structured output requirement:",
+        "- If you answer with a table, return a Markdown table with at least two meaningful columns.",
+        "- For obligations, prefer columns: obligation/area, cited rule or source, practical meaning/note.",
+        "- Do not return a one-column list as a table. If a detail is not present in the cited source, write \"not stated\"."
+      ].join("\n")
+    : [
+        "Požadavek na strukturovaný výstup:",
+        "- Pokud odpovídáš tabulkou, vrať markdown tabulku s alespoň dvěma významovými sloupci.",
+        "- Pro povinnosti preferuj sloupce: povinnost/oblast, citované ustanovení nebo zdroj, praktický význam/poznámka.",
+        "- Nevracej jednosloupcový seznam jako tabulku. Pokud detail není v citovaném zdroji uvedený, napiš \"neuvedeno\"."
+      ].join("\n");
+  const obligationInstruction = OBLIGATION_OUTPUT_RE.test(message)
+    ? language === "en"
+      ? "\n- For every obligation row, include the best source-supported explanation available."
+      : "\n- U každého řádku povinnosti uveď nejlepší dostupné vysvětlení podložené zdrojem."
+    : "";
+  return {
+    ...context,
+    answer_format_instruction: `${instruction}${obligationInstruction}`
+  };
 }
 
 const DOCUMENT_TYPES: readonly DocumentType[] = [
