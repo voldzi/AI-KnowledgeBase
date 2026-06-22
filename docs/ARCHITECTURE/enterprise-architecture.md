@@ -154,9 +154,12 @@ Implementation roadmap:
      tenant, source system, external entity context, lifecycle status, and audit.
    - Implemented first step: `GET /api/v1/documents/metadata-summary` returns
      permission-scoped aggregate summaries for chat inventory questions.
-   - Next optimization: replace in-process aggregation with indexed SQL,
-     materialized/search projections, and tenant/context filters for large
-     enterprise datasets.
+   - Implemented context step: the metadata summary and AKB web chat pass
+     tenant, external system, entity, external ref, and context-tag filters so
+     ProjectFlow, Budget, and future STRATOS apps can ask scoped inventory
+     questions without copying documents out of AKB.
+   - Next optimization: replace in-process aggregation with indexed SQL and
+     materialized/search projections for large enterprise datasets.
 2. Retrieval truth layer:
    - RAG answers content questions only from authorized chunks and citations.
    - Retrieval must support hybrid search, metadata filters, reranking, and

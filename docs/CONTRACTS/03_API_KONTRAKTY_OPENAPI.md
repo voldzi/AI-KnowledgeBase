@@ -87,6 +87,28 @@ review/approved -> draft when changes are requested
 
 `PATCH /documents/{document_id}` odmita neplatne preskoky stavu chybou `409 invalid_document_status_transition`.
 
+Metadata summary endpoint pro chatove inventarni dotazy:
+
+```text
+GET /documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
+GET /documents/metadata-summary?topic=smlouva&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract:contract-1
+```
+
+Endpoint vraci jen dokumenty, na ktere ma volajici `document.read`.
+Podporovane filtry:
+
+- `status`, `classification`, `document_type`, `owner_id`, `tag`,
+- opakovany `topic`,
+- `tenant_id`,
+- `external_system`,
+- `entity_type`,
+- `entity_id`,
+- `external_ref`,
+- opakovany `context_tag`.
+
+STRATOS aplikace musi pouzivat wire pole `external_system`; historicke
+`source_system` neni kontrakt pro externi integrace.
+
 ### 2.2 Document versions
 
 ```text

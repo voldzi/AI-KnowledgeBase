@@ -22,6 +22,13 @@ export type DocumentStatus =
   | "cancelled";
 
 export type Classification = "public" | "internal" | "restricted" | "confidential";
+export type ExternalSourceSystem =
+  | "STRATOS_BUDGET"
+  | "STRATOS_PROJECTFLOW"
+  | "STRATOS_ARCHFLOW"
+  | "STRATOS_PROCESSFORGE"
+  | "STRATOS_EXECUTIVE"
+  | "STRATOS_PLATFORM";
 export type DocumentAssignmentRole = "owner" | "gestor" | "reviewer" | "approver" | "auditor" | "steward";
 export type AssignmentSubjectType = "user" | "group" | "unit" | "service";
 
@@ -115,6 +122,12 @@ export interface DocumentMetadataSummaryOptions {
   documentType?: DocumentType;
   ownerId?: string;
   tag?: string;
+  tenantId?: string;
+  externalSystem?: ExternalSourceSystem | string;
+  entityType?: string;
+  entityId?: string;
+  externalRef?: string;
+  contextTags?: string[];
 }
 
 export interface DocumentVersion {

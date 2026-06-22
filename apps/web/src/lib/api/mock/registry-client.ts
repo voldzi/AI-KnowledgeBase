@@ -83,7 +83,7 @@ export class MockRegistryClient implements RegistryApiClient {
     const {
       access_policies: _accessPolicies,
       assignments: assignmentRequests,
-      metadata: _metadata,
+      metadata,
       ...documentRequest
     } = request;
     const documentId = `doc_${this.documents.length + 201}`;
@@ -94,6 +94,7 @@ export class MockRegistryClient implements RegistryApiClient {
       created_at: now,
       updated_at: now,
       owner: request.owner_id,
+      metadata: metadata ?? {},
       assignments: assignmentRequests?.map((assignment, index) => ({
         assignment_id: `assign_${documentId}_${index + 1}`,
         document_id: documentId,
@@ -544,6 +545,24 @@ function documentMatchesSummaryOptions(document: Document, options: DocumentMeta
   if (options.tag && !document.tags.includes(options.tag)) {
     return false;
   }
+  if (options.tenantId && metadataString(document.metadata, "tenant_id") !== options.tenantId) {
+    return false;
+  }
+  if (options.externalSystem && metadataString(document.metadata, "external_system") !== options.externalSystem) {
+    return false;
+  }
+  if (options.entityType && metadataString(document.metadata, "entity_type") !== options.entityType) {
+    return false;
+  }
+  if (options.entityId && metadataString(document.metadata, "entity_id") !== options.entityId) {
+    return false;
+  }
+  if (options.externalRef && metadataString(document.metadata, "external_ref") !== options.externalRef) {
+    return false;
+  }
+  if (options.contextTags?.length && !options.contextTags.every((tag) => documentMatchesContextTag(document, tag))) {
+    return false;
+  }
   return true;
 }
 
@@ -601,7 +620,10 @@ function metadataSummaryValues(metadata: Record<string, unknown> | undefined): s
   if (!metadata) {
     return [];
   }
-  return Object.entries(metadata).flatMap(([key, value]) => {
+  return Object.entries(metadata).flatMap(([key, value]) => metadataEntryValues(key, value));
+}
+
+function metadataEntryValues(key: string, value: unknown): string[] {
     if (value === null || value === undefined) {
       return [key];
     }
@@ -611,8 +633,43 @@ function metadataSummaryValues(metadata: Record<string, unknown> | undefined): s
     if (Array.isArray(value)) {
       return [key, ...value.filter((item) => ["string", "number", "boolean"].includes(typeof item)).map(String)];
     }
+    if (typeof value === "object") {
+      return [
+        key,
+        ...Object.entries(value as Record<string, unknown>).flatMap(([nestedKey, nestedValue]) =>
+          metadataEntryValues(nestedKey, nestedValue)
+        )
+      ];
+    }
     return [key];
-  });
+}
+
+function metadataString(metadata: Record<string, unknown> | undefined, key: string): string | null {
+  const direct = metadata?.[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+  for (const nestedKey of ["stratos", "external"]) {
+    const nested = metadata?.[nestedKey];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const value = (nested as Record<string, unknown>)[key];
+      if (typeof value === "string") {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function documentMatchesContextTag(document: Document, contextTag: string): boolean {
+  const normalized = normalizeSummaryText(contextTag);
+  if (!normalized) {
+    return true;
+  }
+  if (document.tags.some((tag) => normalizeSummaryText(tag) === normalized)) {
+    return true;
+  }
+  return metadataSummaryValues(document.metadata).some((value) => normalizeSummaryText(value).includes(normalized));
 }
 
 function normalizeSummaryText(value: string): string {

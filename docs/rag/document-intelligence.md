@@ -114,6 +114,10 @@ calling RAG. This keeps exact inventory work out of the LLM path:
   user.
 - The preferred path is
   `GET /api/v1/documents/metadata-summary?topic=...`.
+- STRATOS context is passed through to the metadata summary as
+  `tenant_id`, `external_system`, `entity_type`, `entity_id`, `external_ref`,
+  and repeated `context_tag` filters. The web fallback applies the same filters
+  if it must scan `/documents`.
 - The answer is marked with `answer_source: "registry_metadata_summary"` when
   the summary endpoint is used, or `answer_source: "registry_metadata"` when a
   compatibility fallback scans `/documents`.
@@ -125,8 +129,8 @@ calling RAG. This keeps exact inventory work out of the LLM path:
   permission-visible documents. If that ceiling is reached, the response
   includes `REGISTRY_SCAN_LIMIT_REACHED`.
 
-For production use across very large document sets, the next step is a
-SQL-backed Registry API aggregate/search implementation that can group by
+For production use across very large document sets, the current endpoint should
+be optimized into a SQL-backed aggregate/search projection that can group by
 topic, type, classification, owner, ingestion state, tenant, external system,
 and context tags without transferring all rows through the web layer.
 

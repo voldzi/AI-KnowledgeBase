@@ -85,6 +85,54 @@ def test_external_document_upsert_is_idempotent(client, admin_headers):
     assert len(listing.json()["items"]) == 1
 
 
+def test_document_metadata_summary_filters_external_context(client, admin_headers):
+    budget_response = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_external_payload(
+            tenant_id="tenant-a",
+            external_ref="contract:budget-context:main",
+            entity_type="contract",
+            entity_id="contract-1",
+            title="Smlouva Budget Contract 1",
+            metadata={"contract_id": "contract-1", "topic": "smlouva", "context_tag": "budget-contract:contract-1"},
+        ),
+    )
+    assert budget_response.status_code == 200, budget_response.text
+    other_response = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_external_payload(
+            tenant_id="tenant-b",
+            external_ref="contract:budget-context-other:main",
+            entity_type="contract",
+            entity_id="contract-2",
+            title="Smlouva Budget Contract 2",
+            metadata={"contract_id": "contract-2", "topic": "smlouva", "context_tag": "budget-contract:contract-2"},
+        ),
+    )
+    assert other_response.status_code == 200, other_response.text
+
+    summary = client.get(
+        "/api/v1/documents/metadata-summary"
+        "?topic=smlouva"
+        "&tenant_id=tenant-a"
+        "&external_system=STRATOS_BUDGET"
+        "&entity_type=contract"
+        "&entity_id=contract-1"
+        "&external_ref=contract%3Abudget-context%3Amain"
+        "&context_tag=budget-contract%3Acontract-1",
+        headers=admin_headers,
+    )
+
+    assert summary.status_code == 200, summary.text
+    body = summary.json()
+    assert body["total_visible_documents"] == 1
+    assert body["total_matched_documents"] == 1
+    assert body["topics"][0]["document_count"] == 1
+    assert body["by_document_type"][0]["key"] == "contract"
+
+
 def test_external_document_rejects_unknown_external_system(client, admin_headers):
     response = client.post(
         "/api/v1/external-documents/upsert",

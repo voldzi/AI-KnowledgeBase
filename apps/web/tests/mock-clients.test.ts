@@ -51,6 +51,47 @@ describe("mock API clients", () => {
     assert.equal(job.status, "queued");
   });
 
+  it("filters metadata summaries by STRATOS context in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    await clients.registry.createDocument(
+      {
+        title: "Smlouva Budget Contract 1",
+        document_type: "contract",
+        owner_id: "budget_owner",
+        gestor_unit: "Budget",
+        classification: "internal",
+        tags: ["budget-contract:contract-1"],
+        metadata: {
+          stratos: {
+            tenant_id: "tenant-a",
+            external_system: "STRATOS_BUDGET",
+            external_ref: "contract:1",
+            entity_type: "contract",
+            entity_id: "contract-1"
+          }
+        }
+      },
+      context
+    );
+
+    const summary = await clients.registry.getDocumentMetadataSummary(context, {
+      topics: ["smlouva"],
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-1",
+      externalRef: "contract:1",
+      contextTags: ["budget-contract:contract-1"]
+    });
+
+    assert.equal(summary.total_visible_documents, 1);
+    assert.equal(summary.total_matched_documents, 1);
+    assert.equal(summary.topics[0]?.document_count, 1);
+    assert.equal(summary.by_document_type[0]?.key, "contract");
+  });
+
   it("returns citation-backed RAG answers and no-answer states", async () => {
     const clients = createApiClients({ env });
     const context = createMockContext();

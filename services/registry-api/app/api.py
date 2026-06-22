@@ -70,6 +70,7 @@ from app.schemas import (
     DocumentResponse,
     DocumentStatus,
     DocumentType,
+    ExternalSourceSystem,
     DocumentVersionCreate,
     DocumentVersionListResponse,
     DocumentVersionResponse,
@@ -1451,6 +1452,12 @@ def document_metadata_summary(
     owner_id: str | None = None,
     tag: str | None = None,
     topic: list[str] | None = Query(default=None),
+    tenant_id: str | None = None,
+    external_system: ExternalSourceSystem | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    external_ref: str | None = None,
+    context_tag: list[str] | None = Query(default=None),
 ) -> DocumentMetadataSummaryResponse:
     documents = _authorized_document_metadata_rows(
         db=db,
@@ -1460,6 +1467,12 @@ def document_metadata_summary(
         document_type=document_type,
         owner_id=owner_id,
         tag=tag,
+        tenant_id=tenant_id,
+        external_system=external_system,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        external_ref=external_ref,
+        context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
     )
     topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
     if not topics:
@@ -1503,12 +1516,34 @@ def _authorized_document_metadata_rows(
     document_type: DocumentType | None,
     owner_id: str | None,
     tag: str | None,
+    tenant_id: str | None,
+    external_system: ExternalSourceSystem | None,
+    entity_type: str | None,
+    entity_id: str | None,
+    external_ref: str | None,
+    context_tags: list[str],
 ) -> list[Document]:
     stmt = (
         select(Document)
-        .options(selectinload(Document.access_policies), selectinload(Document.assignments))
+        .options(
+            selectinload(Document.access_policies),
+            selectinload(Document.assignments),
+            selectinload(Document.external_refs),
+        )
         .order_by(desc(Document.created_at))
     )
+    if any([tenant_id, external_system, entity_type, entity_id, external_ref]):
+        stmt = stmt.join(ExternalDocumentRef, ExternalDocumentRef.document_id == Document.document_id).distinct()
+    if tenant_id:
+        stmt = stmt.where(ExternalDocumentRef.tenant_id == tenant_id)
+    if external_system:
+        stmt = stmt.where(ExternalDocumentRef.external_system == external_system.value)
+    if entity_type:
+        stmt = stmt.where(ExternalDocumentRef.entity_type == entity_type)
+    if entity_id:
+        stmt = stmt.where(ExternalDocumentRef.entity_id == entity_id)
+    if external_ref:
+        stmt = stmt.where(ExternalDocumentRef.external_ref == external_ref)
     if status_filter:
         stmt = stmt.where(Document.status == status_filter.value)
     if classification:
@@ -1522,6 +1557,8 @@ def _authorized_document_metadata_rows(
     documents: list[Document] = []
     for document in db.execute(stmt).scalars():
         if tag and tag not in document.tags:
+            continue
+        if context_tags and not all(_document_matches_context_tag(document, candidate) for candidate in context_tags):
             continue
         decision = evaluate_document_access(context, Action.document_read.value, document)
         if decision.allowed:
@@ -1570,6 +1607,16 @@ def _document_matches_metadata_topic(document: Document, topic: str) -> bool:
     return bool(topic_tokens) and all(token in haystack for token in topic_tokens)
 
 
+def _document_matches_context_tag(document: Document, context_tag: str) -> bool:
+    tag_text = _normalize_metadata_text(context_tag)
+    if not tag_text:
+        return True
+    normalized_tags = {_normalize_metadata_text(tag) for tag in document.tags}
+    if tag_text in normalized_tags:
+        return True
+    return tag_text in _document_external_ref_search_text(document)
+
+
 def _document_metadata_search_text(document: Document) -> str:
     parts: list[str] = [
         document.document_id,
@@ -1590,6 +1637,27 @@ def _document_metadata_search_text(document: Document) -> str:
                 assignment.subject_id,
                 assignment.display_label or "",
                 *_metadata_scalar_values(assignment.assignment_metadata),
+            ]
+        )
+    parts.append(_document_external_ref_search_text(document))
+    return _normalize_metadata_text(" ".join(parts))
+
+
+def _document_external_ref_search_text(document: Document) -> str:
+    parts: list[str] = []
+    for external_ref in document.external_refs:
+        parts.extend(
+            [
+                external_ref.external_document_id,
+                external_ref.tenant_id,
+                external_ref.external_system,
+                external_ref.external_ref,
+                external_ref.entity_type,
+                external_ref.entity_id,
+                external_ref.current_ingestion_status or "",
+                external_ref.akb_source_uri or "",
+                external_ref.preview_url or "",
+                *_metadata_scalar_values(external_ref.ref_metadata),
             ]
         )
     return _normalize_metadata_text(" ".join(parts))

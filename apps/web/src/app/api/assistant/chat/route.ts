@@ -9,6 +9,7 @@ import {
   isRegistryDocumentReportQuestion,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
+import type { Classification, Document, DocumentMetadataSummaryOptions, DocumentStatus, DocumentType } from "@/lib/types";
 
 import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../errors";
 
@@ -30,10 +31,12 @@ export async function POST(request: NextRequest) {
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
+    const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
     const buildRegistryResponseFromMetadata = async () => {
       try {
         const summary = await clients.registry.getDocumentMetadataSummary(context, {
-          topics: extractRegistryDocumentTopics(message, responseLanguage)
+          topics: extractRegistryDocumentTopics(message, responseLanguage),
+          ...registrySummaryFilters
         });
         return buildRegistryDocumentReportFromSummary({
           message,
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
           conversationId,
           context: requestContext,
           language: responseLanguage,
-          documents
+          documents: filterDocumentsForSummaryOptions(documents, registrySummaryFilters)
         });
       }
     };
@@ -106,4 +109,231 @@ export async function POST(request: NextRequest) {
 
 function _objectContext(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+const DOCUMENT_TYPES: readonly DocumentType[] = [
+  "directive",
+  "regulation",
+  "methodology",
+  "policy",
+  "procedure",
+  "manual",
+  "knowledge_base_article",
+  "project_documentation",
+  "meeting_record",
+  "contract",
+  "attachment",
+  "other"
+];
+
+const DOCUMENT_STATUSES: readonly DocumentStatus[] = [
+  "draft",
+  "review",
+  "approved",
+  "valid",
+  "superseded",
+  "archived",
+  "cancelled"
+];
+
+const CLASSIFICATIONS: readonly Classification[] = ["public", "internal", "restricted", "confidential"];
+
+function registrySummaryOptionsFromAssistantContext(
+  context: Record<string, unknown>
+): Omit<DocumentMetadataSummaryOptions, "topics"> {
+  const status = contextString(context, "status", "document_status", "documentStatus");
+  const classification = contextString(context, "classification");
+  const documentType = contextString(context, "document_type", "documentType");
+  const contextTags = dedupeStrings(
+    contextStringList(context, "context_tags", "contextTags", "context_tag", "contextTag", "tags")
+  );
+  const options: Omit<DocumentMetadataSummaryOptions, "topics"> = {
+    tenantId: contextString(context, "tenant_id", "tenantId", "tenant"),
+    externalSystem: contextString(context, "external_system", "externalSystem"),
+    entityType: contextString(context, "entity_type", "entityType"),
+    entityId: contextString(context, "entity_id", "entityId"),
+    externalRef: contextString(context, "external_ref", "externalRef"),
+    ownerId: contextString(context, "owner_id", "ownerId"),
+    tag: contextString(context, "tag")
+  };
+  if (isAllowedValue(status, DOCUMENT_STATUSES)) {
+    options.status = status;
+  }
+  if (isAllowedValue(classification, CLASSIFICATIONS)) {
+    options.classification = classification;
+  }
+  if (isAllowedValue(documentType, DOCUMENT_TYPES)) {
+    options.documentType = documentType;
+  }
+  if (contextTags.length) {
+    options.contextTags = contextTags;
+  }
+  return compactSummaryOptions(options);
+}
+
+function contextString(context: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const source of contextSources(context)) {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+  }
+  return undefined;
+}
+
+function contextStringList(context: Record<string, unknown>, ...keys: string[]): string[] {
+  const values: string[] = [];
+  for (const source of contextSources(context)) {
+    for (const key of keys) {
+      const value = source[key];
+      if (Array.isArray(value)) {
+        values.push(...value.filter((candidate): candidate is string => typeof candidate === "string"));
+      } else if (typeof value === "string" && value.trim()) {
+        values.push(value);
+      }
+    }
+  }
+  return values.flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+}
+
+function contextSources(context: Record<string, unknown>): Array<Record<string, unknown>> {
+  const sources = [context];
+  for (const key of ["stratos", "akb", "document", "entity"]) {
+    const value = context[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      sources.push(value as Record<string, unknown>);
+    }
+  }
+  return sources;
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function isAllowedValue<T extends string>(value: string | undefined, allowed: readonly T[]): value is T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value);
+}
+
+function compactSummaryOptions(
+  options: Omit<DocumentMetadataSummaryOptions, "topics">
+): Omit<DocumentMetadataSummaryOptions, "topics"> {
+  return Object.fromEntries(
+    Object.entries(options).filter(([, value]) => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      return value !== undefined && value !== "";
+    })
+  ) as Omit<DocumentMetadataSummaryOptions, "topics">;
+}
+
+function filterDocumentsForSummaryOptions(
+  documents: Document[],
+  options: Omit<DocumentMetadataSummaryOptions, "topics">
+): Document[] {
+  return documents.filter((document) => {
+    if (options.status && document.status !== options.status) {
+      return false;
+    }
+    if (options.classification && document.classification !== options.classification) {
+      return false;
+    }
+    if (options.documentType && document.document_type !== options.documentType) {
+      return false;
+    }
+    if (options.ownerId && document.owner_id !== options.ownerId) {
+      return false;
+    }
+    if (options.tag && !document.tags.includes(options.tag)) {
+      return false;
+    }
+    if (options.tenantId && documentMetadataString(document, "tenant_id") !== options.tenantId) {
+      return false;
+    }
+    if (options.externalSystem && documentMetadataString(document, "external_system") !== options.externalSystem) {
+      return false;
+    }
+    if (options.entityType && documentMetadataString(document, "entity_type") !== options.entityType) {
+      return false;
+    }
+    if (options.entityId && documentMetadataString(document, "entity_id") !== options.entityId) {
+      return false;
+    }
+    if (options.externalRef && documentMetadataString(document, "external_ref") !== options.externalRef) {
+      return false;
+    }
+    if (options.contextTags?.length && !options.contextTags.every((tag) => documentMatchesContextTag(document, tag))) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function documentMetadataString(document: Document, key: string): string | null {
+  const metadata = document.metadata;
+  const direct = metadata?.[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+  for (const nestedKey of ["stratos", "external"]) {
+    const nested = metadata?.[nestedKey];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const value = (nested as Record<string, unknown>)[key];
+      if (typeof value === "string") {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function documentMatchesContextTag(document: Document, contextTag: string): boolean {
+  const normalized = normalizeDocumentContextValue(contextTag);
+  if (!normalized) {
+    return true;
+  }
+  if (document.tags.some((tag) => normalizeDocumentContextValue(tag) === normalized)) {
+    return true;
+  }
+  return documentMetadataValues(document.metadata).some((value) => normalizeDocumentContextValue(value).includes(normalized));
+}
+
+function documentMetadataValues(metadata: Record<string, unknown> | undefined): string[] {
+  if (!metadata) {
+    return [];
+  }
+  return Object.entries(metadata).flatMap(([key, value]) => metadataEntryValues(key, value));
+}
+
+function metadataEntryValues(key: string, value: unknown): string[] {
+  if (value === null || value === undefined) {
+    return [key];
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [key, String(value)];
+  }
+  if (Array.isArray(value)) {
+    return [key, ...value.filter((item) => ["string", "number", "boolean"].includes(typeof item)).map(String)];
+  }
+  if (typeof value === "object") {
+    return [
+      key,
+      ...Object.entries(value as Record<string, unknown>).flatMap(([nestedKey, nestedValue]) =>
+        metadataEntryValues(nestedKey, nestedValue)
+      )
+    ];
+  }
+  return [key];
+}
+
+function normalizeDocumentContextValue(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._/-]+/g, " ")
+    .trim();
 }

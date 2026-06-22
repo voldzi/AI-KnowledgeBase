@@ -83,6 +83,26 @@ export class ProductionRegistryClient implements RegistryApiClient {
     if (options.tag) {
       params.set("tag", options.tag);
     }
+    if (options.tenantId) {
+      params.set("tenant_id", options.tenantId);
+    }
+    if (options.externalSystem) {
+      params.set("external_system", options.externalSystem);
+    }
+    if (options.entityType) {
+      params.set("entity_type", options.entityType);
+    }
+    if (options.entityId) {
+      params.set("entity_id", options.entityId);
+    }
+    if (options.externalRef) {
+      params.set("external_ref", options.externalRef);
+    }
+    for (const contextTag of options.contextTags ?? []) {
+      if (contextTag.trim()) {
+        params.append("context_tag", contextTag.trim());
+      }
+    }
     const query = params.toString();
     return this.get<DocumentMetadataSummary>(
       `/documents/metadata-summary${query ? `?${query}` : ""}`,

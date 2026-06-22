@@ -120,14 +120,20 @@ describe("production API clients", () => {
     const clients = createApiClients({ env, fetcher });
     const summary = await clients.registry.getDocumentMetadataSummary(createMockContext(), {
       topics: ["digitalizace", "řízení projektů"],
-      classification: "internal"
+      classification: "internal",
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-1",
+      externalRef: "contract:1",
+      contextTags: ["budget-contract:contract-1"]
     });
 
     assert.equal(summary.total_visible_documents, 2);
     assert.equal(summary.topics[0].topic, "digitalizace");
     assert.equal(
       calls[0][0],
-      "https://registry.local/api/v1/documents/metadata-summary?topic=digitalizace&topic=%C5%99%C3%ADzen%C3%AD+projekt%C5%AF&classification=internal"
+      "https://registry.local/api/v1/documents/metadata-summary?topic=digitalizace&topic=%C5%99%C3%ADzen%C3%AD+projekt%C5%AF&classification=internal&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&external_ref=contract%3A1&context_tag=budget-contract%3Acontract-1"
     );
   });
 

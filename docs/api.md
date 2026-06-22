@@ -39,12 +39,16 @@ Registry API exposes the first enterprise metadata aggregate endpoint:
 
 ```text
 GET /api/v1/documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
+GET /api/v1/documents/metadata-summary?topic=smlouva&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract:contract-1
 ```
 
 It returns permission-scoped counts and buckets by topic, document type,
 classification, status, and owner/steward. The web bridge uses it for chat
 inventory questions and falls back to paginated `/documents` only when an older
-registry deployment does not yet expose the endpoint.
+registry deployment does not yet expose the endpoint. STRATOS callers may pass
+tenant/source/entity filters (`tenant_id`, `external_system`, `entity_type`,
+`entity_id`, `external_ref`) and repeated `context_tag` values so enterprise
+chat reports stay scoped to the ProjectFlow, Budget, or other source context.
 
 ## Authentication
 
