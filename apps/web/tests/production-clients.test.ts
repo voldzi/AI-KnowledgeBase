@@ -288,6 +288,88 @@ describe("production API clients", () => {
     assert.equal(calls[2][1]?.method, "POST");
   });
 
+  it("uses Registry conversation-history endpoints for persisted assistant threads", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const conversation = {
+      conversation_id: "conv_1",
+      user_id: "employee_1",
+      status: "active",
+      title: "Digitalizace",
+      visibility: "shared",
+      retention_until: "2026-12-31T00:00:00Z",
+      archived_at: null,
+      created_at: "2026-06-22T10:00:00Z",
+      updated_at: "2026-06-22T10:05:00Z",
+      shared_with: [
+        {
+          conversation_share_id: "share_1",
+          subject_type: "group",
+          subject_id: "projectflow",
+          permission: "viewer",
+          status: "active",
+          created_by: "employee_1",
+          created_at: "2026-06-22T10:02:00Z",
+          updated_at: "2026-06-22T10:02:00Z"
+        }
+      ],
+      messages: [
+        {
+          message_id: "msg_1",
+          role: "user",
+          content: "Kolik máme dokumentů k digitalizaci?",
+          response_type: null,
+          citations: [],
+          metadata: {},
+          created_at: "2026-06-22T10:00:00Z"
+        }
+      ]
+    };
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      if (String(input).includes("/assistant/conversation-history?")) {
+        return Response.json({
+          items: [{ ...conversation, message_count: 1 }],
+          limit: 50,
+          offset: 0
+        });
+      }
+      return Response.json(conversation);
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({ subjectId: "employee_1", accessToken: "test-token" });
+
+    await clients.registry.listAssistantConversations(context, true);
+    await clients.registry.getAssistantConversation("conv_1", context);
+    await clients.registry.appendAssistantConversationMessages(
+      "conv_1",
+      {
+        user_id: "employee_1",
+        messages: [{ role: "user", content: "Navazující dotaz" }]
+      },
+      context
+    );
+    await clients.registry.updateAssistantConversation("conv_1", { status: "archived" }, context);
+    await clients.registry.replaceAssistantConversationShares(
+      "conv_1",
+      {
+        shares: [{ subject_type: "group", subject_id: "projectflow", permission: "viewer" }]
+      },
+      context
+    );
+
+    assert.equal(calls[0][0], "https://registry.local/api/v1/assistant/conversation-history?include_archived=true&limit=50&offset=0");
+    assert.equal(calls[0][1]?.method, "GET");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[1][1]?.method, "GET");
+    assert.equal(calls[2][0], "https://registry.local/api/v1/assistant/conversations/conv_1/messages");
+    assert.equal(calls[2][1]?.method, "POST");
+    assert.equal(calls[3][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[3][1]?.method, "PATCH");
+    assert.equal(calls[4][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/shares");
+    assert.equal(calls[4][1]?.method, "PUT");
+  });
+
   it("loads workflow tasks from the Registry API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

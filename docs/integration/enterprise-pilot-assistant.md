@@ -16,13 +16,22 @@ Phase 04 prepares AKL for an enterprise pilot as a central knowledge platform wi
   - `GET /api/v1/assistant/suggestions`
   - `GET /api/v1/assistant/conversations/{conversation_id}`
   - `GET /api/v1/assistant/citations/{chunk_id}/open`
+- Registry API persists chat history and sharing:
+  - `POST /api/v1/assistant/conversations/{conversation_id}/messages`
+  - `GET /api/v1/assistant/conversation-history`
+  - `GET /api/v1/assistant/conversation-history/{conversation_id}`
+  - `PATCH /api/v1/assistant/conversation-history/{conversation_id}`
+  - `PUT /api/v1/assistant/conversation-history/{conversation_id}/shares`
 - Employee Assistant supports:
   - suggested questions,
   - clarifying questions for vague access, incident, and approval requests,
   - cited answers,
   - handoff recommendation when source support is insufficient,
-  - source opening from employee UI.
-- Web UI route `/assistant` provides the employee surface without technical implementation terms.
+  - source opening from employee UI,
+  - persisted threads with default 180-day retention, archive, and user/group sharing.
+- Web UI route `/chat` provides the standalone Employee Chat Portal for ordinary
+  users without side menu. Knowledge-management users can still access broader
+  AKB workspace routes.
 - Web UI has a global Czech/English language switcher. Employee Assistant and Knowledge Chat pass the selected language to RAG through `response_language`.
 - Admin/knowledge-management routes remain available under `/`, `/documents`, `/upload`, `/ingestion`, `/chat`, `/audit`, and `/admin`.
 
@@ -118,7 +127,6 @@ Phase 04 is pilot-ready for local and controlled internal evaluation when:
 
 ## Remaining Production Work
 
-- Persist conversation history with retention policy.
 - Add administrative domain management UI.
 - Add insight persistence and approval workflow.
 - Add native PDF/Office/table viewers beyond extracted text context.

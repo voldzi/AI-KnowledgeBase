@@ -202,7 +202,92 @@ export interface AssistantSuggestionsResponse {
 
 export interface AssistantConversationResponse {
   conversation_id: string;
-  status: "ephemeral";
+  status: "ephemeral" | "persisted";
   messages: Record<string, unknown>[];
   warnings: string[];
+}
+
+export interface AssistantConversationMessage {
+  message_id: string;
+  role: "user" | "assistant";
+  content: string;
+  response_type: AssistantResponseType | null;
+  citations: Citation[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AssistantConversationShare {
+  conversation_share_id: string;
+  subject_type: "user" | "group";
+  subject_id: string;
+  permission: "viewer" | "commenter";
+  status: "active" | "removed";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssistantConversationDetail {
+  conversation_id: string;
+  user_id: string;
+  status: "active" | "archived";
+  title: string | null;
+  visibility: "private" | "shared";
+  retention_until: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  shared_with: AssistantConversationShare[];
+  messages: AssistantConversationMessage[];
+}
+
+export interface AssistantConversationListItem {
+  conversation_id: string;
+  user_id: string;
+  status: "active" | "archived";
+  title: string | null;
+  visibility: "private" | "shared";
+  retention_until: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  shared_with: AssistantConversationShare[];
+  message_count: number;
+}
+
+export interface AssistantConversationListResponse {
+  items: AssistantConversationListItem[];
+  limit: number;
+  offset: number;
+}
+
+export interface AssistantConversationPatchRequest {
+  title?: string | null;
+  status?: "active" | "archived";
+  visibility?: "private" | "shared";
+  retention_until?: string | null;
+}
+
+export interface AssistantConversationMessageAppendRequest {
+  user_id: string;
+  title?: string | null;
+  visibility?: "private" | "shared";
+  retention_until?: string | null;
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    response_type?: AssistantResponseType | null;
+    citations?: Citation[];
+    metadata?: Record<string, unknown>;
+  }>;
+}
+
+export interface AssistantConversationShareReplaceRequest {
+  visibility?: "private" | "shared";
+  shares: Array<{
+    subject_type: "user" | "group";
+    subject_id: string;
+    permission: "viewer" | "commenter";
+  }>;
 }

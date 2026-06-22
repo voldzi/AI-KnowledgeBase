@@ -450,6 +450,31 @@ GET  /assistant/conversations/{conversation_id}
 GET  /assistant/citations/{chunk_id}/open
 ```
 
+Registry API persists and manages assistant history. The append endpoint keeps
+the existing RAG persistence contract; list/detail/share/update use the
+`conversation-history` namespace to avoid colliding with the RAG read endpoint:
+
+```text
+POST  /assistant/conversations/{conversation_id}/messages
+GET   /assistant/conversation-history
+GET   /assistant/conversation-history/{conversation_id}
+PATCH /assistant/conversation-history/{conversation_id}
+PUT   /assistant/conversation-history/{conversation_id}/shares
+```
+
+The AKB web BFF exposes the browser-safe chat portal contract under:
+
+```text
+GET   /api/assistant/conversations
+GET   /api/assistant/conversations/{conversation_id}
+PATCH /api/assistant/conversations/{conversation_id}
+PUT   /api/assistant/conversations/{conversation_id}/shares
+```
+
+History records carry owner, visibility, retention, archive state, messages,
+and active user/group shares. New conversations default to private visibility
+and 180-day retention.
+
 Assistant chat request:
 
 ```json

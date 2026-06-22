@@ -373,12 +373,48 @@ class AssistantConversation(Base, TimestampMixin):
     user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
     title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(32), nullable=False, default="private", index=True)
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     messages: Mapped[list["AssistantMessage"]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
         order_by="AssistantMessage.created_at",
     )
+    shares: Mapped[list["AssistantConversationShare"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+
+
+class AssistantConversationShare(Base, TimestampMixin):
+    __tablename__ = "assistant_conversation_shares"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "subject_type",
+            "subject_id",
+            name="uq_assistant_conversation_share_subject",
+        ),
+        Index("ix_assistant_conversation_shares_subject", "subject_type", "subject_id", "status"),
+    )
+
+    conversation_share_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("share")
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        String(80),
+        ForeignKey("assistant_conversations.conversation_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False, default="user", index=True)
+    subject_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    permission: Mapped[str] = mapped_column(String(32), nullable=False, default="viewer")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    conversation: Mapped[AssistantConversation] = relationship(back_populates="shares")
 
 
 class AssistantMessage(Base):

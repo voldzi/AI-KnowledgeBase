@@ -326,6 +326,233 @@
         }
       ]
     },
+    "/api/v1/external-documents/{external_document_id}/current": {
+      "patch": {
+        "summary": "Update External Document Current",
+        "operationId": "registry_api_update_external_document_current_api_v1_external_documents__external_document_id__current_patch",
+        "parameters": [
+          {
+            "name": "external_document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "External Document Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiExternalDocumentCurrentUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiExternalDocumentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/document-extractions": {
+      "post": {
+        "summary": "Store Document Extraction",
+        "operationId": "registry_api_store_document_extraction_api_v1_document_extractions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiDocumentExtractionStoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionStoreResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/document-extractions/{extraction_id}": {
+      "get": {
+        "summary": "Get Document Extraction",
+        "operationId": "registry_api_get_document_extraction_api_v1_document_extractions__extraction_id__get",
+        "parameters": [
+          {
+            "name": "extraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Extraction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/document-extractions/{extraction_id}/feedback": {
+      "post": {
+        "summary": "Store Document Extraction Feedback",
+        "operationId": "registry_api_store_document_extraction_feedback_api_v1_document_extractions__extraction_id__feedback_post",
+        "parameters": [
+          {
+            "name": "extraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Extraction Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackStoreResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/documents": {
       "post": {
         "summary": "Create Document",
@@ -599,6 +826,247 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegistryApiDocumentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/documents/metadata-summary": {
+      "get": {
+        "summary": "Document Metadata Summary",
+        "operationId": "registry_api_document_metadata_summary_api_v1_documents_metadata_summary_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegistryApiDocumentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "classification",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegistryApiClassification"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Classification"
+            }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegistryApiDocumentType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type"
+            }
+          },
+          {
+            "name": "owner_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner Id"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "name": "topic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "external_system",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External System"
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
+            }
+          },
+          {
+            "name": "external_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Ref"
+            }
+          },
+          {
+            "name": "context_tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Context Tag"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryResponse"
                 }
               }
             }
@@ -1748,38 +2216,42 @@
         }
       ]
     },
-    "/api/v1/external-documents/{external_document_id}/current": {
-      "patch": {
-        "summary": "Update External Document Current",
-        "operationId": "registry_api_update_external_document_current_api_v1_external_documents__external_document_id__current_patch",
+    "/api/v1/admin/directory/users": {
+      "get": {
+        "summary": "Search Directory Users",
+        "operationId": "registry_api_search_directory_users_api_v1_admin_directory_users_get",
         "parameters": [
           {
-            "name": "external_document_id",
-            "in": "path",
+            "name": "query",
+            "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "External Document Id"
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegistryApiExternalDocumentCurrentUpdateRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistryApiExternalDocumentResponse"
+                  "$ref": "#/components/schemas/RegistryApiDirectoryUserListResponse"
                 }
               }
             }
@@ -1810,15 +2282,15 @@
         }
       ]
     },
-    "/api/v1/document-extractions": {
+    "/api/v1/admin/directory/users/import": {
       "post": {
-        "summary": "Store Document Extraction",
-        "operationId": "registry_api_store_document_extraction_api_v1_document_extractions_post",
+        "summary": "Import Directory User",
+        "operationId": "registry_api_import_directory_user_api_v1_admin_directory_users_import_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RegistryApiDocumentExtractionStoreRequest"
+                "$ref": "#/components/schemas/RegistryApiDirectoryUserImportRequest"
               }
             }
           },
@@ -1830,7 +2302,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionStoreResponse"
+                  "$ref": "#/components/schemas/RegistryApiDirectoryUserResponse"
                 }
               }
             }
@@ -1861,18 +2333,19 @@
         }
       ]
     },
-    "/api/v1/document-extractions/{extraction_id}": {
+    "/api/v1/admin/role-mappings": {
       "get": {
-        "summary": "Get Document Extraction",
-        "operationId": "registry_api_get_document_extraction_api_v1_document_extractions__extraction_id__get",
+        "summary": "List Role Mappings",
+        "operationId": "registry_api_list_role_mappings_api_v1_admin_role_mappings_get",
         "parameters": [
           {
-            "name": "extraction_id",
-            "in": "path",
-            "required": true,
+            "name": "include_removed",
+            "in": "query",
+            "required": false,
             "schema": {
-              "type": "string",
-              "title": "Extraction Id"
+              "type": "boolean",
+              "default": false,
+              "title": "Include Removed"
             }
           }
         ],
@@ -1882,7 +2355,46 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
+                  "$ref": "#/components/schemas/RegistryApiRoleMappingListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "post": {
+        "summary": "Upsert Role Mapping",
+        "operationId": "registry_api_upsert_role_mapping_api_v1_admin_role_mappings_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiUpsertRoleMappingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiRoleMappingResponse"
                 }
               }
             }
@@ -1913,18 +2425,18 @@
         }
       ]
     },
-    "/api/v1/document-extractions/{extraction_id}/feedback": {
-      "post": {
-        "summary": "Store Document Extraction Feedback",
-        "operationId": "registry_api_store_document_extraction_feedback_api_v1_document_extractions__extraction_id__feedback_post",
+    "/api/v1/admin/role-mappings/{role_mapping_id}/status": {
+      "patch": {
+        "summary": "Update Role Mapping Status",
+        "operationId": "registry_api_update_role_mapping_status_api_v1_admin_role_mappings__role_mapping_id__status_patch",
         "parameters": [
           {
-            "name": "extraction_id",
+            "name": "role_mapping_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Extraction Id"
+              "title": "Role Mapping Id"
             }
           }
         ],
@@ -1933,7 +2445,145 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackCreate"
+                "$ref": "#/components/schemas/RegistryApiRoleMappingStatusPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiRoleMappingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/assistant/conversation-history": {
+      "get": {
+        "summary": "List Assistant Conversations",
+        "operationId": "registry_api_list_assistant_conversations_api_v1_assistant_conversation_history_get",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Archived"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiAssistantConversationListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/assistant/conversations/{conversation_id}/messages": {
+      "post": {
+        "summary": "Append Assistant Messages",
+        "operationId": "registry_api_append_assistant_messages_api_v1_assistant_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiAssistantMessageAppendRequest"
               }
             }
           }
@@ -1944,7 +2594,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackStoreResponse"
+                  "$ref": "#/components/schemas/RegistryApiAssistantConversationDetailResponse"
                 }
               }
             }
@@ -1975,207 +2625,18 @@
         }
       ]
     },
-    "/api/v1/documents/metadata-summary": {
+    "/api/v1/assistant/conversation-history/{conversation_id}": {
       "get": {
-        "summary": "Document Metadata Summary",
-        "operationId": "registry_api_document_metadata_summary_api_v1_documents_metadata_summary_get",
+        "summary": "Get Assistant Conversation",
+        "operationId": "registry_api_get_assistant_conversation_api_v1_assistant_conversation_history__conversation_id__get",
         "parameters": [
           {
-            "name": "status",
-            "in": "query",
-            "required": false,
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/RegistryApiDocumentStatus"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Status"
-            }
-          },
-          {
-            "name": "classification",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/RegistryApiClassification"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Classification"
-            }
-          },
-          {
-            "name": "document_type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/RegistryApiDocumentType"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Document Type"
-            }
-          },
-          {
-            "name": "owner_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Owner Id"
-            }
-          },
-          {
-            "name": "tag",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Tag"
-            }
-          },
-          {
-            "name": "topic",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Topic"
-            }
-          },
-          {
-            "name": "tenant_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Tenant Id"
-            }
-          },
-          {
-            "name": "external_system",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "External System"
-            }
-          },
-          {
-            "name": "entity_type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Entity Type"
-            }
-          },
-          {
-            "name": "entity_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Entity Id"
-            }
-          },
-          {
-            "name": "external_ref",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "External Ref"
-            }
-          },
-          {
-            "name": "context_tag",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Context Tag"
+              "type": "string",
+              "title": "Conversation Id"
             }
           }
         ],
@@ -2185,7 +2646,119 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryResponse"
+                  "$ref": "#/components/schemas/RegistryApiAssistantConversationDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "patch": {
+        "summary": "Update Assistant Conversation",
+        "operationId": "registry_api_update_assistant_conversation_api_v1_assistant_conversation_history__conversation_id__patch",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiAssistantConversationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiAssistantConversationDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/assistant/conversation-history/{conversation_id}/shares": {
+      "put": {
+        "summary": "Replace Assistant Conversation Shares",
+        "operationId": "registry_api_replace_assistant_conversation_shares_api_v1_assistant_conversation_history__conversation_id__shares_put",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiAssistantConversationShareReplaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiAssistantConversationDetailResponse"
                 }
               }
             }
@@ -4715,6 +5288,206 @@
         }
       }
     },
+    "/api/assistant/conversations/{conversationId}": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "GET /api/assistant/conversations/{conversationId}",
+        "operationId": "web_get_api_assistant_conversations_conversationId",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "PATCH /api/assistant/conversations/{conversationId}",
+        "operationId": "web_patch_api_assistant_conversations_conversationId",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/conversations/{conversationId}/shares": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "put": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "PUT /api/assistant/conversations/{conversationId}/shares",
+        "operationId": "web_put_api_assistant_conversations_conversationId_shares",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/conversations": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "GET /api/assistant/conversations",
+        "operationId": "web_get_api_assistant_conversations",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/assistant/reports/export": {
       "servers": [
         {
@@ -6744,6 +7517,519 @@
         ],
         "title": "AssignmentSubjectType"
       },
+      "RegistryApiAssistantConversationDetailResponse": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility"
+          },
+          "retention_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Until"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "shared_with": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiAssistantConversationShareResponse"
+            },
+            "type": "array",
+            "title": "Shared With"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiAssistantMessageResponse"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "user_id",
+          "status",
+          "visibility",
+          "created_at",
+          "updated_at",
+          "messages"
+        ],
+        "title": "AssistantConversationDetailResponse"
+      },
+      "RegistryApiAssistantConversationListItemResponse": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility"
+          },
+          "retention_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Until"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "shared_with": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiAssistantConversationShareResponse"
+            },
+            "type": "array",
+            "title": "Shared With"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "user_id",
+          "status",
+          "visibility",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AssistantConversationListItemResponse"
+      },
+      "RegistryApiAssistantConversationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiAssistantConversationListItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "limit",
+          "offset"
+        ],
+        "title": "AssistantConversationListResponse"
+      },
+      "RegistryApiAssistantConversationPatch": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(active|archived)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(private|shared)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          },
+          "retention_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Until"
+          }
+        },
+        "type": "object",
+        "title": "AssistantConversationPatch"
+      },
+      "RegistryApiAssistantConversationShareCreate": {
+        "properties": {
+          "subject_type": {
+            "type": "string",
+            "pattern": "^(user|group)$",
+            "title": "Subject Type",
+            "default": "user"
+          },
+          "subject_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Subject Id"
+          },
+          "permission": {
+            "type": "string",
+            "pattern": "^(viewer|commenter)$",
+            "title": "Permission",
+            "default": "viewer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id"
+        ],
+        "title": "AssistantConversationShareCreate"
+      },
+      "RegistryApiAssistantConversationShareReplaceRequest": {
+        "properties": {
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiAssistantConversationShareCreate"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Shares"
+          },
+          "visibility": {
+            "type": "string",
+            "pattern": "^(private|shared)$",
+            "title": "Visibility",
+            "default": "shared"
+          }
+        },
+        "type": "object",
+        "title": "AssistantConversationShareReplaceRequest"
+      },
+      "RegistryApiAssistantConversationShareResponse": {
+        "properties": {
+          "conversation_share_id": {
+            "type": "string",
+            "title": "Conversation Share Id"
+          },
+          "subject_type": {
+            "type": "string",
+            "title": "Subject Type"
+          },
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id"
+          },
+          "permission": {
+            "type": "string",
+            "title": "Permission"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_share_id",
+          "subject_type",
+          "subject_id",
+          "permission",
+          "status",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AssistantConversationShareResponse"
+      },
+      "RegistryApiAssistantMessageAppendRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiAssistantMessageCreate"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Messages"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(private|shared)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          },
+          "retention_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "messages"
+        ],
+        "title": "AssistantMessageAppendRequest"
+      },
+      "RegistryApiAssistantMessageCreate": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "pattern": "^(user|assistant)$",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content"
+          },
+          "response_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Type"
+          },
+          "citations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "AssistantMessageCreate"
+      },
+      "RegistryApiAssistantMessageResponse": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "response_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Type"
+          },
+          "citations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "AssistantMessageResponse"
+      },
       "RegistryApiAuditEventCreate": {
         "properties": {
           "actor_id": {
@@ -7071,6 +8357,95 @@
           "confidential"
         ],
         "title": "Classification"
+      },
+      "RegistryApiDirectoryUserImportRequest": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Subject Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id"
+        ],
+        "title": "DirectoryUserImportRequest"
+      },
+      "RegistryApiDirectoryUserListResponse": {
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDirectoryUserResponse"
+            },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "type": "object",
+        "required": [
+          "users"
+        ],
+        "title": "DirectoryUserListResponse"
+      },
+      "RegistryApiDirectoryUserResponse": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id"
+        ],
+        "title": "DirectoryUserResponse"
       },
       "RegistryApiDocumentAssignmentCreate": {
         "properties": {
@@ -7446,6 +8821,488 @@
         ],
         "title": "DocumentCreate"
       },
+      "RegistryApiDocumentExtractionFeedbackCreate": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "ai_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Value"
+          },
+          "final_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Value"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackDecision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "actor": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor"
+          },
+          "source_app": {
+            "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
+          },
+          "source_entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Entity Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "decision",
+          "actor",
+          "source_app",
+          "source_entity_id"
+        ],
+        "title": "DocumentExtractionFeedbackCreate"
+      },
+      "RegistryApiDocumentExtractionFeedbackDecision": {
+        "type": "string",
+        "enum": [
+          "accepted",
+          "rejected",
+          "edited"
+        ],
+        "title": "DocumentExtractionFeedbackDecision"
+      },
+      "RegistryApiDocumentExtractionFeedbackResponse": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id"
+          },
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "ai_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Value"
+          },
+          "final_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Value"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackDecision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id"
+          },
+          "source_app": {
+            "type": "string",
+            "title": "Source App"
+          },
+          "source_entity_id": {
+            "type": "string",
+            "title": "Source Entity Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "extraction_id",
+          "tenant_id",
+          "field",
+          "decision",
+          "reason",
+          "actor_id",
+          "source_app",
+          "source_entity_id",
+          "correlation_id",
+          "created_at"
+        ],
+        "title": "DocumentExtractionFeedbackResponse"
+      },
+      "RegistryApiDocumentExtractionFeedbackStoreResponse": {
+        "properties": {
+          "feedback": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackResponse"
+          },
+          "extraction": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback",
+          "extraction"
+        ],
+        "title": "DocumentExtractionFeedbackStoreResponse"
+      },
+      "RegistryApiDocumentExtractionResponse": {
+        "properties": {
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "title": "External System"
+          },
+          "external_ref": {
+            "type": "string",
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "title": "Profile Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionStatus"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/RegistryApiClassification"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "result": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "extraction_id",
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "profile",
+          "profile_version",
+          "status",
+          "classification",
+          "requested_by",
+          "correlation_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentExtractionResponse"
+      },
+      "RegistryApiDocumentExtractionStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "RUNNING",
+          "PROPOSED",
+          "PARTIAL",
+          "FAILED",
+          "SUPERSEDED",
+          "ACCEPTED_IN_SOURCE_APP",
+          "REJECTED_IN_SOURCE_APP"
+        ],
+        "title": "DocumentExtractionStatus"
+      },
+      "RegistryApiDocumentExtractionStoreRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
+          },
+          "external_ref": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "profile": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Profile Version",
+            "default": "1"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionStatus",
+            "default": "PROPOSED"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/RegistryApiClassification",
+            "default": "internal"
+          },
+          "requested_by": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requested By"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "result": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "profile",
+          "requested_by"
+        ],
+        "title": "DocumentExtractionStoreRequest"
+      },
+      "RegistryApiDocumentExtractionStoreResponse": {
+        "properties": {
+          "extraction": {
+            "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
+          },
+          "created": {
+            "type": "boolean",
+            "title": "Created",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "extraction"
+        ],
+        "title": "DocumentExtractionStoreResponse"
+      },
       "RegistryApiDocumentFileCreate": {
         "properties": {
           "filename": {
@@ -7537,6 +9394,152 @@
           "offset"
         ],
         "title": "DocumentListResponse"
+      },
+      "RegistryApiDocumentMetadataSummaryBucket": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "count"
+        ],
+        "title": "DocumentMetadataSummaryBucket"
+      },
+      "RegistryApiDocumentMetadataSummaryResponse": {
+        "properties": {
+          "total_visible_documents": {
+            "type": "integer",
+            "title": "Total Visible Documents"
+          },
+          "total_matched_documents": {
+            "type": "integer",
+            "title": "Total Matched Documents"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryTopic"
+            },
+            "type": "array",
+            "title": "Topics"
+          },
+          "by_document_type": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Document Type"
+          },
+          "by_classification": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Classification"
+          },
+          "by_status": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Status"
+          },
+          "by_owner": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "By Owner"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_visible_documents",
+          "total_matched_documents",
+          "topics",
+          "by_document_type",
+          "by_classification",
+          "by_status",
+          "by_owner"
+        ],
+        "title": "DocumentMetadataSummaryResponse"
+      },
+      "RegistryApiDocumentMetadataSummaryTopic": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "document_count": {
+            "type": "integer",
+            "title": "Document Count"
+          },
+          "valid_or_approved_count": {
+            "type": "integer",
+            "title": "Valid Or Approved Count"
+          },
+          "document_types": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Document Types"
+          },
+          "classifications": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Classifications"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Statuses"
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
+            },
+            "type": "array",
+            "title": "Owners"
+          },
+          "example_documents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Example Documents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "document_count",
+          "valid_or_approved_count"
+        ],
+        "title": "DocumentMetadataSummaryTopic"
       },
       "RegistryApiDocumentPatch": {
         "properties": {
@@ -8026,6 +10029,82 @@
         ],
         "title": "DocumentVersionResponse"
       },
+      "RegistryApiExternalDocumentCurrentUpdateRequest": {
+        "properties": {
+          "current_document_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Document Version Id"
+          },
+          "current_file_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current File Id"
+          },
+          "current_ingestion_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Ingestion Job Id"
+          },
+          "current_ingestion_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Ingestion Status"
+          },
+          "akb_source_uri": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Akb Source Uri"
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistryApiSourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ExternalDocumentCurrentUpdateRequest"
+      },
       "RegistryApiExternalDocumentOwner": {
         "properties": {
           "user_id": {
@@ -8435,6 +10514,92 @@
         ],
         "title": "HealthResponse"
       },
+      "RegistryApiRoleMappingListResponse": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiRoleMappingResponse"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "members"
+        ],
+        "title": "RoleMappingListResponse"
+      },
+      "RegistryApiRoleMappingResponse": {
+        "properties": {
+          "role_mapping_id": {
+            "type": "string",
+            "title": "Role Mapping Id"
+          },
+          "subject_type": {
+            "type": "string",
+            "title": "Subject Type"
+          },
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role_mapping_id",
+          "subject_type",
+          "subject_id",
+          "role",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RoleMappingResponse"
+      },
+      "RegistryApiRoleMappingStatusPatch": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "pattern": "^(active|removed)$",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "RoleMappingStatusPatch"
+      },
       "RegistryApiSourceLocation": {
         "properties": {
           "kind": {
@@ -8577,6 +10742,40 @@
           "external_repository"
         ],
         "title": "SourceLocationKind"
+      },
+      "RegistryApiUpsertRoleMappingRequest": {
+        "properties": {
+          "subject_type": {
+            "type": "string",
+            "pattern": "^(user|group)$",
+            "title": "Subject Type",
+            "default": "user"
+          },
+          "subject_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Subject Id"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "pattern": "^(active|removed)$",
+            "title": "Status",
+            "default": "active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id",
+          "role"
+        ],
+        "title": "UpsertRoleMappingRequest"
       },
       "RegistryApiValidationError": {
         "properties": {
@@ -8898,710 +11097,6 @@
           "cancelled"
         ],
         "title": "WorkflowTaskStatus"
-      },
-      "RegistryApiExternalDocumentCurrentUpdateRequest": {
-        "properties": {
-          "current_document_version_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Document Version Id"
-          },
-          "current_file_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current File Id"
-          },
-          "current_ingestion_job_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Ingestion Job Id"
-          },
-          "current_ingestion_status": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 40
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Ingestion Status"
-          },
-          "akb_source_uri": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1024
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Akb Source Uri"
-          },
-          "source_location": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RegistryApiSourceLocation"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "title": "ExternalDocumentCurrentUpdateRequest"
-      },
-      "RegistryApiDocumentExtractionStoreRequest": {
-        "properties": {
-          "tenant_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Tenant Id"
-          },
-          "external_system": {
-            "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
-          },
-          "external_ref": {
-            "type": "string",
-            "maxLength": 240,
-            "minLength": 1,
-            "title": "External Ref"
-          },
-          "entity_type": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Entity Type"
-          },
-          "entity_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Entity Id"
-          },
-          "document_id": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Document Id"
-          },
-          "document_version_id": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Document Version Id"
-          },
-          "profile": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Profile"
-          },
-          "profile_version": {
-            "type": "string",
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Profile Version",
-            "default": "1"
-          },
-          "status": {
-            "$ref": "#/components/schemas/RegistryApiDocumentExtractionStatus",
-            "default": "PROPOSED"
-          },
-          "classification": {
-            "$ref": "#/components/schemas/RegistryApiClassification",
-            "default": "internal"
-          },
-          "requested_by": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Requested By"
-          },
-          "correlation_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Correlation Id"
-          },
-          "result": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Result"
-          },
-          "missing_information": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Missing Information"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": [
-          "tenant_id",
-          "external_system",
-          "external_ref",
-          "entity_type",
-          "entity_id",
-          "document_id",
-          "document_version_id",
-          "profile",
-          "requested_by"
-        ],
-        "title": "DocumentExtractionStoreRequest"
-      },
-      "RegistryApiDocumentExtractionFeedbackCreate": {
-        "properties": {
-          "field": {
-            "type": "string",
-            "maxLength": 160,
-            "minLength": 1,
-            "title": "Field"
-          },
-          "ai_value": {
-            "anyOf": [
-              {
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ai Value"
-          },
-          "final_value": {
-            "anyOf": [
-              {
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Final Value"
-          },
-          "decision": {
-            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackDecision"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "actor": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Actor"
-          },
-          "source_app": {
-            "$ref": "#/components/schemas/RegistryApiExternalSourceSystem"
-          },
-          "source_entity_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Source Entity Id"
-          },
-          "correlation_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Correlation Id"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": [
-          "field",
-          "decision",
-          "actor",
-          "source_app",
-          "source_entity_id"
-        ],
-        "title": "DocumentExtractionFeedbackCreate"
-      },
-      "RegistryApiDocumentExtractionStoreResponse": {
-        "properties": {
-          "extraction": {
-            "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
-          },
-          "created": {
-            "type": "boolean",
-            "title": "Created",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "extraction"
-        ],
-        "title": "DocumentExtractionStoreResponse"
-      },
-      "RegistryApiDocumentExtractionFeedbackResponse": {
-        "properties": {
-          "feedback_id": {
-            "type": "string",
-            "title": "Feedback Id"
-          },
-          "extraction_id": {
-            "type": "string",
-            "title": "Extraction Id"
-          },
-          "tenant_id": {
-            "type": "string",
-            "title": "Tenant Id"
-          },
-          "field": {
-            "type": "string",
-            "title": "Field"
-          },
-          "ai_value": {
-            "anyOf": [
-              {
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ai Value"
-          },
-          "final_value": {
-            "anyOf": [
-              {
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Final Value"
-          },
-          "decision": {
-            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackDecision"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "actor_id": {
-            "type": "string",
-            "title": "Actor Id"
-          },
-          "source_app": {
-            "type": "string",
-            "title": "Source App"
-          },
-          "source_entity_id": {
-            "type": "string",
-            "title": "Source Entity Id"
-          },
-          "correlation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Correlation Id"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "feedback_id",
-          "extraction_id",
-          "tenant_id",
-          "field",
-          "decision",
-          "reason",
-          "actor_id",
-          "source_app",
-          "source_entity_id",
-          "correlation_id",
-          "created_at"
-        ],
-        "title": "DocumentExtractionFeedbackResponse"
-      },
-      "RegistryApiDocumentExtractionResponse": {
-        "properties": {
-          "extraction_id": {
-            "type": "string",
-            "title": "Extraction Id"
-          },
-          "tenant_id": {
-            "type": "string",
-            "title": "Tenant Id"
-          },
-          "external_system": {
-            "type": "string",
-            "title": "External System"
-          },
-          "external_ref": {
-            "type": "string",
-            "title": "External Ref"
-          },
-          "entity_type": {
-            "type": "string",
-            "title": "Entity Type"
-          },
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id"
-          },
-          "document_id": {
-            "type": "string",
-            "title": "Document Id"
-          },
-          "document_version_id": {
-            "type": "string",
-            "title": "Document Version Id"
-          },
-          "profile": {
-            "type": "string",
-            "title": "Profile"
-          },
-          "profile_version": {
-            "type": "string",
-            "title": "Profile Version"
-          },
-          "status": {
-            "$ref": "#/components/schemas/RegistryApiDocumentExtractionStatus"
-          },
-          "classification": {
-            "$ref": "#/components/schemas/RegistryApiClassification"
-          },
-          "requested_by": {
-            "type": "string",
-            "title": "Requested By"
-          },
-          "correlation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Correlation Id"
-          },
-          "result": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Result"
-          },
-          "missing_information": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Missing Information"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "extraction_id",
-          "tenant_id",
-          "external_system",
-          "external_ref",
-          "entity_type",
-          "entity_id",
-          "document_id",
-          "document_version_id",
-          "profile",
-          "profile_version",
-          "status",
-          "classification",
-          "requested_by",
-          "correlation_id",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "DocumentExtractionResponse"
-      },
-      "RegistryApiDocumentExtractionStatus": {
-        "type": "string",
-        "enum": [
-          "PENDING",
-          "RUNNING",
-          "PROPOSED",
-          "PARTIAL",
-          "FAILED",
-          "SUPERSEDED",
-          "ACCEPTED_IN_SOURCE_APP",
-          "REJECTED_IN_SOURCE_APP"
-        ],
-        "title": "DocumentExtractionStatus"
-      },
-      "RegistryApiDocumentExtractionFeedbackDecision": {
-        "type": "string",
-        "enum": [
-          "accepted",
-          "rejected",
-          "edited"
-        ],
-        "title": "DocumentExtractionFeedbackDecision"
-      },
-      "RegistryApiDocumentExtractionFeedbackStoreResponse": {
-        "properties": {
-          "feedback": {
-            "$ref": "#/components/schemas/RegistryApiDocumentExtractionFeedbackResponse"
-          },
-          "extraction": {
-            "$ref": "#/components/schemas/RegistryApiDocumentExtractionResponse"
-          }
-        },
-        "type": "object",
-        "required": [
-          "feedback",
-          "extraction"
-        ],
-        "title": "DocumentExtractionFeedbackStoreResponse"
-      },
-      "RegistryApiDocumentMetadataSummaryBucket": {
-        "properties": {
-          "key": {
-            "type": "string",
-            "title": "Key"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "count": {
-            "type": "integer",
-            "title": "Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "key",
-          "label",
-          "count"
-        ],
-        "title": "DocumentMetadataSummaryBucket"
-      },
-      "RegistryApiDocumentMetadataSummaryTopic": {
-        "properties": {
-          "topic": {
-            "type": "string",
-            "title": "Topic"
-          },
-          "document_count": {
-            "type": "integer",
-            "title": "Document Count"
-          },
-          "valid_or_approved_count": {
-            "type": "integer",
-            "title": "Valid Or Approved Count"
-          },
-          "document_types": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "Document Types"
-          },
-          "classifications": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "Classifications"
-          },
-          "statuses": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "Statuses"
-          },
-          "owners": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "Owners"
-          },
-          "example_documents": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Example Documents"
-          }
-        },
-        "type": "object",
-        "required": [
-          "topic",
-          "document_count",
-          "valid_or_approved_count"
-        ],
-        "title": "DocumentMetadataSummaryTopic"
-      },
-      "RegistryApiDocumentMetadataSummaryResponse": {
-        "properties": {
-          "total_visible_documents": {
-            "type": "integer",
-            "title": "Total Visible Documents"
-          },
-          "total_matched_documents": {
-            "type": "integer",
-            "title": "Total Matched Documents"
-          },
-          "topics": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryTopic"
-            },
-            "type": "array",
-            "title": "Topics"
-          },
-          "by_document_type": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "By Document Type"
-          },
-          "by_classification": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "By Classification"
-          },
-          "by_status": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "By Status"
-          },
-          "by_owner": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiDocumentMetadataSummaryBucket"
-            },
-            "type": "array",
-            "title": "By Owner"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          }
-        },
-        "type": "object",
-        "required": [
-          "total_visible_documents",
-          "total_matched_documents",
-          "topics",
-          "by_document_type",
-          "by_classification",
-          "by_status",
-          "by_owner"
-        ],
-        "title": "DocumentMetadataSummaryResponse"
       },
       "IngestionServiceHTTPValidationError": {
         "properties": {

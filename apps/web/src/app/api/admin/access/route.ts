@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { requireApiAccess } from "@/lib/auth/server-route-guard";
 
 import { bridgeError } from "../errors";
 
@@ -9,6 +10,8 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     const context = await getServerRequestContext();
+    const forbidden = requireApiAccess(context, "admin");
+    if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get("query")?.trim();
@@ -26,6 +29,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const context = await getServerRequestContext();
+    const forbidden = requireApiAccess(context, "admin");
+    if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const body = await request.json();
     const action = String(body.action ?? "");

@@ -24,7 +24,12 @@ import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTask, WorkflowTask
 import type {
   AssistantChatRequest,
   AssistantChatResponse,
+  AssistantConversationDetail,
+  AssistantConversationListResponse,
+  AssistantConversationMessageAppendRequest,
+  AssistantConversationPatchRequest,
   AssistantConversationResponse,
+  AssistantConversationShareReplaceRequest,
   AssistantSuggestionsResponse,
   RagAnswer,
   RagQueryRequest,
@@ -119,6 +124,23 @@ export interface RegistryApiClient {
   importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser>;
   upsertRoleMapping(request: UpsertRoleMappingRequest, context: ApiRequestContext): Promise<RoleMapping>;
   updateRoleMappingStatus(roleMappingId: string, status: string, context: ApiRequestContext): Promise<RoleMapping>;
+  listAssistantConversations(context: ApiRequestContext, includeArchived?: boolean): Promise<AssistantConversationListResponse>;
+  getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail>;
+  appendAssistantConversationMessages(
+    conversationId: string,
+    request: AssistantConversationMessageAppendRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail>;
+  updateAssistantConversation(
+    conversationId: string,
+    request: AssistantConversationPatchRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail>;
+  replaceAssistantConversationShares(
+    conversationId: string,
+    request: AssistantConversationShareReplaceRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail>;
 }
 
 export interface IngestionApiClient {

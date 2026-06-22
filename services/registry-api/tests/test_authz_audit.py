@@ -227,6 +227,79 @@ def test_document_list_paginates_after_authorization(client, db_session, admin_h
     assert [item["document_id"] for item in listing.json()["items"]] == [accessible_id]
 
 
+def test_reader_metadata_reports_exclude_restricted_and_confidential_documents(client, admin_headers, reader_headers):
+    visible = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        json={
+            "title": "Interní metodika digitalizace",
+            "document_type": "methodology",
+            "owner_id": "user_owner",
+            "classification": "internal",
+            "tags": ["digitalizace"],
+            "access_policies": [
+                {
+                    "subjects": ["role:reader"],
+                    "actions": ["document.read", "rag.query"],
+                    "constraints": {"classification_max": "internal"},
+                }
+            ],
+        },
+    )
+    assert visible.status_code == 201, visible.text
+
+    restricted = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        json={
+            "title": "Restricted digitalizace",
+            "document_type": "methodology",
+            "owner_id": "user_owner",
+            "classification": "restricted",
+            "tags": ["digitalizace"],
+            "access_policies": [
+                {
+                    "subjects": ["role:admin"],
+                    "actions": ["document.read", "rag.query"],
+                    "constraints": {"classification_max": "restricted"},
+                }
+            ],
+        },
+    )
+    assert restricted.status_code == 201, restricted.text
+
+    confidential = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        json={
+            "title": "Confidential digitalizace",
+            "document_type": "methodology",
+            "owner_id": "user_owner",
+            "classification": "confidential",
+            "tags": ["digitalizace"],
+            "access_policies": [
+                {
+                    "subjects": ["role:admin"],
+                    "actions": ["document.read", "rag.query"],
+                    "constraints": {"classification_max": "confidential"},
+                }
+            ],
+        },
+    )
+    assert confidential.status_code == 201, confidential.text
+
+    listing = client.get("/api/v1/documents?topic=digitalizace", headers=reader_headers)
+    assert listing.status_code == 200, listing.text
+    assert [item["title"] for item in listing.json()["items"]] == ["Interní metodika digitalizace"]
+
+    summary = client.get("/api/v1/documents/metadata-summary?topic=digitalizace", headers=reader_headers)
+    assert summary.status_code == 200, summary.text
+    body = summary.json()
+    assert body["total_visible_documents"] == 1
+    assert body["total_matched_documents"] == 1
+    assert body["by_classification"] == [{"key": "internal", "label": "internal", "count": 1}]
+
+
 def test_audit_write_and_read(client):
     auditor_headers = {
         "X-AKL-Subject": "user_auditor",

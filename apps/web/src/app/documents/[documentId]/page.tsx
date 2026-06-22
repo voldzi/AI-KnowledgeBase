@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { DocumentDetail } from "@/features/documents/document-detail";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
+import { requirePageAccess } from "@/lib/auth/server-route-guard";
 import { ApiClientError } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
   const { documentId } = await params;
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath(`/documents/${documentId}`);
+  requirePageAccess(context, "knowledge_workspace");
 
   try {
     const [document, assignments, versions, jobs, authorization, workflowTasks, auditEvents] = await Promise.all([

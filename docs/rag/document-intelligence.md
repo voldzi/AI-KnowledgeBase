@@ -145,15 +145,34 @@ and context tags without transferring all rows through the web layer.
 ## Conversation Persistence
 
 Assistant conversations are persisted in Registry API
-(`assistant_conversations` and `assistant_messages` tables, migration 0006).
+(`assistant_conversations`, `assistant_messages`, and
+`assistant_conversation_shares` tables, migrations 0006 and 0008).
 After every chat turn the RAG service appends the user message and the
 assistant response (including response type, citations, confidence, warnings,
 and bounded report artifacts when present) via
 `POST /api/v1/assistant/conversations/{conversation_id}/messages`.
+
+The Registry API publishes history management under a separate path so it does
+not collide with the RAG assistant conversation endpoint:
+
+```text
+GET   /api/v1/assistant/conversation-history
+GET   /api/v1/assistant/conversation-history/{conversation_id}
+PATCH /api/v1/assistant/conversation-history/{conversation_id}
+PUT   /api/v1/assistant/conversation-history/{conversation_id}/shares
+```
+
+New conversations default to private visibility and 180-day retention. Owners
+and admins may archive a conversation, shorten or extend `retention_until`, and
+replace active user/group shares. Shared subjects can read the conversation;
+`commenter` shares may append to the conversation without changing its owner.
+Expired conversations are treated as not found and archived conversations are
+hidden from the default list.
+
 `GET /api/v1/assistant/conversations/{conversation_id}` on the RAG service
-returns `status: "persisted"` with the full message history; when the
-conversation does not exist or Registry API is unavailable, the response
-degrades to `status: "ephemeral"` with the
+still returns `status: "persisted"` with the full message history when Registry
+history is available; when the conversation does not exist or Registry API is
+unavailable, the response degrades to `status: "ephemeral"` with the
 `CONVERSATION_HISTORY_NOT_PERSISTED` warning. Persistence failures never block
 the chat response itself.
 

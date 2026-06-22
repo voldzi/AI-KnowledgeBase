@@ -4,6 +4,11 @@ import type {
   AuditEvent,
   AuditEventListOptions,
   AuthorizationHint,
+  AssistantConversationDetail,
+  AssistantConversationListResponse,
+  AssistantConversationMessageAppendRequest,
+  AssistantConversationPatchRequest,
+  AssistantConversationShareReplaceRequest,
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
@@ -32,6 +37,7 @@ export class MockRegistryClient implements RegistryApiClient {
   private readonly versions = cloneMock(mockVersions);
   private readonly auditEvents = cloneMock(mockAuditEvents);
   private readonly workflowTaskOverrides = new Map<string, RegistryWorkflowTask>();
+  private readonly assistantConversations = new Map<string, AssistantConversationDetail>();
 
   async listDocuments(_context: ApiRequestContext, options: DocumentListOptions = {}): Promise<Document[]> {
     return cloneMock(this.documents.filter((document) => documentMatchesListOptions(document, options)));
@@ -483,12 +489,162 @@ export class MockRegistryClient implements RegistryApiClient {
     };
   }
 
+  async listAssistantConversations(
+    context: ApiRequestContext,
+    includeArchived = false
+  ): Promise<AssistantConversationListResponse> {
+    const items = [...this.assistantConversations.values()]
+      .filter((conversation) => conversation.user_id === context.subjectId || conversation.shared_with.some((share) => share.status === "active" && share.subject_id === context.subjectId))
+      .filter((conversation) => includeArchived || conversation.status !== "archived")
+      .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+      .map((conversation) => ({
+        conversation_id: conversation.conversation_id,
+        user_id: conversation.user_id,
+        status: conversation.status,
+        title: conversation.title,
+        visibility: conversation.visibility,
+        retention_until: conversation.retention_until,
+        archived_at: conversation.archived_at,
+        created_at: conversation.created_at,
+        updated_at: conversation.updated_at,
+        shared_with: conversation.shared_with,
+        message_count: conversation.messages.length
+      }));
+    return cloneMock({ items, limit: 50, offset: 0 });
+  }
+
+  async getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail> {
+    const conversation = this.requireAssistantConversation(conversationId);
+    if (conversation.user_id !== context.subjectId && !conversation.shared_with.some((share) => share.status === "active" && share.subject_id === context.subjectId)) {
+      throw new ApiClientError("Conversation access denied", 403, "CONVERSATION_ACCESS_DENIED", "mock-trace");
+    }
+    return cloneMock(conversation);
+  }
+
+  async appendAssistantConversationMessages(
+    conversationId: string,
+    request: AssistantConversationMessageAppendRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    const now = new Date().toISOString();
+    const existing = this.assistantConversations.get(conversationId);
+    const conversation: AssistantConversationDetail = existing ?? {
+      conversation_id: conversationId,
+      user_id: request.user_id || context.subjectId,
+      status: "active",
+      title: request.title ?? null,
+      visibility: request.visibility ?? "private",
+      retention_until: request.retention_until ?? null,
+      archived_at: null,
+      created_at: now,
+      updated_at: now,
+      shared_with: [],
+      messages: []
+    };
+    if (conversation.user_id !== request.user_id && conversation.user_id !== context.subjectId) {
+      throw new ApiClientError("Conversation belongs to a different user", 403, "CONVERSATION_USER_MISMATCH", "mock-trace");
+    }
+    const appended = request.messages.map((message, index) => ({
+      message_id: `msg_mock_${Date.now()}_${index}`,
+      role: message.role,
+      content: message.content,
+      response_type: message.response_type ?? null,
+      citations: message.citations ?? [],
+      metadata: message.metadata ?? {},
+      created_at: now
+    }));
+    const updated: AssistantConversationDetail = {
+      ...conversation,
+      title: conversation.title ?? request.title ?? null,
+      visibility: request.visibility ?? conversation.visibility,
+      retention_until: request.retention_until ?? conversation.retention_until,
+      updated_at: now,
+      messages: [...conversation.messages, ...appended]
+    };
+    this.assistantConversations.set(conversationId, cloneMock(updated));
+    return cloneMock(updated);
+  }
+
+  async updateAssistantConversation(
+    conversationId: string,
+    request: AssistantConversationPatchRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    const conversation = await this.getAssistantConversation(conversationId, context);
+    if (conversation.user_id !== context.subjectId) {
+      throw new ApiClientError("Conversation owner required", 403, "CONVERSATION_OWNER_REQUIRED", "mock-trace");
+    }
+    const updated: AssistantConversationDetail = {
+      ...conversation,
+      title: request.title === undefined ? conversation.title : request.title,
+      status: request.status ?? conversation.status,
+      visibility: request.visibility ?? conversation.visibility,
+      retention_until: request.retention_until === undefined ? conversation.retention_until : request.retention_until,
+      archived_at: request.status === "archived" ? new Date().toISOString() : request.status === "active" ? null : conversation.archived_at,
+      updated_at: new Date().toISOString()
+    };
+    this.assistantConversations.set(conversationId, cloneMock(updated));
+    return cloneMock(updated);
+  }
+
+  async replaceAssistantConversationShares(
+    conversationId: string,
+    request: AssistantConversationShareReplaceRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    const conversation = await this.getAssistantConversation(conversationId, context);
+    if (conversation.user_id !== context.subjectId) {
+      throw new ApiClientError("Conversation owner required", 403, "CONVERSATION_OWNER_REQUIRED", "mock-trace");
+    }
+    const now = new Date().toISOString();
+    const updated: AssistantConversationDetail = {
+      ...conversation,
+      visibility: request.shares.length ? request.visibility ?? "shared" : "private",
+      shared_with: request.shares.map((share, index) => ({
+        conversation_share_id: `share_mock_${index + 1}`,
+        subject_type: share.subject_type,
+        subject_id: share.subject_id,
+        permission: share.permission,
+        status: "active",
+        created_by: context.subjectId,
+        created_at: now,
+        updated_at: now
+      })),
+      updated_at: now
+    };
+    this.assistantConversations.set(conversationId, cloneMock(updated));
+    return cloneMock(updated);
+  }
+
   private requireDocument(documentId: string): Document {
     const document = this.documents.find((candidate) => candidate.document_id === documentId);
     if (!document) {
       throw new ApiClientError("Document not found", 404, "DOCUMENT_NOT_FOUND", "mock-trace");
     }
     return document;
+  }
+
+  private requireAssistantConversation(conversationId: string): AssistantConversationDetail {
+    const existing = this.assistantConversations.get(conversationId);
+    if (existing) {
+      return existing;
+    }
+    const now = new Date().toISOString();
+    const created: AssistantConversationDetail = {
+      conversation_id: conversationId,
+      user_id: "user_dev",
+      status: "active",
+      title: null,
+      visibility: "private",
+      retention_until: null,
+      archived_at: null,
+      created_at: now,
+      updated_at: now,
+      shared_with: [],
+      messages: []
+    };
+    this.assistantConversations.set(conversationId, created);
+    return created;
   }
 }
 

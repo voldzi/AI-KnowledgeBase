@@ -73,6 +73,16 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
 
 - Replace dev auth with OIDC in pilot.
 - Add service credentials and audience-bound tokens for backend calls.
-- Persist assistant conversations only after retention and privacy policy are defined.
-- Add role/domain authorization tests for restricted and confidential documents.
 - Add audit review dashboards for no-answer, handoff, and source-opening events.
+
+## Implemented Chat Security Controls
+
+- Assistant conversations are persisted only with explicit ownership, default
+  180-day retention, archive support, and user/group sharing records.
+- Server-side web route guards redirect employee chat-only users away from
+  knowledge-management and admin surfaces.
+- Mutating web BFF routes for document administration, governance, workflow
+  actions, upload preflight, and admin access require management/admin roles.
+- Regression tests cover restricted and confidential document filtering for
+  reader metadata reports so chat inventory answers cannot count or list
+  documents outside the caller's AKB permissions.

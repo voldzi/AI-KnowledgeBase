@@ -118,7 +118,11 @@ The Employee Assistant GUI is intentionally plain-language. It must not expose i
 Current route split:
 
 - `/` and admin routes: Knowledge Management/Admin GUI.
-- `/assistant`: Employee Assistant GUI.
+- `/chat`: standalone Employee Chat Portal for ordinary users. Users with only
+  chat roles are redirected away from knowledge-management/admin routes and see
+  no side menu.
+- `/assistant`: legacy employee assistant/workspace surface for management
+  users during migration.
 
 ## Assistant API
 
@@ -138,6 +142,9 @@ Response types:
 - `handoff_recommended`.
 
 Assistant conversation history is persisted in Registry API when available. RAG returns an explicit ephemeral status and warning only when the Registry history lookup or append fails.
+Registry history management uses `/api/v1/assistant/conversation-history...`
+for list/detail/share/archive so it does not collide with the RAG
+`GET /api/v1/assistant/conversations/{conversation_id}` endpoint.
 
 ## Chat As Organizational Source Of Truth
 

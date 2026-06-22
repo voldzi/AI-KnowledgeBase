@@ -684,17 +684,67 @@ class AssistantMessageAppendRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
     messages: list[AssistantMessageCreate] = Field(min_length=1, max_length=10)
     title: str | None = Field(default=None, max_length=300)
+    visibility: str | None = Field(default=None, pattern="^(private|shared)$")
+    retention_until: datetime | None = None
 
 
 class AssistantMessageResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     message_id: str
     role: str
     content: str
     response_type: str | None = None
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+
+class AssistantConversationShareCreate(BaseModel):
+    subject_type: str = Field(default="user", pattern="^(user|group)$")
+    subject_id: str = Field(min_length=1, max_length=128)
+    permission: str = Field(default="viewer", pattern="^(viewer|commenter)$")
+
+
+class AssistantConversationShareResponse(BaseModel):
+    conversation_share_id: str
+    subject_type: str
+    subject_id: str
+    permission: str
+    status: str
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssistantConversationPatch(BaseModel):
+    title: str | None = Field(default=None, max_length=300)
+    status: str | None = Field(default=None, pattern="^(active|archived)$")
+    visibility: str | None = Field(default=None, pattern="^(private|shared)$")
+    retention_until: datetime | None = None
+
+
+class AssistantConversationShareReplaceRequest(BaseModel):
+    shares: list[AssistantConversationShareCreate] = Field(default_factory=list, max_length=50)
+    visibility: str = Field(default="shared", pattern="^(private|shared)$")
+
+
+class AssistantConversationListItemResponse(BaseModel):
+    conversation_id: str
+    user_id: str
+    status: str
+    title: str | None = None
+    visibility: str
+    retention_until: datetime | None = None
+    archived_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)
+    message_count: int = 0
+
+
+class AssistantConversationListResponse(BaseModel):
+    items: list[AssistantConversationListItemResponse]
+    limit: int
+    offset: int
 
 
 class AssistantConversationDetailResponse(BaseModel):
@@ -702,6 +752,10 @@ class AssistantConversationDetailResponse(BaseModel):
     user_id: str
     status: str
     title: str | None = None
+    visibility: str
+    retention_until: datetime | None = None
+    archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)
     messages: list[AssistantMessageResponse]

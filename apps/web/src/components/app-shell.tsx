@@ -13,10 +13,12 @@ import {
   FilePlus2,
   LayoutDashboard,
   ListChecks,
+  LogOut,
   ShieldCheck,
   UserRound
 } from "lucide-react";
 
+import { isEmployeeChatOnly } from "@/lib/auth/authorization";
 import {
   AppSettingsSurface,
   type SettingsSurfaceMode,
@@ -185,6 +187,11 @@ interface AppShellProps {
   children: React.ReactNode;
   apiMode: "mock" | "production";
   authMode: "mock" | "oidc";
+  initialUser?: {
+    subjectId: string;
+    roles: string[];
+    groups: string[];
+  } | null;
 }
 
 interface AklUserProfile {
@@ -194,15 +201,15 @@ interface AklUserProfile {
   roles: string[];
 }
 
-export function AppShell({ children, apiMode, authMode }: AppShellProps) {
+export function AppShell({ children, apiMode, authMode, initialUser }: AppShellProps) {
   return (
     <LanguageProvider>
-      <AppShellContent apiMode={apiMode} authMode={authMode}>{children}</AppShellContent>
+      <AppShellContent apiMode={apiMode} authMode={authMode} initialUser={initialUser}>{children}</AppShellContent>
     </LanguageProvider>
   );
 }
 
-function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
+function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { language, setLanguage } = useLanguage();
@@ -219,19 +226,19 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const [settingsMode, setSettingsMode] = useState<SettingsSurfaceMode>("modal");
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
-    name: authMode === "mock" ? "AKB Dev User" : "AKB",
+    name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
     email: authMode === "mock" ? "dev@akl.local" : undefined,
-    initials: authMode === "mock" ? "AD" : "AK",
-    roles: []
+    initials: authMode === "mock" ? "AD" : initialsFromName(initialUser?.subjectId ?? "AKB"),
+    roles: initialUser?.roles ?? []
   }));
   const [settingsValues, setSettingsValues] = useState<StratosSettingsCoreValues>(() =>
     createSettingsValues({
       authModeLabel,
       language,
       user: {
-        name: authMode === "mock" ? "AKB Dev User" : "AKB",
+        name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
         email: authMode === "mock" ? "dev@akl.local" : undefined,
-        roles: []
+        roles: initialUser?.roles ?? []
       }
     })
   );
@@ -427,6 +434,53 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
 
   if (isEmbeddedPath) {
     return <main className="akb-embed-shell">{children}</main>;
+  }
+
+  if (isEmployeeChatOnly({ roles: userProfile.roles })) {
+    return (
+      <main className="akb-employee-portal-shell">
+        <header className="akb-employee-portal-topbar">
+          <Link className="akb-employee-portal-brand" href={withAppBasePath("/chat")}>
+            <span className="akb-employee-portal-mark" aria-hidden="true">AKB</span>
+            <span>
+              <strong>{copy.assistantBrand}</strong>
+              <small>{copy.assistantSubtitle}</small>
+            </span>
+          </Link>
+          <div className="akb-employee-portal-actions">
+            <button
+              className="akb-chat-icon-button"
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              title={copy.settings}
+              aria-label={copy.settings}
+            >
+              <UserRound size={16} aria-hidden="true" />
+            </button>
+            <button className="akb-chat-icon-button" type="button" onClick={handleLogout} title={copy.logout} aria-label={copy.logout}>
+              <LogOut size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+        {children}
+        {settingsOpen ? (
+          <AppSettingsSurface
+            apiModeLabel={apiModeLabel}
+            authModeLabel={authModeLabel}
+            dirty={settingsDirty}
+            language={language}
+            mode={settingsMode}
+            onClose={() => setSettingsOpen(false)}
+            onLogout={handleLogout}
+            onModeChange={setSettingsMode}
+            onSave={handleSettingsSave}
+            onValueChange={handleSettingsValueChange}
+            userInitials={userProfile.initials}
+            values={settingsValues}
+          />
+        ) : null}
+      </main>
+    );
   }
 
   return (

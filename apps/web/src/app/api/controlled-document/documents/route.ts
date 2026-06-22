@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import type { Classification, DocumentType } from "@/lib/types";
 
 import { badRequest, bridgeError } from "../errors";
@@ -11,6 +12,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const context = await getServerRequestContext();
+    const forbidden = requireApiAccess(context, "knowledge_workspace");
+    if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const classification = String(body.classification ?? "internal") as Classification;
     const title = String(body.title ?? "").trim();

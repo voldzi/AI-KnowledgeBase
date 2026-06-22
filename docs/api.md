@@ -54,6 +54,30 @@ callers may pass tenant/source/entity filters (`tenant_id`, `external_system`,
 enterprise chat reports stay scoped to the ProjectFlow, Budget, or other source
 context.
 
+Registry API also owns persisted assistant conversation history. RAG appends
+turns through the compatibility persistence endpoint and the AKB web BFF reads
+and manages conversation history through the non-conflicting history contract:
+
+```text
+POST  /api/v1/assistant/conversations/{conversationId}/messages
+GET   /api/v1/assistant/conversation-history
+GET   /api/v1/assistant/conversation-history/{conversationId}
+PATCH /api/v1/assistant/conversation-history/{conversationId}
+PUT   /api/v1/assistant/conversation-history/{conversationId}/shares
+```
+
+The browser uses only the AKB web/API bridge for this UI flow:
+
+```text
+GET   /api/assistant/conversations
+GET   /api/assistant/conversations/{conversationId}
+PATCH /api/assistant/conversations/{conversationId}
+PUT   /api/assistant/conversations/{conversationId}/shares
+```
+
+Conversation history defaults to private visibility and 180-day retention.
+Archived or expired conversations are omitted from the default list.
+
 ## Authentication
 
 Production browser flows authenticate through STRATOS OIDC. Server-to-server

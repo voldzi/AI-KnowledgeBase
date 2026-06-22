@@ -1312,6 +1312,76 @@ button {
   min-height: calc(100vh - 104px);
 }
 
+.akb-employee-portal-shell {
+  background: var(--background);
+  min-height: 100vh;
+}
+
+.akb-employee-portal-topbar {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 10px clamp(14px, 3vw, 28px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.akb-employee-portal-brand {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  gap: 10px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.akb-employee-portal-brand span:last-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.akb-employee-portal-brand strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.akb-employee-portal-brand small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.akb-employee-portal-mark {
+  align-items: center;
+  background: #10202a;
+  border-radius: 8px;
+  color: #ffffff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.akb-employee-portal-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.akb-employee-portal-shell .akb-chat-app {
+  min-height: calc(100vh - 82px);
+  padding: clamp(10px, 2vw, 18px);
+}
+
 .akb-chat-sidebar,
 .akb-chat-main,
 .akb-chat-context {

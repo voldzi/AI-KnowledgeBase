@@ -1,5 +1,6 @@
 import { AkbAssistantApp } from "@/features/assistant/akb-assistant-app";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
+import { requirePageAccess } from "@/lib/auth/server-route-guard";
 import type { AssistantSuggestion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ const FALLBACK_SUGGESTIONS: AssistantSuggestion[] = [
 export default async function ChatPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/chat");
+  requirePageAccess(context, "employee_chat");
   let suggestions = FALLBACK_SUGGESTIONS;
 
   try {
@@ -21,6 +23,7 @@ export default async function ChatPage() {
   } catch {
     suggestions = FALLBACK_SUGGESTIONS;
   }
+  const conversations = await clients.registry.listAssistantConversations(context).catch(() => ({ items: [], limit: 50, offset: 0 }));
 
-  return <AkbAssistantApp suggestions={suggestions} initialNowIso={new Date().toISOString()} />;
+  return <AkbAssistantApp suggestions={suggestions} initialNowIso={new Date().toISOString()} initialConversations={conversations.items} />;
 }

@@ -4,6 +4,11 @@ import type {
   AuditEvent,
   AuditEventListOptions,
   AuthorizationHint,
+  AssistantConversationDetail,
+  AssistantConversationListResponse,
+  AssistantConversationMessageAppendRequest,
+  AssistantConversationPatchRequest,
+  AssistantConversationShareReplaceRequest,
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
@@ -312,6 +317,65 @@ export class ProductionRegistryClient implements RegistryApiClient {
       `/admin/role-mappings/${encodeURIComponent(roleMappingId)}/status`,
       { status },
       "updateRoleMappingStatus",
+      context
+    );
+  }
+
+  listAssistantConversations(
+    context: ApiRequestContext,
+    includeArchived = false
+  ): Promise<AssistantConversationListResponse> {
+    const params = new URLSearchParams({ include_archived: String(includeArchived), limit: "50", offset: "0" });
+    return this.get<AssistantConversationListResponse>(
+      `/assistant/conversation-history?${params}`,
+      "listAssistantConversations",
+      context
+    );
+  }
+
+  getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail> {
+    return this.get<AssistantConversationDetail>(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}`,
+      "getAssistantConversation",
+      context
+    );
+  }
+
+  appendAssistantConversationMessages(
+    conversationId: string,
+    request: AssistantConversationMessageAppendRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    return this.post<AssistantConversationDetail>(
+      `/assistant/conversations/${encodeURIComponent(conversationId)}/messages`,
+      request,
+      "appendAssistantConversationMessages",
+      context
+    );
+  }
+
+  updateAssistantConversation(
+    conversationId: string,
+    request: AssistantConversationPatchRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    return this.patch<AssistantConversationDetail>(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}`,
+      request,
+      "updateAssistantConversation",
+      context
+    );
+  }
+
+  replaceAssistantConversationShares(
+    conversationId: string,
+    request: AssistantConversationShareReplaceRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    return this.put<AssistantConversationDetail>(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}/shares`,
+      request,
+      "replaceAssistantConversationShares",
       context
     );
   }

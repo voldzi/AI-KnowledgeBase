@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
   Bot,
@@ -31,6 +31,9 @@ import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AssistantChatResponse,
+  AssistantConversationDetail,
+  AssistantConversationListItem,
+  AssistantConversationMessage,
   AssistantReportArtifact,
   AssistantReportRow,
   AssistantSuggestion,
@@ -41,6 +44,7 @@ import type {
 
 interface AkbAssistantAppProps {
   initialNowIso: string;
+  initialConversations?: AssistantConversationListItem[];
   suggestions: AssistantSuggestion[];
 }
 
@@ -66,6 +70,7 @@ interface AssistantThread {
   pinned: boolean;
   updatedAt: string;
   sharedWith: Array<{ name: string; permission: SharePermission }>;
+  historyLoaded?: boolean;
 }
 
 type AssistantAppLabels = CitationViewerLabels & Record<string, string>;
@@ -225,11 +230,11 @@ const assistantAppCopy = {
   }
 } satisfies Record<AklLanguage, AssistantAppLabels>;
 
-export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppProps) {
+export function AkbAssistantApp({ initialNowIso, initialConversations = [], suggestions }: AkbAssistantAppProps) {
   const { language } = useLanguage();
   const copy = assistantAppCopy[language];
-  const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso));
-  const [activeThreadId, setActiveThreadId] = useState(() => "thread-current");
+  const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso, initialConversations));
+  const [activeThreadId, setActiveThreadId] = useState(() => createInitialThreads(language, initialNowIso, initialConversations)[0]?.id ?? "thread-current");
   const [threadSearch, setThreadSearch] = useState("");
   const [composer, setComposer] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -256,6 +261,29 @@ export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppP
   }, [threadSearch, threads]);
   const visibleSuggestions = suggestions.slice(0, 4);
 
+  useEffect(() => {
+    if (!activeThread?.conversationId || activeThread.historyLoaded) {
+      return;
+    }
+    let active = true;
+    fetch(withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" }
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!active || !payload?.conversation) {
+          return;
+        }
+        const loadedThread = threadFromConversation(payload.conversation as AssistantConversationDetail);
+        setThreads((current) => current.map((thread) => (thread.id === activeThread.id ? { ...loadedThread, pinned: thread.pinned } : thread)));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.id]);
+
   function updateThread(threadId: string, updater: (thread: AssistantThread) => AssistantThread) {
     setThreads((current) => current.map((thread) => (thread.id === threadId ? updater(thread) : thread)));
   }
@@ -268,6 +296,44 @@ export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppP
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
+  }
+
+  async function archiveActiveThread() {
+    if (!activeThread.conversationId) {
+      const remaining = threads.filter((thread) => thread.id !== activeThread.id);
+      if (remaining.length) {
+        setThreads(remaining);
+        setActiveThreadId(remaining[0].id);
+      } else {
+        const replacement = createEmptyThread(copy.emptyThreadTitle);
+        setThreads([replacement]);
+        setActiveThreadId(replacement.id);
+      }
+      return;
+    }
+    try {
+      const response = await fetch(withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`), {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ status: "archived" })
+      });
+      if (!response.ok) {
+        setStatusMessage(`${copy.requestFailedStatus} ${response.status}.`);
+        return;
+      }
+      const remaining = threads.filter((thread) => thread.id !== activeThread.id);
+      if (remaining.length) {
+        setThreads(remaining);
+        setActiveThreadId(remaining[0].id);
+      } else {
+        const replacement = createEmptyThread(copy.emptyThreadTitle);
+        setThreads([replacement]);
+        setActiveThreadId(replacement.id);
+      }
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : copy.requestFailed);
+    }
   }
 
   async function submitQuestion(nextQuestion = composer, endpoint: "/api/assistant/chat" | "/api/assistant/clarify" = "/api/assistant/chat", nextContext = activeThread.context) {
@@ -394,20 +460,35 @@ export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppP
 
   function addShare() {
     const target = shareTarget.trim();
-    if (!target) {
+    if (!target || !activeThread.conversationId) {
       return;
     }
-    updateThread(activeThread.id, (thread) => ({
-      ...thread,
-      visibility: "shared",
-      sharedWith: [...thread.sharedWith.filter((item) => item.name !== target), { name: target, permission: sharePermission }]
-    }));
-    setShareTarget("");
-    setShareStatus(copy.shareSaved);
+    const nextSharedWith = [...activeThread.sharedWith.filter((item) => item.name !== target), { name: target, permission: sharePermission }];
+    fetch(withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}/shares`), {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        visibility: "shared",
+        shares: nextSharedWith.map((item) => ({
+          subject_type: item.name.startsWith("group:") ? "group" : "user",
+          subject_id: item.name.replace(/^group:/, ""),
+          permission: item.permission
+        }))
+      })
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`${copy.requestFailedStatus} ${response.status}.`))))
+      .then((payload) => {
+        const conversation = payload.conversation as AssistantConversationDetail;
+        updateThread(activeThread.id, () => threadFromConversation(conversation));
+        setShareTarget("");
+        setShareStatus(copy.shareSaved);
+      })
+      .catch((error) => setShareStatus(error instanceof Error ? error.message : copy.requestFailed));
   }
 
   async function copyThreadLink() {
-    const link = `${window.location.origin}${withAppBasePath(`/chat?thread=${encodeURIComponent(activeThread.id)}`)}`;
+    const link = `${window.location.origin}${withAppBasePath(`/chat?thread=${encodeURIComponent(activeThread.conversationId ?? activeThread.id)}`)}`;
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
@@ -467,7 +548,7 @@ export function AkbAssistantApp({ initialNowIso, suggestions }: AkbAssistantAppP
               <p>{copy.appSubtitle}</p>
             </div>
             <div className="akb-chat-header__actions">
-              <button className="akb-chat-icon-button" type="button" title={copy.archive} aria-label={copy.archive}>
+              <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                 <Archive size={16} aria-hidden="true" />
               </button>
               <button className="akb-chat-icon-button" type="button" onClick={copyThreadLink} title={copy.copyLink} aria-label={copy.copyLink}>
@@ -997,36 +1078,26 @@ function filenameFromDisposition(value: string | null): string | null {
   return /filename="([^"]+)"/i.exec(value)?.[1] ?? null;
 }
 
-function createInitialThreads(language: AklLanguage, now: string): AssistantThread[] {
+function createInitialThreads(
+  language: AklLanguage,
+  now: string,
+  conversations: AssistantConversationListItem[] = []
+): AssistantThread[] {
+  if (conversations.length > 0) {
+    return conversations.map((conversation, index) => threadFromConversationListItem(conversation, index === 0));
+  }
   return [
     {
       id: "thread-current",
       conversationId: null,
-      title: language === "en" ? "Controlled document question" : "Dotaz k řízeným dokumentům",
+      title: language === "en" ? "New thread" : "Nové vlákno",
       context: {},
       messages: [],
       visibility: "private",
       pinned: true,
       updatedAt: now,
-      sharedWith: []
-    },
-    {
-      id: "thread-shared",
-      conversationId: null,
-      title: language === "en" ? "Exception approval" : "Schvalování výjimek",
-      context: {},
-      messages: [
-        {
-          id: "seed-user",
-          role: "user",
-          content: language === "en" ? "Who approves an exception to a directive?" : "Kdo schvaluje výjimku ze směrnice?",
-          createdAt: now
-        }
-      ],
-      visibility: "shared",
-      pinned: false,
-      updatedAt: now,
-      sharedWith: [{ name: "Security reviewers", permission: "viewer" }]
+      sharedWith: [],
+      historyLoaded: true
     }
   ];
 }
@@ -1041,8 +1112,95 @@ function createEmptyThread(title: string): AssistantThread {
     visibility: "private",
     pinned: false,
     updatedAt: new Date().toISOString(),
-    sharedWith: []
+    sharedWith: [],
+    historyLoaded: true
   };
+}
+
+function threadFromConversationListItem(conversation: AssistantConversationListItem, pinned: boolean): AssistantThread {
+  return {
+    id: threadIdFromConversationId(conversation.conversation_id),
+    conversationId: conversation.conversation_id,
+    title: conversation.title ?? "AKB chat",
+    context: {},
+    messages: [],
+    visibility: conversation.visibility,
+    pinned,
+    updatedAt: conversation.updated_at,
+    sharedWith: conversation.shared_with.map((share) => ({
+      name: shareName(share.subject_type, share.subject_id),
+      permission: share.permission
+    })),
+    historyLoaded: false
+  };
+}
+
+function threadFromConversation(conversation: AssistantConversationDetail): AssistantThread {
+  return {
+    id: threadIdFromConversationId(conversation.conversation_id),
+    conversationId: conversation.conversation_id,
+    title: conversation.title ?? "AKB chat",
+    context: {},
+    messages: conversation.messages.map((message) => messageFromConversationMessage(conversation.conversation_id, message)),
+    visibility: conversation.visibility,
+    pinned: false,
+    updatedAt: conversation.updated_at,
+    sharedWith: conversation.shared_with.map((share) => ({
+      name: shareName(share.subject_type, share.subject_id),
+      permission: share.permission
+    })),
+    historyLoaded: true
+  };
+}
+
+function messageFromConversationMessage(conversationId: string, message: AssistantConversationMessage): ChatMessage {
+  return {
+    id: message.message_id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.created_at,
+    response: message.role === "assistant" ? responseFromPersistedMessage(conversationId, message) : undefined
+  };
+}
+
+function responseFromPersistedMessage(
+  conversationId: string,
+  message: AssistantConversationMessage
+): AssistantChatResponse {
+  const metadata = message.metadata ?? {};
+  return {
+    response_type: message.response_type ?? "answer",
+    conversation_id: conversationId,
+    answer: message.content,
+    message: null,
+    questions: [],
+    why_needed: null,
+    current_context: objectValue(metadata.current_context),
+    citations: message.citations,
+    follow_up_questions: [],
+    suggested_actions: [],
+    report_artifacts: reportArtifactsValue(metadata.report_artifacts),
+    confidence: typeof metadata.confidence === "string" ? metadata.confidence as AssistantChatResponse["confidence"] : null,
+    warnings: Array.isArray(metadata.warnings) ? metadata.warnings.filter((item): item is string => typeof item === "string") : [],
+    missing_information: null,
+    recommended_action: null
+  };
+}
+
+function threadIdFromConversationId(conversationId: string): string {
+  return `thread_${conversationId}`;
+}
+
+function shareName(subjectType: string, subjectId: string): string {
+  return subjectType === "group" ? `group:${subjectId}` : subjectId;
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function reportArtifactsValue(value: unknown): AssistantReportArtifact[] {
+  return Array.isArray(value) ? value.filter((item): item is AssistantReportArtifact => Boolean(item && typeof item === "object")) : [];
 }
 
 function findLastAssistantResponse(thread: AssistantThread): AssistantChatResponse | null {

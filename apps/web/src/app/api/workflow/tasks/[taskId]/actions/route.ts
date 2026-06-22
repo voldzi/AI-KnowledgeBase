@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTaskAction } from "@/lib/types";
 
 import { workflowBadRequest, workflowBridgeError } from "../../../errors";
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { taskId } = await context.params;
     const requestContext = await getServerRequestContext();
+    const forbidden = requireApiAccess(requestContext, "knowledge_workspace");
+    if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const task = await clients.registry.applyWorkflowTaskAction(taskId, payload, requestContext);
 

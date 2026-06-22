@@ -2,7 +2,7 @@
 
 ## App Shell
 
-Persistent navigation:
+Knowledge management users work in the persistent STRATOS-style shell:
 
 - Dashboard
 - Tasks
@@ -15,6 +15,12 @@ Persistent navigation:
 - Help
 
 The app shell is a work console, not a landing page. Search, health state and timezone live in the top bar.
+
+Employee chat-only users work in the standalone Employee Chat Portal at
+`/chat`. This portal intentionally has no side menu or workspace submenu. It
+keeps only a compact header with AKB identity, settings, and logout, so the
+ordinary employee starts directly in the chat and can reach information through
+natural language instead of navigating administrative modules.
 
 ## Primary Areas
 
@@ -86,9 +92,10 @@ Purpose:
 
 Purpose:
 
-- provide a ChatGPT/Copilot-like AKB Assistant surface at `/chat`
-- let users start and return to assistant threads
-- keep share-thread controls visible as the product path for collaborative work
+- provide the ChatGPT/Copilot-like AKB Employee Chat Portal at `/chat`
+- let users start, return to, archive, and share assistant threads
+- load persisted conversation history from Registry API through the web BFF
+- keep share-thread controls visible as the product path for collaborative work with retention policy
 - ask RAG Retrieval Service for answers through the assistant API
 - show confidence, warnings and no-answer states inside the active thread
 - display citations with document id, version id, section path, page and chunk id

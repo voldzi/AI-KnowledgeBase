@@ -82,6 +82,34 @@ export async function POST(request: NextRequest) {
     if (isRegistryDocumentReportQuestion(message)) {
       const registryResponse = await buildRegistryResponseFromMetadata();
       if (registryResponse) {
+        await clients.registry.appendAssistantConversationMessages(
+          registryResponse.conversation_id,
+          {
+            user_id: context.subjectId,
+            title: titleFromMessage(message),
+            messages: [
+              {
+                role: "user",
+                content: message,
+                citations: [],
+                metadata: {}
+              },
+              {
+                role: "assistant",
+                content: registryResponse.answer ?? registryResponse.message ?? registryResponse.recommended_action ?? "(empty)",
+                response_type: registryResponse.response_type,
+                citations: registryResponse.citations,
+                metadata: {
+                  confidence: registryResponse.confidence,
+                  current_context: registryResponse.current_context,
+                  report_artifacts: registryResponse.report_artifacts,
+                  warnings: registryResponse.warnings
+                }
+              }
+            ]
+          },
+          context
+        ).catch(() => undefined);
         const scannedDocumentCount =
           typeof registryResponse.current_context.registry_report_scanned_document_count === "number"
             ? registryResponse.current_context.registry_report_scanned_document_count
@@ -292,6 +320,11 @@ function filterDocumentsForSummaryOptions(
     }
     return true;
   });
+}
+
+function titleFromMessage(message: string): string {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized || "AKB chat";
 }
 
 function documentMetadataString(document: Document, key: string): string | null {
