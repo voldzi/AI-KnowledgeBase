@@ -9,6 +9,7 @@ import type {
   CreateVersionRequest,
   DirectoryUser,
   Document,
+  DocumentListOptions,
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryBucket,
@@ -32,8 +33,8 @@ export class MockRegistryClient implements RegistryApiClient {
   private readonly auditEvents = cloneMock(mockAuditEvents);
   private readonly workflowTaskOverrides = new Map<string, RegistryWorkflowTask>();
 
-  async listDocuments(_context: ApiRequestContext): Promise<Document[]> {
-    return cloneMock(this.documents);
+  async listDocuments(_context: ApiRequestContext, options: DocumentListOptions = {}): Promise<Document[]> {
+    return cloneMock(this.documents.filter((document) => documentMatchesListOptions(document, options)));
   }
 
   async getDocumentMetadataSummary(
@@ -564,6 +565,17 @@ function documentMatchesSummaryOptions(document: Document, options: DocumentMeta
     return false;
   }
   return true;
+}
+
+function documentMatchesListOptions(document: Document, options: DocumentListOptions): boolean {
+  if (!documentMatchesSummaryOptions(document, options)) {
+    return false;
+  }
+  const topics = options.topics?.filter((topic) => !isAllDocumentsTopic(topic)) ?? [];
+  if (!topics.length) {
+    return true;
+  }
+  return topics.some((topic) => documentMatchesTopic(document, topic));
 }
 
 function documentMetadataSummaryTopic(topic: string, documents: Document[]): DocumentMetadataSummaryTopic {

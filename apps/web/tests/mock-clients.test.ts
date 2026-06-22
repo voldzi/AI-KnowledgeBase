@@ -92,6 +92,45 @@ describe("mock API clients", () => {
     assert.equal(summary.by_document_type[0]?.key, "contract");
   });
 
+  it("filters document lists by STRATOS context in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    await clients.registry.createDocument(
+      {
+        title: "Smlouva Budget Contract 2",
+        document_type: "contract",
+        owner_id: "budget_owner",
+        gestor_unit: "Budget",
+        classification: "internal",
+        tags: ["budget-contract:contract-2"],
+        metadata: {
+          external: {
+            tenant_id: "tenant-a",
+            external_system: "STRATOS_BUDGET",
+            external_ref: "contract:2",
+            entity_type: "contract",
+            entity_id: "contract-2"
+          }
+        }
+      },
+      context
+    );
+
+    const documents = await clients.registry.listDocuments(context, {
+      topics: ["smlouva"],
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-2",
+      contextTags: ["budget-contract:contract-2"]
+    });
+
+    assert.equal(documents.length, 1);
+    assert.equal(documents[0]?.document_type, "contract");
+    assert.equal(documents[0]?.title, "Smlouva Budget Contract 2");
+  });
+
   it("returns citation-backed RAG answers and no-answer states", async () => {
     const clients = createApiClients({ env });
     const context = createMockContext();

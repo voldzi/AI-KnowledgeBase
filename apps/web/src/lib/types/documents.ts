@@ -130,6 +130,8 @@ export interface DocumentMetadataSummaryOptions {
   contextTags?: string[];
 }
 
+export interface DocumentListOptions extends DocumentMetadataSummaryOptions {}
+
 export interface DocumentVersion {
   document_version_id: string;
   document_id: string;

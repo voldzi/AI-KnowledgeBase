@@ -9,6 +9,7 @@ import type {
   CreateVersionRequest,
   DirectoryUser,
   Document,
+  DocumentListOptions,
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
@@ -41,12 +42,15 @@ export class ProductionRegistryClient implements RegistryApiClient {
     private readonly fetcher?: AklFetch
   ) {}
 
-  async listDocuments(context: ApiRequestContext): Promise<Document[]> {
+  async listDocuments(context: ApiRequestContext, options: DocumentListOptions = {}): Promise<Document[]> {
     const documents: Document[] = [];
     for (let page = 0; page < DOCUMENT_PAGE_LIMIT; page += 1) {
       const offset = page * DOCUMENT_PAGE_SIZE;
+      const params = registryDocumentParams(options);
+      params.set("limit", String(DOCUMENT_PAGE_SIZE));
+      params.set("offset", String(offset));
       const response = await this.get<ListEnvelope<Document>>(
-        `/documents?limit=${DOCUMENT_PAGE_SIZE}&offset=${offset}`,
+        `/documents?${params.toString()}`,
         "listDocuments",
         context
       );
@@ -62,47 +66,7 @@ export class ProductionRegistryClient implements RegistryApiClient {
     context: ApiRequestContext,
     options: DocumentMetadataSummaryOptions = {}
   ): Promise<DocumentMetadataSummary> {
-    const params = new URLSearchParams();
-    for (const topic of options.topics ?? []) {
-      if (topic.trim()) {
-        params.append("topic", topic.trim());
-      }
-    }
-    if (options.status) {
-      params.set("status", options.status);
-    }
-    if (options.classification) {
-      params.set("classification", options.classification);
-    }
-    if (options.documentType) {
-      params.set("document_type", options.documentType);
-    }
-    if (options.ownerId) {
-      params.set("owner_id", options.ownerId);
-    }
-    if (options.tag) {
-      params.set("tag", options.tag);
-    }
-    if (options.tenantId) {
-      params.set("tenant_id", options.tenantId);
-    }
-    if (options.externalSystem) {
-      params.set("external_system", options.externalSystem);
-    }
-    if (options.entityType) {
-      params.set("entity_type", options.entityType);
-    }
-    if (options.entityId) {
-      params.set("entity_id", options.entityId);
-    }
-    if (options.externalRef) {
-      params.set("external_ref", options.externalRef);
-    }
-    for (const contextTag of options.contextTags ?? []) {
-      if (contextTag.trim()) {
-        params.append("context_tag", contextTag.trim());
-      }
-    }
+    const params = registryDocumentParams(options);
     const query = params.toString();
     return this.get<DocumentMetadataSummary>(
       `/documents/metadata-summary${query ? `?${query}` : ""}`,
@@ -401,4 +365,49 @@ export class ProductionRegistryClient implements RegistryApiClient {
       fetcher: this.fetcher
     });
   }
+}
+
+function registryDocumentParams(options: DocumentMetadataSummaryOptions | DocumentListOptions): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const topic of options.topics ?? []) {
+    if (topic.trim()) {
+      params.append("topic", topic.trim());
+    }
+  }
+  if (options.status) {
+    params.set("status", options.status);
+  }
+  if (options.classification) {
+    params.set("classification", options.classification);
+  }
+  if (options.documentType) {
+    params.set("document_type", options.documentType);
+  }
+  if (options.ownerId) {
+    params.set("owner_id", options.ownerId);
+  }
+  if (options.tag) {
+    params.set("tag", options.tag);
+  }
+  if (options.tenantId) {
+    params.set("tenant_id", options.tenantId);
+  }
+  if (options.externalSystem) {
+    params.set("external_system", options.externalSystem);
+  }
+  if (options.entityType) {
+    params.set("entity_type", options.entityType);
+  }
+  if (options.entityId) {
+    params.set("entity_id", options.entityId);
+  }
+  if (options.externalRef) {
+    params.set("external_ref", options.externalRef);
+  }
+  for (const contextTag of options.contextTags ?? []) {
+    if (contextTag.trim()) {
+      params.append("context_tag", contextTag.trim());
+    }
+  }
+  return params;
 }

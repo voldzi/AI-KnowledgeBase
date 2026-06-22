@@ -158,6 +158,9 @@ Implementation roadmap:
      tenant, external system, entity, external ref, and context-tag filters so
      ProjectFlow, Budget, and future STRATOS apps can ask scoped inventory
      questions without copying documents out of AKB.
+   - Implemented structured-output step: chat inventory questions can return
+     either aggregate summaries (`document_inventory_summary`) or document rows
+     (`document_list`) with XLSX/PDF export.
    - Next optimization: replace in-process aggregation with indexed SQL and
      materialized/search projections for large enterprise datasets.
 2. Retrieval truth layer:

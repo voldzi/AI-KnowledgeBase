@@ -90,6 +90,34 @@ describe("production API clients", () => {
     assert.equal(calls[1][0], "https://registry.local/api/v1/documents?limit=200&offset=200");
   });
 
+  it("loads filtered document lists from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        items: [documentFixture("doc_contract_1")],
+        limit: 200,
+        offset: 0
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const documents = await clients.registry.listDocuments(createMockContext(), {
+      topics: ["smlouvy"],
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-1",
+      contextTags: ["budget-contract:contract-1"]
+    });
+
+    assert.equal(documents.length, 1);
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract%3Acontract-1&limit=200&offset=0"
+    );
+  });
+
   it("loads document metadata summary from the Registry API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

@@ -25,6 +25,7 @@ interface RegistryReportBuildInput {
   conversationId?: string | null;
   context?: Record<string, unknown>;
   language?: ResponseLanguage;
+  kind?: RegistryReportKind;
   documents: Document[];
 }
 
@@ -33,6 +34,7 @@ interface RegistrySummaryReportBuildInput {
   conversationId?: string | null;
   context?: Record<string, unknown>;
   language?: ResponseLanguage;
+  kind?: RegistryReportKind;
   summary: DocumentMetadataSummary;
 }
 
@@ -46,6 +48,9 @@ export interface RegistryReportAuditSummary {
 }
 
 export const REGISTRY_DOCUMENT_SCAN_WARNING_THRESHOLD = 20_000;
+export const REGISTRY_DOCUMENT_LIST_ROW_LIMIT = 500;
+
+export type RegistryReportKind = "document_inventory_summary" | "document_list";
 
 const INVENTORY_INTENT_WORDS = [
   "kolik",
@@ -59,6 +64,30 @@ const INVENTORY_INTENT_WORDS = [
   "statistik"
 ];
 
+const COUNT_INTENT_WORDS = ["kolik", "pocet", "pocitej", "spocitej", "statistik", "count"];
+
+const LIST_INTENT_WORDS = [
+  "seznam",
+  "vypis",
+  "vypiste",
+  "vypsat",
+  "vyjmenuj",
+  "vyjmenujte",
+  "list",
+  "listing"
+];
+
+const CONTENT_INTERPRETATION_WORDS = [
+  "obsah",
+  "vyplyv",
+  "vypliv",
+  "citac",
+  "cituj",
+  "interpret",
+  "shrnut obsah",
+  "podle textu"
+];
+
 const STRUCTURED_OUTPUT_WORDS = [
   "tabulk",
   "excel",
@@ -66,16 +95,6 @@ const STRUCTURED_OUTPUT_WORDS = [
   "pdf",
   "sestav",
   "report"
-];
-
-const INVENTORY_SUBJECT_WORDS = [
-  "dokument",
-  "soubor",
-  "registr",
-  "evidence",
-  "tema",
-  "temat",
-  "oblast"
 ];
 
 const DOCUMENT_OR_DOMAIN_WORDS = [
@@ -212,9 +231,20 @@ export function isRegistryDocumentReportQuestion(message: string): boolean {
   if (!normalized) return false;
   const hasInventoryIntent = INVENTORY_INTENT_WORDS.some((word) => normalized.includes(word));
   const hasStructuredOutputIntent = STRUCTURED_OUTPUT_WORDS.some((word) => normalized.includes(word));
-  const hasInventorySubject = INVENTORY_SUBJECT_WORDS.some((word) => normalized.includes(word));
   const hasDocumentOrDomain = DOCUMENT_OR_DOMAIN_WORDS.some((word) => normalized.includes(word));
-  return hasDocumentOrDomain && (hasInventoryIntent || (hasStructuredOutputIntent && hasInventorySubject));
+  const asksForContentInterpretation = CONTENT_INTERPRETATION_WORDS.some((word) => normalized.includes(word));
+  if (asksForContentInterpretation && !hasInventoryIntent) {
+    return false;
+  }
+  return hasDocumentOrDomain && (hasInventoryIntent || hasStructuredOutputIntent);
+}
+
+export function registryReportKindFromMessage(message: string): RegistryReportKind {
+  const normalized = normalizeText(message);
+  const asksForCount = COUNT_INTENT_WORDS.some((word) => normalized.includes(word));
+  const asksForList = LIST_INTENT_WORDS.some((word) => normalized.includes(word));
+  const asksForStructuredOutput = STRUCTURED_OUTPUT_WORDS.some((word) => normalized.includes(word));
+  return (asksForList || asksForStructuredOutput) && !asksForCount ? "document_list" : "document_inventory_summary";
 }
 
 export function extractRegistryDocumentTopics(message: string, language: ResponseLanguage = "cs"): string[] {
@@ -225,6 +255,9 @@ export function buildRegistryDocumentReportFromSummary(
   input: RegistrySummaryReportBuildInput
 ): AssistantChatResponse | null {
   if (!isRegistryDocumentReportQuestion(input.message)) {
+    return null;
+  }
+  if ((input.kind ?? registryReportKindFromMessage(input.message)) === "document_list") {
     return null;
   }
 
@@ -246,7 +279,8 @@ export function buildRegistryDocumentReportFromSummary(
     totalMatched: input.summary.total_matched_documents,
     topicLabels,
     warnings,
-    reportSource: "registry_metadata_summary"
+    reportSource: "registry_metadata_summary",
+    reportKind: "document_inventory_summary"
   });
 }
 
@@ -257,14 +291,22 @@ export function buildRegistryDocumentReport(input: RegistryReportBuildInput): As
 
   const language = input.language ?? "cs";
   const topics = extractTopics(input.message);
-  const artifact = buildArtifact({
-    language,
-    documents: input.documents,
-    topics
-  });
+  const kind = input.kind ?? registryReportKindFromMessage(input.message);
+  const matchedDocuments = kind === "document_list" ? documentsMatchingAnyTopic(input.documents, topics) : input.documents;
+  const artifact = kind === "document_list"
+    ? buildDocumentListArtifact({
+        language,
+        documents: matchedDocuments,
+        topics
+      })
+    : buildArtifact({
+        language,
+        documents: input.documents,
+        topics
+      });
   const warnings = [...artifact.warnings];
-  const topicLabels = artifact.rows.map((row) => String(row.cells.topic ?? ""));
-  const totalMatched = uniqueMatchedDocumentCount(input.documents, topics);
+  const topicLabels = topics.map((topic) => language === "en" ? topic.labelEn : topic.labelCs);
+  const totalMatched = kind === "document_list" ? matchedDocuments.length : uniqueMatchedDocumentCount(input.documents, topics);
   const conversationId = input.conversationId ?? `conv_registry_${hashText(input.message).slice(0, 16)}`;
 
   return buildRegistryResponse({
@@ -276,7 +318,8 @@ export function buildRegistryDocumentReport(input: RegistryReportBuildInput): As
     totalMatched,
     topicLabels,
     warnings,
-    reportSource: "registry_metadata"
+    reportSource: "registry_metadata",
+    reportKind: kind
   });
 }
 
@@ -290,6 +333,7 @@ function buildRegistryResponse(input: {
   topicLabels: string[];
   warnings: string[];
   reportSource: "registry_metadata" | "registry_metadata_summary";
+  reportKind: RegistryReportKind;
 }): AssistantChatResponse {
   return {
     response_type: "answer",
@@ -299,6 +343,8 @@ function buildRegistryResponse(input: {
       scannedDocumentCount: input.scannedDocumentCount,
       totalMatched: input.totalMatched,
       topicLabels: input.topicLabels,
+      reportKind: input.reportKind,
+      rowCount: input.artifact.rows.length,
       warnings: input.warnings
     }),
     message: null,
@@ -307,9 +353,10 @@ function buildRegistryResponse(input: {
     current_context: {
       ...(input.context ?? {}),
       answer_source: input.reportSource,
-      report_kind: "document_inventory",
+      report_kind: input.reportKind,
       registry_report_matched_document_count: input.totalMatched,
       registry_report_scanned_document_count: input.scannedDocumentCount,
+      registry_report_row_count: input.artifact.rows.length,
       topics: input.topicLabels
     },
     citations: [],
@@ -396,6 +443,37 @@ function buildArtifact(input: {
   };
 }
 
+function buildDocumentListArtifact(input: {
+  language: ResponseLanguage;
+  documents: Document[];
+  topics: TopicQuery[];
+}): AssistantReportArtifact {
+  const title = input.language === "en" ? "Document List" : "Seznam dokumentů";
+  const rows = input.documents
+    .slice(0, REGISTRY_DOCUMENT_LIST_ROW_LIMIT)
+    .map((document, index) => documentListRow(document, input.language, index));
+  const warnings = ["REGISTRY_METADATA_REPORT", "REGISTRY_DOCUMENT_LIST"];
+  if (input.documents.length > REGISTRY_DOCUMENT_LIST_ROW_LIMIT) {
+    warnings.push("REPORT_ROWS_TRUNCATED");
+  }
+  if (input.documents.length >= REGISTRY_DOCUMENT_SCAN_WARNING_THRESHOLD) {
+    warnings.push("REGISTRY_SCAN_LIMIT_REACHED");
+  }
+
+  return {
+    artifact_id: `rpt_registry_list_${hashText(`${title}:${input.topics.map((topic) => topic.key).join(",")}:${input.documents.map((document) => document.document_id).join(",")}`).slice(0, 16)}`,
+    title,
+    description: input.language === "en"
+      ? "Permission-scoped document list generated from AKB registry metadata. It is not a cited interpretation of document content."
+      : "Seznam dokumentů podle oprávnění aktuálního uživatele z metadat registru AKB. Nejde o citovaný výklad obsahu dokumentů.",
+    columns: documentListColumns(input.language),
+    rows,
+    export_formats: ["xlsx", "pdf"],
+    source_citation_count: 0,
+    warnings
+  };
+}
+
 function buildArtifactFromSummary(input: {
   language: ResponseLanguage;
   summary: DocumentMetadataSummary;
@@ -415,6 +493,43 @@ function buildArtifactFromSummary(input: {
     export_formats: ["xlsx", "pdf"],
     source_citation_count: 0,
     warnings
+  };
+}
+
+function documentListColumns(language: ResponseLanguage): AssistantReportArtifact["columns"] {
+  return [
+    { key: "document_id", label: language === "en" ? "Document ID" : "ID dokumentu", type: "text" },
+    { key: "title", label: language === "en" ? "Title" : "Název", type: "text" },
+    { key: "document_type", label: language === "en" ? "Type" : "Typ", type: "text" },
+    { key: "status", label: language === "en" ? "Status" : "Stav", type: "text" },
+    { key: "classification", label: language === "en" ? "Classification" : "Klasifikace", type: "text" },
+    { key: "owner", label: language === "en" ? "Owner" : "Vlastník", type: "text" },
+    { key: "gestor_unit", label: language === "en" ? "Steward unit" : "Gestor", type: "text" },
+    { key: "external_system", label: language === "en" ? "Source system" : "Zdrojový systém", type: "text" },
+    { key: "entity", label: language === "en" ? "Entity" : "Entita", type: "text" },
+    { key: "tags", label: language === "en" ? "Tags" : "Štítky", type: "text" }
+  ];
+}
+
+function documentListRow(document: Document, language: ResponseLanguage, index: number): AssistantReportRow {
+  const typeLabels = language === "en" ? DOCUMENT_TYPE_LABELS_EN : DOCUMENT_TYPE_LABELS_CS;
+  const entityType = documentMetadataString(document, "entity_type");
+  const entityId = documentMetadataString(document, "entity_id");
+  return {
+    row_id: `document_${index + 1}_${slugify(document.document_id) || "row"}`,
+    cells: {
+      document_id: document.document_id,
+      title: document.title,
+      document_type: typeLabels[document.document_type] ?? document.document_type,
+      status: document.status,
+      classification: document.classification,
+      owner: document.owner ?? document.owner_id,
+      gestor_unit: document.gestor_unit ?? "",
+      external_system: documentMetadataString(document, "external_system") ?? "",
+      entity: [entityType, entityId].filter(Boolean).join(": "),
+      tags: document.tags.join("; ")
+    },
+    citations: []
   };
 }
 
@@ -497,9 +612,22 @@ function buildAnswer(input: {
   scannedDocumentCount: number;
   totalMatched: number;
   topicLabels: string[];
+  reportKind: RegistryReportKind;
+  rowCount: number;
   warnings: string[];
 }) {
   const topics = input.topicLabels.join(", ");
+  if (input.reportKind === "document_list") {
+    const truncated = input.warnings.includes("REPORT_ROWS_TRUNCATED")
+      ? input.language === "en"
+        ? ` I returned the first ${input.rowCount} rows; narrow the query for a complete working list.`
+        : ` Vrátil jsem prvních ${input.rowCount} řádků; pro kompletní pracovní seznam dotaz zúžte.`
+      : "";
+    if (input.language === "en") {
+      return `I prepared a permission-scoped document list with ${input.totalMatched} matching AKB registry records for: ${topics}. The table is registry metadata, not a cited interpretation of document content.${truncated}`;
+    }
+    return `Připravil jsem seznam ${input.totalMatched} dokumentů viditelných podle oprávnění aktuálního uživatele pro: ${topics}. Tabulka je z metadat registru, ne z citovaného výkladu obsahu dokumentů.${truncated}`;
+  }
   if (input.language === "en") {
     const capWarning = input.warnings.includes("REGISTRY_SCAN_LIMIT_REACHED")
       ? " The registry scan reached the current web paging ceiling, so this should be moved to a server-side aggregate endpoint for exact enterprise-wide totals."
@@ -524,6 +652,13 @@ function uniqueMatchedDocumentCount(documents: Document[], topics: TopicQuery[])
   return matchedIds.size;
 }
 
+function documentsMatchingAnyTopic(documents: Document[], topics: TopicQuery[]) {
+  if (topics.some((topic) => topic.matchAll)) {
+    return documents;
+  }
+  return documents.filter((document) => topics.some((topic) => documentMatchesTopic(document, topic)));
+}
+
 function documentMatchesTopic(document: Document, topic: TopicQuery): boolean {
   if (topic.matchAll) {
     return true;
@@ -535,6 +670,24 @@ function documentMatchesTopic(document: Document, topic: TopicQuery): boolean {
   }
   const tokens = tokenize(topic.labelCs);
   return tokens.length > 0 && tokens.every((token) => haystack.includes(token));
+}
+
+function documentMetadataString(document: Document, key: string): string | null {
+  const metadata = document.metadata;
+  const direct = metadata?.[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+  for (const nestedKey of ["stratos", "external"]) {
+    const nested = metadata?.[nestedKey];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const value = (nested as Record<string, unknown>)[key];
+      if (typeof value === "string") {
+        return value;
+      }
+    }
+  }
+  return null;
 }
 
 function documentSearchText(document: Document): string {
@@ -559,16 +712,26 @@ function documentSearchText(document: Document): string {
 
 function metadataValues(metadata: Record<string, unknown> | undefined): string[] {
   if (!metadata) return [];
-  return Object.entries(metadata).flatMap(([key, value]) => {
-    if (value === null || value === undefined) return [key];
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      return [key, String(value)];
-    }
-    if (Array.isArray(value)) {
-      return [key, ...value.filter((item) => ["string", "number", "boolean"].includes(typeof item)).map(String)];
-    }
-    return [key];
-  });
+  return Object.entries(metadata).flatMap(([key, value]) => metadataEntryValues(key, value));
+}
+
+function metadataEntryValues(key: string, value: unknown): string[] {
+  if (value === null || value === undefined) return [key];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [key, String(value)];
+  }
+  if (Array.isArray(value)) {
+    return [key, ...value.filter((item) => ["string", "number", "boolean"].includes(typeof item)).map(String)];
+  }
+  if (typeof value === "object") {
+    return [
+      key,
+      ...Object.entries(value as Record<string, unknown>).flatMap(([nestedKey, nestedValue]) =>
+        metadataEntryValues(nestedKey, nestedValue)
+      )
+    ];
+  }
+  return [key];
 }
 
 function extractTopics(message: string): TopicQuery[] {

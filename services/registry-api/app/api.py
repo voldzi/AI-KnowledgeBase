@@ -1413,31 +1413,38 @@ def list_documents(
     document_type: DocumentType | None = None,
     owner_id: str | None = None,
     tag: str | None = None,
+    topic: list[str] | None = Query(default=None),
+    tenant_id: str | None = None,
+    external_system: ExternalSourceSystem | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    external_ref: str | None = None,
+    context_tag: list[str] | None = Query(default=None),
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> DocumentListResponse:
-    stmt = (
-        select(Document)
-        .options(selectinload(Document.access_policies), selectinload(Document.assignments))
-        .order_by(desc(Document.created_at))
+    topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
+    documents = _authorized_document_metadata_rows(
+        db=db,
+        principal=principal,
+        status_filter=status_filter,
+        classification=classification,
+        document_type=document_type,
+        owner_id=owner_id,
+        tag=tag,
+        tenant_id=tenant_id,
+        external_system=external_system,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        external_ref=external_ref,
+        context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
     )
-    if status_filter:
-        stmt = stmt.where(Document.status == status_filter.value)
-    if classification:
-        stmt = stmt.where(Document.classification == classification.value)
-    if document_type:
-        stmt = stmt.where(Document.document_type == document_type.value)
-    if owner_id:
-        stmt = stmt.where(Document.owner_id == owner_id)
-
-    context = context_for_principal(principal, db)
-    documents = []
-    for document in db.execute(stmt).scalars():
-        if tag and tag not in document.tags:
-            continue
-        decision = evaluate_document_access(context, Action.document_read.value, document)
-        if decision.allowed:
-            documents.append(document)
+    if topics:
+        documents = [
+            document
+            for document in documents
+            if any(_document_matches_metadata_topic(document, candidate) for candidate in topics)
+        ]
 
     return DocumentListResponse(items=documents[offset : offset + limit], limit=limit, offset=offset)
 

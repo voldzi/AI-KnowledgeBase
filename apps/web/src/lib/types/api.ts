@@ -4,6 +4,7 @@ import type {
   CreateDocumentRequest,
   CreateVersionRequest,
   Document,
+  DocumentListOptions,
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
@@ -75,7 +76,7 @@ export interface ApiErrorBody {
 }
 
 export interface RegistryApiClient {
-  listDocuments(context: ApiRequestContext): Promise<Document[]>;
+  listDocuments(context: ApiRequestContext, options?: DocumentListOptions): Promise<Document[]>;
   getDocumentMetadataSummary(
     context: ApiRequestContext,
     options?: DocumentMetadataSummaryOptions

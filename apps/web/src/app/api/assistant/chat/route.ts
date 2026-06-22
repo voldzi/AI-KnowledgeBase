@@ -7,6 +7,7 @@ import {
   buildRegistryDocumentReportFromSummary,
   extractRegistryDocumentTopics,
   isRegistryDocumentReportQuestion,
+  registryReportKindFromMessage,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
 import type { Classification, Document, DocumentMetadataSummaryOptions, DocumentStatus, DocumentType } from "@/lib/types";
@@ -32,10 +33,26 @@ export async function POST(request: NextRequest) {
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
+    const registryReportKind = registryReportKindFromMessage(message);
+    const registryTopics = extractRegistryDocumentTopics(message, responseLanguage);
     const buildRegistryResponseFromMetadata = async () => {
+      if (registryReportKind === "document_list") {
+        const documents = await clients.registry.listDocuments(context, {
+          topics: registryTopics,
+          ...registrySummaryFilters
+        });
+        return buildRegistryDocumentReport({
+          message,
+          conversationId,
+          context: requestContext,
+          language: responseLanguage,
+          kind: registryReportKind,
+          documents
+        });
+      }
       try {
         const summary = await clients.registry.getDocumentMetadataSummary(context, {
-          topics: extractRegistryDocumentTopics(message, responseLanguage),
+          topics: registryTopics,
           ...registrySummaryFilters
         });
         return buildRegistryDocumentReportFromSummary({
@@ -43,15 +60,20 @@ export async function POST(request: NextRequest) {
           conversationId,
           context: requestContext,
           language: responseLanguage,
+          kind: registryReportKind,
           summary
         });
       } catch {
-        const documents = await clients.registry.listDocuments(context);
+        const documents = await clients.registry.listDocuments(context, {
+          topics: registryTopics,
+          ...registrySummaryFilters
+        });
         return buildRegistryDocumentReport({
           message,
           conversationId,
           context: requestContext,
           language: responseLanguage,
+          kind: registryReportKind,
           documents: filterDocumentsForSummaryOptions(documents, registrySummaryFilters)
         });
       }

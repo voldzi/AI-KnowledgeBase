@@ -90,11 +90,16 @@ review/approved -> draft when changes are requested
 Metadata summary endpoint pro chatove inventarni dotazy:
 
 ```text
+GET /documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&context_tag=budget-contract:contract-1
 GET /documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
 GET /documents/metadata-summary?topic=smlouva&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract:contract-1
 ```
 
-Endpoint vraci jen dokumenty, na ktere ma volajici `document.read`.
+Endpointy vraci jen dokumenty, na ktere ma volajici `document.read`.
+`/documents/metadata-summary` slouzi pro agregace a pocty.
+`/documents` se stejnymi filtry slouzi pro seznamove structured outputy
+z chatu, napr. "seznam smluv do tabulky".
+
 Podporovane filtry:
 
 - `status`, `classification`, `document_type`, `owner_id`, `tag`,

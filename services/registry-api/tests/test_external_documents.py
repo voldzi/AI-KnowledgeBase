@@ -133,6 +133,53 @@ def test_document_metadata_summary_filters_external_context(client, admin_header
     assert body["by_document_type"][0]["key"] == "contract"
 
 
+def test_document_list_filters_external_context_and_topic(client, admin_headers):
+    response = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_external_payload(
+            tenant_id="tenant-a",
+            external_ref="contract:list-context:main",
+            entity_type="contract",
+            entity_id="contract-list-1",
+            title="Smlouva seznamová",
+            metadata={"contract_id": "contract-list-1", "supplier_name": "Seznam a.s."},
+        ),
+    )
+    assert response.status_code == 200, response.text
+    other_response = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_external_payload(
+            tenant_id="tenant-a",
+            external_ref="contract:list-context-other:main",
+            entity_type="contract",
+            entity_id="contract-list-2",
+            title="Metodika digitalizace",
+            document_type="methodology",
+            metadata={"topic": "digitalizace"},
+        ),
+    )
+    assert other_response.status_code == 200, other_response.text
+
+    listing = client.get(
+        "/api/v1/documents"
+        "?topic=smlouva"
+        "&tenant_id=tenant-a"
+        "&external_system=STRATOS_BUDGET"
+        "&entity_type=contract"
+        "&entity_id=contract-list-1"
+        "&context_tag=stratos_budget",
+        headers=admin_headers,
+    )
+
+    assert listing.status_code == 200, listing.text
+    body = listing.json()
+    assert len(body["items"]) == 1
+    assert body["items"][0]["title"] == "Smlouva seznamová"
+    assert body["items"][0]["document_type"] == "contract"
+
+
 def test_external_document_rejects_unknown_external_system(client, admin_headers):
     response = client.post(
         "/api/v1/external-documents/upsert",

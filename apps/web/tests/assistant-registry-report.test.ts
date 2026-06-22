@@ -6,6 +6,7 @@ import {
   buildRegistryDocumentReportFromSummary,
   buildRegistryDocumentReport,
   isRegistryDocumentReportQuestion,
+  registryReportKindFromMessage,
   summarizeRegistryReportForAudit
 } from "../src/lib/reporting/assistant-registry-report";
 
@@ -96,6 +97,54 @@ describe("assistant registry report", () => {
     assert.equal(isRegistryDocumentReportQuestion("Jaký postup schvalování vyplývá ze smlouvy?"), false);
     assert.equal(isRegistryDocumentReportQuestion("Vytvoř sestavu z obsahu smlouvy o podpoře."), false);
     assert.equal(isRegistryDocumentReportQuestion("Seznam smluv vytvoř do tabulky."), true);
+    assert.equal(isRegistryDocumentReportQuestion("Vytvoř tabulku smluv."), true);
+    assert.equal(registryReportKindFromMessage("Seznam smluv vytvoř do tabulky."), "document_list");
+    assert.equal(registryReportKindFromMessage("Vytvoř tabulku smluv."), "document_list");
+    assert.equal(registryReportKindFromMessage("Kolik máme smluv?"), "document_inventory_summary");
+  });
+
+  it("builds a document list artifact for natural language list requests", () => {
+    const documents: Document[] = [
+      documentFixture({
+        document_id: "doc_contract_1",
+        title: "Smlouva o podpoře aplikace",
+        document_type: "contract",
+        owner_id: "owner_budget",
+        gestor_unit: "Budget",
+        tags: ["smlouvy", "budget-contract:contract-1"],
+        metadata: {
+          external: {
+            external_system: "STRATOS_BUDGET",
+            entity_type: "contract",
+            entity_id: "contract-1"
+          }
+        }
+      }),
+      documentFixture({
+        document_id: "doc_policy_1",
+        title: "Metodika digitalizace",
+        document_type: "methodology",
+        tags: ["digitalizace"]
+      })
+    ];
+
+    const response = buildRegistryDocumentReport({
+      message: "Seznam smluv vytvoř do tabulky",
+      conversationId: "conv_list",
+      context: { external_system: "STRATOS_BUDGET" },
+      language: "cs",
+      documents
+    });
+
+    assert.ok(response);
+    assert.equal(response.current_context.report_kind, "document_list");
+    assert.equal(response.current_context.registry_report_matched_document_count, 1);
+    assert.equal(response.report_artifacts[0]?.title, "Seznam dokumentů");
+    assert.equal(response.report_artifacts[0]?.columns[0]?.key, "document_id");
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.title, "Smlouva o podpoře aplikace");
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.external_system, "STRATOS_BUDGET");
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.entity, "contract: contract-1");
+    assert.deepEqual(response.report_artifacts[0]?.export_formats, ["xlsx", "pdf"]);
   });
 
   it("builds the same report artifact from registry metadata summary", () => {

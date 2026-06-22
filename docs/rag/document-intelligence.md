@@ -129,6 +129,14 @@ calling RAG. This keeps exact inventory work out of the LLM path:
   permission-visible documents. If that ceiling is reached, the response
   includes `REGISTRY_SCAN_LIMIT_REACHED`.
 
+Registry metadata reports now have two structured shapes:
+
+- `document_inventory_summary` for count/aggregate questions such as
+  "kolik máme dokumentů na téma digitalizace".
+- `document_list` for list requests such as "seznam smluv do tabulky"; AKB
+  uses the permission-scoped `/documents` endpoint with the same STRATOS context
+  filters and returns document metadata rows with XLSX/PDF export.
+
 For production use across very large document sets, the current endpoint should
 be optimized into a SQL-backed aggregate/search projection that can group by
 topic, type, classification, owner, ingestion state, tenant, external system,
