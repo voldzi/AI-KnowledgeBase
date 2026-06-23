@@ -4,8 +4,10 @@ import { describe, it } from "node:test";
 import {
   buildPublicAppUrl,
   contextFromOidcSession,
+  createState,
   openSession,
   refreshOidcSession,
+  safeReturnToFromState,
   sealSession,
   sessionFromTokens
 } from "../src/lib/auth/oidc";
@@ -96,6 +98,14 @@ describe("OIDC web session", () => {
       buildPublicAppUrl(config, "/api/auth/login?return_to=%2F"),
       "https://stratos.example/akb/api/auth/login?return_to=%2F"
     );
+  });
+
+  it("falls back to a safe return path for malformed OIDC state", () => {
+    const state = createState("/chat");
+
+    assert.equal(safeReturnToFromState(state, "/"), "/chat");
+    assert.equal(safeReturnToFromState("not-base64-json", "/chat"), "/chat");
+    assert.equal(safeReturnToFromState(null, "/chat"), "/chat");
   });
 });
 

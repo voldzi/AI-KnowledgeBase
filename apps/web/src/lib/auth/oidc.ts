@@ -184,6 +184,17 @@ export function parseState(value: string): { nonce: string; returnTo: string } {
   };
 }
 
+export function safeReturnToFromState(value: string | null | undefined, fallback = "/"): string {
+  if (!value) {
+    return fallback;
+  }
+  try {
+    return parseState(value).returnTo;
+  } catch {
+    return fallback;
+  }
+}
+
 export function sealSession(session: OidcSession, secret: string): string {
   const iv = crypto.randomBytes(12);
   const key = sessionKey(secret);
