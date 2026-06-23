@@ -182,13 +182,11 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: /Kdo schvaluje výjimku/ }).click();
     await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();
 
-    // Citations are inside the modal — open it first via the trigger badge
-    await page.getByRole("button", { name: /Prohlížeč citací/ }).first().click();
-    const citationDialog = page.getByRole("dialog", { name: "Zdroj odpovědi" });
-    await expect(citationDialog.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
-    await expect(citationDialog.locator(".citation-modal__list-pane")).toHaveCount(1);
+    const sourcesPanel = page.getByRole("complementary", { name: "Zdroje odpovědi" });
+    await expect(sourcesPanel.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
+    await sourcesPanel.getByRole("button", { name: "Otevřít citaci" }).first().click();
 
-    await citationDialog.getByRole("button", { name: "Otevřít citaci" }).first().click();
+    const citationDialog = page.getByRole("dialog", { name: "Zdroj odpovědi" });
     await expect(citationDialog.locator(".citation-modal__list-pane")).toHaveCount(0);
     await expect(citationDialog.getByText("Strana 7 · Cl. 4 / Odst. 2")).toBeVisible();
     await expect(citationDialog.getByText("Chunk chunk_789")).toHaveCount(0);
