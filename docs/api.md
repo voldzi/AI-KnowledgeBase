@@ -72,15 +72,15 @@ quality gates before a table is rendered or downloaded.
 Registry API exposes the first enterprise metadata aggregate endpoint:
 
 ```text
-GET /api/v1/documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&context_tag=budget-contract:contract-1
+GET /api/v1/documents?document_type=contract&tenant_id=tenant-a&external_system=STRATOS_BUDGET&context_tag=budget-contract:contract-1
 GET /api/v1/documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
 GET /api/v1/documents/metadata-summary?topic=smlouva&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract:contract-1
 ```
 
 `/documents/metadata-summary` returns permission-scoped counts and buckets by
 topic, document type, classification, status, and owner/steward. `/documents`
-uses the same tenant/source/entity/topic filters for list-shaped structured
-outputs such as "seznam smluv do tabulky". The web bridge uses these endpoints
+uses the same tenant/source/entity/topic/document-type filters for list-shaped
+structured outputs such as "seznam smluv do tabulky". The web bridge uses these endpoints
 for chat inventory questions and falls back to paginated `/documents` only when
 an older registry deployment does not yet expose the summary endpoint. STRATOS
 callers may pass tenant/source/entity filters (`tenant_id`, `external_system`,

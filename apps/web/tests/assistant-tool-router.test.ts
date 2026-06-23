@@ -31,6 +31,19 @@ describe("assistant tool router", () => {
     assert.equal(route.queryPlan.intent, "document_list");
   });
 
+  it("routes contract title and description follow-ups to document lists", () => {
+    const route = routeAssistantMessage("Udělej tabulku smluv vlevo název, vpravo stručný popis", "cs", {
+      answer_source: "registry_metadata",
+      report_kind: "document_type_count"
+    });
+
+    assert.equal(route.tool, "registry_document_report");
+    assert.equal(route.registryReportKind, "document_list");
+    assert.deepEqual(route.registryTopics, ["smlouvy"]);
+    assert.equal(route.structuredOutput, true);
+    assert.equal(route.queryPlan.intent, "document_list");
+  });
+
   it("routes document type breakdown questions to registry metadata reports", () => {
     const route = routeAssistantMessage("Jakého typu jsou dokumenty, které máš k dispozici?", "cs");
 

@@ -5,7 +5,9 @@ import type { Document } from "../src/lib/types";
 import {
   buildRegistryDocumentReportFromSummary,
   buildRegistryDocumentReport,
+  extractRegistryDocumentTypeFilter,
   isRegistryDocumentReportQuestion,
+  registryTopicsForDocumentListRequest,
   registryReportKindFromMessage,
   summarizeRegistryReportForAudit
 } from "../src/lib/reporting/assistant-registry-report";
@@ -151,6 +153,50 @@ describe("assistant registry report", () => {
     assert.equal(response.report_artifacts[0]?.rows[0]?.cells.external_system, "STRATOS_BUDGET");
     assert.equal(response.report_artifacts[0]?.rows[0]?.cells.entity, "contract: contract-1");
     assert.deepEqual(response.report_artifacts[0]?.export_formats, ["xlsx", "pdf"]);
+  });
+
+  it("builds follow-up contract lists from document type metadata, not topic text", () => {
+    const documents: Document[] = [
+      documentFixture({
+        document_id: "doc_contract_1",
+        title: "Servisní rámcový dokument A",
+        document_type: "contract",
+        tags: ["budget-contract:contract-1"],
+        metadata: {
+          description: "Rámcová smlouva pro servis a provoz aplikační podpory."
+        }
+      }),
+      documentFixture({
+        document_id: "doc_methodology_1",
+        title: "Metodika nákupu služeb",
+        document_type: "methodology",
+        tags: ["budget"]
+      })
+    ];
+    const message = "Udělej tabulku smluv vlevo název, vpravo stručný popis";
+
+    const response = buildRegistryDocumentReport({
+      message,
+      conversationId: "conv_contract_followup",
+      context: {
+        answer_source: "registry_metadata",
+        report_kind: "document_type_count"
+      },
+      language: "cs",
+      documents
+    });
+
+    assert.equal(extractRegistryDocumentTypeFilter(message), "contract");
+    assert.deepEqual(registryTopicsForDocumentListRequest(message, ["smlouvy"], "cs"), []);
+    assert.ok(response);
+    assert.equal(response.current_context.report_kind, "document_list");
+    assert.equal(response.current_context.registry_report_matched_document_count, 1);
+    assert.deepEqual(response.report_artifacts[0]?.columns.map((column) => column.key), ["title", "description"]);
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.title, "Servisní rámcový dokument A");
+    assert.equal(
+      response.report_artifacts[0]?.rows[0]?.cells.description,
+      "Rámcová smlouva pro servis a provoz aplikační podpory."
+    );
   });
 
   it("builds the same report artifact from registry metadata summary", () => {

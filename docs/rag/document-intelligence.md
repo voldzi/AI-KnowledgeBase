@@ -258,7 +258,12 @@ Registry metadata reports now have three structured shapes:
   "kolik máme dokumentů na téma digitalizace".
 - `document_list` for list requests such as "seznam smluv do tabulky"; AKB
   uses the permission-scoped `/documents` endpoint with the same STRATOS context
-  filters and returns document metadata rows with XLSX/PDF export.
+  filters and returns document metadata rows with XLSX/PDF export. Follow-up
+  list requests for a known document type, for example "tabulka smluv", are
+  translated to the canonical Registry filter (`document_type=contract`) instead
+  of relying on topic text matching. If the user asks for "název" and "stručný
+  popis", the list artifact uses a concise two-column layout and derives the
+  description from document metadata, falling back to type/status/steward tags.
 - `document_type_count` for type breakdowns such as "jakého typu jsou
   dokumenty" or the follow-up "vytvoř sestavu, kde bude typ počet"; AKB uses
   the metadata summary buckets and returns `Typ dokumentu`, `Počet`, and

@@ -18,6 +18,7 @@ interface TopicQuery {
   labelEn: string;
   terms: string[];
   matchAll?: boolean;
+  documentTypes?: Document["document_type"][];
 }
 
 interface RegistryReportBuildInput {
@@ -182,7 +183,8 @@ const TOPIC_CATALOG: TopicQuery[] = [
     key: "smlouvy",
     labelCs: "smlouvy",
     labelEn: "contracts",
-    terms: ["smlouva", "smlouvy", "smluv", "smluvni", "smluvní", "contract", "dodatek", "plneni", "plnění"]
+    terms: ["smlouva", "smlouvy", "smluv", "smluvni", "smluvní", "contract", "dodatek", "plneni", "plnění"],
+    documentTypes: ["contract"]
   },
   {
     key: "vnitrni-predpisy",
@@ -228,6 +230,21 @@ const DOCUMENT_TYPE_LABELS_EN: Record<Document["document_type"], string> = {
   other: "other"
 };
 
+const DOCUMENT_TYPE_ALIASES: Array<{ type: Document["document_type"]; terms: string[] }> = [
+  { type: "contract", terms: ["smlouva", "smlouvy", "smluv", "smluvni", "smluvní", "contract", "contracts"] },
+  { type: "methodology", terms: ["metodika", "metodiky", "metodick", "methodology"] },
+  { type: "regulation", terms: ["regulace", "regulation"] },
+  { type: "policy", terms: ["politika", "politiky", "policy", "policies"] },
+  { type: "directive", terms: ["smernice", "směrnice", "directive"] },
+  { type: "procedure", terms: ["postup", "postupy", "procedure"] },
+  { type: "manual", terms: ["manual", "manuál", "navod", "návod"] },
+  { type: "attachment", terms: ["priloha", "příloha", "attachment"] },
+  { type: "project_documentation", terms: ["projektova dokumentace", "projektová dokumentace", "project documentation"] },
+  { type: "meeting_record", terms: ["zaznam z jednani", "záznam z jednání", "meeting record"] },
+  { type: "knowledge_base_article", terms: ["znalostni clanek", "znalostní článek", "knowledge base article"] },
+  { type: "other", terms: ["ostatni", "ostatní", "other"] }
+];
+
 export function isRegistryDocumentReportQuestion(message: string, context: Record<string, unknown> = {}): boolean {
   const normalized = normalizeText(message);
   if (!normalized) return false;
@@ -257,6 +274,32 @@ export function registryReportKindFromMessage(message: string, context: Record<s
     return "document_type_count";
   }
   return (asksForList || asksForStructuredOutput) && !asksForCount ? "document_list" : "document_inventory_summary";
+}
+
+export function extractRegistryDocumentTypeFilter(message: string): Document["document_type"] | null {
+  const normalized = normalizeText(message);
+  if (!normalized) return null;
+  const matchedTypes = new Set<Document["document_type"]>();
+  for (const alias of DOCUMENT_TYPE_ALIASES) {
+    if (alias.terms.some((term) => normalizedIncludesTerm(normalized, term))) {
+      matchedTypes.add(alias.type);
+    }
+  }
+  return matchedTypes.size === 1 ? [...matchedTypes][0] ?? null : null;
+}
+
+export function registryTopicsForDocumentListRequest(
+  message: string,
+  topics: string[],
+  language: ResponseLanguage = "cs"
+): string[] {
+  const documentType = extractRegistryDocumentTypeFilter(message);
+  if (!documentType || topics.length === 0) {
+    return topics;
+  }
+  const typeTopicLabels = documentTypeTopicLabels(documentType, language).map(normalizeText);
+  const onlyTypeTopic = topics.every((topic) => typeTopicLabels.includes(normalizeText(topic)));
+  return onlyTypeTopic ? [] : topics;
 }
 
 export function extractRegistryDocumentTopics(message: string, language: ResponseLanguage = "cs"): string[] {
@@ -320,14 +363,15 @@ export function buildRegistryDocumentReport(input: RegistryReportBuildInput): As
       })
     : kind === "document_list"
       ? buildDocumentListArtifact({
-        language,
-        documents: matchedDocuments,
-        topics
+          language,
+          documents: matchedDocuments,
+          topics,
+          layout: documentListLayoutFromMessage(input.message)
         })
       : buildArtifact({
-        language,
-        documents: input.documents,
-        topics
+          language,
+          documents: input.documents,
+          topics
         });
   const warnings = [...artifact.warnings];
   const topicLabels = kind === "document_type_count"
@@ -470,11 +514,12 @@ function buildDocumentListArtifact(input: {
   language: ResponseLanguage;
   documents: Document[];
   topics: TopicQuery[];
+  layout: DocumentListLayout;
 }): AssistantReportArtifact {
   const title = input.language === "en" ? "Document List" : "Seznam dokumentů";
   const rows = input.documents
     .slice(0, REGISTRY_DOCUMENT_LIST_ROW_LIMIT)
-    .map((document, index) => documentListRow(document, input.language, index));
+    .map((document, index) => documentListRow(document, input.language, index, input.layout));
   const warnings = ["REGISTRY_METADATA_REPORT", "REGISTRY_DOCUMENT_LIST"];
   if (input.documents.length > REGISTRY_DOCUMENT_LIST_ROW_LIMIT) {
     warnings.push("REPORT_ROWS_TRUNCATED");
@@ -489,7 +534,7 @@ function buildDocumentListArtifact(input: {
     description: input.language === "en"
       ? "Permission-scoped document list generated from AKB registry metadata. It is not a cited interpretation of document content."
       : "Seznam dokumentů podle oprávnění aktuálního uživatele z metadat registru AKB. Nejde o citovaný výklad obsahu dokumentů.",
-    columns: documentListColumns(input.language),
+    columns: documentListColumns(input.language, input.layout),
     rows,
     export_formats: ["xlsx", "pdf"],
     source_citation_count: 0,
@@ -571,7 +616,15 @@ function buildArtifactFromSummary(input: {
   };
 }
 
-function documentListColumns(language: ResponseLanguage): AssistantReportArtifact["columns"] {
+type DocumentListLayout = "default" | "title_description";
+
+function documentListColumns(language: ResponseLanguage, layout: DocumentListLayout): AssistantReportArtifact["columns"] {
+  if (layout === "title_description") {
+    return [
+      { key: "title", label: language === "en" ? "Title" : "Název", type: "text" },
+      { key: "description", label: language === "en" ? "Brief description" : "Stručný popis", type: "text" }
+    ];
+  }
   return [
     { key: "document_id", label: language === "en" ? "Document ID" : "ID dokumentu", type: "text" },
     { key: "title", label: language === "en" ? "Title" : "Název", type: "text" },
@@ -586,10 +639,25 @@ function documentListColumns(language: ResponseLanguage): AssistantReportArtifac
   ];
 }
 
-function documentListRow(document: Document, language: ResponseLanguage, index: number): AssistantReportRow {
+function documentListRow(
+  document: Document,
+  language: ResponseLanguage,
+  index: number,
+  layout: DocumentListLayout
+): AssistantReportRow {
   const typeLabels = language === "en" ? DOCUMENT_TYPE_LABELS_EN : DOCUMENT_TYPE_LABELS_CS;
   const entityType = documentMetadataString(document, "entity_type");
   const entityId = documentMetadataString(document, "entity_id");
+  if (layout === "title_description") {
+    return {
+      row_id: `document_${index + 1}_${slugify(document.document_id) || "row"}`,
+      cells: {
+        title: document.title,
+        description: documentDescription(document, language)
+      },
+      citations: []
+    };
+  }
   return {
     row_id: `document_${index + 1}_${slugify(document.document_id) || "row"}`,
     cells: {
@@ -606,6 +674,40 @@ function documentListRow(document: Document, language: ResponseLanguage, index: 
     },
     citations: []
   };
+}
+
+function documentListLayoutFromMessage(message: string): DocumentListLayout {
+  const normalized = normalizeText(message);
+  const asksForTitle = /\b(?:nazev|title)\b/.test(normalized);
+  const asksForDescription = /\b(?:popis|description|summary|shrnut|anotac)\b/.test(normalized);
+  return asksForTitle && asksForDescription ? "title_description" : "default";
+}
+
+function documentDescription(document: Document, language: ResponseLanguage): string {
+  const explicitDescription = firstDocumentMetadataString(document, [
+    "short_description",
+    "description",
+    "summary",
+    "abstract",
+    "annotation",
+    "anotace",
+    "content_summary",
+    "ai_summary",
+    "document_summary",
+    "change_summary",
+    "purpose"
+  ]);
+  if (explicitDescription) {
+    return truncateCellText(explicitDescription, 240);
+  }
+  const typeLabels = language === "en" ? DOCUMENT_TYPE_LABELS_EN : DOCUMENT_TYPE_LABELS_CS;
+  const parts = [
+    `${language === "en" ? "Type" : "Typ"}: ${typeLabels[document.document_type] ?? document.document_type}`,
+    `${language === "en" ? "status" : "stav"}: ${document.status}`,
+    document.gestor_unit ? `${language === "en" ? "steward" : "gestor"}: ${document.gestor_unit}` : "",
+    document.tags.length ? `${language === "en" ? "tags" : "štítky"}: ${document.tags.slice(0, 4).join(", ")}` : ""
+  ].filter(Boolean);
+  return parts.join("; ");
 }
 
 function reportColumns(language: ResponseLanguage): AssistantReportArtifact["columns"] {
@@ -861,6 +963,9 @@ function documentMatchesTopic(document: Document, topic: TopicQuery): boolean {
   if (topic.matchAll) {
     return true;
   }
+  if (topic.documentTypes?.includes(document.document_type)) {
+    return true;
+  }
   const haystack = documentSearchText(document);
   const normalizedTerms = topic.terms.map(normalizeText).filter(Boolean);
   if (normalizedTerms.some((term) => haystack.includes(term))) {
@@ -886,6 +991,24 @@ function documentMetadataString(document: Document, key: string): string | null 
     }
   }
   return null;
+}
+
+function firstDocumentMetadataString(document: Document, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = documentMetadataString(document, key);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function truncateCellText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
 }
 
 function documentSearchText(document: Document): string {
@@ -973,6 +1096,26 @@ function extractTopics(message: string): TopicQuery[] {
   }
 
   return [...topics.values()].slice(0, 8);
+}
+
+function documentTypeTopicLabels(type: Document["document_type"], language: ResponseLanguage): string[] {
+  const labels = new Set<string>([
+    (language === "en" ? DOCUMENT_TYPE_LABELS_EN : DOCUMENT_TYPE_LABELS_CS)[type] ?? type,
+    type
+  ]);
+  for (const topic of TOPIC_CATALOG) {
+    if (topic.documentTypes?.includes(type)) {
+      labels.add(language === "en" ? topic.labelEn : topic.labelCs);
+    }
+  }
+  for (const alias of DOCUMENT_TYPE_ALIASES) {
+    if (alias.type === type) {
+      for (const term of alias.terms) {
+        labels.add(term);
+      }
+    }
+  }
+  return [...labels];
 }
 
 function explicitTopicPhrases(normalizedMessage: string): string[] {
