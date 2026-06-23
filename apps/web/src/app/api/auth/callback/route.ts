@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   }
 
   const session = sessionFromTokens(tokens);
-  const response = NextResponse.redirect(buildPublicAppUrl(config, returnTo));
+  const response = redirectByReplacingLocation(buildPublicAppUrl(config, returnTo));
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.set(OIDC_SESSION_COOKIE, sealSession(session, oidc.sessionSecret), cookieOptions(config));
   return response;
@@ -45,8 +45,40 @@ export async function GET(request: NextRequest) {
 
 function redirectToLogin(config: ReturnType<typeof getAklConfig>, returnTo: string) {
   const loginUrl = buildPublicAppUrl(config, `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`);
-  const response = NextResponse.redirect(loginUrl, 303);
+  const response = redirectByReplacingLocation(loginUrl);
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.delete(OIDC_SESSION_COOKIE);
   return response;
+}
+
+function redirectByReplacingLocation(targetUrl: string) {
+  const scriptUrl = JSON.stringify(targetUrl).replace(/</g, "\\u003c");
+  const htmlUrl = targetUrl
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  return new NextResponse(
+    `<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <meta http-equiv="refresh" content="0;url=${htmlUrl}">
+    <title>AKB</title>
+    <script>window.location.replace(${scriptUrl});</script>
+  </head>
+  <body>
+    <a href="${htmlUrl}">Continue to AKB</a>
+  </body>
+</html>`,
+    {
+      status: 200,
+      headers: {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8"
+      }
+    }
+  );
 }

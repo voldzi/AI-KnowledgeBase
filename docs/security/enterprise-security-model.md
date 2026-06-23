@@ -23,6 +23,11 @@ session server-side before calling Registry or RAG when the access token has
 expired or is close to expiry. The browser never receives the refresh token and
 must not call Registry, RAG, or storage services directly.
 
+The OIDC callback consumes the one-time authorization code server-side, sets the
+sealed session cookie, and returns a short no-store page that uses
+`location.replace()` to leave the callback URL. This keeps stale authorization
+codes out of browser history and prevents repeated callback replay.
+
 ## Roles
 
 Initial role model:
