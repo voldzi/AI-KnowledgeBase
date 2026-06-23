@@ -8,7 +8,7 @@ export const OIDC_SESSION_COOKIE = "akl_session";
 export const OIDC_REFRESH_COOKIE = "akl_refresh";
 
 export interface OidcSession {
-  accessToken: string;
+  accessToken?: string;
   refreshToken?: string;
   idToken?: string;
   expiresAt: number;
@@ -201,7 +201,7 @@ export function sealSession(session: OidcSession, secret: string): string {
 }
 
 export function sealBrowserSession(session: OidcSession, secret: string): string {
-  const { refreshToken: _refreshToken, idToken: _idToken, ...browserSession } = session;
+  const { accessToken: _accessToken, refreshToken: _refreshToken, idToken: _idToken, ...browserSession } = session;
   return sealSession(browserSession, secret);
 }
 
@@ -247,7 +247,7 @@ export function openSession(
 ): OidcSession | null {
   try {
     const session = openJson<OidcSession>(value, secret);
-    if (!session.accessToken || !session.subjectId || (!options.allowExpired && session.expiresAt <= nowMs)) {
+    if (!session.subjectId || (!options.allowExpired && session.expiresAt <= nowMs)) {
       return null;
     }
     return session;

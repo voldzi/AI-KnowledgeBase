@@ -94,7 +94,7 @@ export async function getOptionalServerOidcSession(request?: Request): Promise<O
         return refreshed;
       }
     }
-    return session;
+    return session.accessToken ? session : null;
   }
 
   const expiredSession = readSessionCookie(cookieStore, config, nowMs, { allowExpired: true });
@@ -141,7 +141,7 @@ function normalizeReturnTo(returnTo: string): string {
 }
 
 function shouldRefreshSession(session: OidcSession, nowMs: number): boolean {
-  return Boolean(session.refreshToken) && session.expiresAt - nowMs <= SESSION_REFRESH_SKEW_MS;
+  return Boolean(session.refreshToken) && (!session.accessToken || session.expiresAt - nowMs <= SESSION_REFRESH_SKEW_MS);
 }
 
 function writeSessionCookies(

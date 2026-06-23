@@ -55,7 +55,7 @@ describe("OIDC web session", () => {
     assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1, { allowExpired: true })?.subjectId, "user-123");
   });
 
-  it("keeps the refresh token in a separate sealed browser cookie", () => {
+  it("keeps access and refresh tokens out of the browser session cookie", () => {
     const config = testOidcConfig();
     const session = sessionFromTokens(
       { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
@@ -76,9 +76,9 @@ describe("OIDC web session", () => {
       2_000
     );
 
-    assert.equal(opened?.accessToken, session.accessToken);
+    assert.equal(opened?.accessToken, undefined);
     assert.equal(opened?.refreshToken, undefined);
-    assert.equal(read?.accessToken, session.accessToken);
+    assert.equal(read?.accessToken, undefined);
     assert.equal(read?.refreshToken, "refresh-token");
   });
 
