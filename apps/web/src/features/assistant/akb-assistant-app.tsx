@@ -176,6 +176,7 @@ const assistantAppCopy = {
     emptyQuestion: "Napište dotaz.",
     requestFailedStatus: "Asistent teď neodpověděl. Kód odpovědi:",
     requestFailed: "Dotaz se nepodařilo odeslat.",
+    sessionExpired: "Relace vypršela. Přesměrovávám na přihlášení.",
     suggestionsLabel: "Doporučené dotazy",
     emptyThreadTitle: "Nové vlákno",
     emptyThreadBody: "Začněte dotazem nebo vyberte doporučení. Každá odpověď má držet citace na konkrétní verze dokumentů.",
@@ -272,6 +273,7 @@ const assistantAppCopy = {
     emptyQuestion: "Enter a question.",
     requestFailedStatus: "The assistant did not respond. Response code:",
     requestFailed: "The question could not be sent.",
+    sessionExpired: "The session expired. Redirecting to sign in.",
     suggestionsLabel: "Suggested questions",
     emptyThreadTitle: "New thread",
     emptyThreadBody: "Start with a question or choose a suggestion. Every answer should keep citations to concrete document versions.",
@@ -403,6 +405,13 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     setSourceError(null);
   }
 
+  function redirectToLoginAfterUnauthorized() {
+    setStatusMessage(copy.sessionExpired);
+    window.setTimeout(() => {
+      window.location.assign(withAppBasePath(`/api/auth/login?return_to=${encodeURIComponent("/chat")}`));
+    }, 250);
+  }
+
   async function archiveActiveThread() {
     if (!activeThread.conversationId) {
       const remaining = threads.filter((thread) => thread.id !== activeThread.id);
@@ -424,6 +433,10 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         body: JSON.stringify({ status: "archived" })
       });
       if (!response.ok) {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          return;
+        }
         setStatusMessage(`${copy.requestFailedStatus} ${response.status}.`);
         return;
       }
@@ -501,6 +514,14 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         })
       });
       if (!httpResponse.ok) {
+        if (httpResponse.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          updateThread(threadId, (thread) => ({
+            ...thread,
+            messages: thread.messages.filter((message) => message.id !== pendingMessage.id)
+          }));
+          return;
+        }
         setStatusMessage(`${copy.requestFailedStatus} ${httpResponse.status}.`);
         updateThread(threadId, (thread) => ({
           ...thread,
@@ -614,6 +635,11 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         headers: { Accept: "application/json" }
       });
       if (!httpResponse.ok) {
+        if (httpResponse.status === 401) {
+          setSourceError(copy.sessionExpired);
+          redirectToLoginAfterUnauthorized();
+          return;
+        }
         setSourceError(`${copy.sourceOpenFailedStatus} ${httpResponse.status}.`);
         return;
       }
@@ -645,7 +671,16 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         }))
       })
     })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`${copy.requestFailedStatus} ${response.status}.`))))
+      .then((response) => {
+        if (response.ok) {
+          return response.json();
+        }
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          return Promise.reject(new Error(copy.sessionExpired));
+        }
+        return Promise.reject(new Error(`${copy.requestFailedStatus} ${response.status}.`));
+      })
       .then((payload) => {
         const conversation = payload.conversation as AssistantConversationDetail;
         updateThread(activeThread.id, () => threadFromConversation(conversation));
