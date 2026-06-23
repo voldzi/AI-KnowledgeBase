@@ -1,16 +1,15 @@
-import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
-import { readSessionCookie } from "@/lib/auth/oidc";
+import { getOptionalServerOidcSession } from "@/lib/api/server";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const config = getAklConfig();
 
   if (config.authMode === "oidc") {
-    const session = readSessionCookie(await cookies(), config);
+    const session = await getOptionalServerOidcSession(request);
     if (!session) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }

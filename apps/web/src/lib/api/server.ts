@@ -8,7 +8,20 @@ import type { ApiRequestContext } from "@/lib/types";
 import { createApiClients } from ".";
 import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
-import { buildPublicAppUrl, contextFromOidcAccessToken, contextFromOidcSession, readSessionCookie } from "../auth/oidc";
+import {
+  buildPublicAppUrl,
+  contextFromOidcAccessToken,
+  contextFromOidcSession,
+  cookieOptions,
+  OIDC_SESSION_COOKIE,
+  readSessionCookie,
+  refreshOidcSession,
+  requireOidcConfig,
+  sealSession,
+  type OidcSession
+} from "../auth/oidc";
+
+const SESSION_REFRESH_SKEW_MS = 60_000;
 
 export function getServerApiClients() {
   return createApiClients();
@@ -49,7 +62,7 @@ export async function getOptionalServerRequestContext(request?: Request): Promis
       }
     }
 
-    const session = readSessionCookie(await cookies(), config);
+    const session = await getOptionalServerOidcSession(request);
     if (session) {
       return contextFromOidcSession(session);
     }
@@ -58,6 +71,43 @@ export async function getOptionalServerRequestContext(request?: Request): Promis
   }
 
   return mockRequestContext();
+}
+
+export async function getOptionalServerOidcSession(request?: Request): Promise<OidcSession | null> {
+  const config = getAklConfig();
+  if (config.authMode !== "oidc") {
+    return null;
+  }
+
+  const cookieStore = await cookies();
+  const nowMs = Date.now();
+  const session = readSessionCookie(cookieStore, config, nowMs);
+  const canRefresh = Boolean(request);
+  if (session) {
+    if (canRefresh && shouldRefreshSession(session, nowMs)) {
+      const refreshed = await refreshOidcSession(config, session, nowMs).catch(() => null);
+      if (refreshed && writeSessionCookie(cookieStore, config, refreshed)) {
+        return refreshed;
+      }
+    }
+    return session;
+  }
+
+  if (!canRefresh) {
+    return null;
+  }
+
+  const expiredSession = readSessionCookie(cookieStore, config, nowMs, { allowExpired: true });
+  if (!expiredSession || expiredSession.expiresAt > nowMs) {
+    return null;
+  }
+
+  const refreshed = await refreshOidcSession(config, expiredSession, nowMs).catch(() => null);
+  if (!refreshed) {
+    return null;
+  }
+  writeSessionCookie(cookieStore, config, refreshed);
+  return refreshed;
 }
 
 export async function getServerRequestContext(): Promise<ApiRequestContext> {
@@ -86,4 +136,22 @@ export async function getServerRequestContextForRequest(request: Request): Promi
 
 function normalizeReturnTo(returnTo: string): string {
   return returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
+}
+
+function shouldRefreshSession(session: OidcSession, nowMs: number): boolean {
+  return Boolean(session.refreshToken) && session.expiresAt - nowMs <= SESSION_REFRESH_SKEW_MS;
+}
+
+function writeSessionCookie(
+  cookieStore: Awaited<ReturnType<typeof cookies>>,
+  config: ReturnType<typeof getAklConfig>,
+  session: OidcSession
+): boolean {
+  try {
+    const oidc = requireOidcConfig(config);
+    cookieStore.set(OIDC_SESSION_COOKIE, sealSession(session, oidc.sessionSecret), cookieOptions(config));
+    return true;
+  } catch {
+    return false;
+  }
 }
