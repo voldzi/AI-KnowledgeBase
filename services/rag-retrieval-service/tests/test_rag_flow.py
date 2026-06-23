@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.service import _assistant_filters, _employee_answer
+from app.service import _assistant_answer_query, _assistant_filters, _assistant_query, _employee_answer
 from tests.conftest import make_client
 
 
@@ -218,6 +218,56 @@ def test_assistant_chat_returns_report_artifact_for_table_request() -> None:
     assert body["report_artifacts"][0]["export_formats"] == ["xlsx", "pdf"]
     assert body["report_artifacts"][0]["rows"][0]["citations"][0]["chunk_id"] == "chunk_789"
     assert body["suggested_actions"][0]["action_type"] == "export_report"
+
+
+def test_assistant_query_omits_internal_report_context_from_retrieval() -> None:
+    context = {
+        "approval_subject": "výjimka ze směrnice",
+        "answer_format_instruction": "Vrať tabulku se sloupci povinnost, zdroj a poznámka.",
+        "assistant_query_plan": {"intent": "obligation_table", "noise": "xyzzy plugh"},
+        "assistant_report_request": {"template": "obligation_table"},
+    }
+
+    retrieval_query = _assistant_query("Kdo schvaluje výjimku ze směrnice?", context)
+    answer_query = _assistant_answer_query("Kdo schvaluje výjimku ze směrnice?", context)
+
+    assert "approval_subject" in retrieval_query
+    assert "answer_format_instruction" not in retrieval_query
+    assert "assistant_query_plan" not in retrieval_query
+    assert "assistant_report_request" not in retrieval_query
+    assert "xyzzy" not in retrieval_query
+    assert "Požadavek na formát odpovědi" in answer_query
+    assert "Vrať tabulku" in answer_query
+    assert "assistant_query_plan" not in answer_query
+
+
+def test_assistant_chat_report_context_does_not_degrade_retrieval() -> None:
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Vytvoř tabulku: kdo schvaluje výjimku ze směrnice?",
+                "context": {
+                    "approval_subject": "výjimka ze směrnice",
+                    "answer_format_instruction": (
+                        "Požadavek na strukturovaný výstup: vrať markdown tabulku se sloupci "
+                        "povinnost, citovaný zdroj a praktická poznámka."
+                    ),
+                    "assistant_query_plan": {
+                        "intent": "obligation_table",
+                        "output": {"required_columns": ["povinnost", "zdroj", "poznámka"]},
+                    },
+                    "assistant_report_request": {"template": "obligation_table"},
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert body["citations"][0]["chunk_id"] == "chunk_789"
+    assert body["confidence"] != "insufficient_source"
 
 
 def test_assistant_filters_include_pdf_corpus_document_types() -> None:

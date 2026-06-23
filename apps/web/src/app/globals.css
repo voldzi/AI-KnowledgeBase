@@ -1779,6 +1779,11 @@ button {
   font-weight: 900;
 }
 
+.akb-chat-message__empty-cell {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .akb-chat-message__markdown tr:last-child td {
   border-bottom: 0;
 }

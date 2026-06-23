@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -102,8 +102,30 @@ const assistantMarkdownComponents: Components = {
         <table>{children}</table>
       </div>
     );
+  },
+  td({ children }) {
+    return (
+      <td>
+        {hasMarkdownCellContent(children)
+          ? children
+          : <span className="akb-chat-message__empty-cell">neuvedeno</span>}
+      </td>
+    );
   }
 };
+
+function hasMarkdownCellContent(children: ReactNode): boolean {
+  if (children === null || children === undefined || children === false) {
+    return false;
+  }
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children).trim().length > 0;
+  }
+  if (Array.isArray(children)) {
+    return children.some((child) => hasMarkdownCellContent(child));
+  }
+  return true;
+}
 
 const assistantAppCopy = {
   cs: {

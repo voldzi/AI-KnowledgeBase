@@ -561,16 +561,62 @@ class RagRetrievalService:
             )
             return response
 
-        rag_answer = await self.query(
-            RagQueryRequest(
+        query_id = _query_id()
+        retrieval_query = _assistant_query(payload.message, payload.context)
+        answer_query = _assistant_answer_query(payload.message, payload.context)
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
                 subject_id=payload.user_id,
-                query=_assistant_query(payload.message, payload.context),
+                query=retrieval_query,
                 filters=_assistant_filters(payload.context),
-                answer_mode=payload.mode,
                 max_chunks=6,
-                response_language=payload.response_language,
             ),
+            query_id=query_id,
             auth_context=auth_context,
+        )
+        decision = self._no_answer_policy.evaluate(
+            chunks=run.response.chunks,
+            had_candidates=run.had_candidates,
+            denied_document_ids=run.denied_document_ids,
+        )
+        if not decision.can_answer:
+            rag_answer = self._no_answer_policy.no_answer(
+                query_id=query_id,
+                decision=decision,
+                response_language=payload.response_language,
+            )
+        elif payload.mode == "retrieve_only":
+            rag_answer = _retrieval_only_answer(
+                query_id=query_id,
+                chunks=run.response.chunks,
+                confidence=decision.confidence,
+                warnings=decision.warnings,
+                response_language=payload.response_language,
+            )
+        else:
+            rag_answer = await self._answer_composer.compose(
+                query_id=query_id,
+                query=answer_query,
+                chunks=run.response.chunks,
+                confidence=decision.confidence,
+                warnings=decision.warnings,
+                max_chunks=6,
+                answer_mode=payload.mode,
+                response_language=payload.response_language,
+                auth_context=auth_context,
+            )
+        await self._audit_answer(
+            actor_id=payload.user_id,
+            event_type="rag.assistant_query.executed",
+            answer=rag_answer,
+            auth_context=auth_context,
+        )
+        logger.info(
+            "assistant_rag_query_completed query_id=%s confidence=%s used_chunk_count=%s warning_count=%s",
+            query_id,
+            rag_answer.confidence,
+            len(rag_answer.used_chunks),
+            len(rag_answer.warnings),
         )
         if rag_answer.citations:
             report_artifacts = _assistant_report_artifacts(
@@ -1189,11 +1235,55 @@ def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
     )
 
 
+ASSISTANT_INTERNAL_CONTEXT_KEYS = {
+    "answer_format_instruction",
+    "assistant_query_plan",
+    "assistant_report_request",
+}
+
+
 def _assistant_query(message: str, context: dict[str, object]) -> str:
-    context_parts = [f"{key}: {value}" for key, value in sorted(context.items()) if value not in (None, "", [])]
+    context_parts = [
+        f"{key}: {value_text}"
+        for key, value in sorted(context.items())
+        if key not in ASSISTANT_INTERNAL_CONTEXT_KEYS
+        for value_text in [_assistant_context_value(value)]
+        if value_text
+    ]
     if not context_parts:
         return message
     return f"{message}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
+
+
+def _assistant_answer_query(message: str, context: dict[str, object]) -> str:
+    query = _assistant_query(message, context)
+    instruction = _assistant_context_value(context.get("answer_format_instruction"), max_length=1800)
+    if not instruction:
+        return query
+    return f"{query}\n\nPožadavek na formát odpovědi:\n{instruction}"
+
+
+def _assistant_context_value(value: object, *, max_length: int = 500) -> str | None:
+    if value in (None, "", []):
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+    elif isinstance(value, bool):
+        text = "true" if value else "false"
+    elif isinstance(value, int | float):
+        text = str(value)
+    elif isinstance(value, list):
+        parts = [
+            str(item).strip()
+            for item in value[:10]
+            if isinstance(item, str | int | float | bool) and str(item).strip()
+        ]
+        text = ", ".join(parts)
+    else:
+        return None
+    if not text:
+        return None
+    return text[:max_length]
 
 
 LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {

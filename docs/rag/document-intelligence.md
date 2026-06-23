@@ -96,6 +96,16 @@ answers it also adds a bounded `answer_format_instruction`, requiring meaningful
 multi-column tables and source-supported obligation rows when the user asks for
 obligations.
 
+Inside the RAG Retrieval Service, employee-chat retrieval and answer composition
+must keep different inputs. The embedding/retrieval query is built only from the
+user message plus user-meaningful context such as system, role, entity, approval
+subject, or tags. Internal keys such as `assistant_query_plan`,
+`assistant_report_request`, and `answer_format_instruction` are excluded from the
+retrieval query so report-mode metadata cannot reduce citation relevance. The
+bounded `answer_format_instruction` is appended only to the answer composition
+prompt, where it guides table/report shape after citable chunks have already
+been selected.
+
 `assistant_query_plan` is deterministic for a given message and routing outcome.
 It records:
 
