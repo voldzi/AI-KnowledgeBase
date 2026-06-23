@@ -79,6 +79,7 @@ interface AssistantThread {
   title: string;
   context: Record<string, unknown>;
   messages: ChatMessage[];
+  draft: string;
   visibility: ThreadVisibility;
   pinned: boolean;
   updatedAt: string;
@@ -176,6 +177,7 @@ const assistantAppCopy = {
     emptyQuestion: "Napište dotaz.",
     requestFailedStatus: "Asistent teď neodpověděl. Kód odpovědi:",
     requestFailed: "Dotaz se nepodařilo odeslat.",
+    assistantServiceUnavailable: "AI služba teď není dostupná. AKB nemá spojení na LLM/Ollama službu.",
     sessionExpired: "Relace vypršela. Přesměrovávám na přihlášení.",
     suggestionsLabel: "Doporučené dotazy",
     emptyThreadTitle: "Nové vlákno",
@@ -273,6 +275,7 @@ const assistantAppCopy = {
     emptyQuestion: "Enter a question.",
     requestFailedStatus: "The assistant did not respond. Response code:",
     requestFailed: "The question could not be sent.",
+    assistantServiceUnavailable: "The AI service is unavailable. AKB cannot reach the LLM/Ollama service.",
     sessionExpired: "The session expired. Redirecting to sign in.",
     suggestionsLabel: "Suggested questions",
     emptyThreadTitle: "New thread",
@@ -335,9 +338,8 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   const { language } = useLanguage();
   const copy = assistantAppCopy[language];
   const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso, initialConversations));
-  const [activeThreadId, setActiveThreadId] = useState(() => createInitialThreads(language, initialNowIso, initialConversations)[0]?.id ?? "thread-current");
+  const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations));
   const [threadSearch, setThreadSearch] = useState("");
-  const [composer, setComposer] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
@@ -357,6 +359,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   const [reportColumns, setReportColumns] = useState<AssistantReportColumnKey[]>(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS.obligation_table);
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
+  const composer = activeThread?.draft ?? "";
   const lastAssistantResponse = findLastAssistantResponse(activeThread);
   const visibleThreads = useMemo(() => {
     const query = threadSearch.trim().toLowerCase();
@@ -383,7 +386,9 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
           return;
         }
         const loadedThread = threadFromConversation(payload.conversation as AssistantConversationDetail);
-        setThreads((current) => current.map((thread) => (thread.id === activeThread.id ? { ...loadedThread, pinned: thread.pinned } : thread)));
+        setThreads((current) => current.map((thread) => (
+          thread.id === activeThread.id ? { ...loadedThread, pinned: thread.pinned, draft: thread.draft } : thread
+        )));
       })
       .catch(() => undefined);
     return () => {
@@ -395,11 +400,27 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     setThreads((current) => current.map((thread) => (thread.id === threadId ? updater(thread) : thread)));
   }
 
+  function updateActiveDraft(value: string) {
+    const threadId = activeThread?.id;
+    if (!threadId) {
+      return;
+    }
+    updateThread(threadId, (thread) => ({ ...thread, draft: value }));
+  }
+
+  function selectThread(threadId: string) {
+    setActiveThreadId(threadId);
+    setStatusMessage(null);
+    setSourceContext(null);
+    setSourceError(null);
+    setOpeningSourceId(null);
+    setCitationModalOpen(false);
+  }
+
   function createThread() {
     const thread = createEmptyThread(copy.emptyThreadTitle);
     setThreads((current) => [thread, ...current]);
     setActiveThreadId(thread.id);
-    setComposer("");
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
@@ -488,7 +509,6 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
       pending: true
     };
     setSubmitting(true);
-    setComposer("");
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
@@ -496,6 +516,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     updateThread(threadId, (thread) => ({
       ...thread,
       title: thread.messages.length === 0 ? titleFromQuestion(trimmed) : thread.title,
+      draft: "",
       messages: [...thread.messages, userMessage, pendingMessage],
       updatedAt: new Date().toISOString()
     }));
@@ -522,7 +543,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
           }));
           return;
         }
-        setStatusMessage(`${copy.requestFailedStatus} ${httpResponse.status}.`);
+        setStatusMessage(await assistantHttpErrorMessage(httpResponse, copy));
         updateThread(threadId, (thread) => ({
           ...thread,
           messages: thread.messages.filter((message) => message.id !== pendingMessage.id)
@@ -580,12 +601,12 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     }
     if (commandId === "types") {
       setReportModeEnabled(false);
-      setComposer(language === "en"
+      updateActiveDraft(language === "en"
         ? "Create a report with document type and count."
         : "Vytvoř sestavu, kde bude typ dokumentu a počet.");
       return;
     }
-    setComposer(remainder);
+    updateActiveDraft(remainder);
     setReportModeEnabled(true);
     if (commandId === "excel") {
       setReportExportFormat("xlsx");
@@ -732,14 +753,14 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               threads={visibleThreads.filter((thread) => thread.pinned)}
               activeThreadId={activeThread.id}
               copy={copy}
-              onSelect={setActiveThreadId}
+              onSelect={selectThread}
             />
             <ThreadGroup
               title={copy.recent}
               threads={visibleThreads.filter((thread) => !thread.pinned)}
               activeThreadId={activeThread.id}
               copy={copy}
-              onSelect={setActiveThreadId}
+              onSelect={selectThread}
             />
           </div>
         </aside>
@@ -893,7 +914,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               <textarea
                 id="akb-chat-composer"
                 value={composer}
-                onChange={(event) => setComposer(event.target.value)}
+                onChange={(event) => updateActiveDraft(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
                 placeholder={copy.composerPlaceholder}
                 rows={2}
@@ -1021,6 +1042,21 @@ function contextWithReportRequest(
     delete next[ASSISTANT_REPORT_REQUEST_CONTEXT_KEY];
   }
   return next;
+}
+
+async function assistantHttpErrorMessage(response: Response, copy: AssistantAppLabels): Promise<string> {
+  const statusPrefix = `${copy.requestFailedStatus} ${response.status}.`;
+  const payload = await response.json().catch(() => null) as { error?: { code?: unknown; message?: unknown } } | null;
+  const code = typeof payload?.error?.code === "string" ? payload.error.code : "";
+  const message = typeof payload?.error?.message === "string" ? payload.error.message : "";
+
+  if (code === "UPSTREAM_UNAVAILABLE" || code === "UPSTREAM_ERROR") {
+    return `${statusPrefix} ${copy.assistantServiceUnavailable}`;
+  }
+  if (message) {
+    return `${statusPrefix} ${message}`;
+  }
+  return statusPrefix;
 }
 
 function slashCommandOptions(composer: string, language: AklLanguage): SlashCommandOption[] {
@@ -1515,6 +1551,7 @@ function createInitialThreads(
       title: language === "en" ? "New thread" : "Nové vlákno",
       context: {},
       messages: [],
+      draft: "",
       visibility: "private",
       pinned: true,
       updatedAt: now,
@@ -1524,6 +1561,12 @@ function createInitialThreads(
   ];
 }
 
+function initialActiveThreadId(conversations: AssistantConversationListItem[] = []): string {
+  return conversations[0]?.conversation_id
+    ? threadIdFromConversationId(conversations[0].conversation_id)
+    : "thread-current";
+}
+
 function createEmptyThread(title: string): AssistantThread {
   return {
     id: createClientId("thread"),
@@ -1531,6 +1574,7 @@ function createEmptyThread(title: string): AssistantThread {
     title,
     context: {},
     messages: [],
+    draft: "",
     visibility: "private",
     pinned: false,
     updatedAt: new Date().toISOString(),
@@ -1546,6 +1590,7 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
     title: conversation.title ?? "AKB chat",
     context: {},
     messages: [],
+    draft: "",
     visibility: conversation.visibility,
     pinned,
     updatedAt: conversation.updated_at,
@@ -1571,6 +1616,7 @@ function threadFromConversation(conversation: AssistantConversationDetail): Assi
       }
       return chatMessage;
     }),
+    draft: "",
     visibility: conversation.visibility,
     pinned: false,
     updatedAt: conversation.updated_at,
