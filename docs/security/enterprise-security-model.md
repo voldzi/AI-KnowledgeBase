@@ -17,11 +17,14 @@ Expected identity inputs:
 
 Service-to-service calls must preserve correlation headers and must not log full user questions, answers, source text, secrets, or access tokens.
 
-AKB web stores the OIDC access token and refresh token only inside the sealed
-HTTP-only `akl_session` cookie. Browser-facing BFF routes refresh the sealed
-session server-side before calling Registry or RAG when the access token has
-expired or is close to expiry. The browser never receives the refresh token and
-must not call Registry, RAG, or storage services directly.
+AKB web stores OIDC browser credentials only inside sealed HTTP-only cookies:
+`akl_session` carries the current access-token session and claims, while
+`akl_refresh` carries the refresh token separately. Splitting the cookies keeps
+the browser session below per-cookie size limits and still prevents JavaScript
+from reading credentials. Browser-facing BFF routes refresh the sealed session
+server-side before calling Registry or RAG when the access token has expired or
+is close to expiry. The browser never receives a readable refresh token and must
+not call Registry, RAG, or storage services directly.
 
 The OIDC callback consumes the one-time authorization code server-side, sets the
 sealed session cookie, and returns a short no-store page that uses

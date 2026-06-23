@@ -5,6 +5,7 @@ import type { ApiRequestContext } from "@/lib/types";
 
 export const OIDC_STATE_COOKIE = "akl_oidc_state";
 export const OIDC_SESSION_COOKIE = "akl_session";
+export const OIDC_REFRESH_COOKIE = "akl_refresh";
 
 export interface OidcSession {
   accessToken: string;
@@ -196,13 +197,46 @@ export function safeReturnToFromState(value: string | null | undefined, fallback
 }
 
 export function sealSession(session: OidcSession, secret: string): string {
+  return sealJson(session, secret);
+}
+
+export function sealBrowserSession(session: OidcSession, secret: string): string {
+  const { refreshToken: _refreshToken, idToken: _idToken, ...browserSession } = session;
+  return sealSession(browserSession, secret);
+}
+
+export function sealRefreshToken(refreshToken: string, secret: string): string {
+  return sealJson({ refreshToken }, secret);
+}
+
+export function openRefreshToken(value: string, secret: string): string | null {
+  try {
+    const payload = openJson<{ refreshToken?: unknown }>(value, secret);
+    return typeof payload.refreshToken === "string" && payload.refreshToken ? payload.refreshToken : null;
+  } catch {
+    return null;
+  }
+}
+
+function sealJson(value: unknown, secret: string): string {
   const iv = crypto.randomBytes(12);
   const key = sessionKey(secret);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify(session), "utf8");
+  const plaintext = Buffer.from(JSON.stringify(value), "utf8");
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, ciphertext]).toString("base64url");
+}
+
+function openJson<T>(value: string, secret: string): T {
+  const payload = Buffer.from(value, "base64url");
+  const iv = payload.subarray(0, 12);
+  const tag = payload.subarray(12, 28);
+  const ciphertext = payload.subarray(28);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", sessionKey(secret), iv);
+  decipher.setAuthTag(tag);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return JSON.parse(plaintext.toString("utf8")) as T;
 }
 
 export function openSession(
@@ -212,14 +246,7 @@ export function openSession(
   options: OpenSessionOptions = {}
 ): OidcSession | null {
   try {
-    const payload = Buffer.from(value, "base64url");
-    const iv = payload.subarray(0, 12);
-    const tag = payload.subarray(12, 28);
-    const ciphertext = payload.subarray(28);
-    const decipher = crypto.createDecipheriv("aes-256-gcm", sessionKey(secret), iv);
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    const session = JSON.parse(plaintext.toString("utf8")) as OidcSession;
+    const session = openJson<OidcSession>(value, secret);
     if (!session.accessToken || !session.subjectId || (!options.allowExpired && session.expiresAt <= nowMs)) {
       return null;
     }
@@ -237,7 +264,14 @@ export function readSessionCookie(
 ): OidcSession | null {
   const oidc = requireOidcConfig(config);
   const value = cookies.get(OIDC_SESSION_COOKIE)?.value;
-  return value ? openSession(value, oidc.sessionSecret, nowMs, options) : null;
+  const session = value ? openSession(value, oidc.sessionSecret, nowMs, options) : null;
+  if (!session) {
+    return null;
+  }
+
+  const refreshValue = cookies.get(OIDC_REFRESH_COOKIE)?.value;
+  const refreshToken = refreshValue ? openRefreshToken(refreshValue, oidc.sessionSecret) : null;
+  return refreshToken ? { ...session, refreshToken } : session;
 }
 
 export function cookieOptions(config: AklConfig) {

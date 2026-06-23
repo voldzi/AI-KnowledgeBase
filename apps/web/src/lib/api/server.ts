@@ -13,11 +13,13 @@ import {
   contextFromOidcAccessToken,
   contextFromOidcSession,
   cookieOptions,
+  OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
   readSessionCookie,
   refreshOidcSession,
   requireOidcConfig,
-  sealSession,
+  sealBrowserSession,
+  sealRefreshToken,
   type OidcSession
 } from "../auth/oidc";
 
@@ -82,19 +84,17 @@ export async function getOptionalServerOidcSession(request?: Request): Promise<O
   const cookieStore = await cookies();
   const nowMs = Date.now();
   const session = readSessionCookie(cookieStore, config, nowMs);
-  const canRefresh = Boolean(request);
   if (session) {
-    if (canRefresh && shouldRefreshSession(session, nowMs)) {
+    if (shouldRefreshSession(session, nowMs)) {
       const refreshed = await refreshOidcSession(config, session, nowMs).catch(() => null);
-      if (refreshed && writeSessionCookie(cookieStore, config, refreshed)) {
+      if (refreshed) {
+        if (request) {
+          writeSessionCookies(cookieStore, config, refreshed);
+        }
         return refreshed;
       }
     }
     return session;
-  }
-
-  if (!canRefresh) {
-    return null;
   }
 
   const expiredSession = readSessionCookie(cookieStore, config, nowMs, { allowExpired: true });
@@ -106,7 +106,9 @@ export async function getOptionalServerOidcSession(request?: Request): Promise<O
   if (!refreshed) {
     return null;
   }
-  writeSessionCookie(cookieStore, config, refreshed);
+  if (request) {
+    writeSessionCookies(cookieStore, config, refreshed);
+  }
   return refreshed;
 }
 
@@ -142,14 +144,17 @@ function shouldRefreshSession(session: OidcSession, nowMs: number): boolean {
   return Boolean(session.refreshToken) && session.expiresAt - nowMs <= SESSION_REFRESH_SKEW_MS;
 }
 
-function writeSessionCookie(
+function writeSessionCookies(
   cookieStore: Awaited<ReturnType<typeof cookies>>,
   config: ReturnType<typeof getAklConfig>,
   session: OidcSession
 ): boolean {
   try {
     const oidc = requireOidcConfig(config);
-    cookieStore.set(OIDC_SESSION_COOKIE, sealSession(session, oidc.sessionSecret), cookieOptions(config));
+    cookieStore.set(OIDC_SESSION_COOKIE, sealBrowserSession(session, oidc.sessionSecret), cookieOptions(config));
+    if (session.refreshToken) {
+      cookieStore.set(OIDC_REFRESH_COOKIE, sealRefreshToken(session.refreshToken, oidc.sessionSecret), cookieOptions(config));
+    }
     return true;
   } catch {
     return false;

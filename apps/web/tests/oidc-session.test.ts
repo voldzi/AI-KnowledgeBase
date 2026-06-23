@@ -5,9 +5,14 @@ import {
   buildPublicAppUrl,
   contextFromOidcSession,
   createState,
+  OIDC_REFRESH_COOKIE,
+  OIDC_SESSION_COOKIE,
   openSession,
+  readSessionCookie,
   refreshOidcSession,
   safeReturnToFromState,
+  sealBrowserSession,
+  sealRefreshToken,
   sealSession,
   sessionFromTokens
 } from "../src/lib/auth/oidc";
@@ -48,6 +53,33 @@ describe("OIDC web session", () => {
     assert.equal(openSession(sealed, "wrong-secret", 2_000), null);
     assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1), null);
     assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1, { allowExpired: true })?.subjectId, "user-123");
+  });
+
+  it("keeps the refresh token in a separate sealed browser cookie", () => {
+    const config = testOidcConfig();
+    const session = sessionFromTokens(
+      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
+      1_000
+    );
+    const browserSession = sealBrowserSession(session, "test-secret");
+    const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
+    const opened = openSession(browserSession, "test-secret", 2_000);
+    const read = readSessionCookie(
+      {
+        get: (name: string) =>
+          ({
+            [OIDC_SESSION_COOKIE]: { value: browserSession },
+            [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
+          })[name]
+      },
+      config,
+      2_000
+    );
+
+    assert.equal(opened?.accessToken, session.accessToken);
+    assert.equal(opened?.refreshToken, undefined);
+    assert.equal(read?.accessToken, session.accessToken);
+    assert.equal(read?.refreshToken, "refresh-token");
   });
 
   it("refreshes an expired web session with the OIDC refresh token", async () => {
