@@ -23,14 +23,15 @@ export async function POST(request: NextRequest) {
       return badAssistantRequest("message is required.");
     }
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
-    const assistantRoute = routeAssistantMessageForRag(message, responseLanguage);
+    const requestContext = _objectContext(body.context);
+    const assistantRoute = routeAssistantMessageForRag(message, responseLanguage, requestContext);
 
     const response = await clients.rag.assistantClarify(
       {
         user_id: context.subjectId,
         conversation_id: typeof body.conversation_id === "string" ? body.conversation_id : null,
         message,
-        context: ragContextForAssistantRoute(_objectContext(body.context), assistantRoute),
+        context: ragContextForAssistantRoute(requestContext, assistantRoute),
         mode: body.mode ?? "it_support_answer",
         response_language: responseLanguage
       },

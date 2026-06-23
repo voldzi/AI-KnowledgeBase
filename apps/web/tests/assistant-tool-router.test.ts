@@ -60,6 +60,30 @@ describe("assistant tool router", () => {
     assert.match(route.answerFormatInstruction ?? "", /U každého řádku povinnosti/);
   });
 
+  it("uses explicit report mode context for natural-language questions", () => {
+    const route = routeAssistantMessage("Jaké povinnosti z toho plynou?", "cs", {
+      assistant_report_request: {
+        enabled: true,
+        output_kind: "table",
+        template: "obligation_table",
+        detail_level: "detailed",
+        export_format: "pdf",
+        columns: ["obligation_or_area", "owner_or_role", "deadline_or_frequency"],
+        require_row_citations: true
+      }
+    });
+    const context = ragContextForAssistantRoute({ entity_id: "project-1" }, route);
+
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.reason, "rag_structured_output");
+    assert.equal(route.structuredOutput, true);
+    assert.equal(route.queryPlan.intent, "obligation_table");
+    assert.deepEqual(route.queryPlan.output.preferred_export_formats, ["pdf"]);
+    assert.match(route.answerFormatInstruction ?? "", /Povinnost nebo oblast, Vlastník nebo role, Termín nebo periodicita/);
+    assert.equal(context.entity_id, "project-1");
+    assert.equal((context.assistant_query_plan as { output?: { detail_level?: string } }).output?.detail_level, "detailed");
+  });
+
   it("keeps ordinary questions on the plain grounded RAG path", () => {
     const route = routeAssistantMessage("Kdo schvaluje výjimku ze směrnice?", "cs");
     const originalContext = { tenant_id: "tenant-1" };

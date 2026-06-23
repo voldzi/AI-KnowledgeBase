@@ -30,6 +30,16 @@ import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosDataTable, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
 import { CitationList, CitationModal, SourceContextCard, type CitationViewerLabels } from "@/features/citations/citation-viewer";
 import { withAppBasePath } from "@/lib/app-url";
+import {
+  ASSISTANT_REPORT_REQUEST_CONTEXT_KEY,
+  ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS,
+  assistantReportColumnLabel,
+  type AssistantReportColumnKey,
+  type AssistantReportDetailLevel,
+  type AssistantReportExportPreference,
+  type AssistantReportRequest,
+  type AssistantReportTemplate
+} from "@/lib/assistant/assistant-report-request";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
 import type {
@@ -150,6 +160,21 @@ const assistantAppCopy = {
     recommendation: "Doporučení:",
     followUps: "Navazující dotazy",
     reports: "Sestavy",
+    reportMode: "Sestava",
+    reportModeActive: "Sestava zapnuta",
+    reportTemplate: "Typ výstupu",
+    reportTemplateObligations: "Povinnosti",
+    reportTemplateSources: "Souhrn zdrojů",
+    reportTemplateDecision: "Rozhodovací matice",
+    reportDetail: "Detail",
+    reportDetailBrief: "Stručný",
+    reportDetailStandard: "Standardní",
+    reportDetailDetailed: "Detailní",
+    reportExport: "Export",
+    reportExportXlsxOnly: "Excel",
+    reportExportPdfOnly: "PDF",
+    reportExportBoth: "Excel + PDF",
+    reportColumns: "Sloupce",
     exportXlsx: "Exportovat Excel",
     exportPdf: "Exportovat PDF",
     exportingReport: "Připravuji Excel",
@@ -231,6 +256,21 @@ const assistantAppCopy = {
     recommendation: "Recommendation:",
     followUps: "Follow-up questions",
     reports: "Reports",
+    reportMode: "Report",
+    reportModeActive: "Report enabled",
+    reportTemplate: "Output type",
+    reportTemplateObligations: "Obligations",
+    reportTemplateSources: "Source summary",
+    reportTemplateDecision: "Decision matrix",
+    reportDetail: "Detail",
+    reportDetailBrief: "Brief",
+    reportDetailStandard: "Standard",
+    reportDetailDetailed: "Detailed",
+    reportExport: "Export",
+    reportExportXlsxOnly: "Excel",
+    reportExportPdfOnly: "PDF",
+    reportExportBoth: "Excel + PDF",
+    reportColumns: "Columns",
     exportXlsx: "Export Excel",
     exportPdf: "Export PDF",
     exportingReport: "Preparing Excel",
@@ -279,6 +319,11 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [clarificationValues, setClarificationValues] = useState<Record<string, string>>({});
+  const [reportModeEnabled, setReportModeEnabled] = useState(false);
+  const [reportTemplate, setReportTemplate] = useState<AssistantReportTemplate>("obligation_table");
+  const [reportDetailLevel, setReportDetailLevel] = useState<AssistantReportDetailLevel>("standard");
+  const [reportExportFormat, setReportExportFormat] = useState<AssistantReportExportPreference>("xlsx");
+  const [reportColumns, setReportColumns] = useState<AssistantReportColumnKey[]>(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS.obligation_table);
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
   const lastAssistantResponse = findLastAssistantResponse(activeThread);
@@ -377,6 +422,15 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     }
 
     const threadId = activeThread.id;
+    const effectiveContext = contextWithReportRequest(nextContext, reportModeEnabled ? {
+      enabled: true,
+      output_kind: "table",
+      template: reportTemplate,
+      detail_level: reportDetailLevel,
+      export_format: reportExportFormat,
+      columns: reportColumns,
+      require_row_citations: true
+    } : null);
     const userMessage: ChatMessage = {
       id: createClientId("msg-user"),
       role: "user",
@@ -411,7 +465,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         body: JSON.stringify({
           message: trimmed,
           conversation_id: activeThread.conversationId,
-          context: nextContext,
+          context: effectiveContext,
           mode: "ask",
           response_language: language
         })
@@ -436,7 +490,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
       updateThread(threadId, (thread) => ({
         ...thread,
         conversationId: response.conversation_id,
-        context: response.current_context ?? nextContext,
+        context: response.current_context ?? effectiveContext,
         messages: thread.messages.map((message) => (message.id === pendingMessage.id ? assistantMessage : message)),
         updatedAt: new Date().toISOString()
       }));
@@ -462,6 +516,20 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     const nextContext = { ...activeThread.context, ...answers };
     const previousQuestion = [...activeThread.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     void submitQuestion(previousQuestion, "/api/assistant/clarify", nextContext);
+  }
+
+  function changeReportTemplate(value: AssistantReportTemplate) {
+    setReportTemplate(value);
+    setReportColumns(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS[value]);
+  }
+
+  function toggleReportColumn(column: AssistantReportColumnKey) {
+    setReportColumns((current) => {
+      if (current.includes(column)) {
+        return current.length <= 2 ? current : current.filter((item) => item !== column);
+      }
+      return [...current, column];
+    });
   }
 
   async function openSource(citation: Citation) {
@@ -640,6 +708,66 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
             }}
           >
             <label htmlFor="akb-chat-composer">{copy.composerLabel}</label>
+            <div className="akb-chat-report-mode">
+              <button
+                type="button"
+                className={`akb-chat-report-mode__toggle ${reportModeEnabled ? "is-active" : ""}`}
+                aria-pressed={reportModeEnabled}
+                onClick={() => setReportModeEnabled((current) => !current)}
+              >
+                <Table2 size={15} aria-hidden="true" />
+                {reportModeEnabled ? copy.reportModeActive : copy.reportMode}
+              </button>
+              {reportModeEnabled ? (
+                <div className="akb-chat-report-mode__panel">
+                  <StratosSelect
+                    id="akb-report-template"
+                    label={copy.reportTemplate}
+                    value={reportTemplate}
+                    onChange={(event) => changeReportTemplate(event.target.value as AssistantReportTemplate)}
+                  >
+                    <option value="obligation_table">{copy.reportTemplateObligations}</option>
+                    <option value="source_summary">{copy.reportTemplateSources}</option>
+                    <option value="decision_matrix">{copy.reportTemplateDecision}</option>
+                  </StratosSelect>
+                  <StratosSelect
+                    id="akb-report-detail"
+                    label={copy.reportDetail}
+                    value={reportDetailLevel}
+                    onChange={(event) => setReportDetailLevel(event.target.value as AssistantReportDetailLevel)}
+                  >
+                    <option value="brief">{copy.reportDetailBrief}</option>
+                    <option value="standard">{copy.reportDetailStandard}</option>
+                    <option value="detailed">{copy.reportDetailDetailed}</option>
+                  </StratosSelect>
+                  <StratosSelect
+                    id="akb-report-export"
+                    label={copy.reportExport}
+                    value={reportExportFormat}
+                    onChange={(event) => setReportExportFormat(event.target.value as AssistantReportExportPreference)}
+                  >
+                    <option value="xlsx">{copy.reportExportXlsxOnly}</option>
+                    <option value="pdf">{copy.reportExportPdfOnly}</option>
+                    <option value="both">{copy.reportExportBoth}</option>
+                  </StratosSelect>
+                  <fieldset className="akb-chat-report-mode__columns">
+                    <legend>{copy.reportColumns}</legend>
+                    <div>
+                      {reportColumnOptionsForTemplate(reportTemplate).map((column) => (
+                        <label key={column}>
+                          <input
+                            type="checkbox"
+                            checked={reportColumns.includes(column)}
+                            onChange={() => toggleReportColumn(column)}
+                          />
+                          <span>{assistantReportColumnLabel(column, language)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                </div>
+              ) : null}
+            </div>
             <div className="akb-chat-composer__box">
               <textarea
                 id="akb-chat-composer"
@@ -758,6 +886,37 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
       ) : null}
     </>
   );
+}
+
+function contextWithReportRequest(
+  context: Record<string, unknown>,
+  reportRequest: AssistantReportRequest | null
+): Record<string, unknown> {
+  const next = { ...context };
+  if (reportRequest) {
+    next[ASSISTANT_REPORT_REQUEST_CONTEXT_KEY] = reportRequest;
+  } else {
+    delete next[ASSISTANT_REPORT_REQUEST_CONTEXT_KEY];
+  }
+  return next;
+}
+
+function reportColumnOptionsForTemplate(template: AssistantReportTemplate): AssistantReportColumnKey[] {
+  if (template === "source_summary") {
+    return ["source_document", "evidence_summary", "page_or_section", "cited_rule_or_source", "risk_or_priority"];
+  }
+  if (template === "decision_matrix") {
+    return ["decision_or_recommendation", "risk_or_priority", "evidence_summary", "source_document", "page_or_section"];
+  }
+  return [
+    "obligation_or_area",
+    "cited_rule_or_source",
+    "practical_meaning_or_note",
+    "owner_or_role",
+    "deadline_or_frequency",
+    "source_document",
+    "page_or_section"
+  ];
 }
 
 function ThreadGroup({

@@ -5,6 +5,7 @@ import {
   normalizeAssistantAnswerReports,
   parseFirstMarkdownTable
 } from "../src/lib/reporting/assistant-answer-report";
+import { buildAssistantQueryPlan } from "../src/lib/assistant/assistant-query-planner";
 import type { AssistantChatResponse, AssistantReportArtifact, Citation } from "../src/lib/types";
 
 const citation: Citation = {
@@ -171,6 +172,51 @@ describe("assistant answer report normalization", () => {
     const normalized = normalizeAssistantAnswerReports(response, "co znamená sloupec A?", "cs");
 
     assert.equal(normalized.report_artifacts.length, 0);
+  });
+
+  it("creates report artifacts from natural questions when report mode is planned", () => {
+    const response = responseFixture({
+      answer: [
+        "Z citovaných zdrojů plyne následující:",
+        "",
+        "| Povinnost nebo oblast | Vlastník nebo role | Termín nebo periodicita |",
+        "| :--- | :--- | :--- |",
+        "| právní povinnosti | gestor dokumentu | neuvedeno |",
+        "| obchodní tajemství | vlastník informace | průběžně |"
+      ].join("\n")
+    });
+    const queryPlan = buildAssistantQueryPlan({
+      message: "Jaké povinnosti z toho plynou?",
+      language: "cs",
+      tool: "rag_document_answer",
+      reason: "rag_structured_output",
+      structuredOutput: true,
+      obligationOutput: true,
+      registryReportKind: null,
+      registryTopics: [],
+      reportRequest: {
+        enabled: true,
+        output_kind: "table",
+        template: "obligation_table",
+        detail_level: "detailed",
+        export_format: "pdf",
+        columns: ["obligation_or_area", "owner_or_role", "deadline_or_frequency"],
+        require_row_citations: true
+      }
+    });
+
+    const normalized = normalizeAssistantAnswerReports(
+      response,
+      "Jaké povinnosti z toho plynou?",
+      "cs",
+      { queryPlan }
+    );
+
+    assert.equal(normalized.report_artifacts.length, 1);
+    assert.equal(normalized.report_artifacts[0]?.title, "Seznam povinností");
+    assert.deepEqual(normalized.report_artifacts[0]?.export_formats, ["pdf"]);
+    assert.equal(normalized.report_artifacts[0]?.provenance?.query_plan_id, queryPlan.plan_id);
+    assert.equal(normalized.report_artifacts[0]?.quality?.status, "validated");
   });
 
   it("removes invalid report artifacts even when the answer has no markdown table", () => {

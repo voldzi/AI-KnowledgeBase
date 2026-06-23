@@ -54,7 +54,7 @@ export function normalizeAssistantAnswerReports(
     return responseWithUsableArtifacts;
   }
 
-  const wantsStructuredOutput = STRUCTURED_OUTPUT_RE.test(message);
+  const wantsStructuredOutput = Boolean(options.queryPlan?.structured_output) || STRUCTURED_OUTPUT_RE.test(message);
   if (!wantsStructuredOutput && usableExistingArtifacts.length === 0) {
     return responseWithUsableArtifacts;
   }
@@ -222,7 +222,7 @@ function buildReportArtifactFromMarkdownTable({
       : "Exportovatelná tabulka je vytvořená ze strukturované odpovědi. Zdrojové dokumenty zůstávají dostupné v citacích odpovědi.",
     columns,
     rows,
-    export_formats: ["xlsx", "pdf"],
+    export_formats: exportFormatsForQueryPlan(queryPlan, ["xlsx", "pdf"]),
     source_citation_count: citations.length,
     warnings: []
   }, {
@@ -372,6 +372,7 @@ function finalizeAssistantReportArtifact(
     ...artifact,
     artifact_contract_version: artifact.artifact_contract_version ?? ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION,
     artifact_kind: artifact.artifact_kind ?? (registryMetadata ? "registry_metadata_table" : "content_table"),
+    export_formats: exportFormatsForQueryPlan(options.queryPlan, artifact.export_formats),
     rows,
     provenance: artifact.provenance ?? {
       generated_from: options.generatedFrom,
@@ -385,6 +386,18 @@ function finalizeAssistantReportArtifact(
     ...enriched,
     quality: summarizeAssistantReportQuality(enriched, { message: options.message })
   };
+}
+
+function exportFormatsForQueryPlan(
+  queryPlan: AssistantQueryPlan | null,
+  fallback: AssistantReportArtifact["export_formats"]
+): AssistantReportArtifact["export_formats"] {
+  const preferred = queryPlan?.output.preferred_export_formats ?? [];
+  if (preferred.length === 0) {
+    return fallback;
+  }
+  const available = fallback.filter((format) => preferred.includes(format));
+  return available.length > 0 ? available : fallback;
 }
 
 function enrichReportRow(

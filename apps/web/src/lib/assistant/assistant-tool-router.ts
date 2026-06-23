@@ -5,6 +5,11 @@ import {
   type RegistryReportKind
 } from "@/lib/reporting/assistant-registry-report";
 import type { ResponseLanguage } from "@/lib/types";
+import {
+  assistantReportColumnLabel,
+  assistantReportRequestFromContext,
+  type AssistantReportRequest
+} from "./assistant-report-request";
 
 import {
   buildAssistantQueryPlan,
@@ -23,14 +28,20 @@ export interface AssistantToolRoute {
   registryTopics: string[];
   answerFormatInstruction: string | null;
   queryPlan: AssistantQueryPlan;
+  reportRequest: AssistantReportRequest | null;
 }
 
 const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf)/i;
 const OBLIGATION_OUTPUT_RE = /(povinnost|obligation)/i;
 
-export function routeAssistantMessage(message: string, language: ResponseLanguage): AssistantToolRoute {
-  const structuredOutput = STRUCTURED_OUTPUT_RE.test(message);
-  const obligationOutput = OBLIGATION_OUTPUT_RE.test(message);
+export function routeAssistantMessage(
+  message: string,
+  language: ResponseLanguage,
+  context: Record<string, unknown> = {}
+): AssistantToolRoute {
+  const reportRequest = assistantReportRequestFromContext(context);
+  const structuredOutput = Boolean(reportRequest) || STRUCTURED_OUTPUT_RE.test(message);
+  const obligationOutput = reportRequest?.template === "obligation_table" || OBLIGATION_OUTPUT_RE.test(message);
   if (isRegistryDocumentReportQuestion(message)) {
     return withQueryPlan(message, language, {
       tool: "registry_document_report",
@@ -39,7 +50,8 @@ export function routeAssistantMessage(message: string, language: ResponseLanguag
       obligationOutput,
       registryReportKind: registryReportKindFromMessage(message),
       registryTopics: extractRegistryDocumentTopics(message, language),
-      answerFormatInstruction: null
+      answerFormatInstruction: null,
+      reportRequest
     });
   }
   return withQueryPlan(message, language, {
@@ -49,12 +61,17 @@ export function routeAssistantMessage(message: string, language: ResponseLanguag
     obligationOutput,
     registryReportKind: null,
     registryTopics: [],
-    answerFormatInstruction: structuredOutput ? answerFormatInstruction(language, obligationOutput) : null
+    answerFormatInstruction: structuredOutput ? answerFormatInstruction(language, obligationOutput, reportRequest) : null,
+    reportRequest
   });
 }
 
-export function routeAssistantMessageForRag(message: string, language: ResponseLanguage): AssistantToolRoute {
-  const route = routeAssistantMessage(message, language);
+export function routeAssistantMessageForRag(
+  message: string,
+  language: ResponseLanguage,
+  context: Record<string, unknown> = {}
+): AssistantToolRoute {
+  const route = routeAssistantMessage(message, language, context);
   if (route.tool === "rag_document_answer") {
     return route;
   }
@@ -64,7 +81,7 @@ export function routeAssistantMessageForRag(message: string, language: ResponseL
     reason: route.structuredOutput ? "rag_structured_output" : "rag_grounded_answer",
     registryReportKind: null,
     registryTopics: [],
-    answerFormatInstruction: route.structuredOutput ? answerFormatInstruction(language, route.obligationOutput) : null,
+    answerFormatInstruction: route.structuredOutput ? answerFormatInstruction(language, route.obligationOutput, route.reportRequest) : null,
     queryPlan: buildAssistantQueryPlan({
       message,
       language,
@@ -73,8 +90,10 @@ export function routeAssistantMessageForRag(message: string, language: ResponseL
       structuredOutput: route.structuredOutput,
       obligationOutput: route.obligationOutput,
       registryReportKind: null,
-      registryTopics: []
-    })
+      registryTopics: [],
+      reportRequest: route.reportRequest
+    }),
+    reportRequest: route.reportRequest
   };
 }
 
@@ -110,12 +129,17 @@ function withQueryPlan(
       structuredOutput: route.structuredOutput,
       obligationOutput: route.obligationOutput,
       registryReportKind: route.registryReportKind,
-      registryTopics: route.registryTopics
+      registryTopics: route.registryTopics,
+      reportRequest: route.reportRequest
     })
   };
 }
 
-function answerFormatInstruction(language: ResponseLanguage, obligationOutput: boolean): string {
+function answerFormatInstruction(
+  language: ResponseLanguage,
+  obligationOutput: boolean,
+  reportRequest: AssistantReportRequest | null
+): string {
   const instruction = language === "en"
     ? [
         "Structured output requirement:",
@@ -134,5 +158,25 @@ function answerFormatInstruction(language: ResponseLanguage, obligationOutput: b
       ? "\n- For every obligation row, include the best source-supported explanation available."
       : "\n- U každého řádku povinnosti uveď nejlepší dostupné vysvětlení podložené zdrojem."
     : "";
-  return `${instruction}${obligationInstruction}`;
+  const reportModeInstruction = reportRequest
+    ? reportRequestInstruction(language, reportRequest)
+    : "";
+  return `${instruction}${obligationInstruction}${reportModeInstruction}`;
+}
+
+function reportRequestInstruction(language: ResponseLanguage, request: AssistantReportRequest): string {
+  const columns = request.columns.map((column) => assistantReportColumnLabel(column, language)).join(", ");
+  const detail = language === "en"
+    ? `\n- Detail level requested by the user: ${request.detail_level}.`
+    : `\n- Uživatel zvolil úroveň detailu: ${request.detail_level}.`;
+  const exportFormat = language === "en"
+    ? `\n- Preferred export format in the UI: ${request.export_format}.`
+    : `\n- Preferovaný export v UI: ${request.export_format}.`;
+  const columnInstruction = language === "en"
+    ? `\n- Use these requested columns when the cited sources support them: ${columns}.`
+    : `\n- Použij tyto zvolené sloupce, pokud je citované zdroje podporují: ${columns}.`;
+  const citationInstruction = language === "en"
+    ? "\n- Each table row must be traceable to the cited sources; write \"not stated\" where a requested detail is absent."
+    : "\n- Každý řádek tabulky musí být dohledatelný v citovaných zdrojích; pokud zvolený detail chybí, napiš \"neuvedeno\".";
+  return `${detail}${exportFormat}${columnInstruction}${citationInstruction}`;
 }

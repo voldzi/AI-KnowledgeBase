@@ -131,6 +131,25 @@ Internal warning flags such as registry/report routing markers are not rendered
 as raw codes in the Employee Chat Portal. The UI either hides purely technical
 flags or maps operational warnings to short user-facing messages.
 
+The Employee Chat Portal also supports a guided report mode. When enabled, the
+browser still sends the user's natural-language question unchanged, but adds an
+`assistant_report_request` object to request `context`. The web BFF validates
+and normalizes this object before routing:
+
+- `enabled: true`
+- `output_kind: "table"`
+- `template`: `obligation_table`, `source_summary`, or `decision_matrix`
+- `detail_level`: `brief`, `standard`, or `detailed`
+- `export_format`: `xlsx`, `pdf`, or `both`
+- `columns`: bounded list of known report column keys
+- `require_row_citations: true`
+
+This lets the user choose output type, columns, detail level, and export format
+from UI controls instead of writing technical prompt text. The request becomes
+part of `assistant_query_plan`, drives `answer_format_instruction`, and narrows
+report `export_formats` when the artifact is normalized. The browser never
+gets direct access to retrieval internals or storage objects through this mode.
+
 ## Employee Chat Report Artifacts
 
 When the employee asks for a table, report, overview, Excel/PDF export, or

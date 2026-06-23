@@ -61,6 +61,14 @@ cited-answer summary or one-column list is not a valid enterprise artifact.
 must keep row-level citations; registry metadata tables are explicitly marked as
 permission-scoped metadata and may have no chunk citations.
 
+The AKB web bridge accepts guided report preferences in the generic assistant
+request `context` under `assistant_report_request`. This is used by the
+Employee Chat Portal report mode to request a bounded table template, selected
+columns, detail level, and preferred export format while keeping the user's
+question natural-language. The BFF validates this object, stores the resulting
+plan in `assistant_query_plan`, and still enforces the same citation and export
+quality gates before a table is rendered or downloaded.
+
 Registry API exposes the first enterprise metadata aggregate endpoint:
 
 ```text

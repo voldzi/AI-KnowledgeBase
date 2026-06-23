@@ -63,6 +63,13 @@ The AKB web/API bridge also attaches an `assistant_query_plan` to
 output kind, registry topics, and quality gates. It is internal state for
 continuations, audit, and diagnostics; it is not user-facing prose.
 
+Guided report mode is represented as validated request context, not as visible
+prompt engineering. The Employee Chat Portal may send
+`assistant_report_request` with a bounded template, detail level, export format,
+and known column keys. The web BFF uses that request to force structured output,
+populate `assistant_query_plan`, build `answer_format_instruction`, and narrow
+available export buttons. The original user question remains natural language.
+
 For content tables, `report.v2` requires row-level citations. Registry metadata
 tables are the explicit exception because they are permission-scoped metadata
 aggregations rather than document-content interpretation.

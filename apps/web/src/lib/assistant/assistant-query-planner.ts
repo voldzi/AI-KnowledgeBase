@@ -1,5 +1,10 @@
 import type { ResponseLanguage } from "@/lib/types";
 import type { RegistryReportKind } from "@/lib/reporting/assistant-registry-report";
+import {
+  assistantReportColumnLabel,
+  assistantReportExportFormats,
+  type AssistantReportRequest
+} from "./assistant-report-request";
 
 import type { AssistantToolName, AssistantToolRouteReason } from "./assistant-tool-router";
 
@@ -28,6 +33,9 @@ export interface AssistantQueryPlan {
     kind: AssistantPlannedOutputKind;
     artifact_contract_version: typeof ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION;
     required_columns: string[];
+    requested_columns: string[];
+    detail_level: AssistantReportRequest["detail_level"] | null;
+    preferred_export_formats: Array<"xlsx" | "pdf">;
   };
   quality_gates: {
     citations_required: boolean;
@@ -51,9 +59,11 @@ export function buildAssistantQueryPlan(input: {
   obligationOutput: boolean;
   registryReportKind: RegistryReportKind | null;
   registryTopics: string[];
+  reportRequest?: AssistantReportRequest | null;
 }): AssistantQueryPlan {
   const intent = queryIntentFor(input);
   const outputKind = outputKindFor(input.tool, intent, input.structuredOutput);
+  const requiredColumns = requiredColumnsFor(input.language, intent, input.reportRequest ?? null);
   return {
     plan_id: `plan_${stableHash([
       ASSISTANT_QUERY_PLAN_VERSION,
@@ -75,12 +85,15 @@ export function buildAssistantQueryPlan(input: {
     output: {
       kind: outputKind,
       artifact_contract_version: ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION,
-      required_columns: requiredColumnsFor(input.language, intent)
+      required_columns: requiredColumns,
+      requested_columns: requiredColumns,
+      detail_level: input.reportRequest?.detail_level ?? null,
+      preferred_export_formats: assistantReportExportFormats(input.reportRequest ?? null)
     },
     quality_gates: {
       citations_required: input.tool === "rag_document_answer",
       row_citations_required: input.tool === "rag_document_answer" && input.structuredOutput,
-      min_columns: input.structuredOutput || input.tool === "registry_document_report" ? 2 : null,
+      min_columns: input.structuredOutput || input.tool === "registry_document_report" ? Math.min(Math.max(requiredColumns.length, 2), 8) : null,
       min_informative_cells_per_row: input.structuredOutput ? 2 : null,
       registry_metadata_without_chunk_citations_allowed: input.tool === "registry_document_report"
     },
@@ -96,11 +109,12 @@ function queryIntentFor(input: {
   structuredOutput: boolean;
   obligationOutput: boolean;
   registryReportKind: RegistryReportKind | null;
+  reportRequest?: AssistantReportRequest | null;
 }): AssistantQueryIntent {
   if (input.tool === "registry_document_report") {
     return input.registryReportKind === "document_list" ? "document_list" : "document_metadata_report";
   }
-  if (input.structuredOutput && input.obligationOutput) {
+  if (input.reportRequest?.template === "obligation_table" || (input.structuredOutput && input.obligationOutput)) {
     return "obligation_table";
   }
   if (input.structuredOutput) {
@@ -123,7 +137,14 @@ function outputKindFor(
   return "answer";
 }
 
-function requiredColumnsFor(language: ResponseLanguage, intent: AssistantQueryIntent): string[] {
+function requiredColumnsFor(
+  language: ResponseLanguage,
+  intent: AssistantQueryIntent,
+  reportRequest: AssistantReportRequest | null
+): string[] {
+  if (reportRequest?.columns.length) {
+    return reportRequest.columns.map((column) => assistantReportColumnLabel(column, language));
+  }
   if (intent !== "obligation_table") {
     return [];
   }

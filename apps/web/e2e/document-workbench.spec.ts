@@ -221,6 +221,25 @@ test.describe("Document Workbench product paths", () => {
     await expect(report).not.toContainText("vytvoř tabulku kde bude seznam povinností");
   });
 
+  test("DW-14G knowledge chat report mode guides natural questions into exportable reports", async ({ page }) => {
+    await page.goto(appPath("/chat"));
+
+    const reportMode = page.locator(".akb-chat-report-mode");
+    await reportMode.locator(".akb-chat-report-mode__toggle").click();
+    await expect(reportMode.locator(".akb-chat-report-mode__panel")).toBeVisible();
+    await reportMode.getByText("Vlastník nebo role").click();
+    await page.getByLabel("Zeptejte se na dokument, postup nebo odpovědnost").fill("Jaké povinnosti z toho plynou?");
+    await page.getByRole("button", { name: "Odeslat" }).click();
+
+    const assistantMessage = page.locator(".akb-chat-message--assistant").last();
+    const report = assistantMessage.locator(".akb-chat-report");
+    await expect(report.getByRole("heading", { name: "Seznam povinností" })).toBeVisible();
+    await expect(report).toContainText("Vlastník nebo role");
+    await expect(report).toContainText("Gestor dokumentu");
+    await expect(report.getByRole("button", { name: /Exportovat Excel/ })).toBeVisible();
+    await expect(report.getByRole("button", { name: /Exportovat PDF/ })).toHaveCount(0);
+  });
+
   test("DW-14A assistant citation document endpoint redirects to signed source content", async ({ page }) => {
     await page.goto(appPath("/api/assistant/citations/chunk_md_109/document"));
 

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
-    const assistantRoute = routeAssistantMessage(message, responseLanguage);
+    const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
     const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
     const registryReportKind = assistantRoute.registryReportKind ?? "document_inventory_summary";
     const registryTopics = assistantRoute.registryTopics;
