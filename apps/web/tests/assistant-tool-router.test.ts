@@ -31,6 +31,29 @@ describe("assistant tool router", () => {
     assert.equal(route.queryPlan.intent, "document_list");
   });
 
+  it("routes document type breakdown questions to registry metadata reports", () => {
+    const route = routeAssistantMessage("Jakého typu jsou dokumenty, které máš k dispozici?", "cs");
+
+    assert.equal(route.tool, "registry_document_report");
+    assert.equal(route.reason, "registry_metadata_intent");
+    assert.equal(route.registryReportKind, "document_type_count");
+    assert.deepEqual(route.registryTopics, ["všechny dokumenty"]);
+    assert.equal(route.queryPlan.intent, "document_metadata_report");
+    assert.equal(route.queryPlan.retrieval.registry_report_kind, "document_type_count");
+  });
+
+  it("keeps registry follow-up report requests on the registry path", () => {
+    const route = routeAssistantMessage("Ok vytvoř tedy sestavu, kde bude typ počet", "cs", {
+      answer_source: "registry_metadata_summary",
+      report_kind: "document_inventory_summary"
+    });
+
+    assert.equal(route.tool, "registry_document_report");
+    assert.equal(route.registryReportKind, "document_type_count");
+    assert.equal(route.structuredOutput, true);
+    assert.equal(route.queryPlan.retrieval.registry_report_kind, "document_type_count");
+  });
+
   it("keeps content interpretation reports on the RAG answer path", () => {
     const route = routeAssistantMessage("Vytvoř sestavu z obsahu smlouvy o podpoře.", "cs");
     const context = ragContextForAssistantRoute({ entity_id: "contract-1" }, route);

@@ -42,13 +42,13 @@ export function routeAssistantMessage(
   const reportRequest = assistantReportRequestFromContext(context);
   const structuredOutput = Boolean(reportRequest) || STRUCTURED_OUTPUT_RE.test(message);
   const obligationOutput = reportRequest?.template === "obligation_table" || OBLIGATION_OUTPUT_RE.test(message);
-  if (isRegistryDocumentReportQuestion(message)) {
+  if (isRegistryDocumentReportQuestion(message, context)) {
     return withQueryPlan(message, language, {
       tool: "registry_document_report",
       reason: "registry_metadata_intent",
       structuredOutput,
       obligationOutput,
-      registryReportKind: registryReportKindFromMessage(message),
+      registryReportKind: registryReportKindFromMessage(message, context),
       registryTopics: extractRegistryDocumentTopics(message, language),
       answerFormatInstruction: null,
       reportRequest

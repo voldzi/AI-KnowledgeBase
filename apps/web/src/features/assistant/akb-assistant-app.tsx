@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -87,6 +87,13 @@ interface AssistantThread {
 }
 
 type AssistantAppLabels = CitationViewerLabels & Record<string, string>;
+type SlashCommandId = "report" | "types" | "excel" | "pdf" | "new_thread";
+
+interface SlashCommandOption {
+  id: SlashCommandId;
+  token: string;
+  label: string;
+}
 
 const assistantMarkdownComponents: Components = {
   a({ children, href }) {
@@ -357,6 +364,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     return [...filtered].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
   }, [threadSearch, threads]);
   const visibleSuggestions = suggestions.slice(0, 4);
+  const visibleSlashCommands = useMemo(() => slashCommandOptions(composer, language), [composer, language]);
 
   useEffect(() => {
     if (!activeThread?.conversationId || activeThread.historyLoaded) {
@@ -524,6 +532,46 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
       }));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    if (visibleSlashCommands.length && composer.trimStart().startsWith("/")) {
+      applySlashCommand(visibleSlashCommands[0].id);
+      return;
+    }
+    void submitQuestion();
+  }
+
+  function applySlashCommand(commandId: SlashCommandId) {
+    setStatusMessage(null);
+    const remainder = removeLeadingSlashToken(composer);
+    if (commandId === "new_thread") {
+      createThread();
+      return;
+    }
+    if (commandId === "types") {
+      setReportModeEnabled(false);
+      setComposer(language === "en"
+        ? "Create a report with document type and count."
+        : "Vytvoř sestavu, kde bude typ dokumentu a počet.");
+      return;
+    }
+    setComposer(remainder);
+    setReportModeEnabled(true);
+    if (commandId === "excel") {
+      setReportExportFormat("xlsx");
+      return;
+    }
+    if (commandId === "pdf") {
+      setReportExportFormat("pdf");
     }
   }
 
@@ -790,11 +838,28 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
                 </div>
               ) : null}
             </div>
+            {visibleSlashCommands.length ? (
+              <div className="akb-chat-slash-menu" role="listbox" aria-label={language === "en" ? "Quick actions" : "Rychlé akce"}>
+                {visibleSlashCommands.map((command) => (
+                  <button
+                    key={command.id}
+                    type="button"
+                    role="option"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => applySlashCommand(command.id)}
+                  >
+                    <span>{command.token}</span>
+                    {command.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="akb-chat-composer__box">
               <textarea
                 id="akb-chat-composer"
                 value={composer}
                 onChange={(event) => setComposer(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
                 placeholder={copy.composerPlaceholder}
                 rows={2}
               />
@@ -921,6 +986,43 @@ function contextWithReportRequest(
     delete next[ASSISTANT_REPORT_REQUEST_CONTEXT_KEY];
   }
   return next;
+}
+
+function slashCommandOptions(composer: string, language: AklLanguage): SlashCommandOption[] {
+  const trimmed = composer.trimStart();
+  if (!trimmed.startsWith("/")) {
+    return [];
+  }
+  if (/^\/[^\s]+\s/.test(trimmed)) {
+    return [];
+  }
+  const query = trimmed.slice(1).split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+  const options = language === "en"
+    ? [
+        { id: "report" as const, token: "/report", label: "Report mode" },
+        { id: "types" as const, token: "/types", label: "Document types" },
+        { id: "excel" as const, token: "/excel", label: "Excel output" },
+        { id: "pdf" as const, token: "/pdf", label: "PDF output" },
+        { id: "new_thread" as const, token: "/new", label: "New thread" }
+      ]
+    : [
+        { id: "report" as const, token: "/sestava", label: "Režim sestavy" },
+        { id: "types" as const, token: "/typy", label: "Typy dokumentů" },
+        { id: "excel" as const, token: "/excel", label: "Výstup Excel" },
+        { id: "pdf" as const, token: "/pdf", label: "Výstup PDF" },
+        { id: "new_thread" as const, token: "/nove", label: "Nové vlákno" }
+      ];
+  return options.filter((option) => {
+    if (!query) {
+      return true;
+    }
+    return option.token.slice(1).toLowerCase().startsWith(query) ||
+      option.label.toLowerCase().includes(query);
+  });
+}
+
+function removeLeadingSlashToken(value: string): string {
+  return value.replace(/^\s*\/[^\s]*\s*/, "");
 }
 
 function reportColumnOptionsForTemplate(template: AssistantReportTemplate): AssistantReportColumnKey[] {

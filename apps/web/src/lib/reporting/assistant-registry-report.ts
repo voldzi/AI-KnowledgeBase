@@ -50,7 +50,7 @@ export interface RegistryReportAuditSummary {
 export const REGISTRY_DOCUMENT_SCAN_WARNING_THRESHOLD = 20_000;
 export const REGISTRY_DOCUMENT_LIST_ROW_LIMIT = 500;
 
-export type RegistryReportKind = "document_inventory_summary" | "document_list";
+export type RegistryReportKind = "document_inventory_summary" | "document_list" | "document_type_count";
 
 const INVENTORY_INTENT_WORDS = [
   "kolik",
@@ -65,6 +65,8 @@ const INVENTORY_INTENT_WORDS = [
 ];
 
 const COUNT_INTENT_WORDS = ["kolik", "pocet", "pocitej", "spocitej", "statistik", "count"];
+
+const DOCUMENT_TYPE_INTENT_RE = /\b(?:typ|typu|typy|druh|druhu|druhy|kategorie|kategorii|format|formaty)\b/;
 
 const LIST_INTENT_WORDS = [
   "seznam",
@@ -226,24 +228,34 @@ const DOCUMENT_TYPE_LABELS_EN: Record<Document["document_type"], string> = {
   other: "other"
 };
 
-export function isRegistryDocumentReportQuestion(message: string): boolean {
+export function isRegistryDocumentReportQuestion(message: string, context: Record<string, unknown> = {}): boolean {
   const normalized = normalizeText(message);
   if (!normalized) return false;
   const hasInventoryIntent = INVENTORY_INTENT_WORDS.some((word) => normalized.includes(word));
   const hasStructuredOutputIntent = STRUCTURED_OUTPUT_WORDS.some((word) => normalized.includes(word));
   const hasDocumentOrDomain = DOCUMENT_OR_DOMAIN_WORDS.some((word) => normalizedIncludesTerm(normalized, word));
   const asksForContentInterpretation = CONTENT_INTERPRETATION_WORDS.some((word) => normalized.includes(word));
-  if (asksForContentInterpretation && !hasInventoryIntent) {
+  const asksForDocumentTypeBreakdown = hasDocumentTypeBreakdownIntent(normalized);
+  const hasRegistryContext = isRegistryMetadataContext(context);
+  if (asksForContentInterpretation && !hasInventoryIntent && !(hasRegistryContext && asksForDocumentTypeBreakdown)) {
     return false;
+  }
+  if (asksForDocumentTypeBreakdown && (hasDocumentOrDomain || hasRegistryContext || hasInventoryIntent || hasStructuredOutputIntent)) {
+    return true;
   }
   return hasDocumentOrDomain && (hasInventoryIntent || hasStructuredOutputIntent);
 }
 
-export function registryReportKindFromMessage(message: string): RegistryReportKind {
+export function registryReportKindFromMessage(message: string, context: Record<string, unknown> = {}): RegistryReportKind {
   const normalized = normalizeText(message);
   const asksForCount = COUNT_INTENT_WORDS.some((word) => normalized.includes(word));
   const asksForList = LIST_INTENT_WORDS.some((word) => normalized.includes(word));
   const asksForStructuredOutput = STRUCTURED_OUTPUT_WORDS.some((word) => normalized.includes(word));
+  const asksForDocumentTypeBreakdown = hasDocumentTypeBreakdownIntent(normalized);
+  const hasDocumentOrDomain = DOCUMENT_OR_DOMAIN_WORDS.some((word) => normalizedIncludesTerm(normalized, word));
+  if (asksForDocumentTypeBreakdown && (asksForCount || asksForStructuredOutput || hasDocumentOrDomain || isRegistryMetadataContext(context))) {
+    return "document_type_count";
+  }
   return (asksForList || asksForStructuredOutput) && !asksForCount ? "document_list" : "document_inventory_summary";
 }
 
@@ -254,20 +266,28 @@ export function extractRegistryDocumentTopics(message: string, language: Respons
 export function buildRegistryDocumentReportFromSummary(
   input: RegistrySummaryReportBuildInput
 ): AssistantChatResponse | null {
-  if (!isRegistryDocumentReportQuestion(input.message)) {
+  if (!isRegistryDocumentReportQuestion(input.message, input.context)) {
     return null;
   }
-  if ((input.kind ?? registryReportKindFromMessage(input.message)) === "document_list") {
+  const kind = input.kind ?? registryReportKindFromMessage(input.message, input.context);
+  if (kind === "document_list") {
     return null;
   }
 
   const language = input.language ?? "cs";
-  const artifact = buildArtifactFromSummary({
-    language,
-    summary: input.summary
-  });
+  const artifact = kind === "document_type_count"
+    ? buildDocumentTypeCountArtifactFromSummary({
+        language,
+        summary: input.summary
+      })
+    : buildArtifactFromSummary({
+        language,
+        summary: input.summary
+      });
   const warnings = [...artifact.warnings];
-  const topicLabels = artifact.rows.map((row) => String(row.cells.topic ?? ""));
+  const topicLabels = kind === "document_type_count"
+    ? []
+    : artifact.rows.map((row) => String(row.cells.topic ?? ""));
   const conversationId = input.conversationId ?? `conv_registry_${hashText(input.message).slice(0, 16)}`;
 
   return buildRegistryResponse({
@@ -280,33 +300,44 @@ export function buildRegistryDocumentReportFromSummary(
     topicLabels,
     warnings,
     reportSource: "registry_metadata_summary",
-    reportKind: "document_inventory_summary"
+    reportKind: kind
   });
 }
 
 export function buildRegistryDocumentReport(input: RegistryReportBuildInput): AssistantChatResponse | null {
-  if (!isRegistryDocumentReportQuestion(input.message)) {
+  if (!isRegistryDocumentReportQuestion(input.message, input.context)) {
     return null;
   }
 
   const language = input.language ?? "cs";
   const topics = extractTopics(input.message);
-  const kind = input.kind ?? registryReportKindFromMessage(input.message);
+  const kind = input.kind ?? registryReportKindFromMessage(input.message, input.context);
   const matchedDocuments = kind === "document_list" ? documentsMatchingAnyTopic(input.documents, topics) : input.documents;
-  const artifact = kind === "document_list"
-    ? buildDocumentListArtifact({
+  const artifact = kind === "document_type_count"
+    ? buildDocumentTypeCountArtifact({
+        language,
+        documents: input.documents
+      })
+    : kind === "document_list"
+      ? buildDocumentListArtifact({
         language,
         documents: matchedDocuments,
         topics
-      })
-    : buildArtifact({
+        })
+      : buildArtifact({
         language,
         documents: input.documents,
         topics
-      });
+        });
   const warnings = [...artifact.warnings];
-  const topicLabels = topics.map((topic) => language === "en" ? topic.labelEn : topic.labelCs);
-  const totalMatched = kind === "document_list" ? matchedDocuments.length : uniqueMatchedDocumentCount(input.documents, topics);
+  const topicLabels = kind === "document_type_count"
+    ? []
+    : topics.map((topic) => language === "en" ? topic.labelEn : topic.labelCs);
+  const totalMatched = kind === "document_list"
+    ? matchedDocuments.length
+    : kind === "document_type_count"
+      ? input.documents.length
+      : uniqueMatchedDocumentCount(input.documents, topics);
   const conversationId = input.conversationId ?? `conv_registry_${hashText(input.message).slice(0, 16)}`;
 
   return buildRegistryResponse({
@@ -360,15 +391,7 @@ function buildRegistryResponse(input: {
       topics: input.topicLabels
     },
     citations: [],
-    follow_up_questions: input.language === "en"
-      ? [
-          "Do you want a breakdown by document type, classification, or owner?",
-          "Should I narrow this to valid documents only?"
-        ]
-      : [
-          "Chcete rozpad podle typu dokumentu, klasifikace nebo vlastníka?",
-          "Mám výsledek zúžit jen na platné dokumenty?"
-        ],
+    follow_up_questions: registryFollowUpQuestions(input.language, input.reportKind),
     suggested_actions: [
       {
         label: input.language === "en" ? "Export report" : "Exportovat sestavu",
@@ -474,6 +497,58 @@ function buildDocumentListArtifact(input: {
   };
 }
 
+function buildDocumentTypeCountArtifactFromSummary(input: {
+  language: ResponseLanguage;
+  summary: DocumentMetadataSummary;
+}): AssistantReportArtifact {
+  const title = input.language === "en" ? "Documents by Type" : "Dokumenty podle typu";
+  const buckets = documentTypeBucketsFromSummary(input.summary);
+  const total = input.summary.total_matched_documents || sumBucketCounts(buckets);
+  const rows = documentTypeBucketsToRows({
+    buckets,
+    language: input.language,
+    total
+  });
+  return {
+    artifact_id: `rpt_registry_type_count_${hashText(`${title}:${buckets.map((bucket) => `${bucket.key}:${bucket.count}`).join(",")}`).slice(0, 16)}`,
+    title,
+    description: input.language === "en"
+      ? "Permission-scoped count of AKB registry documents by document type."
+      : "Počet dokumentů podle typu z registru AKB v rozsahu oprávnění aktuálního uživatele.",
+    columns: documentTypeCountColumns(input.language),
+    rows,
+    export_formats: ["xlsx", "pdf"],
+    source_citation_count: 0,
+    warnings: ["REGISTRY_METADATA_REPORT", "REGISTRY_DOCUMENT_TYPE_COUNT", ...input.summary.warnings]
+  };
+}
+
+function buildDocumentTypeCountArtifact(input: {
+  language: ResponseLanguage;
+  documents: Document[];
+}): AssistantReportArtifact {
+  const title = input.language === "en" ? "Documents by Type" : "Dokumenty podle typu";
+  const buckets = summaryBucketsFromValues(input.documents.map((document) => document.document_type));
+  return {
+    artifact_id: `rpt_registry_type_count_${hashText(`${title}:${buckets.map((bucket) => `${bucket.key}:${bucket.count}`).join(",")}`).slice(0, 16)}`,
+    title,
+    description: input.language === "en"
+      ? "Permission-scoped count of AKB registry documents by document type."
+      : "Počet dokumentů podle typu z registru AKB v rozsahu oprávnění aktuálního uživatele.",
+    columns: documentTypeCountColumns(input.language),
+    rows: documentTypeBucketsToRows({
+      buckets,
+      language: input.language,
+      total: input.documents.length
+    }),
+    export_formats: ["xlsx", "pdf"],
+    source_citation_count: 0,
+    warnings: input.documents.length >= REGISTRY_DOCUMENT_SCAN_WARNING_THRESHOLD
+      ? ["REGISTRY_METADATA_REPORT", "REGISTRY_DOCUMENT_TYPE_COUNT", "REGISTRY_SCAN_LIMIT_REACHED"]
+      : ["REGISTRY_METADATA_REPORT", "REGISTRY_DOCUMENT_TYPE_COUNT"]
+  };
+}
+
 function buildArtifactFromSummary(input: {
   language: ResponseLanguage;
   summary: DocumentMetadataSummary;
@@ -543,6 +618,14 @@ function reportColumns(language: ResponseLanguage): AssistantReportArtifact["col
     { key: "statuses", label: language === "en" ? "Statuses" : "Stavy", type: "text" },
     { key: "owners", label: language === "en" ? "Owners / stewards" : "Vlastníci / gestoři", type: "text" },
     { key: "example_documents", label: language === "en" ? "Examples" : "Příklady dokumentů", type: "text" }
+  ];
+}
+
+function documentTypeCountColumns(language: ResponseLanguage): AssistantReportArtifact["columns"] {
+  return [
+    { key: "document_type", label: language === "en" ? "Document type" : "Typ dokumentu", type: "text" },
+    { key: "document_count", label: language === "en" ? "Documents" : "Počet", type: "number" },
+    { key: "share", label: language === "en" ? "Share" : "Podíl", type: "text" }
   ];
 }
 
@@ -617,6 +700,17 @@ function buildAnswer(input: {
   warnings: string[];
 }) {
   const topics = input.topicLabels.join(", ");
+  if (input.reportKind === "document_type_count") {
+    const capWarning = input.warnings.includes("REGISTRY_SCAN_LIMIT_REACHED")
+      ? input.language === "en"
+        ? " The registry scan reached the current web paging ceiling, so this should be moved to a server-side aggregate endpoint for exact enterprise-wide totals."
+        : " Načtení dosáhlo aktuálního stránkovacího stropu web vrstvy, takže pro přesné celopodnikové součty je vhodné doplnit serverovou agregační službu."
+      : "";
+    if (input.language === "en") {
+      return `I prepared a permission-scoped document type breakdown from ${input.scannedDocumentCount} AKB registry records. The report contains ${input.rowCount} document types and ${input.totalMatched} documents in total.${capWarning}`;
+    }
+    return `Připravil jsem rozpad dokumentů podle typu z ${input.scannedDocumentCount} záznamů registru AKB viditelných podle oprávnění aktuálního uživatele. Sestava obsahuje ${input.rowCount} typů dokumentů a celkem ${input.totalMatched} dokumentů.${capWarning}`;
+  }
   if (input.reportKind === "document_list") {
     const truncated = input.warnings.includes("REPORT_ROWS_TRUNCATED")
       ? input.language === "en"
@@ -638,6 +732,110 @@ function buildAnswer(input: {
     ? " Načtení dosáhlo aktuálního stránkovacího stropu web vrstvy, takže pro přesné celopodnikové součty je vhodné doplnit serverovou agregační službu."
     : "";
   return `Zkontroloval jsem ${input.scannedDocumentCount} dokumentů viditelných podle oprávnění aktuálního uživatele a našel ${input.totalMatched} odpovídajících dokumentů pro témata: ${topics}. Tabulka níže je metadatová inventura, ne citovaný výklad obsahu dokumentů.${capWarning}`;
+}
+
+function registryFollowUpQuestions(language: ResponseLanguage, reportKind: RegistryReportKind): string[] {
+  if (reportKind === "document_type_count") {
+    return language === "en"
+      ? [
+          "Do you want a document list for one selected type?",
+          "Should I break this down by classification or owner as well?"
+        ]
+      : [
+          "Chcete vypsat dokumenty jednoho vybraného typu?",
+          "Mám doplnit rozpad podle klasifikace nebo vlastníka?"
+        ];
+  }
+  return language === "en"
+    ? [
+        "Do you want a breakdown by document type, classification, or owner?",
+        "Should I narrow this to valid documents only?"
+      ]
+    : [
+        "Chcete rozpad podle typu dokumentu, klasifikace nebo vlastníka?",
+        "Mám výsledek zúžit jen na platné dokumenty?"
+      ];
+}
+
+function documentTypeBucketsToRows(input: {
+  buckets: DocumentMetadataSummaryBucket[];
+  language: ResponseLanguage;
+  total: number;
+}): AssistantReportRow[] {
+  const typeLabels = input.language === "en" ? DOCUMENT_TYPE_LABELS_EN : DOCUMENT_TYPE_LABELS_CS;
+  return [...input.buckets]
+    .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key, input.language === "cs" ? "cs" : "en"))
+    .map((bucket, index) => ({
+      row_id: `document_type_${index + 1}_${slugify(bucket.key) || "type"}`,
+      cells: {
+        document_type: typeLabels[bucket.key as Document["document_type"]] ?? bucket.label ?? bucket.key,
+        document_count: bucket.count,
+        share: formatShare(bucket.count, input.total, input.language)
+      },
+      citations: []
+    }));
+}
+
+function summaryBucketsFromValues(values: string[]): DocumentMetadataSummaryBucket[] {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "cs"))
+    .map(([key, count]) => ({ key, label: key, count }));
+}
+
+function documentTypeBucketsFromSummary(summary: DocumentMetadataSummary): DocumentMetadataSummaryBucket[] {
+  if (summary.by_document_type.length) {
+    return summary.by_document_type;
+  }
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const topic of summary.topics) {
+    for (const bucket of topic.document_types) {
+      const current = counts.get(bucket.key);
+      counts.set(bucket.key, {
+        label: current?.label ?? bucket.label,
+        count: (current?.count ?? 0) + bucket.count
+      });
+    }
+  }
+  return [...counts.entries()]
+    .sort((left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0], "cs"))
+    .map(([key, value]) => ({ key, label: value.label, count: value.count }));
+}
+
+function sumBucketCounts(buckets: DocumentMetadataSummaryBucket[]): number {
+  return buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+}
+
+function formatShare(count: number, total: number, language: ResponseLanguage): string {
+  if (!Number.isFinite(total) || total <= 0) {
+    return "";
+  }
+  const value = count / total;
+  return new Intl.NumberFormat(language === "cs" ? "cs-CZ" : "en-US", {
+    style: "percent",
+    maximumFractionDigits: 1
+  }).format(value).replace(/\u00a0/g, " ");
+}
+
+function hasDocumentTypeBreakdownIntent(normalizedMessage: string): boolean {
+  return DOCUMENT_TYPE_INTENT_RE.test(normalizedMessage);
+}
+
+function isRegistryMetadataContext(context: Record<string, unknown>): boolean {
+  const answerSource = typeof context.answer_source === "string" ? context.answer_source : "";
+  const reportKind =
+    typeof context.report_kind === "string"
+      ? context.report_kind
+      : typeof context.registry_report_kind === "string"
+        ? context.registry_report_kind
+        : "";
+  return answerSource.startsWith("registry_metadata") ||
+    reportKind === "document_inventory_summary" ||
+    reportKind === "document_list" ||
+    reportKind === "document_type_count";
 }
 
 function uniqueMatchedDocumentCount(documents: Document[], topics: TopicQuery[]) {

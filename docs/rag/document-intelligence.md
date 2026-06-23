@@ -160,6 +160,13 @@ part of `assistant_query_plan`, drives `answer_format_instruction`, and narrows
 report `export_formats` when the artifact is normalized. The browser never
 gets direct access to retrieval internals or storage objects through this mode.
 
+The Employee Chat composer sends the question with `Enter`; `Shift+Enter`
+inserts a new line. A leading `/` opens a compact quick-action menu for common
+actions such as report mode, document type counts, Excel/PDF preference, and a
+new thread. Slash actions only adjust chat UI state or prefill a natural
+question; the server still receives the same governed assistant request
+contract.
+
 ## Employee Chat Report Artifacts
 
 When the employee asks for a table, report, overview, Excel/PDF export, or
@@ -245,13 +252,21 @@ calling RAG. This keeps exact inventory work out of the LLM path:
   permission-visible documents. If that ceiling is reached, the response
   includes `REGISTRY_SCAN_LIMIT_REACHED`.
 
-Registry metadata reports now have two structured shapes:
+Registry metadata reports now have three structured shapes:
 
 - `document_inventory_summary` for count/aggregate questions such as
   "kolik máme dokumentů na téma digitalizace".
 - `document_list` for list requests such as "seznam smluv do tabulky"; AKB
   uses the permission-scoped `/documents` endpoint with the same STRATOS context
   filters and returns document metadata rows with XLSX/PDF export.
+- `document_type_count` for type breakdowns such as "jakého typu jsou
+  dokumenty" or the follow-up "vytvoř sestavu, kde bude typ počet"; AKB uses
+  the metadata summary buckets and returns `Typ dokumentu`, `Počet`, and
+  `Podíl`.
+
+Content interpretation still stays on the RAG path. A request such as "vytvoř
+sestavu z obsahu smlouvy" is not a Registry metadata report even when it asks
+for a table or export.
 
 For production use across very large document sets, the current endpoint should
 be optimized into a SQL-backed aggregate/search projection that can group by

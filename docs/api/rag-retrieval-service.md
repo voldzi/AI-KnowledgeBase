@@ -71,10 +71,10 @@ Content artifacts require row-level citations before they are shown or exported.
 
 Inventory-style document questions are handled by the AKB web BFF before RAG
 when the question can be answered from Registry API metadata, for example
-counts or tables by topic. Those responses include metadata breakdowns by type,
-classification, owner/steward, and status. They use the same assistant response
-and `report_artifacts` shape, but carry `answer_source:
-"registry_metadata_summary"` when backed by `GET
+counts, lists, or type breakdowns. Those responses include metadata breakdowns
+by topic, document type, classification, owner/steward, and status. They use
+the same assistant response and `report_artifacts` shape, but carry
+`answer_source: "registry_metadata_summary"` when backed by `GET
 /api/v1/documents/metadata-summary`, use `artifact_kind:
 "registry_metadata_table"`, and carry no chunk citations.
 

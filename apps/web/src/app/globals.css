@@ -2000,6 +2000,39 @@ button {
   width: 14px;
 }
 
+.akb-chat-slash-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.akb-chat-slash-menu button {
+  align-items: center;
+  background: #f7fbfb;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.akb-chat-slash-menu button:hover,
+.akb-chat-slash-menu button:focus-visible {
+  border-color: #9fc2c6;
+  color: #137077;
+  outline: 0;
+}
+
+.akb-chat-slash-menu span {
+  color: var(--muted);
+  font-family: var(--mono-font);
+}
+
 .akb-chat-composer__box {
   align-items: end;
   background: #ffffff;

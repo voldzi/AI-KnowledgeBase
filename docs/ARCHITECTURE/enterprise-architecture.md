@@ -166,8 +166,9 @@ Implementation roadmap:
      ProjectFlow, Budget, and future STRATOS apps can ask scoped inventory
      questions without copying documents out of AKB.
    - Implemented structured-output step: chat inventory questions can return
-     either aggregate summaries (`document_inventory_summary`) or document rows
-     (`document_list`) with XLSX/PDF export.
+     aggregate summaries (`document_inventory_summary`), document rows
+     (`document_list`), or document type counts (`document_type_count`) with
+     XLSX/PDF export.
    - Next optimization: replace in-process aggregation with indexed SQL and
      materialized/search projections for large enterprise datasets.
 2. Retrieval truth layer:
@@ -181,7 +182,7 @@ Implementation roadmap:
    - Structured outputs are proposed values or report artifacts, not writes to
      source systems without human confirmation.
 4. Enterprise chat orchestration:
-   - Route inventory/count/list questions to Registry metadata.
+   - Route inventory/count/list/type-breakdown questions to Registry metadata.
    - Route sourced interpretation questions to RAG.
    - Route structured extraction requests to controlled extraction profiles.
    - Route operational/status questions to approved service APIs or telemetry

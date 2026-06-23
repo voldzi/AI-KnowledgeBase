@@ -100,8 +100,12 @@ describe("assistant registry report", () => {
     assert.equal(isRegistryDocumentReportQuestion("Vytvoř tabulku povinností podle citovaných zdrojů."), false);
     assert.equal(isRegistryDocumentReportQuestion("Seznam smluv vytvoř do tabulky."), true);
     assert.equal(isRegistryDocumentReportQuestion("Vytvoř tabulku smluv."), true);
+    assert.equal(isRegistryDocumentReportQuestion("Jakého typu jsou dokumenty, které máš k dispozici?"), true);
+    assert.equal(isRegistryDocumentReportQuestion("Ok vytvoř tedy sestavu, kde bude typ počet"), true);
     assert.equal(registryReportKindFromMessage("Seznam smluv vytvoř do tabulky."), "document_list");
     assert.equal(registryReportKindFromMessage("Vytvoř tabulku smluv."), "document_list");
+    assert.equal(registryReportKindFromMessage("Jakého typu jsou dokumenty, které máš k dispozici?"), "document_type_count");
+    assert.equal(registryReportKindFromMessage("Ok vytvoř tedy sestavu, kde bude typ počet"), "document_type_count");
     assert.equal(registryReportKindFromMessage("Kolik máme smluv?"), "document_inventory_summary");
   });
 
@@ -183,5 +187,49 @@ describe("assistant registry report", () => {
     assert.equal(response.current_context.registry_report_matched_document_count, 3);
     assert.equal(response.report_artifacts[0]?.rows[0]?.cells.document_count, 3);
     assert.equal(response.report_artifacts[0]?.warnings.includes("REGISTRY_METADATA_SUMMARY"), true);
+  });
+
+  it("builds a document type count report from registry metadata summary", () => {
+    const response = buildRegistryDocumentReportFromSummary({
+      message: "Jakého typu jsou dokumenty, které máš k dispozici?",
+      conversationId: "conv_type_summary",
+      language: "cs",
+      summary: {
+        total_visible_documents: 6,
+        total_matched_documents: 6,
+        topics: [
+          {
+            topic: "všechny dokumenty",
+            document_count: 6,
+            valid_or_approved_count: 5,
+            document_types: [
+              { key: "methodology", label: "methodology", count: 3 },
+              { key: "contract", label: "contract", count: 2 },
+              { key: "policy", label: "policy", count: 1 }
+            ],
+            classifications: [{ key: "internal", label: "internal", count: 6 }],
+            statuses: [{ key: "valid", label: "valid", count: 5 }],
+            owners: [{ key: "IT", label: "IT", count: 6 }],
+            example_documents: ["Metodika digitalizace"]
+          }
+        ],
+        by_document_type: [],
+        by_classification: [],
+        by_status: [],
+        by_owner: [],
+        warnings: ["REGISTRY_METADATA_SUMMARY"]
+      }
+    });
+
+    assert.ok(response);
+    assert.equal(response.current_context.report_kind, "document_type_count");
+    assert.equal(response.current_context.registry_report_matched_document_count, 6);
+    assert.equal(response.report_artifacts[0]?.title, "Dokumenty podle typu");
+    assert.equal(response.report_artifacts[0]?.columns[0]?.key, "document_type");
+    assert.equal(response.report_artifacts[0]?.rows.length, 3);
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.document_type, "metodika");
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.document_count, 3);
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.share, "50 %");
+    assert.match(response.answer ?? "", /typů dokumentů/);
   });
 });
