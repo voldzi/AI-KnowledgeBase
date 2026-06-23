@@ -813,7 +813,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
                   clarificationValues={clarificationValues}
                   setClarificationValues={setClarificationValues}
                   onSubmitClarification={submitClarification}
-                  onOpenCitationViewer={() => setCitationModalOpen(true)}
+                  onAskFollowUp={(question) => void submitQuestion(question)}
                 />
               ))
             )}
@@ -1161,14 +1161,14 @@ function ChatBubble({
   clarificationValues,
   setClarificationValues,
   onSubmitClarification,
-  onOpenCitationViewer
+  onAskFollowUp
 }: {
   message: ChatMessage;
   copy: AssistantAppLabels;
   clarificationValues: Record<string, string>;
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
-  onOpenCitationViewer: () => void;
+  onAskFollowUp: (question: string) => void;
 }) {
   const response = message.response;
   return (
@@ -1198,7 +1198,7 @@ function ChatBubble({
             clarificationValues={clarificationValues}
             setClarificationValues={setClarificationValues}
             onSubmitClarification={onSubmitClarification}
-            onOpenCitationViewer={onOpenCitationViewer}
+            onAskFollowUp={onAskFollowUp}
           />
         ) : null}
       </div>
@@ -1274,14 +1274,14 @@ function AssistantResponseTools({
   clarificationValues,
   setClarificationValues,
   onSubmitClarification,
-  onOpenCitationViewer
+  onAskFollowUp
 }: {
   response: AssistantChatResponse;
   copy: AssistantAppLabels;
   clarificationValues: Record<string, string>;
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
-  onOpenCitationViewer: () => void;
+  onAskFollowUp: (question: string) => void;
 }) {
   const visibleWarnings = visibleAssistantWarnings(response.warnings, copy);
   if (response.response_type === "clarification_needed") {
@@ -1333,17 +1333,12 @@ function AssistantResponseTools({
           ))}
         </div>
       ) : null}
-      {response.citations.length > 0 ? (
-        <div className="akb-chat-citations akb-chat-citations--compact">
-          <button type="button" className="citation-trigger-btn" onClick={onOpenCitationViewer}>
-            {copy.citationViewer} ({response.citations.length})
-          </button>
-        </div>
-      ) : null}
       {response.follow_up_questions.length > 0 ? (
         <div className="assistant-followups" aria-label={copy.followUps}>
           {response.follow_up_questions.map((item) => (
-            <span key={item}>{item}</span>
+            <button key={item} type="button" onClick={() => onAskFollowUp(item)}>
+              {item}
+            </button>
           ))}
         </div>
       ) : null}

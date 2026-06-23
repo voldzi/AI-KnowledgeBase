@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -650,7 +651,13 @@ class RagRetrievalService:
                 conversation_id=conversation_id,
                 answer=_employee_answer(rag_answer.answer, payload.response_language),
                 citations=rag_answer.citations,
-                follow_up_questions=_follow_up_questions(payload.message, payload.response_language),
+                follow_up_questions=await self._follow_up_questions(
+                    message=payload.message,
+                    answer=rag_answer.answer,
+                    citations=rag_answer.citations,
+                    response_language=payload.response_language,
+                    auth_context=auth_context,
+                ),
                 suggested_actions=suggested_actions,
                 report_artifacts=report_artifacts,
                 confidence=rag_answer.confidence,
@@ -709,6 +716,48 @@ class RagRetrievalService:
             auth_context=auth_context,
         )
         return response
+
+    async def _follow_up_questions(
+        self,
+        *,
+        message: str,
+        answer: str,
+        citations: list[Citation],
+        response_language: ResponseLanguage,
+        auth_context: AuthContext | None,
+    ) -> list[str]:
+        fallback = _fallback_follow_up_questions(message, response_language)
+        if not answer.strip() or not citations:
+            return fallback
+        try:
+            raw = await self._llm_client.chat_completion(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": _follow_up_system_prompt(response_language),
+                    },
+                    {
+                        "role": "user",
+                        "content": _follow_up_user_prompt(
+                            message=message,
+                            answer=answer,
+                            citations=citations,
+                            response_language=response_language,
+                        ),
+                    },
+                ],
+                metadata={
+                    "purpose": "assistant_follow_up_questions",
+                    "response_language": response_language,
+                    "citation_count": len(citations),
+                },
+                auth_context=auth_context,
+            )
+        except Exception as exc:  # follow-up prompts must not break a grounded answer
+            logger.warning("assistant_follow_up_generation_failed reason=%s", exc.__class__.__name__)
+            return fallback
+        questions = _parse_follow_up_questions(raw)
+        return questions or fallback
 
     async def assistant_suggestions(self, response_language: ResponseLanguage = "cs") -> AssistantSuggestionsResponse:
         dynamic = await self._content_based_suggestions(response_language)
@@ -1754,7 +1803,7 @@ def _employee_term_replacements(response_language: ResponseLanguage) -> list[tup
     ]
 
 
-def _follow_up_questions(message: str, response_language: ResponseLanguage = "cs") -> list[str]:
+def _fallback_follow_up_questions(message: str, response_language: ResponseLanguage = "cs") -> list[str]:
     normalized = _normalize_for_assistant(message)
     if _is_access_query(normalized):
         return [
@@ -1766,10 +1815,138 @@ def _follow_up_questions(message: str, response_language: ResponseLanguage = "cs
             _localized(response_language, "followup_incident_category"),
             _localized(response_language, "followup_incident_description"),
         ]
+    topic = _follow_up_topic(message, response_language)
+    if response_language == "en":
+        return [
+            f"What responsibilities follow from {topic}?",
+            f"Which exception or approval process applies to {topic}?",
+            f"Can you prepare a checklist for {topic}?",
+        ]
     return [
-        _localized(response_language, "followup_open_source"),
-        _localized(response_language, "followup_ask_more"),
+        f"Jaké povinnosti z toho vyplývají pro {topic}?",
+        f"Jaký postup nebo schvalování se vztahuje k tématu {topic}?",
+        f"Můžeš připravit kontrolní seznam pro {topic}?",
     ]
+
+
+def _follow_up_system_prompt(response_language: ResponseLanguage) -> str:
+    if response_language == "en":
+        return (
+            "You generate concise follow-up questions for an enterprise document AI chat. "
+            "Return only a JSON array of 2 or 3 strings. Each string must be a concrete, useful follow-up "
+            "question answerable from the cited documents. Do not suggest opening documents, citations, exports, "
+            "or asking a generic follow-up."
+        )
+    return (
+        "Generuješ krátké navazující otázky pro podnikový Document AI chat. "
+        "Vrať pouze JSON pole se 2 až 3 řetězci. Každý řetězec musí být konkrétní užitečná navazující otázka, "
+        "kterou lze zodpovědět z citovaných dokumentů. Nenavrhuj otevření dokumentu, citace, export ani obecné "
+        "položení doplňující otázky."
+    )
+
+
+def _follow_up_user_prompt(
+    *,
+    message: str,
+    answer: str,
+    citations: list[Citation],
+    response_language: ResponseLanguage,
+) -> str:
+    source_lines = []
+    for citation in citations[:4]:
+        section = " / ".join(citation.section_path) if citation.section_path else "-"
+        page = str(citation.page_number) if citation.page_number else "-"
+        source_lines.append(f"- {citation.document_title}; section={section}; page={page}")
+    if response_language == "en":
+        return (
+            f"Original question:\n{_truncate_prompt_text(message, 500)}\n\n"
+            f"Answer summary:\n{_truncate_prompt_text(answer, 1800)}\n\n"
+            f"Cited sources:\n{chr(10).join(source_lines)}"
+        )
+    return (
+        f"Původní dotaz:\n{_truncate_prompt_text(message, 500)}\n\n"
+        f"Odpověď:\n{_truncate_prompt_text(answer, 1800)}\n\n"
+        f"Citované zdroje:\n{chr(10).join(source_lines)}"
+    )
+
+
+def _parse_follow_up_questions(raw: str) -> list[str]:
+    text = raw.strip()
+    if not text:
+        return []
+    match = re.search(r"\[[\s\S]*\]", text)
+    candidate = match.group(0) if match else text
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+
+    questions: list[str] = []
+    seen: set[str] = set()
+    for item in parsed:
+        if not isinstance(item, str):
+            continue
+        question = _normalize_follow_up_question(item)
+        if not question:
+            continue
+        key = question.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        questions.append(question)
+        if len(questions) == 3:
+            break
+    return questions
+
+
+def _normalize_follow_up_question(value: str) -> str:
+    question = re.sub(r"\s+", " ", value).strip(" \t\r\n\"'`-•")
+    if len(question) < 12 or len(question) > 180:
+        return ""
+    lowered = question.casefold()
+    blocked_fragments = (
+        "otevřít zdroj",
+        "otevřít dokument",
+        "prohlížeč citací",
+        "citaci",
+        "ask a follow-up",
+        "open the source",
+        "open source",
+        "open document",
+        "citation viewer",
+        "export",
+    )
+    if any(fragment in lowered for fragment in blocked_fragments):
+        return ""
+    if not question.endswith("?"):
+        question = f"{question}?"
+    return question
+
+
+def _follow_up_topic(message: str, response_language: ResponseLanguage) -> str:
+    normalized = re.sub(r"\s+", " ", message).strip(" ?!.,:;")
+    if not normalized:
+        return "této odpovědi" if response_language == "cs" else "this answer"
+    normalized = re.sub(
+        r"^(jak[eéýáíěščřžůúó ]+|vytvo[rř][^:,.?!]*|ud[eě]lej[^:,.?!]*|ok[, ]*)",
+        "",
+        normalized,
+        flags=re.IGNORECASE,
+    ).strip(" ?!.,:;")
+    if len(normalized) > 70:
+        normalized = normalized[:70].rsplit(" ", 1)[0].strip()
+    if not normalized:
+        return "této odpovědi" if response_language == "cs" else "this answer"
+    return normalized
+
+
+def _truncate_prompt_text(value: str, max_length: int) -> str:
+    compact = re.sub(r"\s+", " ", value).strip()
+    if len(compact) <= max_length:
+        return compact
+    return compact[:max_length].rsplit(" ", 1)[0].strip()
 
 
 _SUGGESTION_DOMAINS = {

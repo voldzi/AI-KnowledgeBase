@@ -1241,13 +1241,22 @@ button {
   gap: 8px;
 }
 
-.assistant-followups span {
+.assistant-followups button {
   background: #eef5f4;
+  border: 1px solid transparent;
   border-radius: 999px;
   color: #315f60;
+  cursor: pointer;
   font-size: 12px;
   font-weight: 650;
   padding: 6px 9px;
+  text-align: left;
+}
+
+.assistant-followups button:hover,
+.assistant-followups button:focus-visible {
+  background: #d9efec;
+  border-color: #a8dcd4;
 }
 
 .assistant-empty,

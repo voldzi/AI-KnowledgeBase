@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from app.service import _assistant_answer_query, _assistant_filters, _assistant_query, _employee_answer
+from app.service import (
+    _assistant_answer_query,
+    _assistant_filters,
+    _assistant_query,
+    _employee_answer,
+    _fallback_follow_up_questions,
+    _parse_follow_up_questions,
+)
 from tests.conftest import make_client
 
 
@@ -218,6 +225,48 @@ def test_assistant_chat_returns_report_artifact_for_table_request() -> None:
     assert body["report_artifacts"][0]["export_formats"] == ["xlsx", "pdf"]
     assert body["report_artifacts"][0]["rows"][0]["citations"][0]["chunk_id"] == "chunk_789"
     assert body["suggested_actions"][0]["action_type"] == "export_report"
+
+
+def test_assistant_chat_returns_actionable_follow_up_questions() -> None:
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Kdo schvaluje vyjimku ze smernice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert body["follow_up_questions"]
+    assert all(item.endswith("?") for item in body["follow_up_questions"])
+    assert not any("otevřít" in item.lower() for item in body["follow_up_questions"])
+
+
+def test_follow_up_parser_accepts_llm_json_only_questions() -> None:
+    raw = '["Jaké povinnosti z toho vyplývají pro vlastníka systému?", "Můžeš připravit kontrolní seznam?"]'
+
+    assert _parse_follow_up_questions(raw) == [
+        "Jaké povinnosti z toho vyplývají pro vlastníka systému?",
+        "Můžeš připravit kontrolní seznam?",
+    ]
+
+
+def test_follow_up_parser_rejects_generic_open_source_actions() -> None:
+    raw = '["Chcete otevřít zdrojový dokument?", "Jaký postup má následovat?"]'
+
+    assert _parse_follow_up_questions(raw) == ["Jaký postup má následovat?"]
+
+
+def test_fallback_followups_are_questions_not_actions() -> None:
+    questions = _fallback_follow_up_questions("Jaké jsou základní informace k architektuře?", "cs")
+
+    assert len(questions) == 3
+    assert all(item.endswith("?") for item in questions)
+    assert not any("otevřít" in item.lower() for item in questions)
 
 
 def test_assistant_query_omits_internal_report_context_from_retrieval() -> None:

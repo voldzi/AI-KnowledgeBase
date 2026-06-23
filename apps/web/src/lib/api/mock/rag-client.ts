@@ -244,8 +244,16 @@ export class MockRagClient implements RagApiClient {
       current_context: request.context ?? {},
       citations,
       follow_up_questions: language === "en"
-        ? ["Do you want to open the source document?", "Do you want to ask a follow-up question?"]
-        : ["Chcete otevřít zdrojový dokument?", "Chcete položit doplňující otázku?"],
+        ? [
+          "Which responsibilities follow for the document owner?",
+          "Can you prepare a checklist for this procedure?",
+          "Which approval step should happen next?"
+        ]
+        : [
+          "Jaké povinnosti z toho vyplývají pro gestora dokumentu?",
+          "Můžeš připravit kontrolní seznam tohoto postupu?",
+          "Jaký schvalovací krok má následovat?"
+        ],
       suggested_actions: [
         ...(wantsReport ? [{ label: language === "en" ? "Export report" : "Exportovat sestavu", action_type: "export_report", target: "rpt_mock" }] : []),
         { label: language === "en" ? "Open source" : "Otevřít zdroj", action_type: "open_citation", target: null },
