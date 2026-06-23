@@ -10,6 +10,13 @@ export interface AssistantReportQualityIssue {
   message: string;
 }
 
+export interface AssistantReportQualitySummary {
+  status: "validated";
+  issues: string[];
+  informative_row_count: number;
+  row_citation_coverage: number;
+}
+
 const PLACEHOLDER_RE = /^(?:-|n\/a|na|neuvedeno|neni uvedeno|není uvedeno|not stated|unknown|bez udaje|bez údaje)$/i;
 const GENERIC_REPORT_TITLE_RE = /^(?:sestava z odpovedi akb|sestava z odpovědi akb|akb answer report|table from akb answer)$/i;
 const RAW_MARKDOWN_TABLE_RE = /\|\s*:?-{3}/;
@@ -102,8 +109,31 @@ export function getAssistantReportQualityIssues(
       message: "content reports must keep citations on report rows."
     });
   }
+  if (!isRegistryMetadataReport(report) && rows.some((row) => row.citations.length === 0)) {
+    issues.push({
+      code: "REPORT_UNCITED_ROWS",
+      message: "content report rows must keep row-level citations."
+    });
+  }
 
   return issues;
+}
+
+export function summarizeAssistantReportQuality(
+  report: ReportLike,
+  options: { message?: string } = {}
+): AssistantReportQualitySummary {
+  const columns = Array.isArray(report.columns) ? report.columns : [];
+  const rows = Array.isArray(report.rows) ? report.rows : [];
+  const rowCitationCoverage = rows.length === 0
+    ? 0
+    : rows.filter((row) => row.citations.length > 0).length / rows.length;
+  return {
+    status: "validated",
+    issues: getAssistantReportQualityIssues(report, options).map((issue) => issue.code),
+    informative_row_count: rows.filter((row) => rowHasEnoughInformation(row, columns)).length,
+    row_citation_coverage: Number(rowCitationCoverage.toFixed(4))
+  };
 }
 
 function rowHasEnoughInformation(row: AssistantReportRow, columns: AssistantReportColumn[]): boolean {

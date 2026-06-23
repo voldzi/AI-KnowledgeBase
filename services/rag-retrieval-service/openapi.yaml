@@ -746,6 +746,20 @@ components:
           maxLength: 96
           minLength: 1
           title: Artifact Id
+        artifact_contract_version:
+          anyOf:
+          - type: string
+            maxLength: 40
+          - type: 'null'
+          title: Artifact Contract Version
+        artifact_kind:
+          anyOf:
+          - type: string
+            enum:
+            - content_table
+            - registry_metadata_table
+          - type: 'null'
+          title: Artifact Kind
         title:
           type: string
           maxLength: 180
@@ -787,12 +801,106 @@ components:
             type: string
           type: array
           title: Warnings
+        provenance:
+          anyOf:
+          - $ref: '#/components/schemas/AssistantReportArtifactProvenance'
+          - type: 'null'
+        quality:
+          anyOf:
+          - $ref: '#/components/schemas/AssistantReportArtifactQuality'
+          - type: 'null'
       additionalProperties: false
       type: object
       required:
       - artifact_id
       - title
       title: AssistantReportArtifact
+    AssistantReportArtifactProvenance:
+      properties:
+        generated_from:
+          type: string
+          enum:
+          - rag_markdown_table
+          - rag_structured_artifact
+          - registry_metadata
+          title: Generated From
+        assistant_tool:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Assistant Tool
+        query_plan_id:
+          anyOf:
+          - type: string
+            maxLength: 96
+          - type: 'null'
+          title: Query Plan Id
+        citations_required:
+          type: boolean
+          title: Citations Required
+          default: true
+        row_citations_required:
+          type: boolean
+          title: Row Citations Required
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - generated_from
+      - assistant_tool
+      title: AssistantReportArtifactProvenance
+    AssistantReportArtifactQuality:
+      properties:
+        status:
+          type: string
+          const: validated
+          title: Status
+          default: validated
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        informative_row_count:
+          type: integer
+          minimum: 0.0
+          title: Informative Row Count
+          default: 0
+        row_citation_coverage:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Row Citation Coverage
+          default: 0.0
+      additionalProperties: false
+      type: object
+      title: AssistantReportArtifactQuality
+    AssistantReportCellSource:
+      properties:
+        column_key:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Column Key
+        evidence_status:
+          type: string
+          enum:
+          - cited
+          - metadata
+          - not_stated
+          - uncited
+          title: Evidence Status
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - column_key
+      - evidence_status
+      title: AssistantReportCellSource
     AssistantReportColumn:
       properties:
         key:
@@ -816,6 +924,12 @@ components:
           - percent
           title: Type
           default: text
+        semantic_role:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Semantic Role
       additionalProperties: false
       type: object
       required:
@@ -844,6 +958,22 @@ components:
             $ref: '#/components/schemas/Citation'
           type: array
           title: Citations
+        source_refs:
+          items:
+            $ref: '#/components/schemas/AssistantReportCellSource'
+          type: array
+          title: Source Refs
+        confidence:
+          anyOf:
+          - type: string
+            enum:
+            - high
+            - medium
+            - low
+            - insufficient_source
+            - conflicting_sources
+          - type: 'null'
+          title: Confidence
       additionalProperties: false
       type: object
       required:

@@ -90,15 +90,28 @@ backend tool. The router is intentionally small and auditable:
   for example "vytvoř sestavu z obsahu smlouvy".
 
 The router does not expose technical tool names in the user-facing answer and
-does not send registry routing metadata into the RAG prompt. For structured RAG
-answers it only adds a bounded `answer_format_instruction` to the assistant
-context, requiring meaningful multi-column tables and source-supported
-obligation rows when the user asks for obligations.
+does not send registry routing metadata into the RAG prompt. For RAG calls it
+adds an internal `assistant_query_plan` to the assistant context; for structured
+answers it also adds a bounded `answer_format_instruction`, requiring meaningful
+multi-column tables and source-supported obligation rows when the user asks for
+obligations.
+
+`assistant_query_plan` is deterministic for a given message and routing outcome.
+It records:
+
+- `plan_id` and `version`;
+- the selected intent such as `grounded_answer`, `structured_report`,
+  `obligation_table`, `document_metadata_report`, or `document_list`;
+- the planned output kind (`answer`, `table`, or `registry_report`);
+- registry topics and report kind when Registry metadata is used;
+- quality gates, including whether citations and row-level citations are
+  required.
 
 Every response returned by the AKB web/API bridge carries the same internal
 enterprise envelope in `current_context`:
 
 - `assistant_contract_version`
+- `assistant_query_plan`
 - `assistant_tool`
 - `assistant_tool_reason`
 - `answer_source`
@@ -123,12 +136,21 @@ flags or maps operational warnings to short user-facing messages.
 When the employee asks for a table, report, overview, Excel/PDF export, or
 similar structured output, `POST /api/v1/assistant/chat` may return
 `report_artifacts` alongside the normal answer and citations. A report artifact
-is a bounded table specification:
+is a bounded, server-validated table specification:
 
 - `columns` defines stable keys, labels, and simple scalar types.
 - `rows` contains scalar cell values only.
 - each row may carry AKB citations back to document versions and chunks.
 - `export_formats` currently contains `xlsx` and `pdf`.
+- `artifact_contract_version: "report.v2"` marks the enriched artifact contract.
+- `artifact_kind` distinguishes `content_table` from
+  `registry_metadata_table`.
+- row `source_refs` describe whether a cell is cited, metadata-derived,
+  explicitly not stated, or uncited.
+- `provenance` records whether the artifact came from a RAG Markdown table, a
+  RAG structured artifact, or Registry metadata.
+- `quality` records validation status, issue codes, informative row count, and
+  row citation coverage.
 
 The LLM does not execute spreadsheet code. AKB builds the artifact from the
 cited answer and authorized citations, and the web BFF exports it through:
@@ -142,6 +164,11 @@ The export endpoint validates row/column limits and writes either a static
 with the same content. It returns the file as a private download. It does not
 call internal storage directly from the browser and does not create macros,
 formulas, scripts, or external links.
+
+Content artifacts must keep row-level citations. Registry metadata artifacts
+are the only exception: they are permission-scoped metadata aggregations from
+Registry API, not an interpretation of document content, and therefore may have
+zero chunk citations.
 
 AKB now applies the Assistant Structured Artifact Protocol before a report is
 shown or exported:

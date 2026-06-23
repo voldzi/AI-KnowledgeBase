@@ -124,4 +124,30 @@ describe("assistant report xlsx export", () => {
       /generic cited-answer/
     );
   });
+
+  it("rejects content report rows without citations before export", () => {
+    assert.throws(
+      () => normalizeAssistantReportArtifact({
+        artifact_id: "rpt_uncited",
+        title: "Dopadová tabulka",
+        columns: [
+          { key: "obligation", label: "Povinnost", type: "text" },
+          { key: "meaning", label: "Význam", type: "text" }
+        ],
+        rows: [
+          {
+            row_id: "row_1",
+            cells: {
+              obligation: "Právní povinnost",
+              meaning: "Ověřit požadavek."
+            },
+            citations: []
+          }
+        ],
+        source_citation_count: 1,
+        warnings: []
+      }),
+      /row-level citations/
+    );
+  });
 });

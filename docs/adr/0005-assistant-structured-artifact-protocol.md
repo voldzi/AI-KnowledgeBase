@@ -48,6 +48,25 @@ artifact only when the parsed table satisfies the same quality rules.
 Export endpoints use the same quality validation as the chat UI. A report that
 cannot be shown must not be downloadable as XLSX or PDF.
 
+The second compatible increment is `report.v2`. It keeps the existing
+`report_artifacts` array and required fields, but allows additional
+machine-readable fields:
+
+- `artifact_contract_version: "report.v2"`;
+- `artifact_kind` (`content_table` or `registry_metadata_table`);
+- row-level `source_refs`;
+- artifact `provenance`;
+- artifact `quality`.
+
+The AKB web/API bridge also attaches an `assistant_query_plan` to
+`current_context`. The plan records the selected intent, backend tool, planned
+output kind, registry topics, and quality gates. It is internal state for
+continuations, audit, and diagnostics; it is not user-facing prose.
+
+For content tables, `report.v2` requires row-level citations. Registry metadata
+tables are the explicit exception because they are permission-scoped metadata
+aggregations rather than document-content interpretation.
+
 ## Consequences
 
 - Bad tables disappear instead of being displayed as empty reports.
@@ -65,6 +84,8 @@ cannot be shown must not be downloadable as XLSX or PDF.
 2. Add an assistant tool router so inventory, RAG, extraction, comparison, and
    action proposals are selected explicitly.
 3. Extend the protocol with artifact-level provenance, row-level confidence,
-   and artifact schema versioning.
+   and artifact schema versioning. The initial compatible version is now
+   `report.v2`; future work should move more structured artifact generation into
+   task-specific extractors instead of Markdown compatibility parsing.
 4. Add evaluation datasets for structured output quality, not only answer
    correctness.

@@ -44,15 +44,22 @@ multi-column table or obligation report.
 
 Returned assistant responses include an internal enterprise envelope in
 `current_context` (`assistant_contract_version`, `assistant_tool`,
-`assistant_tool_reason`, `answer_source`, and report/request flags). STRATOS UI
-clients should treat these fields as machine-readable state for continuation,
-diagnostics, and audit context, not as text to render to end users.
+`assistant_tool_reason`, `assistant_query_plan`, `answer_source`, and
+report/request flags). `assistant_query_plan` records the selected intent,
+backend tool, expected output kind, registry topics, and quality gates such as
+row-level citation requirements. STRATOS UI clients should treat these fields as
+machine-readable state for continuation, diagnostics, and audit context, not as
+text to render to end users.
 
 Employee chat `report_artifacts` are governed by the Assistant Structured
 Artifact Protocol. The web/API bridge filters invalid artifacts before they
 reach the UI and the export endpoint rejects the same invalid artifacts before
 creating XLSX/PDF files. A report needs meaningful multi-column data; a generic
 cited-answer summary or one-column list is not a valid enterprise artifact.
+`report.v2` artifacts may additionally include `artifact_contract_version`,
+`artifact_kind`, row `source_refs`, `provenance`, and `quality`. Content tables
+must keep row-level citations; registry metadata tables are explicitly marked as
+permission-scoped metadata and may have no chunk citations.
 
 Registry API exposes the first enterprise metadata aggregate endpoint:
 

@@ -3,7 +3,7 @@ import type { AssistantChatResponse, ResponseLanguage } from "@/lib/types";
 
 import type { AssistantToolRoute } from "./assistant-tool-router";
 
-const ASSISTANT_CONTRACT_VERSION = "2026-06-22";
+const ASSISTANT_CONTRACT_VERSION = "2026-06-23";
 
 export function normalizeAssistantChatResponse({
   response,
@@ -16,13 +16,14 @@ export function normalizeAssistantChatResponse({
   language: ResponseLanguage;
   route: AssistantToolRoute;
 }): AssistantChatResponse {
-  const normalized = normalizeAssistantAnswerReports(response, message, language);
+  const normalized = normalizeAssistantAnswerReports(response, message, language, { queryPlan: route.queryPlan });
   return {
     ...normalized,
     current_context: compactContext({
       ...normalized.current_context,
       answer_source: normalized.current_context.answer_source ?? answerSourceForRoute(route),
       assistant_contract_version: ASSISTANT_CONTRACT_VERSION,
+      assistant_query_plan: route.queryPlan,
       assistant_tool: route.tool,
       assistant_tool_reason: route.reason,
       structured_output_requested: route.structuredOutput,

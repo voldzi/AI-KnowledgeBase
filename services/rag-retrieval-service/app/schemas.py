@@ -51,6 +51,9 @@ ResponseLanguage = Literal["cs", "en"]
 AssistantResponseType = Literal["answer", "clarification_needed", "no_answer", "restricted", "handoff_recommended"]
 ClarificationQuestionType = Literal["free_text", "single_choice"]
 AssistantReportColumnType = Literal["text", "number", "date", "url", "currency", "percent"]
+AssistantReportEvidenceStatus = Literal["cited", "metadata", "not_stated", "uncited"]
+AssistantReportArtifactKind = Literal["content_table", "registry_metadata_table"]
+AssistantReportGeneratedFrom = Literal["rag_markdown_table", "rag_structured_artifact", "registry_metadata"]
 ExtractionStatus = Literal[
     "PENDING",
     "RUNNING",
@@ -233,6 +236,15 @@ class AssistantReportColumn(BaseModel):
     key: str = Field(min_length=1, max_length=64)
     label: str = Field(min_length=1, max_length=120)
     type: AssistantReportColumnType = "text"
+    semantic_role: str | None = Field(default=None, max_length=80)
+
+
+class AssistantReportCellSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    column_key: str = Field(min_length=1, max_length=64)
+    evidence_status: AssistantReportEvidenceStatus
+    citations: list[Citation] = Field(default_factory=list)
 
 
 class AssistantReportRow(BaseModel):
@@ -241,12 +253,35 @@ class AssistantReportRow(BaseModel):
     row_id: str = Field(min_length=1, max_length=96)
     cells: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
     citations: list[Citation] = Field(default_factory=list)
+    source_refs: list[AssistantReportCellSource] = Field(default_factory=list)
+    confidence: Confidence | None = None
+
+
+class AssistantReportArtifactProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    generated_from: AssistantReportGeneratedFrom
+    assistant_tool: str = Field(min_length=1, max_length=80)
+    query_plan_id: str | None = Field(default=None, max_length=96)
+    citations_required: bool = True
+    row_citations_required: bool = True
+
+
+class AssistantReportArtifactQuality(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["validated"] = "validated"
+    issues: list[str] = Field(default_factory=list)
+    informative_row_count: int = Field(default=0, ge=0)
+    row_citation_coverage: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class AssistantReportArtifact(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     artifact_id: str = Field(min_length=1, max_length=96)
+    artifact_contract_version: str | None = Field(default=None, max_length=40)
+    artifact_kind: AssistantReportArtifactKind | None = None
     title: str = Field(min_length=1, max_length=180)
     description: str | None = Field(default=None, max_length=600)
     columns: list[AssistantReportColumn] = Field(default_factory=list, max_length=20)
@@ -254,6 +289,8 @@ class AssistantReportArtifact(BaseModel):
     export_formats: list[Literal["xlsx", "pdf"]] = Field(default_factory=lambda: ["xlsx", "pdf"])
     source_citation_count: int = Field(default=0, ge=0)
     warnings: list[str] = Field(default_factory=list)
+    provenance: AssistantReportArtifactProvenance | None = None
+    quality: AssistantReportArtifactQuality | None = None
 
 
 class AssistantChatResponse(BaseModel):

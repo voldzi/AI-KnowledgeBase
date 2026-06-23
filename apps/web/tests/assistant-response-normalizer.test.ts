@@ -57,13 +57,20 @@ describe("assistant response normalizer", () => {
 
     assert.equal(normalized.current_context.tenant_id, "tenant-1");
     assert.equal(normalized.current_context.answer_source, "rag_retrieval");
-    assert.equal(normalized.current_context.assistant_contract_version, "2026-06-22");
+    assert.equal(normalized.current_context.assistant_contract_version, "2026-06-23");
     assert.equal(normalized.current_context.assistant_tool, "rag_document_answer");
     assert.equal(normalized.current_context.assistant_tool_reason, "rag_structured_output");
     assert.equal(normalized.current_context.structured_output_requested, true);
     assert.equal(normalized.current_context.obligation_output_requested, true);
+    assert.equal((normalized.current_context.assistant_query_plan as { intent?: string }).intent, "obligation_table");
+    assert.equal(
+      (normalized.current_context.assistant_query_plan as { output?: { artifact_contract_version?: string } }).output?.artifact_contract_version,
+      "report.v2"
+    );
     assert.equal(normalized.current_context.report_artifact_count, 1);
     assert.equal(normalized.report_artifacts.length, 1);
+    assert.equal(normalized.report_artifacts[0]?.artifact_contract_version, "report.v2");
+    assert.equal(normalized.report_artifacts[0]?.provenance?.query_plan_id, route.queryPlan.plan_id);
     assert.equal(normalized.answer?.includes("| :---"), false);
   });
 
@@ -104,7 +111,9 @@ describe("assistant response normalizer", () => {
     assert.equal(normalized.current_context.assistant_tool_reason, "registry_metadata_intent");
     assert.equal(normalized.current_context.registry_report_kind, "document_inventory_summary");
     assert.equal(normalized.current_context.registry_topic_count, 1);
+    assert.equal((normalized.current_context.assistant_query_plan as { intent?: string }).intent, "document_metadata_report");
     assert.equal(normalized.current_context.report_artifact_count, 1);
-    assert.equal(normalized.report_artifacts[0], registryReport);
+    assert.equal(normalized.report_artifacts[0]?.artifact_id, registryReport.artifact_id);
+    assert.equal(normalized.report_artifacts[0]?.artifact_kind, "registry_metadata_table");
   });
 });

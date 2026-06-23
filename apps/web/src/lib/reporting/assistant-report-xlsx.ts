@@ -11,6 +11,7 @@ export interface NormalizedReport {
   description: string | null;
   columns: AssistantReportColumn[];
   rows: AssistantReportRow[];
+  source_citation_count: number;
   warnings: string[];
 }
 
@@ -52,6 +53,7 @@ export function normalizeAssistantReportArtifact(value: unknown): NormalizedRepo
     description: optionalBoundedString(input.description, "description", 600),
     columns,
     rows,
+    source_citation_count: normalizeNonNegativeInteger(input.source_citation_count, rows.reduce((count, row) => count + row.citations.length, 0)),
     warnings: normalizeStringList(input.warnings, 20, 160),
   };
   assertAssistantReportQuality(report);
@@ -145,6 +147,13 @@ function normalizeCellValue(value: unknown): CellValue {
     return Number.isFinite(value) ? value : null;
   }
   return String(value).slice(0, MAX_CELL_TEXT_LENGTH);
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  return fallback;
 }
 
 function normalizeCitations(value: unknown): Citation[] {

@@ -16,6 +16,9 @@ describe("assistant tool router", () => {
     assert.equal(route.registryReportKind, "document_inventory_summary");
     assert.deepEqual(route.registryTopics, ["digitalizace"]);
     assert.equal(route.answerFormatInstruction, null);
+    assert.equal(route.queryPlan.intent, "document_metadata_report");
+    assert.equal(route.queryPlan.output.kind, "registry_report");
+    assert.equal(route.queryPlan.quality_gates.registry_metadata_without_chunk_citations_allowed, true);
   });
 
   it("routes document list requests to registry metadata reports", () => {
@@ -25,6 +28,7 @@ describe("assistant tool router", () => {
     assert.equal(route.registryReportKind, "document_list");
     assert.deepEqual(route.registryTopics, ["smlouvy"]);
     assert.equal(route.structuredOutput, true);
+    assert.equal(route.queryPlan.intent, "document_list");
   });
 
   it("keeps content interpretation reports on the RAG answer path", () => {
@@ -38,6 +42,7 @@ describe("assistant tool router", () => {
     assert.match(route.answerFormatInstruction ?? "", /markdown tabulku s alespoň dvěma významovými sloupci/);
     assert.equal(context.entity_id, "contract-1");
     assert.equal("assistant_tool" in context, false);
+    assert.equal((context.assistant_query_plan as { intent?: string }).intent, "structured_report");
     assert.match(String(context.answer_format_instruction), /Nevracej jednosloupcový seznam/);
   });
 
@@ -46,6 +51,12 @@ describe("assistant tool router", () => {
 
     assert.equal(route.tool, "rag_document_answer");
     assert.equal(route.obligationOutput, true);
+    assert.equal(route.queryPlan.intent, "obligation_table");
+    assert.deepEqual(route.queryPlan.output.required_columns, [
+      "povinnost_nebo_oblast",
+      "citovane_ustanoveni_nebo_zdroj",
+      "prakticky_vyznam_nebo_poznamka"
+    ]);
     assert.match(route.answerFormatInstruction ?? "", /U každého řádku povinnosti/);
   });
 
@@ -56,7 +67,9 @@ describe("assistant tool router", () => {
     assert.equal(route.tool, "rag_document_answer");
     assert.equal(route.reason, "rag_grounded_answer");
     assert.equal(route.answerFormatInstruction, null);
-    assert.equal(ragContextForAssistantRoute(originalContext, route), originalContext);
+    const context = ragContextForAssistantRoute(originalContext, route);
+    assert.equal(context.tenant_id, "tenant-1");
+    assert.equal((context.assistant_query_plan as { intent?: string }).intent, "grounded_answer");
   });
 
   it("forces clarify-style continuation back to the RAG path", () => {
@@ -66,6 +79,7 @@ describe("assistant tool router", () => {
     assert.equal(route.reason, "rag_structured_output");
     assert.equal(route.registryReportKind, null);
     assert.deepEqual(route.registryTopics, []);
+    assert.equal(route.queryPlan.intent, "structured_report");
     assert.match(route.answerFormatInstruction ?? "", /markdown tabulku/);
   });
 });

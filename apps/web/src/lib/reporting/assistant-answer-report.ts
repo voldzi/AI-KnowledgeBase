@@ -4,15 +4,22 @@ import type {
   AssistantReportColumn,
   AssistantReportRow,
   Citation,
+  RagConfidence,
   ResponseLanguage
 } from "@/lib/types";
+import {
+  ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION,
+  type AssistantQueryPlan
+} from "@/lib/assistant/assistant-query-planner";
 
 import {
   filterUsableAssistantReportArtifacts,
-  getAssistantReportQualityIssues
+  getAssistantReportQualityIssues,
+  summarizeAssistantReportQuality
 } from "./assistant-report-quality";
 
 type CellValue = string | number | boolean | null;
+type ArtifactGeneratedFrom = "rag_markdown_table" | "rag_structured_artifact" | "registry_metadata";
 
 interface ParsedMarkdownTable {
   headers: string[];
@@ -27,14 +34,22 @@ const SOURCE_COLUMN_RE = /(odkaz|zdroj|dokument|citac|citace|link|url|source|doc
 export function normalizeAssistantAnswerReports(
   response: AssistantChatResponse,
   message: string,
-  language: ResponseLanguage = "cs"
+  language: ResponseLanguage = "cs",
+  options: { queryPlan?: AssistantQueryPlan | null } = {}
 ): AssistantChatResponse {
   const answer = response.answer ?? response.message ?? "";
   const parsedTable = parseFirstMarkdownTable(answer);
-  const usableExistingArtifacts = filterUsableAssistantReportArtifacts(response.report_artifacts, { message });
-  const responseWithUsableArtifacts = usableExistingArtifacts.length === response.report_artifacts.length
-    ? response
-    : { ...response, report_artifacts: usableExistingArtifacts };
+  const usableExistingArtifacts = filterUsableAssistantReportArtifacts(response.report_artifacts, { message })
+    .map((artifact) => finalizeAssistantReportArtifact(artifact, {
+      generatedFrom: isRegistryMetadataArtifact(artifact) ? "registry_metadata" : "rag_structured_artifact",
+      message,
+      queryPlan: options.queryPlan ?? null,
+      confidence: response.confidence
+    }));
+  const responseWithUsableArtifacts = {
+    ...response,
+    report_artifacts: usableExistingArtifacts
+  };
   if (!parsedTable) {
     return responseWithUsableArtifacts;
   }
@@ -52,7 +67,10 @@ export function normalizeAssistantAnswerReports(
     table: parsedTable,
     answer,
     citations: response.citations,
-    language
+    language,
+    queryPlan: options.queryPlan ?? null,
+    confidence: response.confidence,
+    message
   });
 
   if (!artifact || getAssistantReportQualityIssues(artifact, { message }).length > 0) {
@@ -164,12 +182,18 @@ function buildReportArtifactFromMarkdownTable({
   table,
   answer,
   citations,
-  language
+  language,
+  queryPlan,
+  confidence,
+  message
 }: {
   table: ParsedMarkdownTable;
   answer: string;
   citations: Citation[];
   language: ResponseLanguage;
+  queryPlan: AssistantQueryPlan | null;
+  confidence: RagConfidence | null;
+  message: string;
 }): AssistantReportArtifact | null {
   const normalizedTable = removeEmptySourceColumns(table);
   if (normalizedTable.headers.length < 2 || normalizedTable.rows.length === 0) {
@@ -182,13 +206,15 @@ function buildReportArtifactFromMarkdownTable({
     type: "text" as const
   }));
 
+  const rowCitations = citations.slice(0, 8);
   const rows: AssistantReportRow[] = normalizedTable.rows.slice(0, 500).map((row, rowIndex) => ({
     row_id: `answer_table_row_${rowIndex + 1}`,
     cells: cellsForRow(row, columns),
-    citations: citations.slice(0, 8)
+    citations: rowCitations,
+    confidence
   }));
 
-  return {
+  return finalizeAssistantReportArtifact({
     artifact_id: `rpt_answer_table_${stableHash(`${answer}\n${normalizedTable.headers.join("|")}`)}`,
     title: reportTitleForTable(normalizedTable, language),
     description: language === "en"
@@ -199,7 +225,12 @@ function buildReportArtifactFromMarkdownTable({
     export_formats: ["xlsx", "pdf"],
     source_citation_count: citations.length,
     warnings: []
-  };
+  }, {
+    generatedFrom: "rag_markdown_table",
+    message,
+    queryPlan,
+    confidence
+  });
 }
 
 function looksLikeTableLine(line: string): boolean {
@@ -324,4 +355,87 @@ function stableHash(value: string): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function finalizeAssistantReportArtifact(
+  artifact: AssistantReportArtifact,
+  options: {
+    generatedFrom: ArtifactGeneratedFrom;
+    message: string;
+    queryPlan: AssistantQueryPlan | null;
+    confidence: RagConfidence | null;
+  }
+): AssistantReportArtifact {
+  const registryMetadata = options.generatedFrom === "registry_metadata" || isRegistryMetadataArtifact(artifact);
+  const rows = artifact.rows.map((row) => enrichReportRow(row, artifact.columns, registryMetadata, options.confidence));
+  const enriched: AssistantReportArtifact = {
+    ...artifact,
+    artifact_contract_version: artifact.artifact_contract_version ?? ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION,
+    artifact_kind: artifact.artifact_kind ?? (registryMetadata ? "registry_metadata_table" : "content_table"),
+    rows,
+    provenance: artifact.provenance ?? {
+      generated_from: options.generatedFrom,
+      assistant_tool: options.queryPlan?.tool ?? (registryMetadata ? "registry_document_report" : "rag_document_answer"),
+      query_plan_id: options.queryPlan?.plan_id ?? null,
+      citations_required: options.queryPlan?.quality_gates.citations_required ?? !registryMetadata,
+      row_citations_required: options.queryPlan?.quality_gates.row_citations_required ?? !registryMetadata
+    }
+  };
+  return {
+    ...enriched,
+    quality: summarizeAssistantReportQuality(enriched, { message: options.message })
+  };
+}
+
+function enrichReportRow(
+  row: AssistantReportRow,
+  columns: AssistantReportColumn[],
+  registryMetadata: boolean,
+  confidence: RagConfidence | null
+): AssistantReportRow {
+  if (row.source_refs && row.source_refs.length > 0) {
+    return {
+      ...row,
+      confidence: row.confidence ?? confidence
+    };
+  }
+  return {
+    ...row,
+    confidence: row.confidence ?? confidence,
+    source_refs: columns.map((column) => {
+      const informative = isInformativeReportCell(row.cells[column.key]);
+      const evidenceStatus = registryMetadata
+        ? "metadata"
+        : informative && row.citations.length > 0
+          ? "cited"
+          : informative
+            ? "uncited"
+            : "not_stated";
+      return {
+        column_key: column.key,
+        evidence_status: evidenceStatus,
+        citations: evidenceStatus === "cited" ? row.citations.slice(0, 8) : []
+      };
+    })
+  };
+}
+
+function isRegistryMetadataArtifact(artifact: AssistantReportArtifact): boolean {
+  return artifact.artifact_kind === "registry_metadata_table" ||
+    artifact.artifact_id.startsWith("rpt_registry_") ||
+    artifact.warnings.some((warning) => warning === "REGISTRY_METADATA_REPORT" || warning === "REGISTRY_METADATA_SUMMARY");
+}
+
+function isInformativeReportCell(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (typeof value === "boolean") {
+    return true;
+  }
+  const text = String(value).replace(/\s+/g, " ").trim();
+  return Boolean(text) && !/^(?:-|n\/a|na|neuvedeno|neni uvedeno|není uvedeno|not stated|unknown|bez udaje|bez údaje)$/i.test(text);
 }

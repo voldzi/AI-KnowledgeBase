@@ -118,6 +118,15 @@ describe("assistant answer report normalization", () => {
     assert.equal(report?.rows[0]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti, "právní povinnosti");
     assert.equal(report?.rows[0]?.cells.odpovidajici_ustanoveni, "VKB § 4 písm. a), b)");
     assert.equal(report?.rows[1]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti, "obchodní tajemství");
+    assert.equal(report?.artifact_contract_version, "report.v2");
+    assert.equal(report?.artifact_kind, "content_table");
+    assert.equal(report?.provenance?.generated_from, "rag_markdown_table");
+    assert.equal(report?.provenance?.row_citations_required, true);
+    assert.equal(report?.quality?.status, "validated");
+    assert.equal(report?.quality?.informative_row_count, 4);
+    assert.equal(report?.quality?.row_citation_coverage, 1);
+    assert.equal(report?.rows[0]?.confidence, "medium");
+    assert.equal(report?.rows[0]?.source_refs?.[0]?.evidence_status, "cited");
     assert.equal(report?.source_citation_count, 1);
     assert.deepEqual(report?.export_formats, ["xlsx", "pdf"]);
     assert.equal(String(report?.rows[0]?.cells.oblasti_posuzovane_v_ramci_kategorie_povinnosti).includes("| :---"), false);
@@ -227,7 +236,10 @@ describe("assistant answer report normalization", () => {
 
     const normalized = normalizeAssistantAnswerReports(response, "kolik dokumentů máš na téma digitalizace", "cs");
 
-    assert.equal(normalized.report_artifacts[0], metadataReport);
+    assert.equal(normalized.report_artifacts[0]?.artifact_id, metadataReport.artifact_id);
+    assert.equal(normalized.report_artifacts[0]?.artifact_kind, "registry_metadata_table");
+    assert.equal(normalized.report_artifacts[0]?.provenance?.generated_from, "registry_metadata");
+    assert.equal(normalized.report_artifacts[0]?.quality?.issues.length, 0);
   });
 
   it("keeps a non-generic report artifact from the retrieval service", () => {
@@ -268,7 +280,44 @@ describe("assistant answer report normalization", () => {
       "cs"
     );
 
-    assert.equal(normalized.report_artifacts[0], goodReport);
+    assert.equal(normalized.report_artifacts[0]?.artifact_id, goodReport.artifact_id);
+    assert.equal(normalized.report_artifacts[0]?.artifact_contract_version, "report.v2");
+    assert.equal(normalized.report_artifacts[0]?.provenance?.generated_from, "rag_structured_artifact");
+    assert.equal(normalized.report_artifacts[0]?.quality?.row_citation_coverage, 1);
     assert.equal(normalized.answer, "Připravil jsem tabulku níže.");
+  });
+
+  it("rejects content reports with uncited rows even when source citation count is set", () => {
+    const response = responseFixture({
+      answer: "Připravil jsem tabulku níže.",
+      report_artifacts: [
+        {
+          artifact_id: "rpt_uncited",
+          title: "Dopadová tabulka povinností",
+          description: null,
+          columns: [
+            { key: "obligation", label: "Povinnost", type: "text" },
+            { key: "meaning", label: "Význam", type: "text" }
+          ],
+          rows: [
+            {
+              row_id: "row_1",
+              cells: {
+                obligation: "Právní povinnosti",
+                meaning: "Ověřit zákonné povinnosti."
+              },
+              citations: []
+            }
+          ],
+          export_formats: ["xlsx", "pdf"],
+          source_citation_count: 1,
+          warnings: []
+        }
+      ]
+    });
+
+    const normalized = normalizeAssistantAnswerReports(response, "vytvoř tabulku povinností", "cs");
+
+    assert.equal(normalized.report_artifacts.length, 0);
   });
 });

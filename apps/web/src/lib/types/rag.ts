@@ -152,16 +152,46 @@ export interface AssistantReportColumn {
   key: string;
   label: string;
   type: AssistantReportColumnType;
+  semantic_role?: string | null;
+}
+
+export type AssistantReportEvidenceStatus = "cited" | "metadata" | "not_stated" | "uncited";
+
+export interface AssistantReportCellSource {
+  column_key: string;
+  evidence_status: AssistantReportEvidenceStatus;
+  citations: Citation[];
 }
 
 export interface AssistantReportRow {
   row_id: string;
   cells: Record<string, string | number | boolean | null>;
   citations: Citation[];
+  source_refs?: AssistantReportCellSource[];
+  confidence?: RagConfidence | null;
+}
+
+export type AssistantReportArtifactKind = "content_table" | "registry_metadata_table";
+
+export interface AssistantReportArtifactProvenance {
+  generated_from: "rag_markdown_table" | "rag_structured_artifact" | "registry_metadata";
+  assistant_tool: string;
+  query_plan_id: string | null;
+  citations_required: boolean;
+  row_citations_required: boolean;
+}
+
+export interface AssistantReportArtifactQuality {
+  status: "validated";
+  issues: string[];
+  informative_row_count: number;
+  row_citation_coverage: number;
 }
 
 export interface AssistantReportArtifact {
   artifact_id: string;
+  artifact_contract_version?: string;
+  artifact_kind?: AssistantReportArtifactKind;
   title: string;
   description: string | null;
   columns: AssistantReportColumn[];
@@ -169,6 +199,8 @@ export interface AssistantReportArtifact {
   export_formats: Array<"xlsx" | "pdf">;
   source_citation_count: number;
   warnings: string[];
+  provenance?: AssistantReportArtifactProvenance;
+  quality?: AssistantReportArtifactQuality;
 }
 
 export interface AssistantChatResponse {
