@@ -35,7 +35,8 @@ codes out of browser history and prevents repeated callback replay.
 
 Initial role model:
 
-- `employee`: can use Employee Chat Portal and open authorized sources.
+- authenticated OIDC user: can enter the Employee Chat Portal shell.
+- `employee`: can open authorized sources when backend policy grants access.
 - `reader`: can read allowed documents and ask sourced questions.
 - `document_manager`: can create documents, versions, imports, and reindex jobs.
 - `knowledge_admin`: can manage domains, metadata rules, and knowledge quality.
@@ -46,6 +47,11 @@ Initial role model:
 ## Authorization
 
 Authorization is enforced in the backend, not in the browser.
+
+The Employee Chat Portal is intentionally available to every authenticated OIDC
+user. This only grants access to the chat shell. Document search, citation
+opening, source preview, report rows, and downloads remain permission-scoped by
+AKB Registry/RAG using the current user identity.
 
 RAG retrieval filters chunks through Registry authorization before answer composition. If sources are denied or insufficient, the assistant must return a no-answer or handoff state instead of inventing an answer.
 

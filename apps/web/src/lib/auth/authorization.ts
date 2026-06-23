@@ -27,8 +27,8 @@ export function canUseAdminSurface(context: Pick<ApiRequestContext, "roles"> | n
   return hasAnyRole(context?.roles, ADMIN_ROLES);
 }
 
-export function canUseEmployeeChat(context: Pick<ApiRequestContext, "roles"> | null | undefined): boolean {
-  return canUseKnowledgeWorkspace(context) || hasAnyRole(context?.roles, EMPLOYEE_CHAT_ROLES);
+export function canUseEmployeeChat(context: Pick<ApiRequestContext, "roles" | "subjectId"> | null | undefined): boolean {
+  return Boolean(context?.subjectId) || canUseKnowledgeWorkspace(context) || hasAnyRole(context?.roles, EMPLOYEE_CHAT_ROLES);
 }
 
 export function surfaceForContext(context: Pick<ApiRequestContext, "roles"> | null | undefined): AklSurface {
