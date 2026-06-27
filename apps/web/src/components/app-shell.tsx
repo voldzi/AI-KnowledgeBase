@@ -247,11 +247,16 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     setMobileSidebarOpen(false);
   }, [pathname]);
 
-  const openMobileSidebar = () => {
-    // The desktop "collapsed" state hides the sidebar body — undo it so the
-    // drawer always opens fully expanded on mobile.
-    setSidebarCollapsed(false);
-    setMobileSidebarOpen(true);
+  const toggleMobileSidebar = () => {
+    setMobileSidebarOpen((open) => {
+      if (open) {
+        return false;
+      }
+      // The desktop "collapsed" state hides the sidebar body — undo it so the
+      // drawer always opens fully expanded on mobile.
+      setSidebarCollapsed(false);
+      return true;
+    });
   };
 
   useEffect(() => {
@@ -591,7 +596,8 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
             onCommandCenterOpen={() => setCommandCenterOpen(true)}
             onLanguageChange={setLanguage}
             onLogout={handleLogout}
-            onMobileMenuOpen={openMobileSidebar}
+            mobileMenuOpen={mobileSidebarOpen}
+            onMobileMenuOpen={toggleMobileSidebar}
             onSettingsOpen={() => setSettingsOpen(true)}
             projectName={activeTopbarContext}
             user={userProfile}

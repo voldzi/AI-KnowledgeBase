@@ -4798,6 +4798,7 @@ button {
     opacity: 0;
     pointer-events: none;
     transform: translateX(-105%);
+    visibility: hidden;
   }
 
   .stratos-app-shell[data-mobile-sidebar-open="true"] .stratos-workspace-sidebar,
@@ -4805,6 +4806,7 @@ button {
     opacity: 1 !important;
     pointer-events: auto !important;
     transform: translateX(0) !important;
+    visibility: visible !important;
   }
 
   .stratos-app-shell[data-mobile-sidebar-open="true"] .akl-sidebar-backdrop {

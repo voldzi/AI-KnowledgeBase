@@ -32,6 +32,7 @@ workspace:
 - The document action opens the original signed source document through the assistant citation redirect.
 - For PDF sources, the redirect includes the cited page and a search phrase from the citation text so supported PDF viewers can highlight the cited text; exact bbox/text-layer highlighting remains available in the AKB source-context/native preview.
 - Thread sharing is represented in the UI as session-local working state until a dedicated backend sharing contract is added.
+- On tablet/mobile breakpoints, the shared shell hamburger is a true open/close toggle. A closed workspace submenu must be visually hidden, non-interactive and not reachable through keyboard focus.
 - The source-context panel shows:
   - document title,
   - version id,
