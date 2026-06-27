@@ -103,10 +103,14 @@ Ollama endpoint může být jeden nebo řízený failover seznam:
 
 ```text
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
-AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=3
 ```
 
 `AKL_OLLAMA_BASE_URLS` je explicitní allowlist. Gateway neprohledává lokální síť; pouze zkusí nakonfigurované URL v pořadí.
+Každý kandidát se nejdřív ověří krátkým timeoutem
+`AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS`; plný LLM request se posílá až na aktivní
+endpoint.
 
 Pro thinking-capable Ollama modely gateway podporuje:
 

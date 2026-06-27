@@ -322,11 +322,14 @@ endpointy. AKB neprohledává lokální síť; zkusí pouze uvedené URL v pořa
 
 ```env
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
-AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=3
 ```
 
-Stanice `192.168.1.176` musí mít Ollama dostupnou na síťovém rozhraní
-dosažitelném z `docker.home.cz`, nejen na `127.0.0.1`.
+Stanice `192.168.200.2` a `192.168.1.176` musí mít Ollama dostupnou na
+síťovém rozhraní dosažitelném z `docker.home.cz`, nejen na `127.0.0.1`.
+Nedostupný kandidát se při výběru endpointu přeskočí po
+`AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS`.
 
 Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`:
 

@@ -89,6 +89,7 @@ class Settings:
 
     ollama_base_url: str
     ollama_base_urls: tuple[str, ...]
+    ollama_endpoint_timeout_seconds: float
     ollama_think: bool
     openai_base_url: str
     openai_api_key: str | None
@@ -138,6 +139,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         request_timeout_seconds = float(_get(source, "AKL_LLM_REQUEST_TIMEOUT_SECONDS", "30"))
         retry_attempts = int(_get(source, "AKL_LLM_RETRY_ATTEMPTS", "2"))
         retry_backoff_seconds = float(_get(source, "AKL_LLM_RETRY_BACKOFF_SECONDS", "0.25"))
+        ollama_endpoint_timeout_seconds = float(_get(source, "AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS", "3"))
         model_pull_timeout_seconds = float(_get(source, "AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS", "1800"))
         rate_limit_per_minute = int(_get(source, "AKL_RATE_LIMIT_PER_MINUTE", "120"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
@@ -151,6 +153,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_LLM_RETRY_ATTEMPTS must be zero or greater")
     if retry_backoff_seconds < 0:
         raise ConfigError("AKL_LLM_RETRY_BACKOFF_SECONDS must be zero or greater")
+    if ollama_endpoint_timeout_seconds <= 0:
+        raise ConfigError("AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS must be greater than zero")
     if model_pull_timeout_seconds <= 0:
         raise ConfigError("AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS must be greater than zero")
     if rate_limit_per_minute <= 0:
@@ -195,6 +199,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         mock_embedding_dimensions=mock_embedding_dimensions,
         ollama_base_url=ollama_base_url,
         ollama_base_urls=ollama_base_urls,
+        ollama_endpoint_timeout_seconds=ollama_endpoint_timeout_seconds,
         ollama_think=_parse_bool(_get(source, "AKL_OLLAMA_THINK", "false")),
         openai_base_url=_get(source, "AKL_OPENAI_COMPAT_BASE_URL", "http://localhost:8000").rstrip("/"),
         openai_api_key=source.get("AKL_OPENAI_COMPAT_API_KEY") or None,

@@ -83,10 +83,13 @@ async def test_ollama_provider_uses_default_max_tokens(monkeypatch: pytest.Monke
 @pytest.mark.asyncio
 async def test_ollama_provider_falls_back_to_next_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
+    probe_timeouts: list[object] = []
 
     async def fake_request_json_with_retry(**kwargs):
         url = kwargs["url"]
         calls.append(url)
+        if url.endswith("/api/tags"):
+            probe_timeouts.append(kwargs.get("timeout_seconds"))
         if url.startswith("http://unavailable-ollama:11434"):
             raise GatewayError(
                 "LLM_PROVIDER_ERROR",
@@ -114,9 +117,11 @@ async def test_ollama_provider_falls_back_to_next_base_url(monkeypatch: pytest.M
     )
 
     assert calls == [
-        "http://unavailable-ollama:11434/api/chat",
+        "http://unavailable-ollama:11434/api/tags",
+        "http://192.168.1.176:11434/api/tags",
         "http://192.168.1.176:11434/api/chat",
     ]
+    assert probe_timeouts == [3, 3]
     assert response.content == "Hotovo."
 
 

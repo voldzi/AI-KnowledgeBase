@@ -111,6 +111,8 @@ class OllamaProvider(LLMProvider):
             method="GET",
             path="/api/tags",
             headers=outgoing_headers(self.settings),
+            timeout_seconds=self.settings.ollama_endpoint_timeout_seconds,
+            retry_attempts=0,
         )
         models = data.get("models", [])
         if not isinstance(models, list):
@@ -123,9 +125,12 @@ class OllamaProvider(LLMProvider):
         return [item for item in models if isinstance(item, dict)], active_base_url
 
     async def chat_completion(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
-        data, _ = await self._request_json_with_endpoint_fallback(
+        active_base_url = await self._resolve_active_base_url()
+        data = await request_json_with_retry(
+            provider=self.name,
+            settings=self.settings,
             method="POST",
-            path="/api/chat",
+            url=f"{active_base_url}/api/chat",
             headers=outgoing_headers(self.settings),
             json_body=_chat_payload(request, self.settings, stream=False),
         )
@@ -186,9 +191,12 @@ class OllamaProvider(LLMProvider):
             )
 
     async def embeddings(self, request: EmbeddingsRequest) -> EmbeddingsResponse:
-        data, _ = await self._request_json_with_endpoint_fallback(
+        active_base_url = await self._resolve_active_base_url()
+        data = await request_json_with_retry(
+            provider=self.name,
+            settings=self.settings,
             method="POST",
-            path="/api/embed",
+            url=f"{active_base_url}/api/embed",
             headers=outgoing_headers(self.settings),
             json_body={"model": request.model, "input": request.input},
         )
@@ -220,6 +228,8 @@ class OllamaProvider(LLMProvider):
         path: str,
         headers: dict[str, str],
         json_body: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
+        retry_attempts: int | None = None,
     ) -> tuple[dict[str, Any], str]:
         last_error: GatewayError | None = None
         for base_url in self.settings.ollama_base_urls:
@@ -231,6 +241,8 @@ class OllamaProvider(LLMProvider):
                     url=f"{base_url}{path}",
                     headers=headers,
                     json_body=json_body,
+                    timeout_seconds=timeout_seconds,
+                    retry_attempts=retry_attempts,
                 )
                 return data, base_url
             except GatewayError as exc:
@@ -251,31 +263,36 @@ class OllamaProvider(LLMProvider):
         json_body: dict[str, Any],
         timeout: float,
     ) -> httpx.Response:
-        last_error: Exception | None = None
-        for base_url in self.settings.ollama_base_urls:
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    response = await client.post(f"{base_url}{path}", headers=headers, json=json_body)
-                if response.status_code < 500:
-                    return response
-                last_error = provider_error(self.name, "Ollama endpoint returned a server error")
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                last_error = exc
-                continue
-        if isinstance(last_error, GatewayError):
-            raise last_error
+        active_base_url = await self._resolve_active_base_url()
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(f"{active_base_url}{path}", headers=headers, json=json_body)
+            if response.status_code < 500:
+                return response
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            raise provider_error(
+                self.name,
+                "Ollama provider is not reachable",
+                {"reason": exc.__class__.__name__},
+            ) from exc
         raise provider_error(
             self.name,
-            "Ollama provider is not reachable",
-            {"reason": last_error.__class__.__name__ if last_error else "unknown"},
+            "Ollama endpoint returned a server error",
+            {"status_code": response.status_code},
         )
 
-    async def _resolve_stream_url(self, path: str) -> str:
+    async def _resolve_active_base_url(self) -> str:
         _, active_base_url = await self._request_json_with_endpoint_fallback(
             method="GET",
             path="/api/tags",
             headers=outgoing_headers(self.settings),
+            timeout_seconds=self.settings.ollama_endpoint_timeout_seconds,
+            retry_attempts=0,
         )
+        return active_base_url
+
+    async def _resolve_stream_url(self, path: str) -> str:
+        active_base_url = await self._resolve_active_base_url()
         return f"{active_base_url}{path}"
 
 
