@@ -14,8 +14,8 @@
   "dependencies": {
     "@voldzi/stratos-ui": "^0.3.6",
     "effect": "^3.21.4",
-    "lucide-react": "1.17.0",
-    "next": "16.2.7",
+    "lucide-react": "1.21.0",
+    "next": "16.2.9",
     "pdfjs-dist": "6.0.227",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -24,8 +24,8 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
-    "@types/node": "25.9.2",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "26.0.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "tsx": "4.22.4",
