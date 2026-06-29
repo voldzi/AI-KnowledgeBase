@@ -82,6 +82,7 @@ def import_docs_subset() -> dict[str, Any]:
         storage_bucket=os.getenv("AKL_IMPORT_STORAGE_BUCKET", "akl-documents"),
         storage_prefix=os.getenv("AKL_IMPORT_STORAGE_PREFIX", "docs-import"),
         timeout_seconds=int(os.getenv("AKL_IMPORT_TIMEOUT_SECONDS", "180")),
+        okf_profile=False,
     )
     report = run_import(options)
     write_reports(report, REPORT_PATH)

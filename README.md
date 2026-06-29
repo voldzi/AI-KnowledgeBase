@@ -85,6 +85,16 @@ python3 scripts/phase_03_local_production_smoke.py
 python3 scripts/phase_04_employee_assistant_smoke.py
 ```
 
+Validate and import STRATOS Open Knowledge Format bundles when an application
+repository provides curated knowledge concepts:
+
+```bash
+python3 tools/okf_profile.py validate --source ./okf
+python3 tools/import_docs_folder.py --source ./okf --manifest docs/import-manifest.yaml --mode reindex --okf-profile
+```
+
+Profile details: `docs/integration/STRATOS_OKF_PROFILE.md`.
+
 ## Phase 04 Employee Chat Portal
 
 AKB now has one employee-facing chat portal and a separate knowledge-management

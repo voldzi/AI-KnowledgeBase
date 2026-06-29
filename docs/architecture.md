@@ -48,6 +48,16 @@ question -> RAG Retrieval Service -> Registry authz -> Qdrant -> LLM Gateway
 citation/source open -> AKB web bridge/viewer -> signed AKB source endpoint
 ```
 
+## Portable Knowledge Bundles
+
+AKB supports a STRATOS profile for Open Knowledge Format as a portable
+Markdown/YAML concept layer. OKF bundles can describe policies, processes,
+contracts, metrics, systems, runbooks, API concepts, risks, and decisions while
+AKB remains the authority for controlled source files, versions, authorization,
+ingestion, citations, and audit.
+
+Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
+
 ## Service Boundaries
 
 - Registry does not parse documents, create embeddings, call LLMs, or write to

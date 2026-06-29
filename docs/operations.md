@@ -117,6 +117,30 @@ python3 tools/reset_pdf_first_corpus.py --domain public-digitalization-corpus --
 The workflow keeps user profiles, roles, Keycloak, observability and STRATOS application data intact. Details:
 `docs/OPERATIONS/reset-pdf-first-corpus.md`.
 
+## OKF Knowledge Bundles
+
+STRATOS application repositories may provide Open Knowledge Format bundles as
+Markdown files with YAML frontmatter. Validate and plan them before importing:
+
+```bash
+python3 tools/okf_profile.py validate --source ./okf --report reports/okf_validate_report.json
+python3 tools/okf_profile.py plan-import --source ./okf --report reports/okf_import_plan.json
+```
+
+Import OKF concepts through the existing Markdown importer with the STRATOS OKF
+metadata profile enabled:
+
+```bash
+python3 tools/import_docs_folder.py \
+  --source ./okf \
+  --manifest docs/import-manifest.yaml \
+  --mode reindex \
+  --okf-profile \
+  --report reports/okf_import_report.json
+```
+
+Profile details: `docs/integration/STRATOS_OKF_PROFILE.md`.
+
 ## Validation Commands
 
 Smallest relevant checks first:
