@@ -72,6 +72,23 @@ class OkfProfileTest(unittest.TestCase):
         self.assertEqual(validation["errors"], [])
         self.assertEqual(plan["concepts"][0]["metadata"]["okf_source_path"], "governance/isvs.md")
 
+    def test_reference_example_bundle_is_valid(self) -> None:
+        source = ROOT / "examples" / "okf" / "stratos"
+
+        validation = validate_bundle(source)
+        plan = plan_import(source)
+
+        self.assertEqual(validation["errors"], [])
+        self.assertEqual(validation["totals"]["valid_concepts"], 6)
+        self.assertEqual(plan["totals"]["valid_concepts"], 6)
+        self.assertTrue(
+            any(
+                item["metadata"]["document_type"] == "contract"
+                and item["metadata"]["classification"] == "confidential"
+                for item in plan["concepts"]
+            )
+        )
+
     def test_import_docs_folder_can_merge_okf_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "isvs.md"

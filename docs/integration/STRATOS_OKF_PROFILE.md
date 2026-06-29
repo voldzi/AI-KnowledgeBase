@@ -104,6 +104,28 @@ python3 tools/okf_profile.py export-from-report \
   --report reports/okf_export_report.json
 ```
 
+## Reference Example
+
+The repository contains a small STRATOS example bundle in
+`examples/okf/stratos`. It covers governance, ProjectFlow, Budget & Contract,
+architecture, operations, and observability concepts.
+
+Validate it:
+
+```bash
+python3 tools/okf_profile.py validate \
+  --source examples/okf/stratos \
+  --report reports/okf_example_validate_report.json
+```
+
+Preview AKB metadata mapping:
+
+```bash
+python3 tools/okf_profile.py plan-import \
+  --source examples/okf/stratos \
+  --report reports/okf_example_import_plan.json
+```
+
 ## Operating Rules
 
 - OKF is a knowledge interchange format, not a permission model.

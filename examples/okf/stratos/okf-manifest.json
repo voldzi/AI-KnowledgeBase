@@ -1,0 +1,8 @@
+{
+  "profile": "stratos-okf-v1",
+  "name": "stratos-enterprise-knowledge-sample",
+  "description": "Reference OKF bundle for STRATOS knowledge concepts imported into AKB.",
+  "tenant_id": "stratos",
+  "language": "cs",
+  "concept_count": 6
+}
