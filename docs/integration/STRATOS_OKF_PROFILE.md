@@ -55,6 +55,12 @@ tags: [isvs, digitalizace, legislativa]
 | `akb_document_version_id` | metadata pointer to original AKB version |
 | `tags` | tags plus `okf` and profile-derived tags |
 
+The profile also preserves STRATOS IT management fields such as `service_id`,
+`service_criticality`, `sla_id`, `cmdb_ci_id`, `system_id`, `itil_process`,
+`supplier_id`, `contract_id`, `architecture_domain`, `egovernment_standard`,
+`control_id`, `metric_id`, `rto`, and `rpo`. These fields are metadata, not new
+Registry `document_type` values.
+
 When `document_type` is missing, AKB maps common OKF types:
 
 | OKF type | AKB document type |
@@ -63,7 +69,12 @@ When `document_type` is missing, AKB maps common OKF types:
 | `policy` | `policy` |
 | `process` | `methodology` |
 | `regulation` | `regulation` |
+| `incident_procedure`, `change_procedure` | `procedure` |
+| `knowledge_article` | `knowledge_base_article` |
+| `control`, `security_control` | `policy` |
+| `operating_model`, `governance_cadence` | `methodology` |
 | `api`, `decision`, `metric`, `risk`, `runbook`, `system` | `project_documentation` |
+| `service`, `service_catalog`, `service_level`, `service_portfolio`, `cmdb_item`, `configuration_item`, `supplier_management`, `automation_use_case`, `egovernment_standard`, `it_role` | `project_documentation` |
 
 ## Tooling
 
@@ -109,6 +120,10 @@ python3 tools/okf_profile.py export-from-report \
 The repository contains a small STRATOS example bundle in
 `examples/okf/stratos`. It covers governance, ProjectFlow, Budget & Contract,
 architecture, operations, and observability concepts.
+
+An IT management pilot bundle is available in
+`examples/okf/stratos-it-management`; see
+`docs/integration/STRATOS_IT_MANAGEMENT_PROFILE.md`.
 
 Validate it:
 

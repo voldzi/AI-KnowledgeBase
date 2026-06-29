@@ -94,7 +94,8 @@ python3 tools/import_docs_folder.py --source ./okf --manifest docs/import-manife
 ```
 
 Profile details: `docs/integration/STRATOS_OKF_PROFILE.md`.
-Reference examples: `examples/okf/stratos`.
+IT management profile: `docs/integration/STRATOS_IT_MANAGEMENT_PROFILE.md`.
+Reference examples: `examples/okf/stratos` and `examples/okf/stratos-it-management`.
 
 ## Phase 04 Employee Chat Portal
 

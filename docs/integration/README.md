@@ -12,6 +12,10 @@ This section contains current integration-facing runbooks and contracts.
   - current Document Workbench implementation slice, gaps, and next recommended work
 - `STRATOS_EXTERNAL_DOCUMENTS_API.md`
   - server-side STRATOS to AKB external documents contract
+- `STRATOS_OKF_PROFILE.md`
+  - portable Open Knowledge Format profile for importing governed STRATOS concepts into AKB
+- `STRATOS_IT_MANAGEMENT_PROFILE.md`
+  - IT management knowledge profile for service catalog, ITIL, CMDB, SLA, runbook, security, supplier, metrics, and automation concepts
 
 ## Preserved Phase Material
 

@@ -45,6 +45,7 @@ from the flat standard documents.
    - `29_STRATOS_SHARED_LIBRARIES.md`
    - `integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
    - `integration/STRATOS_OKF_PROFILE.md`
+   - `integration/STRATOS_IT_MANAGEMENT_PROFILE.md`
 6. Current implementation status:
    - `maintenance/project-status.md`
 

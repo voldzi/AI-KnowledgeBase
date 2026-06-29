@@ -38,6 +38,33 @@ tags: [isvs, digitalizace]
 Znalostní koncept pro AKB.
 """
 
+IT_SERVICE_MARKDOWN = """---
+type: service
+title: Služba Statistická produkce
+tenant_id: stratos
+classification: internal
+owner: operations-9101
+language: cs
+external_system: STRATOS_AKB
+external_ref: service-statistical-production
+service_id: SVC-STAT-PROD
+service_name: Statistická produkce
+service_criticality: critical
+service_tier: tier-1
+cmdb_ci_id: CI-SVC-STAT-PROD
+system_id: SYS-STAT-PROD
+itil_process: incident_management
+rto: 4h
+rpo: 1h
+dependency_service_ids: [SVC-IAM, SVC-NETWORK]
+tags: [service-catalog]
+---
+
+# Služba Statistická produkce
+
+Znalostní koncept pro katalog služeb.
+"""
+
 
 class OkfProfileTest(unittest.TestCase):
     def test_frontmatter_parser_reads_okf_concept(self) -> None:
@@ -58,6 +85,22 @@ class OkfProfileTest(unittest.TestCase):
         self.assertEqual(metadata["source_system"], "STRATOS_PROJECTFLOW")
         self.assertEqual(metadata["external_ref"], "isvs-365")
         self.assertIn("okf-type:policy", metadata["tags"])
+
+    def test_it_management_metadata_maps_to_akb_metadata_and_tags(self) -> None:
+        frontmatter, _body = parse_markdown_frontmatter(IT_SERVICE_MARKDOWN)
+        metadata = akb_metadata_from_okf(frontmatter, "services/statistical-production-service.md")
+
+        self.assertEqual(metadata["document_type"], "project_documentation")
+        self.assertEqual(metadata["service_id"], "SVC-STAT-PROD")
+        self.assertEqual(metadata["service_criticality"], "critical")
+        self.assertEqual(metadata["cmdb_ci_id"], "CI-SVC-STAT-PROD")
+        self.assertEqual(metadata["system_id"], "SYS-STAT-PROD")
+        self.assertEqual(metadata["dependency_service_ids"], ["SVC-IAM", "SVC-NETWORK"])
+        self.assertIn("service:svc-stat-prod", metadata["tags"])
+        self.assertIn("service-criticality:critical", metadata["tags"])
+        self.assertIn("cmdb:ci-svc-stat-prod", metadata["tags"])
+        self.assertIn("itil:incident-management", metadata["tags"])
+        self.assertIn("depends-on:svc-iam", metadata["tags"])
 
     def test_validate_and_plan_import(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -88,6 +131,24 @@ class OkfProfileTest(unittest.TestCase):
                 for item in plan["concepts"]
             )
         )
+
+    def test_reference_it_management_bundle_is_valid(self) -> None:
+        source = ROOT / "examples" / "okf" / "stratos-it-management"
+
+        validation = validate_bundle(source)
+        plan = plan_import(source)
+
+        self.assertEqual(validation["errors"], [])
+        self.assertEqual(validation["totals"]["valid_concepts"], 10)
+        self.assertEqual(plan["totals"]["valid_concepts"], 10)
+        service_metadata = next(
+            item["metadata"]
+            for item in plan["concepts"]
+            if item["source_path"] == "services/statistical-production-service.md"
+        )
+        self.assertEqual(service_metadata["service_id"], "SVC-STAT-PROD")
+        self.assertIn("service:svc-stat-prod", service_metadata["tags"])
+        self.assertIn("service-criticality:critical", service_metadata["tags"])
 
     def test_import_docs_folder_can_merge_okf_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

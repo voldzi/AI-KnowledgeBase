@@ -22,16 +22,73 @@ DEFAULT_LANGUAGE = "cs"
 
 DOCUMENT_TYPE_BY_OKF_TYPE = {
     "api": "project_documentation",
+    "automation_use_case": "project_documentation",
+    "change_procedure": "procedure",
+    "cmdb_item": "project_documentation",
+    "configuration_item": "project_documentation",
     "contract": "contract",
     "contract_summary": "contract",
+    "control": "policy",
     "decision": "project_documentation",
+    "egovernment_standard": "project_documentation",
+    "governance_cadence": "methodology",
+    "incident_procedure": "procedure",
+    "it_role": "project_documentation",
+    "knowledge_article": "knowledge_base_article",
     "metric": "project_documentation",
+    "operating_model": "methodology",
     "policy": "policy",
     "process": "methodology",
     "regulation": "regulation",
     "risk": "project_documentation",
     "runbook": "project_documentation",
+    "security_control": "policy",
+    "service": "project_documentation",
+    "service_catalog": "project_documentation",
+    "service_level": "project_documentation",
+    "service_portfolio": "project_documentation",
+    "supplier_management": "project_documentation",
     "system": "project_documentation",
+}
+
+IT_MANAGEMENT_METADATA_FIELDS = {
+    "application_id",
+    "architecture_domain",
+    "automation_candidate",
+    "automation_value",
+    "cmdb_ci_id",
+    "component_id",
+    "compliance_framework",
+    "contract_id",
+    "control_area",
+    "control_id",
+    "data_classification",
+    "dependency_service_ids",
+    "egovernment_standard",
+    "human_oversight_required",
+    "itil_process",
+    "license_id",
+    "metric_id",
+    "metric_name",
+    "metric_target",
+    "metric_unit",
+    "process_name",
+    "process_owner",
+    "risk_id",
+    "rpo",
+    "rto",
+    "service_criticality",
+    "service_id",
+    "service_name",
+    "service_owner",
+    "service_status",
+    "service_tier",
+    "sla_id",
+    "sla_target",
+    "supplier_id",
+    "supplier_name",
+    "support_hours",
+    "system_id",
 }
 
 
@@ -249,6 +306,7 @@ def akb_metadata_from_okf(
         f"area:{slugify(area)}",
         *(str(tag) for tag in base.get("tags") or []),
         *(str(tag) for tag in frontmatter.get("tags") or []),
+        *derived_metadata_tags(frontmatter),
     })
     metadata = {
         **base,
@@ -287,8 +345,37 @@ def profile_metadata(frontmatter: dict[str, Any]) -> dict[str, Any]:
         "steward",
         "tenant_id",
         "title",
-    }
-    return {key: value for key, value in frontmatter.items() if key in allowed and value not in (None, "")}
+    } | IT_MANAGEMENT_METADATA_FIELDS
+    return {key: value for key, value in frontmatter.items() if key in allowed and value not in (None, "", [])}
+
+
+def derived_metadata_tags(frontmatter: dict[str, Any]) -> list[str]:
+    tag_specs = [
+        ("service", first_present(frontmatter, "service_id", "service_name")),
+        ("service-criticality", frontmatter.get("service_criticality")),
+        ("service-tier", frontmatter.get("service_tier")),
+        ("system", frontmatter.get("system_id")),
+        ("cmdb", frontmatter.get("cmdb_ci_id")),
+        ("itil", frontmatter.get("itil_process")),
+        ("supplier", first_present(frontmatter, "supplier_id", "supplier_name")),
+        ("architecture", frontmatter.get("architecture_domain")),
+        ("egov", frontmatter.get("egovernment_standard")),
+        ("control", frontmatter.get("control_id")),
+        ("metric", frontmatter.get("metric_id")),
+    ]
+    tags = [f"{prefix}:{slugify(str(value))}" for prefix, value in tag_specs if value not in (None, "")]
+    dependency_service_ids = frontmatter.get("dependency_service_ids")
+    if isinstance(dependency_service_ids, list):
+        tags.extend(f"depends-on:{slugify(str(value))}" for value in dependency_service_ids if str(value).strip())
+    return tags
+
+
+def first_present(values: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = values.get(key)
+        if value not in (None, ""):
+            return value
+    return None
 
 
 def okf_frontmatter_from_import_item(item: dict[str, Any]) -> dict[str, Any]:
