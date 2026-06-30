@@ -37,8 +37,10 @@ test.describe("Document Workbench product paths", () => {
     const versionId = "ver_e2e_new_1";
     const uploadSessionId = "upload_e2e_new";
     const fileHash = "sha256:e2e-new-document";
+    let documentPayload: Record<string, unknown> | null = null;
 
     await page.route(`**${appPath("/api/controlled-document/documents")}`, async (route) => {
+      documentPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -145,8 +147,10 @@ test.describe("Document Workbench product paths", () => {
     await page.goto(appPath("/documents/new"));
     await expect(page.getByRole("heading", { name: "Založit dokument a první verzi" }).first()).toBeVisible();
 
+    await page.getByRole("button", { name: "Smlouva" }).click();
+    await expect(page.locator("#gestor")).toHaveValue("Právní");
+    await expect(page.locator("#tags")).toHaveValue("controlled-document,akb,smlouva");
     await page.locator("#title").fill("E2E založení dokumentu");
-    await page.locator("#gestor").fill("IT");
     await page.setInputFiles("#source-file", {
       name: "new-document.pdf",
       mimeType: "application/pdf",
@@ -156,13 +160,25 @@ test.describe("Document Workbench product paths", () => {
 
     await page.getByRole("button", { name: "Založit dokument a spustit zpracování" }).click();
 
+    expect(documentPayload).toMatchObject({
+      document_type: "contract",
+      classification: "restricted",
+      gestor_unit: "Právní",
+      tags: "controlled-document,akb,smlouva"
+    });
     await expect(page.getByText("Dokument je založený")).toBeVisible();
     await expect(page.getByText("Originální soubor je uložený v AKB a zpracování citací běží na pozadí.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Otevřít dokument" })).toHaveAttribute("href", appPath(`/documents/${documentId}`));
     await expect(page.getByRole("link", { name: "Sledovat zpracování" })).toHaveAttribute("href", appPath("/ingestion"));
+    await expect(page.getByRole("link", { name: "Nahrát další verzi" })).toHaveAttribute(
+      "href",
+      appPath(`/upload?document_id=${documentId}`)
+    );
 
     await page.getByRole("button", { name: "Založit další dokument" }).click();
     await expect(page.locator("#title")).toHaveValue("");
+    await expect(page.locator("#gestor")).toHaveValue("IT");
+    await expect(page.locator("#tags")).toHaveValue("controlled-document,akb,smernice");
     await expect(page.getByText("Dokument je založený")).toHaveCount(0);
   });
 

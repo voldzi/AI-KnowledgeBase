@@ -44,6 +44,7 @@ Route: `/documents/new`
 Content:
 
 - guided document creation and first-version upload flow
+- quick choices for common document scenarios such as directive, methodology, policy, contract and project documentation
 - draft metadata form
 - document type
 - classification
@@ -52,7 +53,7 @@ Content:
 - first version label fixed to `1.0`
 - parser profile and chunking strategy
 - submission creates document, stores source file, creates first version and queues ingestion
-- success state guides the operator to open the document, track ingestion, or create another document
+- success state guides the operator to open the document, track ingestion, upload the next version, or create another document
 - save action disabled when document update or ingestion permission is denied
 
 ## Upload Wizard

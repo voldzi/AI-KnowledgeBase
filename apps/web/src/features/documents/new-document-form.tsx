@@ -10,7 +10,9 @@ import { documentTypeLabel, formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type {
   AuthorizationHint,
+  Classification,
   Document,
+  DocumentType,
   DocumentVersion,
   IngestionJob,
   UploadContentResponse,
@@ -32,10 +34,95 @@ interface FilePreflight {
 }
 
 type FirstVersionPhase = "idle" | "ready" | "creating" | "preflight" | "uploading" | "queued";
+type ParserProfile = "controlled_document" | "plain_text" | "ocr_heavy";
+type ChunkingStrategy = "legal_structured" | "semantic" | "fixed_window";
+
+interface DocumentTemplate {
+  key: string;
+  labelKey: "templateDirective" | "templateMethodology" | "templatePolicy" | "templateContract" | "templateProject";
+  documentType: DocumentType;
+  classification: Classification;
+  gestorUnit: string;
+  tags: string;
+  parserProfile: ParserProfile;
+  chunkingStrategy: ChunkingStrategy;
+}
+
+const documentTypeOptions: DocumentType[] = [
+  "directive",
+  "regulation",
+  "methodology",
+  "policy",
+  "procedure",
+  "manual",
+  "project_documentation",
+  "contract",
+  "other"
+];
+
+const documentTemplates: DocumentTemplate[] = [
+  {
+    key: "directive",
+    labelKey: "templateDirective",
+    documentType: "directive",
+    classification: "internal",
+    gestorUnit: "IT",
+    tags: "controlled-document,akb,smernice",
+    parserProfile: "controlled_document",
+    chunkingStrategy: "legal_structured"
+  },
+  {
+    key: "methodology",
+    labelKey: "templateMethodology",
+    documentType: "methodology",
+    classification: "internal",
+    gestorUnit: "IT",
+    tags: "controlled-document,akb,metodika",
+    parserProfile: "controlled_document",
+    chunkingStrategy: "legal_structured"
+  },
+  {
+    key: "policy",
+    labelKey: "templatePolicy",
+    documentType: "policy",
+    classification: "restricted",
+    gestorUnit: "Compliance",
+    tags: "controlled-document,akb,politika",
+    parserProfile: "controlled_document",
+    chunkingStrategy: "legal_structured"
+  },
+  {
+    key: "contract",
+    labelKey: "templateContract",
+    documentType: "contract",
+    classification: "restricted",
+    gestorUnit: "Právní",
+    tags: "controlled-document,akb,smlouva",
+    parserProfile: "controlled_document",
+    chunkingStrategy: "semantic"
+  },
+  {
+    key: "project",
+    labelKey: "templateProject",
+    documentType: "project_documentation",
+    classification: "internal",
+    gestorUnit: "ProjectFlow",
+    tags: "controlled-document,akb,projekt",
+    parserProfile: "controlled_document",
+    chunkingStrategy: "semantic"
+  }
+];
 
 const newDocumentCopy = {
   cs: {
     title: "Založit dokument a první verzi",
+    documentTemplate: "Rychlá volba",
+    templateHint: "Vyberte typický scénář. AKB předvyplní typ, klasifikaci, gestora a způsob čtení.",
+    templateDirective: "Směrnice",
+    templateMethodology: "Metodika",
+    templatePolicy: "Politika",
+    templateContract: "Smlouva",
+    templateProject: "Projekt",
     titleLabel: "Název",
     titlePlaceholder: "Název dokumentu",
     type: "Typ dokumentu",
@@ -82,6 +169,7 @@ const newDocumentCopy = {
     fingerprintReady: "Kontrola souboru hotová",
     openDocument: "Otevřít dokument",
     openProcessing: "Sledovat zpracování",
+    uploadNextVersion: "Nahrát další verzi",
     createAnother: "Založit další dokument",
     validationPreview: "Průběh založení",
     stepMetadata: "Metadata dokumentu",
@@ -106,6 +194,13 @@ const newDocumentCopy = {
   },
   en: {
     title: "Create document and first version",
+    documentTemplate: "Quick choice",
+    templateHint: "Choose a common scenario. AKB pre-fills type, classification, owner unit and reading mode.",
+    templateDirective: "Directive",
+    templateMethodology: "Methodology",
+    templatePolicy: "Policy",
+    templateContract: "Contract",
+    templateProject: "Project",
     titleLabel: "Title",
     titlePlaceholder: "Document title",
     type: "Document type",
@@ -152,6 +247,7 @@ const newDocumentCopy = {
     fingerprintReady: "File check complete",
     openDocument: "Open document",
     openProcessing: "Track processing",
+    uploadNextVersion: "Upload next version",
     createAnother: "Create another document",
     validationPreview: "Creation progress",
     stepMetadata: "Document metadata",
@@ -187,6 +283,12 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
   const [phase, setPhase] = useState<FirstVersionPhase>("idle");
   const [submitting, setSubmitting] = useState(false);
   const [formResetKey, setFormResetKey] = useState(0);
+  const [documentType, setDocumentType] = useState<DocumentType>("directive");
+  const [classification, setClassification] = useState<Classification>("internal");
+  const [gestorUnit, setGestorUnit] = useState("IT");
+  const [tags, setTags] = useState("controlled-document,akb,smernice");
+  const [parserProfile, setParserProfile] = useState<ParserProfile>("controlled_document");
+  const [chunkingStrategy, setChunkingStrategy] = useState<ChunkingStrategy>("legal_structured");
 
   function resetFlow() {
     setCreatedDocument(null);
@@ -196,7 +298,25 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
     setError(null);
     setPhase("idle");
     setSubmitting(false);
+    setDocumentType("directive");
+    setClassification("internal");
+    setGestorUnit("IT");
+    setTags("controlled-document,akb,smernice");
+    setParserProfile("controlled_document");
+    setChunkingStrategy("legal_structured");
     setFormResetKey((current) => current + 1);
+  }
+
+  function applyTemplate(template: DocumentTemplate) {
+    if (metadataLocked || submitted) {
+      return;
+    }
+    setDocumentType(template.documentType);
+    setClassification(template.classification);
+    setGestorUnit(template.gestorUnit);
+    setTags(template.tags);
+    setParserProfile(template.parserProfile);
+    setChunkingStrategy(template.chunkingStrategy);
   }
 
   const allowed = authorization.can_update && authorization.can_ingest;
@@ -348,19 +468,51 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
           <FilePlus2 size={18} aria-hidden="true" />
         </div>
         <div className="panel__body form-grid">
+          <div className="guided-change">
+            <div>
+              <strong>{copy.documentTemplate}</strong>
+              <p>{copy.templateHint}</p>
+            </div>
+            <div className="task-actions">
+              {documentTemplates.map((template) => (
+                <StratosButton
+                  key={template.key}
+                  type="button"
+                  disabled={metadataLocked || Boolean(submitted)}
+                  onClick={() => applyTemplate(template)}
+                >
+                  {copy[template.labelKey]}
+                </StratosButton>
+              ))}
+            </div>
+          </div>
           <div className="form-grid form-grid--two">
             <div className="field">
               <label htmlFor="title">{copy.titleLabel}</label>
               <input id="title" name="title" placeholder={copy.titlePlaceholder} required readOnly={metadataLocked || Boolean(submitted)} />
             </div>
-            <StratosSelect id="type" name="document_type" label={copy.type} defaultValue="directive" disabled={metadataLocked || Boolean(submitted)}>
-              {["directive", "methodology", "policy", "manual", "project_documentation"].map((value) => (
+            <StratosSelect
+              id="type"
+              name="document_type"
+              label={copy.type}
+              value={documentType}
+              disabled={metadataLocked || Boolean(submitted)}
+              onChange={(event) => setDocumentType(event.target.value as DocumentType)}
+            >
+              {documentTypeOptions.map((value) => (
                 <option key={value} value={value}>{documentTypeLabel(value, language)}</option>
               ))}
             </StratosSelect>
           </div>
           <div className="form-grid form-grid--two">
-            <StratosSelect id="classification" name="classification" label={copy.classification} defaultValue="internal" disabled={metadataLocked || Boolean(submitted)}>
+            <StratosSelect
+              id="classification"
+              name="classification"
+              label={copy.classification}
+              value={classification}
+              disabled={metadataLocked || Boolean(submitted)}
+              onChange={(event) => setClassification(event.target.value as Classification)}
+            >
               <option value="public">{copy.public}</option>
               <option value="internal">{copy.internal}</option>
               <option value="restricted">{copy.restricted}</option>
@@ -368,12 +520,25 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
             </StratosSelect>
             <div className="field">
               <label htmlFor="gestor">{copy.gestorUnit}</label>
-              <input id="gestor" name="gestor_unit" placeholder="IT" readOnly={metadataLocked || Boolean(submitted)} />
+              <input
+                id="gestor"
+                name="gestor_unit"
+                placeholder="IT"
+                value={gestorUnit}
+                readOnly={metadataLocked || Boolean(submitted)}
+                onChange={(event) => setGestorUnit(event.target.value)}
+              />
             </div>
           </div>
           <div className="field">
             <label htmlFor="tags">{copy.tags}</label>
-            <input id="tags" name="tags" defaultValue="controlled-document,akb" readOnly={metadataLocked || Boolean(submitted)} />
+            <input
+              id="tags"
+              name="tags"
+              value={tags}
+              readOnly={metadataLocked || Boolean(submitted)}
+              onChange={(event) => setTags(event.target.value)}
+            />
           </div>
           <div className="form-grid form-grid--three">
             <div className="field">
@@ -385,13 +550,27 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
               <label htmlFor="valid-from">{copy.validFrom}</label>
               <input id="valid-from" name="valid_from" type="date" defaultValue={new Date().toISOString().slice(0, 10)} disabled={Boolean(submitted)} />
             </div>
-            <StratosSelect id="parser" name="parser_profile" label={copy.parserProfile} defaultValue="controlled_document" disabled={Boolean(submitted)}>
+            <StratosSelect
+              id="parser"
+              name="parser_profile"
+              label={copy.parserProfile}
+              value={parserProfile}
+              disabled={Boolean(submitted)}
+              onChange={(event) => setParserProfile(event.target.value as ParserProfile)}
+            >
               <option value="controlled_document">{copy.parserControlled}</option>
               <option value="plain_text">{copy.parserPlain}</option>
               <option value="ocr_heavy">{copy.parserOcr}</option>
             </StratosSelect>
           </div>
-          <StratosSelect id="chunking" name="chunking_strategy" label={copy.chunkingStrategy} defaultValue="legal_structured" disabled={Boolean(submitted)}>
+          <StratosSelect
+            id="chunking"
+            name="chunking_strategy"
+            label={copy.chunkingStrategy}
+            value={chunkingStrategy}
+            disabled={Boolean(submitted)}
+            onChange={(event) => setChunkingStrategy(event.target.value as ChunkingStrategy)}
+          >
             <option value="legal_structured">{copy.chunkLegal}</option>
             <option value="semantic">{copy.chunkSemantic}</option>
             <option value="fixed_window">{copy.chunkFixed}</option>
@@ -534,6 +713,10 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
                 <StratosButtonLink href="/ingestion">
                   <ListChecks size={16} aria-hidden="true" />
                   {copy.openProcessing}
+                </StratosButtonLink>
+                <StratosButtonLink href={`/upload?document_id=${encodeURIComponent(submitted.document.document_id)}`}>
+                  <FilePlus2 size={16} aria-hidden="true" />
+                  {copy.uploadNextVersion}
                 </StratosButtonLink>
                 <StratosButton type="button" onClick={resetFlow}>
                   <RotateCcw size={16} aria-hidden="true" />
