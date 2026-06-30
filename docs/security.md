@@ -20,6 +20,13 @@ state instead of inventing unsupported information.
 STRATOS applications may pass business context, but AKB decides whether the
 current user can pick, upload, view, ingest, or open cited sources.
 
+AKB administrators may use the web UI role preview to test what selected user
+types see. The preview is protected by the current OIDC session, stored in a
+short-lived signed cookie, and only lowers or changes the effective AKB web
+roles after the server verifies that the real signed-in user has `admin`. A
+non-admin user cannot enable the preview by editing browser state. The preview
+does not replace production role mapping in Keycloak or Registry.
+
 ## Secrets
 
 Secrets must not be committed to Git, documentation, package artifacts, shell

@@ -22,6 +22,7 @@ import {
   sealRefreshToken,
   type OidcSession
 } from "../auth/oidc";
+import { applyRolePreviewToContext, openRolePreview, ROLE_PREVIEW_COOKIE } from "../auth/role-preview";
 
 const SESSION_REFRESH_SKEW_MS = 60_000;
 
@@ -66,13 +67,17 @@ export async function getOptionalServerRequestContext(request?: Request): Promis
 
     const session = await getOptionalServerOidcSession(request);
     if (session) {
-      return contextFromOidcSession(session);
+      const cookieStore = await cookies();
+      const context = contextFromOidcSession(session);
+      return applyRolePreviewToContext(context, openRolePreview(cookieStore.get(ROLE_PREVIEW_COOKIE)?.value, config)).context;
     }
 
     return null;
   }
 
-  return mockRequestContext();
+  const cookieStore = await cookies();
+  const context = mockRequestContext();
+  return applyRolePreviewToContext(context, openRolePreview(cookieStore.get(ROLE_PREVIEW_COOKIE)?.value, config)).context;
 }
 
 export async function getOptionalServerOidcSession(request?: Request): Promise<OidcSession | null> {

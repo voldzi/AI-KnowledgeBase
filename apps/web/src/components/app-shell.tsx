@@ -21,6 +21,7 @@ import {
 import { isEmployeeChatOnly } from "@/lib/auth/authorization";
 import {
   AppSettingsSurface,
+  type RolePreviewSettings,
   type SettingsSurfaceMode,
   type StratosSettingsCoreValue,
   type StratosSettingsCoreValueKey,
@@ -199,6 +200,15 @@ interface AklUserProfile {
   roles: string[];
 }
 
+const emptyRolePreview: RolePreviewSettings = {
+  canUse: false,
+  active: false,
+  profileId: "",
+  label: "",
+  roles: [],
+  profiles: []
+};
+
 export function AppShell({ children, apiMode, authMode, initialUser }: AppShellProps) {
   return (
     <LanguageProvider>
@@ -223,6 +233,8 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsMode, setSettingsMode] = useState<SettingsSurfaceMode>("modal");
   const [settingsDirty, setSettingsDirty] = useState(false);
+  const [rolePreview, setRolePreview] = useState<RolePreviewSettings>(emptyRolePreview);
+  const [savedRolePreviewProfileId, setSavedRolePreviewProfileId] = useState("");
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
     name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
     email: authMode === "mock" ? "dev@akl.local" : undefined,
@@ -276,6 +288,11 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           initials: initialsFromName(name),
           roles
         });
+        if (payload.rolePreview) {
+          const preview = normalizeRolePreview(payload.rolePreview);
+          setRolePreview(preview);
+          setSavedRolePreviewProfileId(preview.profileId);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -432,9 +449,33 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     setSettingsDirty(true);
   };
 
-  const handleSettingsSave = () => {
+  const handleRolePreviewChange = (profileId: string) => {
+    const profile = rolePreview.profiles.find((item) => item.id === profileId);
+    setRolePreview((current) => ({
+      ...current,
+      active: Boolean(profileId),
+      profileId,
+      label: profile?.label ?? "",
+      roles: profile?.roles ?? []
+    }));
+    setSettingsDirty(true);
+  };
+
+  const handleSettingsSave = async () => {
     if (settingsValues.language === "cs" || settingsValues.language === "en") {
       setLanguage(settingsValues.language);
+    }
+    if (rolePreview.canUse && rolePreview.profileId !== savedRolePreviewProfileId) {
+      const response = await fetch(withAppBasePath("/api/auth/role-preview"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ profileId: rolePreview.profileId })
+      }).catch(() => null);
+      if (response?.ok) {
+        window.location.reload();
+        return;
+      }
     }
     setSettingsDirty(false);
   };
@@ -480,8 +521,10 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
             onClose={() => setSettingsOpen(false)}
             onLogout={handleLogout}
             onModeChange={setSettingsMode}
+            onRolePreviewChange={handleRolePreviewChange}
             onSave={handleSettingsSave}
             onValueChange={handleSettingsValueChange}
+            rolePreview={rolePreview}
             userInitials={userProfile.initials}
             values={settingsValues}
           />
@@ -633,8 +676,10 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
               onClose={() => setSettingsOpen(false)}
               onLogout={handleLogout}
               onModeChange={setSettingsMode}
+              onRolePreviewChange={handleRolePreviewChange}
               onSave={handleSettingsSave}
               onValueChange={handleSettingsValueChange}
+              rolePreview={rolePreview}
               userInitials={userProfile.initials}
               values={settingsValues}
             />
@@ -662,6 +707,31 @@ function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {
     return "amber";
   }
   return "green";
+}
+
+function normalizeRolePreview(value: unknown): RolePreviewSettings {
+  const input = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  const profiles = Array.isArray(input.profiles)
+    ? input.profiles
+        .filter((profile): profile is Record<string, unknown> => typeof profile === "object" && profile !== null)
+        .map((profile) => ({
+          id: String(profile.id ?? ""),
+          label: String(profile.label ?? ""),
+          description: String(profile.description ?? ""),
+          roles: Array.isArray(profile.roles) ? profile.roles.filter((role): role is string => typeof role === "string") : []
+        }))
+        .filter((profile) => profile.id && profile.label)
+    : [];
+  const profileId = typeof input.profileId === "string" ? input.profileId : "";
+  const selectedProfile = profiles.find((profile) => profile.id === profileId);
+  return {
+    canUse: Boolean(input.canUse),
+    active: Boolean(input.active),
+    profileId,
+    label: typeof input.label === "string" ? input.label : selectedProfile?.label ?? "",
+    roles: Array.isArray(input.roles) ? input.roles.filter((role): role is string => typeof role === "string") : selectedProfile?.roles ?? [],
+    profiles
+  };
 }
 
 function moduleForPath(pathname: string): ShellModuleId {

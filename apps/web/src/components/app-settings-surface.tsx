@@ -1,8 +1,10 @@
 "use client";
 
-import { Database, ShieldCheck } from "lucide-react";
+import { Database, ShieldCheck, UserCog } from "lucide-react";
 import { useMemo } from "react";
 import {
+  HelpHint,
+  SelectField,
   SettingsField,
   SettingsTextInput,
   StratosSettingsSurface,
@@ -25,10 +27,26 @@ interface AppSettingsSurfaceProps {
   onClose: () => void;
   onLogout: () => void;
   onModeChange: (mode: SettingsSurfaceMode) => void;
+  onRolePreviewChange: (profileId: string) => void;
   onSave: () => void;
   onValueChange: (key: StratosSettingsCoreValueKey, value: StratosSettingsCoreValue) => void;
+  rolePreview: RolePreviewSettings;
   userInitials: string;
   values: StratosSettingsCoreValues;
+}
+
+export interface RolePreviewSettings {
+  canUse: boolean;
+  active: boolean;
+  profileId: string;
+  label: string;
+  roles: string[];
+  profiles: Array<{
+    id: string;
+    label: string;
+    description: string;
+    roles: string[];
+  }>;
 }
 
 const settingsCopy = {
@@ -42,6 +60,15 @@ const settingsCopy = {
     authModeDescription: "Režim přihlášení a autorizace uživatele.",
     owner: "Vlastník aplikace",
     ownerDescription: "Sdílený STRATOS modul správy znalostí.",
+    previewGroup: "Testování",
+    previewTitle: "Náhled role",
+    previewDescription: "Admin může dočasně zobrazit AKB tak, jak ji uvidí vybraný typ uživatele.",
+    previewField: "Zobrazit aplikaci jako",
+    previewFieldHelp: "Náhled se uloží pouze pro tuto relaci a po uložení obnoví stránku.",
+    previewHelpLabel: "Nápověda k náhledu role",
+    previewOff: "Skutečná role uživatele",
+    previewActive: "Aktivní náhled",
+    previewRoles: "Role v náhledu",
     logout: "Odhlásit"
   },
   en: {
@@ -54,6 +81,15 @@ const settingsCopy = {
     authModeDescription: "User sign-in and authorization mode.",
     owner: "Application owner",
     ownerDescription: "Shared STRATOS knowledge management module.",
+    previewGroup: "Testing",
+    previewTitle: "Role preview",
+    previewDescription: "Admins can temporarily view AKB as a selected user type.",
+    previewField: "Show application as",
+    previewFieldHelp: "The preview is stored only for this session and refreshes the page after saving.",
+    previewHelpLabel: "Role preview help",
+    previewOff: "Actual user role",
+    previewActive: "Active preview",
+    previewRoles: "Preview roles",
     logout: "Log out"
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
@@ -67,8 +103,10 @@ export function AppSettingsSurface({
   onClose,
   onLogout,
   onModeChange,
+  onRolePreviewChange,
   onSave,
   onValueChange,
+  rolePreview,
   userInitials,
   values
 }: AppSettingsSurfaceProps) {
@@ -82,9 +120,21 @@ export function AppSettingsSurface({
         description: copy.runtimeDescription,
         icon: <Database size={16} aria-hidden="true" />,
         keywords: ["akb", "api", "auth", "runtime", "provoz"]
-      }
+      },
+      ...(rolePreview.canUse
+        ? [
+            {
+              id: "akb-role-preview",
+              group: copy.previewGroup,
+              label: copy.previewTitle,
+              description: copy.previewDescription,
+              icon: <UserCog size={16} aria-hidden="true" />,
+              keywords: ["akb", "role", "preview", "test", "opravneni"]
+            }
+          ]
+        : [])
     ],
-    [copy]
+    [copy, rolePreview.canUse]
   );
   const appSections = useMemo<SettingsContentSection[]>(
     () => [
@@ -107,9 +157,44 @@ export function AppSettingsSurface({
             </SettingsField>
           </>
         )
-      }
+      },
+      ...(rolePreview.canUse
+        ? [
+            {
+              id: "akb-role-preview-state",
+              navItemId: "akb-role-preview",
+              title: copy.previewTitle,
+              description: copy.previewDescription,
+              keywords: ["akb", "role", "preview", "test", "opravneni"],
+              children: (
+                <>
+                  <SelectField
+                    id="akb-role-preview-profile"
+                    label={copy.previewField}
+                    labelAccessory={<HelpHint label={copy.previewHelpLabel} text={copy.previewFieldHelp} />}
+                    description={rolePreview.active ? `${copy.previewActive}: ${rolePreview.label}` : copy.previewFieldHelp}
+                    value={rolePreview.profileId}
+                    onChange={(event) => onRolePreviewChange(event.currentTarget.value)}
+                  >
+                    <option value="">{copy.previewOff}</option>
+                    {rolePreview.profiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.label}
+                      </option>
+                    ))}
+                  </SelectField>
+                  {rolePreview.profileId ? (
+                    <SettingsField label={copy.previewRoles} description={copy.previewFieldHelp}>
+                      <SettingsTextInput value={rolePreview.roles.join(", ")} readOnly onChange={() => undefined} />
+                    </SettingsField>
+                  ) : null}
+                </>
+              )
+            }
+          ]
+        : [])
     ],
-    [apiModeLabel, authModeLabel, copy]
+    [apiModeLabel, authModeLabel, copy, onRolePreviewChange, rolePreview]
   );
 
   return (
