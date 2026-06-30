@@ -5,8 +5,6 @@ import type { LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AppRail, AppShell, Topbar } from "@voldzi/stratos-ui";
 
-import { withAppBasePath } from "@/lib/app-url";
-
 export interface StratosNavItem {
   href: string;
   label: string;
@@ -86,7 +84,7 @@ export function StratosAppRail({
     <div className="stratos-akb-rail-frame">
       <AppRail
         workspaceMark={
-          <Link className="stratos-akb-rail-mark" href={withAppBasePath(brandHref)} title={`${brandName} · ${brandSubtitle}`}>
+          <Link className="stratos-akb-rail-mark" href={brandHref} title={`${brandName} · ${brandSubtitle}`}>
             {brandMark}
           </Link>
         }
@@ -105,7 +103,7 @@ export function StratosAppRail({
             return;
           }
           item.onSelect?.(item);
-          router.push(withAppBasePath(item.href));
+          router.push(item.href);
         }}
         footerItems={[]}
       />

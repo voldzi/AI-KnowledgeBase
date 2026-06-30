@@ -447,7 +447,7 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     return (
       <main className="akb-employee-portal-shell">
         <header className="akb-employee-portal-topbar">
-          <Link className="akb-employee-portal-brand" href={withAppBasePath("/chat")}>
+          <Link className="akb-employee-portal-brand" href="/chat">
             <span className="akb-employee-portal-mark" aria-hidden="true">AKB</span>
             <span>
               <strong>{copy.assistantBrand}</strong>
