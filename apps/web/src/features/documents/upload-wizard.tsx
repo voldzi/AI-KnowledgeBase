@@ -21,6 +21,7 @@ import type {
 interface UploadWizardProps {
   documents: Document[];
   authorization: AuthorizationHint;
+  initialDocumentId?: string | null;
   versionsByDocumentId: Record<string, DocumentVersion[]>;
 }
 
@@ -212,10 +213,13 @@ type ChangeImpact = "none" | "roles" | "dates" | "review";
 type NextStep = "owner" | "governance" | "publish";
 type VersionIncrement = "fix" | "revision" | "major";
 
-export function UploadWizard({ documents, authorization, versionsByDocumentId }: UploadWizardProps) {
+export function UploadWizard({ documents, authorization, initialDocumentId, versionsByDocumentId }: UploadWizardProps) {
   const { language } = useLanguage();
   const copy = uploadCopy[language];
-  const [selectedDocumentId, setSelectedDocumentId] = useState(documents[0]?.document_id ?? "");
+  const initialSelectedDocumentId = documents.some((document) => document.document_id === initialDocumentId)
+    ? initialDocumentId ?? ""
+    : documents[0]?.document_id ?? "";
+  const [selectedDocumentId, setSelectedDocumentId] = useState(initialSelectedDocumentId);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreflight, setFilePreflight] = useState<FilePreflight | null>(null);
   const [uploadPreflight, setUploadPreflight] = useState<UploadPreflightDecision | null>(null);

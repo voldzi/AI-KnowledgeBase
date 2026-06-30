@@ -1548,7 +1548,7 @@ export function DocumentDetail({
               <p>{copy.versionGuideDetail}</p>
             </div>
             {authorization.can_ingest ? (
-              <StratosButtonLink href="/upload">
+              <StratosButtonLink href={`/upload?document_id=${encodeURIComponent(document.document_id)}`}>
                 <UploadCloud size={16} aria-hidden="true" />
                 {copy.upload}
               </StratosButtonLink>

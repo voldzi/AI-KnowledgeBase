@@ -62,6 +62,7 @@ Route: `/upload`
 Content:
 
 - document selector
+- optional `document_id` query parameter preselects the document when upload starts from document detail
 - guided version increment and validity
 - signed source URI
 - parser profile

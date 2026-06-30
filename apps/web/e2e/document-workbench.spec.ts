@@ -166,6 +166,21 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Dokument je založený")).toHaveCount(0);
   });
 
+  test("DW-03 document detail starts a version upload with the current document preselected", async ({ page }) => {
+    await page.goto(appPath("/documents/doc_102?tab=versions"));
+
+    await expect(page.getByRole("heading", { name: "Historie verzí" })).toBeVisible();
+    await expect(page.locator("#versions").getByRole("link", { name: "Nahrát" })).toHaveAttribute(
+      "href",
+      appPath("/upload?document_id=doc_102")
+    );
+
+    await page.goto(appPath("/upload?document_id=doc_102"));
+    await expect(page.getByRole("heading", { name: "Nahrání nové verze" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Metodika vyjimek z bezpecnostnich pravidel" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Umístění zdroje" })).toHaveValue(/doc_102/);
+  });
+
   test("DW-06, DW-07, DW-09, DW-12, DW-13 and DW-19 detail shows viewer, workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
     await page.goto(appPath("/documents/doc_102"));
 
