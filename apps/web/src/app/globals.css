@@ -420,11 +420,17 @@ button {
   width: 100%;
 }
 
-.stratos-workspace-nav-item:hover,
 .stratos-workspace-nav-item:focus-visible,
 .stratos-workspace-nav-item.is-active {
   background: #e7f7f4;
   color: #0c4d57;
+}
+
+@media (hover: hover) {
+  .stratos-workspace-nav-item:hover {
+    background: #e7f7f4;
+    color: #0c4d57;
+  }
 }
 
 .stratos-workspace-nav-item.is-disabled {
@@ -452,6 +458,100 @@ button {
   border-radius: 50%;
   height: 8px;
   width: 8px;
+}
+
+/* STRATOS shared shell compatibility.
+   AKB keeps its public adapter props, but renders the same AppShell/AppRail
+   structure as Budget & Contract so shared shell styles and mobile behavior
+   remain aligned across STRATOS applications. */
+.stratos-akb-shell {
+  --stratos-shell-rail-width: var(--stratos-rail-width);
+  --stratos-shell-sidebar-width: var(--stratos-workspace-sidebar-width);
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+.stratos-akb-shell[data-sidebar-open="false"][data-has-rail="true"][data-has-sidebar="true"] {
+  grid-template-columns: var(--stratos-shell-rail-width) 0 minmax(0, 1fr);
+}
+
+.stratos-akb-shell .stratos-app-shell-topbar {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.stratos-akb-shell .stratos-app-shell-main {
+  background: var(--bg);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stratos-akb-shell .stratos-app-shell-content {
+  margin: 0 auto;
+  max-width: 1480px;
+  min-width: 0;
+  overflow: auto;
+  padding: 28px;
+  width: 100%;
+}
+
+.stratos-akb-shell .stratos-app-shell-rail {
+  min-width: var(--stratos-shell-rail-width);
+}
+
+.stratos-akb-shell .stratos-akb-rail-frame {
+  background: #102027;
+  color: #eef6f8;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 48px);
+  position: sticky;
+  top: 48px;
+}
+
+.stratos-akb-shell .stratos-app-rail {
+  background: transparent;
+  flex: 1 1 auto;
+  min-height: 0;
+  position: static;
+}
+
+.stratos-akb-rail-mark {
+  align-items: center;
+  background: #e7f7f4;
+  border-radius: 8px;
+  color: #0c4d57;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 900;
+  height: 40px;
+  justify-content: center;
+  letter-spacing: 0;
+  text-decoration: none;
+  width: 40px;
+}
+
+.stratos-akb-rail-footer {
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: #a8bdc4;
+  display: flex;
+  font-size: 11px;
+  gap: 7px;
+  justify-content: center;
+  min-height: 46px;
+  overflow: hidden;
+  padding: 8px 6px;
+  text-align: center;
+}
+
+.stratos-akb-rail-footer span {
+  display: none;
+}
+
+.stratos-akb-shell .stratos-app-shell-backdrop {
+  display: none;
 }
 
 .workspace,
@@ -4855,6 +4955,59 @@ button {
   .assistant-source-panel {
     position: static;
   }
+
+  .stratos-akb-shell,
+  .stratos-akb-shell[data-has-rail="true"][data-has-sidebar="true"],
+  .stratos-akb-shell[data-has-rail="true"][data-has-sidebar="false"] {
+    grid-template-columns: var(--stratos-shell-rail-width) minmax(0, 1fr);
+  }
+
+  .stratos-akb-shell .stratos-app-shell-sidebar {
+    bottom: 0;
+    box-shadow: 18px 0 34px rgba(17, 24, 39, 0.14);
+    left: var(--stratos-shell-rail-width);
+    position: fixed;
+    top: 48px;
+    width: min(284px, calc(100vw - var(--stratos-shell-rail-width))) !important;
+    z-index: 95;
+  }
+
+  .stratos-akb-shell:not(.is-mobile-sidebar-open) .stratos-app-shell-sidebar {
+    opacity: 0 !important;
+    pointer-events: none;
+    transform: translateX(-105%);
+    visibility: hidden;
+  }
+
+  .stratos-akb-shell.is-mobile-sidebar-open .stratos-app-shell-sidebar {
+    opacity: 1 !important;
+    pointer-events: auto;
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .stratos-akb-shell .stratos-app-shell-backdrop {
+    background: rgba(0, 0, 0, 0.45);
+    bottom: 0;
+    cursor: pointer;
+    display: none;
+    left: 0;
+    position: fixed;
+    right: 0;
+    top: 48px;
+    z-index: 94;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .stratos-akb-shell:not(.is-mobile-sidebar-open) .stratos-app-shell-backdrop {
+    display: none !important;
+    pointer-events: none;
+  }
+
+  .stratos-akb-shell.is-mobile-sidebar-open .stratos-app-shell-backdrop {
+    display: block !important;
+    pointer-events: auto;
+  }
 }
 
 /* ─── Phone (≤768px): rail hidden entirely, single-column shell. The drawer
@@ -4942,10 +5095,31 @@ button {
     color: var(--stratos-color-accent-strong);
     font-weight: 800;
   }
+
+  .stratos-akb-shell[data-has-rail="true"][data-has-sidebar="true"],
+  .stratos-akb-shell[data-has-rail="true"][data-has-sidebar="false"],
+  .stratos-akb-shell[data-has-rail="false"][data-has-sidebar="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stratos-akb-shell .stratos-app-shell-rail {
+    display: none;
+  }
+
+  .stratos-akb-shell .stratos-app-shell-sidebar {
+    left: 0;
+    top: 48px;
+    width: min(288px, 86vw) !important;
+  }
+
+  .stratos-akb-shell .stratos-app-shell-content {
+    padding: 18px;
+  }
 }
 
 @media (max-width: 720px) {
   .main-content,
+  .stratos-akb-shell .stratos-app-shell-content,
   .employee-content {
     padding: 18px;
   }

@@ -8,6 +8,7 @@ import { StratosButton, StratosSelect } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
+import { readErrorMessage, sha256File, SUPPORTED_UPLOAD_ACCEPT } from "./upload-client-utils";
 import type {
   AuthorizationHint,
   Document,
@@ -20,6 +21,7 @@ import type {
 interface UploadWizardProps {
   documents: Document[];
   authorization: AuthorizationHint;
+  versionsByDocumentId: Record<string, DocumentVersion[]>;
 }
 
 const uploadCopy = {
@@ -45,7 +47,14 @@ const uploadCopy = {
     mime: "MIME",
     sha256: "SHA-256",
     document: "Dokument",
-    versionLabel: "Označení verze",
+    versionIncrement: "Typ nové verze",
+    versionBaseLabel: "Poslední verze",
+    versionNextLabel: "Nová verze",
+    versionIncrementFix: "Oprava bez věcné změny",
+    versionIncrementRevision: "Běžná revize dokumentu",
+    versionIncrementMajor: "Nové hlavní vydání",
+    versionIncrementHint: "AKB číslo verze dopočítá podle poslední verze dokumentu. Operátor nevyplňuje vlastní text.",
+    noPreviousVersion: "žádná",
     validFrom: "Platná od",
     sourceFileUri: "Umístění zdroje",
     sourceFileUriHint: "Umístění zdroje vytvoří AKB automaticky po kontrole souboru.",
@@ -123,7 +132,14 @@ const uploadCopy = {
     mime: "MIME",
     sha256: "SHA-256",
     document: "Document",
-    versionLabel: "Version label",
+    versionIncrement: "New version type",
+    versionBaseLabel: "Last version",
+    versionNextLabel: "New version",
+    versionIncrementFix: "Fix without content change",
+    versionIncrementRevision: "Regular document revision",
+    versionIncrementMajor: "New major release",
+    versionIncrementHint: "AKB calculates the version number from the last document version. Operators do not enter free text.",
+    noPreviousVersion: "none",
     validFrom: "Valid from",
     sourceFileUri: "Source location",
     sourceFileUriHint: "AKB creates the source location automatically after the file check.",
@@ -194,8 +210,9 @@ type UploadPhase = "idle" | "preflight" | "ready" | "uploading" | "stored";
 type ChangeKind = "minor" | "content" | "policy" | "source";
 type ChangeImpact = "none" | "roles" | "dates" | "review";
 type NextStep = "owner" | "governance" | "publish";
+type VersionIncrement = "fix" | "revision" | "major";
 
-export function UploadWizard({ documents, authorization }: UploadWizardProps) {
+export function UploadWizard({ documents, authorization, versionsByDocumentId }: UploadWizardProps) {
   const { language } = useLanguage();
   const copy = uploadCopy[language];
   const [selectedDocumentId, setSelectedDocumentId] = useState(documents[0]?.document_id ?? "");
@@ -209,12 +226,27 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
   const [changeKind, setChangeKind] = useState<ChangeKind>("content");
   const [changeImpact, setChangeImpact] = useState<ChangeImpact>("review");
   const [nextStep, setNextStep] = useState<NextStep>("owner");
+  const [versionIncrement, setVersionIncrement] = useState<VersionIncrement>("revision");
   const selectedDocument = useMemo(
     () => documents.find((document) => document.document_id === selectedDocumentId),
     [documents, selectedDocumentId]
   );
+  const selectedVersions = useMemo(
+    () => versionsByDocumentId[selectedDocumentId] ?? [],
+    [selectedDocumentId, versionsByDocumentId]
+  );
+  const currentVersionLabel = useMemo(() => latestVersionLabel(selectedVersions), [selectedVersions]);
+  const computedVersionLabel = useMemo(
+    () => nextVersionLabelFor(selectedVersions, versionIncrement),
+    [selectedVersions, versionIncrement]
+  );
   const changeOptions = useMemo(
     () => ({
+      versionIncrements: [
+        { value: "fix" as const, label: copy.versionIncrementFix },
+        { value: "revision" as const, label: copy.versionIncrementRevision },
+        { value: "major" as const, label: copy.versionIncrementMajor }
+      ],
       kinds: [
         { value: "minor" as const, label: copy.changeKindMinor },
         { value: "content" as const, label: copy.changeKindContent },
@@ -396,7 +428,7 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
               <input
                 id="source-file"
                 type="file"
-                accept=".doc,.docx,.md,.markdown,.pdf,.rtf,.txt,application/msword,application/pdf,application/rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain,text/rtf"
+                accept={SUPPORTED_UPLOAD_ACCEPT}
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
                   setSubmitted(null);
@@ -417,7 +449,7 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
                     error: null
                   });
                   try {
-                    const hash = await sha256(file);
+                    const hash = await sha256File(file);
                     setFilePreflight({
                       name: file.name,
                       size: file.size,
@@ -478,10 +510,23 @@ export function UploadWizard({ documents, authorization }: UploadWizardProps) {
                 <option key={document.document_id} value={document.document_id}>{document.title}</option>
               ))}
           </StratosSelect>
-          <div className="form-grid form-grid--two">
+          <div className="form-grid form-grid--three">
+            <StratosSelect
+              id="version-increment"
+              label={copy.versionIncrement}
+              value={versionIncrement}
+              onChange={(event) => setVersionIncrement(event.target.value as VersionIncrement)}
+            >
+              {changeOptions.versionIncrements.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </StratosSelect>
             <div className="field">
-              <label htmlFor="version">{copy.versionLabel}</label>
-              <input id="version" name="version_label" placeholder="1.1" defaultValue="1.0" />
+              <label htmlFor="version">{copy.versionNextLabel}</label>
+              <input id="version" name="version_label" value={computedVersionLabel} readOnly />
+              <small>
+                {copy.versionBaseLabel}: {currentVersionLabel ?? copy.noPreviousVersion}. {copy.versionIncrementHint}
+              </small>
             </div>
             <div className="field">
               <label htmlFor="valid-from">{copy.validFrom}</label>
@@ -624,20 +669,63 @@ function defaultSourceUri(documentId: string, fileName: string): string {
   return `s3://akl-documents/${safeDocumentId}/draft/pending/${safeName}`;
 }
 
-async function sha256(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
-  const bytes = Array.from(new Uint8Array(digest));
-  return `sha256:${bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+interface ParsedVersionLabel {
+  label: string;
+  major: number;
+  minor: number;
+  patch: number | null;
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: { message?: string } };
-    return body.error?.message ?? "";
-  } catch {
-    return "";
+function latestVersionLabel(versions: DocumentVersion[]): string | null {
+  return latestParsedVersion(versions)?.label ?? null;
+}
+
+function nextVersionLabelFor(versions: DocumentVersion[], increment: VersionIncrement): string {
+  const current = latestParsedVersion(versions);
+  if (!current) {
+    return "1.0";
   }
+  if (increment === "major") {
+    return `${current.major + 1}.0`;
+  }
+  if (increment === "fix") {
+    return `${current.major}.${current.minor}.${(current.patch ?? 0) + 1}`;
+  }
+  return `${current.major}.${current.minor + 1}`;
+}
+
+function latestParsedVersion(versions: DocumentVersion[]): ParsedVersionLabel | null {
+  const parsedVersions = versions
+    .map((version) => parseVersionLabel(version.version_label))
+    .filter((version): version is ParsedVersionLabel => Boolean(version));
+  if (parsedVersions.length === 0) {
+    return null;
+  }
+  parsedVersions.sort(compareVersionLabels);
+  return parsedVersions[parsedVersions.length - 1] ?? null;
+}
+
+function parseVersionLabel(label: string): ParsedVersionLabel | null {
+  const match = label.trim().match(/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/i);
+  if (!match) {
+    return null;
+  }
+  return {
+    label,
+    major: Number(match[1]),
+    minor: Number(match[2] ?? "0"),
+    patch: match[3] ? Number(match[3]) : null
+  };
+}
+
+function compareVersionLabels(left: ParsedVersionLabel, right: ParsedVersionLabel): number {
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor;
+  }
+  return (left.patch ?? -1) - (right.patch ?? -1);
 }
 
 function buildChangeSummary({

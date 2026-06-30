@@ -16,11 +16,11 @@ always-auth=true
 
 Do repozitare patri pouze `apps/web/.npmrc.example`. Skutecny `.npmrc` a token zustavaji lokalni/CI secret a jsou ignorovane Gitem. Dockerfile umi nacist `.npmrc` jako BuildKit secret `npmrc`, aby se token neulozil do image vrstvy.
 
-Aktualni lokalni fallback je kompatibilni adapter v `apps/web/src/components/stratos`:
+Aktualni kompatibilni adapter je v `apps/web/src/components/stratos`:
 
 - komponenty pouzivaji STRATOS nazvoslovi a CSS tridy `stratos-*`,
 - globalni CSS mapuje AKL tokeny na `--stratos-*`,
-- shell, rail, topbar, tlacitka, search box a view tabs maji stejnou strukturu jako cilovy STRATOS system,
+- shell a rail jsou AKB prop wrapper nad `@voldzi/stratos-ui` `AppShell`/`AppRail`; topbar, tlacitka, search box a view tabs pouzivaji stejne sdilene struktury jako STRATOS Budget,
 - dokumentovy PDF viewer je zapouzdreny jako `StratosPdfViewer`, aby stejny render citacni strany, textoveho highlightu a bbox overlaye mohl byt pozdeji prenesen do sdileneho STRATOS UI balicku,
 - feature komponenty nemusi znat, zda bezi nad lokalnim adapterem nebo budou pozdeji prepojeny na `@stratos/ui`.
 
@@ -53,7 +53,7 @@ Prvni napojeni AKL pouzije tyto exporty z `@stratos/ui`:
 
 Adapter je zapojeny na techto plochach:
 
-- hlavni spravcovsky shell, uzky levy rail a workspace submenu,
+- hlavni spravcovsky shell, levy rail a workspace submenu pres Budget-kompatibilni `AppShell`/`AppRail` DOM kontrakt,
 - Employee Chat Portal horni akce,
 - `/documents` registry toolbar: search, select filtry, primarni akce a ikonove akce,
 - `/documents` registry tabulka pres `StratosDataTable`,
@@ -70,9 +70,9 @@ Zbyvajici mista pouzivaji CSS kompatibilni `.button` aliasy, zejmena download/ex
 
 Jakmile bude dostupny read-only GitHub Packages token:
 
-1. pridat dependency `@stratos/ui` na publikovanou verzi z GitHub Packages,
-2. pridat `import "@stratos/ui/styles.css";` do globalniho vstupu webu,
-3. premapovat exporty v `apps/web/src/components/stratos/index.ts` na importy ze sdilene knihovny,
+1. drzet dependency `@voldzi/stratos-ui` na aktualni publikovane verzi z GitHub Packages,
+2. drzet `import "@voldzi/stratos-ui/styles.css";` a `import "@voldzi/stratos-ui/tokens.css";` v globalnim vstupu webu,
+3. premapovat zbyvajici adaptery v `apps/web/src/components/stratos/index.ts` na primy import ze sdilene knihovny, pokud sdilena knihovna pokryva stejne props,
 4. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,
 5. ponechat `--stratos-*` tokeny jako verejny kontrakt pro AKB theme,
 6. spustit typecheck, build, Docker build se secretem `npmrc` a vizualni QA hlavniho shellu, registru, detailu dokumentu a nastaveni.

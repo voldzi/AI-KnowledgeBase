@@ -66,6 +66,7 @@ Phase 05 introduces the Document Workbench direction:
 
 - `/documents` now supports registry metrics, search, filters, and work views.
 - Document detail is split into overview, viewer, workflow, insights, versions, and ingestion sections.
+- `/documents/new` guides operators through metadata plus the first source file in one process, then creates version `1.0` and queues ingestion.
 - Upload has file preflight metadata, SHA-256 calculation, a signed upload session, browser PUT upload and then the workflow request.
 - `/help` provides in-app help for document managers, owners/gestors, and auditors.
 

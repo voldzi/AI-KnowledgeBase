@@ -37,17 +37,22 @@ Content:
 - linked ingestion status
 - guided version panel with current state and recommended next step
 
-## New Document Draft
+## New Document And First Version
 
 Route: `/documents/new`
 
 Content:
 
+- guided document creation and first-version upload flow
 - draft metadata form
 - document type
 - classification
 - gestor unit
-- save action disabled when `document.update` is denied
+- original source file selection, SHA-256 calculation and upload preflight
+- first version label fixed to `1.0`
+- parser profile and chunking strategy
+- submission creates document, stores source file, creates first version and queues ingestion
+- save action disabled when document update or ingestion permission is denied
 
 ## Upload Wizard
 
@@ -56,7 +61,7 @@ Route: `/upload`
 Content:
 
 - document selector
-- version label and validity
+- guided version increment and validity
 - signed source URI
 - parser profile
 - chunking strategy

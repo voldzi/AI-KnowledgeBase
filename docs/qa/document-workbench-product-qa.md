@@ -109,8 +109,8 @@ When validating an externally sourced corpus, include at least one PDF-backed do
 
 Must be able to:
 
-- create a draft document,
-- upload source content through preflight,
+- create a draft document and first source version in one guided `/documents/new` process,
+- upload source content through preflight for existing document versions,
 - understand validation errors before ingestion starts,
 - monitor ingestion state,
 - maintain document responsibilities, SLA and escalation metadata,

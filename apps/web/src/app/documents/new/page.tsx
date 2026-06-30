@@ -14,10 +14,10 @@ export default async function NewDocumentPage() {
   return (
     <>
       <PageHeader
-        title={{ cs: "Nový koncept dokumentu", en: "New document draft" }}
+        title={{ cs: "Založit dokument a první verzi", en: "Create document and first version" }}
         description={{
-          cs: "Nejdřív založte srozumitelná metadata. Potom nahrajte originální soubor jako první verzi a předejte dokument ke kontrole.",
-          en: "Create clear metadata first. Then upload the original file as the first version and send the document for review."
+          cs: "Vyplňte metadata, přidejte originální soubor a AKB v jednom kroku založí dokument, verzi 1.0 a spustí zpracování pro citace.",
+          en: "Enter metadata, attach the original file and AKB creates the document, version 1.0 and citation processing in one flow."
         }}
       />
       <NewDocumentForm authorization={authorization} />

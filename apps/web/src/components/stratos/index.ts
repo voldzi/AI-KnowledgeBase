@@ -1,4 +1,4 @@
-// Layout shell — local implementations (different CSS data-attrs from stratos-ui AppShell)
+// Layout shell — AKB prop adapter over @voldzi/stratos-ui AppShell/AppRail
 export { StratosAppShell, StratosAppRail, StratosTopbar } from "./shell";
 
 // Buttons — local shims mapping tone → variant (different CSS class conventions)

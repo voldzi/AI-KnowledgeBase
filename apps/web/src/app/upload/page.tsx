@@ -13,6 +13,13 @@ export default async function UploadPage() {
     clients.registry.listDocuments(context),
     clients.registry.getAuthorizationHints(context)
   ]);
+  const versionEntries = await Promise.all(
+    documents.map(async (document) => {
+      const versions = await clients.registry.listDocumentVersions(document.document_id, context);
+      return [document.document_id, versions] as const;
+    })
+  );
+  const versionsByDocumentId = Object.fromEntries(versionEntries);
 
   return (
     <>
@@ -23,7 +30,7 @@ export default async function UploadPage() {
           en: "Choose a document and original file. AKB verifies and stores the file securely, creates a version and starts citation processing."
         }}
       />
-      <UploadWizard documents={documents} authorization={authorization} />
+      <UploadWizard documents={documents} authorization={authorization} versionsByDocumentId={versionsByDocumentId} />
     </>
   );
 }

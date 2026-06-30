@@ -68,9 +68,17 @@ Purpose:
 
 Purpose:
 
-- prepare a new document version
+- prepare a new version for an existing document
 - collect source file preflight metadata, signed source URI, parser profile and chunking strategy
 - queue ingestion through Ingestion Service
+
+### New Document
+
+Purpose:
+
+- guide operators through document metadata and the first source version in one process
+- create the Registry document draft, store the original source, create version `1.0` and queue ingestion
+- keep the first-version number predictable and remove the old handoff from `/documents/new` to `/upload`
 
 ### Help
 

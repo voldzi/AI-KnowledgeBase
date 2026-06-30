@@ -290,11 +290,15 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     setSettingsValues(createSettingsValues({ authModeLabel, language, user: userProfile }));
   }, [authModeLabel, language, settingsDirty, userProfile]);
 
+  const handleRailSelect = () => {
+    setSidebarCollapsed(false);
+    setMobileSidebarOpen(false);
+  };
   const railItems = [
-    { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database },
-    { id: "operations", href: moduleRootRoutes.operations, label: copy.moduleOperations, icon: ListChecks },
-    { id: "ai", href: moduleRootRoutes.ai, label: copy.moduleAi, icon: Bot },
-    { id: "governance", href: moduleRootRoutes.governance, label: copy.moduleGovernance, icon: ShieldCheck }
+    { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database, onSelect: handleRailSelect },
+    { id: "operations", href: moduleRootRoutes.operations, label: copy.moduleOperations, icon: ListChecks, onSelect: handleRailSelect },
+    { id: "ai", href: moduleRootRoutes.ai, label: copy.moduleAi, icon: Bot, onSelect: handleRailSelect },
+    { id: "governance", href: moduleRootRoutes.governance, label: copy.moduleGovernance, icon: ShieldCheck, onSelect: handleRailSelect }
   ];
   const activeRailHref = moduleRootRoutes[activeModule];
   const activeModuleLabel = railItems.find((item) => item.id === activeModule)?.label ?? copy.workspaceTitle;
