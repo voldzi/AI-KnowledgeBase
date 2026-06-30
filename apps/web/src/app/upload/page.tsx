@@ -19,13 +19,17 @@ export default async function UploadPage({ searchParams }: UploadPageProps) {
     clients.registry.listDocuments(context),
     clients.registry.getAuthorizationHints(context)
   ]);
-  const versionEntries = await Promise.all(
-    documents.map(async (document) => {
-      const versions = await clients.registry.listDocumentVersions(document.document_id, context);
-      return [document.document_id, versions] as const;
-    })
-  );
-  const versionsByDocumentId = Object.fromEntries(versionEntries);
+  const requestedDocument = requestedDocumentId
+    ? documents.find((document) => document.document_id === requestedDocumentId)
+    : null;
+  const initialVersions = requestedDocument
+    ? await clients.registry
+      .listDocumentVersions(requestedDocument.document_id, context)
+      .catch(() => [])
+    : [];
+  const versionsByDocumentId = requestedDocument
+    ? { [requestedDocument.document_id]: initialVersions }
+    : {};
 
   return (
     <>
