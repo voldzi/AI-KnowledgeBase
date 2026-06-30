@@ -79,11 +79,10 @@ Route: `/ingestion`
 
 Content:
 
-- ingestion jobs table
-- document mapping
-- parser and chunking profiles
-- report metrics
-- cancel action for running jobs
+- user-facing processing status for document managers
+- document title, localized status, reading method and processing result
+- report metrics phrased as read pages and prepared citation segments
+- technical job/version/profile identifiers hidden under an operations detail disclosure
 
 ## Knowledge Chat
 
