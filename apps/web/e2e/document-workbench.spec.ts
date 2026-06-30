@@ -311,11 +311,11 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("heading", { name: "Nápověda" })).toBeVisible();
 
     await page.getByLabel("Otevřít navigaci").click();
-    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "true");
+    await expect(page.locator(".stratos-app-shell")).toHaveClass(/is-mobile-sidebar-open/);
 
     await page.getByLabel("Navigace pracovní plochy").getByRole("link", { name: "Znalostní chat" }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/chat"));
-    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "false");
+    await expect(page.locator(".stratos-app-shell")).not.toHaveClass(/is-mobile-sidebar-open/);
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
   });
 
@@ -324,22 +324,23 @@ test.describe("Document Workbench product paths", () => {
     await page.goto(appPath("/tasks"));
 
     await page.getByLabel("Otevřít navigaci").click();
-    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "true");
+    await expect(page.locator(".stratos-app-shell")).toHaveClass(/is-mobile-sidebar-open/);
 
     await page.locator(".sidebar-mobile-sections").getByRole("link", { name: "Dokumenty" }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/documents"));
-    await expect(page.locator(".stratos-app-shell")).toHaveAttribute("data-mobile-sidebar-open", "false");
+    await expect(page.locator(".stratos-app-shell")).not.toHaveClass(/is-mobile-sidebar-open/);
     await expect(page.getByRole("heading", { name: "Registr dokumentů" }).first()).toBeVisible();
   });
 
   test("DW-17 STRATOS rail navigation does not duplicate the configured base path", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto(appPath("/tasks"));
 
     const rail = page.locator(".stratos-app-rail");
-    await rail.getByRole("link", { name: "AI" }).click();
+    await rail.getByRole("button", { name: "AI" }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/chat"));
 
-    await rail.getByRole("link", { name: "Dokumenty" }).click();
+    await rail.getByRole("button", { name: "Dokumenty" }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/documents"));
   });
 
