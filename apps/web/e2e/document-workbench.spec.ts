@@ -31,6 +31,141 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.locator("#document-registry-classification")).toHaveText("Vše");
   });
 
+  test("DW-02 new document flow creates first version and guides the operator onward", async ({ page }) => {
+    const now = new Date().toISOString();
+    const documentId = "doc_e2e_new";
+    const versionId = "ver_e2e_new_1";
+    const uploadSessionId = "upload_e2e_new";
+    const fileHash = "sha256:e2e-new-document";
+
+    await page.route(`**${appPath("/api/controlled-document/documents")}`, async (route) => {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          document: {
+            document_id: documentId,
+            title: "E2E založení dokumentu",
+            document_type: "methodology",
+            status: "draft",
+            classification: "internal",
+            owner_id: "e2e",
+            owner: "E2E operator",
+            gestor_unit: "IT",
+            tags: ["controlled-document", "akb"],
+            created_at: now,
+            updated_at: now
+          }
+        })
+      });
+    });
+    await page.route(`**${appPath("/api/controlled-document/upload/preflight")}`, async (route) => {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          preflight: {
+            upload_session_id: uploadSessionId,
+            upload_url: appPath(`/api/controlled-document/upload/sessions/${uploadSessionId}/content`),
+            upload_method: "PUT",
+            source_file_uri: "s3://akl-documents/e2e/new-document.pdf",
+            expires_at: now,
+            required_headers: {
+              "X-AKL-Upload-Token": "e2e-token"
+            },
+            bucket: "akl-documents",
+            object_key: "e2e/new-document.pdf",
+            file: {
+              filename: "new-document.pdf",
+              mime_type: "application/pdf",
+              size_bytes: 16,
+              sha256: fileHash
+            },
+            limits: {
+              max_file_bytes: 52428800,
+              accepted_mime_types: ["application/pdf"]
+            }
+          }
+        })
+      });
+    });
+    await page.route(`**${appPath(`/api/controlled-document/upload/sessions/${uploadSessionId}/content`)}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uploaded: true,
+          upload_session_id: uploadSessionId,
+          source_file_uri: "s3://akl-documents/e2e/new-document.pdf",
+          file: {
+            filename: "new-document.pdf",
+            mime_type: "application/pdf",
+            size_bytes: 16,
+            sha256: fileHash
+          }
+        })
+      });
+    });
+    await page.route(`**${appPath("/api/controlled-document/ingestion")}`, async (route) => {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          version: {
+            document_version_id: versionId,
+            document_id: documentId,
+            file_id: "file_e2e_new",
+            version_label: "1.0",
+            status: "draft",
+            valid_from: "2026-06-30",
+            valid_to: null,
+            source_file_uri: "s3://akl-documents/e2e/new-document.pdf",
+            file_hash: fileHash,
+            change_summary: "První verze: E2E založení dokumentu.",
+            created_at: now,
+            published_at: null
+          },
+          job: {
+            job_id: "job_e2e_new",
+            document_id: documentId,
+            document_version_id: versionId,
+            status: "queued",
+            parser_profile: "controlled_document",
+            ocr_enabled: false,
+            chunking_strategy: "legal_structured",
+            embedding_profile: "default",
+            created_at: now,
+            started_at: null,
+            finished_at: null
+          }
+        })
+      });
+    });
+
+    await page.goto(appPath("/documents/new"));
+    await expect(page.getByRole("heading", { name: "Založit dokument a první verzi" }).first()).toBeVisible();
+
+    await page.locator("#title").fill("E2E založení dokumentu");
+    await page.locator("#gestor").fill("IT");
+    await page.setInputFiles("#source-file", {
+      name: "new-document.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4\nE2E\n")
+    });
+    await expect(page.locator("form").getByText("Soubor připraven")).toBeVisible();
+
+    await page.getByRole("button", { name: "Založit dokument a spustit zpracování" }).click();
+
+    await expect(page.getByText("Dokument je založený")).toBeVisible();
+    await expect(page.getByText("Originální soubor je uložený v AKB a zpracování citací běží na pozadí.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Otevřít dokument" })).toHaveAttribute("href", appPath(`/documents/${documentId}`));
+    await expect(page.getByRole("link", { name: "Sledovat zpracování" })).toHaveAttribute("href", appPath("/ingestion"));
+
+    await page.getByRole("button", { name: "Založit další dokument" }).click();
+    await expect(page.locator("#title")).toHaveValue("");
+    await expect(page.getByText("Dokument je založený")).toHaveCount(0);
+  });
+
   test("DW-06, DW-07, DW-09, DW-12, DW-13 and DW-19 detail shows viewer, workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
     await page.goto(appPath("/documents/doc_102"));
 

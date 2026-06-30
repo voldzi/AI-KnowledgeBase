@@ -52,6 +52,7 @@ Content:
 - first version label fixed to `1.0`
 - parser profile and chunking strategy
 - submission creates document, stores source file, creates first version and queues ingestion
+- success state guides the operator to open the document, track ingestion, or create another document
 - save action disabled when document update or ingestion permission is denied
 
 ## Upload Wizard

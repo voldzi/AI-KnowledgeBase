@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, FileClock, FilePlus2, Fingerprint, Play, UploadCloud } from "lucide-react";
+import { CheckCircle2, FileClock, FilePlus2, Fingerprint, ListChecks, Play, RotateCcw, UploadCloud } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosButtonLink, StratosSelect } from "@/components/stratos";
@@ -76,8 +76,13 @@ const newDocumentCopy = {
     created: "Dokument založen",
     queued: "První verze založena a zpracování spuštěno",
     queuedDetail: "Verze 1.0 je připravená ke zpracování a AKB ji promítne do citací.",
+    doneTitle: "Dokument je založený",
+    doneDetail: "Originální soubor je uložený v AKB a zpracování citací běží na pozadí.",
+    processingQueued: "Zpracování běží",
     fingerprintReady: "Kontrola souboru hotová",
     openDocument: "Otevřít dokument",
+    openProcessing: "Sledovat zpracování",
+    createAnother: "Založit další dokument",
     validationPreview: "Průběh založení",
     stepMetadata: "Metadata dokumentu",
     stepMetadataDetail: "Název, typ, klasifikace a štítky vzniknou jako koncept dokumentu.",
@@ -141,8 +146,13 @@ const newDocumentCopy = {
     created: "Document created",
     queued: "First version created and processing started",
     queuedDetail: "Version 1.0 is ready for processing and AKB will make it available for citations.",
+    doneTitle: "Document is created",
+    doneDetail: "The original file is stored in AKB and citation processing continues in the background.",
+    processingQueued: "Processing running",
     fingerprintReady: "File check complete",
     openDocument: "Open document",
+    openProcessing: "Track processing",
+    createAnother: "Create another document",
     validationPreview: "Creation progress",
     stepMetadata: "Document metadata",
     stepMetadataDetail: "Title, type, classification and tags are created as the document draft.",
@@ -176,6 +186,18 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<FirstVersionPhase>("idle");
   const [submitting, setSubmitting] = useState(false);
+  const [formResetKey, setFormResetKey] = useState(0);
+
+  function resetFlow() {
+    setCreatedDocument(null);
+    setSelectedFile(null);
+    setFilePreflight(null);
+    setSubmitted(null);
+    setError(null);
+    setPhase("idle");
+    setSubmitting(false);
+    setFormResetKey((current) => current + 1);
+  }
 
   const allowed = authorization.can_update && authorization.can_ingest;
   const metadataLocked = Boolean(createdDocument && !submitted);
@@ -218,6 +240,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
   return (
     <section className="grid grid--two">
       <form
+        key={formResetKey}
         className="panel"
         onSubmit={async (event) => {
           event.preventDefault();
@@ -495,9 +518,29 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
             </div>
           ) : null}
           {submitted ? (
-            <StratosButtonLink tone="primary" href={`/documents/${submitted.document.document_id}`}>
-              {copy.openDocument}
-            </StratosButtonLink>
+            <div className="task-action-panel">
+              <div className="task-action-panel__header">
+                <div>
+                  <strong>{copy.doneTitle}</strong>
+                  <p>{copy.doneDetail}</p>
+                </div>
+                <StatusBadge value="running" label={copy.processingQueued} />
+              </div>
+              <div className="task-actions">
+                <StratosButtonLink tone="primary" href={`/documents/${submitted.document.document_id}`}>
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  {copy.openDocument}
+                </StratosButtonLink>
+                <StratosButtonLink href="/ingestion">
+                  <ListChecks size={16} aria-hidden="true" />
+                  {copy.openProcessing}
+                </StratosButtonLink>
+                <StratosButton type="button" onClick={resetFlow}>
+                  <RotateCcw size={16} aria-hidden="true" />
+                  {copy.createAnother}
+                </StratosButton>
+              </div>
+            </div>
           ) : null}
         </div>
       </aside>
