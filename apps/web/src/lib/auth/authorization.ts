@@ -6,6 +6,7 @@ const MANAGEMENT_ROLES = new Set([
   "admin",
   "document_manager",
   "document_owner",
+  "document_gestor",
   "reviewer",
   "auditor",
   "service_governance"

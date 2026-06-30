@@ -45,6 +45,7 @@ Content:
 
 - guided document creation and first-version upload flow
 - quick choices for common document scenarios such as directive, methodology, policy, contract and project documentation
+- inline question-mark help for officer-facing fields such as classification, gestor unit, version, reading mode and citation segmentation
 - draft metadata form
 - document type
 - classification
@@ -65,6 +66,7 @@ Content:
 - document selector
 - optional `document_id` query parameter preselects the document when upload starts from document detail
 - guided version increment and validity
+- inline question-mark help for file selection, document selection, version increment, validity, source location, reading mode, citation segmentation and guided change fields
 - signed source URI
 - parser profile
 - chunking strategy

@@ -25,6 +25,8 @@ const helpCopy = {
     managerBody: "Zakládá metadata, nahrává originální soubor, sleduje zpracování a připravuje dokument pro revizi.",
     owner: "Vlastník / gestor",
     ownerBody: "Odpovídá za věcnou správnost, platnost, výjimky, schválení a publikaci.",
+    gestor: "Gestor směrnice",
+    gestorBody: "Běžný úředník odpovědný za jednu nebo několik směrnic. Může založit dokument, nahrát verzi a předat ji ke kontrole, ale nemá admin ani publikační práva.",
     auditor: "Auditor",
     auditorBody: "Kontroluje auditní stopu, citace, přístupové politiky a rozhodnutí ve workflow.",
     registry: "Registr dokumentů",
@@ -55,6 +57,8 @@ const helpCopy = {
     managerBody: "Creates metadata, uploads the original file, monitors processing and prepares the document for review.",
     owner: "Owner / gestor",
     ownerBody: "Owns factual correctness, validity, exceptions, approval and publication.",
+    gestor: "Directive gestor",
+    gestorBody: "Regular officer responsible for one or a few directives. Can create a document, upload a version and send it to review, but has no admin or publish rights.",
     auditor: "Auditor",
     auditorBody: "Reviews audit trail, citations, access policies and workflow decisions.",
     registry: "Document registry",
@@ -108,6 +112,7 @@ export function HelpCenter() {
         {[
           [copy.manager, copy.managerBody],
           [copy.owner, copy.ownerBody],
+          [copy.gestor, copy.gestorBody],
           [copy.auditor, copy.auditorBody]
         ].map(([title, body]) => (
           <article className="panel help-role" key={title}>

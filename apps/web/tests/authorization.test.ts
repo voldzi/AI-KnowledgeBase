@@ -31,7 +31,7 @@ describe("AKB web authorization", () => {
   });
 
   it("allows knowledge roles to use the workspace", () => {
-    for (const role of ["document_manager", "reviewer", "auditor", "document_owner"]) {
+    for (const role of ["document_manager", "reviewer", "auditor", "document_owner", "document_gestor"]) {
       const context = { subjectId: `user_${role}`, roles: [role] };
       assert.equal(canUseKnowledgeWorkspace(context), true);
       assert.equal(isEmployeeChatOnly(context), false);

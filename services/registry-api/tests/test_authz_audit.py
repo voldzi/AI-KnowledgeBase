@@ -128,6 +128,73 @@ def test_authz_self_check_ignores_supplied_roles(client, admin_headers):
     assert response.json()["reason"] == "no role grants action document.read"
 
 
+def test_document_gestor_can_prepare_sources_without_publish_rights(client, admin_headers):
+    create_allowed = client.post(
+        "/api/v1/authz/check",
+        headers=admin_headers,
+        json={
+            "subject_id": "user_gestor",
+            "action": "document.create",
+            "roles": ["document_gestor"],
+            "resource": {"classification": "restricted"},
+        },
+    )
+    assert create_allowed.status_code == 200
+    assert create_allowed.json()["allowed"] is True
+
+    confidential_denied = client.post(
+        "/api/v1/authz/check",
+        headers=admin_headers,
+        json={
+            "subject_id": "user_gestor",
+            "action": "document.create",
+            "roles": ["document_gestor"],
+            "resource": {"classification": "confidential"},
+        },
+    )
+    assert confidential_denied.status_code == 200
+    assert confidential_denied.json()["allowed"] is False
+
+    created = client.post(
+        "/api/v1/documents",
+        headers=admin_headers,
+        json={
+            "title": "Gestor directive",
+            "document_type": "directive",
+            "owner_id": "user_gestor",
+            "classification": "restricted",
+        },
+    )
+    assert created.status_code == 201, created.text
+    document_id = created.json()["document_id"]
+
+    ingest_allowed = client.post(
+        "/api/v1/authz/check",
+        headers=admin_headers,
+        json={
+            "subject_id": "user_gestor",
+            "action": "document.ingest",
+            "roles": ["document_gestor"],
+            "resource": {"document_id": document_id},
+        },
+    )
+    assert ingest_allowed.status_code == 200
+    assert ingest_allowed.json()["allowed"] is True
+
+    publish_denied = client.post(
+        "/api/v1/authz/check",
+        headers=admin_headers,
+        json={
+            "subject_id": "user_gestor",
+            "action": "document.version.publish",
+            "roles": ["document_gestor"],
+            "resource": {"document_id": document_id},
+        },
+    )
+    assert publish_denied.status_code == 200
+    assert publish_denied.json()["allowed"] is False
+
+
 def test_document_list_and_detail_use_role_mapping(client, db_session, admin_headers):
     created = client.post(
         "/api/v1/documents",

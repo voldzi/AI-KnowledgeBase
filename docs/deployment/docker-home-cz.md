@@ -9,16 +9,17 @@ Tento plán popisuje první produkční nasazení AKL / AI KnowledgeBase jako so
 - Dokumentové binární zdroje jsou oddělené od databáze a ukládají se do dedikovaného AKL prostoru nad SeaweedFS.
 - Keycloak používá STRATOS realm a STRATOS login theme. AKB je klient v tomto realm.
 - STRATOS aplikace nevolají AKL z browseru přímo. Volají serverový STRATOS adapter podle `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`.
-- Build webu používá `@stratos/ui` přes GitHub Packages a read-only `read:packages` token uložený jen jako serverový secret.
+- Build webu používá `@voldzi/stratos-ui` z veřejného npm registry. Pro tento
+  balíček se nepřidává scoped `.npmrc` na GitHub Packages.
 
 ## 0. Bezpečnostní Předpoklady
 
 1. Rotovat každý GitHub token, který byl někdy vložený do chatu, logu nebo shell historie.
-2. Vytvořit nový read-only token pouze pro GitHub Packages:
-   - scope: `read:packages`,
-   - bez zápisu do repozitářů,
-   - uložit mimo Git, například `/srv/akl/secrets/npmrc`.
-3. Pro build nepoužívat `.npmrc` v repozitáři. Použít Docker BuildKit secret deklarovaný v `infra/docker-compose/docker-compose.docker-home.yml`:
+2. Pro build nepoužívat `.npmrc` v repozitáři. Pokud produkční prostředí
+   používá GitHub Packages kvůli jiným balíčkům, musí být tento token uložený
+   mimo Git a nesmí přesměrovat `@voldzi/stratos-ui` mimo veřejný npm tarball v
+   `apps/web/package-lock.json`.
+3. Pokud je v daném prostředí potřeba npm secret, použít Docker BuildKit secret deklarovaný v `infra/docker-compose/docker-compose.docker-home.yml`:
 
 ```bash
 AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
@@ -39,7 +40,7 @@ Na `docker.home.cz` připravit:
   env/
     akl.prod.env          # produkční env, bez commitu
   secrets/
-    npmrc                 # GitHub Packages read-only token
+    npmrc                 # volitelný npm secret pro jiné privátní balíčky, bez commitu
     keycloak-admin.env    # pouze lokální admin parametry pro bootstrap
   data/
     qdrant/
@@ -228,11 +229,14 @@ Cílový realm:
   - `akl_admin`
   - `akl_document_manager`
   - `akl_document_owner`
+  - `akl_document_gestor`
   - `akl_reviewer`
   - `akl_reader`
   - `akl_auditor`
   - `akl_stratos_service`
-- AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`, `reader`, `auditor` a servisní role bez prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
+- AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`,
+  `document_owner`, `document_gestor`, `reader`, `auditor` a servisní role bez
+  prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
 - `akl-web` a `stratos-akl-adapter` mají audience mapper na `akl-api`; Registry API v produkci validuje `AKL_OIDC_AUDIENCE=akl-api`.
 - Pokud AKB/Keycloak provozní skript zapisuje service client hodnoty pro STRATOS
   aplikace, na `docker.home.cz` musí cílit na `/srv/STRATOS/deploy/.env`.
@@ -466,6 +470,6 @@ Obnova se provádí z prázdného checkoutu `main`, obnovy DB/object storage/Qdr
 - Importovat připravený `infra/keycloak/realm-stratos.json` a namountovat `infra/keycloak/themes/stratos`.
 - Rozhodnout, zda SeaweedFS bude připojený přes S3 gateway nebo filesystem mount. Pro dlouhodobý provoz preferovat S3 adapter.
 - Nasadit přes připravený standalone compose profil `infra/docker-compose/docker-compose.docker-home.yml`.
-- Ověřit dostupnost `@stratos/ui` z GitHub Packages pomocí read-only tokenu.
+- Ověřit, že `apps/web/package-lock.json` ukazuje `@voldzi/stratos-ui` na veřejný npm tarball.
 - Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL` a `AKL_WEB_SESSION_SECRET`.
 - Připravit monitoring a log retention pro `/srv/akl/data/logs`.

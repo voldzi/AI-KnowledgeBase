@@ -127,6 +127,10 @@ Pokud při vytvoření dokumentu nejsou policies předané, služba vytvoří de
 - owner/admin/document_manager mohou dokument číst, upravovat a pracovat s verzemi,
 - role `reader` může číst a používat dokument pro `rag.query` do klasifikace dokumentu.
 
+Role `document_gestor` je určena pro běžného gestora směrnice. Globálně smí založit
+dokument, nahrát verzi, spustit ingestion/reindex a pracovat s workflow úkoly, ale
+nemá publish, archive, delete ani admin oprávnění.
+
 Authorization API smí volat service account, admin, document manager, nebo uživatel pro vlastní `subject_id`.
 
 ## Document AI Extractions

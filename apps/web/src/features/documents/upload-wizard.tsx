@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { CheckCircle2, FileClock, FileUp, Fingerprint, Play, ShieldCheck, UploadCloud } from "lucide-react";
+import { FieldLabelWithHelp, HelpHint } from "@voldzi/stratos-ui";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosSelect } from "@/components/stratos";
@@ -35,6 +36,8 @@ const uploadCopy = {
     missingFile: "Nejprve vyberte soubor a počkejte na dokončení kontroly.",
     title: "Nahrání nové verze",
     file: "Soubor",
+    fileHelpLabel: "Nápověda k souboru",
+    fileHelp: "Vyberte originální dokument nové verze. AKB ho bezpečně uloží a použije pro citace.",
     chooseFile: "Vyberte originální soubor dokumentu",
     fileReady: "Soubor připraven",
     hashing: "Počítám SHA-256",
@@ -48,7 +51,11 @@ const uploadCopy = {
     mime: "MIME",
     sha256: "SHA-256",
     document: "Dokument",
+    documentHelpLabel: "Nápověda k výběru dokumentu",
+    documentHelp: "Vyberte dokument, ke kterému nová verze patří. Při příchodu z detailu je výběr předvyplněný.",
     versionIncrement: "Typ nové verze",
+    versionIncrementHelpLabel: "Nápověda k typu nové verze",
+    versionIncrementHelp: "Oprava navyšuje jen opravné číslo, běžná revize menší číslo a hlavní vydání první číslo verze.",
     versionBaseLabel: "Poslední verze",
     versionNextLabel: "Nová verze",
     versionIncrementFix: "Oprava bez věcné změny",
@@ -57,10 +64,17 @@ const uploadCopy = {
     versionIncrementHint: "AKB číslo verze dopočítá podle poslední verze dokumentu. Operátor nevyplňuje vlastní text.",
     noPreviousVersion: "žádná",
     validFrom: "Platná od",
+    validFromHelpLabel: "Nápověda k platnosti",
+    validFromHelp: "Zadejte den, od kterého má být nová verze používána jako aktuální zdroj.",
     sourceFileUri: "Umístění zdroje",
+    sourceFileUriHelpLabel: "Nápověda k umístění zdroje",
     sourceFileUriHint: "Umístění zdroje vytvoří AKB automaticky po kontrole souboru.",
     parserProfile: "Způsob čtení dokumentu",
+    parserHelpLabel: "Nápověda ke způsobu čtení",
+    parserHelp: "Pro řízené dokumenty ponechte výchozí volbu. OCR zvolte pro skeny nebo špatně čitelné PDF.",
     chunkingStrategy: "Dělení pro citace",
+    chunkingHelpLabel: "Nápověda k dělení pro citace",
+    chunkingHelp: "Podle kapitol a odstavců pomáhá přesně otevírat citace ve směrnicích a metodikách.",
     parserControlled: "Řízený dokument",
     parserPlain: "Jednoduchý text",
     parserOcr: "Sken nebo OCR náročný dokument",
@@ -69,9 +83,17 @@ const uploadCopy = {
     chunkFixed: "Po stejně velkých úsecích",
     changeSummary: "Souhrn změny",
     changeGuidance: "Místo volného textu vyberte, co se změnilo. AKB z voleb vytvoří auditovatelný souhrn verze.",
+    changeSummaryHelpLabel: "Nápověda k souhrnu změny",
+    changeSummaryHelp: "Tyto volby nahradí volný text. Díky tomu bude historie verzí srozumitelná a porovnatelná.",
     changeKind: "Typ změny",
+    changeKindHelpLabel: "Nápověda k typu změny",
+    changeKindHelp: "Vyberte nejbližší důvod nové verze. Pokud si nejste jistí, použijte úpravu obsahu.",
     changeImpact: "Dopad změny",
+    changeImpactHelpLabel: "Nápověda k dopadu změny",
+    changeImpactHelp: "Dopad říká, zda se mění povinnosti, role, lhůty nebo je potřeba věcná revize.",
     nextStep: "Doporučený další krok",
+    nextStepHelpLabel: "Nápověda k dalšímu kroku",
+    nextStepHelp: "Zvolte krok, který má po zpracování udělat vlastník nebo správce dokumentu.",
     summaryPreview: "Souhrn pro historii verzí",
     changeKindMinor: "Oprava překlepu nebo formátu",
     changeKindContent: "Úprava obsahu dokumentu",
@@ -120,6 +142,8 @@ const uploadCopy = {
     missingFile: "Choose a file and wait for the check to finish.",
     title: "Upload a new version",
     file: "File",
+    fileHelpLabel: "File help",
+    fileHelp: "Choose the original document for the new version. AKB stores it securely and uses it for citations.",
     chooseFile: "Choose the original document file",
     fileReady: "File ready",
     hashing: "Computing SHA-256",
@@ -133,7 +157,11 @@ const uploadCopy = {
     mime: "MIME",
     sha256: "SHA-256",
     document: "Document",
+    documentHelpLabel: "Document selection help",
+    documentHelp: "Choose the document this new version belongs to. When opened from detail, it is preselected.",
     versionIncrement: "New version type",
+    versionIncrementHelpLabel: "New version type help",
+    versionIncrementHelp: "Fix increments the patch number, regular revision increments the minor number and major release increments the first version number.",
     versionBaseLabel: "Last version",
     versionNextLabel: "New version",
     versionIncrementFix: "Fix without content change",
@@ -142,10 +170,17 @@ const uploadCopy = {
     versionIncrementHint: "AKB calculates the version number from the last document version. Operators do not enter free text.",
     noPreviousVersion: "none",
     validFrom: "Valid from",
+    validFromHelpLabel: "Validity help",
+    validFromHelp: "Enter the day from which the new version should be used as the current source.",
     sourceFileUri: "Source location",
+    sourceFileUriHelpLabel: "Source location help",
     sourceFileUriHint: "AKB creates the source location automatically after the file check.",
     parserProfile: "How AKB reads the file",
+    parserHelpLabel: "Reading mode help",
+    parserHelp: "Keep the default choice for controlled documents. Use OCR for scans or hard-to-read PDFs.",
     chunkingStrategy: "Citation segmentation",
+    chunkingHelpLabel: "Citation segmentation help",
+    chunkingHelp: "Chapters and paragraphs help citations open precisely in directives and methodologies.",
     parserControlled: "Controlled document",
     parserPlain: "Simple text",
     parserOcr: "Scanned or OCR-heavy document",
@@ -154,9 +189,17 @@ const uploadCopy = {
     chunkFixed: "By fixed-size segments",
     changeSummary: "Change summary",
     changeGuidance: "Choose what changed. AKB creates an auditable version summary from these controlled fields.",
+    changeSummaryHelpLabel: "Change summary help",
+    changeSummaryHelp: "These choices replace free text so version history stays clear and comparable.",
     changeKind: "Change type",
+    changeKindHelpLabel: "Change type help",
+    changeKindHelp: "Choose the closest reason for the new version. If unsure, use document content update.",
     changeImpact: "Change impact",
+    changeImpactHelpLabel: "Change impact help",
+    changeImpactHelp: "Impact says whether obligations, roles, dates or a subject-matter review are affected.",
     nextStep: "Recommended next step",
+    nextStepHelpLabel: "Next step help",
+    nextStepHelp: "Choose the step the owner or document manager should take after processing.",
     summaryPreview: "Version history summary",
     changeKindMinor: "Typo or formatting fix",
     changeKindContent: "Document content update",
@@ -426,7 +469,7 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
         </div>
         <div className="panel__body form-grid">
           <div className="field">
-            <label htmlFor="source-file">{copy.file}</label>
+            <FieldLabelWithHelp htmlFor="source-file" label={copy.file} helpLabel={copy.fileHelpLabel} helpText={copy.fileHelp} />
             <div className="file-drop">
               <UploadCloud size={20} aria-hidden="true" />
               <input
@@ -498,26 +541,28 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
           ) : null}
 
           <StratosSelect
-              id="document"
-              label={copy.document}
-              value={selectedDocumentId}
-              onChange={(event) => {
-                const documentId = event.target.value;
-                setSelectedDocumentId(documentId);
-                setSubmitted(null);
-                if (selectedFile && filePreflight?.hash) {
-                  void prepareUploadSession(documentId, selectedFile, filePreflight.hash);
-                }
-              }}
-            >
-              {documents.map((document) => (
-                <option key={document.document_id} value={document.document_id}>{document.title}</option>
-              ))}
+            id="document"
+            label={copy.document}
+            labelAccessory={<HelpHint label={copy.documentHelpLabel} text={copy.documentHelp} />}
+            value={selectedDocumentId}
+            onChange={(event) => {
+              const documentId = event.target.value;
+              setSelectedDocumentId(documentId);
+              setSubmitted(null);
+              if (selectedFile && filePreflight?.hash) {
+                void prepareUploadSession(documentId, selectedFile, filePreflight.hash);
+              }
+            }}
+          >
+            {documents.map((document) => (
+              <option key={document.document_id} value={document.document_id}>{document.title}</option>
+            ))}
           </StratosSelect>
           <div className="form-grid form-grid--three">
             <StratosSelect
               id="version-increment"
               label={copy.versionIncrement}
+              labelAccessory={<HelpHint label={copy.versionIncrementHelpLabel} text={copy.versionIncrementHelp} />}
               value={versionIncrement}
               onChange={(event) => setVersionIncrement(event.target.value as VersionIncrement)}
             >
@@ -533,36 +578,52 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
               </small>
             </div>
             <div className="field">
-              <label htmlFor="valid-from">{copy.validFrom}</label>
+              <FieldLabelWithHelp htmlFor="valid-from" label={copy.validFrom} helpLabel={copy.validFromHelpLabel} helpText={copy.validFromHelp} />
               <input id="valid-from" name="valid_from" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
             </div>
           </div>
           <div className="field">
-            <label htmlFor="source-uri">{copy.sourceFileUri}</label>
+            <FieldLabelWithHelp htmlFor="source-uri" label={copy.sourceFileUri} helpLabel={copy.sourceFileUriHelpLabel} helpText={copy.sourceFileUriHint} />
             <input id="source-uri" name="source_file_uri" value={sourceUri} readOnly />
             <small>{copy.sourceFileUriHint}</small>
           </div>
           <div className="form-grid form-grid--two">
-            <StratosSelect id="parser" name="parser_profile" label={copy.parserProfile} defaultValue="controlled_document">
-                <option value="controlled_document">{copy.parserControlled}</option>
-                <option value="plain_text">{copy.parserPlain}</option>
-                <option value="ocr_heavy">{copy.parserOcr}</option>
+            <StratosSelect
+              id="parser"
+              name="parser_profile"
+              label={copy.parserProfile}
+              labelAccessory={<HelpHint label={copy.parserHelpLabel} text={copy.parserHelp} />}
+              defaultValue="controlled_document"
+            >
+              <option value="controlled_document">{copy.parserControlled}</option>
+              <option value="plain_text">{copy.parserPlain}</option>
+              <option value="ocr_heavy">{copy.parserOcr}</option>
             </StratosSelect>
-            <StratosSelect id="chunking" name="chunking_strategy" label={copy.chunkingStrategy} defaultValue="legal_structured">
-                <option value="legal_structured">{copy.chunkLegal}</option>
-                <option value="semantic">{copy.chunkSemantic}</option>
-                <option value="fixed_window">{copy.chunkFixed}</option>
+            <StratosSelect
+              id="chunking"
+              name="chunking_strategy"
+              label={copy.chunkingStrategy}
+              labelAccessory={<HelpHint label={copy.chunkingHelpLabel} text={copy.chunkingHelp} />}
+              defaultValue="legal_structured"
+            >
+              <option value="legal_structured">{copy.chunkLegal}</option>
+              <option value="semantic">{copy.chunkSemantic}</option>
+              <option value="fixed_window">{copy.chunkFixed}</option>
             </StratosSelect>
           </div>
           <div className="guided-change">
             <div>
-              <strong>{copy.changeSummary}</strong>
+              <div className="stratos-field-label-row">
+                <strong>{copy.changeSummary}</strong>
+                <HelpHint label={copy.changeSummaryHelpLabel} text={copy.changeSummaryHelp} />
+              </div>
               <p>{copy.changeGuidance}</p>
             </div>
             <div className="form-grid form-grid--three">
               <StratosSelect
                 id="change-kind"
                 label={copy.changeKind}
+                labelAccessory={<HelpHint label={copy.changeKindHelpLabel} text={copy.changeKindHelp} />}
                 value={changeKind}
                 onChange={(event) => setChangeKind(event.target.value as ChangeKind)}
               >
@@ -573,6 +634,7 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
               <StratosSelect
                 id="change-impact"
                 label={copy.changeImpact}
+                labelAccessory={<HelpHint label={copy.changeImpactHelpLabel} text={copy.changeImpactHelp} />}
                 value={changeImpact}
                 onChange={(event) => setChangeImpact(event.target.value as ChangeImpact)}
               >
@@ -583,6 +645,7 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
               <StratosSelect
                 id="next-step"
                 label={copy.nextStep}
+                labelAccessory={<HelpHint label={copy.nextStepHelpLabel} text={copy.nextStepHelp} />}
                 value={nextStep}
                 onChange={(event) => setNextStep(event.target.value as NextStep)}
               >

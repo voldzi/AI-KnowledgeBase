@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle2, FileClock, FilePlus2, Fingerprint, ListChecks, Play, RotateCcw, UploadCloud } from "lucide-react";
+import { FieldLabelWithHelp, HelpHint } from "@voldzi/stratos-ui";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosButtonLink, StratosSelect } from "@/components/stratos";
@@ -118,6 +119,8 @@ const newDocumentCopy = {
     title: "Založit dokument a první verzi",
     documentTemplate: "Rychlá volba",
     templateHint: "Vyberte typický scénář. AKB předvyplní typ, klasifikaci, gestora a způsob čtení.",
+    templateHelpLabel: "Nápověda k rychlé volbě",
+    templateHelp: "Použijte ji, pokud zakládáte běžnou směrnici, metodiku, politiku, smlouvu nebo projektový dokument. Volbu můžete před odesláním upravit.",
     templateDirective: "Směrnice",
     templateMethodology: "Metodika",
     templatePolicy: "Politika",
@@ -125,11 +128,23 @@ const newDocumentCopy = {
     templateProject: "Projekt",
     titleLabel: "Název",
     titlePlaceholder: "Název dokumentu",
+    titleHelpLabel: "Nápověda k názvu dokumentu",
+    titleHelp: "Použijte oficiální název tak, jak má být dohledatelný v registru a citacích.",
     type: "Typ dokumentu",
+    typeHelpLabel: "Nápověda k typu dokumentu",
+    typeHelp: "Typ pomáhá filtrování, reportům a AI odpovědím. Směrnice je závazné interní pravidlo, metodika je doporučený postup.",
     classification: "Klasifikace",
+    classificationHelpLabel: "Nápověda ke klasifikaci",
+    classificationHelp: "Vyberte nejnižší klasifikaci, která odpovídá obsahu. Omezené a důvěrné dokumenty uvidí jen oprávnění uživatelé.",
     gestorUnit: "Gestorská jednotka",
+    gestorHelpLabel: "Nápověda ke gestorské jednotce",
+    gestorHelp: "Uveďte útvar, který odpovídá za věcnou správnost a další verze dokumentu.",
     tags: "Štítky",
+    tagsHelpLabel: "Nápověda ke štítkům",
+    tagsHelp: "Štítky pomáhají najít dokument podle agendy. Oddělujte je čárkou, například smernice,it,bezpecnost.",
     file: "Originální soubor",
+    fileHelpLabel: "Nápověda k originálnímu souboru",
+    fileHelp: "Nahrajte skutečný zdroj, ideálně PDF nebo kancelářský dokument. AKB uloží originál a z něj připraví citace.",
     chooseFile: "Vyberte originální soubor pro první verzi",
     fileReady: "Soubor připraven",
     hashing: "Počítám SHA-256",
@@ -137,10 +152,17 @@ const newDocumentCopy = {
     size: "velikost",
     mime: "MIME",
     versionLabel: "První verze",
+    versionHelpLabel: "Nápověda k první verzi",
     versionHint: "První verze nového dokumentu je vždy 1.0. Další verze už AKB navyšuje podle zvolené změny.",
     validFrom: "Platná od",
+    validFromHelpLabel: "Nápověda k platnosti",
+    validFromHelp: "Zadejte den, od kterého má být dokument používán jako platný zdroj.",
     parserProfile: "Způsob čtení dokumentu",
+    parserHelpLabel: "Nápověda ke způsobu čtení",
+    parserHelp: "Pro směrnice a metodiky ponechte řízený dokument. OCR zvolte hlavně u skenovaných souborů.",
     chunkingStrategy: "Dělení pro citace",
+    chunkingHelpLabel: "Nápověda k dělení pro citace",
+    chunkingHelp: "Podle kapitol a odstavců je nejvhodnější pro předpisy, směrnice a metodiky. Významové části jsou lepší pro volnější text.",
     parserControlled: "Řízený dokument",
     parserPlain: "Jednoduchý text",
     parserOcr: "Sken nebo OCR náročný dokument",
@@ -196,6 +218,8 @@ const newDocumentCopy = {
     title: "Create document and first version",
     documentTemplate: "Quick choice",
     templateHint: "Choose a common scenario. AKB pre-fills type, classification, owner unit and reading mode.",
+    templateHelpLabel: "Quick choice help",
+    templateHelp: "Use it when creating a common directive, methodology, policy, contract or project document. You can adjust the values before submitting.",
     templateDirective: "Directive",
     templateMethodology: "Methodology",
     templatePolicy: "Policy",
@@ -203,11 +227,23 @@ const newDocumentCopy = {
     templateProject: "Project",
     titleLabel: "Title",
     titlePlaceholder: "Document title",
+    titleHelpLabel: "Document title help",
+    titleHelp: "Use the official title as it should appear in registry search and citations.",
     type: "Document type",
+    typeHelpLabel: "Document type help",
+    typeHelp: "The type supports filtering, reports and AI answers. Directive means binding internal rule, methodology means recommended procedure.",
     classification: "Classification",
+    classificationHelpLabel: "Classification help",
+    classificationHelp: "Choose the lowest classification that fits the content. Restricted and confidential documents are visible only to authorized users.",
     gestorUnit: "Gestor unit",
+    gestorHelpLabel: "Gestor unit help",
+    gestorHelp: "Enter the unit responsible for factual correctness and future document versions.",
     tags: "Tags",
+    tagsHelpLabel: "Tags help",
+    tagsHelp: "Tags help users find the document by agenda. Separate them with commas, for example directive,it,security.",
     file: "Original file",
+    fileHelpLabel: "Original file help",
+    fileHelp: "Upload the real source, preferably PDF or an office document. AKB stores the original and prepares citations from it.",
     chooseFile: "Choose the original file for the first version",
     fileReady: "File ready",
     hashing: "Computing SHA-256",
@@ -215,10 +251,17 @@ const newDocumentCopy = {
     size: "size",
     mime: "MIME",
     versionLabel: "First version",
+    versionHelpLabel: "First version help",
     versionHint: "The first version of a new document is always 1.0. Later versions are incremented from the selected change type.",
     validFrom: "Valid from",
+    validFromHelpLabel: "Validity help",
+    validFromHelp: "Enter the day from which the document should be used as a valid source.",
     parserProfile: "How AKB reads the file",
+    parserHelpLabel: "Reading mode help",
+    parserHelp: "Keep controlled document for directives and methodologies. Use OCR mainly for scanned files.",
     chunkingStrategy: "Citation segmentation",
+    chunkingHelpLabel: "Citation segmentation help",
+    chunkingHelp: "Chapters and paragraphs are best for regulations, directives and methodologies. Semantic sections fit freer text better.",
     parserControlled: "Controlled document",
     parserPlain: "Simple text",
     parserOcr: "Scanned or OCR-heavy document",
@@ -470,7 +513,10 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
         <div className="panel__body form-grid">
           <div className="guided-change">
             <div>
-              <strong>{copy.documentTemplate}</strong>
+              <div className="stratos-field-label-row">
+                <strong>{copy.documentTemplate}</strong>
+                <HelpHint label={copy.templateHelpLabel} text={copy.templateHelp} />
+              </div>
               <p>{copy.templateHint}</p>
             </div>
             <div className="task-actions">
@@ -488,13 +534,14 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
           </div>
           <div className="form-grid form-grid--two">
             <div className="field">
-              <label htmlFor="title">{copy.titleLabel}</label>
+              <FieldLabelWithHelp htmlFor="title" label={copy.titleLabel} helpLabel={copy.titleHelpLabel} helpText={copy.titleHelp} />
               <input id="title" name="title" placeholder={copy.titlePlaceholder} required readOnly={metadataLocked || Boolean(submitted)} />
             </div>
             <StratosSelect
               id="type"
               name="document_type"
               label={copy.type}
+              labelAccessory={<HelpHint label={copy.typeHelpLabel} text={copy.typeHelp} />}
               value={documentType}
               disabled={metadataLocked || Boolean(submitted)}
               onChange={(event) => setDocumentType(event.target.value as DocumentType)}
@@ -509,6 +556,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
               id="classification"
               name="classification"
               label={copy.classification}
+              labelAccessory={<HelpHint label={copy.classificationHelpLabel} text={copy.classificationHelp} />}
               value={classification}
               disabled={metadataLocked || Boolean(submitted)}
               onChange={(event) => setClassification(event.target.value as Classification)}
@@ -519,7 +567,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
               <option value="confidential">{copy.confidential}</option>
             </StratosSelect>
             <div className="field">
-              <label htmlFor="gestor">{copy.gestorUnit}</label>
+              <FieldLabelWithHelp htmlFor="gestor" label={copy.gestorUnit} helpLabel={copy.gestorHelpLabel} helpText={copy.gestorHelp} />
               <input
                 id="gestor"
                 name="gestor_unit"
@@ -531,7 +579,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
             </div>
           </div>
           <div className="field">
-            <label htmlFor="tags">{copy.tags}</label>
+            <FieldLabelWithHelp htmlFor="tags" label={copy.tags} helpLabel={copy.tagsHelpLabel} helpText={copy.tagsHelp} />
             <input
               id="tags"
               name="tags"
@@ -542,18 +590,19 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
           </div>
           <div className="form-grid form-grid--three">
             <div className="field">
-              <label htmlFor="version-label">{copy.versionLabel}</label>
+              <FieldLabelWithHelp htmlFor="version-label" label={copy.versionLabel} helpLabel={copy.versionHelpLabel} helpText={copy.versionHint} />
               <input id="version-label" name="version_label" value="1.0" readOnly />
               <small>{copy.versionHint}</small>
             </div>
             <div className="field">
-              <label htmlFor="valid-from">{copy.validFrom}</label>
+              <FieldLabelWithHelp htmlFor="valid-from" label={copy.validFrom} helpLabel={copy.validFromHelpLabel} helpText={copy.validFromHelp} />
               <input id="valid-from" name="valid_from" type="date" defaultValue={new Date().toISOString().slice(0, 10)} disabled={Boolean(submitted)} />
             </div>
             <StratosSelect
               id="parser"
               name="parser_profile"
               label={copy.parserProfile}
+              labelAccessory={<HelpHint label={copy.parserHelpLabel} text={copy.parserHelp} />}
               value={parserProfile}
               disabled={Boolean(submitted)}
               onChange={(event) => setParserProfile(event.target.value as ParserProfile)}
@@ -567,6 +616,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
             id="chunking"
             name="chunking_strategy"
             label={copy.chunkingStrategy}
+            labelAccessory={<HelpHint label={copy.chunkingHelpLabel} text={copy.chunkingHelp} />}
             value={chunkingStrategy}
             disabled={Boolean(submitted)}
             onChange={(event) => setChunkingStrategy(event.target.value as ChunkingStrategy)}
@@ -576,7 +626,7 @@ export function NewDocumentForm({ authorization }: NewDocumentFormProps) {
             <option value="fixed_window">{copy.chunkFixed}</option>
           </StratosSelect>
           <div className="field">
-            <label htmlFor="source-file">{copy.file}</label>
+            <FieldLabelWithHelp htmlFor="source-file" label={copy.file} helpLabel={copy.fileHelpLabel} helpText={copy.fileHelp} />
             <div className="file-drop">
               <UploadCloud size={20} aria-hidden="true" />
               <input

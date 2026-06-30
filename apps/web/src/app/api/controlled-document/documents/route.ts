@@ -40,8 +40,9 @@ export async function POST(request: NextRequest) {
             constraints: { classification_max: classification }
           },
           {
-            subjects: ["role:service_ingestion", "role:document_manager", "role:admin"],
+            subjects: [`user:${context.subjectId}`, "role:service_ingestion", "role:document_manager", "role:admin"],
             actions: [
+              "document.update",
               "document.read",
               "document.ingest",
               "document.reindex",

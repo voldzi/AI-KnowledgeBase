@@ -181,6 +181,8 @@ def _default_policies(owner_id: str, classification: Classification | str) -> li
                 Action.document_version_create.value,
                 Action.document_version_publish.value,
                 Action.document_version_archive.value,
+                Action.document_ingest.value,
+                Action.document_reindex.value,
             ],
             constraints={"classification_max": Classification.confidential.value},
         ),

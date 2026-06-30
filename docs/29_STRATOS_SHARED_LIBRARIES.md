@@ -64,6 +64,17 @@ AKB may keep local STRATOS-compatible adapters while the shared package catches
 up, but ProjectFlow and Budget must consume the published package API and must
 not copy AKB source files.
 
+General STRATOS UI primitives such as field help are consumed from the root
+package:
+
+```ts
+import { FieldLabelWithHelp, HelpHint, SelectField } from "@voldzi/stratos-ui";
+import "@voldzi/stratos-ui/styles.css";
+```
+
+Applications use `HelpHint`, `FieldLabelWithHelp`, `SelectField.description`
+and `SelectField.labelAccessory` instead of app-local help tooltip components.
+
 ## Component Contracts
 
 ### AkbDocumentPicker
