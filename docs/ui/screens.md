@@ -1,5 +1,14 @@
 # AKB Web Frontend - Screens
 
+## Shell Layout
+
+The AKB workspace shell uses the STRATOS shared navigation pattern:
+
+- the global topbar stays visible at the top of the viewport
+- the application rail and workspace submenu stay fixed while users scroll
+- only the right-side workspace content area scrolls
+- workspace content uses the full available width next to the submenu, with page padding inside the content area instead of centered max-width spacing
+
 ## Dashboard
 
 Route: `/`
