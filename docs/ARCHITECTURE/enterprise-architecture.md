@@ -44,7 +44,7 @@ The central backend owns:
 - persistent volumes.
 - backup/restore wrappers.
 - real local RAG profile:
-  - `gemma4:12b` chat model,
+  - `gemma4:12b-mlx` chat model,
   - `bge-m3` embedding model,
   - Qdrant collection `akl_document_chunks` with 1024D Cosine vectors.
 

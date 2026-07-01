@@ -1,12 +1,11 @@
+---
 openapi: 3.1.0
 info:
   title: AKL Identity & Document Registry API
-  description: Registry service for controlled documents, versions, access policies,
-    authorization decisions, and audit events. It does not implement ingestion, RAG,
-    or LLM logic.
+  description: Registry service for controlled documents, versions, access policies, authorization decisions, and audit events. It does not implement ingestion, RAG, or LLM logic.
   version: dev
 paths:
-  /health:
+  "/health":
     get:
       summary: Health
       operationId: health_health_get
@@ -16,8 +15,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
-  /ready:
+                "$ref": "#/components/schemas/HealthResponse"
+  "/ready":
     get:
       summary: Ready
       operationId: ready_ready_get
@@ -31,7 +30,7 @@ paths:
                   type: string
                 type: object
                 title: Response Ready Ready Get
-  /api/v1/external-documents/upsert:
+  "/api/v1/external-documents/upsert":
     post:
       summary: Upsert External Document
       operationId: upsert_external_document_api_v1_external_documents_upsert_post
@@ -39,7 +38,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExternalDocumentUpsertRequest'
+              "$ref": "#/components/schemas/ExternalDocumentUpsertRequest"
         required: true
       responses:
         '200':
@@ -47,14 +46,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExternalDocumentResponse'
+                "$ref": "#/components/schemas/ExternalDocumentResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/external-documents/{external_document_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/external-documents/{external_document_id}":
     get:
       summary: Get External Document
       operationId: get_external_document_api_v1_external_documents__external_document_id__get
@@ -71,14 +70,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExternalDocumentResponse'
+                "$ref": "#/components/schemas/ExternalDocumentResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/external-documents/{external_document_id}/current:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/external-documents/{external_document_id}/current":
     patch:
       summary: Update External Document Current
       operationId: update_external_document_current_api_v1_external_documents__external_document_id__current_patch
@@ -94,21 +93,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExternalDocumentCurrentUpdateRequest'
+              "$ref": "#/components/schemas/ExternalDocumentCurrentUpdateRequest"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExternalDocumentResponse'
+                "$ref": "#/components/schemas/ExternalDocumentResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/document-extractions:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/document-extractions":
     post:
       summary: Store Document Extraction
       operationId: store_document_extraction_api_v1_document_extractions_post
@@ -116,7 +115,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DocumentExtractionStoreRequest'
+              "$ref": "#/components/schemas/DocumentExtractionStoreRequest"
         required: true
       responses:
         '201':
@@ -124,14 +123,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentExtractionStoreResponse'
+                "$ref": "#/components/schemas/DocumentExtractionStoreResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/document-extractions/{extraction_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/document-extractions/{extraction_id}":
     get:
       summary: Get Document Extraction
       operationId: get_document_extraction_api_v1_document_extractions__extraction_id__get
@@ -148,14 +147,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentExtractionResponse'
+                "$ref": "#/components/schemas/DocumentExtractionResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/document-extractions/{extraction_id}/feedback:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/document-extractions/{extraction_id}/feedback":
     post:
       summary: Store Document Extraction Feedback
       operationId: store_document_extraction_feedback_api_v1_document_extractions__extraction_id__feedback_post
@@ -171,21 +170,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DocumentExtractionFeedbackCreate'
+              "$ref": "#/components/schemas/DocumentExtractionFeedbackCreate"
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentExtractionFeedbackStoreResponse'
+                "$ref": "#/components/schemas/DocumentExtractionFeedbackStoreResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents":
     post:
       summary: Create Document
       operationId: create_document_api_v1_documents_post
@@ -194,20 +193,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DocumentCreate'
+              "$ref": "#/components/schemas/DocumentCreate"
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentResponse'
+                "$ref": "#/components/schemas/DocumentResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     get:
       summary: List Documents
       operationId: list_documents_api_v1_documents_get
@@ -217,7 +216,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/DocumentStatus'
+          - "$ref": "#/components/schemas/DocumentStatus"
           - type: 'null'
           title: Status
       - name: classification
@@ -225,7 +224,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/Classification'
+          - "$ref": "#/components/schemas/Classification"
           - type: 'null'
           title: Classification
       - name: document_type
@@ -233,7 +232,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/DocumentType'
+          - "$ref": "#/components/schemas/DocumentType"
           - type: 'null'
           title: Document Type
       - name: owner_id
@@ -275,7 +274,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/ExternalSourceSystem'
+          - "$ref": "#/components/schemas/ExternalSourceSystem"
           - type: 'null'
           title: External System
       - name: entity_type
@@ -335,14 +334,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentListResponse'
+                "$ref": "#/components/schemas/DocumentListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents/metadata-summary:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents/metadata-summary":
     get:
       summary: Document Metadata Summary
       operationId: document_metadata_summary_api_v1_documents_metadata_summary_get
@@ -352,7 +351,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/DocumentStatus'
+          - "$ref": "#/components/schemas/DocumentStatus"
           - type: 'null'
           title: Status
       - name: classification
@@ -360,7 +359,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/Classification'
+          - "$ref": "#/components/schemas/Classification"
           - type: 'null'
           title: Classification
       - name: document_type
@@ -368,7 +367,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/DocumentType'
+          - "$ref": "#/components/schemas/DocumentType"
           - type: 'null'
           title: Document Type
       - name: owner_id
@@ -410,7 +409,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/ExternalSourceSystem'
+          - "$ref": "#/components/schemas/ExternalSourceSystem"
           - type: 'null'
           title: External System
       - name: entity_type
@@ -453,14 +452,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentMetadataSummaryResponse'
+                "$ref": "#/components/schemas/DocumentMetadataSummaryResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents/{document_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents/{document_id}":
     get:
       summary: Get Document
       operationId: get_document_api_v1_documents__document_id__get
@@ -477,13 +476,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentResponse'
+                "$ref": "#/components/schemas/DocumentResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     patch:
       summary: Patch Document
       operationId: patch_document_api_v1_documents__document_id__patch
@@ -499,20 +498,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DocumentPatch'
+              "$ref": "#/components/schemas/DocumentPatch"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentResponse'
+                "$ref": "#/components/schemas/DocumentResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     delete:
       summary: Delete Document
       operationId: delete_document_api_v1_documents__document_id__delete
@@ -531,8 +530,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents/{document_id}/assignments:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents/{document_id}/assignments":
     get:
       summary: List Document Assignments
       operationId: list_document_assignments_api_v1_documents__document_id__assignments_get
@@ -549,13 +548,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentAssignmentListResponse'
+                "$ref": "#/components/schemas/DocumentAssignmentListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     put:
       summary: Replace Document Assignments
       operationId: replace_document_assignments_api_v1_documents__document_id__assignments_put
@@ -571,21 +570,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DocumentAssignmentReplaceRequest'
+              "$ref": "#/components/schemas/DocumentAssignmentReplaceRequest"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentAssignmentListResponse'
+                "$ref": "#/components/schemas/DocumentAssignmentListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents/{document_id}/versions:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents/{document_id}/versions":
     post:
       summary: Create Document Version
       operationId: create_document_version_api_v1_documents__document_id__versions_post
@@ -601,20 +600,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DocumentVersionCreate'
+              "$ref": "#/components/schemas/DocumentVersionCreate"
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentVersionResponse'
+                "$ref": "#/components/schemas/DocumentVersionResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     get:
       summary: List Document Versions
       operationId: list_document_versions_api_v1_documents__document_id__versions_get
@@ -630,7 +629,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/DocumentStatus'
+          - "$ref": "#/components/schemas/DocumentStatus"
           - type: 'null'
           title: Status
       - name: valid_on
@@ -665,14 +664,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentVersionListResponse'
+                "$ref": "#/components/schemas/DocumentVersionListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents/{document_id}/versions/{version_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents/{document_id}/versions/{version_id}":
     get:
       summary: Get Document Version
       operationId: get_document_version_api_v1_documents__document_id__versions__version_id__get
@@ -695,14 +694,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentVersionResponse'
+                "$ref": "#/components/schemas/DocumentVersionResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents/{document_id}/versions/{version_id}/publish:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents/{document_id}/versions/{version_id}/publish":
     post:
       summary: Publish Document Version
       operationId: publish_document_version_api_v1_documents__document_id__versions__version_id__publish_post
@@ -725,14 +724,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentVersionResponse'
+                "$ref": "#/components/schemas/DocumentVersionResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/documents/{document_id}/versions/{version_id}/archive:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/documents/{document_id}/versions/{version_id}/archive":
     post:
       summary: Archive Document Version
       operationId: archive_document_version_api_v1_documents__document_id__versions__version_id__archive_post
@@ -755,14 +754,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentVersionResponse'
+                "$ref": "#/components/schemas/DocumentVersionResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/authz/check:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/authz/check":
     post:
       summary: Check Authorization
       operationId: check_authorization_api_v1_authz_check_post
@@ -770,7 +769,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AuthzCheckRequest'
+              "$ref": "#/components/schemas/AuthzCheckRequest"
         required: true
       responses:
         '200':
@@ -778,14 +777,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthzCheckResponse'
+                "$ref": "#/components/schemas/AuthzCheckResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/authz/filter-documents:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/authz/filter-documents":
     post:
       summary: Filter Authorized Documents
       operationId: filter_authorized_documents_api_v1_authz_filter_documents_post
@@ -793,7 +792,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AuthzFilterDocumentsRequest'
+              "$ref": "#/components/schemas/AuthzFilterDocumentsRequest"
         required: true
       responses:
         '200':
@@ -801,14 +800,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthzFilterDocumentsResponse'
+                "$ref": "#/components/schemas/AuthzFilterDocumentsResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/workflow/tasks:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/workflow/tasks":
     get:
       summary: List Workflow Tasks
       operationId: list_workflow_tasks_api_v1_workflow_tasks_get
@@ -818,7 +817,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/WorkflowTaskStatus'
+          - "$ref": "#/components/schemas/WorkflowTaskStatus"
           - type: 'null'
           title: Status
       - name: kind
@@ -826,7 +825,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/WorkflowTaskKind'
+          - "$ref": "#/components/schemas/WorkflowTaskKind"
           - type: 'null'
           title: Kind
       - name: priority
@@ -834,7 +833,7 @@ paths:
         required: false
         schema:
           anyOf:
-          - $ref: '#/components/schemas/WorkflowTaskPriority'
+          - "$ref": "#/components/schemas/WorkflowTaskPriority"
           - type: 'null'
           title: Priority
       - name: document_id
@@ -883,14 +882,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkflowTaskListResponse'
+                "$ref": "#/components/schemas/WorkflowTaskListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/workflow/tasks/{task_id}/actions:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/workflow/tasks/{task_id}/actions":
     post:
       summary: Apply Workflow Task Action
       operationId: apply_workflow_task_action_api_v1_workflow_tasks__task_id__actions_post
@@ -906,21 +905,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WorkflowTaskActionRequest'
+              "$ref": "#/components/schemas/WorkflowTaskActionRequest"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkflowTaskResponse'
+                "$ref": "#/components/schemas/WorkflowTaskResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/audit/events:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/audit/events":
     post:
       summary: Create Audit Event
       operationId: create_audit_event_api_v1_audit_events_post
@@ -929,20 +928,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AuditEventCreate'
+              "$ref": "#/components/schemas/AuditEventCreate"
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuditEventResponse'
+                "$ref": "#/components/schemas/AuditEventResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     get:
       summary: List Audit Events
       operationId: list_audit_events_api_v1_audit_events_get
@@ -1002,14 +1001,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuditEventListResponse'
+                "$ref": "#/components/schemas/AuditEventListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/audit/events/{event_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/audit/events/{event_id}":
     get:
       summary: Get Audit Event
       operationId: get_audit_event_api_v1_audit_events__event_id__get
@@ -1026,14 +1025,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuditEventResponse'
+                "$ref": "#/components/schemas/AuditEventResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/directory/users:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/admin/directory/users":
     get:
       summary: Search Directory Users
       operationId: search_directory_users_api_v1_admin_directory_users_get
@@ -1061,14 +1060,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DirectoryUserListResponse'
+                "$ref": "#/components/schemas/DirectoryUserListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/directory/users/import:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/admin/directory/users/import":
     post:
       summary: Import Directory User
       operationId: import_directory_user_api_v1_admin_directory_users_import_post
@@ -1076,7 +1075,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DirectoryUserImportRequest'
+              "$ref": "#/components/schemas/DirectoryUserImportRequest"
         required: true
       responses:
         '201':
@@ -1084,14 +1083,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DirectoryUserResponse'
+                "$ref": "#/components/schemas/DirectoryUserResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/role-mappings:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/admin/role-mappings":
     get:
       summary: List Role Mappings
       operationId: list_role_mappings_api_v1_admin_role_mappings_get
@@ -1109,13 +1108,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoleMappingListResponse'
+                "$ref": "#/components/schemas/RoleMappingListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     post:
       summary: Upsert Role Mapping
       operationId: upsert_role_mapping_api_v1_admin_role_mappings_post
@@ -1124,21 +1123,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpsertRoleMappingRequest'
+              "$ref": "#/components/schemas/UpsertRoleMappingRequest"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoleMappingResponse'
+                "$ref": "#/components/schemas/RoleMappingResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/role-mappings/{role_mapping_id}/status:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/admin/role-mappings/{role_mapping_id}/status":
     patch:
       summary: Update Role Mapping Status
       operationId: update_role_mapping_status_api_v1_admin_role_mappings__role_mapping_id__status_patch
@@ -1154,21 +1153,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RoleMappingStatusPatch'
+              "$ref": "#/components/schemas/RoleMappingStatusPatch"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoleMappingResponse'
+                "$ref": "#/components/schemas/RoleMappingResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/assistant/conversation-history:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/assistant/conversation-history":
     get:
       summary: List Assistant Conversations
       operationId: list_assistant_conversations_api_v1_assistant_conversation_history_get
@@ -1203,14 +1202,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssistantConversationListResponse'
+                "$ref": "#/components/schemas/AssistantConversationListResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/assistant/conversations/{conversation_id}/messages:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/assistant/conversations/{conversation_id}/messages":
     post:
       summary: Append Assistant Messages
       operationId: append_assistant_messages_api_v1_assistant_conversations__conversation_id__messages_post
@@ -1226,21 +1225,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AssistantMessageAppendRequest'
+              "$ref": "#/components/schemas/AssistantMessageAppendRequest"
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssistantConversationDetailResponse'
+                "$ref": "#/components/schemas/AssistantConversationDetailResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/assistant/conversation-history/{conversation_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/assistant/conversation-history/{conversation_id}":
     get:
       summary: Get Assistant Conversation
       operationId: get_assistant_conversation_api_v1_assistant_conversation_history__conversation_id__get
@@ -1257,13 +1256,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssistantConversationDetailResponse'
+                "$ref": "#/components/schemas/AssistantConversationDetailResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     patch:
       summary: Update Assistant Conversation
       operationId: update_assistant_conversation_api_v1_assistant_conversation_history__conversation_id__patch
@@ -1279,21 +1278,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AssistantConversationPatch'
+              "$ref": "#/components/schemas/AssistantConversationPatch"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssistantConversationDetailResponse'
+                "$ref": "#/components/schemas/AssistantConversationDetailResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/assistant/conversation-history/{conversation_id}/shares:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/assistant/conversation-history/{conversation_id}/shares":
     put:
       summary: Replace Assistant Conversation Shares
       operationId: replace_assistant_conversation_shares_api_v1_assistant_conversation_history__conversation_id__shares_put
@@ -1309,20 +1308,53 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AssistantConversationShareReplaceRequest'
+              "$ref": "#/components/schemas/AssistantConversationShareReplaceRequest"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssistantConversationDetailResponse'
+                "$ref": "#/components/schemas/AssistantConversationDetailResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/user-profiles/me/settings":
+    get:
+      summary: Get Profile Settings
+      operationId: get_profile_settings_api_v1_user_profiles_me_settings_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ProfileSettingsResponse"
+    put:
+      summary: Put Profile Settings
+      operationId: put_profile_settings_api_v1_user_profiles_me_settings_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ProfileSettingsPutRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ProfileSettingsResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
 components:
   schemas:
     AccessPolicyCreate:
@@ -1335,7 +1367,7 @@ components:
           title: Subjects
         actions:
           items:
-            $ref: '#/components/schemas/Action'
+            "$ref": "#/components/schemas/Action"
           type: array
           minItems: 1
           title: Actions
@@ -1358,7 +1390,7 @@ components:
           title: Subjects
         actions:
           items:
-            $ref: '#/components/schemas/Action'
+            "$ref": "#/components/schemas/Action"
           type: array
           minItems: 1
           title: Actions
@@ -1459,12 +1491,12 @@ components:
           title: Updated At
         shared_with:
           items:
-            $ref: '#/components/schemas/AssistantConversationShareResponse'
+            "$ref": "#/components/schemas/AssistantConversationShareResponse"
           type: array
           title: Shared With
         messages:
           items:
-            $ref: '#/components/schemas/AssistantMessageResponse'
+            "$ref": "#/components/schemas/AssistantMessageResponse"
           type: array
           title: Messages
       type: object
@@ -1518,7 +1550,7 @@ components:
           title: Updated At
         shared_with:
           items:
-            $ref: '#/components/schemas/AssistantConversationShareResponse'
+            "$ref": "#/components/schemas/AssistantConversationShareResponse"
           type: array
           title: Shared With
         message_count:
@@ -1538,7 +1570,7 @@ components:
       properties:
         items:
           items:
-            $ref: '#/components/schemas/AssistantConversationListItemResponse'
+            "$ref": "#/components/schemas/AssistantConversationListItemResponse"
           type: array
           title: Items
         limit:
@@ -1564,13 +1596,13 @@ components:
         status:
           anyOf:
           - type: string
-            pattern: ^(active|archived)$
+            pattern: "^(active|archived)$"
           - type: 'null'
           title: Status
         visibility:
           anyOf:
           - type: string
-            pattern: ^(private|shared)$
+            pattern: "^(private|shared)$"
           - type: 'null'
           title: Visibility
         retention_until:
@@ -1585,7 +1617,7 @@ components:
       properties:
         subject_type:
           type: string
-          pattern: ^(user|group)$
+          pattern: "^(user|group)$"
           title: Subject Type
           default: user
         subject_id:
@@ -1595,7 +1627,7 @@ components:
           title: Subject Id
         permission:
           type: string
-          pattern: ^(viewer|commenter)$
+          pattern: "^(viewer|commenter)$"
           title: Permission
           default: viewer
       type: object
@@ -1606,13 +1638,13 @@ components:
       properties:
         shares:
           items:
-            $ref: '#/components/schemas/AssistantConversationShareCreate'
+            "$ref": "#/components/schemas/AssistantConversationShareCreate"
           type: array
           maxItems: 50
           title: Shares
         visibility:
           type: string
-          pattern: ^(private|shared)$
+          pattern: "^(private|shared)$"
           title: Visibility
           default: shared
       type: object
@@ -1665,7 +1697,7 @@ components:
           title: User Id
         messages:
           items:
-            $ref: '#/components/schemas/AssistantMessageCreate'
+            "$ref": "#/components/schemas/AssistantMessageCreate"
           type: array
           maxItems: 10
           minItems: 1
@@ -1679,7 +1711,7 @@ components:
         visibility:
           anyOf:
           - type: string
-            pattern: ^(private|shared)$
+            pattern: "^(private|shared)$"
           - type: 'null'
           title: Visibility
         retention_until:
@@ -1697,7 +1729,7 @@ components:
       properties:
         role:
           type: string
-          pattern: ^(user|assistant)$
+          pattern: "^(user|assistant)$"
           title: Role
         content:
           type: string
@@ -1784,7 +1816,7 @@ components:
           minLength: 1
           title: Resource Id
         severity:
-          $ref: '#/components/schemas/AuditSeverity'
+          "$ref": "#/components/schemas/AuditSeverity"
           default: info
         correlation_id:
           anyOf:
@@ -1807,7 +1839,7 @@ components:
       properties:
         items:
           items:
-            $ref: '#/components/schemas/AuditEventResponse'
+            "$ref": "#/components/schemas/AuditEventResponse"
           type: array
           title: Items
         limit:
@@ -1840,7 +1872,7 @@ components:
           type: string
           title: Resource Id
         severity:
-          $ref: '#/components/schemas/AuditSeverity'
+          "$ref": "#/components/schemas/AuditSeverity"
         correlation_id:
           anyOf:
           - type: string
@@ -1882,9 +1914,9 @@ components:
           minLength: 1
           title: Subject Id
         action:
-          $ref: '#/components/schemas/Action'
+          "$ref": "#/components/schemas/Action"
         resource:
-          $ref: '#/components/schemas/AuthzResource'
+          "$ref": "#/components/schemas/AuthzResource"
         roles:
           items:
             type: string
@@ -1925,7 +1957,7 @@ components:
           minLength: 1
           title: Subject Id
         action:
-          $ref: '#/components/schemas/Action'
+          "$ref": "#/components/schemas/Action"
         candidate_document_ids:
           items:
             type: string
@@ -1980,7 +2012,7 @@ components:
           title: Document Version Id
         classification:
           anyOf:
-          - $ref: '#/components/schemas/Classification'
+          - "$ref": "#/components/schemas/Classification"
           - type: 'null'
       type: object
       title: AuthzResource
@@ -2007,7 +2039,7 @@ components:
       properties:
         users:
           items:
-            $ref: '#/components/schemas/DirectoryUserResponse'
+            "$ref": "#/components/schemas/DirectoryUserResponse"
           type: array
           title: Users
       type: object
@@ -2050,9 +2082,9 @@ components:
     DocumentAssignmentCreate:
       properties:
         role:
-          $ref: '#/components/schemas/DocumentAssignmentRole'
+          "$ref": "#/components/schemas/DocumentAssignmentRole"
         subject_type:
-          $ref: '#/components/schemas/AssignmentSubjectType'
+          "$ref": "#/components/schemas/AssignmentSubjectType"
           default: user
         subject_id:
           type: string
@@ -2082,7 +2114,7 @@ components:
           title: Sla Days
         escalation_subject_type:
           anyOf:
-          - $ref: '#/components/schemas/AssignmentSubjectType'
+          - "$ref": "#/components/schemas/AssignmentSubjectType"
           - type: 'null'
         escalation_subject_id:
           anyOf:
@@ -2109,7 +2141,7 @@ components:
       properties:
         items:
           items:
-            $ref: '#/components/schemas/DocumentAssignmentResponse'
+            "$ref": "#/components/schemas/DocumentAssignmentResponse"
           type: array
           title: Items
       type: object
@@ -2120,7 +2152,7 @@ components:
       properties:
         assignments:
           items:
-            $ref: '#/components/schemas/DocumentAssignmentCreate'
+            "$ref": "#/components/schemas/DocumentAssignmentCreate"
           type: array
           maxItems: 50
           minItems: 1
@@ -2132,9 +2164,9 @@ components:
     DocumentAssignmentResponse:
       properties:
         role:
-          $ref: '#/components/schemas/DocumentAssignmentRole'
+          "$ref": "#/components/schemas/DocumentAssignmentRole"
         subject_type:
-          $ref: '#/components/schemas/AssignmentSubjectType'
+          "$ref": "#/components/schemas/AssignmentSubjectType"
           default: user
         subject_id:
           type: string
@@ -2164,7 +2196,7 @@ components:
           title: Sla Days
         escalation_subject_type:
           anyOf:
-          - $ref: '#/components/schemas/AssignmentSubjectType'
+          - "$ref": "#/components/schemas/AssignmentSubjectType"
           - type: 'null'
         escalation_subject_id:
           anyOf:
@@ -2240,7 +2272,7 @@ components:
           minLength: 1
           title: Title
         document_type:
-          $ref: '#/components/schemas/DocumentType'
+          "$ref": "#/components/schemas/DocumentType"
         owner_id:
           type: string
           maxLength: 128
@@ -2253,7 +2285,7 @@ components:
           - type: 'null'
           title: Gestor Unit
         classification:
-          $ref: '#/components/schemas/Classification'
+          "$ref": "#/components/schemas/Classification"
           default: internal
         tags:
           items:
@@ -2267,14 +2299,14 @@ components:
         access_policies:
           anyOf:
           - items:
-              $ref: '#/components/schemas/AccessPolicyCreate'
+              "$ref": "#/components/schemas/AccessPolicyCreate"
             type: array
           - type: 'null'
           title: Access Policies
         assignments:
           anyOf:
           - items:
-              $ref: '#/components/schemas/DocumentAssignmentCreate'
+              "$ref": "#/components/schemas/DocumentAssignmentCreate"
             type: array
           - type: 'null'
           title: Assignments
@@ -2302,7 +2334,7 @@ components:
           - type: 'null'
           title: Final Value
         decision:
-          $ref: '#/components/schemas/DocumentExtractionFeedbackDecision'
+          "$ref": "#/components/schemas/DocumentExtractionFeedbackDecision"
         reason:
           anyOf:
           - type: string
@@ -2315,7 +2347,7 @@ components:
           minLength: 1
           title: Actor
         source_app:
-          $ref: '#/components/schemas/ExternalSourceSystem'
+          "$ref": "#/components/schemas/ExternalSourceSystem"
         source_entity_id:
           type: string
           maxLength: 128
@@ -2371,7 +2403,7 @@ components:
           - type: 'null'
           title: Final Value
         decision:
-          $ref: '#/components/schemas/DocumentExtractionFeedbackDecision'
+          "$ref": "#/components/schemas/DocumentExtractionFeedbackDecision"
         reason:
           anyOf:
           - type: string
@@ -2416,9 +2448,9 @@ components:
     DocumentExtractionFeedbackStoreResponse:
       properties:
         feedback:
-          $ref: '#/components/schemas/DocumentExtractionFeedbackResponse'
+          "$ref": "#/components/schemas/DocumentExtractionFeedbackResponse"
         extraction:
-          $ref: '#/components/schemas/DocumentExtractionResponse'
+          "$ref": "#/components/schemas/DocumentExtractionResponse"
       type: object
       required:
       - feedback
@@ -2457,9 +2489,9 @@ components:
           type: string
           title: Profile Version
         status:
-          $ref: '#/components/schemas/DocumentExtractionStatus'
+          "$ref": "#/components/schemas/DocumentExtractionStatus"
         classification:
-          $ref: '#/components/schemas/Classification'
+          "$ref": "#/components/schemas/Classification"
         requested_by:
           type: string
           title: Requested By
@@ -2533,7 +2565,7 @@ components:
           minLength: 1
           title: Tenant Id
         external_system:
-          $ref: '#/components/schemas/ExternalSourceSystem'
+          "$ref": "#/components/schemas/ExternalSourceSystem"
         external_ref:
           type: string
           maxLength: 240
@@ -2571,10 +2603,10 @@ components:
           title: Profile Version
           default: '1'
         status:
-          $ref: '#/components/schemas/DocumentExtractionStatus'
+          "$ref": "#/components/schemas/DocumentExtractionStatus"
           default: PROPOSED
         classification:
-          $ref: '#/components/schemas/Classification'
+          "$ref": "#/components/schemas/Classification"
           default: internal
         requested_by:
           type: string
@@ -2620,7 +2652,7 @@ components:
     DocumentExtractionStoreResponse:
       properties:
         extraction:
-          $ref: '#/components/schemas/DocumentExtractionResponse'
+          "$ref": "#/components/schemas/DocumentExtractionResponse"
         created:
           type: boolean
           title: Created
@@ -2667,7 +2699,7 @@ components:
       properties:
         items:
           items:
-            $ref: '#/components/schemas/DocumentResponse'
+            "$ref": "#/components/schemas/DocumentResponse"
           type: array
           title: Items
         limit:
@@ -2709,27 +2741,27 @@ components:
           title: Total Matched Documents
         topics:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryTopic'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryTopic"
           type: array
           title: Topics
         by_document_type:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: By Document Type
         by_classification:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: By Classification
         by_status:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: By Status
         by_owner:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: By Owner
         warnings:
@@ -2760,22 +2792,22 @@ components:
           title: Valid Or Approved Count
         document_types:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: Document Types
         classifications:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: Classifications
         statuses:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: Statuses
         owners:
           items:
-            $ref: '#/components/schemas/DocumentMetadataSummaryBucket'
+            "$ref": "#/components/schemas/DocumentMetadataSummaryBucket"
           type: array
           title: Owners
         example_documents:
@@ -2800,11 +2832,11 @@ components:
           title: Title
         document_type:
           anyOf:
-          - $ref: '#/components/schemas/DocumentType'
+          - "$ref": "#/components/schemas/DocumentType"
           - type: 'null'
         status:
           anyOf:
-          - $ref: '#/components/schemas/DocumentStatus'
+          - "$ref": "#/components/schemas/DocumentStatus"
           - type: 'null'
         owner_id:
           anyOf:
@@ -2821,7 +2853,7 @@ components:
           title: Gestor Unit
         classification:
           anyOf:
-          - $ref: '#/components/schemas/Classification'
+          - "$ref": "#/components/schemas/Classification"
           - type: 'null'
         tags:
           anyOf:
@@ -2839,14 +2871,14 @@ components:
         access_policies:
           anyOf:
           - items:
-              $ref: '#/components/schemas/AccessPolicyCreate'
+              "$ref": "#/components/schemas/AccessPolicyCreate"
             type: array
           - type: 'null'
           title: Access Policies
         assignments:
           anyOf:
           - items:
-              $ref: '#/components/schemas/DocumentAssignmentCreate'
+              "$ref": "#/components/schemas/DocumentAssignmentCreate"
             type: array
           - type: 'null'
           title: Assignments
@@ -2861,11 +2893,11 @@ components:
           type: string
           title: Title
         document_type:
-          $ref: '#/components/schemas/DocumentType'
+          "$ref": "#/components/schemas/DocumentType"
         status:
-          $ref: '#/components/schemas/DocumentStatus'
+          "$ref": "#/components/schemas/DocumentStatus"
         classification:
-          $ref: '#/components/schemas/Classification'
+          "$ref": "#/components/schemas/Classification"
         owner_id:
           type: string
           title: Owner Id
@@ -2896,12 +2928,12 @@ components:
           title: Updated At
         access_policies:
           items:
-            $ref: '#/components/schemas/AccessPolicyResponse'
+            "$ref": "#/components/schemas/AccessPolicyResponse"
           type: array
           title: Access Policies
         assignments:
           items:
-            $ref: '#/components/schemas/DocumentAssignmentResponse'
+            "$ref": "#/components/schemas/DocumentAssignmentResponse"
           type: array
           title: Assignments
       type: object
@@ -2971,7 +3003,7 @@ components:
           title: Source File Uri
         source_location:
           anyOf:
-          - $ref: '#/components/schemas/SourceLocation'
+          - "$ref": "#/components/schemas/SourceLocation"
           - type: 'null'
         file_hash:
           anyOf:
@@ -2986,7 +3018,7 @@ components:
           title: Change Summary
         file:
           anyOf:
-          - $ref: '#/components/schemas/DocumentFileCreate'
+          - "$ref": "#/components/schemas/DocumentFileCreate"
           - type: 'null'
       type: object
       required:
@@ -2997,7 +3029,7 @@ components:
       properties:
         items:
           items:
-            $ref: '#/components/schemas/DocumentVersionResponse'
+            "$ref": "#/components/schemas/DocumentVersionResponse"
           type: array
           title: Items
         limit:
@@ -3029,7 +3061,7 @@ components:
           type: string
           title: Version Label
         status:
-          $ref: '#/components/schemas/DocumentStatus'
+          "$ref": "#/components/schemas/DocumentStatus"
         valid_from:
           anyOf:
           - type: string
@@ -3047,7 +3079,7 @@ components:
           title: Source File Uri
         source_location:
           anyOf:
-          - $ref: '#/components/schemas/SourceLocation'
+          - "$ref": "#/components/schemas/SourceLocation"
           - type: 'null'
         file_hash:
           anyOf:
@@ -3118,7 +3150,7 @@ components:
           title: Akb Source Uri
         source_location:
           anyOf:
-          - $ref: '#/components/schemas/SourceLocation'
+          - "$ref": "#/components/schemas/SourceLocation"
           - type: 'null'
       type: object
       title: ExternalDocumentCurrentUpdateRequest
@@ -3189,7 +3221,7 @@ components:
           title: Akb Source Uri
         source_location:
           anyOf:
-          - $ref: '#/components/schemas/SourceLocation'
+          - "$ref": "#/components/schemas/SourceLocation"
           - type: 'null'
         citation_base_url:
           anyOf:
@@ -3236,9 +3268,9 @@ components:
     ExternalDocumentResponse:
       properties:
         external_document:
-          $ref: '#/components/schemas/ExternalDocumentRefResponse'
+          "$ref": "#/components/schemas/ExternalDocumentRefResponse"
         document:
-          $ref: '#/components/schemas/DocumentResponse'
+          "$ref": "#/components/schemas/DocumentResponse"
         created:
           type: boolean
           title: Created
@@ -3251,7 +3283,7 @@ components:
     ExternalDocumentUpsertRequest:
       properties:
         external_system:
-          $ref: '#/components/schemas/ExternalSourceSystem'
+          "$ref": "#/components/schemas/ExternalSourceSystem"
         external_ref:
           type: string
           maxLength: 240
@@ -3268,17 +3300,17 @@ components:
           minLength: 1
           title: Entity Id
         document_type:
-          $ref: '#/components/schemas/DocumentType'
+          "$ref": "#/components/schemas/DocumentType"
         title:
           type: string
           maxLength: 300
           minLength: 1
           title: Title
         classification:
-          $ref: '#/components/schemas/Classification'
+          "$ref": "#/components/schemas/Classification"
           default: internal
         owner:
-          $ref: '#/components/schemas/ExternalDocumentOwner'
+          "$ref": "#/components/schemas/ExternalDocumentOwner"
         tenant_id:
           type: string
           maxLength: 128
@@ -3302,7 +3334,7 @@ components:
           title: Metadata
         source_location:
           anyOf:
-          - $ref: '#/components/schemas/SourceLocation'
+          - "$ref": "#/components/schemas/SourceLocation"
           - type: 'null'
         akb_source_uri:
           anyOf:
@@ -3325,14 +3357,14 @@ components:
         access_policies:
           anyOf:
           - items:
-              $ref: '#/components/schemas/AccessPolicyCreate'
+              "$ref": "#/components/schemas/AccessPolicyCreate"
             type: array
           - type: 'null'
           title: Access Policies
         assignments:
           anyOf:
           - items:
-              $ref: '#/components/schemas/DocumentAssignmentCreate'
+              "$ref": "#/components/schemas/DocumentAssignmentCreate"
             type: array
           - type: 'null'
           title: Assignments
@@ -3360,7 +3392,7 @@ components:
       properties:
         detail:
           items:
-            $ref: '#/components/schemas/ValidationError'
+            "$ref": "#/components/schemas/ValidationError"
           type: array
           title: Detail
       type: object
@@ -3387,7 +3419,7 @@ components:
       properties:
         members:
           items:
-            $ref: '#/components/schemas/RoleMappingResponse'
+            "$ref": "#/components/schemas/RoleMappingResponse"
           type: array
           title: Members
       type: object
@@ -3438,7 +3470,7 @@ components:
       properties:
         status:
           type: string
-          pattern: ^(active|removed)$
+          pattern: "^(active|removed)$"
           title: Status
       type: object
       required:
@@ -3447,7 +3479,7 @@ components:
     SourceLocation:
       properties:
         kind:
-          $ref: '#/components/schemas/SourceLocationKind'
+          "$ref": "#/components/schemas/SourceLocationKind"
         uri:
           anyOf:
           - type: string
@@ -3525,7 +3557,7 @@ components:
       properties:
         subject_type:
           type: string
-          pattern: ^(user|group)$
+          pattern: "^(user|group)$"
           title: Subject Type
           default: user
         subject_id:
@@ -3540,7 +3572,7 @@ components:
           title: Role
         status:
           type: string
-          pattern: ^(active|removed)$
+          pattern: "^(active|removed)$"
           title: Status
           default: active
       type: object
@@ -3587,7 +3619,7 @@ components:
     WorkflowTaskActionRequest:
       properties:
         action:
-          $ref: '#/components/schemas/WorkflowTaskAction'
+          "$ref": "#/components/schemas/WorkflowTaskAction"
         comment:
           anyOf:
           - type: string
@@ -3621,7 +3653,7 @@ components:
       properties:
         items:
           items:
-            $ref: '#/components/schemas/WorkflowTaskResponse'
+            "$ref": "#/components/schemas/WorkflowTaskResponse"
           type: array
           title: Items
         limit:
@@ -3655,11 +3687,11 @@ components:
           - type: 'null'
           title: Source Key
         kind:
-          $ref: '#/components/schemas/WorkflowTaskKind'
+          "$ref": "#/components/schemas/WorkflowTaskKind"
         priority:
-          $ref: '#/components/schemas/WorkflowTaskPriority'
+          "$ref": "#/components/schemas/WorkflowTaskPriority"
         status:
-          $ref: '#/components/schemas/WorkflowTaskStatus'
+          "$ref": "#/components/schemas/WorkflowTaskStatus"
         title:
           type: string
           title: Title
@@ -3759,3 +3791,47 @@ components:
       - resolved
       - cancelled
       title: WorkflowTaskStatus
+    ProfileSettingsBundle:
+      properties:
+        core:
+          additionalProperties: true
+          type: object
+          title: Core
+        apps:
+          additionalProperties:
+            additionalProperties: true
+            type: object
+          type: object
+          title: Apps
+      type: object
+      title: ProfileSettingsBundle
+    ProfileSettingsPutRequest:
+      properties:
+        settings:
+          "$ref": "#/components/schemas/ProfileSettingsBundle"
+      type: object
+      required:
+      - settings
+      title: ProfileSettingsPutRequest
+    ProfileSettingsResponse:
+      properties:
+        subject_id:
+          type: string
+          title: Subject Id
+        settings:
+          "$ref": "#/components/schemas/ProfileSettingsBundle"
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+        groups:
+          items:
+            type: string
+          type: array
+          title: Groups
+      type: object
+      required:
+      - subject_id
+      - settings
+      title: ProfileSettingsResponse

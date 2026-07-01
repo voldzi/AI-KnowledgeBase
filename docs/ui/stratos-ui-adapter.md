@@ -32,7 +32,7 @@ Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 - `ProjectTopbar`
 - `CommandCenter`
 - `UnifiedSelect`
-- `SettingsSurface`
+- `StratosSettingsSurface`
 - `SurfaceModeMenu`
 - `DetailSurface`
 - jednotny CSS import `@voldzi/stratos-ui/styles.css`
@@ -47,6 +47,7 @@ Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 - `StratosWorkspaceSidebar` a `StratosWorkspaceNav` pro druhe leve menu/submenu podle STRATOS workspace patternu.
 - `StratosDataTable` pro profesionalni tabulkove pohledy s deklarativnimi sloupci.
 - `StratosPdfViewer` pro vykresleni citacni PDF strany pres pdf.js, jemne textove zvyrazneni citace a source-location bbox overlay.
+- `StratosSettingsSurface` pro jednotne nastaveni profilu, vzhledu, preferenci a AKB aplikačních sekci.
 - `HelpHint` / `FieldLabelWithHelp` ze sdileneho `@voldzi/stratos-ui` pro jednotnou kontextovou napovedu u urednickych kroku.
 
 ## Aktualni Napojeni V AKL
@@ -63,6 +64,11 @@ Adapter je zapojeny na techto plochach:
 - `/tasks`: search, select filtry, vycisteni filtru, detailove akce a rozhodovaci tlacitka,
 - `/ingestion`: tabulka uloh pres `StratosDataTable`,
 - `/upload`, `/chat`, `/ingestion` a dashboard vybrane hlavni prikazy.
+- uzivatelske nastaveni pres `StratosSettingsSurface`; AKB pridava pouze
+  `appNavItems` a `appSections` pro provozni stav, read-only role/opravneni a
+  admin role-preview. Profil, jazyk, vzhled a avatar nejsou ulozene v
+  `localStorage`, ale pres web bridge `GET/PUT /api/v1/profile/settings` do
+  `settings.core` a `settings.apps.akb`.
 
 Zbyvajici mista pouzivaji CSS kompatibilni `.button` aliasy, zejmena download/external anchor prvky a specializovane radkove akce v detailu dokumentu. Dalsi krok je pridat explicitni `StratosAnchorButton`, `UnifiedSelect` popover pro stav/typ/klasifikaci a `DateRangePicker` pro casove filtry.
 

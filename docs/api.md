@@ -112,6 +112,33 @@ PUT   /api/assistant/conversations/{conversationId}/shares
 Conversation history defaults to private visibility and 180-day retention.
 Archived or expired conversations are omitted from the default list.
 
+## STRATOS Profile Settings
+
+AKB settings use the shared STRATOS settings surface in
+`@voldzi/stratos-ui`. The browser reads and writes profile preferences only
+through the AKB web/API bridge:
+
+```text
+GET /api/v1/profile/settings
+PUT /api/v1/profile/settings
+```
+
+The response contains `settings.core` for shared STRATOS values such as
+display name, email, language, theme, accent, accessibility and working
+preferences. AKB-specific values are stored under `settings.apps.akb`, for
+example the settings surface mode and optional admin role-preview preference.
+Roles, groups and allowed surfaces are returned as read-only `identity`
+metadata from Keycloak/RBAC and are never taken from saved profile settings.
+Browser `localStorage` is not a source of truth for avatar, language,
+appearance, or profile values.
+
+Internally, the web bridge persists these values to Registry API:
+
+```text
+GET /api/v1/user-profiles/me/settings
+PUT /api/v1/user-profiles/me/settings
+```
+
 ## Authentication
 
 Production browser flows authenticate through STRATOS OIDC. Server-to-server
@@ -165,6 +192,13 @@ Primary references:
 Budget & Contract uses `contract_financial_v1` through RAG Retrieval Service
 STRATOS extraction endpoints. AKB returns cited proposed values only; Budget
 owns human confirmation and final writes to its structured contract model.
+
+ArchFlow uses `archflow_goal_extraction_v1` through the same STRATOS extraction
+lifecycle over `ArchflowSourceSet` and published
+`ArchflowGoalCatalogVersion` contexts. AKB returns cited proposed goals,
+capabilities, obligations, requirements, metrics, legal basis, and risks only;
+ArchFlow owns human review, source-set/catalog-version audit snapshots, and
+final writes to `ArchflowGoal` and related source-app tables.
 
 Budget & Contract also uses the AKB web/BFF bridge for source opening and
 binary document downloads:

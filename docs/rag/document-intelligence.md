@@ -24,9 +24,10 @@ Document Intelligence is the Phase 03 layer that turns ingested documents into s
 - RAG exposes:
   - `GET /api/v1/chunks/{chunk_id}/source-context`
   - `GET /api/v1/citations/{chunk_id}/open`
-- RAG exposes STRATOS extraction endpoints for Budget contract proposals:
+- RAG exposes STRATOS extraction endpoints for source-app proposals:
   - `GET /api/v1/stratos/extractions/profiles`
   - `POST /api/v1/stratos/extractions/contracts/propose`
+  - `POST /api/v1/stratos/extractions/archflow-goals/propose`
   - `GET /api/v1/stratos/extractions/{extraction_id}`
   - `POST /api/v1/stratos/extractions/{extraction_id}/feedback`
 - Citation opening is audited as `citation.opened`.
@@ -421,9 +422,29 @@ entities and is the only system allowed to write Budget contract tables after
 human confirmation. Budget must not store AKB binaries, extracted full text,
 chunks, embeddings, prompts, or second-source AI result copies.
 
+## STRATOS ArchFlow Goal Extraction
+
+`archflow_goal_extraction_v1` is the controlled extraction profile for ArchFlow.
+It extracts proposed goals, capabilities, obligations, requirements, metrics,
+legal or methodological basis, and risks only when an authorized chunk contains
+citeable evidence. Each proposal includes:
+
+- `field`, `status: "proposed"`, `confidence`, a structured `proposal`, and a
+  reason,
+- citation with `document_id`, `document_version_id`, `chunk_id`, page/section
+  where available, `quoted_text`, `viewer_url`, and warnings,
+- extraction-level `missing_information`, `warnings`, `source_chunk_ids` and
+  lifecycle status.
+
+ArchFlow owns final `ArchflowGoal`, `ArchflowGoalReference`, and
+`ArchflowNeedGoal` writes after human confirmation. AKB owns retrieval,
+authorization, citations, extraction persistence, feedback capture, and audit.
+ArchFlow must not store AKB binaries, extracted full text, chunks, embeddings,
+prompts, or second-source AI result copies.
+
 ## Next Steps
 
 - Add shared STRATOS review UI for accept/edit/reject/open citation workflows.
-- Add extraction jobs for obligations, risks, roles, deadlines, FAQ, glossary terms, and controls.
+- Add extraction jobs for roles, deadlines, FAQ, glossary terms, and controls.
 - Add conflict and version comparison workflows.
 - Add exact source rendering for PDF coordinates, Office previews, tables, slides, and OCR bounding boxes.

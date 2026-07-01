@@ -55,7 +55,7 @@ def check_llm_config() -> dict[str, Any]:
     body = request_json("GET", f"{LLM_URL}/api/v1/config/effective")
     if body.get("active_provider") != "ollama":
         raise RuntimeError(f"LLM Gateway is not using Ollama: {body}")
-    if body.get("default_chat_model") != "gemma4:12b":
+    if body.get("default_chat_model") != "gemma4:12b-mlx":
         raise RuntimeError(f"Unexpected chat model: {body}")
     if body.get("default_embedding_model") != "bge-m3":
         raise RuntimeError(f"Unexpected embedding model: {body}")

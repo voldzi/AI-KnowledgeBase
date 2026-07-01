@@ -11,26 +11,19 @@ interface LanguageContextValue {
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
-const STORAGE_KEY = "akl.language";
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<AklLanguage>("cs");
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "cs" || stored === "en") {
-      setLanguageState(stored);
-      document.documentElement.lang = stored;
-    }
-  }, []);
+    document.documentElement.lang = language;
+  }, [language]);
 
   const value = useMemo<LanguageContextValue>(
     () => ({
       language,
       setLanguage: (nextLanguage) => {
         setLanguageState(nextLanguage);
-        window.localStorage.setItem(STORAGE_KEY, nextLanguage);
-        document.documentElement.lang = nextLanguage;
       }
     }),
     [language]

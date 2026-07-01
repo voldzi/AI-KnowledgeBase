@@ -23,7 +23,7 @@ The checked-in `.env.example` is configured for the current real local RAG profi
 
 ```text
 AKL_LLM_DEFAULT_PROVIDER=ollama
-AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b
+AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b-mlx
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_OLLAMA_THINK=false
 AKL_LLM_DEFAULT_MAX_TOKENS=512
@@ -32,7 +32,7 @@ AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
-AKL_RAG_CHAT_MODEL=gemma4:12b
+AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_AUTHZ_MODE=dev
 AKL_RAG_REQUIRE_CITATIONS=true
@@ -54,7 +54,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
 
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
-  -d '{"model":"gemma4:12b","kind":"chat"}'
+  -d '{"model":"gemma4:12b-mlx","kind":"chat"}'
 ```
 
 Run the baseline smoke tests:

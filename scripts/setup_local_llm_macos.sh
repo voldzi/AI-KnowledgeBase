@@ -2,7 +2,7 @@
 set -euo pipefail
 
 OLLAMA_BASE_URL="${AKL_OLLAMA_BASE_URL:-http://localhost:11434}"
-CHAT_MODEL="${AKL_LLM_DEFAULT_CHAT_MODEL:-gemma4:12b}"
+CHAT_MODEL="${AKL_LLM_DEFAULT_CHAT_MODEL:-gemma4:12b-mlx}"
 EMBEDDING_MODEL="${AKL_LLM_DEFAULT_EMBEDDING_MODEL:-bge-m3}"
 
 echo "AKL local LLM setup for macOS"

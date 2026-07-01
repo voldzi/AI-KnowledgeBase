@@ -8,7 +8,7 @@ def recommended_models() -> RecommendedModelsResponse:
     return RecommendedModelsResponse(
         chat_models=[
             RecommendedModel(
-                name="gemma4:12b",
+                name="gemma4:12b-mlx",
                 provider="ollama",
                 recommended_for="real local RAG",
                 minimum_memory_gb=24,

@@ -29,8 +29,8 @@ from app.schemas import (
     AssistantChatResponse,
     AssistantConversationResponse,
     AssistantSuggestionsResponse,
-    ContractExtractionFeedbackRequest,
-    ContractExtractionFeedbackResponse,
+    ArchflowGoalExtractionProposeRequest,
+    ArchflowGoalExtractionResponse,
     ContractExtractionProfilesResponse,
     ContractExtractionProposeRequest,
     ContractExtractionResponse,
@@ -42,6 +42,9 @@ from app.schemas import (
     RetrieveResponse,
     ResponseLanguage,
     SourceContextResponse,
+    StratosExtractionFeedbackRequest,
+    StratosExtractionFeedbackResponse,
+    StratosExtractionResponse,
 )
 from app.security import AuthContext, auth_context_for_request, require_service_auth
 from app.service import RagRetrievalService
@@ -277,28 +280,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return await _service(request).propose_contract_extraction(payload, auth_context=auth_context)
 
-    @app.get(
-        "/api/v1/stratos/extractions/{extraction_id}",
-        response_model=ContractExtractionResponse,
+    @app.post(
+        "/api/v1/stratos/extractions/archflow-goals/propose",
+        response_model=ArchflowGoalExtractionResponse,
         tags=["stratos-extractions"],
     )
-    async def get_stratos_extraction(extraction_id: str, request: Request) -> ContractExtractionResponse:
+    async def propose_archflow_goal_extraction(
+        payload: ArchflowGoalExtractionProposeRequest,
+        request: Request,
+    ) -> ArchflowGoalExtractionResponse:
+        auth_context = _guard_request(request)
+        logger.info(
+            "stratos_archflow_goal_extraction_requested subject_id=%s tenant_id=%s external_system=%s "
+            "source_set_id=%s catalog_version_id=%s source_document_count=%s profile=%s content_logged=false",
+            payload.subject_id,
+            payload.tenant_id,
+            payload.external_system,
+            payload.source_set_id,
+            payload.catalog_version_id,
+            len(payload.documents),
+            payload.profile,
+        )
+        return await _service(request).propose_archflow_goal_extraction(payload, auth_context=auth_context)
+
+    @app.get(
+        "/api/v1/stratos/extractions/{extraction_id}",
+        response_model=StratosExtractionResponse,
+        tags=["stratos-extractions"],
+    )
+    async def get_stratos_extraction(extraction_id: str, request: Request) -> StratosExtractionResponse:
         auth_context = _guard_request(request)
         return await _service(request).document_extraction(extraction_id, auth_context=auth_context)
 
     @app.post(
         "/api/v1/stratos/extractions/{extraction_id}/feedback",
-        response_model=ContractExtractionFeedbackResponse,
+        response_model=StratosExtractionFeedbackResponse,
         tags=["stratos-extractions"],
     )
     async def record_stratos_extraction_feedback(
         extraction_id: str,
-        payload: ContractExtractionFeedbackRequest,
+        payload: StratosExtractionFeedbackRequest,
         request: Request,
-    ) -> ContractExtractionFeedbackResponse:
+    ) -> StratosExtractionFeedbackResponse:
         auth_context = _guard_request(request)
         logger.info(
-            "stratos_contract_extraction_feedback_received extraction_id=%s field=%s decision=%s "
+            "stratos_extraction_feedback_received extraction_id=%s field=%s decision=%s "
             "source_app=%s content_logged=false",
             extraction_id,
             payload.field,

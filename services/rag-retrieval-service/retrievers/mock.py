@@ -156,6 +156,39 @@ def _mock_chunks() -> list[dict[str, Any]]:
             },
         },
         {
+            "chunk_id": "chunk_archflow_goal_1",
+            "text": (
+                "Strategický cíl: Zvýšit dostupnost digitálních služeb na 99,9 %. "
+                "Organizace musí zajistit monitoring dostupnosti každý měsíc pro klíčové služby. "
+                "Požadavek: Systém reportuje dostupnost služby každý měsíc. "
+                "Metrika: Dostupnost služby cílová hodnota 99,9 %, měsíčně. "
+                "Právní opora vyplývá z metodiky digitální správy a interní strategie služeb. "
+                "Riziko neplnění: výpadek digitální služby a nesoulad s očekávanou úrovní služeb."
+            ),
+            "payload": {
+                "document_id": "doc_archflow_goals",
+                "document_version_id": "ver_archflow_goals_1",
+                "document_title": "Strategie digitálních služeb úřadu",
+                "version_label": "1.0",
+                "document_type": "methodology",
+                "classification": "internal",
+                "status": "valid",
+                "tags": ["archflow", "goal-catalog", "source-set:srcset-1", "catalog-version:catver-1"],
+                "page_number": 12,
+                "section_path": ["Digitální transformace", "Dostupnost služeb"],
+                "article_number": None,
+                "paragraph_number": "2",
+                "source_file_uri": "s3://akl-documents/stratos/archflow/digitalni-sluzby.pdf",
+                "source_file_name": "digitalni-sluzby.pdf",
+                "source_mime_type": "application/pdf",
+                "source_size_bytes": 8192,
+                "source_sha256": "sha256:archflow-goals-mock",
+                "section_title": "Dostupnost služeb",
+                "char_start": 0,
+                "char_end": 720,
+            },
+        },
+        {
             "chunk_id": "chunk_789",
             "text": (
                 "Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu. "

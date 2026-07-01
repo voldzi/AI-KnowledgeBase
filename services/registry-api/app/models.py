@@ -344,6 +344,9 @@ class UserProfile(Base, TimestampMixin):
     provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    profile_settings: Mapped[dict[str, object]] = mapped_column(
+        "settings", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
 
 
 class RoleMapping(Base):

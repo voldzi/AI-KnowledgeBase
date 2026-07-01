@@ -12,6 +12,8 @@ Implemented:
 - citation opening,
 - employee chat, clarification, suggestions, and conversation lookup.
 - STRATOS contract extraction proposal API for `contract_financial_v1`.
+- STRATOS ArchFlow goal extraction proposal API for
+  `archflow_goal_extraction_v1`.
 
 Contract stubs still present:
 
@@ -53,6 +55,7 @@ GET  /api/v1/assistant/citations/{chunk_id}/open
 
 GET  /api/v1/stratos/extractions/profiles
 POST /api/v1/stratos/extractions/contracts/propose
+POST /api/v1/stratos/extractions/archflow-goals/propose
 GET  /api/v1/stratos/extractions/{extraction_id}
 POST /api/v1/stratos/extractions/{extraction_id}/feedback
 
@@ -98,6 +101,32 @@ Budget remains the source of truth for structured contract entities. AKB never
 writes Budget tables directly; Budget accepts, edits, or rejects proposals after
 authorized human confirmation and sends feedback through
 `POST /api/v1/stratos/extractions/{extraction_id}/feedback`.
+
+## STRATOS ArchFlow Goal Extractions
+
+`POST /api/v1/stratos/extractions/archflow-goals/propose` extracts cited
+proposals for ArchFlow goals, capabilities, obligations, requirements, metrics,
+legal or methodological basis, and risks. The supported profile is
+`archflow_goal_extraction_v1`.
+
+The endpoint is deliberately proposal-only:
+
+- it retrieves only authorized chunks through Registry API authorization,
+- it accepts `external_system: "STRATOS_ARCHFLOW"` and never `source_system`,
+- it returns only `proposed` values with citations,
+- every proposal includes `document_id`, `document_version_id`, `chunk_id`,
+  page/section where available, a short `quoted_text`, and a viewer URL,
+- when evidence is insufficient, the response is `PARTIAL` with warnings such
+  as `INSUFFICIENT_CITABLE_ARCHFLOW_GOAL_EVIDENCE` or
+  `TARGET_DOCUMENT_NOT_RETRIEVED`,
+- persistence and feedback use the shared Registry API
+  `document_extractions` and `document_extraction_feedback` tables.
+
+ArchFlow remains the source of truth for final goals, requirements, and
+relationships. It writes final records only after authorized human confirmation
+and then sends `accepted`, `edited`, or `rejected` feedback through
+`POST /api/v1/stratos/extractions/{extraction_id}/feedback` with
+`source_app: "STRATOS_ARCHFLOW"`.
 
 ## Integration Notes
 

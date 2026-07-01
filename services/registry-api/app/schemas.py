@@ -644,6 +644,22 @@ class DirectoryUserImportRequest(BaseModel):
     subject_id: str = Field(min_length=1, max_length=128)
 
 
+class ProfileSettingsBundle(BaseModel):
+    core: dict[str, Any] = Field(default_factory=dict)
+    apps: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+class ProfileSettingsPutRequest(BaseModel):
+    settings: ProfileSettingsBundle
+
+
+class ProfileSettingsResponse(BaseModel):
+    subject_id: str
+    settings: ProfileSettingsBundle
+    roles: list[str] = Field(default_factory=list)
+    groups: list[str] = Field(default_factory=list)
+
+
 class RoleMappingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

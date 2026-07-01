@@ -82,6 +82,9 @@ from app.schemas import (
     ExternalDocumentRefResponse,
     ExternalDocumentUpsertRequest,
     HealthResponse,
+    ProfileSettingsBundle,
+    ProfileSettingsPutRequest,
+    ProfileSettingsResponse,
     WorkflowTaskActionRequest,
     WorkflowTaskKind,
     WorkflowTaskListResponse,
@@ -2334,6 +2337,80 @@ def _role_mapping_response(mapping: RoleMapping, display_name: str | None) -> Ro
     response = RoleMappingResponse.model_validate(mapping)
     response.display_name = display_name
     return response
+
+
+def _normalize_profile_settings(value: object) -> ProfileSettingsBundle:
+    if isinstance(value, ProfileSettingsBundle):
+        return value
+    if not isinstance(value, dict):
+        return ProfileSettingsBundle()
+
+    core = value.get("core")
+    apps = value.get("apps")
+    normalized_apps: dict[str, dict[str, object]] = {}
+    if isinstance(apps, dict):
+        for app_key, app_value in apps.items():
+            if isinstance(app_key, str) and isinstance(app_value, dict):
+                normalized_apps[app_key] = dict(app_value)
+
+    return ProfileSettingsBundle(
+        core=dict(core) if isinstance(core, dict) else {},
+        apps=normalized_apps,
+    )
+
+
+def _get_or_create_self_profile(db: Session, principal: Principal) -> UserProfile:
+    profile = db.get(UserProfile, principal.subject_id)
+    if profile is None:
+        profile = UserProfile(user_id=principal.subject_id)
+        db.add(profile)
+    return profile
+
+
+def _profile_settings_response(profile: UserProfile, principal: Principal) -> ProfileSettingsResponse:
+    return ProfileSettingsResponse(
+        subject_id=principal.subject_id,
+        settings=_normalize_profile_settings(profile.profile_settings),
+        roles=sorted(principal.roles),
+        groups=sorted(principal.groups),
+    )
+
+
+@router.get("/user-profiles/me/settings", response_model=ProfileSettingsResponse)
+def get_profile_settings(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ProfileSettingsResponse:
+    profile = _get_or_create_self_profile(db, principal)
+    db.commit()
+    db.refresh(profile)
+    return _profile_settings_response(profile, principal)
+
+
+@router.put("/user-profiles/me/settings", response_model=ProfileSettingsResponse)
+def put_profile_settings(
+    payload: ProfileSettingsPutRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ProfileSettingsResponse:
+    profile = _get_or_create_self_profile(db, principal)
+    settings = _normalize_profile_settings(payload.settings.model_dump(mode="json"))
+    settings.core.pop("role", None)
+    profile.profile_settings = settings.model_dump(mode="json")
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="user.profile_settings.updated",
+        resource_type="user_profile",
+        resource_id=principal.subject_id,
+        metadata={
+            "core_keys": sorted(settings.core.keys()),
+            "app_keys": sorted(settings.apps.keys()),
+        },
+    )
+    db.commit()
+    db.refresh(profile)
+    return _profile_settings_response(profile, principal)
 
 
 @router.get("/admin/directory/users", response_model=DirectoryUserListResponse)

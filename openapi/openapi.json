@@ -2789,6 +2789,76 @@
         }
       ]
     },
+    "/api/v1/user-profiles/me/settings": {
+      "get": {
+        "summary": "Get Profile Settings",
+        "operationId": "registry_api_get_profile_settings_api_v1_user_profiles_me_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiProfileSettingsResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "put": {
+        "summary": "Put Profile Settings",
+        "operationId": "registry_api_put_profile_settings_api_v1_user_profiles_me_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiProfileSettingsPutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiProfileSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/ingestion/jobs": {
       "get": {
         "tags": [
@@ -3771,6 +3841,58 @@
         }
       ]
     },
+    "/api/v1/stratos/extractions/archflow-goals/propose": {
+      "post": {
+        "tags": [
+          "RAG Retrieval Service",
+          "stratos-extractions"
+        ],
+        "summary": "Propose Archflow Goal Extraction",
+        "operationId": "rag_retrieval_service_propose_archflow_goal_extraction_api_v1_stratos_extractions_archflow_goals_propose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagRetrievalServiceArchflowGoalExtractionProposeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceArchflowGoalExtractionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
     "/api/v1/stratos/extractions/{extraction_id}": {
       "get": {
         "tags": [
@@ -3796,7 +3918,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionResponse"
+                  "$ref": "#/components/schemas/RagRetrievalServiceStratosExtractionResponse"
                 }
               }
             }
@@ -3848,7 +3970,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionFeedbackRequest"
+                "$ref": "#/components/schemas/RagRetrievalServiceStratosExtractionFeedbackRequest"
               }
             }
           }
@@ -3859,7 +3981,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionFeedbackResponse"
+                  "$ref": "#/components/schemas/RagRetrievalServiceStratosExtractionFeedbackResponse"
                 }
               }
             }
@@ -7303,6 +7425,85 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/settings": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "GET /api/v1/profile/settings",
+        "operationId": "web_get_api_v1_profile_settings",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "PUT /api/v1/profile/settings",
+        "operationId": "web_put_api_v1_profile_settings",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
         "requestBody": {
           "content": {
             "application/json": {
@@ -11177,6 +11378,68 @@
         ],
         "title": "WorkflowTaskStatus"
       },
+      "RegistryApiProfileSettingsBundle": {
+        "properties": {
+          "core": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Core"
+          },
+          "apps": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Apps"
+          }
+        },
+        "type": "object",
+        "title": "ProfileSettingsBundle"
+      },
+      "RegistryApiProfileSettingsPutRequest": {
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/RegistryApiProfileSettingsBundle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "settings"
+        ],
+        "title": "ProfileSettingsPutRequest"
+      },
+      "RegistryApiProfileSettingsResponse": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RegistryApiProfileSettingsBundle"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id",
+          "settings"
+        ],
+        "title": "ProfileSettingsResponse"
+      },
       "IngestionServiceHTTPValidationError": {
         "properties": {
           "detail": {
@@ -11647,6 +11910,574 @@
           "query"
         ],
         "title": "AnswerRequest"
+      },
+      "RagRetrievalServiceArchflowCandidateRequirement": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "requirement_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Requirement Type",
+            "default": "functional"
+          },
+          "acceptance_criteria": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptance Criteria"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ArchflowCandidateRequirement"
+      },
+      "RagRetrievalServiceArchflowGoalExtractionProposeRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "const": "STRATOS_ARCHFLOW",
+            "title": "External System",
+            "default": "STRATOS_ARCHFLOW"
+          },
+          "external_ref": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "ArchflowSourceSet",
+              "ArchflowGoalCatalogVersion",
+              "ArchflowNeed"
+            ],
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Entity Id"
+          },
+          "source_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Set Id"
+          },
+          "catalog_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Version Id"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowSourceDocument"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Documents"
+          },
+          "subject_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Subject Id"
+          },
+          "profile": {
+            "type": "string",
+            "const": "archflow_goal_extraction_v1",
+            "title": "Profile",
+            "default": "archflow_goal_extraction_v1"
+          },
+          "profile_version": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Profile Version",
+            "default": "1"
+          },
+          "classification_max": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "restricted",
+              "confidential"
+            ],
+            "title": "Classification Max",
+            "default": "internal"
+          },
+          "context_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Context Tags"
+          },
+          "max_chunks": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Chunks",
+            "default": 18
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "subject_id"
+        ],
+        "title": "ArchflowGoalExtractionProposeRequest"
+      },
+      "RagRetrievalServiceArchflowGoalExtractionResponse": {
+        "properties": {
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "title": "External System"
+          },
+          "external_ref": {
+            "type": "string",
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "title": "Profile Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "PROPOSED",
+              "PARTIAL",
+              "FAILED",
+              "SUPERSEDED",
+              "ACCEPTED_IN_SOURCE_APP",
+              "REJECTED_IN_SOURCE_APP"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "restricted",
+              "confidential"
+            ],
+            "title": "Classification"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowGoalFieldProposal"
+            },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "source_chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Chunk Ids"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "extraction_id",
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "profile",
+          "profile_version",
+          "status",
+          "classification",
+          "requested_by"
+        ],
+        "title": "ArchflowGoalExtractionResponse"
+      },
+      "RagRetrievalServiceArchflowGoalFieldProposal": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "goal",
+              "capability",
+              "obligation",
+              "requirement",
+              "metric",
+              "legal_basis",
+              "risk"
+            ],
+            "title": "Field"
+          },
+          "status": {
+            "type": "string",
+            "const": "proposed",
+            "title": "Status",
+            "default": "proposed"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "insufficient_source",
+              "conflicting_sources"
+            ],
+            "title": "Confidence"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/RagRetrievalServiceArchflowGoalProposalValue"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionCitation"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "confidence",
+          "proposal",
+          "reason",
+          "citation"
+        ],
+        "title": "ArchflowGoalFieldProposal"
+      },
+      "RagRetrievalServiceArchflowGoalProposalValue": {
+        "properties": {
+          "goal_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Goal Type"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "parent_hint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Hint"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "LOW",
+                  "MEDIUM",
+                  "HIGH",
+                  "CRITICAL"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "obligation_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SHALL",
+                  "SHOULD",
+                  "MAY"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obligation Type"
+          },
+          "suggested_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowSuggestedMetric"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Suggested Metrics"
+          },
+          "candidate_requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowCandidateRequirement"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Candidate Requirements"
+          },
+          "legal_basis": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Basis"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "goal_type",
+          "title",
+          "description"
+        ],
+        "title": "ArchflowGoalProposalValue"
+      },
+      "RagRetrievalServiceArchflowSourceDocument": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "internal",
+                  "restricted",
+                  "confidential"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_version_id"
+        ],
+        "title": "ArchflowSourceDocument"
+      },
+      "RagRetrievalServiceArchflowSuggestedMetric": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "periodicity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodicity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ArchflowSuggestedMetric"
       },
       "RagRetrievalServiceAssistantChatRequest": {
         "properties": {
@@ -12596,118 +13427,6 @@
           "viewer_url"
         ],
         "title": "ContractExtractionCitation"
-      },
-      "RagRetrievalServiceContractExtractionFeedbackRequest": {
-        "properties": {
-          "field": {
-            "type": "string",
-            "maxLength": 160,
-            "minLength": 1,
-            "title": "Field"
-          },
-          "ai_value": {
-            "anyOf": [
-              {
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ai Value"
-          },
-          "final_value": {
-            "anyOf": [
-              {
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Final Value"
-          },
-          "decision": {
-            "type": "string",
-            "enum": [
-              "accepted",
-              "rejected",
-              "edited"
-            ],
-            "title": "Decision"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "actor": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Actor"
-          },
-          "source_app": {
-            "type": "string",
-            "const": "STRATOS_BUDGET",
-            "title": "Source App",
-            "default": "STRATOS_BUDGET"
-          },
-          "source_entity_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Source Entity Id"
-          },
-          "correlation_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Correlation Id"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "field",
-          "decision",
-          "actor",
-          "source_entity_id"
-        ],
-        "title": "ContractExtractionFeedbackRequest"
-      },
-      "RagRetrievalServiceContractExtractionFeedbackResponse": {
-        "properties": {
-          "feedback_id": {
-            "type": "string",
-            "title": "Feedback Id"
-          },
-          "extraction": {
-            "$ref": "#/components/schemas/RagRetrievalServiceContractExtractionResponse"
-          }
-        },
-        "type": "object",
-        "required": [
-          "feedback_id",
-          "extraction"
-        ],
-        "title": "ContractExtractionFeedbackResponse"
       },
       "RagRetrievalServiceContractExtractionProfile": {
         "properties": {
@@ -13699,6 +14418,244 @@
         },
         "type": "object",
         "title": "SourceLocation"
+      },
+      "RagRetrievalServiceStratosExtractionFeedbackRequest": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "ai_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Value"
+          },
+          "final_value": {
+            "anyOf": [
+              {
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Value"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected",
+              "edited"
+            ],
+            "title": "Decision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "actor": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor"
+          },
+          "source_app": {
+            "type": "string",
+            "enum": [
+              "STRATOS_BUDGET",
+              "STRATOS_ARCHFLOW"
+            ],
+            "title": "Source App"
+          },
+          "source_entity_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Entity Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "decision",
+          "actor",
+          "source_app",
+          "source_entity_id"
+        ],
+        "title": "StratosExtractionFeedbackRequest"
+      },
+      "RagRetrievalServiceStratosExtractionFeedbackResponse": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id"
+          },
+          "extraction": {
+            "$ref": "#/components/schemas/RagRetrievalServiceStratosExtractionResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "extraction"
+        ],
+        "title": "StratosExtractionFeedbackResponse"
+      },
+      "RagRetrievalServiceStratosExtractionResponse": {
+        "properties": {
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "title": "External System"
+          },
+          "external_ref": {
+            "type": "string",
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "title": "Profile Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "PROPOSED",
+              "PARTIAL",
+              "FAILED",
+              "SUPERSEDED",
+              "ACCEPTED_IN_SOURCE_APP",
+              "REJECTED_IN_SOURCE_APP"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "restricted",
+              "confidential"
+            ],
+            "title": "Classification"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By"
+          },
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "source_chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Chunk Ids"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "extraction_id",
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_id",
+          "document_version_id",
+          "profile",
+          "profile_version",
+          "status",
+          "classification",
+          "requested_by"
+        ],
+        "title": "StratosExtractionResponse"
       },
       "RagRetrievalServiceValidationError": {
         "properties": {

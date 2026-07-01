@@ -165,6 +165,43 @@ describe("production API clients", () => {
     );
   });
 
+  it("uses Registry API profile settings endpoints", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        subject_id: "user_1",
+        settings: {
+          core: { language: "cs" },
+          apps: { akb: { settingsMode: "sidebar" } }
+        },
+        roles: ["reader"],
+        groups: []
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({ subjectId: "user_1", roles: ["reader"] });
+
+    const current = await clients.registry.getProfileSettings(context);
+    const saved = await clients.registry.putProfileSettings(
+      {
+        settings: {
+          core: { language: "en" },
+          apps: { akb: { settingsMode: "fullscreen" } }
+        }
+      },
+      context
+    );
+
+    assert.equal(current.subject_id, "user_1");
+    assert.equal(saved.settings.apps.akb.settingsMode, "sidebar");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/user-profiles/me/settings");
+    assert.equal(calls[0][1]?.method, "GET");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/user-profiles/me/settings");
+    assert.equal(calls[1][1]?.method, "PUT");
+  });
+
   it("maps upstream error bodies to ApiClientError", async () => {
     const fetcher: AklFetch = async () =>
       Response.json(

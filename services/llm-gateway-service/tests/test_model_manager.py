@@ -24,7 +24,7 @@ def test_recommended_models_endpoint_returns_current_local_defaults() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["chat_models"][0]["name"] == "gemma4:12b"
+    assert body["chat_models"][0]["name"] == "gemma4:12b-mlx"
     assert any(model["name"] == "bge-m3" for model in body["embedding_models"])
 
 
@@ -43,7 +43,7 @@ def test_model_pull_returns_unsupported_for_mock_provider() -> None:
     with make_client() as client:
         response = client.post(
             "/api/v1/models/pull",
-            json={"model": "gemma4:12b", "kind": "chat"},
+            json={"model": "gemma4:12b-mlx", "kind": "chat"},
         )
 
     assert response.status_code == 200

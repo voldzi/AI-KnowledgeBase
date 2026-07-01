@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bot,
   ChevronsLeft,
@@ -200,6 +200,31 @@ interface AklUserProfile {
   roles: string[];
 }
 
+interface SettingsAccessInfo {
+  subjectId: string;
+  roles: string[];
+  groups: string[];
+  permissions: string[];
+}
+
+interface ProfileSettingsPayload {
+  subject_id?: string;
+  settings?: {
+    core?: Record<string, unknown>;
+    apps?: {
+      akb?: Record<string, unknown>;
+    };
+  };
+  identity?: {
+    subject_id?: string;
+    display_name?: string;
+    email?: string | null;
+    roles?: unknown[];
+    groups?: unknown[];
+    permissions?: unknown[];
+  };
+}
+
 const emptyRolePreview: RolePreviewSettings = {
   canUse: false,
   active: false,
@@ -235,6 +260,12 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [rolePreview, setRolePreview] = useState<RolePreviewSettings>(emptyRolePreview);
   const [savedRolePreviewProfileId, setSavedRolePreviewProfileId] = useState("");
+  const [accessInfo, setAccessInfo] = useState<SettingsAccessInfo>(() => ({
+    subjectId: initialUser?.subjectId ?? "",
+    roles: initialUser?.roles ?? [],
+    groups: initialUser?.groups ?? [],
+    permissions: []
+  }));
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
     name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
     email: authMode === "mock" ? "dev@akl.local" : undefined,
@@ -282,12 +313,19 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
         const name = String(payload.user.name || payload.user.email || payload.user.subjectId || "AKB");
         const email = typeof payload.user.email === "string" ? payload.user.email : undefined;
         const roles = Array.isArray(payload.user.roles) ? payload.user.roles.filter((role: unknown): role is string => typeof role === "string") : [];
+        const groups = Array.isArray(payload.user.groups) ? payload.user.groups.filter((group: unknown): group is string => typeof group === "string") : [];
         setUserProfile({
           name,
           email,
           initials: initialsFromName(name),
           roles
         });
+        setAccessInfo((current) => ({
+          ...current,
+          subjectId: typeof payload.user.subjectId === "string" ? payload.user.subjectId : current.subjectId,
+          roles,
+          groups
+        }));
         if (payload.rolePreview) {
           const preview = normalizeRolePreview(payload.rolePreview);
           setRolePreview(preview);
@@ -300,11 +338,125 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     };
   }, []);
 
+  const applyProfileSettings = useCallback(
+    (payload: ProfileSettingsPayload) => {
+      const identity = payload.identity ?? {};
+      const roles = arrayOfStrings(identity.roles);
+      const groups = arrayOfStrings(identity.groups);
+      const permissions = arrayOfStrings(identity.permissions);
+      const fallbackName =
+        typeof identity.display_name === "string" && identity.display_name
+          ? identity.display_name
+          : typeof identity.email === "string" && identity.email
+            ? identity.email
+            : payload.subject_id ?? initialUser?.subjectId ?? "AKB";
+      const fallbackUser: AklUserProfile = {
+        name: fallbackName,
+        email: typeof identity.email === "string" ? identity.email : undefined,
+        initials: initialsFromName(fallbackName),
+        roles: roles.length ? roles : initialUser?.roles ?? []
+      };
+      const nextValues = createSettingsValues({
+        authModeLabel,
+        language,
+        user: fallbackUser
+      });
+      const mergedValues = settingsValuesFromCore(payload.settings?.core ?? {}, nextValues);
+      const nextLanguage = mergedValues.language === "en" ? "en" : "cs";
+      const nextName = typeof mergedValues.displayName === "string" && mergedValues.displayName ? mergedValues.displayName : fallbackUser.name;
+      const nextEmail = typeof mergedValues.email === "string" && mergedValues.email ? mergedValues.email : undefined;
+
+      setSettingsValues(mergedValues);
+      setSettingsDirty(false);
+      setUserProfile({
+        name: nextName,
+        email: nextEmail,
+        initials: initialsFromName(nextName),
+        roles: fallbackUser.roles
+      });
+      setAccessInfo({
+        subjectId: typeof identity.subject_id === "string" ? identity.subject_id : payload.subject_id ?? initialUser?.subjectId ?? "",
+        roles: fallbackUser.roles,
+        groups,
+        permissions
+      });
+      setLanguage(nextLanguage);
+      const appMode = payload.settings?.apps?.akb?.settingsMode;
+      if (isSettingsSurfaceMode(appMode)) {
+        setSettingsMode(appMode);
+      }
+      const profileId = payload.settings?.apps?.akb?.rolePreviewProfileId;
+      if (typeof profileId === "string" && rolePreview.canUse) {
+        setRolePreview((current) => {
+          const profile = current.profiles.find((item) => item.id === profileId);
+          return {
+            ...current,
+            profileId,
+            label: profile?.label ?? current.label,
+            roles: profile?.roles ?? current.roles
+          };
+        });
+      }
+    },
+    [authModeLabel, initialUser?.roles, initialUser?.subjectId, language, rolePreview.canUse, setLanguage]
+  );
+
+  const persistProfileSettings = useCallback(
+    async (
+      values: StratosSettingsCoreValues,
+      options: { mode?: SettingsSurfaceMode; rolePreviewProfileId?: string } = {}
+    ): Promise<ProfileSettingsPayload> => {
+      const response = await fetch(withAppBasePath("/api/v1/profile/settings"), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          settings: {
+            core: values,
+            apps: {
+              akb: {
+                settingsMode: options.mode ?? settingsMode,
+                rolePreviewProfileId: options.rolePreviewProfileId ?? rolePreview.profileId
+              }
+            }
+          }
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Profile settings save failed with ${response.status}`);
+      }
+      return await response.json() as ProfileSettingsPayload;
+    },
+    [rolePreview.profileId, settingsMode]
+  );
+
+  useEffect(() => {
+    let active = true;
+    fetch(withAppBasePath("/api/v1/profile/settings"), { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: ProfileSettingsPayload | null) => {
+        if (!active || !payload) {
+          return;
+        }
+        applyProfileSettings(payload);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [applyProfileSettings]);
+
   useEffect(() => {
     if (settingsDirty) {
       return;
     }
-    setSettingsValues(createSettingsValues({ authModeLabel, language, user: userProfile }));
+    setSettingsValues((current) => ({
+      ...current,
+      displayName: userProfile.name,
+      email: userProfile.email ?? "",
+      role: userProfile.roles.length > 0 ? userProfile.roles.join(", ") : authModeLabel,
+      language
+    }));
   }, [authModeLabel, language, settingsDirty, userProfile]);
 
   const handleRailSelect = () => {
@@ -449,6 +601,23 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     setSettingsDirty(true);
   };
 
+  const handleSettingsModeChange = (mode: SettingsSurfaceMode) => {
+    setSettingsMode(mode);
+    setSettingsDirty(true);
+  };
+
+  const handleLanguageChange = async (nextLanguage: AklLanguage) => {
+    const nextValues = { ...settingsValues, language: nextLanguage };
+    setSettingsValues(nextValues);
+    setLanguage(nextLanguage);
+    try {
+      const payload = await persistProfileSettings(nextValues, { mode: settingsMode, rolePreviewProfileId: rolePreview.profileId });
+      applyProfileSettings(payload);
+    } catch {
+      setSettingsDirty(true);
+    }
+  };
+
   const handleRolePreviewChange = (profileId: string) => {
     const profile = rolePreview.profiles.find((item) => item.id === profileId);
     setRolePreview((current) => ({
@@ -462,22 +631,28 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
   };
 
   const handleSettingsSave = async () => {
-    if (settingsValues.language === "cs" || settingsValues.language === "en") {
-      setLanguage(settingsValues.language);
-    }
-    if (rolePreview.canUse && rolePreview.profileId !== savedRolePreviewProfileId) {
-      const response = await fetch(withAppBasePath("/api/auth/role-preview"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ profileId: rolePreview.profileId })
-      }).catch(() => null);
-      if (response?.ok) {
-        window.location.reload();
-        return;
+    try {
+      const savedProfile = await persistProfileSettings(settingsValues, {
+        mode: settingsMode,
+        rolePreviewProfileId: rolePreview.profileId
+      });
+      applyProfileSettings(savedProfile);
+      if (rolePreview.canUse && rolePreview.profileId !== savedRolePreviewProfileId) {
+        const response = await fetch(withAppBasePath("/api/auth/role-preview"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ profileId: rolePreview.profileId })
+        }).catch(() => null);
+        if (response?.ok) {
+          window.location.reload();
+          return;
+        }
       }
+      setSettingsDirty(false);
+    } catch {
+      setSettingsDirty(true);
     }
-    setSettingsDirty(false);
   };
 
   if (isEmbeddedPath) {
@@ -520,10 +695,11 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
             mode={settingsMode}
             onClose={() => setSettingsOpen(false)}
             onLogout={handleLogout}
-            onModeChange={setSettingsMode}
+            onModeChange={handleSettingsModeChange}
             onRolePreviewChange={handleRolePreviewChange}
             onSave={handleSettingsSave}
             onValueChange={handleSettingsValueChange}
+            accessInfo={accessInfo}
             rolePreview={rolePreview}
             userInitials={userProfile.initials}
             values={settingsValues}
@@ -641,7 +817,7 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
             }}
             language={language}
             onCommandCenterOpen={() => setCommandCenterOpen(true)}
-            onLanguageChange={setLanguage}
+            onLanguageChange={handleLanguageChange}
             onLogout={handleLogout}
             mobileMenuOpen={mobileSidebarOpen}
             onMobileMenuOpen={toggleMobileSidebar}
@@ -675,10 +851,11 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
               mode={settingsMode}
               onClose={() => setSettingsOpen(false)}
               onLogout={handleLogout}
-              onModeChange={setSettingsMode}
+              onModeChange={handleSettingsModeChange}
               onRolePreviewChange={handleRolePreviewChange}
               onSave={handleSettingsSave}
               onValueChange={handleSettingsValueChange}
+              accessInfo={accessInfo}
               rolePreview={rolePreview}
               userInitials={userProfile.initials}
               values={settingsValues}
@@ -732,6 +909,47 @@ function normalizeRolePreview(value: unknown): RolePreviewSettings {
     roles: Array.isArray(input.roles) ? input.roles.filter((role): role is string => typeof role === "string") : selectedProfile?.roles ?? [],
     profiles
   };
+}
+
+function settingsValuesFromCore(
+  core: Record<string, unknown>,
+  fallback: StratosSettingsCoreValues
+): StratosSettingsCoreValues {
+  return {
+    displayName: stringSetting(core.displayName, fallback.displayName),
+    email: stringSetting(core.email, fallback.email),
+    role: stringSetting(core.role, fallback.role),
+    language: core.language === "en" ? "en" : "cs",
+    theme: stringSetting(core.theme, stringSetting(fallback.theme, "system")),
+    accent: stringSetting(core.accent, stringSetting(fallback.accent, "teal")),
+    highContrast: booleanSetting(core.highContrast, booleanSetting(fallback.highContrast, false)),
+    timezone: stringSetting(core.timezone, stringSetting(fallback.timezone, "Europe/Prague")),
+    notifyTimezone: booleanSetting(core.notifyTimezone, booleanSetting(fallback.notifyTimezone, true)),
+    weekStart: stringSetting(core.weekStart, stringSetting(fallback.weekStart, "monday")),
+    timeFormat: stringSetting(core.timeFormat, stringSetting(fallback.timeFormat, "24h")),
+    dateFormat: stringSetting(core.dateFormat, stringSetting(fallback.dateFormat, "dd.mm.yyyy")),
+    compactMode: booleanSetting(core.compactMode, booleanSetting(fallback.compactMode, false)),
+    commandHints: booleanSetting(core.commandHints, booleanSetting(fallback.commandHints, true)),
+    flyoutToasts: booleanSetting(core.flyoutToasts, booleanSetting(fallback.flyoutToasts, true)),
+    markdown: booleanSetting(core.markdown, booleanSetting(fallback.markdown, true)),
+    keyboardShortcuts: booleanSetting(core.keyboardShortcuts, booleanSetting(fallback.keyboardShortcuts, true))
+  };
+}
+
+function stringSetting(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function booleanSetting(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function isSettingsSurfaceMode(value: unknown): value is SettingsSurfaceMode {
+  return value === "modal" || value === "sidebar" || value === "fullscreen";
 }
 
 function moduleForPath(pathname: string): ShellModuleId {

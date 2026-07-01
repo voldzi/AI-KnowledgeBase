@@ -621,7 +621,7 @@ Response:
 {
   "models": [
     {
-      "model_id": "gemma4:12b",
+      "model_id": "gemma4:12b-mlx",
       "provider": "ollama",
       "capabilities": ["chat"],
       "context_window": 32768
@@ -640,7 +640,7 @@ Request:
 
 ```json
 {
-  "model": "gemma4:12b",
+  "model": "gemma4:12b-mlx",
   "messages": [
     {
       "role": "system",
@@ -664,7 +664,7 @@ Response:
 ```json
 {
   "id": "cmpl_123",
-  "model": "gemma4:12b",
+  "model": "gemma4:12b-mlx",
   "content": "Postup je ...",
   "finish_reason": "stop",
   "usage": {

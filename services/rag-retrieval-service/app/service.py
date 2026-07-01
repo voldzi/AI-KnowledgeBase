@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import AsyncIterator
 
 from answer_composer.composer import AnswerComposer, StreamEvent
+from app.archflow_extraction import archflow_goal_extraction_profiles, extract_archflow_goal_proposals
 from app.config import Settings
 from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
 from app.errors import RetrievalError
@@ -25,10 +26,10 @@ from app.schemas import (
     AssistantSuggestion,
     AssistantSuggestionsResponse,
     AssistantSuggestedAction,
+    ArchflowGoalExtractionProposeRequest,
+    ArchflowGoalExtractionResponse,
     Citation,
     ClarificationQuestion,
-    ContractExtractionFeedbackRequest,
-    ContractExtractionFeedbackResponse,
     ContractExtractionProfilesResponse,
     ContractExtractionProposeRequest,
     ContractExtractionResponse,
@@ -41,6 +42,9 @@ from app.schemas import (
     ResponseLanguage,
     SourceContextResponse,
     SourceLocation,
+    StratosExtractionFeedbackRequest,
+    StratosExtractionFeedbackResponse,
+    StratosExtractionResponse,
     ViewerMode,
 )
 from app.security import AuthContext
@@ -325,7 +329,12 @@ class RagRetrievalService:
         }
 
     async def extraction_profiles(self) -> ContractExtractionProfilesResponse:
-        return ContractExtractionProfilesResponse(profiles=contract_extraction_profiles())
+        return ContractExtractionProfilesResponse(
+            profiles=[
+                *contract_extraction_profiles(),
+                *archflow_goal_extraction_profiles(),
+            ]
+        )
 
     async def propose_contract_extraction(
         self,
@@ -452,12 +461,168 @@ class RagRetrievalService:
         )
         return response
 
+    async def propose_archflow_goal_extraction(
+        self,
+        payload: ArchflowGoalExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ArchflowGoalExtractionResponse:
+        query_id = _query_id()
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.started",
+            resource_id=f"{payload.external_system}:{payload.external_ref}:{payload.profile}",
+            metadata={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "source_set_id": payload.source_set_id,
+                "catalog_version_id": payload.catalog_version_id,
+                "source_document_count": len(payload.documents),
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+            },
+            auth_context=auth_context,
+        )
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=_archflow_goal_extraction_query(payload),
+                filters=RagQueryFilters(
+                    document_types=[
+                        "directive",
+                        "regulation",
+                        "methodology",
+                        "policy",
+                        "procedure",
+                        "manual",
+                        "project_documentation",
+                        "contract",
+                        "attachment",
+                        "other",
+                    ],
+                    only_valid=True,
+                    classification_max=payload.classification_max,
+                    tags=payload.context_tags,
+                ),
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        target_pairs = _archflow_target_document_pairs(payload)
+        denied_targets = sorted({document_id for document_id, _ in target_pairs}.intersection(run.denied_document_ids))
+        if denied_targets:
+            await self._audit_extraction(
+                actor_id=payload.subject_id,
+                event_type="document_extraction.permission_denied",
+                resource_id=payload.source_set_id or payload.entity_id,
+                metadata={
+                    "tenant_id": payload.tenant_id,
+                    "external_system": payload.external_system,
+                    "external_ref": payload.external_ref,
+                    "source_set_id": payload.source_set_id,
+                    "catalog_version_id": payload.catalog_version_id,
+                    "document_ids": denied_targets,
+                    "profile": payload.profile,
+                },
+                auth_context=auth_context,
+            )
+            raise RetrievalError(
+                "DOCUMENT_ACCESS_DENIED",
+                "The subject is not authorized to extract from one or more ArchFlow source documents.",
+                status_code=403,
+                details={"document_ids": denied_targets},
+            )
+
+        chunks = (
+            [
+                chunk
+                for chunk in run.response.chunks
+                if (chunk.citation.document_id, chunk.citation.document_version_id) in target_pairs
+            ]
+            if target_pairs
+            else run.response.chunks
+        )
+        proposals, missing_information, extraction_warnings = extract_archflow_goal_proposals(chunks=chunks)
+        warnings = [*run.response.warnings, *extraction_warnings]
+        if not chunks and "TARGET_DOCUMENT_NOT_RETRIEVED" not in warnings:
+            warnings.append("TARGET_DOCUMENT_NOT_RETRIEVED")
+        primary_document_id, primary_document_version_id = _archflow_primary_document(payload, chunks)
+        status = "PROPOSED" if proposals and not missing_information else "PARTIAL"
+        result = {
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+            "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "query_id": query_id,
+            "source_set_id": payload.source_set_id,
+            "catalog_version_id": payload.catalog_version_id,
+            "source_documents": [document.model_dump(mode="json") for document in payload.documents],
+        }
+        stored = await self._registry_client.store_document_extraction(
+            payload={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": primary_document_id,
+                "document_version_id": primary_document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+                "status": status,
+                "classification": payload.classification_max,
+                "requested_by": payload.subject_id,
+                "correlation_id": payload.correlation_id,
+                "result": result,
+                "missing_information": missing_information,
+                "warnings": warnings,
+                "metadata": {
+                    "query_id": query_id,
+                    "context_tags": payload.context_tags,
+                    "archflow_review_required": True,
+                    "source_set_id": payload.source_set_id,
+                    "catalog_version_id": payload.catalog_version_id,
+                    "source_documents": [document.model_dump(mode="json") for document in payload.documents],
+                    "primary_document_id": primary_document_id,
+                    "primary_document_version_id": primary_document_version_id,
+                    **payload.metadata,
+                },
+            },
+            auth_context=auth_context,
+        )
+        response = _archflow_goal_extraction_response_from_registry(stored.get("extraction", stored))
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.proposed",
+            resource_id=response.extraction_id,
+            metadata={
+                "tenant_id": response.tenant_id,
+                "external_system": response.external_system,
+                "external_ref": response.external_ref,
+                "document_id": response.document_id,
+                "document_version_id": response.document_version_id,
+                "source_set_id": payload.source_set_id,
+                "catalog_version_id": payload.catalog_version_id,
+                "profile": response.profile,
+                "status": response.status,
+                "proposal_count": len(response.proposals),
+                "missing_information": response.missing_information,
+                "warnings": response.warnings,
+            },
+            auth_context=auth_context,
+        )
+        return response
+
     async def document_extraction(
         self,
         extraction_id: str,
         *,
         auth_context: AuthContext | None = None,
-    ) -> ContractExtractionResponse:
+    ) -> StratosExtractionResponse:
         stored = await self._registry_client.fetch_document_extraction(
             extraction_id=extraction_id,
             auth_context=auth_context,
@@ -469,15 +634,15 @@ class RagRetrievalService:
                 status_code=404,
                 details={"extraction_id": extraction_id},
             )
-        return _contract_extraction_response_from_registry(stored)
+        return _stratos_extraction_response_from_registry(stored)
 
     async def record_document_extraction_feedback(
         self,
         extraction_id: str,
-        payload: ContractExtractionFeedbackRequest,
+        payload: StratosExtractionFeedbackRequest,
         *,
         auth_context: AuthContext | None = None,
-    ) -> ContractExtractionFeedbackResponse:
+    ) -> StratosExtractionFeedbackResponse:
         stored = await self._registry_client.record_document_extraction_feedback(
             extraction_id=extraction_id,
             payload=payload.model_dump(mode="json"),
@@ -490,7 +655,7 @@ class RagRetrievalService:
                 status_code=404,
                 details={"extraction_id": extraction_id},
             )
-        extraction = _contract_extraction_response_from_registry(stored["extraction"])
+        extraction = _stratos_extraction_response_from_registry(stored["extraction"])
         feedback = stored.get("feedback", {})
         await self._audit_extraction(
             actor_id=payload.actor,
@@ -505,7 +670,7 @@ class RagRetrievalService:
             },
             auth_context=auth_context,
         )
-        return ContractExtractionFeedbackResponse(
+        return StratosExtractionFeedbackResponse(
             feedback_id=str(feedback.get("feedback_id", "")),
             extraction=extraction,
         )
@@ -1131,12 +1296,102 @@ def _contract_extraction_query(payload: ContractExtractionProposeRequest) -> str
     )
 
 
+def _archflow_goal_extraction_query(payload: ArchflowGoalExtractionProposeRequest) -> str:
+    return (
+        "ArchFlow goal extraction: strategický cíl dílčí cíl schopnost povinnost požadavek "
+        "metrika KPI hodnoticí kritérium právní opora metodická opora riziko neplnění nesoulad. "
+        "Najdi pouze citovatelné cíle, povinnosti, požadavky a metriky ze zdrojové sady ArchFlow. "
+        f"External ref: {payload.external_ref}. Entity: {payload.entity_type} {payload.entity_id}. "
+        f"Source set: {payload.source_set_id or 'n/a'}. Catalog version: {payload.catalog_version_id or 'n/a'}."
+    )
+
+
+def _archflow_target_document_pairs(payload: ArchflowGoalExtractionProposeRequest) -> set[tuple[str, str]]:
+    return {(document.document_id, document.document_version_id) for document in payload.documents}
+
+
+def _archflow_primary_document(
+    payload: ArchflowGoalExtractionProposeRequest,
+    chunks: list[RetrievedChunk],
+) -> tuple[str, str]:
+    if payload.documents:
+        first_document = payload.documents[0]
+        return first_document.document_id, first_document.document_version_id
+    if chunks:
+        first_chunk = chunks[0]
+        return first_chunk.citation.document_id, first_chunk.citation.document_version_id
+    raise RetrievalError(
+        "ARCHFLOW_SOURCE_DOCUMENT_REQUIRED",
+        "ArchFlow extraction needs at least one authorized AKB source document for persistence.",
+        status_code=422,
+        details={
+            "entity_type": payload.entity_type,
+            "source_set_id": payload.source_set_id,
+            "catalog_version_id": payload.catalog_version_id,
+        },
+    )
+
+
 def _contract_extraction_response_from_registry(payload: dict[str, object]) -> ContractExtractionResponse:
     result = payload.get("result")
     result_map = result if isinstance(result, dict) else {}
     proposals = result_map.get("proposals", [])
     source_chunk_ids = result_map.get("source_chunk_ids", [])
     return ContractExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system=str(payload.get("external_system", "")),
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        document_id=str(payload.get("document_id", "")),
+        document_version_id=str(payload.get("document_version_id", "")),
+        profile=str(payload.get("profile", "")),
+        profile_version=str(payload.get("profile_version", "")),
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        proposals=proposals if isinstance(proposals, list) else [],
+        missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
+
+
+def _archflow_goal_extraction_response_from_registry(payload: dict[str, object]) -> ArchflowGoalExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    proposals = result_map.get("proposals", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return ArchflowGoalExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system=str(payload.get("external_system", "")),
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        document_id=str(payload.get("document_id", "")),
+        document_version_id=str(payload.get("document_version_id", "")),
+        profile=str(payload.get("profile", "")),
+        profile_version=str(payload.get("profile_version", "")),
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        proposals=proposals if isinstance(proposals, list) else [],
+        missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
+
+
+def _stratos_extraction_response_from_registry(payload: dict[str, object]) -> StratosExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    proposals = result_map.get("proposals", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return StratosExtractionResponse(
         extraction_id=str(payload.get("extraction_id", "")),
         tenant_id=str(payload.get("tenant_id", "")),
         external_system=str(payload.get("external_system", "")),

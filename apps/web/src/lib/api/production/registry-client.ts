@@ -19,6 +19,8 @@ import type {
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
   DocumentVersion,
+  ProfileSettingsPutRequest,
+  ProfileSettingsResponse,
   RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
@@ -319,6 +321,14 @@ export class ProductionRegistryClient implements RegistryApiClient {
       "updateRoleMappingStatus",
       context
     );
+  }
+
+  getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    return this.get<ProfileSettingsResponse>("/user-profiles/me/settings", "getProfileSettings", context);
+  }
+
+  putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    return this.put<ProfileSettingsResponse>("/user-profiles/me/settings", request, "putProfileSettings", context);
   }
 
   listAssistantConversations(

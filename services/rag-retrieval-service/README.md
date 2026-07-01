@@ -14,6 +14,7 @@ Implementovany rozsah teto iterace:
 - no-answer policy,
 - audit eventy pres Registry API klienta,
 - STRATOS contract extraction proposals pro `contract_financial_v1`,
+- STRATOS ArchFlow goal extraction proposals pro `archflow_goal_extraction_v1`,
 - mock klienti pro Registry API, Qdrant/retrieval a LLM Gateway.
 
 Mimo rozsah teto iterace:
@@ -51,6 +52,7 @@ STRATOS extractions:
 
 - `GET /api/v1/stratos/extractions/profiles`
 - `POST /api/v1/stratos/extractions/contracts/propose`
+- `POST /api/v1/stratos/extractions/archflow-goals/propose`
 - `GET /api/v1/stratos/extractions/{extraction_id}`
 - `POST /api/v1/stratos/extractions/{extraction_id}/feedback`
 
@@ -78,6 +80,14 @@ Volitelne pole `response_language` podporuje `cs` a `en`. Vychozi hodnota je `cs
 permission-aware retrieval tok, vraci pouze citovane `proposed` hodnoty a
 perzistuje vysledek pres Registry API. Budget potvrzuje, upravuje nebo odmita
 navrhy az ve vlastni aplikaci a zpet posila feedback.
+
+`POST /api/v1/stratos/extractions/archflow-goals/propose` pouziva stejny tok
+pro ArchFlow nad `ArchflowSourceSet` a publikovanou
+`ArchflowGoalCatalogVersion`. Profil `archflow_goal_extraction_v1` vraci
+citovane navrhy cilu, schopnosti, povinnosti, pozadavku, metrik,
+pravni/metodicke opory a rizik. ArchFlow uklada source set a auditni snapshot
+katalogove verze, finalni cile a vazby zapisuje az po lidskem potvrzeni a zpet
+posila feedback se `source_app: "STRATOS_ARCHFLOW"`.
 
 ## Konfigurace
 

@@ -62,6 +62,22 @@ export interface UpsertRoleMappingRequest {
   status: string;
 }
 
+export interface ProfileSettingsBundle {
+  core: Record<string, unknown>;
+  apps: Record<string, Record<string, unknown>>;
+}
+
+export interface ProfileSettingsResponse {
+  subject_id: string;
+  settings: ProfileSettingsBundle;
+  roles: string[];
+  groups: string[];
+}
+
+export interface ProfileSettingsPutRequest {
+  settings: ProfileSettingsBundle;
+}
+
 export interface ApiRequestContext {
   subjectId: string;
   roles?: string[];
@@ -124,6 +140,8 @@ export interface RegistryApiClient {
   importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser>;
   upsertRoleMapping(request: UpsertRoleMappingRequest, context: ApiRequestContext): Promise<RoleMapping>;
   updateRoleMappingStatus(roleMappingId: string, status: string, context: ApiRequestContext): Promise<RoleMapping>;
+  getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse>;
+  putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse>;
   listAssistantConversations(context: ApiRequestContext, includeArchived?: boolean): Promise<AssistantConversationListResponse>;
   getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail>;
   appendAssistantConversationMessages(

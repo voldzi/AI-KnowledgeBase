@@ -27,7 +27,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
 
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
-  -d '{"model":"gemma4:12b","kind":"chat"}'
+  -d '{"model":"gemma4:12b-mlx","kind":"chat"}'
 ```
 
 ## Production-Like Local Stack

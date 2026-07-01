@@ -15,7 +15,7 @@ def ollama_settings(**overrides: str):
         "AKL_AUTH_MODE": "disabled",
         "AKL_LLM_DEFAULT_PROVIDER": "ollama",
         "AKL_LLM_ENABLED_PROVIDERS": "ollama",
-        "AKL_LLM_MODEL_PROVIDER_MAP": '{"gemma4:12b":"ollama"}',
+        "AKL_LLM_MODEL_PROVIDER_MAP": '{"gemma4:12b-mlx":"ollama"}',
         "AKL_LLM_RETRY_ATTEMPTS": "0",
         "AKL_LLM_DEFAULT_MAX_TOKENS": "512",
         "AKL_OLLAMA_THINK": "false",
@@ -42,7 +42,7 @@ async def test_ollama_provider_sends_think_false_and_num_predict(monkeypatch: py
 
     response = await provider.chat_completion(
         ChatCompletionRequest(
-            model="gemma4:12b",
+            model="gemma4:12b-mlx",
             messages=[{"role": "user", "content": "Test"}],
             think=False,
             max_tokens=256,
@@ -72,7 +72,7 @@ async def test_ollama_provider_uses_default_max_tokens(monkeypatch: pytest.Monke
     provider = OllamaProvider(ollama_settings(AKL_LLM_DEFAULT_MAX_TOKENS="768"))
 
     await provider.chat_completion(
-        ChatCompletionRequest(model="gemma4:12b", messages=[{"role": "user", "content": "Test"}])
+        ChatCompletionRequest(model="gemma4:12b-mlx", messages=[{"role": "user", "content": "Test"}])
     )
 
     payload = captured["json_body"]
@@ -113,7 +113,7 @@ async def test_ollama_provider_falls_back_to_next_base_url(monkeypatch: pytest.M
     )
 
     response = await provider.chat_completion(
-        ChatCompletionRequest(model="gemma4:12b", messages=[{"role": "user", "content": "Test"}])
+        ChatCompletionRequest(model="gemma4:12b-mlx", messages=[{"role": "user", "content": "Test"}])
     )
 
     assert calls == [
@@ -143,7 +143,7 @@ async def test_ollama_provider_env_false_overrides_request_think_true(monkeypatc
 
     await provider.chat_completion(
         ChatCompletionRequest(
-            model="gemma4:12b",
+            model="gemma4:12b-mlx",
             messages=[{"role": "user", "content": "Test"}],
             think=True,
         )
@@ -168,7 +168,7 @@ async def test_ollama_provider_rejects_thinking_only_empty_content(monkeypatch: 
     with pytest.raises(GatewayError) as exc_info:
         await provider.chat_completion(
             ChatCompletionRequest(
-                model="gemma4:12b",
+                model="gemma4:12b-mlx",
                 messages=[{"role": "user", "content": "Test"}],
                 think=False,
                 max_tokens=256,

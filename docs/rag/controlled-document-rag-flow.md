@@ -41,9 +41,9 @@ The controlled-document smoke test publishes the version before ingestion so Qdr
 The verified real profile uses:
 
 ```text
-chat model: gemma4:12b
+chat model: gemma4:12b-mlx
 embedding model: bge-m3
-RAG chat model: gemma4:12b
+RAG chat model: gemma4:12b-mlx
 Qdrant collection: akl_document_chunks
 Qdrant vector size: 1024
 Qdrant distance: Cosine

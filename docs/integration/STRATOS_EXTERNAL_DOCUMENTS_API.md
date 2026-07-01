@@ -322,10 +322,160 @@ GET /api/v1/stratos/extractions/{extraction_id}
 ```
 
 Vrací stejný tvar jako návrh. Opakované `propose` se stejným
-`tenant_id`, `external_system`, `external_ref`, `document_id`,
-`document_version_id`, `profile` a `profile_version` vrátí stejný uložený
-výsledek. Nová verze dokumentu označí starší nefinální výsledek jako
-`SUPERSEDED`.
+`tenant_id`, `external_system`, `external_ref`, technickou AKB dokumentovou
+kotvou, `profile` a `profile_version` vrátí stejný uložený výsledek. Nová verze
+dokumentu označí starší nefinální výsledek jako `SUPERSEDED`.
+
+### Návrh cílů, povinností a metrik pro ArchFlow
+
+```http
+POST /api/v1/stratos/extractions/archflow-goals/propose
+```
+
+Tento endpoint patří do RAG Retrieval Service. ArchFlow jej volá server-side nad
+`ArchflowSourceSet` nebo publikovanou `ArchflowGoalCatalogVersion`. ArchFlow
+neukládá binární dokument, extrahovaný text, chunky, embeddingy ani RAG odpověď;
+ukládá pouze source set, katalogovou verzi, auditní snapshot a po lidském
+potvrzení zapisuje vlastní cíle a vazby.
+
+Payload pro source set:
+
+```json
+{
+  "tenant_id": "default",
+  "external_system": "STRATOS_ARCHFLOW",
+  "external_ref": "archflow-source-set:srcset-1:goal-catalog",
+  "entity_type": "ArchflowSourceSet",
+  "entity_id": "srcset-1",
+  "source_set_id": "srcset-1",
+  "documents": [
+    {
+      "document_id": "doc_...",
+      "document_version_id": "ver_...",
+      "canonical_url": "/akb/documents/doc_...",
+      "classification": "internal"
+    }
+  ],
+  "subject_id": "user-uuid",
+  "profile": "archflow_goal_extraction_v1",
+  "profile_version": "1",
+  "classification_max": "internal",
+  "context_tags": ["archflow", "goal-catalog", "source-set:srcset-1"],
+  "max_chunks": 18,
+  "correlation_id": "corr_..."
+}
+```
+
+Payload pro publikovanou katalogovou verzi nebo potřebu:
+
+```json
+{
+  "tenant_id": "default",
+  "external_system": "STRATOS_ARCHFLOW",
+  "external_ref": "archflow-need:need-1:catalog-version:catver-1",
+  "entity_type": "ArchflowNeed",
+  "entity_id": "need-1",
+  "source_set_id": "srcset-1",
+  "catalog_version_id": "catver-1",
+  "subject_id": "user-uuid",
+  "profile": "archflow_goal_extraction_v1",
+  "profile_version": "1",
+  "classification_max": "internal",
+  "context_tags": ["archflow", "need:need-1", "catalog-version:catver-1"],
+  "max_chunks": 18,
+  "correlation_id": "corr_..."
+}
+```
+
+Pro katalogovou verzi bez explicitního `documents[]` AKB použije první
+autorizovaný citovaný chunk jako technickou Registry kotvu. Pokud ArchFlow
+source set posílá, musí obsahovat alespoň jeden AKB dokument. V obou případech
+AKB ukládá úplný seznam zdrojových dokumentů do `result.source_documents` a
+`metadata.source_documents`; Registry pole `document_id` a `document_version_id`
+slouží jen jako technická persistence/audit kotva.
+
+Odpověď:
+
+```json
+{
+  "extraction_id": "extract_...",
+  "tenant_id": "default",
+  "external_system": "STRATOS_ARCHFLOW",
+  "external_ref": "archflow-source-set:srcset-1:goal-catalog",
+  "entity_type": "ArchflowSourceSet",
+  "entity_id": "srcset-1",
+  "document_id": "doc_...",
+  "document_version_id": "ver_...",
+  "profile": "archflow_goal_extraction_v1",
+  "profile_version": "1",
+  "status": "PROPOSED",
+  "classification": "internal",
+  "requested_by": "user-uuid",
+  "proposals": [
+    {
+      "field": "goal",
+      "status": "proposed",
+      "confidence": "high",
+      "proposal": {
+        "goal_type": "STRATEGIC_GOAL",
+        "title": "Zvýšit dostupnost digitálních služeb",
+        "description": "Strategický cíl: Zvýšit dostupnost digitálních služeb na 99,9 %.",
+        "parent_hint": "Digitální transformace",
+        "priority": "HIGH",
+        "obligation_type": null,
+        "suggested_metrics": [],
+        "candidate_requirements": [],
+        "legal_basis": null,
+        "risk": null
+      },
+      "reason": "The cited source explicitly labels a goal.",
+      "citation": {
+        "document_id": "doc_...",
+        "document_version_id": "ver_...",
+        "chunk_id": "chunk_...",
+        "page_number": 12,
+        "section_path": ["Digitální transformace", "Dostupnost služeb"],
+        "quoted_text": "Strategický cíl: Zvýšit dostupnost digitálních služeb na 99,9 %.",
+        "viewer_url": "/akb/documents/doc_...?tab=viewer&chunk_id=chunk_...#page=12",
+        "warnings": []
+      },
+      "warnings": []
+    }
+  ],
+  "missing_information": [],
+  "warnings": [],
+  "source_chunk_ids": ["chunk_..."],
+  "metadata": {
+    "source_set_id": "srcset-1",
+    "catalog_version_id": null,
+    "source_documents": [
+      {
+        "document_id": "doc_...",
+        "document_version_id": "ver_...",
+        "canonical_url": "/akb/documents/doc_...",
+        "classification": "internal"
+      }
+    ],
+    "primary_document_id": "doc_...",
+    "primary_document_version_id": "ver_..."
+  }
+}
+```
+
+Podporované položky profilu `archflow_goal_extraction_v1` zahrnují:
+
+- `goal`,
+- `capability`,
+- `obligation`,
+- `requirement`,
+- `metric`,
+- `legal_basis`,
+- `risk`.
+
+Každý návrh musí mít citaci. Pokud AKB nenajde citovatelný zdroj, vrátí
+`PARTIAL` s warnings, například
+`INSUFFICIENT_CITABLE_ARCHFLOW_GOAL_EVIDENCE` nebo
+`TARGET_DOCUMENT_NOT_RETRIEVED`.
 
 ### Feedback z Budgetu
 
@@ -348,6 +498,9 @@ Budget posílá feedback až po akci autorizovaného uživatele. Payload:
   "correlation_id": "corr_..."
 }
 ```
+
+Stejný endpoint používá ArchFlow s `source_app: "STRATOS_ARCHFLOW"`. ArchFlow
+posílá feedback až po potvrzení, úpravě nebo odmítnutí návrhu uživatelem.
 
 `decision` je `accepted`, `rejected` nebo `edited`. AKB tento feedback ukládá
 pro audit, měření přesnosti polí a budoucí eval dataset. Budget je jediný

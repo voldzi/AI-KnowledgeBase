@@ -93,7 +93,7 @@ Model pull je explicitní akce přes `POST /api/v1/models/pull`; při startu slu
 Výchozí doporučení pro Phase 02 real local RAG:
 
 ```text
-chat: gemma4:12b
+chat: gemma4:12b-mlx
 embedding: bge-m3
 max_tokens: 512
 ollama_think: false
@@ -116,7 +116,7 @@ Pro thinking-capable Ollama modely gateway podporuje:
 
 ```json
 {
-  "model": "gemma4:12b",
+  "model": "gemma4:12b-mlx",
   "prompt": "Odpověz česky jednou větou.",
   "think": false,
   "max_tokens": 256

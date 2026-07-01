@@ -66,6 +66,7 @@ ExtractionStatus = Literal[
 ]
 ExtractionFieldStatus = Literal["proposed"]
 ExtractionFeedbackDecision = Literal["accepted", "rejected", "edited"]
+StratosExtractionSourceApp = Literal["STRATOS_BUDGET", "STRATOS_ARCHFLOW"]
 
 
 class RagQueryFilters(BaseModel):
@@ -349,6 +350,50 @@ class ContractExtractionProposeRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ArchflowSourceDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    canonical_url: str | None = Field(default=None, max_length=500)
+    classification: Classification | None = None
+
+
+class ArchflowGoalExtractionProposeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: Literal["STRATOS_ARCHFLOW"] = "STRATOS_ARCHFLOW"
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: Literal["ArchflowSourceSet", "ArchflowGoalCatalogVersion", "ArchflowNeed"]
+    entity_id: str = Field(min_length=1, max_length=128)
+    source_set_id: str | None = Field(default=None, min_length=1, max_length=128)
+    catalog_version_id: str | None = Field(default=None, min_length=1, max_length=128)
+    documents: list[ArchflowSourceDocument] = Field(default_factory=list, max_length=50)
+    subject_id: str = Field(min_length=1, max_length=128)
+    profile: Literal["archflow_goal_extraction_v1"] = "archflow_goal_extraction_v1"
+    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    classification_max: Classification = "internal"
+    context_tags: list[str] = Field(default_factory=list)
+    max_chunks: int = Field(default=18, ge=1, le=20)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_archflow_context(self) -> "ArchflowGoalExtractionProposeRequest":
+        if self.entity_type == "ArchflowSourceSet":
+            if not self.source_set_id:
+                raise ValueError("source_set_id is required for ArchflowSourceSet extraction.")
+            if not self.documents:
+                raise ValueError("documents must contain at least one AKB document for ArchflowSourceSet extraction.")
+        if self.entity_type in {"ArchflowGoalCatalogVersion", "ArchflowNeed"}:
+            if not self.catalog_version_id:
+                raise ValueError("catalog_version_id is required for catalog version extraction.")
+            if not self.source_set_id:
+                raise ValueError("source_set_id is required for catalog version extraction.")
+        return self
+
+
 class ContractExtractionCitation(BaseModel):
     document_id: str
     document_version_id: str
@@ -369,6 +414,47 @@ class ContractFieldProposal(BaseModel):
     confidence: Confidence
     status: ExtractionFieldStatus = "proposed"
     reason: str
+    citation: ContractExtractionCitation
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ArchflowSuggestedMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=160)
+    target: str | None = Field(default=None, max_length=160)
+    periodicity: str | None = Field(default=None, max_length=80)
+
+
+class ArchflowCandidateRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    requirement_type: str = Field(default="functional", min_length=1, max_length=80)
+    acceptance_criteria: str | None = Field(default=None, max_length=1000)
+
+
+class ArchflowGoalProposalValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    goal_type: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(min_length=1, max_length=1200)
+    parent_hint: str | None = Field(default=None, max_length=240)
+    priority: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] | None = None
+    obligation_type: Literal["SHALL", "SHOULD", "MAY"] | None = None
+    suggested_metrics: list[ArchflowSuggestedMetric] = Field(default_factory=list, max_length=8)
+    candidate_requirements: list[ArchflowCandidateRequirement] = Field(default_factory=list, max_length=8)
+    legal_basis: str | None = Field(default=None, max_length=1000)
+    risk: str | None = Field(default=None, max_length=1000)
+
+
+class ArchflowGoalFieldProposal(BaseModel):
+    field: Literal["goal", "capability", "obligation", "requirement", "metric", "legal_basis", "risk"]
+    status: ExtractionFieldStatus = "proposed"
+    confidence: Confidence
+    proposal: ArchflowGoalProposalValue
+    reason: str = Field(min_length=1, max_length=1000)
     citation: ContractExtractionCitation
     warnings: list[str] = Field(default_factory=list)
 
@@ -394,6 +480,48 @@ class ContractExtractionResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ArchflowGoalExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    proposals: list[ArchflowGoalFieldProposal] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class StratosExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    proposals: list[dict[str, Any]] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class ContractExtractionProfile(BaseModel):
     profile: str
     profile_version: str
@@ -407,7 +535,7 @@ class ContractExtractionProfilesResponse(BaseModel):
     profiles: list[ContractExtractionProfile]
 
 
-class ContractExtractionFeedbackRequest(BaseModel):
+class StratosExtractionFeedbackRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     field: str = Field(min_length=1, max_length=160)
@@ -416,15 +544,23 @@ class ContractExtractionFeedbackRequest(BaseModel):
     decision: ExtractionFeedbackDecision
     reason: str | None = Field(default=None, max_length=2000)
     actor: str = Field(min_length=1, max_length=128)
-    source_app: Literal["STRATOS_BUDGET"] = "STRATOS_BUDGET"
+    source_app: StratosExtractionSourceApp
     source_entity_id: str = Field(min_length=1, max_length=128)
     correlation_id: str | None = Field(default=None, max_length=128)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class ContractExtractionFeedbackResponse(BaseModel):
+class ContractExtractionFeedbackRequest(StratosExtractionFeedbackRequest):
+    source_app: StratosExtractionSourceApp = "STRATOS_BUDGET"
+
+
+class StratosExtractionFeedbackResponse(BaseModel):
     feedback_id: str
-    extraction: ContractExtractionResponse
+    extraction: StratosExtractionResponse
+
+
+class ContractExtractionFeedbackResponse(StratosExtractionFeedbackResponse):
+    pass
 
 
 class HealthResponse(BaseModel):

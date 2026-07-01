@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, ShieldCheck, UserCog } from "lucide-react";
+import { Database, KeyRound, ShieldCheck, UserCog } from "lucide-react";
 import { useMemo } from "react";
 import {
   HelpHint,
@@ -19,6 +19,7 @@ import {
 import type { AklLanguage } from "@/lib/i18n";
 
 interface AppSettingsSurfaceProps {
+  accessInfo: SettingsAccessInfo;
   apiModeLabel: string;
   authModeLabel: string;
   dirty: boolean;
@@ -33,6 +34,13 @@ interface AppSettingsSurfaceProps {
   rolePreview: RolePreviewSettings;
   userInitials: string;
   values: StratosSettingsCoreValues;
+}
+
+interface SettingsAccessInfo {
+  subjectId: string;
+  roles: string[];
+  groups: string[];
+  permissions: string[];
 }
 
 export interface RolePreviewSettings {
@@ -60,6 +68,14 @@ const settingsCopy = {
     authModeDescription: "Režim přihlášení a autorizace uživatele.",
     owner: "Vlastník aplikace",
     ownerDescription: "Sdílený STRATOS modul správy znalostí.",
+    accessGroup: "Oprávnění",
+    access: "Role a oprávnění",
+    accessDescription: "Read-only přehled z přihlášení a RBAC. Hodnoty se neupravují v AKB.",
+    subject: "Uživatel",
+    roles: "Role",
+    groups: "Skupiny",
+    permissions: "Povolené plochy",
+    emptyAccess: "Nepřiřazeno",
     previewGroup: "Testování",
     previewTitle: "Náhled role",
     previewDescription: "Admin může dočasně zobrazit AKB tak, jak ji uvidí vybraný typ uživatele.",
@@ -81,6 +97,14 @@ const settingsCopy = {
     authModeDescription: "User sign-in and authorization mode.",
     owner: "Application owner",
     ownerDescription: "Shared STRATOS knowledge management module.",
+    accessGroup: "Access",
+    access: "Roles and permissions",
+    accessDescription: "Read-only summary from sign-in and RBAC. AKB does not edit these values.",
+    subject: "User",
+    roles: "Roles",
+    groups: "Groups",
+    permissions: "Allowed surfaces",
+    emptyAccess: "Not assigned",
     previewGroup: "Testing",
     previewTitle: "Role preview",
     previewDescription: "Admins can temporarily view AKB as a selected user type.",
@@ -95,6 +119,7 @@ const settingsCopy = {
 } satisfies Record<AklLanguage, Record<string, string>>;
 
 export function AppSettingsSurface({
+  accessInfo,
   apiModeLabel,
   authModeLabel,
   dirty,
@@ -120,6 +145,14 @@ export function AppSettingsSurface({
         description: copy.runtimeDescription,
         icon: <Database size={16} aria-hidden="true" />,
         keywords: ["akb", "api", "auth", "runtime", "provoz"]
+      },
+      {
+        id: "akb-access",
+        group: copy.accessGroup,
+        label: copy.access,
+        description: copy.accessDescription,
+        icon: <KeyRound size={16} aria-hidden="true" />,
+        keywords: ["akb", "role", "rbac", "keycloak", "opravneni"]
       },
       ...(rolePreview.canUse
         ? [
@@ -154,6 +187,29 @@ export function AppSettingsSurface({
             </SettingsField>
             <SettingsField label={copy.owner} description={copy.ownerDescription}>
               <SettingsTextInput value="STRATOS / AKB" readOnly onChange={() => undefined} />
+            </SettingsField>
+          </>
+        )
+      },
+      {
+        id: "akb-access-state",
+        navItemId: "akb-access",
+        title: copy.access,
+        description: copy.accessDescription,
+        keywords: ["akb", "role", "rbac", "keycloak", "opravneni"],
+        children: (
+          <>
+            <SettingsField label={copy.subject} description={copy.accessDescription}>
+              <SettingsTextInput value={accessInfo.subjectId || copy.emptyAccess} readOnly onChange={() => undefined} />
+            </SettingsField>
+            <SettingsField label={copy.roles} description={copy.accessDescription}>
+              <SettingsTextInput value={accessInfo.roles.length ? accessInfo.roles.join(", ") : copy.emptyAccess} readOnly onChange={() => undefined} />
+            </SettingsField>
+            <SettingsField label={copy.groups} description={copy.accessDescription}>
+              <SettingsTextInput value={accessInfo.groups.length ? accessInfo.groups.join(", ") : copy.emptyAccess} readOnly onChange={() => undefined} />
+            </SettingsField>
+            <SettingsField label={copy.permissions} description={copy.accessDescription}>
+              <SettingsTextInput value={accessInfo.permissions.length ? accessInfo.permissions.join(", ") : copy.emptyAccess} readOnly onChange={() => undefined} />
             </SettingsField>
           </>
         )
@@ -194,7 +250,7 @@ export function AppSettingsSurface({
           ]
         : [])
     ],
-    [apiModeLabel, authModeLabel, copy, onRolePreviewChange, rolePreview]
+    [accessInfo, apiModeLabel, authModeLabel, copy, onRolePreviewChange, rolePreview]
   );
 
   return (

@@ -21,6 +21,8 @@ import type {
   DocumentMetadataSummaryOptions,
   DocumentMetadataSummaryTopic,
   DocumentVersion,
+  ProfileSettingsPutRequest,
+  ProfileSettingsResponse,
   RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
@@ -31,6 +33,8 @@ import type {
 import { ApiClientError } from "@/lib/types";
 
 import { cloneMock, mockAuditEvents, mockAuthorization, mockDocuments, mockVersions } from "./data";
+
+const mockProfileSettings = new Map<string, ProfileSettingsResponse>();
 
 export class MockRegistryClient implements RegistryApiClient {
   private readonly documents = cloneMock(mockDocuments);
@@ -489,6 +493,26 @@ export class MockRegistryClient implements RegistryApiClient {
     };
   }
 
+  async getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    return cloneMock(profileSettingsForContext(context));
+  }
+
+  async putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    const response: ProfileSettingsResponse = {
+      subject_id: context.subjectId,
+      settings: {
+        core: { ...request.settings.core },
+        apps: Object.fromEntries(
+          Object.entries(request.settings.apps).map(([key, value]) => [key, { ...value }])
+        )
+      },
+      roles: context.roles ?? [],
+      groups: context.groups ?? []
+    };
+    mockProfileSettings.set(context.subjectId, cloneMock(response));
+    return cloneMock(response);
+  }
+
   async listAssistantConversations(
     context: ApiRequestContext,
     includeArchived = false
@@ -789,6 +813,28 @@ function metadataSummaryValues(metadata: Record<string, unknown> | undefined): s
     return [];
   }
   return Object.entries(metadata).flatMap(([key, value]) => metadataEntryValues(key, value));
+}
+
+function profileSettingsForContext(context: ApiRequestContext): ProfileSettingsResponse {
+  const existing = mockProfileSettings.get(context.subjectId);
+  if (existing) {
+    return {
+      ...existing,
+      roles: context.roles ?? [],
+      groups: context.groups ?? []
+    };
+  }
+  return {
+    subject_id: context.subjectId,
+    settings: {
+      core: {},
+      apps: {
+        akb: {}
+      }
+    },
+    roles: context.roles ?? [],
+    groups: context.groups ?? []
+  };
 }
 
 function metadataEntryValues(key: string, value: unknown): string[] {

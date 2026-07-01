@@ -15,7 +15,7 @@ cp .env.example .env
 docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --profile ai up -d --build
 ```
 
-The default `.env.example` values are the current real local RAG profile: Ollama provider, `gemma4:12b` chat, `bge-m3` embeddings, Qdrant retriever/indexer, and `AKL_RAG_AUTHZ_MODE=dev`.
+The default `.env.example` values are the current real local RAG profile: Ollama provider, `gemma4:12b-mlx` chat, `bge-m3` embeddings, Qdrant retriever/indexer, and `AKL_RAG_AUTHZ_MODE=dev`.
 
 Pull required models through the AKL Model Manager API:
 
@@ -26,7 +26,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
 
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
-  -d '{"model":"gemma4:12b","kind":"chat"}'
+  -d '{"model":"gemma4:12b-mlx","kind":"chat"}'
 ```
 
 Run the baseline smoke tests:

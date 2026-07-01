@@ -51,6 +51,30 @@ describe("mock API clients", () => {
     assert.equal(job.status, "queued");
   });
 
+  it("keeps profile settings stateful in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext({ subjectId: "user_settings", roles: ["reader"], groups: ["staff"] });
+
+    const initial = await clients.registry.getProfileSettings(context);
+    assert.deepEqual(initial.settings, { core: {}, apps: { akb: {} } });
+
+    await clients.registry.putProfileSettings(
+      {
+        settings: {
+          core: { language: "en", theme: "dark" },
+          apps: { akb: { settingsMode: "sidebar" } }
+        }
+      },
+      context
+    );
+
+    const fetched = await clients.registry.getProfileSettings(context);
+    assert.equal(fetched.settings.core.language, "en");
+    assert.equal(fetched.settings.apps.akb.settingsMode, "sidebar");
+    assert.deepEqual(fetched.roles, ["reader"]);
+    assert.deepEqual(fetched.groups, ["staff"]);
+  });
+
   it("filters metadata summaries by STRATOS context in mock mode", async () => {
     const clients = createApiClients({ env });
     const context = createMockContext();

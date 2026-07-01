@@ -54,6 +54,9 @@ POST   /authz/filter-documents
 POST   /audit/events
 GET    /audit/events
 GET    /audit/events/{event_id}
+
+GET    /user-profiles/me/settings
+PUT    /user-profiles/me/settings
 ```
 
 `GET /audit/events` podporuje filtry `actor_id`, `event_type`, `resource_type`, `resource_id`, `limit` a `offset`.
@@ -89,6 +92,10 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 - RAG Retrieval Service uklada STRATOS Document AI navrhy do
   `/document-extractions` a nasledny feedback do
   `/document-extractions/{extraction_id}/feedback`.
+- AKB web bridge uklada sdilene STRATOS profilove nastaveni do
+  `/user-profiles/me/settings`. Hodnoty jsou rozdelene na `settings.core` a
+  `settings.apps.akb`; role a skupiny se vraci read-only z aktualni identity a
+  nejsou autoritou ulozenych nastaveni.
 
 Služby nesmí importovat interní Python kód registry API; komunikace je přes REST/OpenAPI.
 
