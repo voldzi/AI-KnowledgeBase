@@ -35,6 +35,29 @@ import { ApiClientError } from "@/lib/types";
 import { cloneMock, mockAuditEvents, mockAuthorization, mockDocuments, mockVersions } from "./data";
 
 const mockProfileSettings = new Map<string, ProfileSettingsResponse>();
+const mockDirectoryUsers: DirectoryUser[] = [
+  {
+    subject_id: "mock-user-1",
+    display_name: "Jan Novák",
+    email: "jan.novak@stratos.local",
+    username: "jan.novak",
+    groups: ["staff"]
+  },
+  {
+    subject_id: "mock-user-2",
+    display_name: "Eva Horáková",
+    email: "eva.horakova@stratos.local",
+    username: "eva.horakova",
+    groups: ["staff", "admins"]
+  },
+  {
+    subject_id: "mock-user-3",
+    display_name: "Petr Svoboda",
+    email: "petr.svoboda@stratos.local",
+    username: "petr.svoboda",
+    groups: ["reviewers"]
+  }
+];
 
 export class MockRegistryClient implements RegistryApiClient {
   private readonly documents = cloneMock(mockDocuments);
@@ -453,11 +476,20 @@ export class MockRegistryClient implements RegistryApiClient {
     return cloneMock(event);
   }
 
-  async searchDirectoryUsers(_query: string, _context: ApiRequestContext, _limit = 20): Promise<DirectoryUser[]> {
-    return [
-      { subject_id: "mock-user-1", display_name: "Jan Novák", email: "jan.novak@example.cz", groups: ["staff"] },
-      { subject_id: "mock-user-2", display_name: "Eva Horáková", email: "eva.horakova@example.cz", groups: ["staff", "admins"] }
-    ];
+  async searchDirectoryUsers(query: string, _context: ApiRequestContext, limit = 20): Promise<DirectoryUser[]> {
+    const normalizedQuery = normalizeMockDirectoryQuery(query);
+    const users = normalizedQuery
+      ? mockDirectoryUsers.filter((user) =>
+        normalizeMockDirectoryQuery([
+          user.display_name,
+          user.email,
+          user.username,
+          user.subject_id,
+          ...(user.groups ?? [])
+        ].filter(Boolean).join(" ")).includes(normalizedQuery)
+      )
+      : mockDirectoryUsers;
+    return cloneMock(users.slice(0, limit));
   }
 
   async listRoleMappings(_context: ApiRequestContext, _includeRemoved = false): Promise<RoleMapping[]> {
@@ -892,6 +924,16 @@ function normalizeSummaryText(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9._/-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeMockDirectoryQuery(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._@/-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

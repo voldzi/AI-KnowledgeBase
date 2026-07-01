@@ -282,9 +282,13 @@ export class ProductionRegistryClient implements RegistryApiClient {
   }
 
   async searchDirectoryUsers(query: string, context: ApiRequestContext, limit = 20): Promise<DirectoryUser[]> {
-    const params = new URLSearchParams({ query, limit: String(limit) });
+    const params = new URLSearchParams({ limit: String(limit) });
+    const normalizedQuery = query.trim();
+    if (normalizedQuery) {
+      params.set("query", normalizedQuery);
+    }
     const response = await this.get<{ users: DirectoryUser[] }>(
-      `/admin/directory/users?${params}`,
+      `/directory/users?${params}`,
       "searchDirectoryUsers",
       context
     );

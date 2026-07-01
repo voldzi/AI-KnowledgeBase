@@ -1067,6 +1067,41 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v1/directory/users":
+    get:
+      summary: Search Workflow Directory Users
+      operationId: search_workflow_directory_users_api_v1_directory_users_get
+      parameters:
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+          default: ''
+          title: Query
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DirectoryUserListResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
   "/api/v1/admin/directory/users/import":
     post:
       summary: Import Directory User

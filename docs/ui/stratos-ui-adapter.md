@@ -10,7 +10,7 @@ STRATOS repozitari je `@voldzi/stratos-ui` a obsahuje zejmena `AppShell`,
 `@voldzi/stratos-ui` je cilovy zdroj sdilenych UI komponent. Balicek se nema
 pripojovat pres `file:` dependency mimo Docker build context a AKB nema
 pridavat scoped `.npmrc` pro `@voldzi:registry=https://npm.pkg.github.com`.
-Balicek je publikovany ve verejnem npm registry a `apps/web/package-lock.json`
+Balicek je publikovany ve verejnem npm registry a `apps/web/pnpm-lock.yaml`
 ma smerovat na verejny npm tarball.
 
 Aktualni kompatibilni adapter je v `apps/web/src/components/stratos`:
@@ -49,6 +49,9 @@ Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 - `StratosPdfViewer` pro vykresleni citacni PDF strany pres pdf.js, jemne textove zvyrazneni citace a source-location bbox overlay.
 - `StratosSettingsSurface` pro jednotne nastaveni profilu, vzhledu, preferenci a AKB aplikačních sekci.
 - `HelpHint` / `FieldLabelWithHelp` ze sdileneho `@voldzi/stratos-ui` pro jednotnou kontextovou napovedu u urednickych kroku.
+- `DirectoryPersonPicker` pro prirazeni osoby ve workflow inboxu. AKB dodava jen
+  opravneny adresar pres BFF `/api/workflow/assignees`; trigger, popover,
+  filtrovani a vyber osoby zustavaji ve sdilene knihovne.
 
 ## Aktualni Napojeni V AKL
 
@@ -61,7 +64,9 @@ Adapter je zapojeny na techto plochach:
 - dashboard poslednich dokumentu pres `StratosDataTable`,
 - `/documents/[documentId]`: detailove taby, navrat do registru, upload verze, governance akce a generovani insightu,
 - `/documents/[documentId]` Viewer tab: `StratosPdfViewer` pro nativni PDF preview nad podepsanym zdrojem,
-- `/tasks`: search, select filtry, vycisteni filtru, detailove akce a rozhodovaci tlacitka,
+- `/tasks`: search, select filtry, vycisteni filtru, detailove akce,
+  rozhodovaci tlacitka a prirazeni osoby pres sdileny `DirectoryPersonPicker`
+  s `popoverPlacement` a `popoverMinWidth`, bez lokalniho forku pickeru,
 - `/ingestion`: tabulka uloh pres `StratosDataTable`,
 - `/upload`, `/chat`, `/ingestion` a dashboard vybrane hlavni prikazy.
 - uzivatelske nastaveni pres `StratosSettingsSurface`; AKB pridava pouze
@@ -79,7 +84,7 @@ Field-help API je sdilene v `@voldzi/stratos-ui`: AKB pouziva `HelpHint`, `Field
 Aktualni cesta na sdileny balicek:
 
 1. drzet dependency `@voldzi/stratos-ui` na aktualni publikovane verzi z verejneho npm registry,
-2. drzet `import "@voldzi/stratos-ui/styles.css";` a `import "@voldzi/stratos-ui/tokens.css";` v globalnim vstupu webu,
+2. drzet `import "@voldzi/stratos-ui/styles.css";` v globalnim vstupu webu,
 3. premapovat zbyvajici adaptery v `apps/web/src/components/stratos/index.ts` na primy import ze sdilene knihovny, pokud sdilena knihovna pokryva stejne props,
 4. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,
 5. ponechat `--stratos-*` tokeny jako verejny kontrakt pro AKB theme,

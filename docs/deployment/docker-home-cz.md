@@ -18,17 +18,8 @@ Tento plán popisuje první produkční nasazení AKL / AI KnowledgeBase jako so
 2. Pro build nepoužívat `.npmrc` v repozitáři. Pokud produkční prostředí
    používá GitHub Packages kvůli jiným balíčkům, musí být tento token uložený
    mimo Git a nesmí přesměrovat `@voldzi/stratos-ui` mimo veřejný npm tarball v
-   `apps/web/package-lock.json`.
-3. Pokud je v daném prostředí potřeba npm secret, použít Docker BuildKit secret deklarovaný v `infra/docker-compose/docker-compose.docker-home.yml`:
-
-```bash
-AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
-DOCKER_BUILDKIT=1 docker compose \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  build web
-```
-
-`scripts/deploy_docker_home.sh` umí při novější verzi Docker Compose použít i CLI volbu `build --secret`. Pokud ji serverová verze Compose nepodporuje, automaticky použije `build.secrets` z Compose souboru.
+   `apps/web/pnpm-lock.yaml`.
+3. Web build používá `pnpm install --frozen-lockfile` nad veřejným npm registry. `@voldzi/stratos-ui` nesmí být přesměrovaný scoped `.npmrc` souborem na GitHub Packages.
 
 ## 1. Serverová Struktura
 
@@ -40,7 +31,6 @@ Na `docker.home.cz` připravit:
   env/
     akl.prod.env          # produkční env, bez commitu
   secrets/
-    npmrc                 # volitelný npm secret pro jiné privátní balíčky, bez commitu
     keycloak-admin.env    # pouze lokální admin parametry pro bootstrap
   data/
     qdrant/
@@ -122,9 +112,9 @@ Před zapnutím Grafana OIDC vytvořit nebo aktualizovat Keycloak klienta:
 ```bash
 cd /srv/akl/repo
 KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
-  ./scripts/ensure_grafana_keycloak_client.sh
+./scripts/ensure_grafana_keycloak_client.sh
 ./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
-AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc docker compose \
+docker compose \
   --env-file /srv/akl/env/akl.prod.env \
   -f infra/docker-compose/docker-compose.docker-home.yml \
   -f infra/docker-compose/docker-compose.docker-home-observability.yml \
@@ -374,20 +364,18 @@ Veřejně vystavit jen STRATOS shell a aplikační path prefixy přes DMZ revers
 
 1. Připravit `/srv/akl/repo` z `main`.
 2. Připravit `/srv/akl/env/akl.prod.env`.
-3. Připravit `/srv/akl/secrets/npmrc`.
-4. Vytvořit Keycloak STRATOS realm a theme.
-5. Vytvořit prázdné PostgreSQL databáze.
-6. Připravit SeaweedFS prostor `akl-documents`.
-7. Spustit preflight:
+3. Vytvořit Keycloak STRATOS realm a theme.
+4. Vytvořit prázdné PostgreSQL databáze.
+5. Připravit SeaweedFS prostor `akl-documents`.
+6. Spustit preflight:
 
 ```bash
 cd /srv/akl/repo
 AKL_PROD_ENV_FILE=/srv/akl/env/akl.prod.env \
-AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
 ./scripts/docker_home_preflight.sh
 ```
 
-8. Pro plný nasazovací běh lze použít jednotný deploy skript:
+7. Pro plný nasazovací běh lze použít jednotný deploy skript:
 
 ```bash
 cd /srv/akl/repo
@@ -402,26 +390,25 @@ Skript provede:
 - image build,
 - `docker compose up -d`.
 
-9. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
+8. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
 
 ```bash
 cd /srv/akl/repo
 docker compose -f infra/docker-compose/docker-compose.docker-home.yml config >/tmp/akl-compose-rendered.yml
 ```
 
-10. Sestavit image:
+9. Sestavit image:
 
 ```bash
 cd /srv/akl/repo
-AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
 DOCKER_BUILDKIT=1 docker compose \
   --env-file /srv/akl/env/akl.prod.env \
   -f infra/docker-compose/docker-compose.docker-home.yml \
   build
 ```
 
-11. Spustit DB migrace.
-12. Spustit služby:
+10. Spustit DB migrace.
+11. Spustit služby:
 
 ```bash
 docker compose \
@@ -470,6 +457,6 @@ Obnova se provádí z prázdného checkoutu `main`, obnovy DB/object storage/Qdr
 - Importovat připravený `infra/keycloak/realm-stratos.json` a namountovat `infra/keycloak/themes/stratos`.
 - Rozhodnout, zda SeaweedFS bude připojený přes S3 gateway nebo filesystem mount. Pro dlouhodobý provoz preferovat S3 adapter.
 - Nasadit přes připravený standalone compose profil `infra/docker-compose/docker-compose.docker-home.yml`.
-- Ověřit, že `apps/web/package-lock.json` ukazuje `@voldzi/stratos-ui` na veřejný npm tarball.
+- Ověřit, že `apps/web/pnpm-lock.yaml` ukazuje `@voldzi/stratos-ui` na veřejný npm tarball.
 - Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL` a `AKL_WEB_SESSION_SECRET`.
 - Připravit monitoring a log retention pro `/srv/akl/data/logs`.

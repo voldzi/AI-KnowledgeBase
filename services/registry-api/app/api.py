@@ -2425,6 +2425,18 @@ def search_directory_users(
     return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
 
 
+@router.get("/directory/users", response_model=DirectoryUserListResponse)
+def search_workflow_directory_users(
+    query: str = Query(default="", max_length=200),
+    limit: Limit = 20,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserListResponse:
+    require_global_action(principal, Action.workflow_task_write, db)
+    users = _directory_adapter().search_users(query, max_results=min(limit, 50))
+    return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
+
+
 @router.post(
     "/admin/directory/users/import",
     response_model=DirectoryUserResponse,

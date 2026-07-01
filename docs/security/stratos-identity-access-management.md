@@ -31,13 +31,14 @@ Only active role mappings are used for authorization.
 
 Registry API:
 
-- `GET /api/v1/directory/users?query=<text>`
-- `POST /api/v1/directory/users/import`
+- `GET /api/v1/directory/users?query=<text>` searches directory users for workflow assignment. It requires `workflow.task.write` and does not import users or grant roles.
+- `GET /api/v1/admin/directory/users?query=<text>` searches the directory from the administration surface.
+- `POST /api/v1/admin/directory/users/import`
 - `GET /api/v1/access/roles`
 - `POST /api/v1/access/roles`
 - `PATCH /api/v1/access/roles/{role_mapping_id}`
 
-All endpoints require `admin.manage`. In production this is granted by roles such as:
+Administration endpoints require `admin.manage`. In production this is granted by roles such as:
 
 - `stratos_superadmin`
 - `stratos_admin`

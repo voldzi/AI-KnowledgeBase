@@ -202,6 +202,47 @@ describe("production API clients", () => {
     assert.equal(calls[1][1]?.method, "PUT");
   });
 
+  it("searches workflow assignees through the non-admin directory endpoint", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        users: [
+          {
+            subject_id: "user_reviewer",
+            display_name: "Revizor dokumentu",
+            email: "revizor@example.cz",
+            username: "revizor",
+            enabled: true,
+            groups: ["reviewers"]
+          }
+        ]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const users = await clients.registry.searchDirectoryUsers("revizor", createMockContext(), 12);
+
+    assert.equal(users[0].subject_id, "user_reviewer");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/directory/users?limit=12&query=revizor");
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
+  it("loads default workflow assignees without a search query", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({ users: [] });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const users = await clients.registry.searchDirectoryUsers("", createMockContext(), 50);
+
+    assert.equal(users.length, 0);
+    assert.equal(calls[0][0], "https://registry.local/api/v1/directory/users?limit=50");
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
   it("maps upstream error bodies to ApiClientError", async () => {
     const fetcher: AklFetch = async () =>
       Response.json(

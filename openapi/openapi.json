@@ -2282,6 +2282,72 @@
         }
       ]
     },
+    "/api/v1/directory/users": {
+      "get": {
+        "summary": "Search Workflow Directory Users",
+        "operationId": "registry_api_search_workflow_directory_users_api_v1_directory_users_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": "",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDirectoryUserListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/admin/directory/users/import": {
       "post": {
         "summary": "Import Directory User",
@@ -7509,6 +7575,47 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/assignees": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "GET /api/workflow/assignees",
+        "operationId": "web_get_api_workflow_assignees",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
               }
             }
           }

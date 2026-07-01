@@ -70,3 +70,29 @@ def test_directory_search_without_keycloak_config_returns_503(client: TestClient
     response = client.get("/api/v1/admin/directory/users", params={"query": "alice"})
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "keycloak_directory_not_configured"
+
+
+def test_workflow_directory_search_requires_workflow_write(client: TestClient, reader_headers: dict[str, str]) -> None:
+    forbidden = client.get("/api/v1/directory/users", params={"query": "alice"}, headers=reader_headers)
+    assert forbidden.status_code == 403
+
+    reviewer = client.get(
+        "/api/v1/directory/users",
+        params={"query": "alice"},
+        headers={
+            "X-AKL-Subject": "user_reviewer",
+            "X-AKL-Roles": "reviewer",
+        },
+    )
+    assert reviewer.status_code == 503
+    assert reviewer.json()["error"]["code"] == "keycloak_directory_not_configured"
+
+    default_listing = client.get(
+        "/api/v1/directory/users",
+        headers={
+            "X-AKL-Subject": "user_reviewer",
+            "X-AKL-Roles": "reviewer",
+        },
+    )
+    assert default_listing.status_code == 503
+    assert default_listing.json()["error"]["code"] == "keycloak_directory_not_configured"

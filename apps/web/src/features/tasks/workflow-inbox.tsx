@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -12,6 +12,7 @@ import {
   FilterX,
   TimerOff
 } from "lucide-react";
+import { DirectoryPersonPicker, type DirectoryPersonOption } from "@voldzi/stratos-ui";
 
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
@@ -22,6 +23,7 @@ import type {
   ApplyWorkflowTaskActionRequest,
   AuditEvent,
   AuthorizationHint,
+  DirectoryUser,
   Document,
   IngestionJob,
   RegistryWorkflowTask,
@@ -94,7 +96,15 @@ const taskCopy = {
     decisionComment: "Komentář",
     commentPlaceholder: "Volitelný důvod nebo další instrukce",
     assignee: "Přiřadit komu",
-    assigneePlaceholder: "user_id nebo tým",
+    assigneePlaceholder: "Jméno, e-mail nebo uživatelské jméno",
+    assigneeHelp: "Vyberte osobu z adresáře. AKB zapíše přiřazení do workflow a auditní stopy.",
+    assigneeSearchMin: "Začněte psát alespoň 2 znaky.",
+    assigneeSearching: "Hledám v adresáři...",
+    assigneeNoResults: "Adresář nenašel odpovídající osobu.",
+    assigneeSearchFailed: "Adresář osob se nepodařilo načíst.",
+    assigneeSelected: "Vybraná osoba",
+    assigneeClear: "Zrušit výběr osoby",
+    assigneeDirectory: "Adresář osob",
     assign: "Přiřadit",
     requestChanges: "Vrátit k úpravě",
     approve: "Schválit",
@@ -148,7 +158,15 @@ const taskCopy = {
     decisionComment: "Comment",
     commentPlaceholder: "Optional reason or next instruction",
     assignee: "Assign to",
-    assigneePlaceholder: "user_id or team",
+    assigneePlaceholder: "Name, email or username",
+    assigneeHelp: "Select a person from the directory. AKB records the assignment in workflow and audit.",
+    assigneeSearchMin: "Type at least 2 characters.",
+    assigneeSearching: "Searching directory...",
+    assigneeNoResults: "No matching person was found.",
+    assigneeSearchFailed: "Person directory could not be loaded.",
+    assigneeSelected: "Selected person",
+    assigneeClear: "Clear selected person",
+    assigneeDirectory: "Person directory",
     assign: "Assign",
     requestChanges: "Request changes",
     approve: "Approve",
@@ -406,8 +424,16 @@ function TaskDetail({
   const router = useRouter();
   const [comment, setComment] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [selectedAssignee, setSelectedAssignee] = useState<DirectoryUser | null>(null);
   const [submittingAction, setSubmittingAction] = useState<RegistryWorkflowTaskAction | null>(null);
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    setComment("");
+    setAssigneeId("");
+    setSelectedAssignee(null);
+    setFeedback(null);
+  }, [task?.id]);
 
   if (!task) {
     return (
@@ -456,6 +482,7 @@ function TaskDetail({
       setComment("");
       if (action === "assign") {
         setAssigneeId("");
+        setSelectedAssignee(null);
       }
       router.refresh();
     } catch (error) {
@@ -517,13 +544,22 @@ function TaskDetail({
                 />
               </div>
               <div className="field">
-                <label htmlFor={`workflow-assignee-${task.id}`}>{copy.assignee}</label>
-                <input
-                  id={`workflow-assignee-${task.id}`}
-                  value={assigneeId}
-                  onChange={(event) => setAssigneeId(event.target.value)}
+                <label>{copy.assignee}</label>
+                <WorkflowAssigneePicker
+                  key={task.id}
+                  copy={copy}
+                  disabled={Boolean(submittingAction)}
                   placeholder={copy.assigneePlaceholder}
-                  type="text"
+                  selectedUser={selectedAssignee}
+                  value={assigneeId}
+                  onSelect={(user) => {
+                    setSelectedAssignee(user);
+                    setAssigneeId(user.subject_id);
+                  }}
+                  onClear={() => {
+                    setSelectedAssignee(null);
+                    setAssigneeId("");
+                  }}
                 />
               </div>
             </div>
@@ -572,6 +608,101 @@ function TaskField({ label, value }: { label: string; value: string }) {
     <div className="detail-kv">
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function WorkflowAssigneePicker({
+  copy,
+  disabled,
+  placeholder,
+  selectedUser,
+  value,
+  onSelect,
+  onClear
+}: {
+  copy: Record<string, string>;
+  disabled: boolean;
+  placeholder: string;
+  selectedUser: DirectoryUser | null;
+  value: string;
+  onSelect: (user: DirectoryUser) => void;
+  onClear: () => void;
+}) {
+  const [users, setUsers] = useState<DirectoryUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(false);
+    fetch(withAppBasePath("/api/workflow/assignees?limit=50"), {
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await readWorkflowActionError(response));
+        }
+        return response.json() as Promise<{ users?: DirectoryUser[] }>;
+      })
+      .then((payload) => {
+        setUsers(Array.isArray(payload.users) ? payload.users : []);
+      })
+      .catch((fetchError) => {
+        if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
+          return;
+        }
+        setUsers([]);
+        setError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  const people = useMemo(
+    () => directoryUsersToPeople(selectedUser ? [selectedUser, ...users] : users),
+    [selectedUser, users]
+  );
+
+  const emptyLabel = error ? copy.assigneeSearchFailed : loading ? copy.assigneeSearching : copy.assigneeNoResults;
+
+  return (
+    <div className="stack">
+      <DirectoryPersonPicker
+        disabled={disabled || loading || error || people.length === 0}
+        people={people}
+        selectedPersonId={value || null}
+        labels={{
+          title: copy.assigneeDirectory,
+          search: placeholder,
+          placeholder,
+          empty: emptyLabel,
+          close: copy.assigneeClear
+        }}
+        popoverMinWidth={360}
+        popoverPlacement="bottom-start"
+        onPersonSelect={(personId) => {
+          const selected = users.find((user) => user.subject_id === personId) ?? selectedUser;
+          if (selected) {
+            onSelect(selected);
+          }
+        }}
+      />
+      <p className="muted">{copy.assigneeHelp}</p>
+      {value ? (
+        <StratosButton type="button" disabled={disabled} onClick={onClear}>
+          {copy.assigneeClear}
+        </StratosButton>
+      ) : null}
+      {error ? <p className="muted">{copy.assigneeSearchFailed}</p> : null}
     </div>
   );
 }
@@ -625,4 +756,39 @@ function workflowActionLabel(action: RegistryWorkflowTaskAction, copy: Record<st
 async function readWorkflowActionError(response: Response): Promise<string> {
   const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
   return payload?.error?.message ?? `HTTP ${response.status}`;
+}
+
+function directoryUsersToPeople(users: DirectoryUser[]): DirectoryPersonOption[] {
+  const byId = new Map<string, DirectoryPersonOption>();
+  for (const user of users) {
+    if (user.enabled === false) {
+      continue;
+    }
+    const name = directoryUserDisplayName(user);
+    const title = user.username && user.username !== name ? user.username : null;
+    byId.set(user.subject_id, {
+      id: user.subject_id,
+      name,
+      email: user.email ?? null,
+      title,
+      department: user.groups?.[0] ?? null,
+      initials: initialsForName(name),
+      group: user.groups?.[0] ?? undefined
+    });
+  }
+  return Array.from(byId.values());
+}
+
+function directoryUserDisplayName(user: DirectoryUser): string {
+  return user.display_name || user.username || user.email?.split("@")[0] || user.subject_id;
+}
+
+function initialsForName(value: string): string {
+  const parts = value
+    .replace(/[_@.]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : value.slice(0, 2);
+  return initials.toUpperCase();
 }

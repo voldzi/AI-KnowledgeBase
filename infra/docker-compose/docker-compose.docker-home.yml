@@ -71,8 +71,6 @@ services:
       context: ../../apps/web
       args:
         NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-}
-      secrets:
-        - npmrc
     image: ${WEB_IMAGE:-akl/web:docker-home}
     restart: unless-stopped
     environment:
@@ -351,7 +349,3 @@ volumes:
   qdrant-data:
   ingestion-jobs:
   evaluation-reports:
-
-secrets:
-  npmrc:
-    file: ${AKL_NPMRC_SECRET_FILE:-/srv/akl/secrets/npmrc}

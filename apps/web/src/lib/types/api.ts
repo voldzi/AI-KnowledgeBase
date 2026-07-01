@@ -41,6 +41,8 @@ export interface DirectoryUser {
   subject_id: string;
   display_name: string | null;
   email: string | null;
+  username?: string | null;
+  enabled?: boolean;
   groups: string[];
 }
 

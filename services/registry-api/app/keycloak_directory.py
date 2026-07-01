@@ -32,17 +32,19 @@ class KeycloakDirectoryAdapter:
 
     def search_users(self, query: str, max_results: int = 20) -> list[DirectoryUser]:
         normalized = query.strip()
-        if len(normalized) < 2:
+        if normalized and len(normalized) < 2:
             return []
+        params = {
+            "briefRepresentation": "true",
+            "first": "0",
+            "max": str(min(max_results, 50)),
+        }
+        if normalized:
+            params["search"] = normalized
         response = self._request(
             "GET",
             f"/admin/realms/{self._settings.keycloak_realm}/users",
-            params={
-                "search": normalized,
-                "briefRepresentation": "true",
-                "first": "0",
-                "max": str(min(max_results, 50)),
-            },
+            params=params,
         )
         return [_directory_user_from_keycloak(item) for item in response.json()]
 

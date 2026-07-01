@@ -24,8 +24,8 @@ It does not directly access PostgreSQL, Qdrant, Ollama, vLLM or internal MinIO A
 ## Local Run
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 The app starts on `http://localhost:3000` by default.
@@ -53,7 +53,7 @@ AKL_RAG_API_BASE_URL=http://localhost:8082/api/v1 \
 AKL_GOVERNANCE_API_BASE_URL=http://localhost:8085/api/v1 \
 AKL_WEB_DEV_SUBJECT=user_dev \
 AKL_WEB_DEV_ROLES=admin,document_manager,reader \
-npm run dev -- --port 3002
+pnpm dev -- --port 3002
 ```
 
 ## Configuration
@@ -108,10 +108,10 @@ Integration logs include only service, operation, status, latency, request id, c
 ## Scripts
 
 ```bash
-npm run typecheck
+pnpm typecheck
 npm run test
 npm run test:e2e
-npm run build
+pnpm build
 ```
 
 `npm run test:e2e` starts the Next.js app on `127.0.0.1:3217` with mock API clients and verifies the first automated Document Workbench product paths from `docs/qa/document-workbench-product-qa.md`.
