@@ -3,7 +3,7 @@
 FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN corepack enable && corepack prepare pnpm@11.7.0 --activate && pnpm install --frozen-lockfile
+RUN npm install -g pnpm@11.7.0 && pnpm install --frozen-lockfile
 
 FROM node:26-alpine AS builder
 WORKDIR /app
@@ -12,7 +12,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN corepack enable && corepack prepare pnpm@11.7.0 --activate && pnpm run build
+RUN npm install -g pnpm@11.7.0 && pnpm run build
 
 FROM node:26-alpine AS runner
 WORKDIR /app
