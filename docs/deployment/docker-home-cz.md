@@ -9,25 +9,17 @@ Tento plán popisuje první produkční nasazení AKL / AI KnowledgeBase jako so
 - Dokumentové binární zdroje jsou oddělené od databáze a ukládají se do dedikovaného AKL prostoru nad SeaweedFS.
 - Keycloak používá STRATOS realm a STRATOS login theme. AKB je klient v tomto realm.
 - STRATOS aplikace nevolají AKL z browseru přímo. Volají serverový STRATOS adapter podle `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`.
-- Build webu používá `@stratos/ui` přes GitHub Packages a read-only `read:packages` token uložený jen jako serverový secret.
+- Build webu používá `@voldzi/stratos-ui` z veřejného npm registry. Pro tento
+  balíček se nepřidává scoped `.npmrc` na GitHub Packages.
 
 ## 0. Bezpečnostní Předpoklady
 
 1. Rotovat každý GitHub token, který byl někdy vložený do chatu, logu nebo shell historie.
-2. Vytvořit nový read-only token pouze pro GitHub Packages:
-   - scope: `read:packages`,
-   - bez zápisu do repozitářů,
-   - uložit mimo Git, například `/srv/akl/secrets/npmrc`.
-3. Pro build nepoužívat `.npmrc` v repozitáři. Použít Docker BuildKit secret deklarovaný v `infra/docker-compose/docker-compose.docker-home.yml`:
-
-```bash
-AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
-DOCKER_BUILDKIT=1 docker compose \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  build web
-```
-
-`scripts/deploy_docker_home.sh` umí při novější verzi Docker Compose použít i CLI volbu `build --secret`. Pokud ji serverová verze Compose nepodporuje, automaticky použije `build.secrets` z Compose souboru.
+2. Pro build nepoužívat `.npmrc` v repozitáři. Pokud produkční prostředí
+   používá GitHub Packages kvůli jiným balíčkům, musí být tento token uložený
+   mimo Git a nesmí přesměrovat `@voldzi/stratos-ui` mimo veřejný npm tarball v
+   `apps/web/pnpm-lock.yaml`.
+3. Web build používá `pnpm install --frozen-lockfile` nad veřejným npm registry. `@voldzi/stratos-ui` nesmí být přesměrovaný scoped `.npmrc` souborem na GitHub Packages.
 
 ## 1. Serverová Struktura
 
@@ -39,13 +31,18 @@ Na `docker.home.cz` připravit:
   env/
     akl.prod.env          # produkční env, bez commitu
   secrets/
-    npmrc                 # GitHub Packages read-only token
     keycloak-admin.env    # pouze lokální admin parametry pro bootstrap
   data/
     qdrant/
     logs/
   backups/
 ```
+
+Volitelný observability stack používá stejné checkout a env soubory. Hodnota
+`GRAFANA_ADMIN_USER` a `GRAFANA_ADMIN_PASSWORD` musí být nastavené v
+`/srv/akl/env/akl.prod.env`, ne v Gitu. Tento účet je jen break-glass přístup.
+Cílové přihlašování Grafany používá STRATOS Keycloak realm přes klienta
+`akb-grafana`; role `stratos_admin` se mapuje na Grafana `GrafanaAdmin`.
 
 Checkout:
 
@@ -88,6 +85,41 @@ docker compose -f infra/docker-compose/docker-compose.docker-home.yml config
 ```
 
 bez doplňování `--env-file`.
+
+Volitelný OpenTelemetry/observability override:
+
+```bash
+cd /srv/akl/repo
+docker compose \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  config
+
+docker compose \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  up -d
+```
+
+Tento override přidá `otel-collector`, `tempo`, `prometheus`, `grafana` a
+`loki` pouze do Docker management sítí. OTLP collector se nevystavuje veřejně.
+Grafana je dostupná přes AKB Caddy trasu `/akb/grafana/`, pokud je override
+spuštěný. Nepřesměrovávat veřejné STRATOS aplikace přímo na Prometheus, Tempo
+nebo Loki.
+
+Před zapnutím Grafana OIDC vytvořit nebo aktualizovat Keycloak klienta:
+
+```bash
+cd /srv/akl/repo
+KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
+./scripts/ensure_grafana_keycloak_client.sh
+./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
+docker compose \
+  --env-file /srv/akl/env/akl.prod.env \
+  -f infra/docker-compose/docker-compose.docker-home.yml \
+  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  up -d grafana
+```
 
 ## 2. PostgreSQL
 
@@ -187,12 +219,29 @@ Cílový realm:
   - `akl_admin`
   - `akl_document_manager`
   - `akl_document_owner`
+  - `akl_document_gestor`
   - `akl_reviewer`
   - `akl_reader`
   - `akl_auditor`
   - `akl_stratos_service`
-- AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`, `reader`, `auditor` a servisní role bez prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
+- AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`,
+  `document_owner`, `document_gestor`, `reader`, `auditor` a servisní role bez
+  prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
 - `akl-web` a `stratos-akl-adapter` mají audience mapper na `akl-api`; Registry API v produkci validuje `AKL_OIDC_AUDIENCE=akl-api`.
+- Pokud AKB/Keycloak provozní skript zapisuje service client hodnoty pro STRATOS
+  aplikace, na `docker.home.cz` musí cílit na `/srv/STRATOS/deploy/.env`.
+  STRATOS compose čte `deploy/.env`, ne root `.env`; zápis jinam se nepropíše
+  do běžícího `stratos-api` kontejneru.
+- Source-open smoke pro Budget & Contract se spouští přes
+  `scripts/stratos_source_open_smoke.py`. V Docker síti používejte
+  `BUDGET_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb`; metadata a registrace
+  dál používají `AKL_REGISTRY_BASE_URL=http://registry-api:8000/api/v1`.
+  Skript umí číst STRATOS runtime proměnné `STRATOS_AKB_OIDC_TOKEN_URL`,
+  `STRATOS_AKB_OIDC_CLIENT_ID`, `STRATOS_AKB_OIDC_CLIENT_SECRET`,
+  `STRATOS_AKB_OIDC_AUDIENCE` a `STRATOS_AKB_OIDC_SCOPE` z
+  `/srv/STRATOS/deploy/.env`. Pro smoke používejte parametry `--env-file`;
+  nesourcujte STRATOS `.env` přímo v shellu, protože některé hodnoty mohou
+  obsahovat mezery.
 
 Theme struktura v repu:
 
@@ -262,6 +311,20 @@ AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_QDRANT_COLLECTION=akl_document_chunks
 ```
 
+Pokud Ollama běží mimo AKB compose stack, nastavte explicitní kandidátní
+endpointy. AKB neprohledává lokální síť; zkusí pouze uvedené URL v pořadí:
+
+```env
+AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=3
+```
+
+Stanice `192.168.200.2` a `192.168.1.176` musí mít Ollama dostupnou na
+síťovém rozhraní dosažitelném z `docker.home.cz`, nejen na `127.0.0.1`.
+Nedostupný kandidát se při výběru endpointu přeskočí po
+`AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS`.
+
 Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`:
 
 - `AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb`
@@ -301,20 +364,18 @@ Veřejně vystavit jen STRATOS shell a aplikační path prefixy přes DMZ revers
 
 1. Připravit `/srv/akl/repo` z `main`.
 2. Připravit `/srv/akl/env/akl.prod.env`.
-3. Připravit `/srv/akl/secrets/npmrc`.
-4. Vytvořit Keycloak STRATOS realm a theme.
-5. Vytvořit prázdné PostgreSQL databáze.
-6. Připravit SeaweedFS prostor `akl-documents`.
-7. Spustit preflight:
+3. Vytvořit Keycloak STRATOS realm a theme.
+4. Vytvořit prázdné PostgreSQL databáze.
+5. Připravit SeaweedFS prostor `akl-documents`.
+6. Spustit preflight:
 
 ```bash
 cd /srv/akl/repo
 AKL_PROD_ENV_FILE=/srv/akl/env/akl.prod.env \
-AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
 ./scripts/docker_home_preflight.sh
 ```
 
-8. Pro plný nasazovací běh lze použít jednotný deploy skript:
+7. Pro plný nasazovací běh lze použít jednotný deploy skript:
 
 ```bash
 cd /srv/akl/repo
@@ -329,26 +390,25 @@ Skript provede:
 - image build,
 - `docker compose up -d`.
 
-9. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
+8. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
 
 ```bash
 cd /srv/akl/repo
 docker compose -f infra/docker-compose/docker-compose.docker-home.yml config >/tmp/akl-compose-rendered.yml
 ```
 
-10. Sestavit image:
+9. Sestavit image:
 
 ```bash
 cd /srv/akl/repo
-AKL_NPMRC_SECRET_FILE=/srv/akl/secrets/npmrc \
 DOCKER_BUILDKIT=1 docker compose \
   --env-file /srv/akl/env/akl.prod.env \
   -f infra/docker-compose/docker-compose.docker-home.yml \
   build
 ```
 
-11. Spustit DB migrace.
-12. Spustit služby:
+10. Spustit DB migrace.
+11. Spustit služby:
 
 ```bash
 docker compose \
@@ -397,6 +457,6 @@ Obnova se provádí z prázdného checkoutu `main`, obnovy DB/object storage/Qdr
 - Importovat připravený `infra/keycloak/realm-stratos.json` a namountovat `infra/keycloak/themes/stratos`.
 - Rozhodnout, zda SeaweedFS bude připojený přes S3 gateway nebo filesystem mount. Pro dlouhodobý provoz preferovat S3 adapter.
 - Nasadit přes připravený standalone compose profil `infra/docker-compose/docker-compose.docker-home.yml`.
-- Ověřit dostupnost `@stratos/ui` z GitHub Packages pomocí read-only tokenu.
+- Ověřit, že `apps/web/pnpm-lock.yaml` ukazuje `@voldzi/stratos-ui` na veřejný npm tarball.
 - Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL` a `AKL_WEB_SESSION_SECRET`.
 - Připravit monitoring a log retention pro `/srv/akl/data/logs`.

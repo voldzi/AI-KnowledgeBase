@@ -18,28 +18,30 @@ const env = {
   AKL_WEB_SESSION_SECRET: "test-session-secret"
 };
 
+function documentFixture(documentId: string) {
+  return {
+    document_id: documentId,
+    title: `Document ${documentId}`,
+    document_type: "directive",
+    status: "valid",
+    classification: "internal",
+    owner_id: "user_1",
+    owner: "user_1",
+    gestor_unit: "IT",
+    tags: [],
+    created_at: "2026-06-05T10:00:00Z",
+    updated_at: "2026-06-05T10:00:00Z"
+  };
+}
+
 describe("production API clients", () => {
   it("uses service base URLs and required request headers", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {
       calls.push([input, init]);
       return Response.json({
-        items: [
-          {
-            document_id: "doc_1",
-            title: "Test",
-            document_type: "directive",
-            status: "valid",
-            classification: "internal",
-            owner_id: "user_1",
-            owner: "user_1",
-            gestor_unit: "IT",
-            tags: [],
-            created_at: "2026-06-05T10:00:00Z",
-            updated_at: "2026-06-05T10:00:00Z"
-          }
-        ],
-        limit: 100,
+        items: [documentFixture("doc_1")],
+        limit: 200,
         offset: 0
       });
     };
@@ -58,11 +60,187 @@ describe("production API clients", () => {
     const [url, init] = calls[0];
     const headers = init?.headers as Headers;
 
-    assert.equal(url, "https://registry.local/api/v1/documents");
+    assert.equal(url, "https://registry.local/api/v1/documents?limit=200&offset=0");
     assert.equal(headers.get("Authorization"), "Bearer test-token");
     assert.equal(headers.get("X-Request-ID"), "req_test");
     assert.equal(headers.get("X-Correlation-ID"), "corr_test");
     assert.equal(init?.cache, "no-store");
+  });
+
+  it("loads additional document pages when the first page is full", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+      const count = offset === 0 ? 200 : 22;
+      return Response.json({
+        items: Array.from({ length: count }, (_, index) => documentFixture(`doc_${offset + index + 1}`)),
+        limit: 200,
+        offset
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const documents = await clients.registry.listDocuments(createMockContext());
+
+    assert.equal(documents.length, 222);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0][0], "https://registry.local/api/v1/documents?limit=200&offset=0");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/documents?limit=200&offset=200");
+  });
+
+  it("loads filtered document lists from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        items: [documentFixture("doc_contract_1")],
+        limit: 200,
+        offset: 0
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const documents = await clients.registry.listDocuments(createMockContext(), {
+      topics: ["smlouvy"],
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-1",
+      contextTags: ["budget-contract:contract-1"]
+    });
+
+    assert.equal(documents.length, 1);
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract%3Acontract-1&limit=200&offset=0"
+    );
+  });
+
+  it("loads document metadata summary from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        total_visible_documents: 2,
+        total_matched_documents: 1,
+        topics: [
+          {
+            topic: "digitalizace",
+            document_count: 1,
+            valid_or_approved_count: 1,
+            document_types: [{ key: "methodology", label: "methodology", count: 1 }],
+            classifications: [{ key: "internal", label: "internal", count: 1 }],
+            statuses: [{ key: "valid", label: "valid", count: 1 }],
+            owners: [{ key: "IT", label: "IT", count: 1 }],
+            example_documents: ["Metodika digitalizace"]
+          }
+        ],
+        by_document_type: [],
+        by_classification: [],
+        by_status: [],
+        by_owner: [],
+        warnings: ["REGISTRY_METADATA_SUMMARY"]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const summary = await clients.registry.getDocumentMetadataSummary(createMockContext(), {
+      topics: ["digitalizace", "řízení projektů"],
+      classification: "internal",
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-1",
+      externalRef: "contract:1",
+      contextTags: ["budget-contract:contract-1"]
+    });
+
+    assert.equal(summary.total_visible_documents, 2);
+    assert.equal(summary.topics[0].topic, "digitalizace");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents/metadata-summary?topic=digitalizace&topic=%C5%99%C3%ADzen%C3%AD+projekt%C5%AF&classification=internal&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&external_ref=contract%3A1&context_tag=budget-contract%3Acontract-1"
+    );
+  });
+
+  it("uses Registry API profile settings endpoints", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        subject_id: "user_1",
+        settings: {
+          core: { language: "cs" },
+          apps: { akb: { settingsMode: "sidebar" } }
+        },
+        roles: ["reader"],
+        groups: []
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({ subjectId: "user_1", roles: ["reader"] });
+
+    const current = await clients.registry.getProfileSettings(context);
+    const saved = await clients.registry.putProfileSettings(
+      {
+        settings: {
+          core: { language: "en" },
+          apps: { akb: { settingsMode: "fullscreen" } }
+        }
+      },
+      context
+    );
+
+    assert.equal(current.subject_id, "user_1");
+    assert.equal(saved.settings.apps.akb.settingsMode, "sidebar");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/user-profiles/me/settings");
+    assert.equal(calls[0][1]?.method, "GET");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/user-profiles/me/settings");
+    assert.equal(calls[1][1]?.method, "PUT");
+  });
+
+  it("searches workflow assignees through the non-admin directory endpoint", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        users: [
+          {
+            subject_id: "user_reviewer",
+            display_name: "Revizor dokumentu",
+            email: "revizor@example.cz",
+            username: "revizor",
+            enabled: true,
+            groups: ["reviewers"]
+          }
+        ]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const users = await clients.registry.searchDirectoryUsers("revizor", createMockContext(), 12);
+
+    assert.equal(users[0].subject_id, "user_reviewer");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/directory/users?limit=12&query=revizor");
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
+  it("loads default workflow assignees without a search query", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({ users: [] });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const users = await clients.registry.searchDirectoryUsers("", createMockContext(), 50);
+
+    assert.equal(users.length, 0);
+    assert.equal(calls[0][0], "https://registry.local/api/v1/directory/users?limit=50");
+    assert.equal(calls[0][1]?.method, "GET");
   });
 
   it("maps upstream error bodies to ApiClientError", async () => {
@@ -130,6 +308,19 @@ describe("production API clients", () => {
           warnings: []
         });
       }
+      if (String(input).includes("/assistant/chat")) {
+        return Response.json({
+          response_type: "answer",
+          conversation_id: "conv_test",
+          message: "Answered.",
+          answer: "Answered.",
+          citations: [],
+          confidence: "medium",
+          follow_up_questions: [],
+          suggested_actions: [],
+          current_context: {}
+        });
+      }
       return Response.json({
         suggestions: [
           {
@@ -151,14 +342,110 @@ describe("production API clients", () => {
 
     const response = await clients.rag.assistantSuggestions(context);
     const source = await clients.rag.openAssistantCitation("chunk_1", context);
+    const chat = await clients.rag.assistantChat(
+      {
+        user_id: "employee_1",
+        conversation_id: null,
+        message: "How do I request access?",
+        context: {},
+        mode: "ask",
+        response_language: "cs"
+      },
+      context
+    );
 
     assert.equal(response.suggestions[0].label, "Nový přístup");
     assert.equal(source.chunk_id, "chunk_1");
-    assert.equal(calls.length, 2);
+    assert.equal(chat.conversation_id, "conv_test");
+    assert.equal(calls.length, 3);
     assert.equal(calls[0][0], "https://rag.local/api/v1/assistant/suggestions");
     assert.equal(calls[0][1]?.method, "GET");
     assert.equal(calls[1][0], "https://rag.local/api/v1/assistant/citations/chunk_1/open?subject_id=employee_1");
     assert.equal(calls[1][1]?.method, "GET");
+    assert.equal(calls[2][0], "https://rag.local/api/v1/assistant/chat");
+    assert.equal(calls[2][1]?.method, "POST");
+  });
+
+  it("uses Registry conversation-history endpoints for persisted assistant threads", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const conversation = {
+      conversation_id: "conv_1",
+      user_id: "employee_1",
+      status: "active",
+      title: "Digitalizace",
+      visibility: "shared",
+      retention_until: "2026-12-31T00:00:00Z",
+      archived_at: null,
+      created_at: "2026-06-22T10:00:00Z",
+      updated_at: "2026-06-22T10:05:00Z",
+      shared_with: [
+        {
+          conversation_share_id: "share_1",
+          subject_type: "group",
+          subject_id: "projectflow",
+          permission: "viewer",
+          status: "active",
+          created_by: "employee_1",
+          created_at: "2026-06-22T10:02:00Z",
+          updated_at: "2026-06-22T10:02:00Z"
+        }
+      ],
+      messages: [
+        {
+          message_id: "msg_1",
+          role: "user",
+          content: "Kolik máme dokumentů k digitalizaci?",
+          response_type: null,
+          citations: [],
+          metadata: {},
+          created_at: "2026-06-22T10:00:00Z"
+        }
+      ]
+    };
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      if (String(input).includes("/assistant/conversation-history?")) {
+        return Response.json({
+          items: [{ ...conversation, message_count: 1 }],
+          limit: 50,
+          offset: 0
+        });
+      }
+      return Response.json(conversation);
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({ subjectId: "employee_1", accessToken: "test-token" });
+
+    await clients.registry.listAssistantConversations(context, true);
+    await clients.registry.getAssistantConversation("conv_1", context);
+    await clients.registry.appendAssistantConversationMessages(
+      "conv_1",
+      {
+        user_id: "employee_1",
+        messages: [{ role: "user", content: "Navazující dotaz" }]
+      },
+      context
+    );
+    await clients.registry.updateAssistantConversation("conv_1", { status: "archived" }, context);
+    await clients.registry.replaceAssistantConversationShares(
+      "conv_1",
+      {
+        shares: [{ subject_type: "group", subject_id: "projectflow", permission: "viewer" }]
+      },
+      context
+    );
+
+    assert.equal(calls[0][0], "https://registry.local/api/v1/assistant/conversation-history?include_archived=true&limit=50&offset=0");
+    assert.equal(calls[0][1]?.method, "GET");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[1][1]?.method, "GET");
+    assert.equal(calls[2][0], "https://registry.local/api/v1/assistant/conversations/conv_1/messages");
+    assert.equal(calls[2][1]?.method, "POST");
+    assert.equal(calls[3][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[3][1]?.method, "PATCH");
+    assert.equal(calls[4][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/shares");
+    assert.equal(calls[4][1]?.method, "PUT");
   });
 
   it("loads workflow tasks from the Registry API", async () => {

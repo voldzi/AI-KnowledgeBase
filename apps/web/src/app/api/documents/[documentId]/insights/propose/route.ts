@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import { readGovernanceSourceContent } from "@/lib/upload/governance-source-content";
 import type { Document, DocumentVersion, GovernanceCitation } from "@/lib/types";
 
@@ -29,6 +30,8 @@ export async function POST(_: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
     const requestContext = await getServerRequestContext();
+    const forbidden = requireApiAccess(requestContext, "knowledge_workspace");
+    if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const [document, versions] = await Promise.all([
       clients.registry.getDocument(documentId, requestContext),

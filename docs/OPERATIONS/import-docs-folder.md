@@ -1,6 +1,9 @@
 # Import Docs Folder
 
 `tools/import_docs_folder.py` imports local Markdown documentation into AKL as controlled project documentation.
+It is a Markdown-source importer. If the Markdown file is only a text derivative of an original PDF, import the
+original PDF as the current source version with `tools/import_original_pdf_versions.py`; see
+`docs/OPERATIONS/import-original-pdf-sources.md`.
 
 ## Prerequisites
 
@@ -57,6 +60,22 @@ python3 tools/import_docs_folder.py \
 - `reindex`: if the document exists, reuse its latest version and run ingestion again. If it does not exist, create the document and first version.
 
 The idempotency key is Registry document metadata field `source_path`. Repeated runs do not create duplicate Document rows for the same Markdown path.
+
+## Original Source Files
+
+Markdown imports store the Markdown file as the Registry `source_file_uri` and as the object shown by signed source
+opening. This is correct for repository documentation and Markdown-native controlled documents.
+
+For corpora prepared from external PDFs, keep the Markdown derivative only as ingestion/import working material and
+run the original PDF import after the Markdown documents exist:
+
+```bash
+python3 tools/import_original_pdf_versions.py --report reports/original_pdf_import_report.dry-run.json
+python3 tools/import_original_pdf_versions.py --apply --report reports/original_pdf_import_report.json
+```
+
+The PDF import creates draft PDF versions, ingests them, publishes them only after chunks are created, and supersedes
+the prior Markdown version. Documents without a matching raw PDF remain Markdown-backed until the original is supplied.
 
 ## Reports
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import type { ReplaceDocumentAssignmentsRequest } from "@/lib/types";
 
 import { documentWorkflowBridgeError } from "../../errors";
@@ -31,6 +32,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const { documentId } = await context.params;
     const payload = (await request.json()) as ReplaceDocumentAssignmentsRequest;
     const requestContext = await getServerRequestContext();
+    const forbidden = requireApiAccess(requestContext, "knowledge_workspace");
+    if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const assignments = await clients.registry.replaceDocumentAssignments(documentId, payload, requestContext);
 

@@ -4,7 +4,10 @@ import type {
   CreateDocumentRequest,
   CreateVersionRequest,
   Document,
+  DocumentListOptions,
   DocumentAssignment,
+  DocumentMetadataSummary,
+  DocumentMetadataSummaryOptions,
   DocumentVersion,
   ReplaceDocumentAssignmentsRequest
 } from "./documents";
@@ -21,7 +24,12 @@ import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTask, WorkflowTask
 import type {
   AssistantChatRequest,
   AssistantChatResponse,
+  AssistantConversationDetail,
+  AssistantConversationListResponse,
+  AssistantConversationMessageAppendRequest,
+  AssistantConversationPatchRequest,
   AssistantConversationResponse,
+  AssistantConversationShareReplaceRequest,
   AssistantSuggestionsResponse,
   RagAnswer,
   RagQueryRequest,
@@ -33,6 +41,8 @@ export interface DirectoryUser {
   subject_id: string;
   display_name: string | null;
   email: string | null;
+  username?: string | null;
+  enabled?: boolean;
   groups: string[];
 }
 
@@ -54,6 +64,22 @@ export interface UpsertRoleMappingRequest {
   status: string;
 }
 
+export interface ProfileSettingsBundle {
+  core: Record<string, unknown>;
+  apps: Record<string, Record<string, unknown>>;
+}
+
+export interface ProfileSettingsResponse {
+  subject_id: string;
+  settings: ProfileSettingsBundle;
+  roles: string[];
+  groups: string[];
+}
+
+export interface ProfileSettingsPutRequest {
+  settings: ProfileSettingsBundle;
+}
+
 export interface ApiRequestContext {
   subjectId: string;
   roles?: string[];
@@ -73,7 +99,11 @@ export interface ApiErrorBody {
 }
 
 export interface RegistryApiClient {
-  listDocuments(context: ApiRequestContext): Promise<Document[]>;
+  listDocuments(context: ApiRequestContext, options?: DocumentListOptions): Promise<Document[]>;
+  getDocumentMetadataSummary(
+    context: ApiRequestContext,
+    options?: DocumentMetadataSummaryOptions
+  ): Promise<DocumentMetadataSummary>;
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document>;
   createDocument(request: CreateDocumentRequest, context: ApiRequestContext): Promise<Document>;
   listDocumentAssignments(documentId: string, context: ApiRequestContext): Promise<DocumentAssignment[]>;
@@ -112,6 +142,25 @@ export interface RegistryApiClient {
   importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser>;
   upsertRoleMapping(request: UpsertRoleMappingRequest, context: ApiRequestContext): Promise<RoleMapping>;
   updateRoleMappingStatus(roleMappingId: string, status: string, context: ApiRequestContext): Promise<RoleMapping>;
+  getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse>;
+  putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse>;
+  listAssistantConversations(context: ApiRequestContext, includeArchived?: boolean): Promise<AssistantConversationListResponse>;
+  getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail>;
+  appendAssistantConversationMessages(
+    conversationId: string,
+    request: AssistantConversationMessageAppendRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail>;
+  updateAssistantConversation(
+    conversationId: string,
+    request: AssistantConversationPatchRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail>;
+  replaceAssistantConversationShares(
+    conversationId: string,
+    request: AssistantConversationShareReplaceRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail>;
 }
 
 export interface IngestionApiClient {

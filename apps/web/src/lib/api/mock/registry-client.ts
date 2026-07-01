@@ -4,13 +4,25 @@ import type {
   AuditEvent,
   AuditEventListOptions,
   AuthorizationHint,
+  AssistantConversationDetail,
+  AssistantConversationListResponse,
+  AssistantConversationMessageAppendRequest,
+  AssistantConversationPatchRequest,
+  AssistantConversationShareReplaceRequest,
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
   DirectoryUser,
   Document,
+  DocumentListOptions,
   DocumentAssignment,
+  DocumentMetadataSummary,
+  DocumentMetadataSummaryBucket,
+  DocumentMetadataSummaryOptions,
+  DocumentMetadataSummaryTopic,
   DocumentVersion,
+  ProfileSettingsPutRequest,
+  ProfileSettingsResponse,
   RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
@@ -22,14 +34,74 @@ import { ApiClientError } from "@/lib/types";
 
 import { cloneMock, mockAuditEvents, mockAuthorization, mockDocuments, mockVersions } from "./data";
 
+const mockProfileSettings = new Map<string, ProfileSettingsResponse>();
+const mockDirectoryUsers: DirectoryUser[] = [
+  {
+    subject_id: "mock-user-1",
+    display_name: "Jan Novák",
+    email: "jan.novak@stratos.local",
+    username: "jan.novak",
+    groups: ["staff"]
+  },
+  {
+    subject_id: "mock-user-2",
+    display_name: "Eva Horáková",
+    email: "eva.horakova@stratos.local",
+    username: "eva.horakova",
+    groups: ["staff", "admins"]
+  },
+  {
+    subject_id: "mock-user-3",
+    display_name: "Petr Svoboda",
+    email: "petr.svoboda@stratos.local",
+    username: "petr.svoboda",
+    groups: ["reviewers"]
+  }
+];
+
 export class MockRegistryClient implements RegistryApiClient {
   private readonly documents = cloneMock(mockDocuments);
   private readonly versions = cloneMock(mockVersions);
   private readonly auditEvents = cloneMock(mockAuditEvents);
   private readonly workflowTaskOverrides = new Map<string, RegistryWorkflowTask>();
+  private readonly assistantConversations = new Map<string, AssistantConversationDetail>();
 
-  async listDocuments(_context: ApiRequestContext): Promise<Document[]> {
-    return cloneMock(this.documents);
+  async listDocuments(_context: ApiRequestContext, options: DocumentListOptions = {}): Promise<Document[]> {
+    return cloneMock(this.documents.filter((document) => documentMatchesListOptions(document, options)));
+  }
+
+  async getDocumentMetadataSummary(
+    _context: ApiRequestContext,
+    options: DocumentMetadataSummaryOptions = {}
+  ): Promise<DocumentMetadataSummary> {
+    const topics = options.topics?.length ? options.topics : ["all documents"];
+    const documents = this.documents.filter((document) => documentMatchesSummaryOptions(document, options));
+    const topicSummaries = topics.map((topic) => {
+      const topicDocuments = isAllDocumentsTopic(topic)
+        ? documents
+        : documents.filter((document) => documentMatchesTopic(document, topic));
+      return documentMetadataSummaryTopic(topic, topicDocuments);
+    });
+    const matchedIds = new Set<string>();
+    topicSummaries.forEach((summary) => {
+      if (isAllDocumentsTopic(summary.topic)) {
+        documents.forEach((document) => matchedIds.add(document.document_id));
+      } else {
+        documents
+          .filter((document) => documentMatchesTopic(document, summary.topic))
+          .forEach((document) => matchedIds.add(document.document_id));
+      }
+    });
+    return {
+      total_visible_documents: documents.length,
+      total_matched_documents: matchedIds.size,
+      topics: topicSummaries,
+      by_document_type: summaryBuckets(documents.map((document) => document.document_type)),
+      by_classification: summaryBuckets(documents.map((document) => document.classification)),
+      by_status: summaryBuckets(documents.map((document) => document.status)),
+      by_owner: summaryBuckets(documents.map((document) => document.gestor_unit ?? document.owner ?? document.owner_id)),
+      warnings: ["REGISTRY_METADATA_SUMMARY"]
+    };
   }
 
   async getDocument(documentId: string, _context: ApiRequestContext): Promise<Document> {
@@ -45,7 +117,7 @@ export class MockRegistryClient implements RegistryApiClient {
     const {
       access_policies: _accessPolicies,
       assignments: assignmentRequests,
-      metadata: _metadata,
+      metadata,
       ...documentRequest
     } = request;
     const documentId = `doc_${this.documents.length + 201}`;
@@ -56,6 +128,7 @@ export class MockRegistryClient implements RegistryApiClient {
       created_at: now,
       updated_at: now,
       owner: request.owner_id,
+      metadata: metadata ?? {},
       assignments: assignmentRequests?.map((assignment, index) => ({
         assignment_id: `assign_${documentId}_${index + 1}`,
         document_id: documentId,
@@ -403,11 +476,20 @@ export class MockRegistryClient implements RegistryApiClient {
     return cloneMock(event);
   }
 
-  async searchDirectoryUsers(_query: string, _context: ApiRequestContext, _limit = 20): Promise<DirectoryUser[]> {
-    return [
-      { subject_id: "mock-user-1", display_name: "Jan Novák", email: "jan.novak@example.cz", groups: ["staff"] },
-      { subject_id: "mock-user-2", display_name: "Eva Horáková", email: "eva.horakova@example.cz", groups: ["staff", "admins"] }
-    ];
+  async searchDirectoryUsers(query: string, _context: ApiRequestContext, limit = 20): Promise<DirectoryUser[]> {
+    const normalizedQuery = normalizeMockDirectoryQuery(query);
+    const users = normalizedQuery
+      ? mockDirectoryUsers.filter((user) =>
+        normalizeMockDirectoryQuery([
+          user.display_name,
+          user.email,
+          user.username,
+          user.subject_id,
+          ...(user.groups ?? [])
+        ].filter(Boolean).join(" ")).includes(normalizedQuery)
+      )
+      : mockDirectoryUsers;
+    return cloneMock(users.slice(0, limit));
   }
 
   async listRoleMappings(_context: ApiRequestContext, _includeRemoved = false): Promise<RoleMapping[]> {
@@ -443,12 +525,182 @@ export class MockRegistryClient implements RegistryApiClient {
     };
   }
 
+  async getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    return cloneMock(profileSettingsForContext(context));
+  }
+
+  async putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    const response: ProfileSettingsResponse = {
+      subject_id: context.subjectId,
+      settings: {
+        core: { ...request.settings.core },
+        apps: Object.fromEntries(
+          Object.entries(request.settings.apps).map(([key, value]) => [key, { ...value }])
+        )
+      },
+      roles: context.roles ?? [],
+      groups: context.groups ?? []
+    };
+    mockProfileSettings.set(context.subjectId, cloneMock(response));
+    return cloneMock(response);
+  }
+
+  async listAssistantConversations(
+    context: ApiRequestContext,
+    includeArchived = false
+  ): Promise<AssistantConversationListResponse> {
+    const items = [...this.assistantConversations.values()]
+      .filter((conversation) => conversation.user_id === context.subjectId || conversation.shared_with.some((share) => share.status === "active" && share.subject_id === context.subjectId))
+      .filter((conversation) => includeArchived || conversation.status !== "archived")
+      .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+      .map((conversation) => ({
+        conversation_id: conversation.conversation_id,
+        user_id: conversation.user_id,
+        status: conversation.status,
+        title: conversation.title,
+        visibility: conversation.visibility,
+        retention_until: conversation.retention_until,
+        archived_at: conversation.archived_at,
+        created_at: conversation.created_at,
+        updated_at: conversation.updated_at,
+        shared_with: conversation.shared_with,
+        message_count: conversation.messages.length
+      }));
+    return cloneMock({ items, limit: 50, offset: 0 });
+  }
+
+  async getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail> {
+    const conversation = this.requireAssistantConversation(conversationId);
+    if (conversation.user_id !== context.subjectId && !conversation.shared_with.some((share) => share.status === "active" && share.subject_id === context.subjectId)) {
+      throw new ApiClientError("Conversation access denied", 403, "CONVERSATION_ACCESS_DENIED", "mock-trace");
+    }
+    return cloneMock(conversation);
+  }
+
+  async appendAssistantConversationMessages(
+    conversationId: string,
+    request: AssistantConversationMessageAppendRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    const now = new Date().toISOString();
+    const existing = this.assistantConversations.get(conversationId);
+    const conversation: AssistantConversationDetail = existing ?? {
+      conversation_id: conversationId,
+      user_id: request.user_id || context.subjectId,
+      status: "active",
+      title: request.title ?? null,
+      visibility: request.visibility ?? "private",
+      retention_until: request.retention_until ?? null,
+      archived_at: null,
+      created_at: now,
+      updated_at: now,
+      shared_with: [],
+      messages: []
+    };
+    if (conversation.user_id !== request.user_id && conversation.user_id !== context.subjectId) {
+      throw new ApiClientError("Conversation belongs to a different user", 403, "CONVERSATION_USER_MISMATCH", "mock-trace");
+    }
+    const appended = request.messages.map((message, index) => ({
+      message_id: `msg_mock_${Date.now()}_${index}`,
+      role: message.role,
+      content: message.content,
+      response_type: message.response_type ?? null,
+      citations: message.citations ?? [],
+      metadata: message.metadata ?? {},
+      created_at: now
+    }));
+    const updated: AssistantConversationDetail = {
+      ...conversation,
+      title: conversation.title ?? request.title ?? null,
+      visibility: request.visibility ?? conversation.visibility,
+      retention_until: request.retention_until ?? conversation.retention_until,
+      updated_at: now,
+      messages: [...conversation.messages, ...appended]
+    };
+    this.assistantConversations.set(conversationId, cloneMock(updated));
+    return cloneMock(updated);
+  }
+
+  async updateAssistantConversation(
+    conversationId: string,
+    request: AssistantConversationPatchRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    const conversation = await this.getAssistantConversation(conversationId, context);
+    if (conversation.user_id !== context.subjectId) {
+      throw new ApiClientError("Conversation owner required", 403, "CONVERSATION_OWNER_REQUIRED", "mock-trace");
+    }
+    const updated: AssistantConversationDetail = {
+      ...conversation,
+      title: request.title === undefined ? conversation.title : request.title,
+      status: request.status ?? conversation.status,
+      visibility: request.visibility ?? conversation.visibility,
+      retention_until: request.retention_until === undefined ? conversation.retention_until : request.retention_until,
+      archived_at: request.status === "archived" ? new Date().toISOString() : request.status === "active" ? null : conversation.archived_at,
+      updated_at: new Date().toISOString()
+    };
+    this.assistantConversations.set(conversationId, cloneMock(updated));
+    return cloneMock(updated);
+  }
+
+  async replaceAssistantConversationShares(
+    conversationId: string,
+    request: AssistantConversationShareReplaceRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    const conversation = await this.getAssistantConversation(conversationId, context);
+    if (conversation.user_id !== context.subjectId) {
+      throw new ApiClientError("Conversation owner required", 403, "CONVERSATION_OWNER_REQUIRED", "mock-trace");
+    }
+    const now = new Date().toISOString();
+    const updated: AssistantConversationDetail = {
+      ...conversation,
+      visibility: request.shares.length ? request.visibility ?? "shared" : "private",
+      shared_with: request.shares.map((share, index) => ({
+        conversation_share_id: `share_mock_${index + 1}`,
+        subject_type: share.subject_type,
+        subject_id: share.subject_id,
+        permission: share.permission,
+        status: "active",
+        created_by: context.subjectId,
+        created_at: now,
+        updated_at: now
+      })),
+      updated_at: now
+    };
+    this.assistantConversations.set(conversationId, cloneMock(updated));
+    return cloneMock(updated);
+  }
+
   private requireDocument(documentId: string): Document {
     const document = this.documents.find((candidate) => candidate.document_id === documentId);
     if (!document) {
       throw new ApiClientError("Document not found", 404, "DOCUMENT_NOT_FOUND", "mock-trace");
     }
     return document;
+  }
+
+  private requireAssistantConversation(conversationId: string): AssistantConversationDetail {
+    const existing = this.assistantConversations.get(conversationId);
+    if (existing) {
+      return existing;
+    }
+    const now = new Date().toISOString();
+    const created: AssistantConversationDetail = {
+      conversation_id: conversationId,
+      user_id: "user_dev",
+      status: "active",
+      title: null,
+      visibility: "private",
+      retention_until: null,
+      archived_at: null,
+      created_at: now,
+      updated_at: now,
+      shared_with: [],
+      messages: []
+    };
+    this.assistantConversations.set(conversationId, created);
+    return created;
   }
 }
 
@@ -488,6 +740,206 @@ function auditEventMatchesOptions(event: AuditEvent, options: AuditEventListOpti
     return false;
   }
   return true;
+}
+
+function documentMatchesSummaryOptions(document: Document, options: DocumentMetadataSummaryOptions): boolean {
+  if (options.status && document.status !== options.status) {
+    return false;
+  }
+  if (options.classification && document.classification !== options.classification) {
+    return false;
+  }
+  if (options.documentType && document.document_type !== options.documentType) {
+    return false;
+  }
+  if (options.ownerId && document.owner_id !== options.ownerId) {
+    return false;
+  }
+  if (options.tag && !document.tags.includes(options.tag)) {
+    return false;
+  }
+  if (options.tenantId && metadataString(document.metadata, "tenant_id") !== options.tenantId) {
+    return false;
+  }
+  if (options.externalSystem && metadataString(document.metadata, "external_system") !== options.externalSystem) {
+    return false;
+  }
+  if (options.entityType && metadataString(document.metadata, "entity_type") !== options.entityType) {
+    return false;
+  }
+  if (options.entityId && metadataString(document.metadata, "entity_id") !== options.entityId) {
+    return false;
+  }
+  if (options.externalRef && metadataString(document.metadata, "external_ref") !== options.externalRef) {
+    return false;
+  }
+  if (options.contextTags?.length && !options.contextTags.every((tag) => documentMatchesContextTag(document, tag))) {
+    return false;
+  }
+  return true;
+}
+
+function documentMatchesListOptions(document: Document, options: DocumentListOptions): boolean {
+  if (!documentMatchesSummaryOptions(document, options)) {
+    return false;
+  }
+  const topics = options.topics?.filter((topic) => !isAllDocumentsTopic(topic)) ?? [];
+  if (!topics.length) {
+    return true;
+  }
+  return topics.some((topic) => documentMatchesTopic(document, topic));
+}
+
+function documentMetadataSummaryTopic(topic: string, documents: Document[]): DocumentMetadataSummaryTopic {
+  return {
+    topic,
+    document_count: documents.length,
+    valid_or_approved_count: documents.filter((document) => document.status === "valid" || document.status === "approved").length,
+    document_types: summaryBuckets(documents.map((document) => document.document_type)),
+    classifications: summaryBuckets(documents.map((document) => document.classification)),
+    statuses: summaryBuckets(documents.map((document) => document.status)),
+    owners: summaryBuckets(documents.map((document) => document.gestor_unit ?? document.owner ?? document.owner_id)),
+    example_documents: documents.slice(0, 5).map((document) => document.title)
+  };
+}
+
+function summaryBuckets(values: string[]): DocumentMetadataSummaryBucket[] {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (value) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "cs"))
+    .slice(0, 12)
+    .map(([key, count]) => ({ key, label: key, count }));
+}
+
+function documentMatchesTopic(document: Document, topic: string): boolean {
+  const topicText = normalizeSummaryText(topic);
+  if (!topicText) {
+    return false;
+  }
+  const haystack = normalizeSummaryText([
+    document.document_id,
+    document.title,
+    document.document_type,
+    document.status,
+    document.classification,
+    document.owner_id,
+    document.owner,
+    document.gestor_unit ?? "",
+    ...document.tags,
+    ...metadataSummaryValues(document.metadata)
+  ].join(" "));
+  if (haystack.includes(topicText)) {
+    return true;
+  }
+  const tokens = topicText.split(/\s+/).filter((token) => token.length >= 3);
+  return tokens.length > 0 && tokens.every((token) => haystack.includes(token));
+}
+
+function metadataSummaryValues(metadata: Record<string, unknown> | undefined): string[] {
+  if (!metadata) {
+    return [];
+  }
+  return Object.entries(metadata).flatMap(([key, value]) => metadataEntryValues(key, value));
+}
+
+function profileSettingsForContext(context: ApiRequestContext): ProfileSettingsResponse {
+  const existing = mockProfileSettings.get(context.subjectId);
+  if (existing) {
+    return {
+      ...existing,
+      roles: context.roles ?? [],
+      groups: context.groups ?? []
+    };
+  }
+  return {
+    subject_id: context.subjectId,
+    settings: {
+      core: {},
+      apps: {
+        akb: {}
+      }
+    },
+    roles: context.roles ?? [],
+    groups: context.groups ?? []
+  };
+}
+
+function metadataEntryValues(key: string, value: unknown): string[] {
+    if (value === null || value === undefined) {
+      return [key];
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return [key, String(value)];
+    }
+    if (Array.isArray(value)) {
+      return [key, ...value.filter((item) => ["string", "number", "boolean"].includes(typeof item)).map(String)];
+    }
+    if (typeof value === "object") {
+      return [
+        key,
+        ...Object.entries(value as Record<string, unknown>).flatMap(([nestedKey, nestedValue]) =>
+          metadataEntryValues(nestedKey, nestedValue)
+        )
+      ];
+    }
+    return [key];
+}
+
+function metadataString(metadata: Record<string, unknown> | undefined, key: string): string | null {
+  const direct = metadata?.[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+  for (const nestedKey of ["stratos", "external"]) {
+    const nested = metadata?.[nestedKey];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const value = (nested as Record<string, unknown>)[key];
+      if (typeof value === "string") {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function documentMatchesContextTag(document: Document, contextTag: string): boolean {
+  const normalized = normalizeSummaryText(contextTag);
+  if (!normalized) {
+    return true;
+  }
+  if (document.tags.some((tag) => normalizeSummaryText(tag) === normalized)) {
+    return true;
+  }
+  return metadataSummaryValues(document.metadata).some((value) => normalizeSummaryText(value).includes(normalized));
+}
+
+function normalizeSummaryText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._/-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeMockDirectoryQuery(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._@/-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isAllDocumentsTopic(topic: string): boolean {
+  return ["all documents", "vsechny dokumenty", "dokumenty"].includes(normalizeSummaryText(topic));
 }
 
 function assignmentFor(document: Document, roles: DocumentAssignment["role"][]): DocumentAssignment | undefined {

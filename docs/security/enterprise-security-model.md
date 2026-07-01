@@ -17,11 +17,26 @@ Expected identity inputs:
 
 Service-to-service calls must preserve correlation headers and must not log full user questions, answers, source text, secrets, or access tokens.
 
+AKB web stores OIDC browser credentials only inside sealed HTTP-only cookies:
+`akl_session` carries only compact session claims, while `akl_refresh` carries
+the refresh token separately. The access token is not persisted in a browser
+cookie; browser-facing BFF routes obtain it server-side from the sealed refresh
+cookie before calling Registry or RAG. Splitting and minimizing the cookies keeps
+the browser session below proxy and browser header limits and still prevents
+JavaScript from reading credentials. The browser never receives a readable
+refresh token and must not call Registry, RAG, or storage services directly.
+
+The OIDC callback consumes the one-time authorization code server-side, sets the
+sealed session cookie, and returns a short no-store page that uses
+`location.replace()` to leave the callback URL. This keeps stale authorization
+codes out of browser history and prevents repeated callback replay.
+
 ## Roles
 
 Initial role model:
 
-- `employee`: can use Employee Assistant and open authorized sources.
+- authenticated OIDC user: can enter the Employee Chat Portal shell.
+- `employee`: can open authorized sources when backend policy grants access.
 - `reader`: can read allowed documents and ask sourced questions.
 - `document_manager`: can create documents, versions, imports, and reindex jobs.
 - `knowledge_admin`: can manage domains, metadata rules, and knowledge quality.
@@ -32,6 +47,11 @@ Initial role model:
 ## Authorization
 
 Authorization is enforced in the backend, not in the browser.
+
+The Employee Chat Portal is intentionally available to every authenticated OIDC
+user. This only grants access to the chat shell. Document search, citation
+opening, source preview, report rows, and downloads remain permission-scoped by
+AKB Registry/RAG using the current user identity.
 
 RAG retrieval filters chunks through Registry authorization before answer composition. If sources are denied or insufficient, the assistant must return a no-answer or handoff state instead of inventing an answer.
 
@@ -52,7 +72,7 @@ Documents use:
 - `restricted`,
 - `confidential`.
 
-Employee Assistant defaults to `classification_max=internal` until enterprise policy maps roles and groups to higher classifications.
+Employee Chat Portal defaults to `classification_max=internal` until enterprise policy maps roles and groups to higher classifications.
 
 ## Assistant Audit Events
 
@@ -65,7 +85,7 @@ The assistant workflow emits these event types:
 - `assistant.handoff_recommended`
 - `assistant.citation_opened`
 
-Employee Assistant source opening uses `GET /api/v1/assistant/citations/{chunk_id}/open` and audits `assistant.citation_opened`. Admin/technical citation viewer flows can still use the generic `citation.opened` event.
+Employee Chat Portal source opening uses `GET /api/v1/assistant/citations/{chunk_id}/open` and audits `assistant.citation_opened`. Admin/technical citation viewer flows can still use the generic `citation.opened` event.
 
 Audit metadata may include hashes, counts, ids, confidence, warnings, and cited document ids. It must not store full question or answer text by default.
 
@@ -73,6 +93,16 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
 
 - Replace dev auth with OIDC in pilot.
 - Add service credentials and audience-bound tokens for backend calls.
-- Persist assistant conversations only after retention and privacy policy are defined.
-- Add role/domain authorization tests for restricted and confidential documents.
 - Add audit review dashboards for no-answer, handoff, and source-opening events.
+
+## Implemented Chat Security Controls
+
+- Assistant conversations are persisted only with explicit ownership, default
+  180-day retention, archive support, and user/group sharing records.
+- Server-side web route guards redirect employee chat-only users away from
+  knowledge-management and admin surfaces.
+- Mutating web BFF routes for document administration, governance, workflow
+  actions, upload preflight, and admin access require management/admin roles.
+- Regression tests cover restricted and confidential document filtering for
+  reader metadata reports so chat inventory answers cannot count or list
+  documents outside the caller's AKB permissions.

@@ -83,6 +83,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/query-stream:
+    post:
+      tags:
+      - rag
+      summary: Query Stream
+      operationId: query_stream_api_v1_rag_query_stream_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RagQueryRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/rag/answer:
     post:
       tags:
@@ -313,6 +337,127 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/profiles:
+    get:
+      tags:
+      - stratos-extractions
+      summary: Stratos Extraction Profiles
+      operationId: stratos_extraction_profiles_api_v1_stratos_extractions_profiles_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractExtractionProfilesResponse'
+  /api/v1/stratos/extractions/contracts/propose:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Propose Contract Extraction
+      operationId: propose_contract_extraction_api_v1_stratos_extractions_contracts_propose_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractExtractionProposeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/archflow-goals/propose:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Propose Archflow Goal Extraction
+      operationId: propose_archflow_goal_extraction_api_v1_stratos_extractions_archflow_goals_propose_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchflowGoalExtractionProposeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchflowGoalExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/{extraction_id}:
+    get:
+      tags:
+      - stratos-extractions
+      summary: Get Stratos Extraction
+      operationId: get_stratos_extraction_api_v1_stratos_extractions__extraction_id__get
+      parameters:
+      - name: extraction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Extraction Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StratosExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/{extraction_id}/feedback:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Record Stratos Extraction Feedback
+      operationId: record_stratos_extraction_feedback_api_v1_stratos_extractions__extraction_id__feedback_post
+      parameters:
+      - name: extraction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Extraction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StratosExtractionFeedbackRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StratosExtractionFeedbackResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/rag/compare-documents:
     post:
       tags:
@@ -325,14 +470,19 @@ paths:
             schema:
               additionalProperties: true
               type: object
-              title: ' '
+              title: Payload
         required: true
       responses:
-        '501':
-          description: Not implemented in this retrieval-only iteration.
+        '200':
+          description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Compare Documents Api V1 Rag Compare Documents Post
+        '502':
+          description: Governance service is unavailable.
         '422':
           description: Validation Error
           content:
@@ -351,14 +501,19 @@ paths:
             schema:
               additionalProperties: true
               type: object
-              title: ' '
+              title: Payload
         required: true
       responses:
-        '501':
-          description: Not implemented in this retrieval-only iteration.
+        '200':
+          description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Check Compliance Api V1 Rag Check Compliance Post
+        '502':
+          description: Governance service is unavailable.
         '422':
           description: Validation Error
           content:
@@ -431,6 +586,409 @@ components:
       - subject_id
       - query
       title: AnswerRequest
+    ArchflowCandidateRequirement:
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Title
+        requirement_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Requirement Type
+          default: functional
+        acceptance_criteria:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Acceptance Criteria
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      title: ArchflowCandidateRequirement
+    ArchflowGoalExtractionProposeRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_ARCHFLOW
+          title: External System
+          default: STRATOS_ARCHFLOW
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          enum:
+          - ArchflowSourceSet
+          - ArchflowGoalCatalogVersion
+          - ArchflowNeed
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        source_set_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Source Set Id
+        catalog_version_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Catalog Version Id
+        documents:
+          items:
+            $ref: '#/components/schemas/ArchflowSourceDocument'
+          type: array
+          maxItems: 50
+          title: Documents
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        profile:
+          type: string
+          const: archflow_goal_extraction_v1
+          title: Profile
+          default: archflow_goal_extraction_v1
+        profile_version:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Profile Version
+          default: '1'
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        context_tags:
+          items:
+            type: string
+          type: array
+          title: Context Tags
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 18
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - external_ref
+      - entity_type
+      - entity_id
+      - subject_id
+      title: ArchflowGoalExtractionProposeRequest
+    ArchflowGoalExtractionResponse:
+      properties:
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        external_system:
+          type: string
+          title: External System
+        external_ref:
+          type: string
+          title: External Ref
+        entity_type:
+          type: string
+          title: Entity Type
+        entity_id:
+          type: string
+          title: Entity Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - PROPOSED
+          - PARTIAL
+          - FAILED
+          - SUPERSEDED
+          - ACCEPTED_IN_SOURCE_APP
+          - REJECTED_IN_SOURCE_APP
+          title: Status
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        requested_by:
+          type: string
+          title: Requested By
+        proposals:
+          items:
+            $ref: '#/components/schemas/ArchflowGoalFieldProposal'
+          type: array
+          title: Proposals
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Source Chunk Ids
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - extraction_id
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - profile
+      - profile_version
+      - status
+      - classification
+      - requested_by
+      title: ArchflowGoalExtractionResponse
+    ArchflowGoalFieldProposal:
+      properties:
+        field:
+          type: string
+          enum:
+          - goal
+          - capability
+          - obligation
+          - requirement
+          - metric
+          - legal_basis
+          - risk
+          title: Field
+        status:
+          type: string
+          const: proposed
+          title: Status
+          default: proposed
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        proposal:
+          $ref: '#/components/schemas/ArchflowGoalProposalValue'
+        reason:
+          type: string
+          maxLength: 1000
+          minLength: 1
+          title: Reason
+        citation:
+          $ref: '#/components/schemas/ContractExtractionCitation'
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - field
+      - confidence
+      - proposal
+      - reason
+      - citation
+      title: ArchflowGoalFieldProposal
+    ArchflowGoalProposalValue:
+      properties:
+        goal_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Goal Type
+        title:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: Title
+        description:
+          type: string
+          maxLength: 1200
+          minLength: 1
+          title: Description
+        parent_hint:
+          anyOf:
+          - type: string
+            maxLength: 240
+          - type: 'null'
+          title: Parent Hint
+        priority:
+          anyOf:
+          - type: string
+            enum:
+            - LOW
+            - MEDIUM
+            - HIGH
+            - CRITICAL
+          - type: 'null'
+          title: Priority
+        obligation_type:
+          anyOf:
+          - type: string
+            enum:
+            - SHALL
+            - SHOULD
+            - MAY
+          - type: 'null'
+          title: Obligation Type
+        suggested_metrics:
+          items:
+            $ref: '#/components/schemas/ArchflowSuggestedMetric'
+          type: array
+          maxItems: 8
+          title: Suggested Metrics
+        candidate_requirements:
+          items:
+            $ref: '#/components/schemas/ArchflowCandidateRequirement'
+          type: array
+          maxItems: 8
+          title: Candidate Requirements
+        legal_basis:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Legal Basis
+        risk:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Risk
+      additionalProperties: false
+      type: object
+      required:
+      - goal_type
+      - title
+      - description
+      title: ArchflowGoalProposalValue
+    ArchflowSourceDocument:
+      properties:
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+        canonical_url:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Canonical Url
+        classification:
+          anyOf:
+          - type: string
+            enum:
+            - public
+            - internal
+            - restricted
+            - confidential
+          - type: 'null'
+          title: Classification
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      title: ArchflowSourceDocument
+    ArchflowSuggestedMetric:
+      properties:
+        name:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Name
+        target:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Target
+        periodicity:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Periodicity
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: ArchflowSuggestedMetric
     AssistantChatRequest:
       properties:
         user_id:
@@ -546,6 +1104,11 @@ components:
             $ref: '#/components/schemas/AssistantSuggestedAction'
           type: array
           title: Suggested Actions
+        report_artifacts:
+          items:
+            $ref: '#/components/schemas/AssistantReportArtifact'
+          type: array
+          title: Report Artifacts
         confidence:
           anyOf:
           - type: string
@@ -584,7 +1147,9 @@ components:
           title: Conversation Id
         status:
           type: string
-          const: ephemeral
+          enum:
+          - ephemeral
+          - persisted
           title: Status
         messages:
           items:
@@ -602,6 +1167,246 @@ components:
       - conversation_id
       - status
       title: AssistantConversationResponse
+    AssistantReportArtifact:
+      properties:
+        artifact_id:
+          type: string
+          maxLength: 96
+          minLength: 1
+          title: Artifact Id
+        artifact_contract_version:
+          anyOf:
+          - type: string
+            maxLength: 40
+          - type: 'null'
+          title: Artifact Contract Version
+        artifact_kind:
+          anyOf:
+          - type: string
+            enum:
+            - content_table
+            - registry_metadata_table
+          - type: 'null'
+          title: Artifact Kind
+        title:
+          type: string
+          maxLength: 180
+          minLength: 1
+          title: Title
+        description:
+          anyOf:
+          - type: string
+            maxLength: 600
+          - type: 'null'
+          title: Description
+        columns:
+          items:
+            $ref: '#/components/schemas/AssistantReportColumn'
+          type: array
+          maxItems: 20
+          title: Columns
+        rows:
+          items:
+            $ref: '#/components/schemas/AssistantReportRow'
+          type: array
+          maxItems: 500
+          title: Rows
+        export_formats:
+          items:
+            type: string
+            enum:
+            - xlsx
+            - pdf
+          type: array
+          title: Export Formats
+        source_citation_count:
+          type: integer
+          minimum: 0.0
+          title: Source Citation Count
+          default: 0
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        provenance:
+          anyOf:
+          - $ref: '#/components/schemas/AssistantReportArtifactProvenance'
+          - type: 'null'
+        quality:
+          anyOf:
+          - $ref: '#/components/schemas/AssistantReportArtifactQuality'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - artifact_id
+      - title
+      title: AssistantReportArtifact
+    AssistantReportArtifactProvenance:
+      properties:
+        generated_from:
+          type: string
+          enum:
+          - rag_markdown_table
+          - rag_structured_artifact
+          - registry_metadata
+          title: Generated From
+        assistant_tool:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Assistant Tool
+        query_plan_id:
+          anyOf:
+          - type: string
+            maxLength: 96
+          - type: 'null'
+          title: Query Plan Id
+        citations_required:
+          type: boolean
+          title: Citations Required
+          default: true
+        row_citations_required:
+          type: boolean
+          title: Row Citations Required
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - generated_from
+      - assistant_tool
+      title: AssistantReportArtifactProvenance
+    AssistantReportArtifactQuality:
+      properties:
+        status:
+          type: string
+          const: validated
+          title: Status
+          default: validated
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        informative_row_count:
+          type: integer
+          minimum: 0.0
+          title: Informative Row Count
+          default: 0
+        row_citation_coverage:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Row Citation Coverage
+          default: 0.0
+      additionalProperties: false
+      type: object
+      title: AssistantReportArtifactQuality
+    AssistantReportCellSource:
+      properties:
+        column_key:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Column Key
+        evidence_status:
+          type: string
+          enum:
+          - cited
+          - metadata
+          - not_stated
+          - uncited
+          title: Evidence Status
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - column_key
+      - evidence_status
+      title: AssistantReportCellSource
+    AssistantReportColumn:
+      properties:
+        key:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Key
+        label:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Label
+        type:
+          type: string
+          enum:
+          - text
+          - number
+          - date
+          - url
+          - currency
+          - percent
+          title: Type
+          default: text
+        semantic_role:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Semantic Role
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - label
+      title: AssistantReportColumn
+    AssistantReportRow:
+      properties:
+        row_id:
+          type: string
+          maxLength: 96
+          minLength: 1
+          title: Row Id
+        cells:
+          additionalProperties:
+            anyOf:
+            - type: string
+            - type: integer
+            - type: number
+            - type: boolean
+            - type: 'null'
+          type: object
+          title: Cells
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        source_refs:
+          items:
+            $ref: '#/components/schemas/AssistantReportCellSource'
+          type: array
+          title: Source Refs
+        confidence:
+          anyOf:
+          - type: string
+            enum:
+            - high
+            - medium
+            - low
+            - insufficient_source
+            - conflicting_sources
+          - type: 'null'
+          title: Confidence
+      additionalProperties: false
+      type: object
+      required:
+      - row_id
+      title: AssistantReportRow
     AssistantSuggestedAction:
       properties:
         label:
@@ -778,6 +1583,334 @@ components:
       - question
       - type
       title: ClarificationQuestion
+    ContractExtractionCitation:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        chunk_id:
+          type: string
+          title: Chunk Id
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        section:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Section
+        quoted_text:
+          type: string
+          title: Quoted Text
+        viewer_url:
+          type: string
+          title: Viewer Url
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - chunk_id
+      - quoted_text
+      - viewer_url
+      title: ContractExtractionCitation
+    ContractExtractionProfile:
+      properties:
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        title:
+          type: string
+          title: Title
+        description:
+          type: string
+          title: Description
+        supported_external_systems:
+          items:
+            type: string
+          type: array
+          title: Supported External Systems
+        fields:
+          items:
+            type: string
+          type: array
+          title: Fields
+      type: object
+      required:
+      - profile
+      - profile_version
+      - title
+      - description
+      - supported_external_systems
+      - fields
+      title: ContractExtractionProfile
+    ContractExtractionProfilesResponse:
+      properties:
+        profiles:
+          items:
+            $ref: '#/components/schemas/ContractExtractionProfile'
+          type: array
+          title: Profiles
+      type: object
+      required:
+      - profiles
+      title: ContractExtractionProfilesResponse
+    ContractExtractionProposeRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_BUDGET
+          title: External System
+          default: STRATOS_BUDGET
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        profile:
+          type: string
+          const: contract_financial_v1
+          title: Profile
+          default: contract_financial_v1
+        profile_version:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Profile Version
+          default: '1'
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        context_tags:
+          items:
+            type: string
+          type: array
+          title: Context Tags
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 12
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - subject_id
+      title: ContractExtractionProposeRequest
+    ContractExtractionResponse:
+      properties:
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        external_system:
+          type: string
+          title: External System
+        external_ref:
+          type: string
+          title: External Ref
+        entity_type:
+          type: string
+          title: Entity Type
+        entity_id:
+          type: string
+          title: Entity Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - PROPOSED
+          - PARTIAL
+          - FAILED
+          - SUPERSEDED
+          - ACCEPTED_IN_SOURCE_APP
+          - REJECTED_IN_SOURCE_APP
+          title: Status
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        requested_by:
+          type: string
+          title: Requested By
+        proposals:
+          items:
+            $ref: '#/components/schemas/ContractFieldProposal'
+          type: array
+          title: Proposals
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Source Chunk Ids
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - extraction_id
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - profile
+      - profile_version
+      - status
+      - classification
+      - requested_by
+      title: ContractExtractionResponse
+    ContractFieldProposal:
+      properties:
+        field:
+          type: string
+          title: Field
+        proposed_value:
+          title: Proposed Value
+        normalized_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Normalized Value
+        unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        status:
+          type: string
+          const: proposed
+          title: Status
+          default: proposed
+        reason:
+          type: string
+          title: Reason
+        citation:
+          $ref: '#/components/schemas/ContractExtractionCitation'
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - field
+      - proposed_value
+      - confidence
+      - reason
+      - citation
+      title: ContractFieldProposal
     HTTPValidationError:
       properties:
         detail:
@@ -1203,6 +2336,179 @@ components:
           title: Bbox
       type: object
       title: SourceLocation
+    StratosExtractionFeedbackRequest:
+      properties:
+        field:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Field
+        ai_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Ai Value
+        final_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Final Value
+        decision:
+          type: string
+          enum:
+          - accepted
+          - rejected
+          - edited
+          title: Decision
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        actor:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor
+        source_app:
+          type: string
+          enum:
+          - STRATOS_BUDGET
+          - STRATOS_ARCHFLOW
+          title: Source App
+        source_entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Entity Id
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - field
+      - decision
+      - actor
+      - source_app
+      - source_entity_id
+      title: StratosExtractionFeedbackRequest
+    StratosExtractionFeedbackResponse:
+      properties:
+        feedback_id:
+          type: string
+          title: Feedback Id
+        extraction:
+          $ref: '#/components/schemas/StratosExtractionResponse'
+      type: object
+      required:
+      - feedback_id
+      - extraction
+      title: StratosExtractionFeedbackResponse
+    StratosExtractionResponse:
+      properties:
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        external_system:
+          type: string
+          title: External System
+        external_ref:
+          type: string
+          title: External Ref
+        entity_type:
+          type: string
+          title: Entity Type
+        entity_id:
+          type: string
+          title: Entity Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - PROPOSED
+          - PARTIAL
+          - FAILED
+          - SUPERSEDED
+          - ACCEPTED_IN_SOURCE_APP
+          - REJECTED_IN_SOURCE_APP
+          title: Status
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        requested_by:
+          type: string
+          title: Requested By
+        proposals:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Proposals
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Source Chunk Ids
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - extraction_id
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - profile
+      - profile_version
+      - status
+      - classification
+      - requested_by
+      title: StratosExtractionResponse
     ValidationError:
       properties:
         loc:

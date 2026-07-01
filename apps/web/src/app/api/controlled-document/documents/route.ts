@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import type { Classification, DocumentType } from "@/lib/types";
 
 import { badRequest, bridgeError } from "../errors";
@@ -11,6 +12,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const context = await getServerRequestContext();
+    const forbidden = requireApiAccess(context, "knowledge_workspace");
+    if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const classification = String(body.classification ?? "internal") as Classification;
     const title = String(body.title ?? "").trim();
@@ -26,7 +29,7 @@ export async function POST(request: NextRequest) {
         owner_id: String(body.owner_id ?? context.subjectId).trim(),
         gestor_unit: String(body.gestor_unit ?? "").trim(),
         classification,
-        tags: _csv(String(body.tags ?? "controlled-document,phase02")),
+        tags: _csv(String(body.tags ?? "controlled-document,akb")),
         metadata: {
           source: "web-controlled-document-workflow"
         },
@@ -37,8 +40,9 @@ export async function POST(request: NextRequest) {
             constraints: { classification_max: classification }
           },
           {
-            subjects: ["role:service_ingestion", "role:document_manager", "role:admin"],
+            subjects: [`user:${context.subjectId}`, "role:service_ingestion", "role:document_manager", "role:admin"],
             actions: [
+              "document.update",
               "document.read",
               "document.ingest",
               "document.reindex",

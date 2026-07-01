@@ -1,6 +1,6 @@
 # RAG Retrieval Service API
 
-`services/rag-retrieval-service` owns retrieval, answer composition, source-context opening, citation opening, and the employee assistant API.
+`services/rag-retrieval-service` owns retrieval, answer composition, source-context opening, citation opening, and the employee chat API.
 
 ## Scope
 
@@ -10,7 +10,10 @@ Implemented:
 - cited answer generation,
 - source context lookup,
 - citation opening,
-- employee assistant chat, clarification, suggestions, and conversation lookup.
+- employee chat, clarification, suggestions, and conversation lookup.
+- STRATOS contract extraction proposal API for `contract_financial_v1`.
+- STRATOS ArchFlow goal extraction proposal API for
+  `archflow_goal_extraction_v1`.
 
 Contract stubs still present:
 
@@ -50,16 +53,90 @@ GET  /api/v1/assistant/suggestions
 GET  /api/v1/assistant/conversations/{conversation_id}
 GET  /api/v1/assistant/citations/{chunk_id}/open
 
+GET  /api/v1/stratos/extractions/profiles
+POST /api/v1/stratos/extractions/contracts/propose
+POST /api/v1/stratos/extractions/archflow-goals/propose
+GET  /api/v1/stratos/extractions/{extraction_id}
+POST /api/v1/stratos/extractions/{extraction_id}/feedback
+
 GET  /health
 GET  /ready
 ```
+
+`/api/v1/assistant/chat` and `/api/v1/assistant/clarify` return the standard
+assistant answer contract. For report, table, overview, Excel, PDF, or export
+requests, the response may include `report_artifacts`. These artifacts are
+bounded table specifications with row-level citations. The AKB web BFF exports
+them as `.xlsx` or `.pdf` via `POST /api/assistant/reports/export`.
+The web BFF may enrich valid artifacts to `artifact_contract_version:
+"report.v2"` with artifact kind, provenance, quality, and row `source_refs`.
+Content artifacts require row-level citations before they are shown or exported.
+
+Inventory-style document questions are handled by the AKB web BFF before RAG
+when the question can be answered from Registry API metadata, for example
+counts, lists, or type breakdowns. Those responses include metadata breakdowns
+by topic, document type, classification, owner/steward, and status. They use
+the same assistant response and `report_artifacts` shape, but carry
+`answer_source: "registry_metadata_summary"` when backed by `GET
+/api/v1/documents/metadata-summary`, use `artifact_kind:
+"registry_metadata_table"`, and carry no chunk citations.
+
+## STRATOS Contract Extractions
+
+`POST /api/v1/stratos/extractions/contracts/propose` extracts cited proposed
+contract parameters for Budget & Contract. The first supported profile is
+`contract_financial_v1`. It is intentionally conservative:
+
+- it retrieves only authorized chunks through Registry API authz,
+- it returns only `proposed` field values,
+- every field proposal includes a citation with `document_id`,
+  `document_version_id`, `chunk_id`, page/section where available,
+  `quoted_text`, and `viewer_url`,
+- when evidence is insufficient, the response is `PARTIAL` with
+  `missing_information`/`warnings`, not invented values,
+- persistence and feedback are stored through Registry API
+  `document_extractions` and `document_extraction_feedback`.
+
+Budget remains the source of truth for structured contract entities. AKB never
+writes Budget tables directly; Budget accepts, edits, or rejects proposals after
+authorized human confirmation and sends feedback through
+`POST /api/v1/stratos/extractions/{extraction_id}/feedback`.
+
+## STRATOS ArchFlow Goal Extractions
+
+`POST /api/v1/stratos/extractions/archflow-goals/propose` extracts cited
+proposals for ArchFlow goals, capabilities, obligations, requirements, metrics,
+legal or methodological basis, and risks. The supported profile is
+`archflow_goal_extraction_v1`.
+
+The endpoint is deliberately proposal-only:
+
+- it retrieves only authorized chunks through Registry API authorization,
+- it accepts `external_system: "STRATOS_ARCHFLOW"` and never `source_system`,
+- it returns only `proposed` values with citations,
+- every proposal includes `document_id`, `document_version_id`, `chunk_id`,
+  page/section where available, a short `quoted_text`, and a viewer URL,
+- when evidence is insufficient, the response is `PARTIAL` with warnings such
+  as `INSUFFICIENT_CITABLE_ARCHFLOW_GOAL_EVIDENCE` or
+  `TARGET_DOCUMENT_NOT_RETRIEVED`,
+- persistence and feedback use the shared Registry API
+  `document_extractions` and `document_extraction_feedback` tables.
+
+ArchFlow remains the source of truth for final goals, requirements, and
+relationships. It writes final records only after authorized human confirmation
+and then sends `accepted`, `edited`, or `rejected` feedback through
+`POST /api/v1/stratos/extractions/{extraction_id}/feedback` with
+`source_app: "STRATOS_ARCHFLOW"`.
 
 ## Integration Notes
 
 - Filters candidate documents through Registry API authorization.
 - Calls LLM Gateway for answer generation and embeddings.
 - Reads chunks from Qdrant-compatible retrieval backends.
-- Provides the source-context and citation-open contract consumed by Knowledge Chat and Employee Assistant.
+- Provides the source-context and citation-open contract consumed by Employee Chat Portal.
+- Persists STRATOS extraction proposals and feedback through Registry API; the
+  source app receives only metadata and cited proposals, never binary content,
+  extracted full text, chunks, embeddings, or prompts.
 
 ## Canonical Sources
 

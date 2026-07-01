@@ -54,6 +54,9 @@ POST   /authz/filter-documents
 POST   /audit/events
 GET    /audit/events
 GET    /audit/events/{event_id}
+
+GET    /user-profiles/me/settings
+PUT    /user-profiles/me/settings
 ```
 
 `GET /audit/events` podporuje filtry `actor_id`, `event_type`, `resource_type`, `resource_id`, `limit` a `offset`.
@@ -86,8 +89,38 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 - RAG Retrieval Service volá `/authz/filter-documents` a zapisuje auditní události.
 - Evaluation a Governance služby používají registry metadata, authorization check a audit.
 - Workflow inbox bere odpovednost, SLA a eskalacni metadata z `document_assignments`, pokud jsou pro dokument nastavena.
+- RAG Retrieval Service uklada STRATOS Document AI navrhy do
+  `/document-extractions` a nasledny feedback do
+  `/document-extractions/{extraction_id}/feedback`.
+- AKB web bridge uklada sdilene STRATOS profilove nastaveni do
+  `/user-profiles/me/settings`. Hodnoty jsou rozdelene na `settings.core` a
+  `settings.apps.akb`; role a skupiny se vraci read-only z aktualni identity a
+  nejsou autoritou ulozenych nastaveni.
 
 Služby nesmí importovat interní Python kód registry API; komunikace je přes REST/OpenAPI.
+
+## Document Extraction Persistence
+
+Registry API stores extraction results as generic AKB records. It does not run
+retrieval, OCR, chunking, embedding, or LLM logic.
+
+```text
+POST /api/v1/document-extractions
+GET  /api/v1/document-extractions/{extraction_id}
+POST /api/v1/document-extractions/{extraction_id}/feedback
+```
+
+Identity is idempotent over:
+
+```text
+tenant_id + external_system + external_ref + document_id + document_version_id + profile + profile_version
+```
+
+When a new `document_version_id` is stored for the same tenant/external ref,
+older non-final extractions are marked `SUPERSEDED`. Feedback decisions update
+the extraction status to `ACCEPTED_IN_SOURCE_APP` for `accepted`/`edited` and
+`REJECTED_IN_SOURCE_APP` for `rejected`. The source app still owns final writes
+to its own domain model.
 
 ## Canonical Sources
 

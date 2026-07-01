@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bot,
   ChevronsLeft,
@@ -13,12 +13,21 @@ import {
   FilePlus2,
   LayoutDashboard,
   ListChecks,
+  LogOut,
   ShieldCheck,
   UserRound
 } from "lucide-react";
 
+import { isEmployeeChatOnly } from "@/lib/auth/authorization";
+import {
+  AppSettingsSurface,
+  type RolePreviewSettings,
+  type SettingsSurfaceMode,
+  type StratosSettingsCoreValue,
+  type StratosSettingsCoreValueKey,
+  type StratosSettingsCoreValues
+} from "@/components/app-settings-surface";
 import { ProjectTopbar } from "@/components/project-topbar";
-import { SettingsModal } from "@/components/settings-modal";
 import {
   StratosAppRail,
   StratosAppShell,
@@ -33,7 +42,6 @@ import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
 
 const navigation = {
   cs: [
-    { href: "/assistant", label: "Asistent pro zaměstnance", icon: UserRound },
     { href: "/", label: "Přehled", icon: LayoutDashboard },
     { href: "/tasks", label: "Úkoly", icon: ListChecks },
     { href: "/documents", label: "Dokumenty", icon: Database },
@@ -44,7 +52,6 @@ const navigation = {
     { href: "/help", label: "Nápověda", icon: CircleHelp }
   ],
   en: [
-    { href: "/assistant", label: "Employee assistant", icon: UserRound },
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tasks", label: "Tasks", icon: ListChecks },
     { href: "/documents", label: "Documents", icon: Database },
@@ -162,7 +169,7 @@ type ShellModuleId = "documents" | "operations" | "ai" | "knowledge" | "governan
 const moduleRouteGroups: Record<ShellModuleId, string[]> = {
   documents: ["/documents", "/upload", "/ingestion"],
   operations: ["/", "/tasks"],
-  ai: ["/assistant", "/chat", "/help"],
+  ai: ["/chat", "/help"],
   knowledge: [],
   governance: ["/audit"]
 };
@@ -179,6 +186,11 @@ interface AppShellProps {
   children: React.ReactNode;
   apiMode: "mock" | "production";
   authMode: "mock" | "oidc";
+  initialUser?: {
+    subjectId: string;
+    roles: string[];
+    groups: string[];
+  } | null;
 }
 
 interface AklUserProfile {
@@ -188,18 +200,53 @@ interface AklUserProfile {
   roles: string[];
 }
 
-export function AppShell({ children, apiMode, authMode }: AppShellProps) {
+interface SettingsAccessInfo {
+  subjectId: string;
+  roles: string[];
+  groups: string[];
+  permissions: string[];
+}
+
+interface ProfileSettingsPayload {
+  subject_id?: string;
+  settings?: {
+    core?: Record<string, unknown>;
+    apps?: {
+      akb?: Record<string, unknown>;
+    };
+  };
+  identity?: {
+    subject_id?: string;
+    display_name?: string;
+    email?: string | null;
+    roles?: unknown[];
+    groups?: unknown[];
+    permissions?: unknown[];
+  };
+}
+
+const emptyRolePreview: RolePreviewSettings = {
+  canUse: false,
+  active: false,
+  profileId: "",
+  label: "",
+  roles: [],
+  profiles: []
+};
+
+export function AppShell({ children, apiMode, authMode, initialUser }: AppShellProps) {
   return (
     <LanguageProvider>
-      <AppShellContent apiMode={apiMode} authMode={authMode}>{children}</AppShellContent>
+      <AppShellContent apiMode={apiMode} authMode={authMode} initialUser={initialUser}>{children}</AppShellContent>
     </LanguageProvider>
   );
 }
 
-function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
+function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { language, setLanguage } = useLanguage();
+  const isEmbeddedPath = pathname === "/embed" || pathname.startsWith("/embed/") || pathname === "/akb/embed" || pathname.startsWith("/akb/embed/");
   const copy = shellCopy[language];
   const apiModeLabel = apiMode === "mock" ? copy.apiModeMock : copy.apiModeProduction;
   const authModeLabel = authMode === "mock" ? copy.authModeMock : copy.authModeOidc;
@@ -209,12 +256,33 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
-    name: authMode === "mock" ? "AKB Dev User" : "AKB",
-    email: authMode === "mock" ? "dev@akl.local" : undefined,
-    initials: authMode === "mock" ? "AD" : "AK",
-    roles: []
+  const [settingsMode, setSettingsMode] = useState<SettingsSurfaceMode>("modal");
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [rolePreview, setRolePreview] = useState<RolePreviewSettings>(emptyRolePreview);
+  const [savedRolePreviewProfileId, setSavedRolePreviewProfileId] = useState("");
+  const [accessInfo, setAccessInfo] = useState<SettingsAccessInfo>(() => ({
+    subjectId: initialUser?.subjectId ?? "",
+    roles: initialUser?.roles ?? [],
+    groups: initialUser?.groups ?? [],
+    permissions: []
   }));
+  const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
+    name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
+    email: authMode === "mock" ? "dev@akl.local" : undefined,
+    initials: authMode === "mock" ? "AD" : initialsFromName(initialUser?.subjectId ?? "AKB"),
+    roles: initialUser?.roles ?? []
+  }));
+  const [settingsValues, setSettingsValues] = useState<StratosSettingsCoreValues>(() =>
+    createSettingsValues({
+      authModeLabel,
+      language,
+      user: {
+        name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
+        email: authMode === "mock" ? "dev@akl.local" : undefined,
+        roles: initialUser?.roles ?? []
+      }
+    })
+  );
 
   useEffect(() => {
     setActiveModule(moduleForPath(pathname));
@@ -222,11 +290,16 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     setMobileSidebarOpen(false);
   }, [pathname]);
 
-  const openMobileSidebar = () => {
-    // The desktop "collapsed" state hides the sidebar body — undo it so the
-    // drawer always opens fully expanded on mobile.
-    setSidebarCollapsed(false);
-    setMobileSidebarOpen(true);
+  const toggleMobileSidebar = () => {
+    setMobileSidebarOpen((open) => {
+      if (open) {
+        return false;
+      }
+      // The desktop "collapsed" state hides the sidebar body — undo it so the
+      // drawer always opens fully expanded on mobile.
+      setSidebarCollapsed(false);
+      return true;
+    });
   };
 
   useEffect(() => {
@@ -240,12 +313,24 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
         const name = String(payload.user.name || payload.user.email || payload.user.subjectId || "AKB");
         const email = typeof payload.user.email === "string" ? payload.user.email : undefined;
         const roles = Array.isArray(payload.user.roles) ? payload.user.roles.filter((role: unknown): role is string => typeof role === "string") : [];
+        const groups = Array.isArray(payload.user.groups) ? payload.user.groups.filter((group: unknown): group is string => typeof group === "string") : [];
         setUserProfile({
           name,
           email,
           initials: initialsFromName(name),
           roles
         });
+        setAccessInfo((current) => ({
+          ...current,
+          subjectId: typeof payload.user.subjectId === "string" ? payload.user.subjectId : current.subjectId,
+          roles,
+          groups
+        }));
+        if (payload.rolePreview) {
+          const preview = normalizeRolePreview(payload.rolePreview);
+          setRolePreview(preview);
+          setSavedRolePreviewProfileId(preview.profileId);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -253,19 +338,137 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
     };
   }, []);
 
-  const railItems = [
-    { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database },
-    { id: "operations", href: moduleRootRoutes.operations, label: copy.moduleOperations, icon: ListChecks },
-    { id: "ai", href: moduleRootRoutes.ai, label: copy.moduleAi, icon: Bot },
-    { id: "governance", href: moduleRootRoutes.governance, label: copy.moduleGovernance, icon: ShieldCheck }
-  ].map((item) => ({
-    ...item,
-    onSelect: () => {
-      setActiveModule(item.id as ShellModuleId);
-      setSidebarCollapsed(false);
-      setMobileSidebarOpen(false);
+  const applyProfileSettings = useCallback(
+    (payload: ProfileSettingsPayload) => {
+      const identity = payload.identity ?? {};
+      const roles = arrayOfStrings(identity.roles);
+      const groups = arrayOfStrings(identity.groups);
+      const permissions = arrayOfStrings(identity.permissions);
+      const fallbackName =
+        typeof identity.display_name === "string" && identity.display_name
+          ? identity.display_name
+          : typeof identity.email === "string" && identity.email
+            ? identity.email
+            : payload.subject_id ?? initialUser?.subjectId ?? "AKB";
+      const fallbackUser: AklUserProfile = {
+        name: fallbackName,
+        email: typeof identity.email === "string" ? identity.email : undefined,
+        initials: initialsFromName(fallbackName),
+        roles: roles.length ? roles : initialUser?.roles ?? []
+      };
+      const nextValues = createSettingsValues({
+        authModeLabel,
+        language,
+        user: fallbackUser
+      });
+      const mergedValues = settingsValuesFromCore(payload.settings?.core ?? {}, nextValues);
+      const nextLanguage = mergedValues.language === "en" ? "en" : "cs";
+      const nextName = typeof mergedValues.displayName === "string" && mergedValues.displayName ? mergedValues.displayName : fallbackUser.name;
+      const nextEmail = typeof mergedValues.email === "string" && mergedValues.email ? mergedValues.email : undefined;
+
+      setSettingsValues(mergedValues);
+      setSettingsDirty(false);
+      setUserProfile({
+        name: nextName,
+        email: nextEmail,
+        initials: initialsFromName(nextName),
+        roles: fallbackUser.roles
+      });
+      setAccessInfo({
+        subjectId: typeof identity.subject_id === "string" ? identity.subject_id : payload.subject_id ?? initialUser?.subjectId ?? "",
+        roles: fallbackUser.roles,
+        groups,
+        permissions
+      });
+      setLanguage(nextLanguage);
+      const appMode = payload.settings?.apps?.akb?.settingsMode;
+      if (isSettingsSurfaceMode(appMode)) {
+        setSettingsMode(appMode);
+      }
+      const profileId = payload.settings?.apps?.akb?.rolePreviewProfileId;
+      if (typeof profileId === "string" && rolePreview.canUse) {
+        setRolePreview((current) => {
+          const profile = current.profiles.find((item) => item.id === profileId);
+          return {
+            ...current,
+            profileId,
+            label: profile?.label ?? current.label,
+            roles: profile?.roles ?? current.roles
+          };
+        });
+      }
+    },
+    [authModeLabel, initialUser?.roles, initialUser?.subjectId, language, rolePreview.canUse, setLanguage]
+  );
+
+  const persistProfileSettings = useCallback(
+    async (
+      values: StratosSettingsCoreValues,
+      options: { mode?: SettingsSurfaceMode; rolePreviewProfileId?: string } = {}
+    ): Promise<ProfileSettingsPayload> => {
+      const response = await fetch(withAppBasePath("/api/v1/profile/settings"), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          settings: {
+            core: values,
+            apps: {
+              akb: {
+                settingsMode: options.mode ?? settingsMode,
+                rolePreviewProfileId: options.rolePreviewProfileId ?? rolePreview.profileId
+              }
+            }
+          }
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Profile settings save failed with ${response.status}`);
+      }
+      return await response.json() as ProfileSettingsPayload;
+    },
+    [rolePreview.profileId, settingsMode]
+  );
+
+  useEffect(() => {
+    let active = true;
+    fetch(withAppBasePath("/api/v1/profile/settings"), { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: ProfileSettingsPayload | null) => {
+        if (!active || !payload) {
+          return;
+        }
+        applyProfileSettings(payload);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [applyProfileSettings]);
+
+  useEffect(() => {
+    if (settingsDirty) {
+      return;
     }
-  }));
+    setSettingsValues((current) => ({
+      ...current,
+      displayName: userProfile.name,
+      email: userProfile.email ?? "",
+      role: userProfile.roles.length > 0 ? userProfile.roles.join(", ") : authModeLabel,
+      language
+    }));
+  }, [authModeLabel, language, settingsDirty, userProfile]);
+
+  const handleRailSelect = () => {
+    setSidebarCollapsed(false);
+    setMobileSidebarOpen(false);
+  };
+  const railItems = [
+    { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database, onSelect: handleRailSelect },
+    { id: "operations", href: moduleRootRoutes.operations, label: copy.moduleOperations, icon: ListChecks, onSelect: handleRailSelect },
+    { id: "ai", href: moduleRootRoutes.ai, label: copy.moduleAi, icon: Bot, onSelect: handleRailSelect },
+    { id: "governance", href: moduleRootRoutes.governance, label: copy.moduleGovernance, icon: ShieldCheck, onSelect: handleRailSelect }
+  ];
   const activeRailHref = moduleRootRoutes[activeModule];
   const activeModuleLabel = railItems.find((item) => item.id === activeModule)?.label ?? copy.workspaceTitle;
   const activeModuleRoutes = moduleRouteGroups[activeModule];
@@ -326,9 +529,9 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
       {
         id: "action:new-document",
         type: "action",
-        title: language === "cs" ? "Nový koncept dokumentu" : "New document draft",
+        title: language === "cs" ? "Založit dokument" : "Create document",
         subtitle: copy.moduleDocuments,
-        detail: language === "cs" ? "Vytvořit řízený dokument v registru." : "Create a controlled document in the registry.",
+        detail: language === "cs" ? "Zadat metadata a pokračovat nahráním první verze." : "Enter metadata and continue by uploading the first version.",
         section: copy.commandTools,
         icon: <FilePlus2 size={18} aria-hidden="true" />,
         tone: "green",
@@ -345,7 +548,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
         type: "action",
         title: language === "cs" ? "Nahrát verzi dokumentu" : "Upload document version",
         subtitle: copy.moduleDocuments,
-        detail: language === "cs" ? "Spustit upload a preflight zpracování." : "Start upload and preflight processing.",
+        detail: language === "cs" ? "Vybrat originální soubor a spustit zpracování pro citace." : "Choose the original file and start citation processing.",
         section: copy.commandTools,
         icon: <FilePlus2 size={18} aria-hidden="true" />,
         tone: "blue",
@@ -392,6 +595,119 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
   const handleLogout = () => {
     window.location.assign(withAppBasePath("/api/auth/logout"));
   };
+
+  const handleSettingsValueChange = (key: StratosSettingsCoreValueKey, value: StratosSettingsCoreValue) => {
+    setSettingsValues((current) => ({ ...current, [key]: value }));
+    setSettingsDirty(true);
+  };
+
+  const handleSettingsModeChange = (mode: SettingsSurfaceMode) => {
+    setSettingsMode(mode);
+    setSettingsDirty(true);
+  };
+
+  const handleLanguageChange = async (nextLanguage: AklLanguage) => {
+    const nextValues = { ...settingsValues, language: nextLanguage };
+    setSettingsValues(nextValues);
+    setLanguage(nextLanguage);
+    try {
+      const payload = await persistProfileSettings(nextValues, { mode: settingsMode, rolePreviewProfileId: rolePreview.profileId });
+      applyProfileSettings(payload);
+    } catch {
+      setSettingsDirty(true);
+    }
+  };
+
+  const handleRolePreviewChange = (profileId: string) => {
+    const profile = rolePreview.profiles.find((item) => item.id === profileId);
+    setRolePreview((current) => ({
+      ...current,
+      active: Boolean(profileId),
+      profileId,
+      label: profile?.label ?? "",
+      roles: profile?.roles ?? []
+    }));
+    setSettingsDirty(true);
+  };
+
+  const handleSettingsSave = async () => {
+    try {
+      const savedProfile = await persistProfileSettings(settingsValues, {
+        mode: settingsMode,
+        rolePreviewProfileId: rolePreview.profileId
+      });
+      applyProfileSettings(savedProfile);
+      if (rolePreview.canUse && rolePreview.profileId !== savedRolePreviewProfileId) {
+        const response = await fetch(withAppBasePath("/api/auth/role-preview"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ profileId: rolePreview.profileId })
+        }).catch(() => null);
+        if (response?.ok) {
+          window.location.reload();
+          return;
+        }
+      }
+      setSettingsDirty(false);
+    } catch {
+      setSettingsDirty(true);
+    }
+  };
+
+  if (isEmbeddedPath) {
+    return <main className="akb-embed-shell">{children}</main>;
+  }
+
+  if (isEmployeeChatOnly({ roles: userProfile.roles })) {
+    return (
+      <main className="akb-employee-portal-shell">
+        <header className="akb-employee-portal-topbar">
+          <Link className="akb-employee-portal-brand" href="/chat">
+            <span className="akb-employee-portal-mark" aria-hidden="true">AKB</span>
+            <span>
+              <strong>{copy.assistantBrand}</strong>
+              <small>{copy.assistantSubtitle}</small>
+            </span>
+          </Link>
+          <div className="akb-employee-portal-actions">
+            <button
+              className="akb-chat-icon-button"
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              title={copy.settings}
+              aria-label={copy.settings}
+            >
+              <UserRound size={16} aria-hidden="true" />
+            </button>
+            <button className="akb-chat-icon-button" type="button" onClick={handleLogout} title={copy.logout} aria-label={copy.logout}>
+              <LogOut size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+        {children}
+        {settingsOpen ? (
+          <AppSettingsSurface
+            apiModeLabel={apiModeLabel}
+            authModeLabel={authModeLabel}
+            dirty={settingsDirty}
+            language={language}
+            mode={settingsMode}
+            onClose={() => setSettingsOpen(false)}
+            onLogout={handleLogout}
+            onModeChange={handleSettingsModeChange}
+            onRolePreviewChange={handleRolePreviewChange}
+            onSave={handleSettingsSave}
+            onValueChange={handleSettingsValueChange}
+            accessInfo={accessInfo}
+            rolePreview={rolePreview}
+            userInitials={userProfile.initials}
+            values={settingsValues}
+          />
+        ) : null}
+      </main>
+    );
+  }
 
   return (
     <StratosAppShell
@@ -457,16 +773,19 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             {railItems.map((item) => {
               const Icon = item.icon;
               return (
-                <button
+                <Link
                   key={item.id}
-                  type="button"
+                  href={item.href}
                   className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
                   aria-current={activeModule === item.id ? "true" : undefined}
-                  onClick={() => setActiveModule(item.id as ShellModuleId)}
+                  onClick={() => {
+                    setSidebarCollapsed(false);
+                    setMobileSidebarOpen(false);
+                  }}
                 >
                   <Icon size={15} aria-hidden="true" />
                   {item.label}
-                </button>
+                </Link>
               );
             })}
           </nav>
@@ -498,9 +817,10 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             }}
             language={language}
             onCommandCenterOpen={() => setCommandCenterOpen(true)}
-            onLanguageChange={setLanguage}
+            onLanguageChange={handleLanguageChange}
             onLogout={handleLogout}
-            onMobileMenuOpen={openMobileSidebar}
+            mobileMenuOpen={mobileSidebarOpen}
+            onMobileMenuOpen={toggleMobileSidebar}
             onSettingsOpen={() => setSettingsOpen(true)}
             projectName={activeTopbarContext}
             user={userProfile}
@@ -523,7 +843,23 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
             onClose={() => setCommandCenterOpen(false)}
           />
           {settingsOpen ? (
-            <SettingsModal authModeLabel={authModeLabel} language={language} user={userProfile} onClose={() => setSettingsOpen(false)} onLogout={handleLogout} />
+            <AppSettingsSurface
+              apiModeLabel={apiModeLabel}
+              authModeLabel={authModeLabel}
+              dirty={settingsDirty}
+              language={language}
+              mode={settingsMode}
+              onClose={() => setSettingsOpen(false)}
+              onLogout={handleLogout}
+              onModeChange={handleSettingsModeChange}
+              onRolePreviewChange={handleRolePreviewChange}
+              onSave={handleSettingsSave}
+              onValueChange={handleSettingsValueChange}
+              accessInfo={accessInfo}
+              rolePreview={rolePreview}
+              userInitials={userProfile.initials}
+              values={settingsValues}
+            />
           ) : null}
         </>
       }
@@ -531,6 +867,7 @@ function AppShellContent({ children, apiMode, authMode }: AppShellProps) {
       {children}
     </StratosAppShell>
   );
+
 }
 
 function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {
@@ -547,6 +884,72 @@ function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {
     return "amber";
   }
   return "green";
+}
+
+function normalizeRolePreview(value: unknown): RolePreviewSettings {
+  const input = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  const profiles = Array.isArray(input.profiles)
+    ? input.profiles
+        .filter((profile): profile is Record<string, unknown> => typeof profile === "object" && profile !== null)
+        .map((profile) => ({
+          id: String(profile.id ?? ""),
+          label: String(profile.label ?? ""),
+          description: String(profile.description ?? ""),
+          roles: Array.isArray(profile.roles) ? profile.roles.filter((role): role is string => typeof role === "string") : []
+        }))
+        .filter((profile) => profile.id && profile.label)
+    : [];
+  const profileId = typeof input.profileId === "string" ? input.profileId : "";
+  const selectedProfile = profiles.find((profile) => profile.id === profileId);
+  return {
+    canUse: Boolean(input.canUse),
+    active: Boolean(input.active),
+    profileId,
+    label: typeof input.label === "string" ? input.label : selectedProfile?.label ?? "",
+    roles: Array.isArray(input.roles) ? input.roles.filter((role): role is string => typeof role === "string") : selectedProfile?.roles ?? [],
+    profiles
+  };
+}
+
+function settingsValuesFromCore(
+  core: Record<string, unknown>,
+  fallback: StratosSettingsCoreValues
+): StratosSettingsCoreValues {
+  return {
+    displayName: stringSetting(core.displayName, fallback.displayName),
+    email: stringSetting(core.email, fallback.email),
+    role: stringSetting(core.role, fallback.role),
+    language: core.language === "en" ? "en" : "cs",
+    theme: stringSetting(core.theme, stringSetting(fallback.theme, "system")),
+    accent: stringSetting(core.accent, stringSetting(fallback.accent, "teal")),
+    highContrast: booleanSetting(core.highContrast, booleanSetting(fallback.highContrast, false)),
+    timezone: stringSetting(core.timezone, stringSetting(fallback.timezone, "Europe/Prague")),
+    notifyTimezone: booleanSetting(core.notifyTimezone, booleanSetting(fallback.notifyTimezone, true)),
+    weekStart: stringSetting(core.weekStart, stringSetting(fallback.weekStart, "monday")),
+    timeFormat: stringSetting(core.timeFormat, stringSetting(fallback.timeFormat, "24h")),
+    dateFormat: stringSetting(core.dateFormat, stringSetting(fallback.dateFormat, "dd.mm.yyyy")),
+    compactMode: booleanSetting(core.compactMode, booleanSetting(fallback.compactMode, false)),
+    commandHints: booleanSetting(core.commandHints, booleanSetting(fallback.commandHints, true)),
+    flyoutToasts: booleanSetting(core.flyoutToasts, booleanSetting(fallback.flyoutToasts, true)),
+    markdown: booleanSetting(core.markdown, booleanSetting(fallback.markdown, true)),
+    keyboardShortcuts: booleanSetting(core.keyboardShortcuts, booleanSetting(fallback.keyboardShortcuts, true))
+  };
+}
+
+function stringSetting(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function booleanSetting(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function isSettingsSurfaceMode(value: unknown): value is SettingsSurfaceMode {
+  return value === "modal" || value === "sidebar" || value === "fullscreen";
 }
 
 function moduleForPath(pathname: string): ShellModuleId {
@@ -570,6 +973,36 @@ function moduleGroupLabel(moduleId: ShellModuleId, copy: Record<string, string>)
     return copy.groupGovernance;
   }
   return copy.groupWorkspace;
+}
+
+function createSettingsValues({
+  authModeLabel,
+  language,
+  user
+}: {
+  authModeLabel: string;
+  language: AklLanguage;
+  user: Pick<AklUserProfile, "name" | "email" | "roles">;
+}): StratosSettingsCoreValues {
+  return {
+    displayName: user.name,
+    email: user.email ?? "",
+    role: user.roles.length > 0 ? user.roles.join(", ") : authModeLabel,
+    language,
+    theme: "system",
+    accent: "teal",
+    highContrast: false,
+    timezone: "Europe/Prague",
+    notifyTimezone: true,
+    weekStart: "monday",
+    timeFormat: "24h",
+    dateFormat: "dd.mm.yyyy",
+    compactMode: false,
+    commandHints: true,
+    flyoutToasts: true,
+    markdown: true,
+    keyboardShortcuts: true
+  };
 }
 
 function navItemToWorkspaceItem(

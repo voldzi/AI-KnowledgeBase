@@ -1,6 +1,6 @@
 # Document Workbench Product QA
 
-Validated: 2026-06-06.
+Validated: 2026-06-11.
 
 ## 1. Purpose
 
@@ -100,14 +100,17 @@ python3 tools/import_docs_folder.py \
   --report reports/docs_import_report.json
 ```
 
+When validating an externally sourced corpus, include at least one PDF-backed document imported through
+`tools/import_original_pdf_versions.py` so source opening proves the original PDF, not only a Markdown derivative.
+
 ## 5. Role Coverage
 
 ### Document Manager
 
 Must be able to:
 
-- create a draft document,
-- upload source content through preflight,
+- create a draft document and first source version in one guided `/documents/new` process,
+- upload source content through preflight for existing document versions,
 - understand validation errors before ingestion starts,
 - monitor ingestion state,
 - maintain document responsibilities, SLA and escalation metadata,
@@ -148,11 +151,11 @@ Must be able to:
 | --- | --- | --- | --- |
 | DW-01 | Registry | Open `/documents` with real data. | List renders without runtime errors, status metrics match visible data, filters do not reset unexpectedly. |
 | DW-02 | Registry | Search and filter by status, type, and classification. | Results update predictably, empty states are explicit, active filters are visible. |
-| DW-03 | Upload | Upload a supported document through preflight. | File name, MIME type, size, SHA-256 hash, session id, and upload token are produced before ingestion is requested. |
+| DW-03 | Upload | Upload a supported document through preflight. | File name, MIME type, size, SHA-256 hash, session id, and upload token are produced before ingestion is requested. Supported coverage includes PDF, DOC/DOCX, XLSX/XLSM, PPTX, Markdown/text/CSV/JSON/XML/HTML/XHTML, RTF and common image files. |
 | DW-04 | Upload | Try an unsupported or inconsistent upload. | User sees a precise error and no draft version is silently published. |
 | DW-05 | Ingestion | Start ingestion for uploaded content. | Draft version is created, ingestion job is visible, automatic publish does not happen. |
 | DW-06 | Detail | Open `/documents/{documentId}`. | Overview, viewer, workflow, insights, versions, and ingestion sections render coherent data. |
-| DW-07 | Viewer | Open source preview or citation context. | Detail can request signed source opening, reports missing storage objects explicitly, opens available signed PDF/image/OCR/DOCX/XLSX/PPTX/Markdown/text/CSV source as native preview, audit-backed source-context chunk opens, source/version/page/section/text/bbox are visible when available, page-jump is offered only when signed source is available, and unsupported native renderers are explicit. |
+| DW-07 | Viewer | Open source preview or citation context. | Detail can request signed source opening, reports missing storage objects explicitly, opens available signed PDF/image/OCR/DOCX/XLSX/XLSM/PPTX/Markdown/text/CSV/JSON/XML/HTML source as native preview, audit-backed source-context chunk opens, source/version/page/section/text/bbox are visible when available, page-jump is offered only when signed source is available, PDF-backed imports open the original PDF, and unsupported native renderers are explicit. |
 | DW-08 | Workflow | Approve a review task from `/tasks`. | Registry API records the action, task state changes, document workflow state is reflected in detail. |
 | DW-09 | Publish Gate | Try to publish before approval. | Publish is blocked with clear explanation. |
 | DW-10 | Publish Gate | Publish an approved document version. | Version becomes valid, previous state is not ambiguous, action is auditable. |
@@ -160,7 +163,7 @@ Must be able to:
 | DW-12 | Governance | Trigger governance action panel. | Compare/compliance/conflict action calls the web governance bridge, extracted source text is used for text/Markdown/CSV and DOCX/XLSX/PPTX when available, result ID/confidence/warnings/citations are visible, and unsupported-source metadata fallback is explicit. |
 | DW-12A | Insights | Generate proposed document insights. | Detail Insights tab creates proposed obligations, roles, deadlines and risks from current source text, shows confidence, citation and warnings, and clearly states that Registry persistence/approval is still a follow-up. |
 | DW-13 | Assignments | Inspect and update document responsibilities. | Owner/reviewer/approver/auditor roles, SLA and escalation metadata are visible and saved through Registry API. |
-| DW-14 | RAG | Ask a question that should be answered from imported documents. | Answer includes citations, opens source context in the chat/assistant citation viewer, and the document action opens the signed source file in a new tab while preserving the originating assistant/chat state. |
+| DW-14 | RAG | Open `/chat`, start or select an AKB Assistant thread, and ask a question that should be answered from imported documents. | Answer is stored in the active thread, includes citations, opens source context in the chat citation viewer, and the document action opens the signed source file in a new tab while preserving the originating chat state. `/assistant` redirects to `/chat` for compatibility. |
 | DW-15 | RAG | Ask a question outside the corpus. | System refuses or asks for clarification instead of inventing an answer. |
 | DW-16 | Help | Open `/help`. | Help content covers quick start, roles, registry, upload, viewer, workflow, governance, chat, warnings, and errors. |
 | DW-17 | Language | Switch language if available in the active UI context. | Help and main document surfaces use the same language context. |
@@ -177,7 +180,7 @@ Required before release tag:
 | `/documents/{documentId}` | Required | Required | Required | Required |
 | `/upload` | Required | Required | Required | Required |
 | `/tasks` | Required | Required | Optional | Optional |
-| `/assistant` | Required | Required | Required | Required |
+| `/chat` | Required | Required | Required | Required |
 | `/help` | Required | Required | Required | Required |
 
 Acceptance criteria:

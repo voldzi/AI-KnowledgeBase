@@ -5,9 +5,10 @@ import type { ApiRequestContext } from "@/lib/types";
 
 export const OIDC_STATE_COOKIE = "akl_oidc_state";
 export const OIDC_SESSION_COOKIE = "akl_session";
+export const OIDC_REFRESH_COOKIE = "akl_refresh";
 
 export interface OidcSession {
-  accessToken: string;
+  accessToken?: string;
   refreshToken?: string;
   idToken?: string;
   expiresAt: number;
@@ -23,6 +24,10 @@ export interface OidcCallbackTokens {
   refresh_token?: string;
   id_token?: string;
   expires_in?: number;
+}
+
+export interface OpenSessionOptions {
+  allowExpired?: boolean;
 }
 
 export function buildAuthorizationUrl(config: AklConfig, state: string): string {
@@ -76,6 +81,50 @@ export async function exchangeAuthorizationCode(config: AklConfig, code: string)
   return (await response.json()) as OidcCallbackTokens;
 }
 
+export async function refreshOidcSession(
+  config: AklConfig,
+  session: OidcSession,
+  nowMs = Date.now(),
+  fetcher: typeof fetch = fetch
+): Promise<OidcSession | null> {
+  if (!session.refreshToken) {
+    return null;
+  }
+
+  const oidc = requireOidcConfig(config);
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    client_id: oidc.clientId,
+    refresh_token: session.refreshToken
+  });
+  if (oidc.clientSecret) {
+    body.set("client_secret", oidc.clientSecret);
+  }
+
+  const response = await fetcher(`${oidc.issuer}/protocol/openid-connect/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body
+  });
+  if (!response.ok) {
+    return null;
+  }
+
+  const tokens = (await response.json()) as OidcCallbackTokens;
+  const refreshed = sessionFromTokens(
+    {
+      ...tokens,
+      refresh_token: tokens.refresh_token ?? session.refreshToken
+    },
+    nowMs
+  );
+  return {
+    ...refreshed,
+    name: refreshed.name ?? session.name,
+    email: refreshed.email ?? session.email
+  };
+}
+
 export function sessionFromTokens(tokens: OidcCallbackTokens, nowMs = Date.now()): OidcSession {
   const claims = decodeJwtPayload(tokens.access_token);
   const fallbackClaims = tokens.id_token ? decodeJwtPayload(tokens.id_token) : {};
@@ -86,6 +135,7 @@ export function sessionFromTokens(tokens: OidcCallbackTokens, nowMs = Date.now()
 
   return {
     accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
     expiresAt: nowMs + Math.max(tokens.expires_in ?? 300, 30) * 1000,
     subjectId,
     roles: extractRoles(claims),
@@ -101,6 +151,21 @@ export function contextFromOidcSession(session: OidcSession): ApiRequestContext 
     roles: session.roles,
     groups: session.groups,
     accessToken: session.accessToken
+  };
+}
+
+export function contextFromOidcAccessToken(accessToken: string): ApiRequestContext {
+  const claims = decodeJwtPayload(accessToken);
+  const subjectId = stringClaim(claims.sub) ?? stringClaim(claims.preferred_username);
+  if (!subjectId) {
+    throw new Error("OIDC bearer token does not contain a subject.");
+  }
+
+  return {
+    subjectId,
+    roles: extractRoles(claims),
+    groups: stringArrayClaim(claims.groups),
+    accessToken
   };
 }
 
@@ -120,27 +185,69 @@ export function parseState(value: string): { nonce: string; returnTo: string } {
   };
 }
 
+export function safeReturnToFromState(value: string | null | undefined, fallback = "/"): string {
+  if (!value) {
+    return fallback;
+  }
+  try {
+    return parseState(value).returnTo;
+  } catch {
+    return fallback;
+  }
+}
+
 export function sealSession(session: OidcSession, secret: string): string {
+  return sealJson(session, secret);
+}
+
+export function sealBrowserSession(session: OidcSession, secret: string): string {
+  const { accessToken: _accessToken, refreshToken: _refreshToken, idToken: _idToken, ...browserSession } = session;
+  return sealSession(browserSession, secret);
+}
+
+export function sealRefreshToken(refreshToken: string, secret: string): string {
+  return sealJson({ refreshToken }, secret);
+}
+
+export function openRefreshToken(value: string, secret: string): string | null {
+  try {
+    const payload = openJson<{ refreshToken?: unknown }>(value, secret);
+    return typeof payload.refreshToken === "string" && payload.refreshToken ? payload.refreshToken : null;
+  } catch {
+    return null;
+  }
+}
+
+function sealJson(value: unknown, secret: string): string {
   const iv = crypto.randomBytes(12);
   const key = sessionKey(secret);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify(session), "utf8");
+  const plaintext = Buffer.from(JSON.stringify(value), "utf8");
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, ciphertext]).toString("base64url");
 }
 
-export function openSession(value: string, secret: string, nowMs = Date.now()): OidcSession | null {
+function openJson<T>(value: string, secret: string): T {
+  const payload = Buffer.from(value, "base64url");
+  const iv = payload.subarray(0, 12);
+  const tag = payload.subarray(12, 28);
+  const ciphertext = payload.subarray(28);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", sessionKey(secret), iv);
+  decipher.setAuthTag(tag);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return JSON.parse(plaintext.toString("utf8")) as T;
+}
+
+export function openSession(
+  value: string,
+  secret: string,
+  nowMs = Date.now(),
+  options: OpenSessionOptions = {}
+): OidcSession | null {
   try {
-    const payload = Buffer.from(value, "base64url");
-    const iv = payload.subarray(0, 12);
-    const tag = payload.subarray(12, 28);
-    const ciphertext = payload.subarray(28);
-    const decipher = crypto.createDecipheriv("aes-256-gcm", sessionKey(secret), iv);
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    const session = JSON.parse(plaintext.toString("utf8")) as OidcSession;
-    if (!session.accessToken || !session.subjectId || session.expiresAt <= nowMs) {
+    const session = openJson<OidcSession>(value, secret);
+    if (!session.subjectId || (!options.allowExpired && session.expiresAt <= nowMs)) {
       return null;
     }
     return session;
@@ -152,11 +259,19 @@ export function openSession(value: string, secret: string, nowMs = Date.now()): 
 export function readSessionCookie(
   cookies: { get(name: string): { value: string } | undefined },
   config: AklConfig,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  options: OpenSessionOptions = {}
 ): OidcSession | null {
   const oidc = requireOidcConfig(config);
   const value = cookies.get(OIDC_SESSION_COOKIE)?.value;
-  return value ? openSession(value, oidc.sessionSecret, nowMs) : null;
+  const session = value ? openSession(value, oidc.sessionSecret, nowMs, options) : null;
+  if (!session) {
+    return null;
+  }
+
+  const refreshValue = cookies.get(OIDC_REFRESH_COOKIE)?.value;
+  const refreshToken = refreshValue ? openRefreshToken(refreshValue, oidc.sessionSecret) : null;
+  return refreshToken ? { ...session, refreshToken } : session;
 }
 
 export function cookieOptions(config: AklConfig) {

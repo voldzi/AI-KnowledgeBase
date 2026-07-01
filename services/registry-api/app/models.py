@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
@@ -66,6 +67,9 @@ class Document(Base, TimestampMixin):
         back_populates="document", cascade="all, delete-orphan"
     )
     external_refs: Mapped[list["ExternalDocumentRef"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+    extractions: Mapped[list["DocumentExtraction"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
 
@@ -174,6 +178,98 @@ class ExternalDocumentRef(Base, TimestampMixin):
     document: Mapped[Document] = relationship(back_populates="external_refs")
 
 
+class DocumentExtraction(Base, TimestampMixin):
+    __tablename__ = "document_extractions"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "external_system",
+            "external_ref",
+            "document_id",
+            "document_version_id",
+            "profile",
+            "profile_version",
+            name="uq_document_extraction_identity",
+        ),
+        Index("ix_document_extractions_entity", "tenant_id", "external_system", "entity_type", "entity_id"),
+        Index("ix_document_extractions_document_version", "document_id", "document_version_id"),
+        Index("ix_document_extractions_status", "status"),
+    )
+
+    extraction_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("extract")
+    )
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_system: Mapped[str] = mapped_column(String(80), nullable=False)
+    external_ref: Mapped[str] = mapped_column(String(240), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    document_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("documents.document_id", ondelete="CASCADE"), nullable=False
+    )
+    document_version_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("document_versions.document_version_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    profile: Mapped[str] = mapped_column(String(80), nullable=False)
+    profile_version: Mapped[str] = mapped_column(String(40), nullable=False, default="1")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="PENDING")
+    classification: Mapped[str] = mapped_column(String(32), nullable=False, default="internal")
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    result: Mapped[dict[str, object]] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+    missing_information: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(json_type()), nullable=False, default=list
+    )
+    warnings: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(json_type()), nullable=False, default=list
+    )
+    extraction_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+
+    document: Mapped[Document] = relationship(back_populates="extractions")
+    feedback: Mapped[list["DocumentExtractionFeedback"]] = relationship(
+        back_populates="extraction", cascade="all, delete-orphan"
+    )
+
+
+class DocumentExtractionFeedback(Base):
+    __tablename__ = "document_extraction_feedback"
+    __table_args__ = (
+        Index("ix_document_extraction_feedback_extraction", "extraction_id", "created_at"),
+        Index("ix_document_extraction_feedback_source", "source_app", "source_entity_id"),
+    )
+
+    feedback_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("extfb")
+    )
+    extraction_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("document_extractions.extraction_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    field: Mapped[str] = mapped_column(String(160), nullable=False)
+    ai_value: Mapped[Any | None] = mapped_column(json_type(), nullable=True)
+    final_value: Mapped[Any | None] = mapped_column(json_type(), nullable=True)
+    decision: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    source_app: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    correlation_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    feedback_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    extraction: Mapped[DocumentExtraction] = relationship(back_populates="feedback")
+
+
 class DocumentAccessPolicy(Base, TimestampMixin):
     __tablename__ = "document_access_policies"
 
@@ -248,6 +344,9 @@ class UserProfile(Base, TimestampMixin):
     provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    profile_settings: Mapped[dict[str, object]] = mapped_column(
+        "settings", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
 
 
 class RoleMapping(Base):
@@ -277,12 +376,48 @@ class AssistantConversation(Base, TimestampMixin):
     user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
     title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(32), nullable=False, default="private", index=True)
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     messages: Mapped[list["AssistantMessage"]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
         order_by="AssistantMessage.created_at",
     )
+    shares: Mapped[list["AssistantConversationShare"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+
+
+class AssistantConversationShare(Base, TimestampMixin):
+    __tablename__ = "assistant_conversation_shares"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "subject_type",
+            "subject_id",
+            name="uq_assistant_conversation_share_subject",
+        ),
+        Index("ix_assistant_conversation_shares_subject", "subject_type", "subject_id", "status"),
+    )
+
+    conversation_share_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("share")
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        String(80),
+        ForeignKey("assistant_conversations.conversation_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False, default="user", index=True)
+    subject_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    permission: Mapped[str] = mapped_column(String(32), nullable=False, default="viewer")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    conversation: Mapped[AssistantConversation] = relationship(back_populates="shares")
 
 
 class AssistantMessage(Base):

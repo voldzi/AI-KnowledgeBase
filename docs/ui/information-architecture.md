@@ -2,7 +2,7 @@
 
 ## App Shell
 
-Persistent navigation:
+Knowledge management users work in the persistent STRATOS-style shell:
 
 - Dashboard
 - Tasks
@@ -15,6 +15,12 @@ Persistent navigation:
 - Help
 
 The app shell is a work console, not a landing page. Search, health state and timezone live in the top bar.
+
+Employee chat-only users work in the standalone Employee Chat Portal at
+`/chat`. This portal intentionally has no side menu or workspace submenu. It
+keeps only a compact header with AKB identity, settings, and logout, so the
+ordinary employee starts directly in the chat and can reach information through
+natural language instead of navigating administrative modules.
 
 ## Primary Areas
 
@@ -62,9 +68,17 @@ Purpose:
 
 Purpose:
 
-- prepare a new document version
+- prepare a new version for an existing document
 - collect source file preflight metadata, signed source URI, parser profile and chunking strategy
 - queue ingestion through Ingestion Service
+
+### New Document
+
+Purpose:
+
+- guide operators through document metadata and the first source version in one process
+- create the Registry document draft, store the original source, create version `1.0` and queue ingestion
+- keep the first-version number predictable and remove the old handoff from `/documents/new` to `/upload`
 
 ### Help
 
@@ -86,10 +100,14 @@ Purpose:
 
 Purpose:
 
-- ask RAG Retrieval Service for answers
-- show confidence
-- show warnings and no-answer states
+- provide the ChatGPT/Copilot-like AKB Employee Chat Portal at `/chat`
+- let users start, return to, archive, and share assistant threads
+- load persisted conversation history from Registry API through the web BFF
+- keep share-thread controls visible as the product path for collaborative work with retention policy
+- ask RAG Retrieval Service for answers through the assistant API
+- show confidence, warnings and no-answer states inside the active thread
 - display citations with document id, version id, section path, page and chunk id
+- keep source-context and direct source-document opening available from the answer
 
 ### Audit
 

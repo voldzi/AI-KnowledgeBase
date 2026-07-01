@@ -23,7 +23,7 @@ The checked-in `.env.example` is configured for the current real local RAG profi
 
 ```text
 AKL_LLM_DEFAULT_PROVIDER=ollama
-AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b
+AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b-mlx
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_OLLAMA_THINK=false
 AKL_LLM_DEFAULT_MAX_TOKENS=512
@@ -32,7 +32,7 @@ AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
-AKL_RAG_CHAT_MODEL=gemma4:12b
+AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_AUTHZ_MODE=dev
 AKL_RAG_REQUIRE_CITATIONS=true
@@ -54,7 +54,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
 
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
-  -d '{"model":"gemma4:12b","kind":"chat"}'
+  -d '{"model":"gemma4:12b-mlx","kind":"chat"}'
 ```
 
 Run the baseline smoke tests:
@@ -85,14 +85,28 @@ python3 scripts/phase_03_local_production_smoke.py
 python3 scripts/phase_04_employee_assistant_smoke.py
 ```
 
-## Phase 04 Employee Assistant
+Validate and import STRATOS Open Knowledge Format bundles when an application
+repository provides curated knowledge concepts:
 
-AKB now has a dual GUI model:
+```bash
+python3 tools/okf_profile.py validate --source ./okf
+python3 tools/import_docs_folder.py --source ./okf --manifest docs/import-manifest.yaml --mode reindex --okf-profile
+```
 
-- Employee Assistant: `http://localhost:3002/assistant`
+Profile details: `docs/integration/STRATOS_OKF_PROFILE.md`.
+IT management profile: `docs/integration/STRATOS_IT_MANAGEMENT_PROFILE.md`.
+Reference examples: `examples/okf/stratos` and `examples/okf/stratos-it-management`.
+
+## Phase 04 Employee Chat Portal
+
+AKB now has one employee-facing chat portal and a separate knowledge-management
+workspace:
+
+- Employee Chat Portal / Knowledge Chat: `http://localhost:3002/chat`
+- Legacy assistant URL redirect: `http://localhost:3002/assistant` -> `/chat`
 - Knowledge Management/Admin GUI: `http://localhost:3002`
 
-The Employee Assistant is a thin web client. Workstations do not run local models, Qdrant, PostgreSQL, or object storage. Central backend services handle retrieval, permissions, model calls, citations, source opening, and audit events.
+The assistant web surface is a thin client. Workstations do not run local models, Qdrant, PostgreSQL, or object storage. Central backend services handle retrieval, permissions, model calls, citations, source opening, and audit events. `/chat` is the single thread-oriented plain-language employee chat surface; `/assistant` remains only as a compatibility redirect.
 
 Assistant API:
 
@@ -121,9 +135,15 @@ scripts/backup_local_prod.sh
 RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<backup-directory>
 ```
 
-Details: `docs/deployment/local-production.md`.
-Enterprise architecture: `docs/ARCHITECTURE/enterprise-architecture.md`.
-Security model: `docs/security/enterprise-security-model.md`.
+Documentation entry point: `docs/README.md`.
+Architecture: `docs/architecture.md`.
+API contract: `docs/api.md` and `openapi/openapi.json`.
+Security model: `docs/security.md`.
+Operations: `docs/operations.md`.
+Observability: `docs/observability.md`.
+Runbook: `docs/runbook.md`.
+Local production details: `docs/deployment/local-production.md`.
+STRATOS shared library standard: `docs/29_STRATOS_SHARED_LIBRARIES.md`.
 Code health baseline: `docs/maintenance/code-health.md`.
 Project status: `docs/maintenance/project-status.md`.
 Release process: `docs/maintenance/release-process.md`.
@@ -131,7 +151,7 @@ Document Workbench QA: `docs/qa/document-workbench-product-qa.md`.
 
 ## Document Viewer
 
-RAG citations in Knowledge Chat are clickable. Opening a citation calls `GET /api/v1/citations/{chunk_id}/open` and shows the exact indexed chunk, source URI, viewer mode, section path, page if known, and source metadata.
+RAG citations in Knowledge Chat are clickable. Opening a citation calls the assistant citation source-context bridge and shows the exact indexed chunk, source URI, viewer mode, section path, page if known, and source metadata. The document action opens the original signed source file through the assistant citation document redirect; PDF redirects include a page fragment and citation search phrase when available.
 
 ## Profiles
 

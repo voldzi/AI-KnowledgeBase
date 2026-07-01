@@ -18,7 +18,7 @@ Use it as the first stop when you need:
 - `ingestion-service.md`
   - ingestion jobs, reports, cancellation, and reindex contract
 - `rag-retrieval-service.md`
-  - retrieval, answering, source context, citation opening, and employee assistant APIs
+  - retrieval, answering, source context, citation opening, and employee chat APIs
 - `llm-gateway-service.md`
   - provider/model management, chat completions, and embeddings
 - `evaluation-service.md`

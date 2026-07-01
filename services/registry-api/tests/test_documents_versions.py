@@ -52,6 +52,75 @@ def test_document_crud_and_audit(client, admin_headers):
     assert cancelled.json()["status"] == "cancelled"
 
 
+def test_document_metadata_summary_aggregates_authorized_topics(client, admin_headers, reader_headers):
+    digital = _create_document(
+        client,
+        admin_headers,
+        title="Metodika digitalizace služeb",
+        document_type="methodology",
+        classification="internal",
+        tags=["digitalizace", "ict"],
+        metadata={"domain": "digitalizace"},
+    )
+    project = _create_document(
+        client,
+        admin_headers,
+        title="Metodika řízení projektů",
+        document_type="project_documentation",
+        classification="internal",
+        tags=["projectflow", "projektové řízení"],
+        metadata={"domain": "project management"},
+    )
+    restricted = _create_document(
+        client,
+        admin_headers,
+        title="Důvěrná smlouva",
+        document_type="contract",
+        classification="confidential",
+        tags=["smlouvy"],
+        access_policies=[
+            {
+                "subjects": ["role:admin"],
+                "actions": ["document.read", "rag.query"],
+                "constraints": {"classification_max": "confidential"},
+            }
+        ],
+    )
+
+    for document in [digital, project]:
+        reviewed = client.patch(
+            f"/api/v1/documents/{document['document_id']}",
+            headers=admin_headers,
+            json={"status": "review"},
+        )
+        assert reviewed.status_code == 200, reviewed.text
+        approved = client.patch(
+            f"/api/v1/documents/{document['document_id']}",
+            headers=admin_headers,
+            json={"status": "approved"},
+        )
+        assert approved.status_code == 200, approved.text
+    assert restricted["classification"] == "confidential"
+
+    response = client.get(
+        "/api/v1/documents/metadata-summary?topic=digitalizace&topic=řízení projektů",
+        headers=reader_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total_visible_documents"] == 2
+    assert body["total_matched_documents"] == 2
+    assert body["warnings"] == ["REGISTRY_METADATA_SUMMARY"]
+
+    topics = {item["topic"]: item for item in body["topics"]}
+    assert topics["digitalizace"]["document_count"] == 1
+    assert topics["digitalizace"]["valid_or_approved_count"] == 1
+    assert topics["řízení projektů"]["document_count"] == 1
+    assert topics["řízení projektů"]["document_types"][0]["key"] == "project_documentation"
+    assert all("Důvěrná smlouva" not in item["example_documents"] for item in body["topics"])
+
+
 def test_version_create_publish_archive(client, admin_headers):
     document = _create_document(client, admin_headers)
 

@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.database import create_schema
 from app.errors import register_exception_handlers
 from app.middleware import CorrelationIdMiddleware
+from app.telemetry import configure_telemetry
 
 
 @asynccontextmanager
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.add_middleware(CorrelationIdMiddleware)
     register_exception_handlers(app)
+    configure_telemetry(app, service_name=settings.service_name, service_version=settings.service_version)
     app.include_router(health_router)
     app.include_router(router)
     return app

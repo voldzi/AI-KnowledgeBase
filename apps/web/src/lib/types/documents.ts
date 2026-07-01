@@ -22,6 +22,13 @@ export type DocumentStatus =
   | "cancelled";
 
 export type Classification = "public" | "internal" | "restricted" | "confidential";
+export type ExternalSourceSystem =
+  | "STRATOS_BUDGET"
+  | "STRATOS_PROJECTFLOW"
+  | "STRATOS_ARCHFLOW"
+  | "STRATOS_PROCESSFORGE"
+  | "STRATOS_EXECUTIVE"
+  | "STRATOS_PLATFORM";
 export type DocumentAssignmentRole = "owner" | "gestor" | "reviewer" | "approver" | "auditor" | "steward";
 export type AssignmentSubjectType = "user" | "group" | "unit" | "service";
 
@@ -74,14 +81,61 @@ export interface Document {
   owner: string;
   gestor_unit: string | null;
   tags: string[];
+  metadata?: Record<string, unknown>;
   assignments?: DocumentAssignment[];
   created_at: string;
   updated_at: string;
 }
 
+export interface DocumentMetadataSummaryBucket {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface DocumentMetadataSummaryTopic {
+  topic: string;
+  document_count: number;
+  valid_or_approved_count: number;
+  document_types: DocumentMetadataSummaryBucket[];
+  classifications: DocumentMetadataSummaryBucket[];
+  statuses: DocumentMetadataSummaryBucket[];
+  owners: DocumentMetadataSummaryBucket[];
+  example_documents: string[];
+}
+
+export interface DocumentMetadataSummary {
+  total_visible_documents: number;
+  total_matched_documents: number;
+  topics: DocumentMetadataSummaryTopic[];
+  by_document_type: DocumentMetadataSummaryBucket[];
+  by_classification: DocumentMetadataSummaryBucket[];
+  by_status: DocumentMetadataSummaryBucket[];
+  by_owner: DocumentMetadataSummaryBucket[];
+  warnings: string[];
+}
+
+export interface DocumentMetadataSummaryOptions {
+  topics?: string[];
+  status?: DocumentStatus;
+  classification?: Classification;
+  documentType?: DocumentType;
+  ownerId?: string;
+  tag?: string;
+  tenantId?: string;
+  externalSystem?: ExternalSourceSystem | string;
+  entityType?: string;
+  entityId?: string;
+  externalRef?: string;
+  contextTags?: string[];
+}
+
+export interface DocumentListOptions extends DocumentMetadataSummaryOptions {}
+
 export interface DocumentVersion {
   document_version_id: string;
   document_id: string;
+  file_id?: string | null;
   version_label: string;
   status: DocumentStatus;
   valid_from: string | null;

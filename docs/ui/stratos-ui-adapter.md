@@ -1,41 +1,41 @@
 # STRATOS UI Adapter
 
-AKB Platform bude soucasti portfolia STRATOS aplikaci. Sdilena UI knihovna ve STRATOS repozitari je `@stratos/ui` a obsahuje zejmena `AppShell`, `AppRail`, `Button`, `SearchBox`, `ViewTabs`, `DataTable` a tokeny `--stratos-*`.
+AKB Platform bude soucasti portfolia STRATOS aplikaci. Sdilena UI knihovna ve
+STRATOS repozitari je `@voldzi/stratos-ui` a obsahuje zejmena `AppShell`,
+`AppRail`, `Button`, `SearchBox`, `ViewTabs`, `DataTable`, `HelpHint`,
+`FieldLabelWithHelp` a tokeny `--stratos-*`.
 
 ## Implementacni Rozhodnuti
 
-`@stratos/ui` je cilovy zdroj sdilenych UI komponent. Balicek se nema pripojovat pres `file:` dependency mimo Docker build context. Distribuce ma jit pres GitHub Packages jako restricted package s read-only tokenem `read:packages`.
+`@voldzi/stratos-ui` je cilovy zdroj sdilenych UI komponent. Balicek se nema
+pripojovat pres `file:` dependency mimo Docker build context a AKB nema
+pridavat scoped `.npmrc` pro `@voldzi:registry=https://npm.pkg.github.com`.
+Balicek je publikovany ve verejnem npm registry a `apps/web/pnpm-lock.yaml`
+ma smerovat na verejny npm tarball.
 
-AKB je pripraveny na instalaci balicku pres npm scope konfiguraci:
-
-```ini
-@stratos:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
-always-auth=true
-```
-
-Do repozitare patri pouze `apps/web/.npmrc.example`. Skutecny `.npmrc` a token zustavaji lokalni/CI secret a jsou ignorovane Gitem. Dockerfile umi nacist `.npmrc` jako BuildKit secret `npmrc`, aby se token neulozil do image vrstvy.
-
-Aktualni lokalni fallback je kompatibilni adapter v `apps/web/src/components/stratos`:
+Aktualni kompatibilni adapter je v `apps/web/src/components/stratos`:
 
 - komponenty pouzivaji STRATOS nazvoslovi a CSS tridy `stratos-*`,
 - globalni CSS mapuje AKL tokeny na `--stratos-*`,
-- shell, rail, topbar, tlacitka, search box a view tabs maji stejnou strukturu jako cilovy STRATOS system,
-- feature komponenty nemusi znat, zda bezi nad lokalnim adapterem nebo budou pozdeji prepojeny na `@stratos/ui`.
+- shell a rail jsou AKB prop wrapper nad `@voldzi/stratos-ui` `AppShell`/`AppRail`; topbar, tlacitka, search box a view tabs pouzivaji stejne sdilene struktury jako STRATOS Budget,
+- dokumentovy PDF viewer je zapouzdreny jako `StratosPdfViewer`, aby stejny render citacni strany, textoveho highlightu a bbox overlaye mohl byt pozdeji prenesen do sdileneho STRATOS UI balicku,
+- feature komponenty nemusi znat, zda bezi nad lokalnim adapterem nebo budou pozdeji prepojeny primo na `@voldzi/stratos-ui`.
 
-Fallback zustava jen do doby, nez bude `@stratos/ui` dostupne pro AKB CI/Docker build pres GitHub Packages token. V tomto prostredi `npm view @stratos/ui --registry=https://npm.pkg.github.com` zatim vraci `404`, tedy balicek neni dostupny bez dalsiho opravneni nebo publikace pod ocekavanym scope.
+Pokud ma vyvojove prostredi lokalni `.npmrc`, ktere scope `@voldzi` smeruje na
+GitHub Packages kvuli jinym balickum, nesmi se tento override promitnout do AKB
+lockfile pro `@voldzi/stratos-ui`.
 
 ## Stabilni Sdilene Exporty
 
-Prvni napojeni AKL pouzije tyto exporty z `@stratos/ui`:
+Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 
 - `ProjectTopbar`
 - `CommandCenter`
 - `UnifiedSelect`
-- `SettingsSurface`
+- `StratosSettingsSurface`
 - `SurfaceModeMenu`
 - `DetailSurface`
-- jednotny CSS import `@stratos/ui/styles.css`
+- jednotny CSS import `@voldzi/stratos-ui/styles.css`
 
 ## Pouzite Komponenty
 
@@ -46,33 +46,49 @@ Prvni napojeni AKL pouzije tyto exporty z `@stratos/ui`:
 - `StratosViewTabs` pro taby v detailu dokumentu.
 - `StratosWorkspaceSidebar` a `StratosWorkspaceNav` pro druhe leve menu/submenu podle STRATOS workspace patternu.
 - `StratosDataTable` pro profesionalni tabulkove pohledy s deklarativnimi sloupci.
+- `StratosPdfViewer` pro vykresleni citacni PDF strany pres pdf.js, jemne textove zvyrazneni citace a source-location bbox overlay.
+- `StratosSettingsSurface` pro jednotne nastaveni profilu, vzhledu, preferenci a AKB aplikačních sekci.
+- `HelpHint` / `FieldLabelWithHelp` ze sdileneho `@voldzi/stratos-ui` pro jednotnou kontextovou napovedu u urednickych kroku.
+- `DirectoryPersonPicker` pro prirazeni osoby ve workflow inboxu. AKB dodava jen
+  opravneny adresar pres BFF `/api/workflow/assignees`; trigger, popover,
+  filtrovani a vyber osoby zustavaji ve sdilene knihovne.
 
 ## Aktualni Napojeni V AKL
 
 Adapter je zapojeny na techto plochach:
 
-- hlavni spravcovsky shell, uzky levy rail a workspace submenu,
-- Employee Assistant horni akce,
+- hlavni spravcovsky shell, levy rail a workspace submenu pres Budget-kompatibilni `AppShell`/`AppRail` DOM kontrakt,
+- Employee Chat Portal horni akce,
 - `/documents` registry toolbar: search, select filtry, primarni akce a ikonove akce,
 - `/documents` registry tabulka pres `StratosDataTable`,
 - dashboard poslednich dokumentu pres `StratosDataTable`,
 - `/documents/[documentId]`: detailove taby, navrat do registru, upload verze, governance akce a generovani insightu,
-- `/tasks`: search, select filtry, vycisteni filtru, detailove akce a rozhodovaci tlacitka,
+- `/documents/[documentId]` Viewer tab: `StratosPdfViewer` pro nativni PDF preview nad podepsanym zdrojem,
+- `/tasks`: search, select filtry, vycisteni filtru, detailove akce,
+  rozhodovaci tlacitka a prirazeni osoby pres sdileny `DirectoryPersonPicker`
+  s `popoverPlacement` a `popoverMinWidth`, bez lokalniho forku pickeru,
 - `/ingestion`: tabulka uloh pres `StratosDataTable`,
-- `/upload`, `/chat`, `/assistant`, `/ingestion` a dashboard vybrane hlavni prikazy.
+- `/upload`, `/chat`, `/ingestion` a dashboard vybrane hlavni prikazy.
+- uzivatelske nastaveni pres `StratosSettingsSurface`; AKB pridava pouze
+  `appNavItems` a `appSections` pro provozni stav, read-only role/opravneni a
+  admin role-preview. Profil, jazyk, vzhled a avatar nejsou ulozene v
+  `localStorage`, ale pres web bridge `GET/PUT /api/v1/profile/settings` do
+  `settings.core` a `settings.apps.akb`.
 
 Zbyvajici mista pouzivaji CSS kompatibilni `.button` aliasy, zejmena download/external anchor prvky a specializovane radkove akce v detailu dokumentu. Dalsi krok je pridat explicitni `StratosAnchorButton`, `UnifiedSelect` popover pro stav/typ/klasifikaci a `DateRangePicker` pro casove filtry.
 
+Field-help API je sdilene v `@voldzi/stratos-ui`: AKB pouziva `HelpHint`, `FieldLabelWithHelp` a `SelectField.labelAccessory`. Selecty uz nemaji aplikacni obal pro pozicovani otazniku.
+
 ## Migracni Cesta Na Sdileny Balicek
 
-Jakmile bude dostupny read-only GitHub Packages token:
+Aktualni cesta na sdileny balicek:
 
-1. pridat dependency `@stratos/ui` na publikovanou verzi z GitHub Packages,
-2. pridat `import "@stratos/ui/styles.css";` do globalniho vstupu webu,
-3. premapovat exporty v `apps/web/src/components/stratos/index.ts` na importy ze sdilene knihovny,
+1. drzet dependency `@voldzi/stratos-ui` na aktualni publikovane verzi z verejneho npm registry,
+2. drzet `import "@voldzi/stratos-ui/styles.css";` v globalnim vstupu webu,
+3. premapovat zbyvajici adaptery v `apps/web/src/components/stratos/index.ts` na primy import ze sdilene knihovny, pokud sdilena knihovna pokryva stejne props,
 4. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,
 5. ponechat `--stratos-*` tokeny jako verejny kontrakt pro AKB theme,
-6. spustit typecheck, build, Docker build se secretem `npmrc` a vizualni QA hlavniho shellu, registru, detailu dokumentu a nastaveni.
+6. spustit typecheck, build, Docker build a vizualni QA hlavniho shellu, registru, detailu dokumentu a nastaveni.
 
 ## UI Pravidla
 

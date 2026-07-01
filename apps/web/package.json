@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "AKB Platform Web Frontend",
+  "packageManager": "pnpm@11.7.0",
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
@@ -12,10 +13,11 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@voldzi/stratos-ui": "^0.2.1",
-    "lucide-react": "1.17.0",
-    "next": "16.2.7",
-    "pdfjs-dist": "6.0.227",
+    "@voldzi/stratos-ui": "^0.3.14",
+    "effect": "^3.21.4",
+    "lucide-react": "1.21.0",
+    "next": "16.2.9",
+    "pdfjs-dist": "^6.1.200",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-markdown": "10.1.0",
@@ -23,8 +25,8 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
-    "@types/node": "25.9.2",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "26.0.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "tsx": "4.22.4",

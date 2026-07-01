@@ -146,6 +146,63 @@ export interface AssistantSuggestedAction {
   target: string | null;
 }
 
+export type AssistantReportColumnType = "text" | "number" | "date" | "url" | "currency" | "percent";
+
+export interface AssistantReportColumn {
+  key: string;
+  label: string;
+  type: AssistantReportColumnType;
+  semantic_role?: string | null;
+}
+
+export type AssistantReportEvidenceStatus = "cited" | "metadata" | "not_stated" | "uncited";
+
+export interface AssistantReportCellSource {
+  column_key: string;
+  evidence_status: AssistantReportEvidenceStatus;
+  citations: Citation[];
+}
+
+export interface AssistantReportRow {
+  row_id: string;
+  cells: Record<string, string | number | boolean | null>;
+  citations: Citation[];
+  source_refs?: AssistantReportCellSource[];
+  confidence?: RagConfidence | null;
+}
+
+export type AssistantReportArtifactKind = "content_table" | "registry_metadata_table";
+
+export interface AssistantReportArtifactProvenance {
+  generated_from: "rag_markdown_table" | "rag_structured_artifact" | "registry_metadata";
+  assistant_tool: string;
+  query_plan_id: string | null;
+  citations_required: boolean;
+  row_citations_required: boolean;
+}
+
+export interface AssistantReportArtifactQuality {
+  status: "validated";
+  issues: string[];
+  informative_row_count: number;
+  row_citation_coverage: number;
+}
+
+export interface AssistantReportArtifact {
+  artifact_id: string;
+  artifact_contract_version?: string;
+  artifact_kind?: AssistantReportArtifactKind;
+  title: string;
+  description: string | null;
+  columns: AssistantReportColumn[];
+  rows: AssistantReportRow[];
+  export_formats: Array<"xlsx" | "pdf">;
+  source_citation_count: number;
+  warnings: string[];
+  provenance?: AssistantReportArtifactProvenance;
+  quality?: AssistantReportArtifactQuality;
+}
+
 export interface AssistantChatResponse {
   response_type: AssistantResponseType;
   conversation_id: string;
@@ -157,6 +214,7 @@ export interface AssistantChatResponse {
   citations: Citation[];
   follow_up_questions: string[];
   suggested_actions: AssistantSuggestedAction[];
+  report_artifacts: AssistantReportArtifact[];
   confidence: RagConfidence | null;
   warnings: string[];
   missing_information: string | null;
@@ -176,7 +234,92 @@ export interface AssistantSuggestionsResponse {
 
 export interface AssistantConversationResponse {
   conversation_id: string;
-  status: "ephemeral";
+  status: "ephemeral" | "persisted";
   messages: Record<string, unknown>[];
   warnings: string[];
+}
+
+export interface AssistantConversationMessage {
+  message_id: string;
+  role: "user" | "assistant";
+  content: string;
+  response_type: AssistantResponseType | null;
+  citations: Citation[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AssistantConversationShare {
+  conversation_share_id: string;
+  subject_type: "user" | "group";
+  subject_id: string;
+  permission: "viewer" | "commenter";
+  status: "active" | "removed";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssistantConversationDetail {
+  conversation_id: string;
+  user_id: string;
+  status: "active" | "archived";
+  title: string | null;
+  visibility: "private" | "shared";
+  retention_until: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  shared_with: AssistantConversationShare[];
+  messages: AssistantConversationMessage[];
+}
+
+export interface AssistantConversationListItem {
+  conversation_id: string;
+  user_id: string;
+  status: "active" | "archived";
+  title: string | null;
+  visibility: "private" | "shared";
+  retention_until: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  shared_with: AssistantConversationShare[];
+  message_count: number;
+}
+
+export interface AssistantConversationListResponse {
+  items: AssistantConversationListItem[];
+  limit: number;
+  offset: number;
+}
+
+export interface AssistantConversationPatchRequest {
+  title?: string | null;
+  status?: "active" | "archived";
+  visibility?: "private" | "shared";
+  retention_until?: string | null;
+}
+
+export interface AssistantConversationMessageAppendRequest {
+  user_id: string;
+  title?: string | null;
+  visibility?: "private" | "shared";
+  retention_until?: string | null;
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    response_type?: AssistantResponseType | null;
+    citations?: Citation[];
+    metadata?: Record<string, unknown>;
+  }>;
+}
+
+export interface AssistantConversationShareReplaceRequest {
+  visibility?: "private" | "shared";
+  shares: Array<{
+    subject_type: "user" | "group";
+    subject_id: string;
+    permission: "viewer" | "commenter";
+  }>;
 }

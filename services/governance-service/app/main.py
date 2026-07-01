@@ -33,6 +33,7 @@ from app.schemas import (
 )
 from app.security import require_service_auth
 from app.service import GovernanceService
+from app.telemetry import configure_telemetry
 from compliance.checker import ComplianceChecker
 from conflict_detection.detector import ConflictDetector
 from document_diff.diff_engine import DocumentDiffEngine
@@ -74,6 +75,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(GovernanceError, governance_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_error_handler)
+    configure_telemetry(
+        app,
+        service_name=resolved_settings.service_name,
+        service_version=resolved_settings.service_version,
+    )
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health(request: Request) -> HealthResponse:

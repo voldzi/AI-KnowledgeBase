@@ -1,13 +1,15 @@
 import { PageHeader } from "@/components/page-header";
 import { AuditViewer } from "@/features/audit/audit-viewer";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
+import { requirePageAccess } from "@/lib/auth/server-route-guard";
 import { ApiClientError, type AuditEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AuditPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/audit");
+  requirePageAccess(context, "knowledge_workspace");
   const [events, authorization] = await Promise.all([
     listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
     clients.registry.getAuthorizationHints(context)

@@ -4,7 +4,15 @@ import { describe, it } from "node:test";
 import {
   buildPublicAppUrl,
   contextFromOidcSession,
+  createState,
+  OIDC_REFRESH_COOKIE,
+  OIDC_SESSION_COOKIE,
   openSession,
+  readSessionCookie,
+  refreshOidcSession,
+  safeReturnToFromState,
+  sealBrowserSession,
+  sealRefreshToken,
   sealSession,
   sessionFromTokens
 } from "../src/lib/auth/oidc";
@@ -29,38 +37,92 @@ describe("OIDC web session", () => {
   });
 
   it("seals and opens a session cookie payload", () => {
-    const session = sessionFromTokens({ access_token: jwt({ sub: "user-123" }), expires_in: 600 }, 1_000);
+    const session = sessionFromTokens(
+      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
+      1_000
+    );
     const sealed = sealSession(session, "test-secret");
     const opened = openSession(sealed, "test-secret", 2_000);
 
     assert.equal(opened?.accessToken, session.accessToken);
+    assert.equal(opened?.refreshToken, "refresh-token");
     assert.equal(opened?.expiresAt, session.expiresAt);
     assert.equal(opened?.subjectId, session.subjectId);
     assert.deepEqual(opened?.roles, []);
     assert.deepEqual(opened?.groups, []);
     assert.equal(openSession(sealed, "wrong-secret", 2_000), null);
     assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1), null);
+    assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1, { allowExpired: true })?.subjectId, "user-123");
+  });
+
+  it("keeps access and refresh tokens out of the browser session cookie", () => {
+    const config = testOidcConfig();
+    const session = sessionFromTokens(
+      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
+      1_000
+    );
+    const browserSession = sealBrowserSession(session, "test-secret");
+    const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
+    const opened = openSession(browserSession, "test-secret", 2_000);
+    const read = readSessionCookie(
+      {
+        get: (name: string) =>
+          ({
+            [OIDC_SESSION_COOKIE]: { value: browserSession },
+            [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
+          })[name]
+      },
+      config,
+      2_000
+    );
+
+    assert.equal(opened?.accessToken, undefined);
+    assert.equal(opened?.refreshToken, undefined);
+    assert.equal(read?.accessToken, undefined);
+    assert.equal(read?.refreshToken, "refresh-token");
+  });
+
+  it("refreshes an expired web session with the OIDC refresh token", async () => {
+    const config = testOidcConfig();
+    const refreshedAccessToken = jwt({
+      sub: "user-123",
+      realm_access: { roles: ["reader"] },
+      groups: ["employees"],
+      name: "Demo User"
+    });
+    const session = sessionFromTokens(
+      { access_token: jwt({ sub: "user-123", name: "Demo User" }), refresh_token: "refresh-old", expires_in: 30 },
+      1_000
+    );
+
+    const refreshed = await refreshOidcSession(config, session, 60_000, async (input, init) => {
+      assert.equal(String(input), "https://login.example/realms/stratos/protocol/openid-connect/token");
+      assert.equal(init?.method, "POST");
+      const body = init?.body as URLSearchParams;
+      assert.equal(body.get("grant_type"), "refresh_token");
+      assert.equal(body.get("client_id"), "akl-web");
+      assert.equal(body.get("refresh_token"), "refresh-old");
+      return new Response(
+        JSON.stringify({
+          access_token: refreshedAccessToken,
+          refresh_token: "refresh-new",
+          expires_in: 600
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    assert.equal(refreshed?.accessToken, refreshedAccessToken);
+    assert.equal(refreshed?.refreshToken, "refresh-new");
+    assert.equal(refreshed?.expiresAt, 660_000);
+    assert.equal(refreshed?.subjectId, "user-123");
+    assert.deepEqual(refreshed?.roles, ["reader"]);
+    assert.deepEqual(refreshed?.groups, ["employees"]);
+    assert.equal(refreshed?.name, "Demo User");
   });
 
   it("builds post-login redirects from the configured public base URL", () => {
-    const config = {
-      environment: "production",
-      apiClientMode: "production",
-      authMode: "oidc",
-      serviceBaseUrls: {
-        registry: "http://registry/api/v1",
-        ingestion: "http://ingestion/api/v1",
-        rag: "http://rag/api/v1",
-        governance: "http://governance/api/v1"
-      },
-      oidc: {
-        issuer: "https://login.example/realms/stratos",
-        clientId: "akl-web",
-        redirectUri: "https://stratos.example/akb/api/auth/callback",
-        scopes: "openid profile email",
-        sessionSecret: "test-secret"
-      }
-    } as const;
+    const config = testOidcConfig();
 
     assert.equal(buildPublicAppUrl(config, "/"), "https://stratos.example/akb");
     assert.equal(buildPublicAppUrl(config, "/assistant"), "https://stratos.example/akb/assistant");
@@ -69,7 +131,36 @@ describe("OIDC web session", () => {
       "https://stratos.example/akb/api/auth/login?return_to=%2F"
     );
   });
+
+  it("falls back to a safe return path for malformed OIDC state", () => {
+    const state = createState("/chat");
+
+    assert.equal(safeReturnToFromState(state, "/"), "/chat");
+    assert.equal(safeReturnToFromState("not-base64-json", "/chat"), "/chat");
+    assert.equal(safeReturnToFromState(null, "/chat"), "/chat");
+  });
 });
+
+function testOidcConfig() {
+  return {
+    environment: "production",
+    apiClientMode: "production",
+    authMode: "oidc",
+    serviceBaseUrls: {
+      registry: "http://registry/api/v1",
+      ingestion: "http://ingestion/api/v1",
+      rag: "http://rag/api/v1",
+      governance: "http://governance/api/v1"
+    },
+    oidc: {
+      issuer: "https://login.example/realms/stratos",
+      clientId: "akl-web",
+      redirectUri: "https://stratos.example/akb/api/auth/callback",
+      scopes: "openid profile email",
+      sessionSecret: "test-secret"
+    }
+  } as const;
+}
 
 function jwt(payload: Record<string, unknown>): string {
   return [

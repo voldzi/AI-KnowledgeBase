@@ -22,6 +22,10 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.okf_profile import akb_metadata_from_okf, parse_markdown_frontmatter  # noqa: E402
 
 DEFAULT_REGISTRY_URL = "http://localhost:8001"
 DEFAULT_INGESTION_URL = "http://localhost:8090"
@@ -56,6 +60,7 @@ class ImportOptions:
     storage_bucket: str
     storage_prefix: str
     timeout_seconds: int
+    okf_profile: bool
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,6 +95,11 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
     parser.add_argument("--storage-bucket", default=os.getenv("AKL_IMPORT_STORAGE_BUCKET", DEFAULT_BUCKET))
     parser.add_argument("--storage-prefix", default=os.getenv("AKL_IMPORT_STORAGE_PREFIX", DEFAULT_STORAGE_PREFIX))
     parser.add_argument("--timeout-seconds", type=int, default=int(os.getenv("AKL_IMPORT_TIMEOUT_SECONDS", "120")))
+    parser.add_argument(
+        "--okf-profile",
+        action="store_true",
+        help="Treat Markdown sources as STRATOS OKF concepts and merge YAML frontmatter into AKB metadata.",
+    )
     args = parser.parse_args(argv)
 
     if args.limit is not None and args.limit <= 0:
@@ -112,6 +122,7 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
         storage_bucket=args.storage_bucket,
         storage_prefix=args.storage_prefix.strip("/"),
         timeout_seconds=args.timeout_seconds,
+        okf_profile=args.okf_profile,
     )
 
 
@@ -301,7 +312,7 @@ def base_report_item(
     options: ImportOptions,
 ) -> dict[str, Any]:
     content = path.read_bytes()
-    metadata = metadata_for_path(rel_path, manifest)
+    metadata = metadata_for_path(rel_path, manifest, path if options.okf_profile else None)
     return {
         "index": index,
         "source_path": rel_path,
@@ -322,7 +333,7 @@ def base_report_item(
     }
 
 
-def metadata_for_path(rel_path: str, manifest: dict[str, Any]) -> dict[str, Any]:
+def metadata_for_path(rel_path: str, manifest: dict[str, Any], source_path: Path | None = None) -> dict[str, Any]:
     defaults = dict(manifest.get("defaults") or {})
     metadata = {
         "document_type": defaults.get("document_type", "project_documentation"),
@@ -371,6 +382,11 @@ def metadata_for_path(rel_path: str, manifest: dict[str, Any]) -> dict[str, Any]
     )
     if metadata["status"] not in VALID_DOCUMENT_STATUSES:
         raise ValueError(f"Unsupported document status {metadata['status']!r} for {rel_path}")
+    if source_path is not None:
+        frontmatter, _body = parse_markdown_frontmatter(source_path.read_text(encoding="utf-8", errors="replace"))
+        metadata = akb_metadata_from_okf(frontmatter, rel_path, metadata)
+        if metadata["status"] not in VALID_DOCUMENT_STATUSES:
+            raise ValueError(f"Unsupported document status {metadata['status']!r} for {rel_path}")
     return metadata
 
 
@@ -775,6 +791,10 @@ def access_policies(subject_id: str, classification: str) -> list[dict[str, Any]
 
 def title_for_markdown(path: Path) -> str:
     text = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter, body = parse_markdown_frontmatter(text)
+    if isinstance(frontmatter.get("title"), str) and frontmatter["title"].strip():
+        return frontmatter["title"].strip()
+    text = body if frontmatter else text
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("#"):

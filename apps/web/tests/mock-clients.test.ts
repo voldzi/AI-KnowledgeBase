@@ -17,6 +17,9 @@ describe("mock API clients", () => {
     const context = createMockContext();
 
     const documents = await clients.registry.listDocuments(context);
+    const summary = await clients.registry.getDocumentMetadataSummary(context, {
+      topics: ["řízená dokumentace"]
+    });
     const createdVersion = await clients.registry.createDocumentVersion(
       documents[0].document_id,
       {
@@ -42,8 +45,114 @@ describe("mock API clients", () => {
     );
 
     assert.ok(documents.length > 0);
+    assert.equal(summary.warnings[0], "REGISTRY_METADATA_SUMMARY");
+    assert.ok(summary.topics[0].document_count >= 1);
     assert.equal(createdVersion.document_id, documents[0].document_id);
     assert.equal(job.status, "queued");
+  });
+
+  it("keeps profile settings stateful in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext({ subjectId: "user_settings", roles: ["reader"], groups: ["staff"] });
+
+    const initial = await clients.registry.getProfileSettings(context);
+    assert.deepEqual(initial.settings, { core: {}, apps: { akb: {} } });
+
+    await clients.registry.putProfileSettings(
+      {
+        settings: {
+          core: { language: "en", theme: "dark" },
+          apps: { akb: { settingsMode: "sidebar" } }
+        }
+      },
+      context
+    );
+
+    const fetched = await clients.registry.getProfileSettings(context);
+    assert.equal(fetched.settings.core.language, "en");
+    assert.equal(fetched.settings.apps.akb.settingsMode, "sidebar");
+    assert.deepEqual(fetched.roles, ["reader"]);
+    assert.deepEqual(fetched.groups, ["staff"]);
+  });
+
+  it("filters metadata summaries by STRATOS context in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    await clients.registry.createDocument(
+      {
+        title: "Smlouva Budget Contract 1",
+        document_type: "contract",
+        owner_id: "budget_owner",
+        gestor_unit: "Budget",
+        classification: "internal",
+        tags: ["budget-contract:contract-1"],
+        metadata: {
+          stratos: {
+            tenant_id: "tenant-a",
+            external_system: "STRATOS_BUDGET",
+            external_ref: "contract:1",
+            entity_type: "contract",
+            entity_id: "contract-1"
+          }
+        }
+      },
+      context
+    );
+
+    const summary = await clients.registry.getDocumentMetadataSummary(context, {
+      topics: ["smlouva"],
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-1",
+      externalRef: "contract:1",
+      contextTags: ["budget-contract:contract-1"]
+    });
+
+    assert.equal(summary.total_visible_documents, 1);
+    assert.equal(summary.total_matched_documents, 1);
+    assert.equal(summary.topics[0]?.document_count, 1);
+    assert.equal(summary.by_document_type[0]?.key, "contract");
+  });
+
+  it("filters document lists by STRATOS context in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    await clients.registry.createDocument(
+      {
+        title: "Smlouva Budget Contract 2",
+        document_type: "contract",
+        owner_id: "budget_owner",
+        gestor_unit: "Budget",
+        classification: "internal",
+        tags: ["budget-contract:contract-2"],
+        metadata: {
+          external: {
+            tenant_id: "tenant-a",
+            external_system: "STRATOS_BUDGET",
+            external_ref: "contract:2",
+            entity_type: "contract",
+            entity_id: "contract-2"
+          }
+        }
+      },
+      context
+    );
+
+    const documents = await clients.registry.listDocuments(context, {
+      topics: ["smlouva"],
+      tenantId: "tenant-a",
+      externalSystem: "STRATOS_BUDGET",
+      entityType: "contract",
+      entityId: "contract-2",
+      contextTags: ["budget-contract:contract-2"]
+    });
+
+    assert.equal(documents.length, 1);
+    assert.equal(documents[0]?.document_type, "contract");
+    assert.equal(documents[0]?.title, "Smlouva Budget Contract 2");
   });
 
   it("returns citation-backed RAG answers and no-answer states", async () => {
@@ -109,11 +218,20 @@ describe("mock API clients", () => {
       context
     );
     const suggestions = await clients.rag.assistantSuggestions(context);
+    const reportAnswer = await clients.rag.assistantChat(
+      {
+        user_id: context.subjectId,
+        message: "Vytvoř tabulkovou sestavu do Excelu k výjimce ze směrnice.",
+        context: { approval_subject: "výjimka ze směrnice" }
+      },
+      context
+    );
 
     assert.equal(clarification.response_type, "clarification_needed");
     assert.ok(clarification.questions.some((question) => question.id === "system"));
     assert.equal(answer.response_type, "answer");
     assert.ok(answer.citations.length > 0);
+    assert.deepEqual(reportAnswer.report_artifacts[0]?.export_formats, ["xlsx", "pdf"]);
     assert.ok(suggestions.suggestions.length > 0);
   });
 

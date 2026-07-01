@@ -209,6 +209,7 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     networks:
       - app_zone
@@ -425,7 +426,7 @@ services:
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
       AKL_LLM_GATEWAY_BASE_URL: ${AKL_RAG_LLM_GATEWAY_BASE_URL:-http://llm-gateway-service:8080/api/v1}
       AKL_GOVERNANCE_BASE_URL: ${AKL_RAG_GOVERNANCE_BASE_URL:-http://governance-service:8080/api/v1}
-      AKL_RAG_CHAT_MODEL: ${AKL_RAG_CHAT_MODEL:-gemma4:12b}
+      AKL_RAG_CHAT_MODEL: ${AKL_RAG_CHAT_MODEL:-gemma4:12b-mlx}
       AKL_RAG_EMBEDDING_MODEL: ${AKL_RAG_EMBEDDING_MODEL:-bge-m3}
       AKL_RAG_ANSWER_MAX_TOKENS: ${AKL_RAG_ANSWER_MAX_TOKENS:-512}
       AKL_RAG_SOURCE_CONTEXT_WINDOW: ${AKL_RAG_SOURCE_CONTEXT_WINDOW:-1}
@@ -458,8 +459,8 @@ services:
       AKL_AUTH_MODE: ${AKL_LLM_AUTH_MODE:-mock}
       AKL_LLM_DEFAULT_PROVIDER: ${AKL_LLM_DEFAULT_PROVIDER:-ollama}
       AKL_LLM_ENABLED_PROVIDERS: ${AKL_LLM_ENABLED_PROVIDERS:-mock,ollama}
-      AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{"gemma4:12b":"ollama","bge-m3":"ollama","mock-chat":"mock","mock-embedding":"mock"}}
-      AKL_LLM_DEFAULT_CHAT_MODEL: ${AKL_LLM_DEFAULT_CHAT_MODEL:-gemma4:12b}
+      AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{"gemma4:12b-mlx":"ollama","bge-m3":"ollama","mock-chat":"mock","mock-embedding":"mock"}}
+      AKL_LLM_DEFAULT_CHAT_MODEL: ${AKL_LLM_DEFAULT_CHAT_MODEL:-gemma4:12b-mlx}
       AKL_LLM_DEFAULT_EMBEDDING_MODEL: ${AKL_LLM_DEFAULT_EMBEDDING_MODEL:-bge-m3}
       AKL_LLM_DEFAULT_MAX_TOKENS: ${AKL_LLM_DEFAULT_MAX_TOKENS:-512}
       AKL_LLM_ALLOW_MODEL_PULL: ${AKL_LLM_ALLOW_MODEL_PULL:-false}
@@ -469,6 +470,7 @@ services:
       AKL_LLM_RETRY_ATTEMPTS: ${AKL_LLM_RETRY_ATTEMPTS:-2}
       AKL_LLM_RETRY_BACKOFF_SECONDS: ${AKL_LLM_RETRY_BACKOFF_SECONDS:-0.25}
       AKL_OLLAMA_BASE_URL: ${AKL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AKL_OLLAMA_BASE_URLS: ${AKL_OLLAMA_BASE_URLS:-http://host.docker.internal:11434}
       AKL_OLLAMA_THINK: ${AKL_OLLAMA_THINK:-false}
       AKL_OPENAI_COMPAT_BASE_URL: ${AKL_OPENAI_COMPAT_BASE_URL:-http://vllm:8000}
       AKL_OPENAI_COMPAT_API_KEY: ${AKL_OPENAI_COMPAT_API_KEY:-}

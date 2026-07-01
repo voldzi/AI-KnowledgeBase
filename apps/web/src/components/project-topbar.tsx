@@ -25,6 +25,7 @@ interface ProjectTopbarProps {
   onCommandCenterOpen: () => void;
   onLogout: () => void;
   onLanguageChange: (language: AklLanguage) => void;
+  mobileMenuOpen?: boolean;
   onMobileMenuOpen?: () => void;
   onSettingsOpen?: () => void;
   projectName: string;
@@ -51,6 +52,7 @@ export function ProjectTopbar({
   healthLabel,
   labels,
   language,
+  mobileMenuOpen = false,
   onCommandCenterOpen,
   onLogout,
   onLanguageChange,
@@ -90,10 +92,13 @@ export function ProjectTopbar({
         <button
           type="button"
           className="akl-mobile-menu-trigger"
-          aria-label={language === "cs" ? "Otevřít navigaci" : "Open navigation"}
+          aria-expanded={mobileMenuOpen}
+          aria-label={mobileMenuOpen
+            ? language === "cs" ? "Zavřít navigaci" : "Close navigation"
+            : language === "cs" ? "Otevřít navigaci" : "Open navigation"}
           onClick={onMobileMenuOpen}
         >
-          <Menu size={20} aria-hidden="true" />
+          {mobileMenuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
         </button>
       ) : undefined}
       labels={{

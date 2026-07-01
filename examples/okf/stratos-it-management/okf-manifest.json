@@ -1,0 +1,8 @@
+{
+  "profile": "stratos-okf-v1",
+  "name": "stratos-it-management-operating-model",
+  "description": "Reference OKF bundle for IT section governance, ITSM, documentation, architecture, security, suppliers, metrics, and automation.",
+  "tenant_id": "stratos",
+  "language": "cs",
+  "concept_count": 10
+}

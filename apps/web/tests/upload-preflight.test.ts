@@ -101,6 +101,35 @@ describe("upload preflight", () => {
         error.code === "FILE_EXTENSION_UNSUPPORTED"
     );
   });
+
+  it("accepts structured office, tabular and data document uploads", () => {
+    const settings = testSettings("/tmp/akl-upload-test");
+    const supported = [
+      ["table.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+      ["deck.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+      ["data.csv", "text/csv"],
+      ["payload.json", "application/json"],
+      ["feed.xml", "text/xml"],
+      ["page.html", "text/html"],
+      ["scan.png", "image/png"]
+    ] as const;
+
+    for (const [fileName, fileType] of supported) {
+      const decision = createUploadPreflightDecision(
+        {
+          document_id: "doc_123",
+          file_name: fileName,
+          file_size: 12,
+          file_type: fileType,
+          sha256: `sha256:${"b".repeat(64)}`
+        },
+        settings
+      );
+
+      assert.equal(decision.file.filename, fileName);
+      assert.equal(decision.required_headers["Content-Type"], decision.file.mime_type);
+    }
+  });
 });
 
 function testSettings(root: string): UploadSettings {

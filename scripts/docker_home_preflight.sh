@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${AKL_PROD_ENV_FILE:-/srv/akl/env/akl.prod.env}"
-NPMRC_FILE="${AKL_NPMRC_SECRET_FILE:-/srv/akl/secrets/npmrc}"
 COMPOSE_FILE="${ROOT_DIR}/infra/docker-compose/docker-compose.docker-home.yml"
 
 fail() {
@@ -29,7 +28,6 @@ require_cmd docker
 require_cmd curl
 require_cmd python3
 require_file "$ENV_FILE" "Production env file"
-require_file "$NPMRC_FILE" "GitHub Packages npmrc secret"
 
 if grep -E 'replace-with|<user>|<password>|long-random|prod-password' "$ENV_FILE" >/dev/null; then
   fail "Production env file still contains placeholder values."

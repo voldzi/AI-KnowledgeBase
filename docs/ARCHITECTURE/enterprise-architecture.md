@@ -20,7 +20,7 @@ The central backend owns:
 
 - Document Registry and governed metadata,
 - Ingestion Service and source parsing,
-- RAG Retrieval Service and employee assistant API,
+- RAG Retrieval Service and employee chat API,
 - LLM Gateway and model routing,
 - Qdrant vector storage,
 - PostgreSQL transactional storage,
@@ -44,7 +44,7 @@ The central backend owns:
 - persistent volumes.
 - backup/restore wrappers.
 - real local RAG profile:
-  - `gemma4:12b` chat model,
+  - `gemma4:12b-mlx` chat model,
   - `bge-m3` embedding model,
   - Qdrant collection `akl_document_chunks` with 1024D Cosine vectors.
 
@@ -106,19 +106,23 @@ tags
 
 The `docs/import-manifest.yaml` manifest assigns `domain`, `area`, `audience`, and tags for the project documentation knowledge base.
 
-## Dual GUI
+## User Surfaces
 
-AKL exposes two web surfaces:
+AKB exposes one employee-facing chat portal and a separate
+knowledge-management/admin workspace:
 
 - Knowledge Management/Admin GUI for document managers, knowledge admins, auditors, and IT managers.
-- Employee Assistant GUI for employees.
+- Employee Chat Portal for employees.
 
-The Employee Assistant GUI is intentionally plain-language. It must not expose implementation terms such as Qdrant, embeddings, chunks, or RAG in employee-facing copy. It asks clarifying questions for vague requests, returns cited answers when sources are sufficient, and recommends handoff when they are not.
+The Employee Chat Portal is intentionally plain-language. It must not expose implementation terms such as Qdrant, embeddings, chunks, or RAG in employee-facing copy. It asks clarifying questions for vague requests, returns cited answers when sources are sufficient, and recommends handoff when they are not.
 
 Current route split:
 
 - `/` and admin routes: Knowledge Management/Admin GUI.
-- `/assistant`: Employee Assistant GUI.
+- `/chat`: standalone Employee Chat Portal for ordinary users. Users with only
+  chat roles are redirected away from knowledge-management/admin routes and see
+  no side menu.
+- `/assistant`: legacy compatibility route that redirects to `/chat`.
 
 ## Assistant API
 
@@ -138,3 +142,56 @@ Response types:
 - `handoff_recommended`.
 
 Assistant conversation history is persisted in Registry API when available. RAG returns an explicit ephemeral status and warning only when the Registry history lookup or append fails.
+Registry history management uses `/api/v1/assistant/conversation-history...`
+for list/detail/share/archive so it does not collide with the RAG
+`GET /api/v1/assistant/conversations/{conversation_id}` endpoint.
+
+## Chat As Organizational Source Of Truth
+
+Target state: the AKB chat is the primary natural-language entry point over
+the whole organization. It must answer across finance, contracts, internal
+rules, laws, projects, infrastructure, and application documentation without
+letting source applications copy binaries, extracted text, chunks, embeddings,
+prompts, or RAG logic outside AKB.
+
+Implementation roadmap:
+
+1. Metadata truth layer:
+   - Registry API owns exact document inventory, ownership, classification,
+     tenant, source system, external entity context, lifecycle status, and audit.
+   - Implemented first step: `GET /api/v1/documents/metadata-summary` returns
+     permission-scoped aggregate summaries for chat inventory questions.
+   - Implemented context step: the metadata summary and AKB web chat pass
+     tenant, external system, entity, external ref, and context-tag filters so
+     ProjectFlow, Budget, and future STRATOS apps can ask scoped inventory
+     questions without copying documents out of AKB.
+   - Implemented structured-output step: chat inventory questions can return
+     aggregate summaries (`document_inventory_summary`), document rows
+     (`document_list`), or document type counts (`document_type_count`) with
+     XLSX/PDF export.
+   - Next optimization: replace in-process aggregation with indexed SQL and
+     materialized/search projections for large enterprise datasets.
+2. Retrieval truth layer:
+   - RAG answers content questions only from authorized chunks and citations.
+   - Retrieval must support hybrid search, metadata filters, reranking, and
+     strict no-answer policy when evidence is insufficient.
+3. Domain intelligence layer:
+   - Domain profiles for contracts, finance, project delivery, laws, internal
+     policies, infrastructure, and application operations define expected fields,
+     terminology, filters, and extraction profiles.
+   - Structured outputs are proposed values or report artifacts, not writes to
+     source systems without human confirmation.
+4. Enterprise chat orchestration:
+   - Route inventory/count/list/type-breakdown questions to Registry metadata.
+   - Route sourced interpretation questions to RAG.
+   - Route structured extraction requests to controlled extraction profiles.
+   - Route operational/status questions to approved service APIs or telemetry
+     projections, never to direct infrastructure secrets.
+5. Governance and trust:
+   - Every answer must expose source type: registry metadata, cited RAG,
+     extraction proposal, telemetry/status, or no-answer.
+   - Audit must store correlation ids, source ids, counts, and hashes where
+     needed; it must not store document bodies, prompts, answers, tokens, or
+     secrets.
+   - STRATOS applications remain thin clients and use shared AKB/Stratos UI
+     components for viewer, upload, picker, status, citations, and reports.

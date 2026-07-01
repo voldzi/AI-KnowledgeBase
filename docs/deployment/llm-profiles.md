@@ -27,17 +27,18 @@ Required `.env` values:
 ```bash
 AKL_LLM_DEFAULT_PROVIDER=ollama
 AKL_LLM_ENABLED_PROVIDERS=ollama
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b":"ollama","bge-m3":"ollama"}
-AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama"}
+AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b-mlx
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_LLM_DEFAULT_MAX_TOKENS=512
 AKL_OLLAMA_THINK=false
+AKL_OLLAMA_BASE_URLS=http://ollama:11434
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
-AKL_RAG_CHAT_MODEL=gemma4:12b
+AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_AUTHZ_MODE=dev
 AKL_RAG_REQUIRE_CITATIONS=true
@@ -62,7 +63,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
 
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
-  -d '{"model":"gemma4:12b","kind":"chat"}'
+  -d '{"model":"gemma4:12b-mlx","kind":"chat"}'
 ```
 
 Verify model visibility and effective config:
@@ -77,7 +78,7 @@ The effective config should show:
 
 ```text
 active_provider=ollama
-default_chat_model=gemma4:12b
+default_chat_model=gemma4:12b-mlx
 default_embedding_model=bge-m3
 default_max_tokens=512
 ollama_think=false
@@ -91,11 +92,23 @@ If Ollama runs on the host instead of the compose `ai` profile, point LLM Gatewa
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
+For a controlled failover list, set `AKL_OLLAMA_BASE_URLS` to the ordered
+candidate URLs. The gateway tries those explicit endpoints and uses the first
+one that responds. It does not scan LAN ranges.
+
+```bash
+AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+```
+
+For local LAN stations such as `192.168.200.2` or `192.168.1.176`, Ollama must listen on an address
+reachable from the AKB host, not only on `127.0.0.1`.
+
 On macOS with a local Ollama service:
 
 ```bash
 ollama pull bge-m3
-ollama pull gemma4:12b
+ollama pull gemma4:12b-mlx
 ollama list
 ```
 

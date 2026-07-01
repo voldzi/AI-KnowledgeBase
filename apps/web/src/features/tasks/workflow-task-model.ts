@@ -215,9 +215,9 @@ function buildIngestionTasks(jobs: IngestionJob[], documentById: Map<string, Doc
         kind: "ingestion",
         priority: "critical",
         status: "blocked",
-        title: "Ingestion failure blocks knowledge use",
-        description: "The source is not indexed and should not be treated as citation-ready knowledge.",
-        source: "Ingestion Service",
+        title: "Document processing failed",
+        description: "The source is not citation-ready yet and should be fixed before people rely on it.",
+        source: "Document processing",
         owner: document?.gestor_unit ?? document?.owner ?? "Operations",
         role: "Knowledge operations",
         document_id: job.document_id,
@@ -228,7 +228,7 @@ function buildIngestionTasks(jobs: IngestionJob[], documentById: Map<string, Doc
         created_at: job.created_at,
         href: "/ingestion",
         secondary_href: document ? `/documents/${document.document_id}` : null,
-        action_label: "Inspect ingestion failure"
+        action_label: "Inspect processing error"
       });
     }
 
@@ -239,9 +239,9 @@ function buildIngestionTasks(jobs: IngestionJob[], documentById: Map<string, Doc
         kind: "ingestion",
         priority: "high",
         status: "open",
-        title: "Ingestion completed with warnings",
+        title: "Document processed with warnings",
         description: "Review extraction warnings before relying on generated citations and insights.",
-        source: "Ingestion report",
+        source: "Processing report",
         owner: document?.gestor_unit ?? document?.owner ?? "Operations",
         role: "Document manager",
         document_id: job.document_id,
@@ -263,9 +263,9 @@ function buildIngestionTasks(jobs: IngestionJob[], documentById: Map<string, Doc
         kind: "ingestion",
         priority: "low",
         status: "waiting",
-        title: "Ingestion in progress",
-        description: "Monitor the pipeline until parser, chunking and indexing finish.",
-        source: "Ingestion Service",
+        title: "Document processing in progress",
+        description: "Wait until AKB finishes reading the file and preparing citation segments.",
+        source: "Document processing",
         owner: document?.gestor_unit ?? document?.owner ?? "Operations",
         role: "Knowledge operations",
         document_id: job.document_id,
@@ -276,7 +276,7 @@ function buildIngestionTasks(jobs: IngestionJob[], documentById: Map<string, Doc
         created_at: job.created_at,
         href: "/ingestion",
         secondary_href: document ? `/documents/${document.document_id}` : null,
-        action_label: "Monitor ingestion"
+        action_label: "Monitor processing"
       });
     }
   }
@@ -317,7 +317,7 @@ function actionLabelForKind(kind: WorkflowTaskKind): string {
     return "Review governance signals";
   }
   if (kind === "ingestion") {
-    return "Inspect ingestion";
+    return "Inspect processing";
   }
   return "Open document workbench";
 }

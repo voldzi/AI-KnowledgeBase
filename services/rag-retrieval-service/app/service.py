@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -8,7 +9,9 @@ from dataclasses import dataclass
 from typing import AsyncIterator
 
 from answer_composer.composer import AnswerComposer, StreamEvent
+from app.archflow_extraction import archflow_goal_extraction_profiles, extract_archflow_goal_proposals
 from app.config import Settings
+from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
 from app.errors import RetrievalError
 from app.llm_client import LLMGatewayClient
 from app.registry_client import RegistryClient
@@ -17,10 +20,19 @@ from app.schemas import (
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantConversationResponse,
+    AssistantReportArtifact,
+    AssistantReportColumn,
+    AssistantReportRow,
     AssistantSuggestion,
     AssistantSuggestionsResponse,
     AssistantSuggestedAction,
+    ArchflowGoalExtractionProposeRequest,
+    ArchflowGoalExtractionResponse,
+    Citation,
     ClarificationQuestion,
+    ContractExtractionProfilesResponse,
+    ContractExtractionProposeRequest,
+    ContractExtractionResponse,
     RagAnswer,
     RagQueryRequest,
     RagQueryFilters,
@@ -30,6 +42,9 @@ from app.schemas import (
     ResponseLanguage,
     SourceContextResponse,
     SourceLocation,
+    StratosExtractionFeedbackRequest,
+    StratosExtractionFeedbackResponse,
+    StratosExtractionResponse,
     ViewerMode,
 )
 from app.security import AuthContext
@@ -313,6 +328,353 @@ class RagRetrievalService:
             "llm-gateway": await self._llm_client.readiness(),
         }
 
+    async def extraction_profiles(self) -> ContractExtractionProfilesResponse:
+        return ContractExtractionProfilesResponse(
+            profiles=[
+                *contract_extraction_profiles(),
+                *archflow_goal_extraction_profiles(),
+            ]
+        )
+
+    async def propose_contract_extraction(
+        self,
+        payload: ContractExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ContractExtractionResponse:
+        query_id = _query_id()
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.started",
+            resource_id=f"{payload.external_system}:{payload.external_ref}:{payload.profile}",
+            metadata={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": payload.document_id,
+                "document_version_id": payload.document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+            },
+            auth_context=auth_context,
+        )
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=_contract_extraction_query(payload),
+                filters=RagQueryFilters(
+                    document_types=["contract", "attachment", "other"],
+                    only_valid=True,
+                    classification_max=payload.classification_max,
+                    tags=payload.context_tags,
+                ),
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        if payload.document_id in run.denied_document_ids:
+            await self._audit_extraction(
+                actor_id=payload.subject_id,
+                event_type="document_extraction.permission_denied",
+                resource_id=payload.document_id,
+                metadata={
+                    "tenant_id": payload.tenant_id,
+                    "external_system": payload.external_system,
+                    "external_ref": payload.external_ref,
+                    "document_version_id": payload.document_version_id,
+                    "profile": payload.profile,
+                },
+                auth_context=auth_context,
+            )
+            raise RetrievalError(
+                "DOCUMENT_ACCESS_DENIED",
+                "The subject is not authorized to extract from this document.",
+                status_code=403,
+                details={"document_id": payload.document_id},
+            )
+
+        chunks = [
+            chunk
+            for chunk in run.response.chunks
+            if chunk.citation.document_id == payload.document_id
+            and chunk.citation.document_version_id == payload.document_version_id
+        ]
+        proposals, missing_information, extraction_warnings = extract_contract_financial_proposals(chunks=chunks)
+        warnings = [*run.response.warnings, *extraction_warnings]
+        if not chunks and "TARGET_DOCUMENT_NOT_RETRIEVED" not in warnings:
+            warnings.append("TARGET_DOCUMENT_NOT_RETRIEVED")
+        status = "PROPOSED" if proposals and not missing_information else "PARTIAL"
+        result = {
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+            "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "query_id": query_id,
+        }
+        stored = await self._registry_client.store_document_extraction(
+            payload={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": payload.document_id,
+                "document_version_id": payload.document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+                "status": status,
+                "classification": payload.classification_max,
+                "requested_by": payload.subject_id,
+                "correlation_id": payload.correlation_id,
+                "result": result,
+                "missing_information": missing_information,
+                "warnings": warnings,
+                "metadata": {
+                    "query_id": query_id,
+                    "context_tags": payload.context_tags,
+                    **payload.metadata,
+                },
+            },
+            auth_context=auth_context,
+        )
+        response = _contract_extraction_response_from_registry(stored.get("extraction", stored))
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.proposed",
+            resource_id=response.extraction_id,
+            metadata={
+                "tenant_id": response.tenant_id,
+                "external_system": response.external_system,
+                "external_ref": response.external_ref,
+                "document_id": response.document_id,
+                "document_version_id": response.document_version_id,
+                "profile": response.profile,
+                "status": response.status,
+                "proposal_count": len(response.proposals),
+                "missing_information": response.missing_information,
+                "warnings": response.warnings,
+            },
+            auth_context=auth_context,
+        )
+        return response
+
+    async def propose_archflow_goal_extraction(
+        self,
+        payload: ArchflowGoalExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ArchflowGoalExtractionResponse:
+        query_id = _query_id()
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.started",
+            resource_id=f"{payload.external_system}:{payload.external_ref}:{payload.profile}",
+            metadata={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "source_set_id": payload.source_set_id,
+                "catalog_version_id": payload.catalog_version_id,
+                "source_document_count": len(payload.documents),
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+            },
+            auth_context=auth_context,
+        )
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=_archflow_goal_extraction_query(payload),
+                filters=RagQueryFilters(
+                    document_types=[
+                        "directive",
+                        "regulation",
+                        "methodology",
+                        "policy",
+                        "procedure",
+                        "manual",
+                        "project_documentation",
+                        "contract",
+                        "attachment",
+                        "other",
+                    ],
+                    only_valid=True,
+                    classification_max=payload.classification_max,
+                    tags=payload.context_tags,
+                ),
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        target_pairs = _archflow_target_document_pairs(payload)
+        denied_targets = sorted({document_id for document_id, _ in target_pairs}.intersection(run.denied_document_ids))
+        if denied_targets:
+            await self._audit_extraction(
+                actor_id=payload.subject_id,
+                event_type="document_extraction.permission_denied",
+                resource_id=payload.source_set_id or payload.entity_id,
+                metadata={
+                    "tenant_id": payload.tenant_id,
+                    "external_system": payload.external_system,
+                    "external_ref": payload.external_ref,
+                    "source_set_id": payload.source_set_id,
+                    "catalog_version_id": payload.catalog_version_id,
+                    "document_ids": denied_targets,
+                    "profile": payload.profile,
+                },
+                auth_context=auth_context,
+            )
+            raise RetrievalError(
+                "DOCUMENT_ACCESS_DENIED",
+                "The subject is not authorized to extract from one or more ArchFlow source documents.",
+                status_code=403,
+                details={"document_ids": denied_targets},
+            )
+
+        chunks = (
+            [
+                chunk
+                for chunk in run.response.chunks
+                if (chunk.citation.document_id, chunk.citation.document_version_id) in target_pairs
+            ]
+            if target_pairs
+            else run.response.chunks
+        )
+        proposals, missing_information, extraction_warnings = extract_archflow_goal_proposals(chunks=chunks)
+        warnings = [*run.response.warnings, *extraction_warnings]
+        if not chunks and "TARGET_DOCUMENT_NOT_RETRIEVED" not in warnings:
+            warnings.append("TARGET_DOCUMENT_NOT_RETRIEVED")
+        primary_document_id, primary_document_version_id = _archflow_primary_document(payload, chunks)
+        status = "PROPOSED" if proposals and not missing_information else "PARTIAL"
+        result = {
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+            "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "query_id": query_id,
+            "source_set_id": payload.source_set_id,
+            "catalog_version_id": payload.catalog_version_id,
+            "source_documents": [document.model_dump(mode="json") for document in payload.documents],
+        }
+        stored = await self._registry_client.store_document_extraction(
+            payload={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": primary_document_id,
+                "document_version_id": primary_document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+                "status": status,
+                "classification": payload.classification_max,
+                "requested_by": payload.subject_id,
+                "correlation_id": payload.correlation_id,
+                "result": result,
+                "missing_information": missing_information,
+                "warnings": warnings,
+                "metadata": {
+                    "query_id": query_id,
+                    "context_tags": payload.context_tags,
+                    "archflow_review_required": True,
+                    "source_set_id": payload.source_set_id,
+                    "catalog_version_id": payload.catalog_version_id,
+                    "source_documents": [document.model_dump(mode="json") for document in payload.documents],
+                    "primary_document_id": primary_document_id,
+                    "primary_document_version_id": primary_document_version_id,
+                    **payload.metadata,
+                },
+            },
+            auth_context=auth_context,
+        )
+        response = _archflow_goal_extraction_response_from_registry(stored.get("extraction", stored))
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.proposed",
+            resource_id=response.extraction_id,
+            metadata={
+                "tenant_id": response.tenant_id,
+                "external_system": response.external_system,
+                "external_ref": response.external_ref,
+                "document_id": response.document_id,
+                "document_version_id": response.document_version_id,
+                "source_set_id": payload.source_set_id,
+                "catalog_version_id": payload.catalog_version_id,
+                "profile": response.profile,
+                "status": response.status,
+                "proposal_count": len(response.proposals),
+                "missing_information": response.missing_information,
+                "warnings": response.warnings,
+            },
+            auth_context=auth_context,
+        )
+        return response
+
+    async def document_extraction(
+        self,
+        extraction_id: str,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> StratosExtractionResponse:
+        stored = await self._registry_client.fetch_document_extraction(
+            extraction_id=extraction_id,
+            auth_context=auth_context,
+        )
+        if stored is None:
+            raise RetrievalError(
+                "DOCUMENT_EXTRACTION_NOT_FOUND",
+                "Document extraction was not found.",
+                status_code=404,
+                details={"extraction_id": extraction_id},
+            )
+        return _stratos_extraction_response_from_registry(stored)
+
+    async def record_document_extraction_feedback(
+        self,
+        extraction_id: str,
+        payload: StratosExtractionFeedbackRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> StratosExtractionFeedbackResponse:
+        stored = await self._registry_client.record_document_extraction_feedback(
+            extraction_id=extraction_id,
+            payload=payload.model_dump(mode="json"),
+            auth_context=auth_context,
+        )
+        if not stored:
+            raise RetrievalError(
+                "DOCUMENT_EXTRACTION_NOT_FOUND",
+                "Document extraction was not found.",
+                status_code=404,
+                details={"extraction_id": extraction_id},
+            )
+        extraction = _stratos_extraction_response_from_registry(stored["extraction"])
+        feedback = stored.get("feedback", {})
+        await self._audit_extraction(
+            actor_id=payload.actor,
+            event_type="document_extraction.feedback_recorded",
+            resource_id=extraction_id,
+            metadata={
+                "field": payload.field,
+                "decision": payload.decision,
+                "source_app": payload.source_app,
+                "source_entity_id": payload.source_entity_id,
+                "status": extraction.status,
+            },
+            auth_context=auth_context,
+        )
+        return StratosExtractionFeedbackResponse(
+            feedback_id=str(feedback.get("feedback_id", "")),
+            extraction=extraction,
+        )
+
     async def assistant_chat(
         self,
         payload: AssistantChatRequest,
@@ -365,34 +727,104 @@ class RagRetrievalService:
             )
             return response
 
-        rag_answer = await self.query(
-            RagQueryRequest(
+        query_id = _query_id()
+        retrieval_query = _assistant_query(payload.message, payload.context)
+        answer_query = _assistant_answer_query(payload.message, payload.context)
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
                 subject_id=payload.user_id,
-                query=_assistant_query(payload.message, payload.context),
+                query=retrieval_query,
                 filters=_assistant_filters(payload.context),
-                answer_mode=payload.mode,
                 max_chunks=6,
-                response_language=payload.response_language,
             ),
+            query_id=query_id,
             auth_context=auth_context,
         )
+        decision = self._no_answer_policy.evaluate(
+            chunks=run.response.chunks,
+            had_candidates=run.had_candidates,
+            denied_document_ids=run.denied_document_ids,
+        )
+        if not decision.can_answer:
+            rag_answer = self._no_answer_policy.no_answer(
+                query_id=query_id,
+                decision=decision,
+                response_language=payload.response_language,
+            )
+        elif payload.mode == "retrieve_only":
+            rag_answer = _retrieval_only_answer(
+                query_id=query_id,
+                chunks=run.response.chunks,
+                confidence=decision.confidence,
+                warnings=decision.warnings,
+                response_language=payload.response_language,
+            )
+        else:
+            rag_answer = await self._answer_composer.compose(
+                query_id=query_id,
+                query=answer_query,
+                chunks=run.response.chunks,
+                confidence=decision.confidence,
+                warnings=decision.warnings,
+                max_chunks=6,
+                answer_mode=payload.mode,
+                response_language=payload.response_language,
+                auth_context=auth_context,
+            )
+        await self._audit_answer(
+            actor_id=payload.user_id,
+            event_type="rag.assistant_query.executed",
+            answer=rag_answer,
+            auth_context=auth_context,
+        )
+        logger.info(
+            "assistant_rag_query_completed query_id=%s confidence=%s used_chunk_count=%s warning_count=%s",
+            query_id,
+            rag_answer.confidence,
+            len(rag_answer.used_chunks),
+            len(rag_answer.warnings),
+        )
         if rag_answer.citations:
+            report_artifacts = _assistant_report_artifacts(
+                message=payload.message,
+                answer=rag_answer.answer,
+                citations=rag_answer.citations,
+                confidence=rag_answer.confidence,
+                response_language=payload.response_language,
+            )
+            suggested_actions = [
+                AssistantSuggestedAction(
+                    label=_localized(payload.response_language, "open_source"),
+                    action_type="open_citation",
+                ),
+                AssistantSuggestedAction(
+                    label=_localized(payload.response_language, "ask_followup"),
+                    action_type="ask_followup",
+                ),
+            ]
+            if report_artifacts:
+                suggested_actions.insert(
+                    0,
+                    AssistantSuggestedAction(
+                        label=_localized(payload.response_language, "export_report"),
+                        action_type="export_report",
+                        target=report_artifacts[0].artifact_id,
+                    ),
+                )
             response = AssistantChatResponse(
                 response_type="answer",
                 conversation_id=conversation_id,
                 answer=_employee_answer(rag_answer.answer, payload.response_language),
                 citations=rag_answer.citations,
-                follow_up_questions=_follow_up_questions(payload.message, payload.response_language),
-                suggested_actions=[
-                    AssistantSuggestedAction(
-                        label=_localized(payload.response_language, "open_source"),
-                        action_type="open_citation",
-                    ),
-                    AssistantSuggestedAction(
-                        label=_localized(payload.response_language, "ask_followup"),
-                        action_type="ask_followup",
-                    ),
-                ],
+                follow_up_questions=await self._follow_up_questions(
+                    message=payload.message,
+                    answer=rag_answer.answer,
+                    citations=rag_answer.citations,
+                    response_language=payload.response_language,
+                    auth_context=auth_context,
+                ),
+                suggested_actions=suggested_actions,
+                report_artifacts=report_artifacts,
                 confidence=rag_answer.confidence,
                 warnings=rag_answer.warnings,
             )
@@ -400,7 +832,11 @@ class RagRetrievalService:
                 actor_id=payload.user_id,
                 event_type="assistant.answer_returned",
                 conversation_id=conversation_id,
-                metadata={"citation_count": len(rag_answer.citations), "confidence": rag_answer.confidence},
+                metadata={
+                    "citation_count": len(rag_answer.citations),
+                    "confidence": rag_answer.confidence,
+                    "report_artifact_count": len(report_artifacts),
+                },
                 auth_context=auth_context,
             )
             await self._persist_conversation_turn(
@@ -416,7 +852,7 @@ class RagRetrievalService:
         response = AssistantChatResponse(
             response_type=response_type,
             conversation_id=conversation_id,
-            answer=_localized(payload.response_language, "no_precise_source"),
+            answer=_assistant_no_source_message(payload.mode, payload.response_language),
             citations=[],
             confidence=rag_answer.confidence,
             warnings=rag_answer.warnings,
@@ -445,6 +881,48 @@ class RagRetrievalService:
             auth_context=auth_context,
         )
         return response
+
+    async def _follow_up_questions(
+        self,
+        *,
+        message: str,
+        answer: str,
+        citations: list[Citation],
+        response_language: ResponseLanguage,
+        auth_context: AuthContext | None,
+    ) -> list[str]:
+        fallback = _fallback_follow_up_questions(message, response_language)
+        if not answer.strip() or not citations:
+            return fallback
+        try:
+            raw = await self._llm_client.chat_completion(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": _follow_up_system_prompt(response_language),
+                    },
+                    {
+                        "role": "user",
+                        "content": _follow_up_user_prompt(
+                            message=message,
+                            answer=answer,
+                            citations=citations,
+                            response_language=response_language,
+                        ),
+                    },
+                ],
+                metadata={
+                    "purpose": "assistant_follow_up_questions",
+                    "response_language": response_language,
+                    "citation_count": len(citations),
+                },
+                auth_context=auth_context,
+            )
+        except Exception as exc:  # follow-up prompts must not break a grounded answer
+            logger.warning("assistant_follow_up_generation_failed reason=%s", exc.__class__.__name__)
+            return fallback
+        questions = _parse_follow_up_questions(raw)
+        return questions or fallback
 
     async def assistant_suggestions(self, response_language: ResponseLanguage = "cs") -> AssistantSuggestionsResponse:
         dynamic = await self._content_based_suggestions(response_language)
@@ -541,6 +1019,9 @@ class RagRetrievalService:
                         "metadata": {
                             "confidence": response.confidence,
                             "warnings": response.warnings,
+                            "report_artifacts": [
+                                artifact.model_dump(mode="json") for artifact in response.report_artifacts
+                            ],
                         },
                     },
                 ],
@@ -775,9 +1256,161 @@ class RagRetrievalService:
                 exc.__class__.__name__,
             )
 
+    async def _audit_extraction(
+        self,
+        *,
+        actor_id: str,
+        event_type: str,
+        resource_id: str,
+        metadata: dict[str, object],
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        try:
+            await self._registry_client.write_audit_event(
+                actor_id=actor_id,
+                event_type=event_type,
+                resource_type="document_extraction",
+                resource_id=resource_id,
+                metadata=metadata,
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "document_extraction_audit_failed event_type=%s resource_id=%s reason=%s",
+                event_type,
+                resource_id,
+                exc.__class__.__name__,
+            )
+
 
 def _query_id() -> str:
     return f"query_{uuid.uuid4().hex[:12]}"
+
+
+def _contract_extraction_query(payload: ContractExtractionProposeRequest) -> str:
+    return (
+        "Smlouva contract financial extraction: číslo smlouvy dodavatel objednatel "
+        "cena bez DPH cena s DPH DPH splatnost měsíčně jednorázová plnění "
+        "indexace sankce SLA termín povinnost riziko VZ NEN RP cashflow. "
+        f"External ref: {payload.external_ref}. Entity: {payload.entity_type} {payload.entity_id}."
+    )
+
+
+def _archflow_goal_extraction_query(payload: ArchflowGoalExtractionProposeRequest) -> str:
+    return (
+        "ArchFlow goal extraction: strategický cíl dílčí cíl schopnost povinnost požadavek "
+        "metrika KPI hodnoticí kritérium právní opora metodická opora riziko neplnění nesoulad. "
+        "Najdi pouze citovatelné cíle, povinnosti, požadavky a metriky ze zdrojové sady ArchFlow. "
+        f"External ref: {payload.external_ref}. Entity: {payload.entity_type} {payload.entity_id}. "
+        f"Source set: {payload.source_set_id or 'n/a'}. Catalog version: {payload.catalog_version_id or 'n/a'}."
+    )
+
+
+def _archflow_target_document_pairs(payload: ArchflowGoalExtractionProposeRequest) -> set[tuple[str, str]]:
+    return {(document.document_id, document.document_version_id) for document in payload.documents}
+
+
+def _archflow_primary_document(
+    payload: ArchflowGoalExtractionProposeRequest,
+    chunks: list[RetrievedChunk],
+) -> tuple[str, str]:
+    if payload.documents:
+        first_document = payload.documents[0]
+        return first_document.document_id, first_document.document_version_id
+    if chunks:
+        first_chunk = chunks[0]
+        return first_chunk.citation.document_id, first_chunk.citation.document_version_id
+    raise RetrievalError(
+        "ARCHFLOW_SOURCE_DOCUMENT_REQUIRED",
+        "ArchFlow extraction needs at least one authorized AKB source document for persistence.",
+        status_code=422,
+        details={
+            "entity_type": payload.entity_type,
+            "source_set_id": payload.source_set_id,
+            "catalog_version_id": payload.catalog_version_id,
+        },
+    )
+
+
+def _contract_extraction_response_from_registry(payload: dict[str, object]) -> ContractExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    proposals = result_map.get("proposals", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return ContractExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system=str(payload.get("external_system", "")),
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        document_id=str(payload.get("document_id", "")),
+        document_version_id=str(payload.get("document_version_id", "")),
+        profile=str(payload.get("profile", "")),
+        profile_version=str(payload.get("profile_version", "")),
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        proposals=proposals if isinstance(proposals, list) else [],
+        missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
+
+
+def _archflow_goal_extraction_response_from_registry(payload: dict[str, object]) -> ArchflowGoalExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    proposals = result_map.get("proposals", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return ArchflowGoalExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system=str(payload.get("external_system", "")),
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        document_id=str(payload.get("document_id", "")),
+        document_version_id=str(payload.get("document_version_id", "")),
+        profile=str(payload.get("profile", "")),
+        profile_version=str(payload.get("profile_version", "")),
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        proposals=proposals if isinstance(proposals, list) else [],
+        missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
+
+
+def _stratos_extraction_response_from_registry(payload: dict[str, object]) -> StratosExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    proposals = result_map.get("proposals", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return StratosExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system=str(payload.get("external_system", "")),
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        document_id=str(payload.get("document_id", "")),
+        document_version_id=str(payload.get("document_version_id", "")),
+        profile=str(payload.get("profile", "")),
+        profile_version=str(payload.get("profile_version", "")),
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        proposals=proposals if isinstance(proposals, list) else [],
+        missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
 
 
 def _retrieval_only_answer(
@@ -887,13 +1520,18 @@ def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
         tags.extend(str(tag).strip() for tag in context_tags if str(tag).strip())
     return RagQueryFilters(
         document_types=[
-            "project_documentation",
             "directive",
+            "regulation",
             "methodology",
             "policy",
             "procedure",
             "manual",
             "knowledge_base_article",
+            "project_documentation",
+            "meeting_record",
+            "contract",
+            "attachment",
+            "other",
         ],
         only_valid=True,
         classification_max="internal",
@@ -901,11 +1539,55 @@ def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
     )
 
 
+ASSISTANT_INTERNAL_CONTEXT_KEYS = {
+    "answer_format_instruction",
+    "assistant_query_plan",
+    "assistant_report_request",
+}
+
+
 def _assistant_query(message: str, context: dict[str, object]) -> str:
-    context_parts = [f"{key}: {value}" for key, value in sorted(context.items()) if value not in (None, "", [])]
+    context_parts = [
+        f"{key}: {value_text}"
+        for key, value in sorted(context.items())
+        if key not in ASSISTANT_INTERNAL_CONTEXT_KEYS
+        for value_text in [_assistant_context_value(value)]
+        if value_text
+    ]
     if not context_parts:
         return message
     return f"{message}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
+
+
+def _assistant_answer_query(message: str, context: dict[str, object]) -> str:
+    query = _assistant_query(message, context)
+    instruction = _assistant_context_value(context.get("answer_format_instruction"), max_length=1800)
+    if not instruction:
+        return query
+    return f"{query}\n\nPožadavek na formát odpovědi:\n{instruction}"
+
+
+def _assistant_context_value(value: object, *, max_length: int = 500) -> str | None:
+    if value in (None, "", []):
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+    elif isinstance(value, bool):
+        text = "true" if value else "false"
+    elif isinstance(value, int | float):
+        text = str(value)
+    elif isinstance(value, list):
+        parts = [
+            str(item).strip()
+            for item in value[:10]
+            if isinstance(item, str | int | float | bool) and str(item).strip()
+        ]
+        text = ", ".join(parts)
+    else:
+        return None
+    if not text:
+        return None
+    return text[:max_length]
 
 
 LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
@@ -933,8 +1615,10 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "scope_workplace": "celé pracoviště",
         "approval_subject_question": "Co konkrétně má být schváleno?",
         "open_source": "Otevřít zdroj",
+        "export_report": "Exportovat sestavu",
         "ask_followup": "Položit doplňující dotaz",
         "no_precise_source": "Nepodařilo se najít dostatečně přesný a citovatelný postup.",
+        "no_precise_document_source": "Nepodařilo se najít dostatečně přesný a citovatelný zdroj v dokumentech.",
         "service_desk_handoff": "Založit požadavek na Service Desk",
         "followup_owner": "Chcete zjistit, kdo je vlastník systému?",
         "followup_request_text": "Chcete připravit text žádosti?",
@@ -967,8 +1651,10 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "scope_workplace": "whole workplace",
         "approval_subject_question": "What exactly needs to be approved?",
         "open_source": "Open source",
+        "export_report": "Export report",
         "ask_followup": "Ask follow-up",
         "no_precise_source": "I could not find a sufficiently precise and citable procedure.",
+        "no_precise_document_source": "I could not find a sufficiently precise and citable document source.",
         "service_desk_handoff": "Create a Service Desk request",
         "followup_owner": "Do you want to identify the system owner?",
         "followup_request_text": "Do you want to draft the request text?",
@@ -982,6 +1668,107 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
 
 def _localized(language: ResponseLanguage, key: str) -> str:
     return LOCALIZED_TEXT[language][key]
+
+
+def _assistant_no_source_message(answer_mode: str, language: ResponseLanguage) -> str:
+    key = "no_precise_source" if answer_mode == "it_support_answer" else "no_precise_document_source"
+    return _localized(language, key)
+
+
+def _assistant_report_artifacts(
+    *,
+    message: str,
+    answer: str,
+    citations: list[Citation],
+    confidence: str,
+    response_language: ResponseLanguage,
+) -> list[AssistantReportArtifact]:
+    normalized = _normalize_for_assistant(message)
+    if not _is_report_request(normalized):
+        return []
+
+    columns = [
+        AssistantReportColumn(key="topic", label="Téma" if response_language == "cs" else "Topic"),
+        AssistantReportColumn(key="summary", label="Závěr" if response_language == "cs" else "Summary"),
+        AssistantReportColumn(key="document", label="Zdrojový dokument" if response_language == "cs" else "Source document"),
+        AssistantReportColumn(key="version", label="Verze" if response_language == "cs" else "Version"),
+        AssistantReportColumn(key="section", label="Oddíl" if response_language == "cs" else "Section"),
+        AssistantReportColumn(key="page", label="Strana" if response_language == "cs" else "Page", type="number"),
+        AssistantReportColumn(key="confidence", label="Spolehlivost" if response_language == "cs" else "Confidence"),
+    ]
+    summary = _short_report_text(_employee_answer(answer, response_language), max_length=520)
+    topic = _short_report_text(message, max_length=180)
+    rows: list[AssistantReportRow] = []
+    seen_chunks: set[str] = set()
+    for index, citation in enumerate(citations[:24], start=1):
+        if citation.chunk_id in seen_chunks:
+            continue
+        seen_chunks.add(citation.chunk_id)
+        rows.append(
+            AssistantReportRow(
+                row_id=f"report_row_{index}",
+                cells={
+                    "topic": topic,
+                    "summary": summary,
+                    "document": citation.document_title,
+                    "version": citation.version_label,
+                    "section": " / ".join(citation.section_path) if citation.section_path else "",
+                    "page": citation.page_number,
+                    "confidence": confidence,
+                },
+                citations=[citation],
+            )
+        )
+
+    if not rows:
+        return []
+
+    title = "Sestava z odpovědi AKB" if response_language == "cs" else "AKB answer report"
+    description = (
+        "Tabulková sestava je vytvořená z citované odpovědi. Hodnoty jsou omezené na zdroje,"
+        " které měl uživatel oprávnění číst."
+        if response_language == "cs"
+        else "The table report is built from the cited answer. Values are limited to sources the user was allowed to read."
+    )
+    warnings = ["REPORT_LIMITED_TO_CITED_SOURCES"]
+    if len(citations) > len(rows):
+        warnings.append("REPORT_CITATIONS_DEDUPLICATED")
+    return [
+        AssistantReportArtifact(
+            artifact_id=f"rpt_{uuid.uuid4().hex[:12]}",
+            title=title,
+            description=description,
+            columns=columns,
+            rows=rows,
+            source_citation_count=len(citations),
+            warnings=warnings,
+        )
+    ]
+
+
+def _is_report_request(value: str) -> bool:
+    return any(
+        term in value
+        for term in (
+            "sestav",
+            "report",
+            "tabulk",
+            "excel",
+            "xlsx",
+            "export",
+            "vyexport",
+            "prehled",
+            "spreadsheet",
+            "worksheet",
+        )
+    )
+
+
+def _short_report_text(value: str, *, max_length: int) -> str:
+    compact = re.sub(r"\s+", " ", value).strip()
+    if len(compact) <= max_length:
+        return compact
+    return f"{compact[: max_length - 3].rstrip()}..."
 
 
 def _clarification_questions(
@@ -1271,7 +2058,7 @@ def _employee_term_replacements(response_language: ResponseLanguage) -> list[tup
     ]
 
 
-def _follow_up_questions(message: str, response_language: ResponseLanguage = "cs") -> list[str]:
+def _fallback_follow_up_questions(message: str, response_language: ResponseLanguage = "cs") -> list[str]:
     normalized = _normalize_for_assistant(message)
     if _is_access_query(normalized):
         return [
@@ -1283,10 +2070,138 @@ def _follow_up_questions(message: str, response_language: ResponseLanguage = "cs
             _localized(response_language, "followup_incident_category"),
             _localized(response_language, "followup_incident_description"),
         ]
+    topic = _follow_up_topic(message, response_language)
+    if response_language == "en":
+        return [
+            f"What responsibilities follow from {topic}?",
+            f"Which exception or approval process applies to {topic}?",
+            f"Can you prepare a checklist for {topic}?",
+        ]
     return [
-        _localized(response_language, "followup_open_source"),
-        _localized(response_language, "followup_ask_more"),
+        f"Jaké povinnosti z toho vyplývají pro {topic}?",
+        f"Jaký postup nebo schvalování se vztahuje k tématu {topic}?",
+        f"Můžeš připravit kontrolní seznam pro {topic}?",
     ]
+
+
+def _follow_up_system_prompt(response_language: ResponseLanguage) -> str:
+    if response_language == "en":
+        return (
+            "You generate concise follow-up questions for an enterprise document AI chat. "
+            "Return only a JSON array of 2 or 3 strings. Each string must be a concrete, useful follow-up "
+            "question answerable from the cited documents. Do not suggest opening documents, citations, exports, "
+            "or asking a generic follow-up."
+        )
+    return (
+        "Generuješ krátké navazující otázky pro podnikový Document AI chat. "
+        "Vrať pouze JSON pole se 2 až 3 řetězci. Každý řetězec musí být konkrétní užitečná navazující otázka, "
+        "kterou lze zodpovědět z citovaných dokumentů. Nenavrhuj otevření dokumentu, citace, export ani obecné "
+        "položení doplňující otázky."
+    )
+
+
+def _follow_up_user_prompt(
+    *,
+    message: str,
+    answer: str,
+    citations: list[Citation],
+    response_language: ResponseLanguage,
+) -> str:
+    source_lines = []
+    for citation in citations[:4]:
+        section = " / ".join(citation.section_path) if citation.section_path else "-"
+        page = str(citation.page_number) if citation.page_number else "-"
+        source_lines.append(f"- {citation.document_title}; section={section}; page={page}")
+    if response_language == "en":
+        return (
+            f"Original question:\n{_truncate_prompt_text(message, 500)}\n\n"
+            f"Answer summary:\n{_truncate_prompt_text(answer, 1800)}\n\n"
+            f"Cited sources:\n{chr(10).join(source_lines)}"
+        )
+    return (
+        f"Původní dotaz:\n{_truncate_prompt_text(message, 500)}\n\n"
+        f"Odpověď:\n{_truncate_prompt_text(answer, 1800)}\n\n"
+        f"Citované zdroje:\n{chr(10).join(source_lines)}"
+    )
+
+
+def _parse_follow_up_questions(raw: str) -> list[str]:
+    text = raw.strip()
+    if not text:
+        return []
+    match = re.search(r"\[[\s\S]*\]", text)
+    candidate = match.group(0) if match else text
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+
+    questions: list[str] = []
+    seen: set[str] = set()
+    for item in parsed:
+        if not isinstance(item, str):
+            continue
+        question = _normalize_follow_up_question(item)
+        if not question:
+            continue
+        key = question.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        questions.append(question)
+        if len(questions) == 3:
+            break
+    return questions
+
+
+def _normalize_follow_up_question(value: str) -> str:
+    question = re.sub(r"\s+", " ", value).strip(" \t\r\n\"'`-•")
+    if len(question) < 12 or len(question) > 180:
+        return ""
+    lowered = question.casefold()
+    blocked_fragments = (
+        "otevřít zdroj",
+        "otevřít dokument",
+        "prohlížeč citací",
+        "citaci",
+        "ask a follow-up",
+        "open the source",
+        "open source",
+        "open document",
+        "citation viewer",
+        "export",
+    )
+    if any(fragment in lowered for fragment in blocked_fragments):
+        return ""
+    if not question.endswith("?"):
+        question = f"{question}?"
+    return question
+
+
+def _follow_up_topic(message: str, response_language: ResponseLanguage) -> str:
+    normalized = re.sub(r"\s+", " ", message).strip(" ?!.,:;")
+    if not normalized:
+        return "této odpovědi" if response_language == "cs" else "this answer"
+    normalized = re.sub(
+        r"^(jak[eéýáíěščřžůúó ]+|vytvo[rř][^:,.?!]*|ud[eě]lej[^:,.?!]*|ok[, ]*)",
+        "",
+        normalized,
+        flags=re.IGNORECASE,
+    ).strip(" ?!.,:;")
+    if len(normalized) > 70:
+        normalized = normalized[:70].rsplit(" ", 1)[0].strip()
+    if not normalized:
+        return "této odpovědi" if response_language == "cs" else "this answer"
+    return normalized
+
+
+def _truncate_prompt_text(value: str, max_length: int) -> str:
+    compact = re.sub(r"\s+", " ", value).strip()
+    if len(compact) <= max_length:
+        return compact
+    return compact[:max_length].rsplit(" ", 1)[0].strip()
 
 
 _SUGGESTION_DOMAINS = {

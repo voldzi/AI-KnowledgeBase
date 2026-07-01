@@ -38,6 +38,7 @@ interface SourceContextCardProps {
   labels: CitationViewerLabels;
   className?: string;
   showStatus?: boolean;
+  showTechnicalDetails?: boolean;
 }
 
 type CitationDisplayMode = "modal" | "sidebar" | "fullscreen";
@@ -56,8 +57,12 @@ export interface CitationModalProps {
   onOpenCitation: (citation: Citation) => void;
 }
 
+function citationDocumentHrefForChunk(chunkId: string) {
+  return withAppBasePath(`/api/assistant/citations/${encodeURIComponent(chunkId)}/document`);
+}
+
 export function citationDocumentViewerHref(citation: Citation) {
-  return withAppBasePath(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/document`);
+  return citationDocumentHrefForChunk(citation.chunk_id);
 }
 
 export function CitationModal({
@@ -74,6 +79,8 @@ export function CitationModal({
   onOpenCitation
 }: CitationModalProps) {
   const [mode, setMode] = useState<CitationDisplayMode>("sidebar");
+  const showCitationList = !sourceContext;
+  const showContextPane = Boolean(sourceContext || sourceError);
 
   useEffect(() => {
     if (!open) return;
@@ -134,18 +141,20 @@ export function CitationModal({
             <X size={16} aria-hidden="true" />
           </button>
         </div>
-        <div className="citation-modal__body">
-          <div className="citation-modal__list-pane">
-            <CitationList
-              citations={citations}
-              activeChunkId={activeChunkId}
-              openingChunkId={openingChunkId}
-              emptyLabel={emptyLabel}
-              labels={labels}
-              onOpenCitation={onOpenCitation}
-            />
-          </div>
-          {(sourceContext || sourceError) ? (
+        <div className={`citation-modal__body ${sourceContext ? "citation-modal__body--detail" : ""}`.trim()}>
+          {showCitationList ? (
+            <div className="citation-modal__list-pane">
+              <CitationList
+                citations={citations}
+                activeChunkId={activeChunkId}
+                openingChunkId={openingChunkId}
+                emptyLabel={emptyLabel}
+                labels={labels}
+                onOpenCitation={onOpenCitation}
+              />
+            </div>
+          ) : null}
+          {showContextPane ? (
             <div className="citation-modal__context-pane">
               {sourceError ? <div className="notice">{sourceError}</div> : null}
               {sourceContext ? (
@@ -205,31 +214,31 @@ export function CitationList({
 }
 
 export const SourceContextCard = forwardRef<HTMLElement, SourceContextCardProps>(function SourceContextCard(
-  { sourceContext, labels, className = "", showStatus = true },
+  { sourceContext, labels, className = "", showStatus = true, showTechnicalDetails = false },
   ref
 ) {
+  const sectionLabel = sourceContext.location.section_path.join(" / ") || labels.noSection;
+  const locationLabel = `${labels.page} ${sourceContext.location.page_number ?? "n/a"} · ${sectionLabel}`;
+
   return (
     <article className={`source-viewer ${className}`.trim()} ref={ref}>
       <div className="source-viewer__header">
         <div>
           <h3>{sourceContext.document_title}</h3>
-          <span>
-            {sourceContext.viewer_mode} viewer - {sourceContext.source_file_name ?? labels.sourceUnavailable}
-          </span>
+          <span>{locationLabel}</span>
         </div>
         {showStatus ? <StatusBadge value="valid" label={sourceContext.viewer_mode} /> : null}
       </div>
-      <div className="notice" role="status">{labels.sourceOpened}</div>
-      <div className="source-viewer__meta">
-        <span>{labels.chunk} {sourceContext.chunk_id}</span>
-        <span>{labels.version} {sourceContext.document_version_id}</span>
-        <span>{labels.page} {sourceContext.location.page_number ?? "n/a"}</span>
-        <span>{sourceContext.location.section_path.join(" / ") || labels.noSection}</span>
-      </div>
-      {sourceContext.source_file_uri ? (
-        <div className="source-uri">
-          <FileText size={15} aria-hidden="true" />
-          <span>{sourceContext.source_file_uri}</span>
+      {showTechnicalDetails ? (
+        <div className="source-viewer__technical" aria-label="Technické údaje zdroje">
+          <span>
+            {sourceContext.viewer_mode} viewer - {sourceContext.source_file_name ?? labels.sourceUnavailable}
+          </span>
+          <span>{labels.chunk} {sourceContext.chunk_id}</span>
+          <span>{labels.version} {sourceContext.document_version_id}</span>
+          {sourceContext.source_file_uri ? (
+            <span>{sourceContext.source_file_uri}</span>
+          ) : null}
         </div>
       ) : null}
       {sourceContext.before_text ? (
@@ -245,16 +254,27 @@ export const SourceContextCard = forwardRef<HTMLElement, SourceContextCardProps>
           <SourceContextPreview text={sourceContext.after_text} viewerMode={sourceContext.viewer_mode} contextual />
         </div>
       ) : null}
-      <button
-        className="button"
-        type="button"
-        onClick={() => {
-          void navigator.clipboard?.writeText(sourceContext.chunk_text);
-        }}
-      >
-        <Copy size={15} aria-hidden="true" />
-        {labels.copyChunk}
-      </button>
+      <div className="source-viewer__actions">
+        <a
+          className="button"
+          href={citationDocumentHrefForChunk(sourceContext.chunk_id)}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          <FileText size={15} aria-hidden="true" />
+          {labels.openDocument}
+        </a>
+        <button
+          className="button"
+          type="button"
+          onClick={() => {
+            void navigator.clipboard?.writeText(sourceContext.chunk_text);
+          }}
+        >
+          <Copy size={15} aria-hidden="true" />
+          {labels.copyChunk}
+        </button>
+      </div>
       {sourceContext.warnings.length > 0 ? (
         <div className="notice notice--danger">
           <ShieldAlert size={16} aria-hidden="true" />

@@ -4,13 +4,23 @@ import type {
   AuditEvent,
   AuditEventListOptions,
   AuthorizationHint,
+  AssistantConversationDetail,
+  AssistantConversationListResponse,
+  AssistantConversationMessageAppendRequest,
+  AssistantConversationPatchRequest,
+  AssistantConversationShareReplaceRequest,
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
   DirectoryUser,
   Document,
+  DocumentListOptions,
   DocumentAssignment,
+  DocumentMetadataSummary,
+  DocumentMetadataSummaryOptions,
   DocumentVersion,
+  ProfileSettingsPutRequest,
+  ProfileSettingsResponse,
   RegistryApiClient,
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
@@ -30,15 +40,46 @@ interface ListEnvelope<T> {
   items: T[];
 }
 
+const DOCUMENT_PAGE_SIZE = 200;
+const DOCUMENT_PAGE_LIMIT = 100;
+
 export class ProductionRegistryClient implements RegistryApiClient {
   constructor(
     private readonly baseUrl: string,
     private readonly fetcher?: AklFetch
   ) {}
 
-  async listDocuments(context: ApiRequestContext): Promise<Document[]> {
-    const response = await this.get<ListEnvelope<Document>>("/documents", "listDocuments", context);
-    return response.items;
+  async listDocuments(context: ApiRequestContext, options: DocumentListOptions = {}): Promise<Document[]> {
+    const documents: Document[] = [];
+    for (let page = 0; page < DOCUMENT_PAGE_LIMIT; page += 1) {
+      const offset = page * DOCUMENT_PAGE_SIZE;
+      const params = registryDocumentParams(options);
+      params.set("limit", String(DOCUMENT_PAGE_SIZE));
+      params.set("offset", String(offset));
+      const response = await this.get<ListEnvelope<Document>>(
+        `/documents?${params.toString()}`,
+        "listDocuments",
+        context
+      );
+      documents.push(...response.items);
+      if (response.items.length < DOCUMENT_PAGE_SIZE) {
+        break;
+      }
+    }
+    return documents;
+  }
+
+  getDocumentMetadataSummary(
+    context: ApiRequestContext,
+    options: DocumentMetadataSummaryOptions = {}
+  ): Promise<DocumentMetadataSummary> {
+    const params = registryDocumentParams(options);
+    const query = params.toString();
+    return this.get<DocumentMetadataSummary>(
+      `/documents/metadata-summary${query ? `?${query}` : ""}`,
+      "getDocumentMetadataSummary",
+      context
+    );
   }
 
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document> {
@@ -241,9 +282,13 @@ export class ProductionRegistryClient implements RegistryApiClient {
   }
 
   async searchDirectoryUsers(query: string, context: ApiRequestContext, limit = 20): Promise<DirectoryUser[]> {
-    const params = new URLSearchParams({ query, limit: String(limit) });
+    const params = new URLSearchParams({ limit: String(limit) });
+    const normalizedQuery = query.trim();
+    if (normalizedQuery) {
+      params.set("query", normalizedQuery);
+    }
     const response = await this.get<{ users: DirectoryUser[] }>(
-      `/admin/directory/users?${params}`,
+      `/directory/users?${params}`,
       "searchDirectoryUsers",
       context
     );
@@ -278,6 +323,73 @@ export class ProductionRegistryClient implements RegistryApiClient {
       `/admin/role-mappings/${encodeURIComponent(roleMappingId)}/status`,
       { status },
       "updateRoleMappingStatus",
+      context
+    );
+  }
+
+  getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    return this.get<ProfileSettingsResponse>("/user-profiles/me/settings", "getProfileSettings", context);
+  }
+
+  putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse> {
+    return this.put<ProfileSettingsResponse>("/user-profiles/me/settings", request, "putProfileSettings", context);
+  }
+
+  listAssistantConversations(
+    context: ApiRequestContext,
+    includeArchived = false
+  ): Promise<AssistantConversationListResponse> {
+    const params = new URLSearchParams({ include_archived: String(includeArchived), limit: "50", offset: "0" });
+    return this.get<AssistantConversationListResponse>(
+      `/assistant/conversation-history?${params}`,
+      "listAssistantConversations",
+      context
+    );
+  }
+
+  getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail> {
+    return this.get<AssistantConversationDetail>(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}`,
+      "getAssistantConversation",
+      context
+    );
+  }
+
+  appendAssistantConversationMessages(
+    conversationId: string,
+    request: AssistantConversationMessageAppendRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    return this.post<AssistantConversationDetail>(
+      `/assistant/conversations/${encodeURIComponent(conversationId)}/messages`,
+      request,
+      "appendAssistantConversationMessages",
+      context
+    );
+  }
+
+  updateAssistantConversation(
+    conversationId: string,
+    request: AssistantConversationPatchRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    return this.patch<AssistantConversationDetail>(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}`,
+      request,
+      "updateAssistantConversation",
+      context
+    );
+  }
+
+  replaceAssistantConversationShares(
+    conversationId: string,
+    request: AssistantConversationShareReplaceRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail> {
+    return this.put<AssistantConversationDetail>(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}/shares`,
+      request,
+      "replaceAssistantConversationShares",
       context
     );
   }
@@ -331,4 +443,49 @@ export class ProductionRegistryClient implements RegistryApiClient {
       fetcher: this.fetcher
     });
   }
+}
+
+function registryDocumentParams(options: DocumentMetadataSummaryOptions | DocumentListOptions): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const topic of options.topics ?? []) {
+    if (topic.trim()) {
+      params.append("topic", topic.trim());
+    }
+  }
+  if (options.status) {
+    params.set("status", options.status);
+  }
+  if (options.classification) {
+    params.set("classification", options.classification);
+  }
+  if (options.documentType) {
+    params.set("document_type", options.documentType);
+  }
+  if (options.ownerId) {
+    params.set("owner_id", options.ownerId);
+  }
+  if (options.tag) {
+    params.set("tag", options.tag);
+  }
+  if (options.tenantId) {
+    params.set("tenant_id", options.tenantId);
+  }
+  if (options.externalSystem) {
+    params.set("external_system", options.externalSystem);
+  }
+  if (options.entityType) {
+    params.set("entity_type", options.entityType);
+  }
+  if (options.entityId) {
+    params.set("entity_id", options.entityId);
+  }
+  if (options.externalRef) {
+    params.set("external_ref", options.externalRef);
+  }
+  for (const contextTag of options.contextTags ?? []) {
+    if (contextTag.trim()) {
+      params.append("context_tag", contextTag.trim());
+    }
+  }
+  return params;
 }

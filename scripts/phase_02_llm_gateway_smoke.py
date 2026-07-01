@@ -10,7 +10,7 @@ from typing import Any
 
 
 LLM_URL = os.getenv("AKL_SMOKE_LLM_URL", "http://localhost:8083").rstrip("/")
-CHAT_MODEL = os.getenv("AKL_LLM_SMOKE_CHAT_MODEL", os.getenv("AKL_LLM_DEFAULT_CHAT_MODEL", "gemma4:12b"))
+CHAT_MODEL = os.getenv("AKL_LLM_SMOKE_CHAT_MODEL", os.getenv("AKL_LLM_DEFAULT_CHAT_MODEL", "gemma4:12b-mlx"))
 MAX_TOKENS = int(os.getenv("AKL_LLM_SMOKE_MAX_TOKENS", "96"))
 
 

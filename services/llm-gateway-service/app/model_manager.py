@@ -8,7 +8,7 @@ def recommended_models() -> RecommendedModelsResponse:
     return RecommendedModelsResponse(
         chat_models=[
             RecommendedModel(
-                name="gemma4:12b",
+                name="gemma4:12b-mlx",
                 provider="ollama",
                 recommended_for="real local RAG",
                 minimum_memory_gb=24,
@@ -63,6 +63,7 @@ def effective_config(settings: Settings) -> EffectiveConfigResponse:
         allow_model_pull=settings.allow_model_pull,
         allow_model_delete=settings.allow_model_delete,
         ollama_base_url=settings.ollama_base_url,
+        ollama_base_urls=list(settings.ollama_base_urls),
         ollama_think=settings.ollama_think,
         openai_base_url=settings.openai_base_url,
         openai_api_key_configured=bool(settings.openai_api_key),

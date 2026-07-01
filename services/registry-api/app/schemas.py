@@ -46,6 +46,23 @@ class ExternalSourceSystem(str, Enum):
     stratos_platform = "STRATOS_PLATFORM"
 
 
+class DocumentExtractionStatus(str, Enum):
+    pending = "PENDING"
+    running = "RUNNING"
+    proposed = "PROPOSED"
+    partial = "PARTIAL"
+    failed = "FAILED"
+    superseded = "SUPERSEDED"
+    accepted_in_source_app = "ACCEPTED_IN_SOURCE_APP"
+    rejected_in_source_app = "REJECTED_IN_SOURCE_APP"
+
+
+class DocumentExtractionFeedbackDecision(str, Enum):
+    accepted = "accepted"
+    rejected = "rejected"
+    edited = "edited"
+
+
 class SourceLocationKind(str, Enum):
     url = "url"
     uploaded_file = "uploaded_file"
@@ -272,6 +289,34 @@ class DocumentListResponse(BaseModel):
     offset: int
 
 
+class DocumentMetadataSummaryBucket(BaseModel):
+    key: str
+    label: str
+    count: int
+
+
+class DocumentMetadataSummaryTopic(BaseModel):
+    topic: str
+    document_count: int
+    valid_or_approved_count: int
+    document_types: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    classifications: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    statuses: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    owners: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    example_documents: list[str] = Field(default_factory=list)
+
+
+class DocumentMetadataSummaryResponse(BaseModel):
+    total_visible_documents: int
+    total_matched_documents: int
+    topics: list[DocumentMetadataSummaryTopic]
+    by_document_type: list[DocumentMetadataSummaryBucket]
+    by_classification: list[DocumentMetadataSummaryBucket]
+    by_status: list[DocumentMetadataSummaryBucket]
+    by_owner: list[DocumentMetadataSummaryBucket]
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ExternalDocumentOwner(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
     display_name: str | None = Field(default=None, max_length=200)
@@ -296,6 +341,15 @@ class ExternalDocumentUpsertRequest(BaseModel):
     preview_url: str | None = Field(default=None, max_length=2048)
     access_policies: list[AccessPolicyCreate] | None = None
     assignments: list[DocumentAssignmentCreate] | None = None
+
+
+class ExternalDocumentCurrentUpdateRequest(BaseModel):
+    current_document_version_id: str | None = Field(default=None, max_length=64)
+    current_file_id: str | None = Field(default=None, max_length=64)
+    current_ingestion_job_id: str | None = Field(default=None, max_length=128)
+    current_ingestion_status: str | None = Field(default=None, max_length=40)
+    akb_source_uri: str | None = Field(default=None, max_length=1024)
+    source_location: SourceLocation | None = None
 
 
 class ExternalDocumentRefResponse(BaseModel):
@@ -325,6 +379,93 @@ class ExternalDocumentResponse(BaseModel):
     external_document: ExternalDocumentRefResponse
     document: DocumentResponse
     created: bool = False
+
+
+class DocumentExtractionStoreRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: ExternalSourceSystem
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: str = Field(min_length=1, max_length=80)
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    profile: str = Field(min_length=1, max_length=80)
+    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    status: DocumentExtractionStatus = DocumentExtractionStatus.proposed
+    classification: Classification = Classification.internal
+    requested_by: str = Field(min_length=1, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    result: dict[str, Any] = Field(default_factory=dict)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentExtractionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: DocumentExtractionStatus
+    classification: Classification
+    requested_by: str
+    correlation_id: str | None
+    result: dict[str, Any] = Field(default_factory=dict)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="extraction_metadata")
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentExtractionStoreResponse(BaseModel):
+    extraction: DocumentExtractionResponse
+    created: bool = False
+
+
+class DocumentExtractionFeedbackCreate(BaseModel):
+    field: str = Field(min_length=1, max_length=160)
+    ai_value: Any | None = None
+    final_value: Any | None = None
+    decision: DocumentExtractionFeedbackDecision
+    reason: str | None = Field(default=None, max_length=2000)
+    actor: str = Field(min_length=1, max_length=128)
+    source_app: ExternalSourceSystem
+    source_entity_id: str = Field(min_length=1, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentExtractionFeedbackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    feedback_id: str
+    extraction_id: str
+    tenant_id: str
+    field: str
+    ai_value: Any | None = None
+    final_value: Any | None = None
+    decision: DocumentExtractionFeedbackDecision
+    reason: str | None
+    actor_id: str
+    source_app: str
+    source_entity_id: str
+    correlation_id: str | None
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="feedback_metadata")
+    created_at: datetime
+
+
+class DocumentExtractionFeedbackStoreResponse(BaseModel):
+    feedback: DocumentExtractionFeedbackResponse
+    extraction: DocumentExtractionResponse
 
 
 class DocumentFileCreate(BaseModel):
@@ -365,6 +506,7 @@ class DocumentVersionResponse(BaseModel):
 
     document_version_id: str
     document_id: str
+    file_id: str | None = None
     version_label: str
     status: DocumentStatus
     valid_from: date | None
@@ -502,6 +644,22 @@ class DirectoryUserImportRequest(BaseModel):
     subject_id: str = Field(min_length=1, max_length=128)
 
 
+class ProfileSettingsBundle(BaseModel):
+    core: dict[str, Any] = Field(default_factory=dict)
+    apps: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+class ProfileSettingsPutRequest(BaseModel):
+    settings: ProfileSettingsBundle
+
+
+class ProfileSettingsResponse(BaseModel):
+    subject_id: str
+    settings: ProfileSettingsBundle
+    roles: list[str] = Field(default_factory=list)
+    groups: list[str] = Field(default_factory=list)
+
+
 class RoleMappingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -542,17 +700,67 @@ class AssistantMessageAppendRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
     messages: list[AssistantMessageCreate] = Field(min_length=1, max_length=10)
     title: str | None = Field(default=None, max_length=300)
+    visibility: str | None = Field(default=None, pattern="^(private|shared)$")
+    retention_until: datetime | None = None
 
 
 class AssistantMessageResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     message_id: str
     role: str
     content: str
     response_type: str | None = None
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+
+class AssistantConversationShareCreate(BaseModel):
+    subject_type: str = Field(default="user", pattern="^(user|group)$")
+    subject_id: str = Field(min_length=1, max_length=128)
+    permission: str = Field(default="viewer", pattern="^(viewer|commenter)$")
+
+
+class AssistantConversationShareResponse(BaseModel):
+    conversation_share_id: str
+    subject_type: str
+    subject_id: str
+    permission: str
+    status: str
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssistantConversationPatch(BaseModel):
+    title: str | None = Field(default=None, max_length=300)
+    status: str | None = Field(default=None, pattern="^(active|archived)$")
+    visibility: str | None = Field(default=None, pattern="^(private|shared)$")
+    retention_until: datetime | None = None
+
+
+class AssistantConversationShareReplaceRequest(BaseModel):
+    shares: list[AssistantConversationShareCreate] = Field(default_factory=list, max_length=50)
+    visibility: str = Field(default="shared", pattern="^(private|shared)$")
+
+
+class AssistantConversationListItemResponse(BaseModel):
+    conversation_id: str
+    user_id: str
+    status: str
+    title: str | None = None
+    visibility: str
+    retention_until: datetime | None = None
+    archived_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)
+    message_count: int = 0
+
+
+class AssistantConversationListResponse(BaseModel):
+    items: list[AssistantConversationListItemResponse]
+    limit: int
+    offset: int
 
 
 class AssistantConversationDetailResponse(BaseModel):
@@ -560,6 +768,10 @@ class AssistantConversationDetailResponse(BaseModel):
     user_id: str
     status: str
     title: str | None = None
+    visibility: str
+    retention_until: datetime | None = None
+    archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)
     messages: list[AssistantMessageResponse]

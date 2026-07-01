@@ -3,7 +3,14 @@ from __future__ import annotations
 import asyncio
 
 from app.config import load_settings
-from retrievers.qdrant import QdrantHybridRetriever, _fuse_ranked_chunks, _point_to_chunk, _points_to_lexical_chunks
+from app.schemas import RagQueryFilters
+from retrievers.qdrant import (
+    QdrantHybridRetriever,
+    _fuse_ranked_chunks,
+    _point_to_chunk,
+    _points_to_lexical_chunks,
+    _qdrant_filter,
+)
 
 
 def test_qdrant_payload_metadata_fallback_builds_citation() -> None:
@@ -63,6 +70,20 @@ def test_qdrant_lexical_fallback_promotes_project_risk_chunks() -> None:
     assert chunks[0].chunk_id == "chunk_risk"
     assert chunks[0].score >= 0.35
     assert chunks[0].metadata["lexical_fallback"] is True
+
+
+def test_qdrant_valid_filter_allows_missing_valid_from_for_valid_documents() -> None:
+    qdrant_filter = _qdrant_filter(RagQueryFilters(only_valid=True))
+
+    assert {"key": "status", "match": {"value": "valid"}} in qdrant_filter["must"]
+    min_should = [condition["min_should"] for condition in qdrant_filter["must"] if "min_should" in condition]
+    assert len(min_should) == 1
+    assert min_should[0]["min_count"] == 1
+    assert {"is_empty": {"key": "valid_from"}} in min_should[0]["conditions"]
+    assert any(
+        condition.get("key") == "valid_from" and "lte" in condition.get("range", {})
+        for condition in min_should[0]["conditions"]
+    )
 
 
 def test_qdrant_fusion_keeps_best_score_for_duplicate_chunk() -> None:

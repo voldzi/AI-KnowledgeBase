@@ -43,6 +43,7 @@ Základní role:
 admin
 document_manager
 document_owner
+document_gestor
 reviewer
 reader
 auditor
@@ -52,6 +53,12 @@ service_llm_gateway
 service_evaluation
 service_governance
 ```
+
+`document_gestor` is the low-friction role for an officer responsible for one or a
+small number of controlled documents or directives. It can create a document,
+upload a new version, run ingestion/reindex and work with review tasks within
+the document access policies. It does not grant admin, delete, publish or archive
+rights.
 
 ---
 

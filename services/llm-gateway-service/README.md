@@ -57,7 +57,7 @@ Routing is controlled by environment variables:
 ```text
 AKL_LLM_DEFAULT_PROVIDER=mock
 AKL_LLM_ENABLED_PROVIDERS=mock,ollama,openai
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b":"ollama","bge-m3":"ollama","meta-llama/Llama-3.1-8B-Instruct":"openai"}
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama","meta-llama/Llama-3.1-8B-Instruct":"openai"}
 ```
 
 If a requested model is present in `AKL_LLM_MODEL_PROVIDER_MAP`, that provider is used. Otherwise the service uses `AKL_LLM_DEFAULT_PROVIDER`.
@@ -92,6 +92,8 @@ Important settings:
 | `AKL_LLM_RETRY_ATTEMPTS` | Retries after the first failed provider attempt. |
 | `AKL_RATE_LIMIT_ENABLED` | Enables the in-process placeholder rate limiter. |
 | `AKL_OLLAMA_BASE_URL` | Ollama base URL. |
+| `AKL_OLLAMA_BASE_URLS` | Optional comma-separated ordered Ollama failover URLs; defaults to `AKL_OLLAMA_BASE_URL`. |
+| `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS` | Per-candidate timeout for Ollama endpoint probes before the gateway tries the next URL. |
 | `AKL_OLLAMA_THINK` | Default Ollama `think` value; default `false` prevents thinking-only empty responses. |
 | `AKL_OPENAI_COMPAT_BASE_URL` | vLLM/OpenAI-compatible base URL. |
 | `AKL_OPENAI_COMPAT_API_KEY` | Optional API key for OpenAI-compatible endpoint. |
@@ -123,6 +125,8 @@ It does not forward inbound service bearer tokens to LLM runtimes. OpenAI-compat
 - The rate limiter is a single-process placeholder and is disabled by default.
 - Model pull is disabled by default and is never triggered on service startup.
 - Streaming retries only happen before a stream successfully starts.
+- Ollama failover only uses the explicit `AKL_OLLAMA_BASE_URLS` allowlist. The gateway does not scan LAN ranges.
+- The gateway probes candidate Ollama endpoints with `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS` before sending a full chat, embedding, stream, or pull request to the active endpoint.
 - Ollama capability discovery is inferred from model names because Ollama `/api/tags` does not expose a stable capability contract.
 - Ollama `max_tokens` maps to `options.num_predict`; omitted request values use `AKL_LLM_DEFAULT_MAX_TOKENS`.
 - For thinking-capable Ollama models such as Gemma, the gateway sends `think:false` by default. If Ollama returns only `message.thinking` with empty `message.content`, the gateway returns `EMPTY_CONTENT_THINKING_ONLY`.

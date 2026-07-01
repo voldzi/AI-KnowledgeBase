@@ -14,31 +14,31 @@ interface AdminSkeletonProps {
 const adminCopy = {
   cs: {
     online: "online",
-    registryDetail: "Health endpoint dostupný v mock režimu",
-    ingestionDetail: "Klient úloh je nakonfigurovaný",
-    ragDetail: "Klient dotazů s citacemi je nakonfigurovaný",
+    registryDetail: "Evidence dokumentů je dostupná",
+    ingestionDetail: "Zpracování dokumentů je nakonfigurované",
+    ragDetail: "Dotazy s citacemi jsou nakonfigurované",
     title: "Administrace",
     readOnly: "jen čtení",
     roleMappings: "Mapování rolí",
-    roleMappingsDetail: "Plánovaná plocha pro role admin, document_manager, reviewer, reader a auditor.",
+    roleMappingsDetail: "Plánovaná plocha pro role admin, document_manager, document_gestor, reviewer, reader a auditor.",
     oidcSetup: "Nastavení OIDC",
     oidcDetail: "Produkce musí používat OIDC/JWT. Mock auth je blokovaný při AKL_ENV=production.",
-    policyHints: "Policy hinty",
-    policyHintsDetail: "Frontend skrývá akce podle autorizačních kontrol Registry API, ne podle lokální autority."
+    policyHints: "Oprávnění akcí",
+    policyHintsDetail: "Aplikace ukazuje jen akce, které má aktuální uživatel povolené."
   },
   en: {
     online: "online",
-    registryDetail: "Health endpoint reachable in mock mode",
-    ingestionDetail: "Job client configured",
-    ragDetail: "Citation query client configured",
+    registryDetail: "Document registry is available",
+    ingestionDetail: "Document processing is configured",
+    ragDetail: "Citation-backed queries are configured",
     title: "Administration",
     readOnly: "read only",
     roleMappings: "Role mappings",
-    roleMappingsDetail: "Planned surface for admin, document_manager, reviewer, reader and auditor roles.",
+    roleMappingsDetail: "Planned surface for admin, document_manager, document_gestor, reviewer, reader and auditor roles.",
     oidcSetup: "OIDC setup",
     oidcDetail: "Production must use OIDC/JWT. Mock auth is blocked when AKL_ENV=production.",
-    policyHints: "Policy hints",
-    policyHintsDetail: "Frontend hides actions using Registry API authorization checks, not local authority."
+    policyHints: "Action permissions",
+    policyHintsDetail: "The app shows only actions that the current user is allowed to use."
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
@@ -49,9 +49,9 @@ export function AdminSkeleton({ authorization }: AdminSkeletonProps) {
   return (
     <div className="stack">
       <section className="grid grid--three">
-        <MetricCard icon={ServerCog} label="Registry API" value={copy.online} detail={copy.registryDetail} tone="success" />
-        <MetricCard icon={ServerCog} label="Ingestion Service" value={copy.online} detail={copy.ingestionDetail} tone="success" />
-        <MetricCard icon={ServerCog} label="RAG Retrieval" value={copy.online} detail={copy.ragDetail} tone="success" />
+        <MetricCard icon={ServerCog} label={language === "cs" ? "Dokumenty" : "Documents"} value={copy.online} detail={copy.registryDetail} tone="success" />
+        <MetricCard icon={ServerCog} label={language === "cs" ? "Zpracování" : "Processing"} value={copy.online} detail={copy.ingestionDetail} tone="success" />
+        <MetricCard icon={ServerCog} label={language === "cs" ? "Citace" : "Citations"} value={copy.online} detail={copy.ragDetail} tone="success" />
       </section>
 
       <section className="panel">

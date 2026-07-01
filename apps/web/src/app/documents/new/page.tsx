@@ -1,21 +1,23 @@
 import { PageHeader } from "@/components/page-header";
 import { NewDocumentForm } from "@/features/documents/new-document-form";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
+import { requirePageAccess } from "@/lib/auth/server-route-guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewDocumentPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/documents/new");
+  requirePageAccess(context, "knowledge_workspace");
   const authorization = await clients.registry.getAuthorizationHints(context);
 
   return (
     <>
       <PageHeader
-        title={{ cs: "Nový koncept dokumentu", en: "New document draft" }}
+        title={{ cs: "Založit dokument a první verzi", en: "Create document and first version" }}
         description={{
-          cs: "Nejprve vytvoří metadata v registru. Nahrání a ingestion probíhá přes podepsané URI a Ingestion Service.",
-          en: "Create the registry metadata first. Upload and ingestion happen through a signed URI and the Ingestion Service."
+          cs: "Vyplňte metadata, přidejte originální soubor a AKB v jednom kroku založí dokument, verzi 1.0 a spustí zpracování pro citace.",
+          en: "Enter metadata, attach the original file and AKB creates the document, version 1.0 and citation processing in one flow."
         }}
       />
       <NewDocumentForm authorization={authorization} />

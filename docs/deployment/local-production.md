@@ -17,11 +17,12 @@ The required real local RAG settings are:
 ```env
 AKL_LLM_DEFAULT_PROVIDER=ollama
 AKL_LLM_ENABLED_PROVIDERS=mock,ollama
-AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b
+AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b-mlx
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_OLLAMA_THINK=false
 AKL_LLM_DEFAULT_MAX_TOKENS=512
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434
 
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
@@ -29,7 +30,7 @@ AKL_INGESTION_INDEXER_MODE=qdrant
 
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
-AKL_RAG_CHAT_MODEL=gemma4:12b
+AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_ANSWER_MAX_TOKENS=512
 AKL_RAG_SOURCE_CONTEXT_WINDOW=1
@@ -60,7 +61,7 @@ curl -sS http://localhost:8083/api/v1/models/pull \
 
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
-  -d '{"model":"gemma4:12b","kind":"chat"}'
+  -d '{"model":"gemma4:12b-mlx","kind":"chat"}'
 ```
 
 Validate compose config:

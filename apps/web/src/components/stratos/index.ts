@@ -1,4 +1,4 @@
-// Layout shell — local implementations (different CSS data-attrs from stratos-ui AppShell)
+// Layout shell — AKB prop adapter over @voldzi/stratos-ui AppShell/AppRail
 export { StratosAppShell, StratosAppRail, StratosTopbar } from "./shell";
 
 // Buttons — local shims mapping tone → variant (different CSS class conventions)
@@ -12,8 +12,11 @@ export type { StratosAppId, StratosAppsUrls } from "@voldzi/stratos-ui";
 export { CommandCenter } from "./command-center";
 export type { CommandCenterAction, CommandCenterItem, CommandCenterItemType, CommandCenterLabels, CommandCenterTone } from "./command-center";
 
-// DataTable — local implementation
+// DataTable — from @voldzi/stratos-ui
 export { StratosDataTable, type StratosDataTableColumn } from "./data-table";
+
+// PDF viewer — from @voldzi/stratos-ui
+export { StratosPdfViewer, type StratosPdfViewerBbox, type StratosPdfViewerLabels } from "./pdf-viewer";
 
 // GlobalTopbar — from @voldzi/stratos-ui
 export { StratosGlobalTopbar } from "./global-topbar";
@@ -22,7 +25,7 @@ export type { StratosGlobalTopbarApp, StratosGlobalTopbarLabels, StratosGlobalTo
 // SearchBox — local (onChange API differs: native event vs string callback)
 export { StratosSearchBox } from "./search-box";
 
-// Select — local (different API from UnifiedSelect)
+// Select — from @voldzi/stratos-ui SelectField adapter
 export { StratosSelect, StratosUnifiedSelect } from "./select";
 
 // ViewTabs — local (different CSS class naming convention)

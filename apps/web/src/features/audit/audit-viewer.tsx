@@ -15,7 +15,7 @@ interface AuditViewerProps {
 
 const auditCopy = {
   cs: {
-    hidden: "Auditní prohlížeč je skrytý, protože Registry API neudělilo audit.read.",
+    hidden: "Auditní stopa není pro tuto relaci dostupná.",
     title: "Auditní události",
     event: "Událost",
     severity: "Závažnost",
@@ -26,7 +26,7 @@ const auditCopy = {
     empty: "Žádné auditní události."
   },
   en: {
-    hidden: "Audit viewer is hidden because Registry API did not grant audit.read.",
+    hidden: "Audit trail is not available for this session.",
     title: "Audit events",
     event: "Event",
     severity: "Severity",

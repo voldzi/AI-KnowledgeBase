@@ -24,14 +24,16 @@ Implementovano ve web aplikaci:
 - insights zalozka detailu dokumentu umi vytvorit pracovni `proposed` insighty ze zdrojoveho textu aktualni verze: povinnosti, role, lhuty a rizika; kazdy navrh ukazuje confidence, citaci a source warnings,
 - viewer zalozka detailu dokumentu nabizi auditovane source-context signaly a po otevreni chunku zobrazuje citovatelny text, zdroj, verzi, stranu a sekci,
 - viewer zalozka detailu dokumentu pripravuje signed source open URL pro zdrojovy objekt a ukazuje, zda je objekt ve storage fyzicky dostupny,
-- citace z Knowledge Chat i Employee Assistant pouzivaji jednotny citation viewer: hlavni odpoved zustava cista pro netechnicke role, technicke identifikatory jsou oddelene v detailu a akce `Otevrit dokument` otevre v novem tabu primo zdrojovy soubor pres assistant citation redirect,
+- citace z Employee Chat Portal pouzivaji jednotny citation viewer: hlavni odpoved zustava cista pro netechnicke role, technicke identifikatory jsou oddelene v detailu a akce `Otevrit dokument` otevre v novem tabu primo zdrojovy soubor pres assistant citation redirect,
 - pokud je podepsany zdroj dostupny a source-context obsahuje `page_number`, viewer nabidne otevreni zdroje na strance citace pomoci `#page=N`,
 - nativni preview nad signed source zobrazuje PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
+- verze zalozka detailu dokumentu obsahuje navodny panel s aktualnim stavem verze, doporucenym dalsim krokem a vysvetlenim, ze nova verze ma vznikat pres originalni soubor a rizene volby zmeny, ne jako volna poznamka,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
 - podepsana upload session na `/api/controlled-document/upload/preflight` a PUT do `/api/controlled-document/upload/sessions/{sessionId}/content`,
 - ulozeni zdrojoveho souboru do sdileneho object-storage volume, ze ktereho Ingestion Service cte `s3://akl-documents/...`,
+- upload formular sklada `change_summary` z rizene volby typu zmeny, dopadu zmeny a doporuceneho dalsiho kroku; uzivatel nepise souhrn zmeny do volneho textu,
 - aplikacni napoveda na `/help`,
 - dokumentace ciloveho workflow a dalsich kroku.
 
@@ -118,6 +120,6 @@ QA gate pokryva:
 
 ### Web UI
 
-- Prepojit lokalni STRATOS UI adapter na sdileny `@stratos/ui` balicek pres GitHub Packages, jakmile AKL lokalni/CI build dostane read-only `read:packages` token.
+- Prubezne zuzuovat lokalni STRATOS UI adapter na tenke mapovani k publikovanemu `@voldzi/stratos-ui` balicku z verejneho npm registry.
 - Doplnit pokrocile Office fidelity prvky nad stejnym signed source kontraktem.
 - Doplnit PDF textovy highlight primo ve vieweru a hlubsi native renderer integraci pro citace.

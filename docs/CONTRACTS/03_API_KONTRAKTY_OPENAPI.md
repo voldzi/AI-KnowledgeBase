@@ -87,6 +87,33 @@ review/approved -> draft when changes are requested
 
 `PATCH /documents/{document_id}` odmita neplatne preskoky stavu chybou `409 invalid_document_status_transition`.
 
+Metadata summary endpoint pro chatove inventarni dotazy:
+
+```text
+GET /documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&context_tag=budget-contract:contract-1
+GET /documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
+GET /documents/metadata-summary?topic=smlouva&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract:contract-1
+```
+
+Endpointy vraci jen dokumenty, na ktere ma volajici `document.read`.
+`/documents/metadata-summary` slouzi pro agregace a pocty.
+`/documents` se stejnymi filtry slouzi pro seznamove structured outputy
+z chatu, napr. "seznam smluv do tabulky".
+
+Podporovane filtry:
+
+- `status`, `classification`, `document_type`, `owner_id`, `tag`,
+- opakovany `topic`,
+- `tenant_id`,
+- `external_system`,
+- `entity_type`,
+- `entity_id`,
+- `external_ref`,
+- opakovany `context_tag`.
+
+STRATOS aplikace musi pouzivat wire pole `external_system`; historicke
+`source_system` neni kontrakt pro externi integrace.
+
 ### 2.2 Document versions
 
 ```text
@@ -413,7 +440,7 @@ Source context response for `GET /citations/{chunk_id}/open`:
 }
 ```
 
-### 4.2 Employee Assistant
+### 4.2 Employee Chat API
 
 ```text
 POST /assistant/chat
@@ -422,6 +449,31 @@ GET  /assistant/suggestions
 GET  /assistant/conversations/{conversation_id}
 GET  /assistant/citations/{chunk_id}/open
 ```
+
+Registry API persists and manages assistant history. The append endpoint keeps
+the existing RAG persistence contract; list/detail/share/update use the
+`conversation-history` namespace to avoid colliding with the RAG read endpoint:
+
+```text
+POST  /assistant/conversations/{conversation_id}/messages
+GET   /assistant/conversation-history
+GET   /assistant/conversation-history/{conversation_id}
+PATCH /assistant/conversation-history/{conversation_id}
+PUT   /assistant/conversation-history/{conversation_id}/shares
+```
+
+The AKB web BFF exposes the browser-safe chat portal contract under:
+
+```text
+GET   /api/assistant/conversations
+GET   /api/assistant/conversations/{conversation_id}
+PATCH /api/assistant/conversations/{conversation_id}
+PUT   /api/assistant/conversations/{conversation_id}/shares
+```
+
+History records carry owner, visibility, retention, archive state, messages,
+and active user/group shares. New conversations default to private visibility
+and 180-day retention.
 
 Assistant chat request:
 
@@ -456,10 +508,96 @@ Assistant response:
     }
   ],
   "citations": [],
+  "report_artifacts": [],
   "confidence": null,
   "warnings": []
 }
 ```
+
+For report/table/Excel/PDF requests, the same response may include bounded
+`report_artifacts`:
+
+```json
+{
+  "response_type": "answer",
+  "conversation_id": "conv_123",
+  "answer": "Souhrn odpovědi s citacemi.",
+  "citations": [
+    {
+      "document_id": "doc_123",
+      "document_version_id": "ver_456",
+      "document_title": "Směrnice",
+      "version_label": "1.0",
+      "document_version": "1.0",
+      "section_path": ["Čl. 4"],
+      "page_number": 7,
+      "chunk_id": "chunk_789"
+    }
+  ],
+  "report_artifacts": [
+    {
+      "artifact_id": "rpt_abc123",
+      "title": "Sestava z odpovědi AKB",
+      "description": "Tabulková sestava je vytvořená z citované odpovědi.",
+      "columns": [
+        { "key": "topic", "label": "Téma", "type": "text" },
+        { "key": "summary", "label": "Závěr", "type": "text" },
+        { "key": "document", "label": "Zdrojový dokument", "type": "text" }
+      ],
+      "rows": [
+        {
+          "row_id": "report_row_1",
+          "cells": {
+            "topic": "Kdo schvaluje výjimku",
+            "summary": "Výjimku schvaluje gestor dokumentu.",
+            "document": "Směrnice"
+          },
+          "citations": []
+        }
+      ],
+      "export_formats": ["xlsx", "pdf"],
+      "source_citation_count": 1,
+      "warnings": ["REPORT_LIMITED_TO_CITED_SOURCES"]
+    }
+  ],
+  "confidence": "medium",
+  "warnings": []
+}
+```
+
+The artifact source may be either:
+
+- cited RAG answer content, where rows carry chunk citations and warnings such
+  as `REPORT_LIMITED_TO_CITED_SOURCES`, or
+- Registry API metadata aggregation, where the web BFF answers inventory
+  questions such as document counts/lists by topic before calling RAG. Metadata
+  reports carry `answer_source: "registry_metadata_summary"` when backed by
+  `GET /documents/metadata-summary`, no chunk citations, and warnings such as
+  `REGISTRY_METADATA_REPORT`, `REGISTRY_METADATA_SUMMARY`, or
+  `REGISTRY_SCAN_LIMIT_REACHED`.
+
+Registry metadata summary:
+
+```text
+GET /documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
+```
+
+The endpoint is permission-scoped and returns `total_visible_documents`,
+`total_matched_documents`, topic rows, and buckets by document type,
+classification, status, and owner/steward. It is the preferred source for exact
+document inventory/count/list answers in chat.
+
+The AKB web BFF exports the artifact with:
+
+```text
+POST /api/assistant/reports/export
+```
+
+The request body is `{ "report": <report_artifact>, "format": "xlsx" }` or
+`{ "report": <report_artifact>, "format": "pdf" }`. The response is either
+`200 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` or
+`200 application/pdf`. The export is deterministic, bounded, and contains no
+macros, scripts, formulas, or external links.
 
 ---
 
@@ -483,7 +621,7 @@ Response:
 {
   "models": [
     {
-      "model_id": "gemma4:12b",
+      "model_id": "gemma4:12b-mlx",
       "provider": "ollama",
       "capabilities": ["chat"],
       "context_window": 32768
@@ -502,7 +640,7 @@ Request:
 
 ```json
 {
-  "model": "gemma4:12b",
+  "model": "gemma4:12b-mlx",
   "messages": [
     {
       "role": "system",
@@ -526,7 +664,7 @@ Response:
 ```json
 {
   "id": "cmpl_123",
-  "model": "gemma4:12b",
+  "model": "gemma4:12b-mlx",
   "content": "Postup je ...",
   "finish_reason": "stop",
   "usage": {
@@ -659,7 +797,9 @@ GET  /api/documents/source/content?token={downloadToken}
 
 `source/open` nacte dokument, verze a `document.read` hint z Registry API. Pokud verze patri k dokumentu, vytvori kratkodoby HMAC token vazany na `document_id`, `document_version_id`, `source_file_uri`, bucket, object key, filename, MIME typ, volitelny SHA-256 a expiraci. Odpoved vraci `source_open.available=false` a `unavailable_reason=SOURCE_OBJECT_NOT_FOUND`, pokud objekt neni ve storage fyzicky dostupny; browser pak nesmi predstirat funkcni download.
 
-`source/content` token overi, odmita cizi bucket/object traversal, cte pouze z nakonfigurovaneho object-storage rootu a vraci objekt s `Cache-Control: private, no-store`, `Content-Disposition: inline`, `X-AKL-Source-Open-Id` a `X-Content-Type-Options: nosniff`. Pokud Registry metadata obsahuji plny SHA-256, content endpoint kontroluje hash pred vracenim obsahu. `source.open_requested` a `source.opened` jsou zapisovane do Registry audit logu best-effort.
+`source/content` token overi, odmita cizi bucket/object traversal, cte pouze z nakonfigurovaneho object-storage rootu a vraci objekt s `Cache-Control: private, no-store`, `Content-Disposition: inline`, `X-AKL-Source-Open-Id` a `X-Content-Type-Options: nosniff`. Pokud Registry metadata obsahuji plny SHA-256, content endpoint kontroluje hash pred vracenim obsahu. Pri HTML navigaci s validne podepsanym, ale expirovanym tokenem endpoint presmeruje na detail dokumentu ve viewer tabu; API/fetch volani nadale dostanou strukturovanou `410 SOURCE_DOWNLOAD_TOKEN_EXPIRED` chybu. `source.open_requested` a `source.opened` jsou zapisovane do Registry audit logu best-effort.
+
+Assistant citation direct-source redirect vraci relativni `Location` na `source/content`, aby reverse proxy nebo Next runtime nemohly do browseru propustit interni Docker hostname. Browser URL se proto resi proti verejnemu originu, na kterem uzivatel AKB skutecne otevrel.
 
 ---
 

@@ -1,4 +1,7 @@
-from datetime import date, timedelta
+import re
+import unicodedata
+from collections import Counter
+from datetime import date, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -15,9 +18,14 @@ from app.errors import problem
 from app.middleware import get_correlation_id
 from app.models import (
     AuditEvent,
+    AssistantConversation,
+    AssistantConversationShare,
+    AssistantMessage,
     Document,
     DocumentAccessPolicy,
     DocumentAssignment,
+    DocumentExtraction,
+    DocumentExtractionFeedback,
     DocumentFile,
     DocumentVersion,
     ExternalDocumentRef,
@@ -48,26 +56,49 @@ from app.schemas import (
     DocumentAssignmentCreate,
     DocumentAssignmentListResponse,
     DocumentAssignmentReplaceRequest,
+    DocumentExtractionFeedbackCreate,
+    DocumentExtractionFeedbackResponse,
+    DocumentExtractionFeedbackStoreResponse,
+    DocumentExtractionResponse,
+    DocumentExtractionStatus,
+    DocumentExtractionStoreRequest,
+    DocumentExtractionStoreResponse,
     DocumentAssignmentRole,
     DocumentCreate,
     DocumentListResponse,
+    DocumentMetadataSummaryBucket,
+    DocumentMetadataSummaryResponse,
+    DocumentMetadataSummaryTopic,
     DocumentPatch,
     DocumentResponse,
     DocumentStatus,
     DocumentType,
+    ExternalSourceSystem,
     DocumentVersionCreate,
     DocumentVersionListResponse,
     DocumentVersionResponse,
+    ExternalDocumentCurrentUpdateRequest,
     ExternalDocumentResponse,
     ExternalDocumentRefResponse,
     ExternalDocumentUpsertRequest,
     HealthResponse,
+    ProfileSettingsBundle,
+    ProfileSettingsPutRequest,
+    ProfileSettingsResponse,
     WorkflowTaskActionRequest,
     WorkflowTaskKind,
     WorkflowTaskListResponse,
     WorkflowTaskPriority,
     WorkflowTaskResponse,
     WorkflowTaskStatus,
+    AssistantConversationDetailResponse,
+    AssistantConversationListItemResponse,
+    AssistantConversationListResponse,
+    AssistantConversationPatch,
+    AssistantConversationShareReplaceRequest,
+    AssistantConversationShareResponse,
+    AssistantMessageAppendRequest,
+    AssistantMessageResponse,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -80,6 +111,14 @@ ACTIVE_TASK_STATUSES = {
     WorkflowTaskStatus.open.value,
     WorkflowTaskStatus.waiting.value,
     WorkflowTaskStatus.blocked.value,
+}
+
+SUPERSEDABLE_EXTRACTION_STATUSES = {
+    DocumentExtractionStatus.pending.value,
+    DocumentExtractionStatus.running.value,
+    DocumentExtractionStatus.proposed.value,
+    DocumentExtractionStatus.partial.value,
+    DocumentExtractionStatus.failed.value,
 }
 
 DEFAULT_ASSIGNMENT_SLA_DAYS = {
@@ -145,6 +184,8 @@ def _default_policies(owner_id: str, classification: Classification | str) -> li
                 Action.document_version_create.value,
                 Action.document_version_publish.value,
                 Action.document_version_archive.value,
+                Action.document_ingest.value,
+                Action.document_reindex.value,
             ],
             constraints={"classification_max": Classification.confidential.value},
         ),
@@ -448,6 +489,35 @@ def _get_external_document_ref(db: Session, external_document_id: str) -> Extern
     return external_ref
 
 
+def _get_document_extraction(db: Session, extraction_id: str) -> DocumentExtraction:
+    extraction = db.execute(
+        select(DocumentExtraction).where(DocumentExtraction.extraction_id == extraction_id)
+    ).scalar_one_or_none()
+    if extraction is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "document_extraction_not_found",
+            "Document extraction was not found",
+        )
+    return extraction
+
+
+def _require_document_extraction_access(principal: Principal, extraction: DocumentExtraction) -> None:
+    context = context_for_principal(principal)
+    service_roles = {role for role in context.roles if role.startswith("service_")}
+    if (
+        principal.subject_id == extraction.requested_by
+        or {"admin", "document_manager", "stratos_service"} & context.roles
+        or service_roles
+    ):
+        return
+    raise problem(
+        status.HTTP_403_FORBIDDEN,
+        "forbidden",
+        "Only the requester, STRATOS services, admins, document managers, or service roles can access this extraction",
+    )
+
+
 def _external_document_response(
     external_ref: ExternalDocumentRef,
     *,
@@ -501,7 +571,7 @@ def _authz_subject_context(
     groups: list[str],
 ) -> SubjectContext:
     if principal.subject_id == subject_id:
-        caller = context_for_principal(principal)
+        caller = context_for_principal(principal, db)
         return context_for_subject(db, subject_id, caller.roles, caller.groups)
     return context_for_subject(db, subject_id, roles, groups)
 
@@ -963,10 +1033,10 @@ def upsert_external_document(
         )
     ).scalar_one_or_none()
     if existing_ref is not None:
-        require_document_action(principal, Action.document_read, existing_ref.document)
+        require_document_action(principal, Action.document_read, existing_ref.document, db)
         return _external_document_response(existing_ref, created=False)
 
-    require_global_action(principal, Action.document_create)
+    require_global_action(principal, Action.document_create, db)
     document = Document(
         document_id=make_id("doc"),
         title=payload.title,
@@ -1060,8 +1130,242 @@ def get_external_document(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
     external_ref = _get_external_document_ref(db, external_document_id)
-    require_document_action(principal, Action.document_read, external_ref.document)
+    require_document_action(principal, Action.document_read, external_ref.document, db)
     return _external_document_response(external_ref, created=False)
+
+
+@router.patch(
+    "/external-documents/{external_document_id}/current",
+    response_model=ExternalDocumentResponse,
+)
+def update_external_document_current(
+    external_document_id: str,
+    payload: ExternalDocumentCurrentUpdateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentResponse:
+    external_ref = _get_external_document_ref(db, external_document_id)
+    require_document_action(principal, Action.document_ingest, external_ref.document, db)
+
+    if "current_document_version_id" in payload.model_fields_set:
+        if payload.current_document_version_id is not None:
+            _get_version(db, external_ref.document_id, payload.current_document_version_id)
+        external_ref.current_document_version_id = payload.current_document_version_id
+
+    if "current_file_id" in payload.model_fields_set:
+        if payload.current_file_id is not None:
+            file = db.execute(
+                select(DocumentFile).where(
+                    DocumentFile.file_id == payload.current_file_id,
+                    DocumentFile.document_id == external_ref.document_id,
+                )
+            ).scalar_one_or_none()
+            if file is None:
+                raise problem(status.HTTP_404_NOT_FOUND, "document_file_not_found", "Document file was not found")
+        external_ref.current_file_id = payload.current_file_id
+
+    if "current_ingestion_job_id" in payload.model_fields_set:
+        external_ref.current_ingestion_job_id = payload.current_ingestion_job_id
+    if "current_ingestion_status" in payload.model_fields_set:
+        external_ref.current_ingestion_status = payload.current_ingestion_status
+    if "akb_source_uri" in payload.model_fields_set:
+        external_ref.akb_source_uri = payload.akb_source_uri
+    if "source_location" in payload.model_fields_set:
+        external_ref.source_location = (
+            payload.source_location.model_dump(mode="json", exclude_none=True)
+            if payload.source_location is not None
+            else None
+        )
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="external_document.current_updated",
+        resource_type="external_document",
+        resource_id=external_ref.external_document_id,
+        correlation_id=get_correlation_id(),
+        metadata={
+            "document_id": external_ref.document_id,
+            "current_document_version_id": external_ref.current_document_version_id,
+            "current_file_id": external_ref.current_file_id,
+            "current_ingestion_job_id": external_ref.current_ingestion_job_id,
+            "current_ingestion_status": external_ref.current_ingestion_status,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(external_ref)
+    return _external_document_response(external_ref, created=False)
+
+
+@router.post(
+    "/document-extractions",
+    response_model=DocumentExtractionStoreResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def store_document_extraction(
+    payload: DocumentExtractionStoreRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentExtractionStoreResponse:
+    require_global_action(principal, Action.rag_query, db)
+    _get_version(db, payload.document_id, payload.document_version_id)
+
+    existing = db.execute(
+        select(DocumentExtraction).where(
+            DocumentExtraction.tenant_id == payload.tenant_id,
+            DocumentExtraction.external_system == payload.external_system.value,
+            DocumentExtraction.external_ref == payload.external_ref,
+            DocumentExtraction.document_id == payload.document_id,
+            DocumentExtraction.document_version_id == payload.document_version_id,
+            DocumentExtraction.profile == payload.profile,
+            DocumentExtraction.profile_version == payload.profile_version,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return DocumentExtractionStoreResponse(extraction=DocumentExtractionResponse.model_validate(existing), created=False)
+
+    older_extractions = list(
+        db.execute(
+            select(DocumentExtraction).where(
+                DocumentExtraction.tenant_id == payload.tenant_id,
+                DocumentExtraction.external_system == payload.external_system.value,
+                DocumentExtraction.external_ref == payload.external_ref,
+                DocumentExtraction.document_id == payload.document_id,
+                DocumentExtraction.document_version_id != payload.document_version_id,
+                DocumentExtraction.profile == payload.profile,
+                DocumentExtraction.profile_version == payload.profile_version,
+                DocumentExtraction.status.in_(SUPERSEDABLE_EXTRACTION_STATUSES),
+            )
+        ).scalars()
+    )
+    for older in older_extractions:
+        older.status = DocumentExtractionStatus.superseded.value
+
+    extraction = DocumentExtraction(
+        extraction_id=make_id("extract"),
+        tenant_id=payload.tenant_id,
+        external_system=payload.external_system.value,
+        external_ref=payload.external_ref,
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        document_id=payload.document_id,
+        document_version_id=payload.document_version_id,
+        profile=payload.profile,
+        profile_version=payload.profile_version,
+        status=payload.status.value,
+        classification=payload.classification.value,
+        requested_by=payload.requested_by,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        result=payload.result,
+        missing_information=payload.missing_information,
+        warnings=payload.warnings,
+        extraction_metadata=payload.metadata,
+    )
+    db.add(extraction)
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="document_extraction.stored",
+        resource_type="document_extraction",
+        resource_id=extraction.extraction_id,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        metadata={
+            "tenant_id": payload.tenant_id,
+            "external_system": payload.external_system.value,
+            "external_ref": payload.external_ref,
+            "document_id": payload.document_id,
+            "document_version_id": payload.document_version_id,
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "status": payload.status.value,
+            "superseded_extraction_ids": [item.extraction_id for item in older_extractions],
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(extraction)
+    return DocumentExtractionStoreResponse(extraction=DocumentExtractionResponse.model_validate(extraction), created=True)
+
+
+@router.get(
+    "/document-extractions/{extraction_id}",
+    response_model=DocumentExtractionResponse,
+)
+def get_document_extraction(
+    extraction_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentExtractionResponse:
+    extraction = _get_document_extraction(db, extraction_id)
+    _require_document_extraction_access(principal, extraction)
+    return DocumentExtractionResponse.model_validate(extraction)
+
+
+@router.post(
+    "/document-extractions/{extraction_id}/feedback",
+    response_model=DocumentExtractionFeedbackStoreResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def store_document_extraction_feedback(
+    extraction_id: str,
+    payload: DocumentExtractionFeedbackCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentExtractionFeedbackStoreResponse:
+    extraction = _get_document_extraction(db, extraction_id)
+    _require_document_extraction_access(principal, extraction)
+    if payload.source_app.value != extraction.external_system:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "source_app_mismatch",
+            "Feedback source_app must match extraction external_system",
+        )
+
+    feedback = DocumentExtractionFeedback(
+        feedback_id=make_id("extfb"),
+        extraction_id=extraction.extraction_id,
+        tenant_id=extraction.tenant_id,
+        field=payload.field,
+        ai_value=payload.ai_value,
+        final_value=payload.final_value,
+        decision=payload.decision.value,
+        reason=payload.reason,
+        actor_id=payload.actor,
+        source_app=payload.source_app.value,
+        source_entity_id=payload.source_entity_id,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        feedback_metadata=payload.metadata,
+    )
+    db.add(feedback)
+    if payload.decision.value in {"accepted", "edited"}:
+        extraction.status = DocumentExtractionStatus.accepted_in_source_app.value
+    elif payload.decision.value == "rejected":
+        extraction.status = DocumentExtractionStatus.rejected_in_source_app.value
+    extraction.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=payload.actor,
+        event_type="document_extraction.feedback_recorded",
+        resource_type="document_extraction",
+        resource_id=extraction.extraction_id,
+        correlation_id=payload.correlation_id or get_correlation_id(),
+        metadata={
+            "tenant_id": extraction.tenant_id,
+            "external_system": extraction.external_system,
+            "external_ref": extraction.external_ref,
+            "field": payload.field,
+            "decision": payload.decision.value,
+            "source_entity_id": payload.source_entity_id,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(feedback)
+    db.refresh(extraction)
+    return DocumentExtractionFeedbackStoreResponse(
+        feedback=DocumentExtractionFeedbackResponse.model_validate(feedback),
+        extraction=DocumentExtractionResponse.model_validate(extraction),
+    )
 
 
 @router.post(
@@ -1074,7 +1378,7 @@ def create_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
-    require_global_action(principal, Action.document_create)
+    require_global_action(principal, Action.document_create, db)
     document = Document(
         document_id=make_id("doc"),
         title=payload.title,
@@ -1125,16 +1429,144 @@ def list_documents(
     document_type: DocumentType | None = None,
     owner_id: str | None = None,
     tag: str | None = None,
+    topic: list[str] | None = Query(default=None),
+    tenant_id: str | None = None,
+    external_system: ExternalSourceSystem | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    external_ref: str | None = None,
+    context_tag: list[str] | None = Query(default=None),
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> DocumentListResponse:
+    topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
+    documents = _authorized_document_metadata_rows(
+        db=db,
+        principal=principal,
+        status_filter=status_filter,
+        classification=classification,
+        document_type=document_type,
+        owner_id=owner_id,
+        tag=tag,
+        tenant_id=tenant_id,
+        external_system=external_system,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        external_ref=external_ref,
+        context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
+    )
+    if topics:
+        documents = [
+            document
+            for document in documents
+            if any(_document_matches_metadata_topic(document, candidate) for candidate in topics)
+        ]
+
+    return DocumentListResponse(items=documents[offset : offset + limit], limit=limit, offset=offset)
+
+
+@router.get("/documents/metadata-summary", response_model=DocumentMetadataSummaryResponse)
+def document_metadata_summary(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+    status_filter: DocumentStatus | None = Query(default=None, alias="status"),
+    classification: Classification | None = None,
+    document_type: DocumentType | None = None,
+    owner_id: str | None = None,
+    tag: str | None = None,
+    topic: list[str] | None = Query(default=None),
+    tenant_id: str | None = None,
+    external_system: ExternalSourceSystem | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    external_ref: str | None = None,
+    context_tag: list[str] | None = Query(default=None),
+) -> DocumentMetadataSummaryResponse:
+    documents = _authorized_document_metadata_rows(
+        db=db,
+        principal=principal,
+        status_filter=status_filter,
+        classification=classification,
+        document_type=document_type,
+        owner_id=owner_id,
+        tag=tag,
+        tenant_id=tenant_id,
+        external_system=external_system,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        external_ref=external_ref,
+        context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
+    )
+    topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
+    if not topics:
+        topics = ["all documents"]
+
+    topic_summaries: list[DocumentMetadataSummaryTopic] = []
+    matched_document_ids: set[str] = set()
+    for topic_label in topics[:12]:
+        topic_documents = (
+            documents
+            if _is_all_documents_topic(topic_label)
+            else [
+                document
+                for document in documents
+                if _document_matches_metadata_topic(document, topic_label)
+            ]
+        )
+        matched_document_ids.update(document.document_id for document in topic_documents)
+        topic_summaries.append(_document_metadata_topic_summary(topic_label, topic_documents))
+
+    return DocumentMetadataSummaryResponse(
+        total_visible_documents=len(documents),
+        total_matched_documents=len(matched_document_ids),
+        topics=topic_summaries,
+        by_document_type=_counter_buckets(Counter(document.document_type for document in documents)),
+        by_classification=_counter_buckets(Counter(document.classification for document in documents)),
+        by_status=_counter_buckets(Counter(document.status for document in documents)),
+        by_owner=_counter_buckets(
+            Counter((document.gestor_unit or document.owner_id) for document in documents)
+        ),
+        warnings=["REGISTRY_METADATA_SUMMARY"],
+    )
+
+
+def _authorized_document_metadata_rows(
+    *,
+    db: Session,
+    principal: Principal,
+    status_filter: DocumentStatus | None,
+    classification: Classification | None,
+    document_type: DocumentType | None,
+    owner_id: str | None,
+    tag: str | None,
+    tenant_id: str | None,
+    external_system: ExternalSourceSystem | None,
+    entity_type: str | None,
+    entity_id: str | None,
+    external_ref: str | None,
+    context_tags: list[str],
+) -> list[Document]:
     stmt = (
         select(Document)
-        .options(selectinload(Document.access_policies), selectinload(Document.assignments))
+        .options(
+            selectinload(Document.access_policies),
+            selectinload(Document.assignments),
+            selectinload(Document.external_refs),
+        )
         .order_by(desc(Document.created_at))
-        .limit(limit)
-        .offset(offset)
     )
+    if any([tenant_id, external_system, entity_type, entity_id, external_ref]):
+        stmt = stmt.join(ExternalDocumentRef, ExternalDocumentRef.document_id == Document.document_id).distinct()
+    if tenant_id:
+        stmt = stmt.where(ExternalDocumentRef.tenant_id == tenant_id)
+    if external_system:
+        stmt = stmt.where(ExternalDocumentRef.external_system == external_system.value)
+    if entity_type:
+        stmt = stmt.where(ExternalDocumentRef.entity_type == entity_type)
+    if entity_id:
+        stmt = stmt.where(ExternalDocumentRef.entity_id == entity_id)
+    if external_ref:
+        stmt = stmt.where(ExternalDocumentRef.external_ref == external_ref)
     if status_filter:
         stmt = stmt.where(Document.status == status_filter.value)
     if classification:
@@ -1144,16 +1576,146 @@ def list_documents(
     if owner_id:
         stmt = stmt.where(Document.owner_id == owner_id)
 
-    context = context_for_principal(principal)
-    documents = []
+    context = context_for_principal(principal, db)
+    documents: list[Document] = []
     for document in db.execute(stmt).scalars():
         if tag and tag not in document.tags:
+            continue
+        if context_tags and not all(_document_matches_context_tag(document, candidate) for candidate in context_tags):
             continue
         decision = evaluate_document_access(context, Action.document_read.value, document)
         if decision.allowed:
             documents.append(document)
+    return documents
 
-    return DocumentListResponse(items=documents, limit=limit, offset=offset)
+
+def _document_metadata_topic_summary(
+    topic_label: str,
+    documents: list[Document],
+) -> DocumentMetadataSummaryTopic:
+    return DocumentMetadataSummaryTopic(
+        topic=topic_label,
+        document_count=len(documents),
+        valid_or_approved_count=len(
+            [
+                document
+                for document in documents
+                if document.status in {DocumentStatus.valid.value, DocumentStatus.approved.value}
+            ]
+        ),
+        document_types=_counter_buckets(Counter(document.document_type for document in documents)),
+        classifications=_counter_buckets(Counter(document.classification for document in documents)),
+        statuses=_counter_buckets(Counter(document.status for document in documents)),
+        owners=_counter_buckets(Counter((document.gestor_unit or document.owner_id) for document in documents)),
+        example_documents=[document.title for document in documents[:5]],
+    )
+
+
+def _counter_buckets(counter: Counter[str], limit: int = 12) -> list[DocumentMetadataSummaryBucket]:
+    return [
+        DocumentMetadataSummaryBucket(key=key, label=key, count=count)
+        for key, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))[:limit]
+        if key
+    ]
+
+
+def _document_matches_metadata_topic(document: Document, topic: str) -> bool:
+    topic_text = _normalize_metadata_text(topic)
+    if not topic_text:
+        return False
+    haystack = _document_metadata_search_text(document)
+    if topic_text in haystack:
+        return True
+    topic_tokens = [token for token in topic_text.split() if len(token) >= 3]
+    return bool(topic_tokens) and all(token in haystack for token in topic_tokens)
+
+
+def _document_matches_context_tag(document: Document, context_tag: str) -> bool:
+    tag_text = _normalize_metadata_text(context_tag)
+    if not tag_text:
+        return True
+    normalized_tags = {_normalize_metadata_text(tag) for tag in document.tags}
+    if tag_text in normalized_tags:
+        return True
+    return tag_text in _document_external_ref_search_text(document)
+
+
+def _document_metadata_search_text(document: Document) -> str:
+    parts: list[str] = [
+        document.document_id,
+        document.title,
+        document.document_type,
+        document.status,
+        document.classification,
+        document.owner_id,
+        document.gestor_unit or "",
+        *document.tags,
+        *_metadata_scalar_values(document.document_metadata),
+    ]
+    for assignment in document.assignments:
+        parts.extend(
+            [
+                assignment.role,
+                assignment.subject_type,
+                assignment.subject_id,
+                assignment.display_label or "",
+                *_metadata_scalar_values(assignment.assignment_metadata),
+            ]
+        )
+    parts.append(_document_external_ref_search_text(document))
+    return _normalize_metadata_text(" ".join(parts))
+
+
+def _document_external_ref_search_text(document: Document) -> str:
+    parts: list[str] = []
+    for external_ref in document.external_refs:
+        parts.extend(
+            [
+                external_ref.external_document_id,
+                external_ref.tenant_id,
+                external_ref.external_system,
+                external_ref.external_ref,
+                external_ref.entity_type,
+                external_ref.entity_id,
+                external_ref.current_ingestion_status or "",
+                external_ref.akb_source_uri or "",
+                external_ref.preview_url or "",
+                *_metadata_scalar_values(external_ref.ref_metadata),
+            ]
+        )
+    return _normalize_metadata_text(" ".join(parts))
+
+
+def _metadata_scalar_values(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str | int | float | bool):
+        return [str(value)]
+    if isinstance(value, dict):
+        values: list[str] = []
+        for key, item in value.items():
+            values.append(str(key))
+            values.extend(_metadata_scalar_values(item))
+        return values
+    if isinstance(value, list):
+        values: list[str] = []
+        for item in value:
+            values.extend(_metadata_scalar_values(item))
+        return values
+    return []
+
+
+def _normalize_metadata_text(value: str) -> str:
+    without_marks = "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+    return re.sub(r"\s+", " ", re.sub(r"[^a-zA-Z0-9._/-]+", " ", without_marks).lower()).strip()
+
+
+def _is_all_documents_topic(topic: str) -> bool:
+    return _normalize_metadata_text(topic) in {"all documents", "vsechny dokumenty", "dokumenty"}
 
 
 @router.get("/documents/{document_id}", response_model=DocumentResponse)
@@ -1163,7 +1725,7 @@ def get_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
     return document
 
 
@@ -1174,7 +1736,7 @@ def list_document_assignments(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentAssignmentListResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
     items = sorted(
         document.assignments,
         key=lambda assignment: (
@@ -1195,7 +1757,7 @@ def replace_document_assignments(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentAssignmentListResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_update, document)
+    require_document_action(principal, Action.document_update, document, db)
     assignment_payloads = _validated_assignment_payloads(payload.assignments)
 
     document.assignments.clear()
@@ -1233,7 +1795,7 @@ def patch_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_update, document)
+    require_document_action(principal, Action.document_update, document, db)
 
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
@@ -1291,7 +1853,7 @@ def delete_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Response:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_delete, document)
+    require_document_action(principal, Action.document_delete, document, db)
     document.status = DocumentStatus.cancelled.value
     for version in document.versions:
         if version.status == DocumentStatus.valid.value:
@@ -1319,9 +1881,9 @@ def create_document_version(
     payload: DocumentVersionCreate,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> DocumentVersion:
+) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_create, document)
+    require_document_action(principal, Action.document_version_create, document, db)
 
     version = DocumentVersion(
         document_version_id=make_id("ver"),
@@ -1340,19 +1902,19 @@ def create_document_version(
         change_summary=payload.change_summary,
     )
     db.add(version)
+    file: DocumentFile | None = None
     if payload.file is not None:
-        db.add(
-            DocumentFile(
-                document_id=document.document_id,
-                document_version=version,
-                uri=payload.source_file_uri,
-                filename=payload.file.filename,
-                mime_type=payload.file.mime_type,
-                size_bytes=payload.file.size_bytes,
-                sha256=payload.file.sha256 or payload.file_hash,
-                uploaded_by=payload.file.uploaded_by or principal.subject_id,
-            )
+        file = DocumentFile(
+            document_id=document.document_id,
+            document_version=version,
+            uri=payload.source_file_uri,
+            filename=payload.file.filename,
+            mime_type=payload.file.mime_type,
+            size_bytes=payload.file.size_bytes,
+            sha256=payload.file.sha256 or payload.file_hash,
+            uploaded_by=payload.file.uploaded_by or principal.subject_id,
         )
+        db.add(file)
     add_audit_event(
         db,
         actor_id=principal.subject_id,
@@ -1363,7 +1925,8 @@ def create_document_version(
     )
     _commit_or_conflict(db)
     db.refresh(version)
-    return version
+    response = DocumentVersionResponse.model_validate(version)
+    return response.model_copy(update={"file_id": file.file_id if file is not None else None})
 
 
 @router.get("/documents/{document_id}/versions", response_model=DocumentVersionListResponse)
@@ -1377,7 +1940,7 @@ def list_document_versions(
     offset: Offset = 0,
 ) -> DocumentVersionListResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
 
     stmt = (
         select(DocumentVersion)
@@ -1408,7 +1971,7 @@ def get_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersion:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document)
+    require_document_action(principal, Action.document_read, document, db)
     return _get_version(db, document_id, version_id)
 
 
@@ -1423,7 +1986,7 @@ def publish_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersion:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_publish, document)
+    require_document_action(principal, Action.document_version_publish, document, db)
     version = _get_version(db, document_id, version_id)
     _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
@@ -1442,7 +2005,7 @@ def archive_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersion:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_archive, document)
+    require_document_action(principal, Action.document_version_archive, document, db)
     version = _get_version(db, document_id, version_id)
 
     _archive_version(db, document=document, version=version, actor_id=principal.subject_id)
@@ -1534,7 +2097,7 @@ def list_workflow_tasks(
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> WorkflowTaskListResponse:
-    require_global_action(principal, Action.workflow_task_read)
+    require_global_action(principal, Action.workflow_task_read, db)
     _sync_derived_workflow_tasks(db)
     _escalate_overdue_tasks(db)
     _commit_or_conflict(db)
@@ -1554,7 +2117,7 @@ def list_workflow_tasks(
         stmt = stmt.where(WorkflowTask.owner_id == owner_id)
 
     tasks = list(db.execute(stmt).scalars())
-    context = context_for_principal(principal)
+    context = context_for_principal(principal, db)
     document_ids = {task.document_id for task in tasks if task.document_id}
     documents_by_id = {
         document.document_id: document
@@ -1588,12 +2151,12 @@ def apply_workflow_task_action(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> WorkflowTask:
-    require_global_action(principal, Action.workflow_task_write)
+    require_global_action(principal, Action.workflow_task_write, db)
     task = _get_workflow_task(db, task_id)
     document: Document | None = None
     if task.document_id:
         document = _get_document(db, task.document_id)
-        require_document_action(principal, Action.document_read, document)
+        require_document_action(principal, Action.document_read, document, db)
 
     now = utcnow()
     if payload.assignee_id:
@@ -1602,14 +2165,14 @@ def apply_workflow_task_action(
 
     if payload.action.value == "approve":
         if document is not None and task.kind == WorkflowTaskKind.review.value:
-            require_document_action(principal, Action.document_update, document)
+            require_document_action(principal, Action.document_update, document, db)
             _approve_document_for_publication(db, document)
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "publish":
         if document is None:
             raise problem(status.HTTP_409_CONFLICT, "workflow_task_without_document", "Workflow task has no document to publish")
-        require_document_action(principal, Action.document_version_publish, document)
+        require_document_action(principal, Action.document_version_publish, document, db)
         version = _workflow_action_version(db, task=task, payload=payload)
         if version is None:
             raise problem(status.HTTP_409_CONFLICT, "no_publishable_version", "Workflow task has no version to publish")
@@ -1620,7 +2183,7 @@ def apply_workflow_task_action(
     elif payload.action.value == "archive":
         if document is None:
             raise problem(status.HTTP_409_CONFLICT, "workflow_task_without_document", "Workflow task has no document to archive")
-        require_document_action(principal, Action.document_version_archive, document)
+        require_document_action(principal, Action.document_version_archive, document, db)
         version = _workflow_action_version(db, task=task, payload=payload, prefer_valid=True)
         if version is None:
             raise problem(status.HTTP_409_CONFLICT, "no_archivable_version", "Workflow task has no version to archive")
@@ -1633,7 +2196,7 @@ def apply_workflow_task_action(
         task.resolved_at = now
     elif payload.action.value == "request_changes":
         if document is not None:
-            require_document_action(principal, Action.document_update, document)
+            require_document_action(principal, Action.document_update, document, db)
             version = _workflow_action_version(db, task=task, payload=payload)
             _request_document_changes(document, version)
         task.status = WorkflowTaskStatus.open.value
@@ -1680,7 +2243,7 @@ def create_audit_event(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AuditEvent:
-    require_global_action(principal, Action.audit_write)
+    require_global_action(principal, Action.audit_write, db)
     event = add_audit_event(
         db,
         actor_id=payload.actor_id,
@@ -1707,7 +2270,7 @@ def list_audit_events(
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> AuditEventListResponse:
-    require_global_action(principal, Action.audit_read)
+    require_global_action(principal, Action.audit_read, db)
     stmt = select(AuditEvent).order_by(desc(AuditEvent.created_at)).limit(limit).offset(offset)
     if actor_id:
         stmt = stmt.where(AuditEvent.actor_id == actor_id)
@@ -1728,7 +2291,7 @@ def get_audit_event(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AuditEvent:
-    require_global_action(principal, Action.audit_read)
+    require_global_action(principal, Action.audit_read, db)
     event = db.execute(
         select(AuditEvent).where(AuditEvent.audit_event_id == event_id)
     ).scalar_one_or_none()
@@ -1776,13 +2339,100 @@ def _role_mapping_response(mapping: RoleMapping, display_name: str | None) -> Ro
     return response
 
 
+def _normalize_profile_settings(value: object) -> ProfileSettingsBundle:
+    if isinstance(value, ProfileSettingsBundle):
+        return value
+    if not isinstance(value, dict):
+        return ProfileSettingsBundle()
+
+    core = value.get("core")
+    apps = value.get("apps")
+    normalized_apps: dict[str, dict[str, object]] = {}
+    if isinstance(apps, dict):
+        for app_key, app_value in apps.items():
+            if isinstance(app_key, str) and isinstance(app_value, dict):
+                normalized_apps[app_key] = dict(app_value)
+
+    return ProfileSettingsBundle(
+        core=dict(core) if isinstance(core, dict) else {},
+        apps=normalized_apps,
+    )
+
+
+def _get_or_create_self_profile(db: Session, principal: Principal) -> UserProfile:
+    profile = db.get(UserProfile, principal.subject_id)
+    if profile is None:
+        profile = UserProfile(user_id=principal.subject_id)
+        db.add(profile)
+    return profile
+
+
+def _profile_settings_response(profile: UserProfile, principal: Principal) -> ProfileSettingsResponse:
+    return ProfileSettingsResponse(
+        subject_id=principal.subject_id,
+        settings=_normalize_profile_settings(profile.profile_settings),
+        roles=sorted(principal.roles),
+        groups=sorted(principal.groups),
+    )
+
+
+@router.get("/user-profiles/me/settings", response_model=ProfileSettingsResponse)
+def get_profile_settings(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ProfileSettingsResponse:
+    profile = _get_or_create_self_profile(db, principal)
+    db.commit()
+    db.refresh(profile)
+    return _profile_settings_response(profile, principal)
+
+
+@router.put("/user-profiles/me/settings", response_model=ProfileSettingsResponse)
+def put_profile_settings(
+    payload: ProfileSettingsPutRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ProfileSettingsResponse:
+    profile = _get_or_create_self_profile(db, principal)
+    settings = _normalize_profile_settings(payload.settings.model_dump(mode="json"))
+    settings.core.pop("role", None)
+    profile.profile_settings = settings.model_dump(mode="json")
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="user.profile_settings.updated",
+        resource_type="user_profile",
+        resource_id=principal.subject_id,
+        metadata={
+            "core_keys": sorted(settings.core.keys()),
+            "app_keys": sorted(settings.apps.keys()),
+        },
+    )
+    db.commit()
+    db.refresh(profile)
+    return _profile_settings_response(profile, principal)
+
+
 @router.get("/admin/directory/users", response_model=DirectoryUserListResponse)
 def search_directory_users(
     query: str = Query(min_length=1, max_length=200),
     limit: Limit = 20,
+    db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> DirectoryUserListResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
+    users = _directory_adapter().search_users(query, max_results=min(limit, 50))
+    return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
+
+
+@router.get("/directory/users", response_model=DirectoryUserListResponse)
+def search_workflow_directory_users(
+    query: str = Query(default="", max_length=200),
+    limit: Limit = 20,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserListResponse:
+    require_global_action(principal, Action.workflow_task_write, db)
     users = _directory_adapter().search_users(query, max_results=min(limit, 50))
     return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
 
@@ -1797,7 +2447,7 @@ def import_directory_user(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> DirectoryUserResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     user = _directory_adapter().get_user(payload.subject_id)
     if user is None:
         raise problem(
@@ -1835,7 +2485,7 @@ def list_role_mappings(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> RoleMappingListResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     stmt = select(RoleMapping).order_by(RoleMapping.subject_id, RoleMapping.role)
     if not include_removed:
         stmt = stmt.where(RoleMapping.status != "removed")
@@ -1861,7 +2511,7 @@ def upsert_role_mapping(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> RoleMappingResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     mapping = db.execute(
         select(RoleMapping).where(
             RoleMapping.subject_type == payload.subject_type,
@@ -1902,7 +2552,7 @@ def update_role_mapping_status(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> RoleMappingResponse:
-    require_global_action(principal, Action.admin_manage)
+    require_global_action(principal, Action.admin_manage, db)
     mapping = db.get(RoleMapping, role_mapping_id)
     if mapping is None:
         raise problem(status.HTTP_404_NOT_FOUND, "role_mapping_not_found", "Role mapping was not found")
@@ -1925,12 +2575,33 @@ def update_role_mapping_status(
     return _role_mapping_response(mapping, profile.display_name if profile else None)
 
 
-from app.models import AssistantConversation, AssistantMessage
-from app.schemas import (
-    AssistantConversationDetailResponse,
-    AssistantMessageAppendRequest,
-    AssistantMessageResponse,
-)
+ASSISTANT_CONVERSATION_DEFAULT_RETENTION_DAYS = 180
+CONVERSATION_SERVICE_ROLES = {"admin", "service_rag", "stratos_service"}
+
+
+def _assistant_message_response(message: AssistantMessage) -> AssistantMessageResponse:
+    return AssistantMessageResponse(
+        message_id=message.message_id,
+        role=message.role,
+        content=message.content,
+        response_type=message.response_type,
+        citations=message.citations,
+        metadata=message.message_metadata,
+        created_at=message.created_at,
+    )
+
+
+def _assistant_share_response(share: AssistantConversationShare) -> AssistantConversationShareResponse:
+    return AssistantConversationShareResponse(
+        conversation_share_id=share.conversation_share_id,
+        subject_type=share.subject_type,
+        subject_id=share.subject_id,
+        permission=share.permission,
+        status=share.status,
+        created_by=share.created_by,
+        created_at=share.created_at,
+        updated_at=share.updated_at,
+    )
 
 
 def _conversation_response(conversation: AssistantConversation) -> AssistantConversationDetailResponse:
@@ -1939,9 +2610,127 @@ def _conversation_response(conversation: AssistantConversation) -> AssistantConv
         user_id=conversation.user_id,
         status=conversation.status,
         title=conversation.title,
+        visibility=conversation.visibility,
+        retention_until=conversation.retention_until,
+        archived_at=conversation.archived_at,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        messages=[AssistantMessageResponse.model_validate(message) for message in conversation.messages],
+        shared_with=[_assistant_share_response(share) for share in conversation.shares if share.status == "active"],
+        messages=[_assistant_message_response(message) for message in conversation.messages],
+    )
+
+
+def _conversation_list_item_response(conversation: AssistantConversation) -> AssistantConversationListItemResponse:
+    return AssistantConversationListItemResponse(
+        conversation_id=conversation.conversation_id,
+        user_id=conversation.user_id,
+        status=conversation.status,
+        title=conversation.title,
+        visibility=conversation.visibility,
+        retention_until=conversation.retention_until,
+        archived_at=conversation.archived_at,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        shared_with=[_assistant_share_response(share) for share in conversation.shares if share.status == "active"],
+        message_count=len(conversation.messages),
+    )
+
+
+def _conversation_retained(conversation: AssistantConversation) -> bool:
+    if conversation.retention_until is None:
+        return True
+    retention_until = conversation.retention_until
+    if retention_until.tzinfo is None:
+        retention_until = retention_until.replace(tzinfo=timezone.utc)
+    return retention_until > utcnow()
+
+
+def _conversation_subject_allowed(
+    conversation: AssistantConversation,
+    context: SubjectContext,
+    *,
+    allow_comment: bool = False,
+    include_admin: bool = True,
+) -> bool:
+    if conversation.user_id == context.subject_id or (include_admin and "admin" in context.roles):
+        return True
+    for share in conversation.shares:
+        if share.status != "active":
+            continue
+        if allow_comment and share.permission != "commenter":
+            continue
+        if share.subject_type == "user" and share.subject_id == context.subject_id:
+            return True
+        if share.subject_type == "group" and share.subject_id in context.groups:
+            return True
+    return False
+
+
+def _conversation_for_principal(
+    db: Session,
+    conversation_id: str,
+    principal: Principal,
+    *,
+    allow_comment: bool = False,
+) -> tuple[AssistantConversation, SubjectContext]:
+    context = require_global_action(principal, Action.rag_query, db)
+    conversation = db.execute(
+        select(AssistantConversation)
+        .options(selectinload(AssistantConversation.messages), selectinload(AssistantConversation.shares))
+        .where(AssistantConversation.conversation_id == conversation_id)
+    ).scalar_one_or_none()
+    if conversation is None or not _conversation_retained(conversation):
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "conversation_not_found",
+            "Assistant conversation was not found",
+        )
+    if not _conversation_subject_allowed(conversation, context, allow_comment=allow_comment):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_access_denied",
+            "Assistant conversation is not visible to the current subject",
+        )
+    return conversation, context
+
+
+def _can_persist_for_user(context: SubjectContext, user_id: str) -> bool:
+    return context.subject_id == user_id or bool(context.roles.intersection(CONVERSATION_SERVICE_ROLES))
+
+
+def _default_conversation_retention_until():
+    return utcnow() + timedelta(days=ASSISTANT_CONVERSATION_DEFAULT_RETENTION_DAYS)
+
+
+@router.get(
+    "/assistant/conversation-history",
+    response_model=AssistantConversationListResponse,
+)
+def list_assistant_conversations(
+    include_archived: bool = False,
+    limit: Limit = 50,
+    offset: Offset = 0,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationListResponse:
+    context = require_global_action(principal, Action.rag_query, db)
+    conversations = db.execute(
+        select(AssistantConversation)
+        .options(selectinload(AssistantConversation.messages), selectinload(AssistantConversation.shares))
+        .order_by(desc(AssistantConversation.updated_at))
+    ).scalars()
+    visible: list[AssistantConversation] = []
+    for conversation in conversations:
+        if not _conversation_retained(conversation):
+            continue
+        if not include_archived and conversation.status == "archived":
+            continue
+        if _conversation_subject_allowed(conversation, context):
+            visible.append(conversation)
+    return AssistantConversationListResponse(
+        items=[_conversation_list_item_response(conversation) for conversation in visible[offset : offset + limit]],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -1956,16 +2745,31 @@ def append_assistant_messages(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
-    require_global_action(principal, Action.rag_query)
+    subject_context = require_global_action(principal, Action.rag_query, db)
+    if not _can_persist_for_user(subject_context, payload.user_id):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_user_mismatch",
+            "Conversation can only be persisted for the current user",
+        )
     conversation = db.get(AssistantConversation, conversation_id)
     if conversation is None:
         conversation = AssistantConversation(
             conversation_id=conversation_id,
             user_id=payload.user_id,
             title=payload.title,
+            visibility=payload.visibility or "private",
+            retention_until=payload.retention_until or _default_conversation_retention_until(),
         )
         db.add(conversation)
-    elif conversation.user_id != payload.user_id:
+    else:
+        db.refresh(conversation, attribute_names=["shares"])
+    if conversation.user_id != payload.user_id and not _conversation_subject_allowed(
+        conversation,
+        subject_context,
+        allow_comment=True,
+        include_admin=False,
+    ):
         raise problem(
             status.HTTP_403_FORBIDDEN,
             "conversation_user_mismatch",
@@ -1973,6 +2777,10 @@ def append_assistant_messages(
         )
     if payload.title and not conversation.title:
         conversation.title = payload.title
+    if payload.visibility:
+        conversation.visibility = payload.visibility
+    if payload.retention_until:
+        conversation.retention_until = payload.retention_until
 
     for message in payload.messages:
         db.add(
@@ -1988,11 +2796,12 @@ def append_assistant_messages(
     conversation.updated_at = utcnow()
     db.commit()
     db.refresh(conversation)
+    db.refresh(conversation, attribute_names=["messages", "shares"])
     return _conversation_response(conversation)
 
 
 @router.get(
-    "/assistant/conversations/{conversation_id}",
+    "/assistant/conversation-history/{conversation_id}",
     response_model=AssistantConversationDetailResponse,
 )
 def get_assistant_conversation(
@@ -2000,12 +2809,103 @@ def get_assistant_conversation(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
-    require_global_action(principal, Action.rag_query)
-    conversation = db.get(AssistantConversation, conversation_id)
-    if conversation is None:
+    conversation, _ = _conversation_for_principal(db, conversation_id, principal)
+    return _conversation_response(conversation)
+
+
+@router.patch(
+    "/assistant/conversation-history/{conversation_id}",
+    response_model=AssistantConversationDetailResponse,
+)
+def update_assistant_conversation(
+    conversation_id: str,
+    payload: AssistantConversationPatch,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationDetailResponse:
+    conversation, context = _conversation_for_principal(db, conversation_id, principal)
+    if conversation.user_id != context.subject_id and "admin" not in context.roles:
         raise problem(
-            status.HTTP_404_NOT_FOUND,
-            "conversation_not_found",
-            "Assistant conversation was not found",
+            status.HTTP_403_FORBIDDEN,
+            "conversation_owner_required",
+            "Only the conversation owner can update retention, title or archive status",
         )
+    if payload.title is not None:
+        conversation.title = payload.title
+    if payload.visibility is not None:
+        conversation.visibility = payload.visibility
+    if payload.retention_until is not None:
+        conversation.retention_until = payload.retention_until
+    if payload.status is not None:
+        conversation.status = payload.status
+        conversation.archived_at = utcnow() if payload.status == "archived" else None
+    conversation.updated_at = utcnow()
+    db.commit()
+    db.refresh(conversation)
+    db.refresh(conversation, attribute_names=["messages", "shares"])
+    return _conversation_response(conversation)
+
+
+@router.put(
+    "/assistant/conversation-history/{conversation_id}/shares",
+    response_model=AssistantConversationDetailResponse,
+)
+def replace_assistant_conversation_shares(
+    conversation_id: str,
+    payload: AssistantConversationShareReplaceRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationDetailResponse:
+    conversation, context = _conversation_for_principal(db, conversation_id, principal)
+    if conversation.user_id != context.subject_id and "admin" not in context.roles:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_owner_required",
+            "Only the conversation owner can change sharing",
+        )
+
+    requested = {(share.subject_type, share.subject_id): share for share in payload.shares}
+    for share in conversation.shares:
+        if (share.subject_type, share.subject_id) not in requested:
+            share.status = "removed"
+            share.updated_at = utcnow()
+    for (subject_type, subject_id), request_share in requested.items():
+        existing = next(
+            (
+                share
+                for share in conversation.shares
+                if share.subject_type == subject_type and share.subject_id == subject_id
+            ),
+            None,
+        )
+        if existing:
+            existing.permission = request_share.permission
+            existing.status = "active"
+            existing.updated_at = utcnow()
+        else:
+            db.add(
+                AssistantConversationShare(
+                    conversation_id=conversation_id,
+                    subject_type=subject_type,
+                    subject_id=subject_id,
+                    permission=request_share.permission,
+                    created_by=context.subject_id,
+                )
+            )
+    conversation.visibility = payload.visibility if payload.shares else "private"
+    conversation.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=context.subject_id,
+        event_type="assistant.conversation.shared",
+        resource_type="assistant_conversation",
+        resource_id=conversation_id,
+        metadata={
+            "share_count": len(payload.shares),
+            "visibility": conversation.visibility,
+        },
+    )
+    db.commit()
+    db.refresh(conversation)
+    db.refresh(conversation, attribute_names=["messages", "shares"])
     return _conversation_response(conversation)

@@ -13,6 +13,8 @@ Implementovany rozsah teto iterace:
 - confidence,
 - no-answer policy,
 - audit eventy pres Registry API klienta,
+- STRATOS contract extraction proposals pro `contract_financial_v1`,
+- STRATOS ArchFlow goal extraction proposals pro `archflow_goal_extraction_v1`,
 - mock klienti pro Registry API, Qdrant/retrieval a LLM Gateway.
 
 Mimo rozsah teto iterace:
@@ -46,6 +48,14 @@ Employee Assistant:
 - `GET /api/v1/assistant/suggestions`
 - `GET /api/v1/assistant/citations/{chunk_id}/open`
 
+STRATOS extractions:
+
+- `GET /api/v1/stratos/extractions/profiles`
+- `POST /api/v1/stratos/extractions/contracts/propose`
+- `POST /api/v1/stratos/extractions/archflow-goals/propose`
+- `GET /api/v1/stratos/extractions/{extraction_id}`
+- `POST /api/v1/stratos/extractions/{extraction_id}/feedback`
+
 OpenAPI specifikace je v `openapi.yaml`.
 
 ## Hlavni tok
@@ -65,6 +75,19 @@ OpenAPI specifikace je v `openapi.yaml`.
 11. Zapise audit event pres Registry API. Do auditu jde hash odpovedi, ID chunku a ID dokumentu, ne plny text odpovedi.
 
 Volitelne pole `response_language` podporuje `cs` a `en`. Vychozi hodnota je `cs`. Hodnota se pouziva pro RAG odpoved, no-answer texty, Employee Assistant clarifikace a navrhy dotazu; citovane zdrojove vyryvky zustavaji v puvodnim jazyce dokumentu.
+
+`POST /api/v1/stratos/extractions/contracts/propose` pouziva stejny
+permission-aware retrieval tok, vraci pouze citovane `proposed` hodnoty a
+perzistuje vysledek pres Registry API. Budget potvrzuje, upravuje nebo odmita
+navrhy az ve vlastni aplikaci a zpet posila feedback.
+
+`POST /api/v1/stratos/extractions/archflow-goals/propose` pouziva stejny tok
+pro ArchFlow nad `ArchflowSourceSet` a publikovanou
+`ArchflowGoalCatalogVersion`. Profil `archflow_goal_extraction_v1` vraci
+citovane navrhy cilu, schopnosti, povinnosti, pozadavku, metrik,
+pravni/metodicke opory a rizik. ArchFlow uklada source set a auditni snapshot
+katalogove verze, finalni cile a vazby zapisuje az po lidskem potvrzeni a zpet
+posila feedback se `source_app: "STRATOS_ARCHFLOW"`.
 
 ## Konfigurace
 

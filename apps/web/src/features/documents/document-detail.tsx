@@ -34,6 +34,7 @@ import {
   StratosButton,
   StratosButtonLink,
   StratosDataTable,
+  StratosPdfViewer,
   StratosSelect,
   StratosViewTabs,
   type StratosDataTableColumn,
@@ -110,17 +111,6 @@ interface SourceContextSignal {
 
 type NativePreviewKind = "waiting" | "pdf" | "image" | "text" | "markdown" | "csv" | "docx" | "xlsx" | "presentation" | "unsupported";
 
-type PdfJsModule = typeof import("pdfjs-dist");
-
-interface PdfTextHighlight {
-  id: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  text: string;
-}
-
 interface MarkdownHeading {
   id: string;
   level: number;
@@ -171,13 +161,13 @@ type NativeStructuredPreview =
 const detailCopy = {
   cs: {
     back: "Zpět do registru",
-    registryNotice: "Frontend zobrazuje platnost dokumentu a akce pouze z Registry API. Autoritativní oprávnění neodvozuje lokálně.",
+    registryNotice: "AKB zobrazuje stav dokumentu a dostupné akce podle oprávnění uživatele. Pokud některá akce chybí, dokument nejdřív potřebuje odpovídající stav nebo roli.",
     overview: "Přehled",
-    viewer: "Viewer",
-    workflow: "Workflow",
-    insights: "Insighty",
+    viewer: "Dokument",
+    workflow: "Schválení",
+    insights: "Znalosti",
     versionsTab: "Verze",
-    ingestionTab: "Ingestion",
+    ingestionTab: "Zpracování",
     auditTab: "Audit",
     owner: "Vlastník",
     type: "Typ",
@@ -188,28 +178,28 @@ const detailCopy = {
     validFrom: "platná od",
     noVersion: "Žádná verze",
     source: "Zdroj",
-    sourceUri: "URI zdrojového souboru",
-    sourceHash: "Hash souboru",
-    viewerMode: "Režim vieweru",
-    viewerNotice: "Nativní preview dokumentu bude navázané na source-context a podepsané download URL. Aktuálně je dostupný citovatelný zdrojový kontext z RAG služby.",
-    sourceOpenTitle: "Podepsané otevření zdroje",
-    sourceOpenDetail: "Server připraví krátkodobou URL pouze pro aktuální dokument a verzi.",
-    requestSourceOpen: "Připravit podepsaný zdroj",
+    sourceUri: "Umístění zdroje",
+    sourceHash: "Otisk souboru",
+    viewerMode: "Typ náhledu",
+    viewerNotice: "Pokud dokument obsahuje citaci z odpovědi AKB, otevřete ji v náhledu a zkontrolujte přesný úsek zdroje před dalším rozhodnutím.",
+    sourceOpenTitle: "Originální dokument",
+    sourceOpenDetail: "AKB připraví dočasné bezpečné otevření pouze pro tuto verzi dokumentu.",
+    requestSourceOpen: "Připravit originál",
     sourceOpening: "Připravuji",
-    sourceOpenReady: "Podepsaný zdroj je připravený.",
-    sourceOpenUnavailable: "Zdrojový objekt není v lokálním storage dostupný.",
-    sourceOpenError: "Podepsané otevření zdroje se nepodařilo připravit.",
+    sourceOpenReady: "Originální dokument je připravený k otevření.",
+    sourceOpenUnavailable: "Originální soubor není v úložišti dostupný.",
+    sourceOpenError: "Originální dokument se nepodařilo připravit.",
     openSignedSource: "Otevřít zdroj",
     downloadSignedSource: "Stáhnout zdroj",
     openCitationPage: "Otevřít stranu citace",
     citationPageUnavailable: "Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.",
-    nativePreviewTitle: "Nativní preview",
-    nativePreviewDetail: "Preview používá pouze podepsanou URL pro aktuální dokumentovou verzi.",
-    nativePreviewWaiting: "Nejprve připravte podepsaný zdroj v panelu Zdroj.",
-    nativePreviewUnavailable: "Nativní preview není dostupné, protože zdrojový objekt není ve storage.",
-    nativePreviewLoading: "Načítám preview zdroje.",
-    nativePreviewError: "Preview zdroje se nepodařilo načíst.",
-    nativePreviewUnsupported: "Tento typ zdroje zatím nemá nativní renderer. Použijte podepsané otevření nebo stažení zdroje.",
+    nativePreviewTitle: "Náhled dokumentu",
+    nativePreviewDetail: "Náhled pracuje s originálem aktuální verze a pomáhá zkontrolovat citované místo.",
+    nativePreviewWaiting: "Nejprve připravte originální dokument v panelu Zdroj.",
+    nativePreviewUnavailable: "Náhled není dostupný, protože originální soubor není v úložišti.",
+    nativePreviewLoading: "Načítám náhled dokumentu.",
+    nativePreviewError: "Náhled dokumentu se nepodařilo načíst.",
+    nativePreviewUnsupported: "Tento typ souboru zatím nejde zobrazit přímo v AKB. Otevřete nebo stáhněte originál.",
     nativePreviewTruncated: "Preview je zkrácené pro rychlé zobrazení.",
     nativePreviewPdfFallback: "PDF preview nelze zobrazit ve vestavěném prohlížeči.",
     nativePreviewPdfRenderedTitle: "Vykreslená strana citace",
@@ -231,29 +221,29 @@ const detailCopy = {
     storageAvailability: "Dostupnost ve storage",
     available: "dostupné",
     unavailable: "nedostupné",
-    sourceContextTitle: "Source-context",
-    sourceContextDetail: "Citovatelný kontext načtený přes RAG bridge a ověřený proti aktuálnímu dokumentu.",
-    sourceContextSignals: "Dostupné source-context signály",
-    sourceContextEmpty: "V auditní stopě není pro tento dokument žádný otevřitelný chunk.",
-    sourceContextPlaceholder: "Vyberte auditovaný chunk v panelu Zdroj a otevře se přesný citovatelný kontext.",
-    openSourceContext: "Otevřít source-context",
+    sourceContextTitle: "Citace a kontext",
+    sourceContextDetail: "Otevřete citovaný úsek a ověřte, že odpověď nebo rozhodnutí stojí na správné verzi dokumentu.",
+    sourceContextSignals: "Dostupné citované úseky",
+    sourceContextEmpty: "AKB pro tento dokument zatím nemá žádný otevřitelný citovaný úsek.",
+    sourceContextPlaceholder: "Vyberte citovaný úsek v panelu Zdroj a AKB otevře přesný kontext.",
+    openSourceContext: "Otevřít citaci",
     openingSourceContext: "Otevírám",
-    sourceContextError: "Source-context se nepodařilo otevřít.",
-    chunk: "Chunk",
+    sourceContextError: "Citaci se nepodařilo otevřít.",
+    chunk: "Úsek",
     page: "Strana",
     section: "Sekce",
     paragraph: "Odstavec",
     row: "Řádek",
     noSection: "Sekce není uvedená",
     sourceUnavailable: "Zdroj není dostupný",
-    copyChunk: "Kopírovat chunk",
+    copyChunk: "Kopírovat úsek",
     beforeContext: "Předchozí kontext",
     afterContext: "Následující kontext",
-    workflowTitle: "Publikační workflow",
+    workflowTitle: "Schválení a publikace",
     workflowDraft: "Koncept",
-    workflowDraftDetail: "Metadata a verze jsou založené v Registry API.",
+    workflowDraftDetail: "Dokument má založená metadata a připravenou verzi.",
     workflowIngestion: "Zpracování",
-    workflowIngestionDetail: "Parser, chunker a indexace připraví citovatelný zdroj.",
+    workflowIngestionDetail: "AKB přečte soubor, připraví citace a zařadí dokument do znalostí.",
     workflowReview: "Revize",
     workflowReviewDetail: "Vlastník nebo gestor kontroluje metadata, zdroje a governance zjištění.",
     workflowApproved: "Schválení",
@@ -262,11 +252,11 @@ const detailCopy = {
     workflowPublishDetail: "Platná verze nahrazuje předchozí publikovanou verzi.",
     workflowArchive: "Archivace",
     workflowArchiveDetail: "Nahrazené verze zůstávají dohledatelné pro audit.",
-    workflowTasksTitle: "Workflow tasky",
-    workflowTasksDetail: "Autoritativní stav, vlastník a poslední rozhodnutí z Registry API.",
+    workflowTasksTitle: "Úkoly k dokumentu",
+    workflowTasksDetail: "Co má vlastník, gestor nebo správce udělat, než se dokument použije jako platný zdroj.",
     workflowTasksEmpty: "K dokumentu nejsou evidované workflow tasky.",
     assignmentsTitle: "Organizační odpovědnosti",
-    assignmentsDetail: "Role, SLA a eskalace z Registry API pro tento dokument.",
+    assignmentsDetail: "Kdo za dokument odpovídá, kdo ho schvaluje a kam se úkol eskaluje.",
     assignmentsEmpty: "K dokumentu nejsou evidované odpovědnosti.",
     assignmentRole: "Role",
     assignmentSubjectType: "Subjekt",
@@ -286,11 +276,11 @@ const detailCopy = {
     assignmentSaved: "Odpovědnosti byly uložené.",
     assignmentFailed: "Odpovědnosti se nepodařilo uložit.",
     assignmentRequiresSubject: "Každá role musí mít vyplněné ID subjektu.",
-    publishGateTitle: "Publish gate",
+    publishGateTitle: "Publikace",
     publishGateReady: "Dokument je schválený. Aktuální verzi lze publikovat.",
     publishGatePublished: "Aktuální verze je publikovaná. Archivace je dostupná podle oprávnění.",
     publishGateArchived: "Aktuální verze je archivovaná. Publikace ani archivace nejsou pro tuto verzi dostupné.",
-    publishGateLocked: "Publikace je zamčená, dokud review workflow nepřejde do stavu approved.",
+    publishGateLocked: "Nejdřív dokončete revizi a schválení. Teprve potom lze aktuální verzi publikovat.",
     publishGateNoPermission: "Publikační akce nejsou pro tuto relaci povolené.",
     publishApproved: "Publikovat schválenou verzi",
     archiveCurrent: "Archivovat aktuální verzi",
@@ -303,17 +293,17 @@ const detailCopy = {
     lastAction: "poslední akce",
     currentSignal: "aktuální signál",
     requiredActions: "Prioritní kroky",
-    actionIngestion: "Dokončit ingestion a zkontrolovat varování.",
+    actionIngestion: "Dokončit zpracování a zkontrolovat varování.",
     actionReview: "Spustit kontrolu compliance před publikací.",
-    actionViewer: "Doplnit přesnou viewer lokaci pro PDF/DOCX zdroje.",
+    actionViewer: "Ověřit, že citace otevírá přesné místo v dokumentu.",
     actionAccess: "Ověřit přístupové politiky pro citlivou klasifikaci.",
     noActions: "Nejsou detekované prioritní kroky.",
-    insightsTitle: "Navržené znalostní výstupy",
-    insightsGenerate: "Navrhnout insighty",
+    insightsTitle: "Navržené znalosti",
+    insightsGenerate: "Navrhnout znalosti",
     insightsGenerating: "Generuji",
-    insightsGenerated: "Návrhy insightů byly vytvořené ze zdrojového textu.",
-    insightsFailed: "Návrhy insightů se nepodařilo vytvořit.",
-    insightsNotPersisted: "Návrhy jsou pracovní podklad pro revizi. Autoritativní uložení a schvalování v Registry bude další krok.",
+    insightsGenerated: "Návrhy znalostí byly vytvořené ze zdrojového textu.",
+    insightsFailed: "Návrhy znalostí se nepodařilo vytvořit.",
+    insightsNotPersisted: "Návrhy jsou pracovní podklad pro revizi. Vlastník rozhodne, co se má stát řízenou znalostí.",
     insightsEmpty: "Zatím nejsou vygenerované žádné návrhy.",
     insightCitation: "Citace",
     insightWarnings: "Omezení",
@@ -326,10 +316,10 @@ const detailCopy = {
     insightRisk: "Rizika",
     insightRiskDetail: "Označit konflikty, neúplná metadata a citlivé části.",
     proposed: "návrh",
-    governanceTitle: "Governance kontroly",
-    governanceDetail: "Spustitelné kontroly volají Governance Service přes serverový bridge a vrací citace, confidence a auditovatelný result ID.",
+    governanceTitle: "Kontroly před schválením",
+    governanceDetail: "Spusťte kontroly, které upozorní na změny, chybějící údaje nebo možné rozpory. Výsledek je podklad pro rozhodnutí vlastníka.",
     compareVersions: "Porovnat verze",
-    compareVersionsDetail: "Diff posledních dvou verzí, materialita změn a citace zdrojových verzí.",
+    compareVersionsDetail: "Ukáže, co se proti předchozí verzi změnilo a zda jde o podstatnou změnu.",
     complianceCheck: "Kontrola compliance",
     complianceCheckDetail: "Baseline pravidla pro vlastníka, gestora, platnost, výjimky a trasovatelnost.",
     conflictDetection: "Detekce konfliktů",
@@ -340,8 +330,8 @@ const detailCopy = {
     governanceRunComplete: "Governance kontrola byla dokončená.",
     governanceFailed: "Governance kontrolu se nepodařilo spustit.",
     governanceUnavailable: "Akce zatím nemá dostatečný vstup.",
-    governanceConfidence: "Confidence",
-    governanceResultId: "Result ID",
+    governanceConfidence: "Jistota",
+    governanceResultId: "ID výsledku",
     governanceGenerated: "Vygenerováno",
     governanceSourceLimitations: "Zdrojová omezení",
     governanceWarnings: "Varování",
@@ -351,6 +341,17 @@ const detailCopy = {
     governanceMissing: "Chybějící informace",
     governanceNoItems: "Výsledek neobsahuje detailní položky.",
     versionHistory: "Historie verzí",
+    versionGuideTitle: "Jak pracovat s verzemi",
+    versionGuideDetail: "Verze nevzniká ruční poznámkou. Nahrajte originální soubor, popište změnu řízenými volbami a potom nechte AKB připravit citace a kontroly.",
+    versionCurrentTitle: "Aktuální stav",
+    versionNextTitle: "Doporučený další krok",
+    versionCurrentAvailable: "Aktuální verze je dostupná a lze ji použít pro náhled, citace a kontroly.",
+    versionCurrentMissing: "Dokument zatím nemá použitelnou verzi. Začněte nahráním originálního souboru.",
+    versionNextUpload: "Nahrajte novou verzi pouze tehdy, pokud se změnil originální dokument nebo je potřeba doplnit PDF/source.",
+    versionNextReview: "Dokončete revizi, zkontrolujte citace a spusťte kontroly před schválením.",
+    versionNextPublish: "Dokument je schválený. Publikujte aktuální verzi, pokud má být platným zdrojem pro AKB.",
+    versionNextStable: "Platná verze je připravená. Sledujte změny zdroje a další revizní termín.",
+    versionCount: "Počet verzí",
     upload: "Nahrát",
     version: "Verze",
     status: "Stav",
@@ -358,10 +359,10 @@ const detailCopy = {
     changeSummary: "Souhrn změny",
     ingestionStatus: "Stav zpracování",
     created: "vytvořeno",
-    noJob: "K tomuto dokumentu není aktuálně připojena žádná ingestion úloha.",
+    noJob: "K tomuto dokumentu není aktuálně připojené žádné zpracování.",
     auditTitle: "Auditní stopa dokumentu",
-    auditDetail: "Události navázané přes dokument, verzi, workflow task, odpovědnost, ingestion nebo source-context metadata.",
-    auditHidden: "Auditní stopa je skrytá, protože Registry API neudělilo audit.read.",
+    auditDetail: "Události navázané přes dokument, verzi, úkol, odpovědnost, zpracování nebo citaci.",
+    auditHidden: "Auditní stopa není pro tuto relaci dostupná.",
     auditEmpty: "K tomuto dokumentu nejsou v načteném auditním okně evidované žádné události.",
     auditEvent: "Událost",
     auditSeverity: "Závažnost",
@@ -373,20 +374,20 @@ const detailCopy = {
     auditCreated: "Vytvořeno",
     auditScopeDocument: "dokument",
     auditScopeVersion: "verze",
-    auditScopeWorkflow: "workflow",
+    auditScopeWorkflow: "úkol",
     auditScopeAssignment: "odpovědnost",
-    auditScopeIngestion: "ingestion",
-    auditScopeSource: "source-context"
+    auditScopeIngestion: "zpracování",
+    auditScopeSource: "citace"
   },
   en: {
     back: "Back to registry",
-    registryNotice: "Frontend displays document validity and actions from Registry API only. It does not infer authoritative authorization locally.",
+    registryNotice: "AKB shows document state and available actions according to the current user's permissions. If an action is missing, the document needs the right state or role first.",
     overview: "Overview",
-    viewer: "Viewer",
-    workflow: "Workflow",
-    insights: "Insights",
+    viewer: "Document",
+    workflow: "Approval",
+    insights: "Knowledge",
     versionsTab: "Versions",
-    ingestionTab: "Ingestion",
+    ingestionTab: "Processing",
     auditTab: "Audit",
     owner: "Owner",
     type: "Type",
@@ -397,28 +398,28 @@ const detailCopy = {
     validFrom: "valid from",
     noVersion: "No version",
     source: "Source",
-    sourceUri: "Source file URI",
-    sourceHash: "File hash",
-    viewerMode: "Viewer mode",
-    viewerNotice: "Native document preview will be connected to source-context and signed download URLs. The citable source context from RAG is available now.",
-    sourceOpenTitle: "Signed source opening",
-    sourceOpenDetail: "The server prepares a short-lived URL only for the current document and version.",
-    requestSourceOpen: "Prepare signed source",
+    sourceUri: "Source location",
+    sourceHash: "File fingerprint",
+    viewerMode: "Preview type",
+    viewerNotice: "If the document contains a citation from an AKB answer, open it in the preview and verify the exact source segment before deciding.",
+    sourceOpenTitle: "Original document",
+    sourceOpenDetail: "AKB prepares a temporary secure opening only for this document version.",
+    requestSourceOpen: "Prepare original",
     sourceOpening: "Preparing",
-    sourceOpenReady: "Signed source is ready.",
-    sourceOpenUnavailable: "Source object is not available in local storage.",
-    sourceOpenError: "Signed source opening could not be prepared.",
+    sourceOpenReady: "Original document is ready to open.",
+    sourceOpenUnavailable: "Original file is not available in storage.",
+    sourceOpenError: "Original document could not be prepared.",
     openSignedSource: "Open source",
     downloadSignedSource: "Download source",
     openCitationPage: "Open citation page",
     citationPageUnavailable: "Opening the exact citation page will be available after the signed source is available.",
-    nativePreviewTitle: "Native preview",
-    nativePreviewDetail: "Preview uses only the signed URL for the current document version.",
-    nativePreviewWaiting: "Prepare the signed source in the Source panel first.",
-    nativePreviewUnavailable: "Native preview is not available because the source object is not in storage.",
-    nativePreviewLoading: "Loading source preview.",
-    nativePreviewError: "Source preview could not be loaded.",
-    nativePreviewUnsupported: "This source type does not have a native renderer yet. Use signed opening or source download.",
+    nativePreviewTitle: "Document preview",
+    nativePreviewDetail: "Preview uses the current version original and helps verify the cited location.",
+    nativePreviewWaiting: "Prepare the original document in the Source panel first.",
+    nativePreviewUnavailable: "Preview is not available because the original file is not in storage.",
+    nativePreviewLoading: "Loading document preview.",
+    nativePreviewError: "Document preview could not be loaded.",
+    nativePreviewUnsupported: "This file type cannot be displayed directly in AKB yet. Open or download the original.",
     nativePreviewTruncated: "Preview is truncated for fast rendering.",
     nativePreviewPdfFallback: "PDF preview cannot be displayed in the embedded viewer.",
     nativePreviewPdfRenderedTitle: "Rendered citation page",
@@ -440,29 +441,29 @@ const detailCopy = {
     storageAvailability: "Storage availability",
     available: "available",
     unavailable: "unavailable",
-    sourceContextTitle: "Source context",
-    sourceContextDetail: "Citable context loaded through the RAG bridge and validated against the current document.",
-    sourceContextSignals: "Available source-context signals",
-    sourceContextEmpty: "No openable chunk is present in the audit trail for this document.",
-    sourceContextPlaceholder: "Select an audited chunk in the Source panel to open the exact citable context.",
-    openSourceContext: "Open source context",
+    sourceContextTitle: "Citation and context",
+    sourceContextDetail: "Open the cited segment and verify that an answer or decision uses the right document version.",
+    sourceContextSignals: "Available cited segments",
+    sourceContextEmpty: "AKB does not have an openable cited segment for this document yet.",
+    sourceContextPlaceholder: "Select a cited segment in the Source panel and AKB opens the exact context.",
+    openSourceContext: "Open citation",
     openingSourceContext: "Opening",
-    sourceContextError: "Source context could not be opened.",
-    chunk: "Chunk",
+    sourceContextError: "Citation could not be opened.",
+    chunk: "Segment",
     page: "Page",
     section: "Section",
     paragraph: "Paragraph",
     row: "Row",
     noSection: "Section is not available",
     sourceUnavailable: "Source unavailable",
-    copyChunk: "Copy chunk",
+    copyChunk: "Copy segment",
     beforeContext: "Previous context",
     afterContext: "Next context",
-    workflowTitle: "Publication workflow",
+    workflowTitle: "Approval and publication",
     workflowDraft: "Draft",
-    workflowDraftDetail: "Metadata and version are registered in Registry API.",
-    workflowIngestion: "Ingestion",
-    workflowIngestionDetail: "Parser, chunker and indexing prepare citable source context.",
+    workflowDraftDetail: "Document metadata and a version are prepared.",
+    workflowIngestion: "Processing",
+    workflowIngestionDetail: "AKB reads the file, prepares citations and makes the document usable as knowledge.",
     workflowReview: "Review",
     workflowReviewDetail: "Owner or gestor checks metadata, sources and governance findings.",
     workflowApproved: "Approval",
@@ -471,11 +472,11 @@ const detailCopy = {
     workflowPublishDetail: "The valid version supersedes the previous published version.",
     workflowArchive: "Archive",
     workflowArchiveDetail: "Superseded versions remain discoverable for audit.",
-    workflowTasksTitle: "Workflow tasks",
-    workflowTasksDetail: "Authoritative status, owner and last decision from Registry API.",
+    workflowTasksTitle: "Document tasks",
+    workflowTasksDetail: "What owner, gestor or document manager should do before the document is used as a valid source.",
     workflowTasksEmpty: "No workflow tasks are recorded for this document.",
     assignmentsTitle: "Organizational responsibilities",
-    assignmentsDetail: "Roles, SLA and escalation from Registry API for this document.",
+    assignmentsDetail: "Who owns, reviews and approves the document, and where tasks escalate.",
     assignmentsEmpty: "No responsibilities are recorded for this document.",
     assignmentRole: "Role",
     assignmentSubjectType: "Subject",
@@ -495,11 +496,11 @@ const detailCopy = {
     assignmentSaved: "Responsibilities saved.",
     assignmentFailed: "Responsibilities could not be saved.",
     assignmentRequiresSubject: "Every role must have a subject ID.",
-    publishGateTitle: "Publish gate",
+    publishGateTitle: "Publication",
     publishGateReady: "The document is approved. The current version can be published.",
     publishGatePublished: "The current version is published. Archive is available according to permissions.",
     publishGateArchived: "The current version is archived. Publication and archive actions are not available for this version.",
-    publishGateLocked: "Publication is locked until the review workflow reaches approved state.",
+    publishGateLocked: "Finish review and approval first. Only then can the current version be published.",
     publishGateNoPermission: "Publication actions are not allowed in this session.",
     publishApproved: "Publish approved version",
     archiveCurrent: "Archive current version",
@@ -512,17 +513,17 @@ const detailCopy = {
     lastAction: "last action",
     currentSignal: "current signal",
     requiredActions: "Priority actions",
-    actionIngestion: "Finish ingestion and review warnings.",
+    actionIngestion: "Finish processing and review warnings.",
     actionReview: "Run compliance check before publication.",
-    actionViewer: "Add exact viewer location for PDF/DOCX sources.",
+    actionViewer: "Verify that citations open the exact document location.",
     actionAccess: "Review access policies for sensitive classification.",
     noActions: "No priority actions detected.",
-    insightsTitle: "Proposed knowledge outputs",
-    insightsGenerate: "Propose insights",
+    insightsTitle: "Proposed knowledge",
+    insightsGenerate: "Propose knowledge",
     insightsGenerating: "Generating",
-    insightsGenerated: "Insight proposals were generated from source text.",
-    insightsFailed: "Insight proposals could not be generated.",
-    insightsNotPersisted: "Proposals are review working material. Authoritative Registry persistence and approval is the next step.",
+    insightsGenerated: "Knowledge proposals were generated from source text.",
+    insightsFailed: "Knowledge proposals could not be generated.",
+    insightsNotPersisted: "Proposals are review material. The owner decides what becomes governed knowledge.",
     insightsEmpty: "No proposals have been generated yet.",
     insightCitation: "Citation",
     insightWarnings: "Limitations",
@@ -535,10 +536,10 @@ const detailCopy = {
     insightRisk: "Risks",
     insightRiskDetail: "Flag conflicts, incomplete metadata and sensitive sections.",
     proposed: "proposed",
-    governanceTitle: "Governance checks",
-    governanceDetail: "Executable checks call Governance Service through a server bridge and return citations, confidence and auditable result ID.",
+    governanceTitle: "Checks before approval",
+    governanceDetail: "Run checks that highlight changes, missing information or possible conflicts. The result supports the owner's decision.",
     compareVersions: "Compare versions",
-    compareVersionsDetail: "Diff of the latest two versions, change materiality and source-version citations.",
+    compareVersionsDetail: "Shows what changed against the previous version and whether the change is material.",
     complianceCheck: "Compliance check",
     complianceCheckDetail: "Baseline rules for owner, gestor, validity, exceptions and traceability.",
     conflictDetection: "Conflict detection",
@@ -560,6 +561,17 @@ const detailCopy = {
     governanceMissing: "Missing information",
     governanceNoItems: "The result has no detailed items.",
     versionHistory: "Version history",
+    versionGuideTitle: "How to work with versions",
+    versionGuideDetail: "A version should not be a free-form note. Upload the original file, describe the change with guided choices, then let AKB prepare citations and checks.",
+    versionCurrentTitle: "Current state",
+    versionNextTitle: "Recommended next step",
+    versionCurrentAvailable: "The current version is available and can be used for preview, citations and checks.",
+    versionCurrentMissing: "The document has no usable version yet. Start by uploading the original file.",
+    versionNextUpload: "Upload a new version only when the original document changed or a PDF/source must be added.",
+    versionNextReview: "Finish review, verify citations and run checks before approval.",
+    versionNextPublish: "The document is approved. Publish the current version if it should become the valid AKB source.",
+    versionNextStable: "The valid version is ready. Watch for source changes and the next review date.",
+    versionCount: "Version count",
     upload: "Upload",
     version: "Version",
     status: "Status",
@@ -567,10 +579,10 @@ const detailCopy = {
     changeSummary: "Change summary",
     ingestionStatus: "Ingestion status",
     created: "created",
-    noJob: "No ingestion job is currently linked to this document.",
+    noJob: "No processing job is currently linked to this document.",
     auditTitle: "Document audit trail",
-    auditDetail: "Events linked through document, version, workflow task, responsibility, ingestion or source-context metadata.",
-    auditHidden: "The audit trail is hidden because Registry API did not grant audit.read.",
+    auditDetail: "Events linked through document, version, task, responsibility, processing or citation.",
+    auditHidden: "The audit trail is not available for this session.",
     auditEmpty: "No events for this document are present in the loaded audit window.",
     auditEvent: "Event",
     auditSeverity: "Severity",
@@ -582,17 +594,41 @@ const detailCopy = {
     auditCreated: "Created",
     auditScopeDocument: "document",
     auditScopeVersion: "version",
-    auditScopeWorkflow: "workflow",
+    auditScopeWorkflow: "task",
     auditScopeAssignment: "responsibility",
-    auditScopeIngestion: "ingestion",
-    auditScopeSource: "source-context"
+    auditScopeIngestion: "processing",
+    auditScopeSource: "citation"
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
 type DetailTab = "overview" | "viewer" | "workflow" | "insights" | "versions" | "ingestion" | "audit";
 
+const detailTabAliases: Record<string, DetailTab> = {
+  overview: "overview",
+  summary: "overview",
+  viewer: "viewer",
+  document: "viewer",
+  source: "viewer",
+  workflow: "workflow",
+  approval: "workflow",
+  insights: "insights",
+  knowledge: "insights",
+  versions: "versions",
+  version: "versions",
+  ingestion: "ingestion",
+  processing: "ingestion",
+  audit: "audit"
+};
+
 const assignmentRoles: DocumentAssignmentRole[] = ["owner", "gestor", "reviewer", "approver", "auditor", "steward"];
 const assignmentSubjectTypes: AssignmentSubjectType[] = ["user", "group", "unit", "service"];
+
+function tabFromSearchParams(value: string | null): DetailTab | null {
+  if (!value) {
+    return null;
+  }
+  return detailTabAliases[value.trim().toLowerCase()] ?? null;
+}
 
 export function DocumentDetail({
   document,
@@ -633,7 +669,7 @@ export function DocumentDetail({
     assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
   );
   const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
-  const [activeTab, setActiveTab] = useState<DetailTab>(() => (searchParams.get("tab") === "viewer" ? "viewer" : "overview"));
+  const [activeTab, setActiveTab] = useState<DetailTab>(() => tabFromSearchParams(searchParams.get("tab")) ?? "overview");
   const loadedRequestedChunkRef = useRef<string | null>(null);
   const [workflowAction, setWorkflowAction] = useState<"publish" | "archive" | null>(null);
   const [workflowFeedback, setWorkflowFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
@@ -655,6 +691,7 @@ export function DocumentDetail({
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
   );
+  const versionNextStep = versionNextStepFor(document, currentVersion, copy);
   const viewerMode = currentVersion ? viewerModeFor(currentVersion.source_file_uri) : "binary";
   const citationPageUrl =
     sourceOpen?.available && sourceOpen.download_url && sourceContext?.location.page_number
@@ -669,12 +706,12 @@ export function DocumentDetail({
   const canArchiveCurrentVersion = Boolean(authorization.can_publish && currentVersion?.status === "valid");
 
   useEffect(() => {
-    const requestedTab = searchParams.get("tab");
+    const requestedTab = tabFromSearchParams(searchParams.get("tab"));
     const requestedChunkId = searchParams.get("chunk_id")?.trim();
-    if (requestedTab === "viewer") {
-      setActiveTab("viewer");
-    }
     if (!requestedChunkId || loadedRequestedChunkRef.current === requestedChunkId) {
+      if (requestedTab) {
+        setActiveTab(requestedTab);
+      }
       return;
     }
     loadedRequestedChunkRef.current = requestedChunkId;
@@ -1506,13 +1543,35 @@ export function DocumentDetail({
       {activeTab === "versions" ? (
         <section className="panel" id="versions">
           <div className="panel__header">
-            <h2>{copy.versionHistory}</h2>
+            <div>
+              <h2>{copy.versionHistory}</h2>
+              <p>{copy.versionGuideDetail}</p>
+            </div>
             {authorization.can_ingest ? (
-              <StratosButtonLink href="/upload">
+              <StratosButtonLink href={`/upload?document_id=${encodeURIComponent(document.document_id)}`}>
                 <UploadCloud size={16} aria-hidden="true" />
                 {copy.upload}
               </StratosButtonLink>
             ) : null}
+          </div>
+          <div className="panel__body stack">
+            <div className="version-guidance-grid">
+              <article className="version-guidance-card">
+                <span>{copy.versionCurrentTitle}</span>
+                <strong>{currentVersion ? `${currentVersion.version_label} - ${currentVersion.status}` : copy.noVersion}</strong>
+                <p>{currentVersion ? copy.versionCurrentAvailable : copy.versionCurrentMissing}</p>
+              </article>
+              <article className="version-guidance-card">
+                <span>{copy.versionNextTitle}</span>
+                <strong>{versionNextStep.title}</strong>
+                <p>{versionNextStep.detail}</p>
+              </article>
+              <article className="version-guidance-card">
+                <span>{copy.versionCount}</span>
+                <strong>{String(versions.length)}</strong>
+                <p>{copy.versionGuideTitle}</p>
+              </article>
+            </div>
           </div>
           <StratosDataTable
             aria-label={copy.versionHistory}
@@ -2206,7 +2265,21 @@ function DocumentNativePreview({
       ) : null}
       {sourceOpen?.available && previewKind === "pdf" && previewUrl ? (
         <>
-          <PdfRenderedPreview copy={copy} sourceContext={sourceContext} sourceUrl={previewUrl} />
+          <StratosPdfViewer
+            bbox={sourceContext?.location.bbox ?? undefined}
+            highlightText={sourceContext?.chunk_text ?? ""}
+            labels={{
+              title: copy.nativePreviewPdfRenderedTitle,
+              detail: copy.nativePreviewPdfRenderedDetail,
+              loading: copy.nativePreviewLoading,
+              error: copy.nativePreviewPdfFallback,
+              page: copy.page,
+              textHighlight: copy.nativePreviewPdfTextHighlight,
+              bbox: copy.nativePreviewPdfBbox
+            }}
+            pageNumber={sourceContext?.location.page_number ?? 1}
+            sourceUrl={withAppBasePath(previewUrl)}
+          />
           <PdfCitationLocator copy={copy} sourceContext={sourceContext} />
         </>
       ) : null}
@@ -2226,208 +2299,6 @@ function DocumentNativePreview({
         </div>
       ) : null}
     </section>
-  );
-}
-
-function PdfRenderedPreview({
-  copy,
-  sourceContext,
-  sourceUrl
-}: {
-  copy: Record<string, string>;
-  sourceContext: SourceContext | null;
-  sourceUrl: string;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
-  const [renderState, setRenderState] = useState<{
-    status: "loading" | "ready" | "error";
-    pageNumber: number;
-    pageCount: number | null;
-    width: number;
-    height: number;
-    textHighlights: PdfTextHighlight[];
-  }>({
-    status: "loading",
-    pageNumber: Math.max(1, Math.trunc(sourceContext?.location.page_number ?? 1)),
-    pageCount: null,
-    width: 0,
-    height: 0,
-    textHighlights: []
-  });
-
-  const bbox = sourceContext?.location.bbox ? bboxToPercentStyle(sourceContext.location.bbox) : null;
-  const pageNumber = Math.max(1, Math.trunc(sourceContext?.location.page_number ?? 1));
-  const sourceUrlWithoutFragment = stripUrlFragment(sourceUrl);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return;
-    }
-
-    let cancelled = false;
-    let cleanupDocument: (() => void) | null = null;
-    let cleanupRender: (() => void) | null = null;
-    const renderPdf = async () => {
-      renderTaskRef.current?.cancel();
-      renderTaskRef.current = null;
-      setRenderState({
-        status: "loading",
-        pageNumber,
-        pageCount: null,
-        width: 0,
-        height: 0,
-        textHighlights: []
-      });
-
-      try {
-        const pdfjs = await loadPdfJs();
-        if (cancelled) return;
-        const response = await fetch(withAppBasePath(sourceUrlWithoutFragment), { headers: { Accept: "application/pdf" } });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const pdfBytes = await response.arrayBuffer();
-        if (cancelled) return;
-        const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBytes) });
-        cleanupDocument = () => {
-          void loadingTask.destroy();
-        };
-        const pdf = await loadingTask.promise;
-        if (cancelled) return;
-        const safePageNumber = Math.min(Math.max(1, pageNumber), pdf.numPages);
-        const page = await pdf.getPage(safePageNumber);
-        if (cancelled) return;
-        const viewport = page.getViewport({ scale: 1.35 });
-        const context = canvas.getContext("2d");
-        if (!context) {
-          throw new Error("Canvas context unavailable");
-        }
-
-        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-        context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
-        context.clearRect(0, 0, viewport.width, viewport.height);
-
-        const renderTask = page.render({ canvas, canvasContext: context, viewport });
-        renderTaskRef.current = renderTask;
-        cleanupRender = () => {
-          renderTask.cancel();
-          if (renderTaskRef.current === renderTask) {
-            renderTaskRef.current = null;
-          }
-        };
-        await renderTask.promise;
-        if (renderTaskRef.current === renderTask) {
-          renderTaskRef.current = null;
-        }
-        if (cancelled) return;
-        const textContent = await page.getTextContent();
-        const textHighlights = pdfTextHighlights({
-          chunkText: sourceContext?.chunk_text ?? "",
-          items: textContent.items,
-          pdfjs,
-          viewportHeight: viewport.height,
-          viewportTransform: viewport.transform,
-          viewportWidth: viewport.width
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        setRenderState({
-          status: "ready",
-          pageNumber: safePageNumber,
-          pageCount: pdf.numPages,
-          width: viewport.width,
-          height: viewport.height,
-          textHighlights
-        });
-      } catch (error) {
-        if (!cancelled) {
-          console.warn("PDF native preview failed", error);
-          setRenderState({
-            status: "error",
-            pageNumber,
-            pageCount: null,
-            width: 0,
-            height: 0,
-            textHighlights: []
-          });
-        }
-      }
-    };
-
-    void renderPdf();
-
-    return () => {
-      cancelled = true;
-      cleanupRender?.();
-      cleanupDocument?.();
-    };
-  }, [pageNumber, sourceContext?.chunk_text, sourceUrlWithoutFragment]);
-
-  if (renderState.status === "error") {
-    return (
-      <div className="notice notice--danger">
-        <ShieldAlert size={16} aria-hidden="true" />
-        {copy.nativePreviewPdfFallback}
-      </div>
-    );
-  }
-
-  return (
-    <div className="native-preview__pdf-rendered">
-      <div className="native-preview__pdf-rendered-header">
-        <div>
-          <strong>{copy.nativePreviewPdfRenderedTitle}</strong>
-          <p>{copy.nativePreviewPdfRenderedDetail}</p>
-        </div>
-        <span>
-          {copy.page} {renderState.pageNumber}
-          {renderState.pageCount ? ` / ${renderState.pageCount}` : ""}
-        </span>
-      </div>
-      <div className="native-preview__pdf-page-scroll">
-        <div
-          className="native-preview__pdf-page"
-          style={renderState.width > 0 && renderState.height > 0 ? { width: renderState.width, height: renderState.height } : undefined}
-        >
-          <canvas ref={canvasRef} />
-          {renderState.status === "loading" ? (
-            <div className="native-preview__pdf-loading">
-              <FileSearch size={22} aria-hidden="true" />
-              {copy.nativePreviewLoading}
-            </div>
-          ) : null}
-          {renderState.textHighlights.map((highlight) => (
-            <span
-              aria-label={copy.nativePreviewPdfTextHighlight}
-              className="native-preview__pdf-text-highlight"
-              key={highlight.id}
-              role="mark"
-              style={highlightToPercentStyle(highlight)}
-              title={highlight.text}
-            />
-          ))}
-          {bbox ? (
-            <span
-              aria-label={copy.nativePreviewPdfBbox}
-              className="native-preview__bbox native-preview__bbox--pdf-page"
-              role="img"
-              style={bbox}
-              title={copy.nativePreviewPdfBbox}
-            />
-          ) : null}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -2896,11 +2767,6 @@ function sourceUrlWithPageFragment(sourceUrl: string, pageNumber: number): strin
   return `${baseUrl}#page=${page}`;
 }
 
-function stripUrlFragment(sourceUrl: string): string {
-  const [baseUrl] = sourceUrl.split("#");
-  return baseUrl;
-}
-
 function sourcePreviewUrlForSourceUrl(sourceUrl: string): string {
   const [baseUrl, fragment] = sourceUrl.split("#");
   const previewUrl = baseUrl.replace("/api/documents/source/content", "/api/documents/source/preview");
@@ -2928,95 +2794,6 @@ function normalizeBboxPercent(value: number): number {
   return Math.min(100, Math.max(0, percent));
 }
 
-let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
-
-function loadPdfJs(): Promise<PdfJsModule> {
-  if (!pdfJsModulePromise) {
-    pdfJsModulePromise = import("pdfjs-dist").then((pdfjs) => {
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
-      return pdfjs;
-    });
-  }
-  return pdfJsModulePromise;
-}
-
-function pdfTextHighlights({
-  chunkText,
-  items,
-  pdfjs,
-  viewportHeight,
-  viewportTransform,
-  viewportWidth
-}: {
-  chunkText: string;
-  items: unknown[];
-  pdfjs: PdfJsModule;
-  viewportHeight: number;
-  viewportTransform: number[];
-  viewportWidth: number;
-}): PdfTextHighlight[] {
-  const normalizedChunk = normalizeSearchText(chunkText);
-  if (!normalizedChunk || viewportWidth <= 0 || viewportHeight <= 0) {
-    return [];
-  }
-
-  const viewportScale = Math.max(Math.hypot(viewportTransform[0] ?? 1, viewportTransform[1] ?? 0), 1);
-  return items.flatMap((item, index) => {
-    if (!isPdfTextItem(item) || !pdfTextMatchesChunk(item.str, normalizedChunk)) {
-      return [];
-    }
-
-    const transform = pdfjs.Util.transform(viewportTransform, item.transform);
-    const left = Number(transform[4] ?? 0);
-    const baselineTop = Number(transform[5] ?? 0);
-    const height = Math.max(Math.abs(item.height * viewportScale), Math.hypot(Number(transform[2] ?? 0), Number(transform[3] ?? 0)), 8);
-    const width = Math.max(Math.abs(item.width * viewportScale), 8);
-    return [
-      {
-        id: `${index}-${item.str}`,
-        left: clampPercent((left / viewportWidth) * 100),
-        top: clampPercent(((baselineTop - height) / viewportHeight) * 100),
-        width: clampPercent((width / viewportWidth) * 100),
-        height: clampPercent((height / viewportHeight) * 100),
-        text: item.str
-      }
-    ];
-  });
-}
-
-function isPdfTextItem(item: unknown): item is { str: string; transform: number[]; width: number; height: number } {
-  return (
-    typeof item === "object" &&
-    item !== null &&
-    "str" in item &&
-    typeof item.str === "string" &&
-    "transform" in item &&
-    Array.isArray(item.transform) &&
-    "width" in item &&
-    typeof item.width === "number" &&
-    "height" in item &&
-    typeof item.height === "number"
-  );
-}
-
-function pdfTextMatchesChunk(text: string, normalizedChunk: string): boolean {
-  const normalizedText = normalizeSearchText(text);
-  if (normalizedText.length < 4) {
-    return false;
-  }
-  if (normalizedChunk.includes(normalizedText) || normalizedText.includes(normalizedChunk)) {
-    return true;
-  }
-
-  const chunkTokens = new Set(normalizedChunk.split(" ").filter((token) => token.length >= 4));
-  const textTokens = normalizedText.split(" ").filter((token) => token.length >= 4);
-  if (textTokens.length === 0) {
-    return false;
-  }
-  const matches = textTokens.filter((token) => chunkTokens.has(token)).length;
-  return matches >= Math.min(2, textTokens.length);
-}
-
 function normalizeSearchText(text: string): string {
   return text
     .normalize("NFD")
@@ -3025,22 +2802,6 @@ function normalizeSearchText(text: string): string {
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
-}
-
-function highlightToPercentStyle(highlight: PdfTextHighlight): CSSProperties {
-  return {
-    left: `${highlight.left}%`,
-    top: `${highlight.top}%`,
-    width: `${Math.max(highlight.width, 1)}%`,
-    height: `${Math.max(highlight.height, 1)}%`
-  };
-}
-
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.min(100, Math.max(0, value));
 }
 
 const markdownComponents: Components = {
@@ -3237,7 +2998,12 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   if (filename.endsWith(".docx") || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     return "docx";
   }
-  if (filename.endsWith(".xlsx") || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+  if (
+    filename.endsWith(".xlsx") ||
+    filename.endsWith(".xlsm") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-excel.sheet.macroEnabled.12"
+  ) {
     return "xlsx";
   }
   if (filename.endsWith(".pptx") || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
@@ -3252,7 +3018,11 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   if (
     mimeType.startsWith("text/") ||
     mimeType === "application/json" ||
-    filename.endsWith(".txt")
+    mimeType === "application/xml" ||
+    mimeType === "application/xhtml+xml" ||
+    filename.endsWith(".json") ||
+    filename.endsWith(".txt") ||
+    filename.endsWith(".xml")
   ) {
     return "text";
   }
@@ -3438,4 +3208,24 @@ function priorityActionsFor(
     actions.push(copy.actionAccess);
   }
   return actions;
+}
+
+function versionNextStepFor(
+  document: Document,
+  currentVersion: DocumentVersion | undefined,
+  copy: Record<string, string>
+): { title: string; detail: string } {
+  if (!currentVersion) {
+    return { title: copy.upload, detail: copy.versionNextUpload };
+  }
+  if (document.status === "approved") {
+    return { title: copy.publishApproved, detail: copy.versionNextPublish };
+  }
+  if (document.status === "draft" || document.status === "review") {
+    return { title: copy.workflowReview, detail: copy.versionNextReview };
+  }
+  if (document.status === "valid") {
+    return { title: copy.currentVersion, detail: copy.versionNextStable };
+  }
+  return { title: copy.upload, detail: copy.versionNextUpload };
 }

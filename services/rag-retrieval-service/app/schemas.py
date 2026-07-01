@@ -50,6 +50,23 @@ ViewerMode = Literal["pdf", "markdown", "text", "html", "table", "presentation",
 ResponseLanguage = Literal["cs", "en"]
 AssistantResponseType = Literal["answer", "clarification_needed", "no_answer", "restricted", "handoff_recommended"]
 ClarificationQuestionType = Literal["free_text", "single_choice"]
+AssistantReportColumnType = Literal["text", "number", "date", "url", "currency", "percent"]
+AssistantReportEvidenceStatus = Literal["cited", "metadata", "not_stated", "uncited"]
+AssistantReportArtifactKind = Literal["content_table", "registry_metadata_table"]
+AssistantReportGeneratedFrom = Literal["rag_markdown_table", "rag_structured_artifact", "registry_metadata"]
+ExtractionStatus = Literal[
+    "PENDING",
+    "RUNNING",
+    "PROPOSED",
+    "PARTIAL",
+    "FAILED",
+    "SUPERSEDED",
+    "ACCEPTED_IN_SOURCE_APP",
+    "REJECTED_IN_SOURCE_APP",
+]
+ExtractionFieldStatus = Literal["proposed"]
+ExtractionFeedbackDecision = Literal["accepted", "rejected", "edited"]
+StratosExtractionSourceApp = Literal["STRATOS_BUDGET", "STRATOS_ARCHFLOW"]
 
 
 class RagQueryFilters(BaseModel):
@@ -214,6 +231,69 @@ class AssistantSuggestedAction(BaseModel):
     target: str | None = None
 
 
+class AssistantReportColumn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=120)
+    type: AssistantReportColumnType = "text"
+    semantic_role: str | None = Field(default=None, max_length=80)
+
+
+class AssistantReportCellSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    column_key: str = Field(min_length=1, max_length=64)
+    evidence_status: AssistantReportEvidenceStatus
+    citations: list[Citation] = Field(default_factory=list)
+
+
+class AssistantReportRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_id: str = Field(min_length=1, max_length=96)
+    cells: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    citations: list[Citation] = Field(default_factory=list)
+    source_refs: list[AssistantReportCellSource] = Field(default_factory=list)
+    confidence: Confidence | None = None
+
+
+class AssistantReportArtifactProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    generated_from: AssistantReportGeneratedFrom
+    assistant_tool: str = Field(min_length=1, max_length=80)
+    query_plan_id: str | None = Field(default=None, max_length=96)
+    citations_required: bool = True
+    row_citations_required: bool = True
+
+
+class AssistantReportArtifactQuality(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["validated"] = "validated"
+    issues: list[str] = Field(default_factory=list)
+    informative_row_count: int = Field(default=0, ge=0)
+    row_citation_coverage: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class AssistantReportArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_id: str = Field(min_length=1, max_length=96)
+    artifact_contract_version: str | None = Field(default=None, max_length=40)
+    artifact_kind: AssistantReportArtifactKind | None = None
+    title: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=600)
+    columns: list[AssistantReportColumn] = Field(default_factory=list, max_length=20)
+    rows: list[AssistantReportRow] = Field(default_factory=list, max_length=500)
+    export_formats: list[Literal["xlsx", "pdf"]] = Field(default_factory=lambda: ["xlsx", "pdf"])
+    source_citation_count: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    provenance: AssistantReportArtifactProvenance | None = None
+    quality: AssistantReportArtifactQuality | None = None
+
+
 class AssistantChatResponse(BaseModel):
     response_type: AssistantResponseType
     conversation_id: str
@@ -225,6 +305,7 @@ class AssistantChatResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     follow_up_questions: list[str] = Field(default_factory=list)
     suggested_actions: list[AssistantSuggestedAction] = Field(default_factory=list)
+    report_artifacts: list[AssistantReportArtifact] = Field(default_factory=list)
     confidence: Confidence | None = None
     warnings: list[str] = Field(default_factory=list)
     missing_information: str | None = None
@@ -247,6 +328,239 @@ class AssistantConversationResponse(BaseModel):
     status: Literal["ephemeral", "persisted"]
     messages: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class ContractExtractionProposeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: Literal["STRATOS_BUDGET"] = "STRATOS_BUDGET"
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: str = Field(min_length=1, max_length=80)
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    subject_id: str = Field(min_length=1, max_length=128)
+    profile: Literal["contract_financial_v1"] = "contract_financial_v1"
+    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    classification_max: Classification = "internal"
+    context_tags: list[str] = Field(default_factory=list)
+    max_chunks: int = Field(default=12, ge=1, le=20)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArchflowSourceDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    canonical_url: str | None = Field(default=None, max_length=500)
+    classification: Classification | None = None
+
+
+class ArchflowGoalExtractionProposeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: Literal["STRATOS_ARCHFLOW"] = "STRATOS_ARCHFLOW"
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: Literal["ArchflowSourceSet", "ArchflowGoalCatalogVersion", "ArchflowNeed"]
+    entity_id: str = Field(min_length=1, max_length=128)
+    source_set_id: str | None = Field(default=None, min_length=1, max_length=128)
+    catalog_version_id: str | None = Field(default=None, min_length=1, max_length=128)
+    documents: list[ArchflowSourceDocument] = Field(default_factory=list, max_length=50)
+    subject_id: str = Field(min_length=1, max_length=128)
+    profile: Literal["archflow_goal_extraction_v1"] = "archflow_goal_extraction_v1"
+    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    classification_max: Classification = "internal"
+    context_tags: list[str] = Field(default_factory=list)
+    max_chunks: int = Field(default=18, ge=1, le=20)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_archflow_context(self) -> "ArchflowGoalExtractionProposeRequest":
+        if self.entity_type == "ArchflowSourceSet":
+            if not self.source_set_id:
+                raise ValueError("source_set_id is required for ArchflowSourceSet extraction.")
+            if not self.documents:
+                raise ValueError("documents must contain at least one AKB document for ArchflowSourceSet extraction.")
+        if self.entity_type in {"ArchflowGoalCatalogVersion", "ArchflowNeed"}:
+            if not self.catalog_version_id:
+                raise ValueError("catalog_version_id is required for catalog version extraction.")
+            if not self.source_set_id:
+                raise ValueError("source_set_id is required for catalog version extraction.")
+        return self
+
+
+class ContractExtractionCitation(BaseModel):
+    document_id: str
+    document_version_id: str
+    chunk_id: str
+    page_number: int | None = Field(default=None, ge=1)
+    section_path: list[str] = Field(default_factory=list)
+    section: str | None = None
+    quoted_text: str
+    viewer_url: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ContractFieldProposal(BaseModel):
+    field: str
+    proposed_value: Any
+    normalized_value: Any | None = None
+    unit: str | None = None
+    confidence: Confidence
+    status: ExtractionFieldStatus = "proposed"
+    reason: str
+    citation: ContractExtractionCitation
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ArchflowSuggestedMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=160)
+    target: str | None = Field(default=None, max_length=160)
+    periodicity: str | None = Field(default=None, max_length=80)
+
+
+class ArchflowCandidateRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    requirement_type: str = Field(default="functional", min_length=1, max_length=80)
+    acceptance_criteria: str | None = Field(default=None, max_length=1000)
+
+
+class ArchflowGoalProposalValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    goal_type: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(min_length=1, max_length=1200)
+    parent_hint: str | None = Field(default=None, max_length=240)
+    priority: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] | None = None
+    obligation_type: Literal["SHALL", "SHOULD", "MAY"] | None = None
+    suggested_metrics: list[ArchflowSuggestedMetric] = Field(default_factory=list, max_length=8)
+    candidate_requirements: list[ArchflowCandidateRequirement] = Field(default_factory=list, max_length=8)
+    legal_basis: str | None = Field(default=None, max_length=1000)
+    risk: str | None = Field(default=None, max_length=1000)
+
+
+class ArchflowGoalFieldProposal(BaseModel):
+    field: Literal["goal", "capability", "obligation", "requirement", "metric", "legal_basis", "risk"]
+    status: ExtractionFieldStatus = "proposed"
+    confidence: Confidence
+    proposal: ArchflowGoalProposalValue
+    reason: str = Field(min_length=1, max_length=1000)
+    citation: ContractExtractionCitation
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ContractExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    proposals: list[ContractFieldProposal] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArchflowGoalExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    proposals: list[ArchflowGoalFieldProposal] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class StratosExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    proposals: list[dict[str, Any]] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContractExtractionProfile(BaseModel):
+    profile: str
+    profile_version: str
+    title: str
+    description: str
+    supported_external_systems: list[str]
+    fields: list[str]
+
+
+class ContractExtractionProfilesResponse(BaseModel):
+    profiles: list[ContractExtractionProfile]
+
+
+class StratosExtractionFeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(min_length=1, max_length=160)
+    ai_value: Any | None = None
+    final_value: Any | None = None
+    decision: ExtractionFeedbackDecision
+    reason: str | None = Field(default=None, max_length=2000)
+    actor: str = Field(min_length=1, max_length=128)
+    source_app: StratosExtractionSourceApp
+    source_entity_id: str = Field(min_length=1, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContractExtractionFeedbackRequest(StratosExtractionFeedbackRequest):
+    source_app: StratosExtractionSourceApp = "STRATOS_BUDGET"
+
+
+class StratosExtractionFeedbackResponse(BaseModel):
+    feedback_id: str
+    extraction: StratosExtractionResponse
+
+
+class ContractExtractionFeedbackResponse(StratosExtractionFeedbackResponse):
+    pass
 
 
 class HealthResponse(BaseModel):

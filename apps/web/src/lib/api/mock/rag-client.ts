@@ -10,6 +10,13 @@ import type {
   SourceContext
 } from "@/lib/types";
 import type { AklLanguage } from "@/lib/language";
+import {
+  assistantReportColumnLabel,
+  assistantReportExportFormats,
+  normalizeAssistantReportRequest,
+  type AssistantReportColumnKey,
+  type AssistantReportRequest
+} from "@/lib/assistant/assistant-report-request";
 
 import { cloneMock, mockRagAnswer } from "./data";
 
@@ -210,6 +217,7 @@ export class MockRagClient implements RagApiClient {
         citations: [],
         follow_up_questions: [],
         suggested_actions: [{ label: "Doplnit odpovědi", action_type: "continue_conversation", target: conversationId }],
+        report_artifacts: [],
         confidence: null,
         warnings: [],
         missing_information: null,
@@ -217,24 +225,70 @@ export class MockRagClient implements RagApiClient {
       };
     }
 
+    const citations = cloneMock(mockRagAnswer.citations);
+    const reportRequest = normalizeAssistantReportRequest(request.context?.assistant_report_request);
+    const wantsReport = Boolean(reportRequest) || /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled)/i.test(request.message);
+    const wantsObligationsTable = (wantsReport && reportRequest?.template === "obligation_table") || (wantsReport && /(povinnost|obligation)/i.test(request.message));
+    const exportFormats = assistantReportExportFormats(reportRequest);
     return {
       response_type: "answer",
       conversation_id: conversationId,
-      answer: language === "en"
+      answer: wantsObligationsTable
+        ? obligationReportAnswer(language, reportRequest)
+        : language === "en"
         ? "The document owner approves an exception to the directive after impact assessment. The answer is supported by the source below."
         : "Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu. Odpověď je podložená citací níže.",
       message: null,
       questions: [],
       why_needed: null,
       current_context: request.context ?? {},
-      citations: cloneMock(mockRagAnswer.citations),
+      citations,
       follow_up_questions: language === "en"
-        ? ["Do you want to open the source document?", "Do you want to ask a follow-up question?"]
-        : ["Chcete otevřít zdrojový dokument?", "Chcete položit doplňující otázku?"],
+        ? [
+          "Which responsibilities follow for the document owner?",
+          "Can you prepare a checklist for this procedure?",
+          "Which approval step should happen next?"
+        ]
+        : [
+          "Jaké povinnosti z toho vyplývají pro gestora dokumentu?",
+          "Můžeš připravit kontrolní seznam tohoto postupu?",
+          "Jaký schvalovací krok má následovat?"
+        ],
       suggested_actions: [
+        ...(wantsReport ? [{ label: language === "en" ? "Export report" : "Exportovat sestavu", action_type: "export_report", target: "rpt_mock" }] : []),
         { label: language === "en" ? "Open source" : "Otevřít zdroj", action_type: "open_citation", target: null },
         { label: language === "en" ? "Ask follow-up" : "Položit doplňující dotaz", action_type: "ask_followup", target: null }
       ],
+      report_artifacts: wantsReport ? [
+        {
+          artifact_id: "rpt_mock",
+          title: language === "en" ? "AKB answer report" : "Sestava z odpovědi AKB",
+          description: language === "en"
+            ? "The table report is built from the cited answer."
+            : "Tabulková sestava je vytvořená z citované odpovědi.",
+          columns: [
+            { key: "topic", label: language === "en" ? "Topic" : "Téma", type: "text" },
+            { key: "summary", label: language === "en" ? "Summary" : "Závěr", type: "text" },
+            { key: "document", label: language === "en" ? "Source document" : "Zdrojový dokument", type: "text" },
+            { key: "page", label: language === "en" ? "Page" : "Strana", type: "number" }
+          ],
+          rows: citations.map((citation, index) => ({
+            row_id: `report_row_${index + 1}`,
+            cells: {
+              topic: request.message,
+              summary: language === "en"
+                ? "The document owner approves an exception after impact assessment."
+                : "Výjimku schvaluje gestor dokumentu po posouzení dopadu.",
+              document: citation.document_title,
+              page: citation.page_number
+            },
+            citations: [citation]
+          })),
+          export_formats: exportFormats,
+          source_citation_count: citations.length,
+          warnings: ["REPORT_LIMITED_TO_CITED_SOURCES"]
+        }
+      ] : [],
       confidence: "medium",
       warnings: [],
       missing_information: null,
@@ -275,4 +329,103 @@ export class MockRagClient implements RagApiClient {
       warnings: ["CONVERSATION_HISTORY_NOT_PERSISTED"]
     };
   }
+}
+
+function obligationReportAnswer(language: AklLanguage, request: AssistantReportRequest | null): string {
+  const columns = request?.columns.length
+    ? request.columns
+    : ["obligation_or_area", "practical_meaning_or_note"] satisfies AssistantReportColumnKey[];
+  const header = columns.map((column) => assistantReportColumnLabel(column, language));
+  const rows = obligationRows(language).map((row) => columns.map((column) => row[column] ?? (language === "en" ? "not stated" : "neuvedeno")));
+  const intro = language === "en"
+    ? "The obligations found in the cited sources are:"
+    : "V citovaných zdrojích se objevují tyto oblasti povinností:";
+  return [
+    intro,
+    "",
+    `| ${header.join(" | ")} |`,
+    `| ${header.map(() => ":---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`)
+  ].join("\n");
+}
+
+function obligationRows(language: AklLanguage): Array<Record<AssistantReportColumnKey, string>> {
+  if (language === "en") {
+    return [
+      {
+        obligation_or_area: "Legal obligations",
+        cited_rule_or_source: "VKB section 4 a), b)",
+        practical_meaning_or_note: "Verify statutory duties before approving the process.",
+        owner_or_role: "Document owner",
+        deadline_or_frequency: "Before approval",
+        source_document: "Impact table appendix",
+        page_or_section: "Section obligations",
+        evidence_summary: "The source lists legal obligations as an assessed area.",
+        decision_or_recommendation: "Review before approval",
+        risk_or_priority: "High"
+      },
+      {
+        obligation_or_area: "Business secret",
+        cited_rule_or_source: "VKB section 4 a), b)",
+        practical_meaning_or_note: "Protect non-public information and limit access.",
+        owner_or_role: "Information owner",
+        deadline_or_frequency: "Continuous",
+        source_document: "Impact table appendix",
+        page_or_section: "Section confidentiality",
+        evidence_summary: "The source identifies business secret as an assessed area.",
+        decision_or_recommendation: "Limit access",
+        risk_or_priority: "Medium"
+      }
+    ];
+  }
+  return [
+    {
+      obligation_or_area: "Právní povinnosti",
+      cited_rule_or_source: "VKB § 4 písm. a), b)",
+      practical_meaning_or_note: "Ověřit zákonné povinnosti před schválením postupu.",
+      owner_or_role: "Gestor dokumentu",
+      deadline_or_frequency: "Před schválením",
+      source_document: "Příloha dopadové tabulky",
+      page_or_section: "Oddíl povinnosti",
+      evidence_summary: "Zdroj uvádí právní povinnosti jako posuzovanou oblast.",
+      decision_or_recommendation: "Prověřit před schválením",
+      risk_or_priority: "Vysoká"
+    },
+    {
+      obligation_or_area: "Obchodní tajemství",
+      cited_rule_or_source: "VKB § 4 písm. a), b)",
+      practical_meaning_or_note: "Chránit neveřejné informace a omezit přístup.",
+      owner_or_role: "Vlastník informace",
+      deadline_or_frequency: "Průběžně",
+      source_document: "Příloha dopadové tabulky",
+      page_or_section: "Oddíl důvěrnost",
+      evidence_summary: "Zdroj uvádí obchodní tajemství jako posuzovanou oblast.",
+      decision_or_recommendation: "Omezit přístup",
+      risk_or_priority: "Střední"
+    },
+    {
+      obligation_or_area: "Trestně-právní řízení",
+      cited_rule_or_source: "VKB § 4 písm. a), b)",
+      practical_meaning_or_note: "Eskalovat věci nad rámec běžného bezpečnostního posouzení.",
+      owner_or_role: "Právní útvar",
+      deadline_or_frequency: "Při zjištění",
+      source_document: "Příloha dopadové tabulky",
+      page_or_section: "Oddíl právní dopady",
+      evidence_summary: "Zdroj říká, že trestně-právní řízení je nad rámec VKB.",
+      decision_or_recommendation: "Eskalovat",
+      risk_or_priority: "Vysoká"
+    },
+    {
+      obligation_or_area: "Jiné závazky",
+      cited_rule_or_source: "VKB § 4 písm. a), b)",
+      practical_meaning_or_note: "Evidovat související smluvní nebo organizační povinnosti.",
+      owner_or_role: "Vlastník procesu",
+      deadline_or_frequency: "Podle závazku",
+      source_document: "Příloha dopadové tabulky",
+      page_or_section: "Oddíl závazky",
+      evidence_summary: "Zdroj uvádí jiné závazky jako samostatnou posuzovanou oblast.",
+      decision_or_recommendation: "Zaevidovat",
+      risk_or_priority: "Střední"
+    }
+  ];
 }

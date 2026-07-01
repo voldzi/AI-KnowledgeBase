@@ -26,7 +26,7 @@ def test_ollama_non_mock_profile_can_be_enabled() -> None:
             "AKL_AUTH_MODE": "mock",
             "AKL_LLM_DEFAULT_PROVIDER": "ollama",
             "AKL_LLM_ENABLED_PROVIDERS": "ollama",
-            "AKL_LLM_MODEL_PROVIDER_MAP": '{"gemma4:12b":"ollama","bge-m3":"ollama"}',
+            "AKL_LLM_MODEL_PROVIDER_MAP": '{"gemma4:12b-mlx":"ollama","bge-m3":"ollama"}',
             "AKL_OLLAMA_BASE_URL": "http://ollama:11434",
         }
     )
@@ -34,10 +34,11 @@ def test_ollama_non_mock_profile_can_be_enabled() -> None:
     assert settings.default_provider == "ollama"
     assert settings.enabled_providers == ("ollama",)
     assert "mock" not in settings.enabled_providers
-    assert settings.default_chat_model == "gemma4:12b"
+    assert settings.default_chat_model == "gemma4:12b-mlx"
     assert settings.default_embedding_model == "bge-m3"
     assert settings.default_max_tokens == 512
     assert settings.ollama_think is False
+    assert settings.ollama_endpoint_timeout_seconds == 3
 
 
 def test_current_ollama_profile_uses_explicit_akl_env_names() -> None:
@@ -52,6 +53,7 @@ def test_current_ollama_profile_uses_explicit_akl_env_names() -> None:
             "AKL_LLM_ALLOW_MODEL_PULL": "true",
             "AKL_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
             "AKL_LLM_DEFAULT_MAX_TOKENS": "256",
+            "AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS": "2.5",
             "AKL_OLLAMA_THINK": "true",
         }
     )
@@ -62,7 +64,32 @@ def test_current_ollama_profile_uses_explicit_akl_env_names() -> None:
     assert settings.default_max_tokens == 256
     assert settings.allow_model_pull is True
     assert settings.ollama_base_url == "http://host.docker.internal:11434"
+    assert settings.ollama_base_urls == ("http://host.docker.internal:11434",)
+    assert settings.ollama_endpoint_timeout_seconds == 2.5
     assert settings.ollama_think is True
+
+
+def test_ollama_base_urls_are_parsed_and_deduplicated() -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "development",
+            "AKL_AUTH_MODE": "mock",
+            "AKL_LLM_DEFAULT_PROVIDER": "ollama",
+            "AKL_LLM_ENABLED_PROVIDERS": "ollama",
+            "AKL_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
+            "AKL_OLLAMA_BASE_URLS": (
+                "http://host.docker.internal:11434,"
+                "http://192.168.1.176:11434,"
+                "http://192.168.1.176:11434/"
+            ),
+        }
+    )
+
+    assert settings.ollama_base_url == "http://host.docker.internal:11434"
+    assert settings.ollama_base_urls == (
+        "http://host.docker.internal:11434",
+        "http://192.168.1.176:11434",
+    )
 
 
 def test_production_rejects_mock_provider() -> None:
