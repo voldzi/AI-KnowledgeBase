@@ -128,6 +128,37 @@ export function contextFromOidcSession(
   };
 }
 
+export function contextFromOidcAccessToken(
+  accessToken: string,
+  nowMs = Date.now(),
+): ApiRequestContext | null {
+  try {
+    const claims = decodeJwtPayload(accessToken);
+    const subjectId =
+      stringClaim(claims.sub) ??
+      stringClaim(claims.client_id) ??
+      stringClaim(claims.azp) ??
+      stringClaim(claims.preferred_username);
+    if (!subjectId) {
+      return null;
+    }
+    const expiresAtSeconds =
+      typeof claims.exp === "number" ? claims.exp : undefined;
+    if (expiresAtSeconds !== undefined && expiresAtSeconds <= nowMs / 1000) {
+      return null;
+    }
+
+    return {
+      subjectId,
+      roles: extractRoles(claims),
+      groups: stringArrayClaim(claims.groups),
+      accessToken,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function createState(returnTo: string | null): string {
   const nonce = crypto.randomBytes(18).toString("base64url");
   return Buffer.from(
