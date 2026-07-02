@@ -1,15 +1,38 @@
 import { AkbAssistantApp } from "@/features/assistant/akb-assistant-app";
-import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
+import {
+  getServerApiClients,
+  getServerRequestContextForPath,
+} from "@/lib/api/server";
 import { requirePageAccess } from "@/lib/auth/server-route-guard";
 import type { AssistantSuggestion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const FALLBACK_SUGGESTIONS: AssistantSuggestion[] = [
-  { label: "Nový přístup", prompt: "Jak požádám o nový přístup?", domain: "Service Desk", audience: "employee" },
-  { label: "Nahlásit incident", prompt: "Jak nahlásím incident?", domain: "IT Operations", audience: "employee" },
-  { label: "Kdo schvaluje výjimku", prompt: "Kdo schvaluje výjimku ze směrnice?", domain: "Dokumentace", audience: "employee" },
-  { label: "Architektura platformy", prompt: "Jaká je architektura AKB platformy?", domain: "Dokumentace", audience: "employee" }
+  {
+    label: "Nový přístup",
+    prompt: "Jak požádám o nový přístup?",
+    domain: "Service Desk",
+    audience: "employee",
+  },
+  {
+    label: "Nahlásit incident",
+    prompt: "Jak nahlásím incident?",
+    domain: "IT Operations",
+    audience: "employee",
+  },
+  {
+    label: "Kdo schvaluje výjimku",
+    prompt: "Kdo schvaluje výjimku ze směrnice?",
+    domain: "Dokumentace",
+    audience: "employee",
+  },
+  {
+    label: "Architektura platformy",
+    prompt: "Jaká je architektura AKB platformy?",
+    domain: "Dokumentace",
+    audience: "employee",
+  },
 ];
 
 export default async function ChatPage() {
@@ -23,7 +46,5 @@ export default async function ChatPage() {
   } catch {
     suggestions = FALLBACK_SUGGESTIONS;
   }
-  const conversations = await clients.registry.listAssistantConversations(context).catch(() => ({ items: [], limit: 50, offset: 0 }));
-
-  return <AkbAssistantApp suggestions={suggestions} initialNowIso={new Date().toISOString()} initialConversations={conversations.items} />;
+  return <AkbAssistantApp initialNowIso={new Date().toISOString()} suggestions={suggestions} />;
 }

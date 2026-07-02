@@ -6,10 +6,16 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import AsyncIterator
 
 from answer_composer.composer import AnswerComposer, StreamEvent
-from app.archflow_extraction import archflow_goal_extraction_profiles, extract_archflow_goal_proposals
+from app.archflow_extraction import (
+    extract_archflow_architecture_package_proposals,
+    archflow_goal_extraction_profiles,
+    extract_archflow_goal_proposals,
+    extract_archflow_handover_proposals,
+)
 from app.config import Settings
 from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
 from app.errors import RetrievalError
@@ -26,6 +32,9 @@ from app.schemas import (
     AssistantSuggestion,
     AssistantSuggestionsResponse,
     AssistantSuggestedAction,
+    ArchflowArchitectureFieldProposal,
+    ArchflowArchitectureExtractionProposeRequest,
+    ArchflowArchitectureExtractionResponse,
     ArchflowGoalExtractionProposeRequest,
     ArchflowGoalExtractionResponse,
     Citation,
@@ -607,6 +616,206 @@ class RagRetrievalService:
                 "document_version_id": response.document_version_id,
                 "source_set_id": payload.source_set_id,
                 "catalog_version_id": payload.catalog_version_id,
+                "profile": response.profile,
+                "status": response.status,
+                "proposal_count": len(response.proposals),
+                "missing_information": response.missing_information,
+                "warnings": response.warnings,
+            },
+            auth_context=auth_context,
+        )
+        return response
+
+    async def propose_archflow_architecture_package_extraction(
+        self,
+        payload: ArchflowArchitectureExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ArchflowArchitectureExtractionResponse:
+        proposals_fn = extract_archflow_architecture_package_proposals
+        return await self._propose_archflow_architecture_extraction(
+            payload,
+            query=_archflow_architecture_package_query(payload),
+            audit_kind="architecture_package",
+            proposals_fn=proposals_fn,
+            auth_context=auth_context,
+        )
+
+    async def propose_archflow_handover_extraction(
+        self,
+        payload: ArchflowArchitectureExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ArchflowArchitectureExtractionResponse:
+        proposals_fn = extract_archflow_handover_proposals
+        return await self._propose_archflow_architecture_extraction(
+            payload,
+            query=_archflow_handover_query(payload),
+            audit_kind="architecture_handover",
+            proposals_fn=proposals_fn,
+            auth_context=auth_context,
+        )
+
+    async def _propose_archflow_architecture_extraction(
+        self,
+        payload: ArchflowArchitectureExtractionProposeRequest,
+        *,
+        query: str,
+        audit_kind: str,
+        proposals_fn: Callable[
+            ..., tuple[list[ArchflowArchitectureFieldProposal], list[str], list[str]]
+        ],
+        auth_context: AuthContext | None = None,
+    ) -> ArchflowArchitectureExtractionResponse:
+        query_id = _query_id()
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.started",
+            resource_id=f"{payload.external_system}:{payload.external_ref}:{payload.profile}",
+            metadata={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "need_id": payload.need_id,
+                "artifact_type": payload.artifact_type,
+                "source_set_id": payload.source_set_id,
+                "catalog_version_id": payload.catalog_version_id,
+                "source_document_count": len(payload.documents),
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+            },
+            auth_context=auth_context,
+        )
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=query,
+                filters=RagQueryFilters(
+                    document_types=[
+                        "directive",
+                        "regulation",
+                        "methodology",
+                        "policy",
+                        "procedure",
+                        "manual",
+                        "project_documentation",
+                        "meeting_record",
+                        "attachment",
+                        "other",
+                    ],
+                    only_valid=True,
+                    classification_max=payload.classification_max,
+                    tags=payload.context_tags,
+                ),
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        target_pairs = _archflow_target_document_pairs(payload)
+        denied_targets = sorted({document_id for document_id, _ in target_pairs}.intersection(run.denied_document_ids))
+        if denied_targets:
+            await self._audit_extraction(
+                actor_id=payload.subject_id,
+                event_type="document_extraction.permission_denied",
+                resource_id=payload.entity_id,
+                metadata={
+                    "tenant_id": payload.tenant_id,
+                    "external_system": payload.external_system,
+                    "external_ref": payload.external_ref,
+                    "entity_type": payload.entity_type,
+                    "entity_id": payload.entity_id,
+                    "artifact_type": payload.artifact_type,
+                    "document_ids": denied_targets,
+                    "profile": payload.profile,
+                },
+                auth_context=auth_context,
+            )
+            raise RetrievalError(
+                "DOCUMENT_ACCESS_DENIED",
+                "The subject is not authorized to extract from one or more ArchFlow architecture documents.",
+                status_code=403,
+                details={"document_ids": denied_targets},
+            )
+
+        chunks = (
+            [
+                chunk
+                for chunk in run.response.chunks
+                if (chunk.citation.document_id, chunk.citation.document_version_id) in target_pairs
+            ]
+            if target_pairs
+            else run.response.chunks
+        )
+        proposals, missing_information, extraction_warnings = proposals_fn(chunks=chunks)
+        warnings = [*run.response.warnings, *extraction_warnings]
+        if not chunks and "TARGET_DOCUMENT_NOT_RETRIEVED" not in warnings:
+            warnings.append("TARGET_DOCUMENT_NOT_RETRIEVED")
+        primary_document_id, primary_document_version_id = _archflow_primary_document(payload, chunks)
+        status = "PROPOSED" if proposals and not missing_information else "PARTIAL"
+        source_documents = [document.model_dump(mode="json") for document in payload.documents]
+        result = {
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "artifact_type": payload.artifact_type,
+            "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+            "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "query_id": query_id,
+            "need_id": payload.need_id,
+            "source_set_id": payload.source_set_id,
+            "catalog_version_id": payload.catalog_version_id,
+            "source_documents": source_documents,
+        }
+        stored = await self._registry_client.store_document_extraction(
+            payload={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": primary_document_id,
+                "document_version_id": primary_document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+                "status": status,
+                "classification": payload.classification_max,
+                "requested_by": payload.subject_id,
+                "correlation_id": payload.correlation_id,
+                "result": result,
+                "missing_information": missing_information,
+                "warnings": warnings,
+                "metadata": {
+                    "query_id": query_id,
+                    "context_tags": payload.context_tags,
+                    "archflow_review_required": True,
+                    "archflow_extraction_kind": audit_kind,
+                    "artifact_type": payload.artifact_type,
+                    "need_id": payload.need_id,
+                    "source_set_id": payload.source_set_id,
+                    "catalog_version_id": payload.catalog_version_id,
+                    "source_documents": source_documents,
+                    "primary_document_id": primary_document_id,
+                    "primary_document_version_id": primary_document_version_id,
+                    **payload.metadata,
+                },
+            },
+            auth_context=auth_context,
+        )
+        response = _archflow_architecture_extraction_response_from_registry(stored.get("extraction", stored))
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="document_extraction.proposed",
+            resource_id=response.extraction_id,
+            metadata={
+                "tenant_id": response.tenant_id,
+                "external_system": response.external_system,
+                "external_ref": response.external_ref,
+                "document_id": response.document_id,
+                "document_version_id": response.document_version_id,
+                "artifact_type": payload.artifact_type,
+                "need_id": payload.need_id,
                 "profile": response.profile,
                 "status": response.status,
                 "proposal_count": len(response.proposals),
@@ -1306,12 +1515,36 @@ def _archflow_goal_extraction_query(payload: ArchflowGoalExtractionProposeReques
     )
 
 
-def _archflow_target_document_pairs(payload: ArchflowGoalExtractionProposeRequest) -> set[tuple[str, str]]:
+def _archflow_architecture_package_query(payload: ArchflowArchitectureExtractionProposeRequest) -> str:
+    return (
+        "ArchFlow architecture package review extraction: cílová architektura solution architecture "
+        "integration spec interface API OpenAPI AsyncAPI data security assessment architecture decision ADR "
+        "riziko otevřený bod nevyřešené chybí doplnit. "
+        "Najdi pouze citovatelné návrhy kontroly architektonického balíčku. "
+        f"External ref: {payload.external_ref}. Entity: {payload.entity_type} {payload.entity_id}. "
+        f"Need: {payload.need_id or 'n/a'}. Artifact type: {payload.artifact_type}."
+    )
+
+
+def _archflow_handover_query(payload: ArchflowArchitectureExtractionProposeRequest) -> str:
+    return (
+        "ArchFlow architecture handover extraction: as-built skutečné provedení realizovaná architektura "
+        "předávací balíček handover provozní runbook monitoring zálohování vlastník správce garant "
+        "akceptace test evidence reziduální riziko otevřené riziko. "
+        "Najdi pouze citovatelné návrhy pro předávací nebo as-built balíček. "
+        f"External ref: {payload.external_ref}. Entity: {payload.entity_type} {payload.entity_id}. "
+        f"Need: {payload.need_id or 'n/a'}. Artifact type: {payload.artifact_type}."
+    )
+
+
+def _archflow_target_document_pairs(
+    payload: ArchflowGoalExtractionProposeRequest | ArchflowArchitectureExtractionProposeRequest,
+) -> set[tuple[str, str]]:
     return {(document.document_id, document.document_version_id) for document in payload.documents}
 
 
 def _archflow_primary_document(
-    payload: ArchflowGoalExtractionProposeRequest,
+    payload: ArchflowGoalExtractionProposeRequest | ArchflowArchitectureExtractionProposeRequest,
     chunks: list[RetrievedChunk],
 ) -> tuple[str, str]:
     if payload.documents:
@@ -1365,6 +1598,33 @@ def _archflow_goal_extraction_response_from_registry(payload: dict[str, object])
     proposals = result_map.get("proposals", [])
     source_chunk_ids = result_map.get("source_chunk_ids", [])
     return ArchflowGoalExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system=str(payload.get("external_system", "")),
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        document_id=str(payload.get("document_id", "")),
+        document_version_id=str(payload.get("document_version_id", "")),
+        profile=str(payload.get("profile", "")),
+        profile_version=str(payload.get("profile_version", "")),
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        proposals=proposals if isinstance(proposals, list) else [],
+        missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
+
+
+def _archflow_architecture_extraction_response_from_registry(payload: dict[str, object]) -> ArchflowArchitectureExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    proposals = result_map.get("proposals", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return ArchflowArchitectureExtractionResponse(
         extraction_id=str(payload.get("extraction_id", "")),
         tenant_id=str(payload.get("tenant_id", "")),
         external_system=str(payload.get("external_system", "")),

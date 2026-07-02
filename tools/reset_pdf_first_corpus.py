@@ -7,12 +7,14 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
 import unicodedata
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -21,6 +23,30 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOMAINS = ("cz-digital-governance", "security-compliance-cz")
 CONFIRMATION = "reset-documents"
 TERMINAL_OK = {"completed", "completed_with_warnings"}
+KNOWN_TITLE_REPAIRS = {
+    "prvodce-zenm-aktiv-a-rizik-dle-vyhlky-o-kybernetick-bezpenosti": (
+        "Průvodce zněním aktiv a rizik dle vyhlášky o kybernetické bezpečnosti"
+    ),
+    "prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1": (
+        "Průvodce dokládáním požadavků pro zápis služby cloud computingu v.1"
+    ),
+    "prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1-2": (
+        "Průvodce dokládáním požadavků pro zápis služby cloud computingu v.1.2"
+    ),
+    "ploha-1-vzorov-politika-systmu-zen-bezpenosti-informac": (
+        "Příloha 1 - Vzorová politika systému řízení bezpečnosti informací"
+    ),
+    "ploha-3-zjednoduen-dopadov-tabulka": "Příloha 3 - Zjednodušená dopadová tabulka",
+    "ploha-4-struktura-podprnch-aktiv": "Příloha 4 - Struktura podpůrných aktiv",
+    "ploha-5-vzorov-pravidla-ochrany-jednitlivch-rovn-aktiv": (
+        "Příloha 5 - Vzorová pravidla ochrany jednotlivých úrovní aktiv"
+    ),
+    "ploha-9-vzorov-zprva-o-hodnocen-rizik": "Příloha 9 - Vzorová zpráva o hodnocení rizik",
+    "ploha-11-vzorov-zprva-o-hodnocen-rizik-pro-veejnou-zakzku": (
+        "Příloha 11 - Vzorová zpráva o hodnocení rizik pro veřejnou zakázku"
+    ),
+    "ploha-14-zkratky-a-pouvan-pojmy": "Příloha 14 - Zkratky a používané pojmy",
+}
 
 
 @dataclass(frozen=True)
@@ -202,8 +228,8 @@ def discover_plan(options: Options) -> list[dict[str, Any]]:
         for markdown_path in sorted(source_root.rglob("*.md")):
             index += 1
             rel_path = markdown_path.relative_to(source_root).as_posix()
-            metadata = parse_markdown_metadata(markdown_path)
             pdf_path = raw_root / f"{markdown_path.stem}.pdf"
+            metadata = parse_markdown_metadata(markdown_path, pdf_path=pdf_path if pdf_path.exists() else None)
             if pdf_path.exists():
                 source_path = pdf_path
                 source_kind = "pdf"
@@ -259,6 +285,7 @@ def discover_plan(options: Options) -> list[dict[str, Any]]:
                     "language": metadata.get("language", "cs"),
                     "canonical_url": metadata.get("canonical_url"),
                     "source_pdf_url": metadata.get("source_pdf_url"),
+                    "title_source": metadata.get("title_source"),
                     "summary": metadata.get("summary"),
                     "tags": metadata["tags"],
                     "warnings": warnings,
@@ -267,24 +294,28 @@ def discover_plan(options: Options) -> list[dict[str, Any]]:
     return items
 
 
-def parse_markdown_metadata(path: Path) -> dict[str, Any]:
+def parse_markdown_metadata(path: Path, *, pdf_path: Path | None = None) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8", errors="replace")
-    title = path.stem.replace("-", " ").replace("_", " ").title()
+    heading_title = ""
     metadata: dict[str, str] = {}
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("## "):
-            break
-        if stripped.startswith("# "):
+        if stripped.startswith("# ") and not heading_title:
             candidate = stripped.lstrip("#").strip()
             if candidate:
-                title = candidate[:300]
+                heading_title = candidate[:300]
             continue
         if not stripped.startswith("- ") or ":" not in stripped:
             continue
         key, value = stripped[2:].split(":", 1)
         metadata[normalize_key(key)] = value.strip()
 
+    title, title_source = select_document_title(
+        path=path,
+        heading_title=heading_title,
+        metadata=metadata,
+        pdf_path=pdf_path,
+    )
     classification = (metadata.get("klasifikace") or "public").lower()
     if classification not in {"public", "internal", "restricted", "confidential"}:
         classification = "internal"
@@ -301,8 +332,187 @@ def parse_markdown_metadata(path: Path) -> dict[str, Any]:
         "source_pdf_url": metadata.get("zdroj pdf"),
         "declared_pdf_sha256": metadata.get("sha-256 pdf"),
         "summary": metadata.get("shrnuti pro akb"),
+        "title_source": title_source,
         "tags": tags,
     }
+
+
+def select_document_title(
+    *,
+    path: Path,
+    heading_title: str = "",
+    metadata: dict[str, str] | None = None,
+    pdf_path: Path | None = None,
+) -> tuple[str, str]:
+    metadata = metadata or {}
+    candidates: list[tuple[str, str]] = []
+    for key in ("nazev", "titul", "title"):
+        candidates.append((f"metadata:{key}", metadata.get(key, "")))
+    candidates.extend(
+        [
+            ("markdown_heading", heading_title),
+            ("catalog_title", metadata.get("puvodni katalogova polozka", "")),
+            ("pdf_metadata", title_from_pdf_metadata(pdf_path)),
+            ("pdf_first_page", title_from_pdf_first_page(pdf_path)),
+            ("source_pdf_url", title_from_url(metadata.get("zdroj pdf", ""))),
+            ("path_stem", path.stem.replace("-", " ").replace("_", " ")),
+        ]
+    )
+    scored = [
+        (title_quality_score(title, source), source, clean_title(title))
+        for source, title in candidates
+        if clean_title(title)
+    ]
+    if not scored:
+        return "Veřejný PDF dokument", "fallback"
+    _, source, title = max(scored, key=lambda item: item[0])
+    repaired_title = known_title_repair(path=path, candidates=[title])
+    normalized_title = normalize_key(title)
+    if repaired_title and (looks_like_czech_diacritics_loss(normalized_title) or looks_generic_title(normalized_title)):
+        return repaired_title[:300], "known_title_repair"
+    return title[:300], source
+
+
+def clean_title(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").replace("\u00a0", " ")).strip(" -–—:\t\r\n")
+
+
+def known_title_repair(*, path: Path, candidates: list[str]) -> str:
+    identifiers = [path.stem, path.as_posix(), *candidates]
+    for identifier in identifiers:
+        normalized = slugify(identifier)
+        for broken_slug, title in sorted(KNOWN_TITLE_REPAIRS.items(), key=lambda item: len(item[0]), reverse=True):
+            if normalized == broken_slug or normalized.startswith(f"{broken_slug}-"):
+                return title
+    return ""
+
+
+def title_from_url(url: str) -> str:
+    if not url:
+        return ""
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(url)
+    name = urllib.parse.unquote(Path(parsed.path.rstrip("/") or "").name)
+    return re.sub(r"\.pdf$", "", name, flags=re.IGNORECASE).replace("_", " ").replace("-", " ")
+
+
+def title_from_pdf_metadata(pdf_path: Path | None) -> str:
+    if not pdf_path or not pdf_path.exists():
+        return ""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(pdf_path.read_bytes()))
+        metadata = reader.metadata
+        return clean_title(getattr(metadata, "title", "") or "")
+    except Exception:
+        return ""
+
+
+def title_from_pdf_first_page(pdf_path: Path | None) -> str:
+    if not pdf_path or not pdf_path.exists():
+        return ""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(pdf_path.read_bytes()))
+        if not reader.pages:
+            return ""
+        text = reader.pages[0].extract_text() or ""
+    except Exception:
+        return ""
+    for line in text.splitlines()[:20]:
+        candidate = clean_title(line)
+        if is_plausible_title(candidate):
+            return candidate
+    return ""
+
+
+def is_plausible_title(value: str) -> bool:
+    normalized = normalize_key(value)
+    if len(value) < 8 or len(value) > 180:
+        return False
+    if normalized.startswith(("strana ", "page ")):
+        return False
+    if re.fullmatch(r"[\d\s./:-]+", value):
+        return False
+    return any(char.isalpha() for char in value)
+
+
+def title_quality_score(value: str, source: str) -> int:
+    title = clean_title(value)
+    if not title:
+        return -1000
+    normalized = normalize_key(title)
+    score = min(len(title), 120)
+    if any(char in "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ" for char in title):
+        score += 70
+    score += {
+        "metadata:nazev": 45,
+        "metadata:titul": 45,
+        "metadata:title": 35,
+        "catalog_title": 40,
+        "pdf_metadata": 35,
+        "pdf_first_page": 30,
+        "markdown_heading": 20,
+        "source_pdf_url": 5,
+        "path_stem": -45,
+    }.get(source, 0)
+    if looks_generic_title(normalized):
+        score -= 80
+    if looks_like_slug_title(title):
+        score -= 35
+    if looks_like_czech_diacritics_loss(normalized):
+        score -= 65
+    return score
+
+
+def looks_generic_title(normalized: str) -> bool:
+    return normalized in {
+        "zde",
+        "download",
+        "soubor",
+        "dokument",
+        "pdf",
+        "verejny pdf dokument",
+        "architektura egovernmentu",
+        "digitalni ekonomika",
+        "egovernment cloud",
+        "library",
+        "ostatni publikace",
+        "podpurne materialy",
+        "strategie akcni plan",
+        "umela inteligence",
+        "zpravy o cinnosti digitalni a informacni agentury",
+    }
+
+
+def looks_like_slug_title(value: str) -> bool:
+    if any(char in value for char in "_-"):
+        return True
+    words = value.split()
+    return len(words) >= 5 and not any(char in "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ" for char in value)
+
+
+def looks_like_czech_diacritics_loss(normalized: str) -> bool:
+    suspicious_tokens = {
+        "prvodce",
+        "znenm",
+        "zenm",
+        "vyhlky",
+        "bezpenosti",
+        "dokldn",
+        "informac",
+        "ploha",
+        "poadavk",
+        "sluby",
+        "systmu",
+        "kybernetick",
+        "vzorov",
+        "zen",
+    }
+    return bool(set(normalized.split()).intersection(suspicious_tokens))
 
 
 def normalize_key(value: str) -> str:

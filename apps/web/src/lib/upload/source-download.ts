@@ -66,9 +66,15 @@ const DEFAULT_EXPIRES_IN_SECONDS = 5 * 60;
 const FULL_SHA256_PATTERN = /^sha256:[a-fA-F0-9]{64}$/;
 
 const EXTENSION_MIME_TYPES = new Map<string, string>([
+  [".archimate", "application/vnd.opengroup.archimate.exchange+xml"],
+  [".archimate3", "application/vnd.opengroup.archimate.exchange+xml"],
+  [".asyncapi", "application/vnd.asyncapi"],
+  [".bpmn", "application/bpmn+xml"],
   [".csv", "text/csv"],
+  [".dio", "application/vnd.jgraph.mxfile"],
   [".doc", "application/msword"],
   [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  [".drawio", "application/vnd.jgraph.mxfile"],
   [".gif", "image/gif"],
   [".htm", "text/html"],
   [".html", "text/html"],
@@ -77,10 +83,15 @@ const EXTENSION_MIME_TYPES = new Map<string, string>([
   [".json", "application/json"],
   [".md", "text/markdown"],
   [".markdown", "text/markdown"],
+  [".mermaid", "text/vnd.mermaid"],
+  [".mmd", "text/vnd.mermaid"],
+  [".openapi", "application/vnd.oai.openapi"],
   [".pdf", "application/pdf"],
+  [".plantuml", "text/x-plantuml"],
   [".png", "image/png"],
   [".ppt", "application/vnd.ms-powerpoint"],
   [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  [".puml", "text/x-plantuml"],
   [".rtf", "application/rtf"],
   [".svg", "image/svg+xml"],
   [".txt", "text/plain"],
@@ -89,7 +100,9 @@ const EXTENSION_MIME_TYPES = new Map<string, string>([
   [".xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"],
   [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
   [".xhtml", "application/xhtml+xml"],
-  [".xml", "application/xml"]
+  [".xml", "application/xml"],
+  [".yaml", "application/yaml"],
+  [".yml", "application/yaml"]
 ]);
 
 export function getSourceDownloadSettings(
@@ -242,9 +255,18 @@ export function sourceContentTypeHeader(mimeType: string): string {
   if (
     normalized.startsWith("text/") ||
     normalized === "application/json" ||
+    normalized === "application/bpmn+xml" ||
     normalized === "application/rtf" ||
+    normalized === "application/vnd.asyncapi" ||
+    normalized === "application/vnd.asyncapi+json" ||
+    normalized === "application/vnd.jgraph.mxfile" ||
+    normalized === "application/vnd.oai.openapi" ||
+    normalized === "application/vnd.oai.openapi+json" ||
+    normalized === "application/vnd.opengroup.archimate.exchange+xml" ||
     normalized === "application/xhtml+xml" ||
     normalized === "application/xml" ||
+    normalized === "application/x-yaml" ||
+    normalized === "application/yaml" ||
     normalized === "image/svg+xml"
   ) {
     return `${mimeType}; charset=utf-8`;

@@ -130,6 +130,36 @@ describe("upload preflight", () => {
       assert.equal(decision.required_headers["Content-Type"], decision.file.mime_type);
     }
   });
+
+  it("accepts architecture and API artifact uploads with common browser MIME aliases", () => {
+    const settings = testSettings("/tmp/akl-upload-test");
+    const supported = [
+      ["model.archimate", "application/xml", "application/xml"],
+      ["process.bpmn", "text/xml", "text/xml"],
+      ["diagram.drawio", "application/xml", "application/xml"],
+      ["sequence.mmd", "text/plain", "text/plain"],
+      ["component.puml", "text/plain", "text/plain"],
+      ["openapi.yaml", "text/yaml", "text/yaml"],
+      ["asyncapi.yml", "application/x-yaml", "application/x-yaml"]
+    ] as const;
+
+    for (const [fileName, fileType, expectedMimeType] of supported) {
+      const decision = createUploadPreflightDecision(
+        {
+          document_id: "doc_archflow",
+          file_name: fileName,
+          file_size: 24,
+          file_type: fileType,
+          sha256: `sha256:${"c".repeat(64)}`
+        },
+        settings
+      );
+
+      assert.equal(decision.file.filename, fileName);
+      assert.equal(decision.file.mime_type, expectedMimeType);
+      assert.equal(decision.required_headers["Content-Type"], expectedMimeType);
+    }
+  });
 });
 
 function testSettings(root: string): UploadSettings {

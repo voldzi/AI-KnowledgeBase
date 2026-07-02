@@ -743,8 +743,13 @@ def fetch_candidate_pdf(candidate: Candidate, options: Options) -> tuple[Candida
     candidate.size_bytes = len(data)
     candidate.sha256 = hashlib.sha256(data).hexdigest()
     header_title = title_from_content_disposition(content_disposition)
-    if header_title and is_generic_pdf_label(candidate.title):
-        candidate.title = header_title
+    candidate.title = best_candidate_title(
+        ("current", candidate.title),
+        ("content_disposition", header_title),
+        ("origin_title", candidate.origin_title),
+        ("pdf_url", title_from_url(candidate.pdf_url)),
+        ("final_url", title_from_url(final_url)),
+    )
     candidate.slug = unique_slug(candidate, data[:2048])
     return candidate, data, True, ""
 
@@ -1055,13 +1060,13 @@ def summary_for(candidate: Candidate) -> str:
 
 
 def title_from_candidate(*, label: str, pdf_url: str, origin_title: str) -> str:
-    if label and not is_generic_pdf_label(label):
-        return clean_title(label)
     filename = Path(urllib.parse.unquote(urllib.parse.urlparse(pdf_url).path)).name
     filename_title = clean_title(re.sub(r"\.pdf$", "", filename, flags=re.IGNORECASE).replace("_", " ").replace("-", " "))
-    if filename_title and len(filename_title) > 5:
-        return filename_title
-    return clean_title(origin_title)
+    return best_candidate_title(
+        ("label", label),
+        ("origin_title", origin_title),
+        ("filename", filename_title),
+    )
 
 
 def title_from_content_disposition(value: str) -> str:
@@ -1085,6 +1090,65 @@ def title_from_url(url: str) -> str:
 def clean_title(value: str) -> str:
     cleaned = re.sub(r"\s+", " ", value.replace("\u00a0", " ")).strip(" -–—:\t\r\n")
     return cleaned[:260] or "Veřejný PDF dokument"
+
+
+def best_candidate_title(*candidates: tuple[str, str]) -> str:
+    scored = [
+        (title_quality_score(title, source), clean_title(title))
+        for source, title in candidates
+        if title and clean_title(title)
+    ]
+    if not scored:
+        return "Veřejný PDF dokument"
+    return max(scored, key=lambda item: item[0])[1]
+
+
+def title_quality_score(value: str, source: str) -> int:
+    title = clean_title(value)
+    if not title:
+        return -1000
+    normalized = normalize_key(title)
+    score = min(len(title), 120)
+    if any(char in "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ" for char in title):
+        score += 70
+    score += {
+        "origin_title": 45,
+        "content_disposition": 40,
+        "label": 35,
+        "current": 25,
+        "pdf_url": 5,
+        "final_url": 5,
+        "filename": -25,
+    }.get(source, 0)
+    if is_generic_pdf_label(title):
+        score -= 90
+    if looks_like_slug_title(title):
+        score -= 35
+    if looks_like_czech_diacritics_loss(normalized):
+        score -= 65
+    return score
+
+
+def looks_like_slug_title(value: str) -> bool:
+    if any(char in value for char in "_-"):
+        return True
+    words = value.split()
+    return len(words) >= 5 and not any(char in "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ" for char in value)
+
+
+def looks_like_czech_diacritics_loss(normalized: str) -> bool:
+    suspicious_tokens = {
+        "prvodce",
+        "znenm",
+        "zenm",
+        "vyhlky",
+        "bezpenosti",
+        "dokldn",
+        "poadavk",
+        "sluby",
+        "kybernetick",
+    }
+    return bool(set(normalized.split()).intersection(suspicious_tokens))
 
 
 def unique_slug(candidate: Candidate, prefix_bytes: bytes) -> str:

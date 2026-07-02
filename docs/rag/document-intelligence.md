@@ -442,6 +442,37 @@ authorization, citations, extraction persistence, feedback capture, and audit.
 ArchFlow must not store AKB binaries, extracted full text, chunks, embeddings,
 prompts, or second-source AI result copies.
 
+## STRATOS ArchFlow Architecture Package Extraction
+
+`architecture_package_review_v1` and `architecture_handover_v1` extend the same
+proposal-only contract to ArchitectureArtifact references. ArchFlow stores only
+AKB references and business workflow state; AKB owns retrieval, source rendering,
+citations, extraction persistence, feedback capture, and audit.
+
+Supported artifact types:
+
+- `TARGET_ARCHITECTURE`
+- `SOLUTION_ARCHITECTURE`
+- `INTEGRATION_SPEC`
+- `DATA_SECURITY_ASSESSMENT`
+- `ARCHITECTURE_DECISION`
+- `AS_BUILT_ARCHITECTURE`
+- `HANDOVER_PACKAGE`
+
+`architecture_package_review_v1` proposes cited findings for package scope,
+architecture decisions, integration requirements, data/security controls,
+risks, and open issues.
+
+`architecture_handover_v1` proposes cited findings for as-built state,
+handover items, operational runbooks, owners, acceptance evidence, and residual
+risks.
+
+The shared citation contract opens `AkbDocumentViewer` at the concrete
+`document_id`, `document_version_id`, `chunk_id`, and page/section when
+available. Preview/rendering remains an AKB responsibility for PDF/Office and
+architecture-oriented formats such as ArchiMate Exchange, BPMN, Mermaid,
+PlantUML, draw.io, OpenAPI, and AsyncAPI.
+
 ## Next Steps
 
 - Add shared STRATOS review UI for accept/edit/reject/open citation workflows.

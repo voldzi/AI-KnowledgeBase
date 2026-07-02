@@ -7,7 +7,9 @@ STRATOS repozitari je `@voldzi/stratos-ui` a obsahuje zejmena `AppShell`,
 
 ## Implementacni Rozhodnuti
 
-`@voldzi/stratos-ui` je cilovy zdroj sdilenych UI komponent. Balicek se nema
+`@voldzi/stratos-ui` je cilovy zdroj sdilenych UI komponent. Povinna STRATOS
+UI baseline pro AKB web je `@voldzi/stratos-ui@0.3.17` nebo novejsi
+kompatibilni patch/minor verze. Balicek se nema
 pripojovat pres `file:` dependency mimo Docker build context a AKB nema
 pridavat scoped `.npmrc` pro `@voldzi:registry=https://npm.pkg.github.com`.
 Balicek je publikovany ve verejnem npm registry a `apps/web/pnpm-lock.yaml`
@@ -29,12 +31,16 @@ lockfile pro `@voldzi/stratos-ui`.
 
 Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 
-- `ProjectTopbar`
+- `GlobalTopbar` / STRATOS topbar pattern vcetne app switcheru a user menu
 - `CommandCenter`
 - `UnifiedSelect`
 - `StratosSettingsSurface`
 - `SurfaceModeMenu`
 - `DetailSurface`
+- `DirectoryPersonPicker` pro vyber osoby z adresare
+- `createStratosProfileSettingsClient`
+- `createStratosProfileSettingsPayload`
+- `mergeStratosProfileSettings`
 - jednotny CSS import `@voldzi/stratos-ui/styles.css`
 
 ## Pouzite Komponenty
@@ -48,6 +54,10 @@ Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 - `StratosDataTable` pro profesionalni tabulkove pohledy s deklarativnimi sloupci.
 - `StratosPdfViewer` pro vykresleni citacni PDF strany pres pdf.js, jemne textove zvyrazneni citace a source-location bbox overlay.
 - `StratosSettingsSurface` pro jednotne nastaveni profilu, vzhledu, preferenci a AKB aplikačních sekci.
+- `createStratosProfileSettingsClient`, `createStratosProfileSettingsPayload`
+  a `mergeStratosProfileSettings` pro cteni, slouceni a zapis profilu pres
+  `GET/PUT /api/v1/profile/settings`; AKB neuklada profil, jazyk, vzhled ani
+  avatar jen do lokalniho stavu komponenty.
 - `HelpHint` / `FieldLabelWithHelp` ze sdileneho `@voldzi/stratos-ui` pro jednotnou kontextovou napovedu u urednickych kroku.
 - `DirectoryPersonPicker` pro prirazeni osoby ve workflow inboxu. AKB dodava jen
   opravneny adresar pres BFF `/api/workflow/assignees`; trigger, popover,
@@ -73,7 +83,16 @@ Adapter je zapojeny na techto plochach:
   `appNavItems` a `appSections` pro provozni stav, read-only role/opravneni a
   admin role-preview. Profil, jazyk, vzhled a avatar nejsou ulozene v
   `localStorage`, ale pres web bridge `GET/PUT /api/v1/profile/settings` do
-  `settings.core` a `settings.apps.akb`.
+  `settings.core` a `settings.apps.akb`. Sdilene hodnoty zahrnuji
+  `displayName`, `email`, `avatarId`, `avatarColor`, `avatarImageUrl`,
+  `language`/`locale`, `theme`, `accent`/`accentColor` a vybrane preference
+  povrchu; AKB domenove hodnoty zustavaji pod `settings.apps.akb`.
+
+AKB domenove komponenty zustavaji v AKB pouze tam, kde reprezentuji Document AI
+domenu: kontrolovane dokumenty, ingestion workflow, citace, governance a
+interni detail dokumentu. Obecne STRATOS prvky jako topbar, nastaveni,
+surface-mode menu, vyber osob, field help, selecty, metriky a tabulkove prvky
+se nesmi znovu implementovat lokalne, pokud existuji ve `@voldzi/stratos-ui`.
 
 Zbyvajici mista pouzivaji CSS kompatibilni `.button` aliasy, zejmena download/external anchor prvky a specializovane radkove akce v detailu dokumentu. Dalsi krok je pridat explicitni `StratosAnchorButton`, `UnifiedSelect` popover pro stav/typ/klasifikaci a `DateRangePicker` pro casove filtry.
 
@@ -83,7 +102,7 @@ Field-help API je sdilene v `@voldzi/stratos-ui`: AKB pouziva `HelpHint`, `Field
 
 Aktualni cesta na sdileny balicek:
 
-1. drzet dependency `@voldzi/stratos-ui` na aktualni publikovane verzi z verejneho npm registry,
+1. drzet dependency `@voldzi/stratos-ui` minimalne na `0.3.17` z verejneho npm registry,
 2. drzet `import "@voldzi/stratos-ui/styles.css";` v globalnim vstupu webu,
 3. premapovat zbyvajici adaptery v `apps/web/src/components/stratos/index.ts` na primy import ze sdilene knihovny, pokud sdilena knihovna pokryva stejne props,
 4. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,

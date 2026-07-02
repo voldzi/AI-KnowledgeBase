@@ -1,9 +1,5 @@
-"use client";
-
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { AppRail, AppShell, Topbar } from "@voldzi/stratos-ui";
 
 export interface StratosNavItem {
   href: string;
@@ -32,29 +28,28 @@ export function StratosAppShell({
   sidebarCollapsed = false,
   topbar
 }: StratosAppShellProps) {
-  const sidebarOpen = !sidebarCollapsed || mobileSidebarOpen;
-  const className = [
+  const shellClassName = [
+    "stratos-app-shell",
     "stratos-akb-shell",
-    sidebarCollapsed ? "is-sidebar-collapsed" : "",
     mobileSidebarOpen ? "is-mobile-sidebar-open" : ""
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <AppShell
-      className={className}
-      topbarPlacement="global"
-      sidebarOpen={sidebarOpen}
-      onSidebarChange={(open) => {
-        if (!open) {
-          onMobileSidebarClose?.();
-        }
-      }}
-      rail={rail}
-      sidebar={sidebar}
-      topbar={topbar}
+    <div
+      className={shellClassName}
+      data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+      data-mobile-sidebar-open={mobileSidebarOpen ? "true" : "false"}
     >
-      {children}
-    </AppShell>
+      <div className="akl-sidebar-backdrop" aria-hidden="true" onClick={onMobileSidebarClose} />
+      <div className="stratos-app-shell__topbar">{topbar}</div>
+      {rail}
+      {sidebar}
+      <div className="stratos-workspace">
+        <main className="main-content">{children}</main>
+      </div>
+    </div>
   );
 }
 
@@ -77,45 +72,39 @@ export function StratosAppRail({
   footer,
   items
 }: StratosAppRailProps) {
-  const router = useRouter();
-  const activeItemId = items.find((item) => isActiveRoute(activePathname, item.href))?.id ?? items[0]?.id ?? "";
-
   return (
-    <div className="stratos-akb-rail-frame">
-      <AppRail
-        workspaceMark={
-          <Link className="stratos-akb-rail-mark" href={brandHref} title={`${brandName} · ${brandSubtitle}`}>
-            {brandMark}
-          </Link>
-        }
-        items={items.map((item) => ({
-          id: item.id ?? item.href,
-          label: item.label,
-          icon: item.icon,
-          tooltip: item.label
-        }))}
-        activeItemId={activeItemId}
-        panelOpen
-        ariaLabel="STRATOS portfolio navigation"
-        onItemSelect={(itemId) => {
-          const item = items.find((entry) => (entry.id ?? entry.href) === itemId);
-          if (!item) {
-            return;
-          }
-          item.onSelect?.(item);
-          router.push(item.href);
-        }}
-        footerItems={[]}
-      />
-      <div className="stratos-akb-rail-footer">{footer}</div>
-    </div>
+    <aside className="stratos-app-rail">
+      <Link className="stratos-brand" href={brandHref}>
+        <span className="stratos-brand__mark">{brandMark}</span>
+        <span>
+          <strong>{brandName}</strong>
+          <small>{brandSubtitle}</small>
+        </span>
+      </Link>
+      <nav className="stratos-nav-list" aria-label="Primary">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const active = activePathname === item.href || (item.href !== "/" && activePathname.startsWith(item.href));
+          return (
+            <Link
+              className={`stratos-nav-item ${active ? "stratos-nav-item--active" : ""}`}
+              href={item.href}
+              key={item.href}
+              role="button"
+              title={item.label}
+              onClick={() => item.onSelect?.(item)}
+            >
+              <Icon size={17} strokeWidth={2} aria-hidden="true" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="stratos-app-rail__footer">{footer}</div>
+    </aside>
   );
 }
 
 export function StratosTopbar({ children }: { children: React.ReactNode }) {
-  return <Topbar trailing={children} />;
-}
-
-function isActiveRoute(activePathname: string, href: string): boolean {
-  return activePathname === href || (href !== "/" && activePathname.startsWith(href));
+  return <header className="stratos-topbar">{children}</header>;
 }

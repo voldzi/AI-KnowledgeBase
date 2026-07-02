@@ -67,6 +67,15 @@ ExtractionStatus = Literal[
 ExtractionFieldStatus = Literal["proposed"]
 ExtractionFeedbackDecision = Literal["accepted", "rejected", "edited"]
 StratosExtractionSourceApp = Literal["STRATOS_BUDGET", "STRATOS_ARCHFLOW"]
+ArchflowArtifactType = Literal[
+    "TARGET_ARCHITECTURE",
+    "SOLUTION_ARCHITECTURE",
+    "INTEGRATION_SPEC",
+    "DATA_SECURITY_ASSESSMENT",
+    "ARCHITECTURE_DECISION",
+    "AS_BUILT_ARCHITECTURE",
+    "HANDOVER_PACKAGE",
+]
 
 
 class RagQueryFilters(BaseModel):
@@ -394,6 +403,55 @@ class ArchflowGoalExtractionProposeRequest(BaseModel):
         return self
 
 
+class ArchflowArchitectureExtractionProposeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: Literal["STRATOS_ARCHFLOW"] = "STRATOS_ARCHFLOW"
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: Literal["ArchitectureArtifact", "ArchflowSourceSet", "ArchflowGoalCatalogVersion", "ArchflowNeed"]
+    entity_id: str = Field(min_length=1, max_length=128)
+    need_id: str | None = Field(default=None, min_length=1, max_length=128)
+    source_set_id: str | None = Field(default=None, min_length=1, max_length=128)
+    catalog_version_id: str | None = Field(default=None, min_length=1, max_length=128)
+    artifact_type: ArchflowArtifactType
+    document_id: str | None = Field(default=None, min_length=1, max_length=64)
+    document_version_id: str | None = Field(default=None, min_length=1, max_length=64)
+    documents: list[ArchflowSourceDocument] = Field(default_factory=list, max_length=50)
+    subject_id: str = Field(min_length=1, max_length=128)
+    profile: Literal["architecture_package_review_v1", "architecture_handover_v1"]
+    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    classification_max: Classification = "internal"
+    context_tags: list[str] = Field(default_factory=list)
+    max_chunks: int = Field(default=18, ge=1, le=20)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_archflow_artifact_context(self) -> "ArchflowArchitectureExtractionProposeRequest":
+        if (self.document_id and not self.document_version_id) or (self.document_version_id and not self.document_id):
+            raise ValueError("document_id and document_version_id must be provided together.")
+        if self.document_id and self.documents:
+            explicit_pair = (self.document_id, self.document_version_id)
+            document_pairs = {(document.document_id, document.document_version_id) for document in self.documents}
+            if explicit_pair not in document_pairs:
+                raise ValueError("documents must contain the explicit document_id/document_version_id pair.")
+        if not self.documents and self.document_id and self.document_version_id:
+            self.documents = [
+                ArchflowSourceDocument(
+                    document_id=self.document_id,
+                    document_version_id=self.document_version_id,
+                    canonical_url=None,
+                    classification=None,
+                )
+            ]
+        if self.entity_type == "ArchitectureArtifact" and not self.need_id:
+            raise ValueError("need_id is required for ArchitectureArtifact extraction.")
+        if not self.documents and self.entity_type == "ArchitectureArtifact":
+            raise ValueError("ArchitectureArtifact extraction requires at least one AKB document/version reference.")
+        return self
+
+
 class ContractExtractionCitation(BaseModel):
     document_id: str
     document_version_id: str
@@ -459,6 +517,18 @@ class ArchflowGoalFieldProposal(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ArchflowArchitectureFieldProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(min_length=1, max_length=120)
+    status: ExtractionFieldStatus = "proposed"
+    confidence: Confidence
+    proposal: dict[str, Any] = Field(default_factory=dict)
+    reason: str = Field(min_length=1, max_length=1000)
+    citation: ContractExtractionCitation
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ContractExtractionResponse(BaseModel):
     extraction_id: str
     tenant_id: str
@@ -495,6 +565,27 @@ class ArchflowGoalExtractionResponse(BaseModel):
     classification: Classification
     requested_by: str
     proposals: list[ArchflowGoalFieldProposal] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArchflowArchitectureExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: str
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    document_id: str
+    document_version_id: str
+    profile: str
+    profile_version: str
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    proposals: list[ArchflowArchitectureFieldProposal] = Field(default_factory=list)
     missing_information: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     source_chunk_ids: list[str] = Field(default_factory=list)

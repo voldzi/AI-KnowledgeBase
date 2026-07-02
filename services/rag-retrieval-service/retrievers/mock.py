@@ -189,6 +189,82 @@ def _mock_chunks() -> list[dict[str, Any]]:
             },
         },
         {
+            "chunk_id": "chunk_archflow_package_1",
+            "text": (
+                "Cílová architektura popisuje aplikační vrstvy a hranice řešení pro Portál služeb. "
+                "Architektonické rozhodnutí ADR-12 stanovuje využití API gateway pro externí integrace. "
+                "Integrace musí používat OpenAPI specifikaci a auditní korelační identifikátor. "
+                "Bezpečnost vyžaduje klasifikaci dat, šifrování přenosu a auditní stopu. "
+                "Riziko: chybí doplnit rozhodnutí pro archivaci integračních zpráv."
+            ),
+            "payload": {
+                "document_id": "doc_archflow_package",
+                "document_version_id": "ver_archflow_package_1",
+                "document_title": "Architektonický balíček Portálu služeb",
+                "version_label": "1.0",
+                "document_type": "project_documentation",
+                "classification": "internal",
+                "status": "valid",
+                "tags": [
+                    "archflow",
+                    "STRATOS_ARCHFLOW",
+                    "need:need-1",
+                    "architecture-artifact:artifact-package-1",
+                    "artifact-type:TARGET_ARCHITECTURE",
+                ],
+                "page_number": 8,
+                "section_path": ["Architektonický balíček", "Cílová architektura"],
+                "article_number": None,
+                "paragraph_number": "4",
+                "source_file_uri": "s3://akl-documents/stratos/archflow/target-architecture.pdf",
+                "source_file_name": "target-architecture.pdf",
+                "source_mime_type": "application/pdf",
+                "source_size_bytes": 12288,
+                "source_sha256": "sha256:archflow-package-mock",
+                "section_title": "Cílová architektura",
+                "char_start": 0,
+                "char_end": 820,
+            },
+        },
+        {
+            "chunk_id": "chunk_archflow_handover_1",
+            "text": (
+                "As-built skutečné provedení potvrzuje nasazení integrační služby ve verzi 2.1. "
+                "Předávací balíček obsahuje provozní runbook, monitoring dostupnosti a postup zálohování. "
+                "Vlastník služby je Odbor informatiky a správcem je tým provozu aplikací. "
+                "Akceptace je doložena integračním testem a evidencí provozního převzetí. "
+                "Reziduální riziko: otevřené riziko nedokončené automatizace obnovy po havárii."
+            ),
+            "payload": {
+                "document_id": "doc_archflow_handover",
+                "document_version_id": "ver_archflow_handover_1",
+                "document_title": "As-built a předávací balíček Portálu služeb",
+                "version_label": "1.0",
+                "document_type": "project_documentation",
+                "classification": "internal",
+                "status": "valid",
+                "tags": [
+                    "archflow",
+                    "STRATOS_ARCHFLOW",
+                    "need:need-1",
+                    "architecture-artifact:artifact-handover-1",
+                    "artifact-type:HANDOVER_PACKAGE",
+                ],
+                "page_number": 14,
+                "section_path": ["Předání do provozu", "As-built"],
+                "article_number": None,
+                "paragraph_number": "6",
+                "source_file_uri": "s3://akl-documents/stratos/archflow/handover-package.pdf",
+                "source_file_name": "handover-package.pdf",
+                "source_mime_type": "application/pdf",
+                "source_size_bytes": 16384,
+                "source_sha256": "sha256:archflow-handover-mock",
+                "section_title": "As-built",
+                "char_start": 0,
+                "char_end": 760,
+            },
+        },
+        {
             "chunk_id": "chunk_789",
             "text": (
                 "Vyjimku ze smernice schvaluje gestor dokumentu po posouzeni dopadu. "

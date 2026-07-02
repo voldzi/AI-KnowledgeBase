@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.schemas import (
+    ArchflowArchitectureFieldProposal,
     ArchflowCandidateRequirement,
     ArchflowGoalFieldProposal,
     ArchflowGoalProposalValue,
@@ -17,6 +18,8 @@ from app.schemas import (
 
 
 PROFILE_NAME = "archflow_goal_extraction_v1"
+ARCHITECTURE_PACKAGE_PROFILE_NAME = "architecture_package_review_v1"
+ARCHITECTURE_HANDOVER_PROFILE_NAME = "architecture_handover_v1"
 PROFILE_VERSION = "1"
 
 ARCHFLOW_GOAL_FIELDS = [
@@ -55,6 +58,42 @@ def archflow_goal_extraction_profiles() -> list[ContractExtractionProfile]:
             ),
             supported_external_systems=["STRATOS_ARCHFLOW"],
             fields=ARCHFLOW_GOAL_FIELDS,
+        ),
+        ContractExtractionProfile(
+            profile=ARCHITECTURE_PACKAGE_PROFILE_NAME,
+            profile_version=PROFILE_VERSION,
+            title="ArchFlow architecture package review",
+            description=(
+                "Proposes cited review findings for target architecture, solution architecture, "
+                "integration, data/security assessment, and architecture decision packages."
+            ),
+            supported_external_systems=["STRATOS_ARCHFLOW"],
+            fields=[
+                "package_scope",
+                "architecture_decision",
+                "integration_requirement",
+                "data_security_control",
+                "risk",
+                "open_issue",
+            ],
+        ),
+        ContractExtractionProfile(
+            profile=ARCHITECTURE_HANDOVER_PROFILE_NAME,
+            profile_version=PROFILE_VERSION,
+            title="ArchFlow architecture handover review",
+            description=(
+                "Proposes cited handover and as-built evidence for operational takeover, "
+                "owners, runbooks, acceptance evidence, and residual risks."
+            ),
+            supported_external_systems=["STRATOS_ARCHFLOW"],
+            fields=[
+                "as_built_state",
+                "handover_item",
+                "operational_runbook",
+                "owner",
+                "acceptance_evidence",
+                "open_risk",
+            ],
         )
     ]
 
@@ -89,6 +128,188 @@ def extract_archflow_goal_proposals(
     elif missing_information:
         warnings.append("MISSING_ARCHFLOW_GOAL_EXTRACTION_CATEGORIES")
 
+    return proposals, missing_information, warnings
+
+
+def extract_archflow_architecture_package_proposals(
+    *,
+    chunks: list[RetrievedChunk],
+) -> tuple[list[ArchflowArchitectureFieldProposal], list[str], list[str]]:
+    specs = [
+        _ArchitecturePatternSpec(
+            field="package_scope",
+            pattern=re.compile(
+                r"((?:cílov[áa]\s+architektura|target\s+architecture|solution\s+architecture|architektonick[ýy]\s+bal[ií][cč]ek)[^.\n]{12,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source describes the architecture package scope.",
+            confidence="high",
+        ),
+        _ArchitecturePatternSpec(
+            field="architecture_decision",
+            pattern=re.compile(
+                r"((?:architektonick[ée]\s+rozhodnut[íi]|architecture\s+decision|ADR)[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states an architecture decision or ADR.",
+            confidence="high",
+        ),
+        _ArchitecturePatternSpec(
+            field="integration_requirement",
+            pattern=re.compile(
+                r"((?:integrace|interface|API|AsyncAPI|OpenAPI|rozhran[íi])[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states an integration or interface requirement.",
+            confidence="medium",
+        ),
+        _ArchitecturePatternSpec(
+            field="data_security_control",
+            pattern=re.compile(
+                r"((?:bezpe[cč]nost|klasifikace\s+dat|osobn[íi]\s+[úu]daje|[sš]ifrov[aá]n[íi]|auditn[íi]\s+stopa)[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states a data or security control.",
+            confidence="medium",
+        ),
+        _ArchitecturePatternSpec(
+            field="risk",
+            pattern=re.compile(r"((?:riziko|nesoulad)[^.\n]{8,260})", re.IGNORECASE),
+            reason="The cited source states an architecture package risk.",
+            confidence="medium",
+        ),
+        _ArchitecturePatternSpec(
+            field="open_issue",
+            pattern=re.compile(
+                r"((?:otev[řr]en[ýy]\s+bod|nevy[řr]e[šs]en[ée]|chyb[íi]|doplnit)[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states missing or unresolved package information.",
+            confidence="medium",
+        ),
+    ]
+    return _extract_architecture_proposals(
+        chunks=chunks,
+        specs=specs,
+        required_fields={"package_scope", "architecture_decision", "integration_requirement"},
+        insufficient_warning="INSUFFICIENT_CITABLE_ARCHITECTURE_PACKAGE_EVIDENCE",
+        missing_warning="MISSING_ARCHITECTURE_PACKAGE_REVIEW_CATEGORIES",
+    )
+
+
+def extract_archflow_handover_proposals(
+    *,
+    chunks: list[RetrievedChunk],
+) -> tuple[list[ArchflowArchitectureFieldProposal], list[str], list[str]]:
+    specs = [
+        _ArchitecturePatternSpec(
+            field="as_built_state",
+            pattern=re.compile(
+                r"((?:as-built|skute[cč]n[ée]\s+proveden[íi]|realizovan[áa]\s+architektura)[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states the as-built architecture state.",
+            confidence="high",
+        ),
+        _ArchitecturePatternSpec(
+            field="handover_item",
+            pattern=re.compile(
+                r"((?:p[řr]ed[aá]vac[íi]\s+bal[ií][cč]ek|p[řr]ed[aá]n[íi]|handover)[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states a handover package item.",
+            confidence="high",
+        ),
+        _ArchitecturePatternSpec(
+            field="operational_runbook",
+            pattern=re.compile(
+                r"((?:provozn[íi]\s+runbook|runbook|provozn[íi]\s+postup|monitoring|z[aá]lohov[aá]n[íi])[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states operational runbook or support evidence.",
+            confidence="medium",
+        ),
+        _ArchitecturePatternSpec(
+            field="owner",
+            pattern=re.compile(
+                r"((?:vlastn[íi]k|spr[áa]vce|garant|odpov[ěe]dn[áa]\s+role)[^.\n]{8,220})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states an owner or accountable role.",
+            confidence="medium",
+        ),
+        _ArchitecturePatternSpec(
+            field="acceptance_evidence",
+            pattern=re.compile(
+                r"((?:akceptace|akcepta[cč]n[íi]\s+krit[eé]ria|test|d[oů]kaz|evidence)[^.\n]{8,260})",
+                re.IGNORECASE,
+            ),
+            reason="The cited source states acceptance or evidence for handover.",
+            confidence="medium",
+        ),
+        _ArchitecturePatternSpec(
+            field="open_risk",
+            pattern=re.compile(r"((?:rezidu[aá]ln[íi]\s+riziko|otev[řr]en[ée]\s+riziko|riziko)[^.\n]{8,260})", re.IGNORECASE),
+            reason="The cited source states a residual or open handover risk.",
+            confidence="medium",
+        ),
+    ]
+    return _extract_architecture_proposals(
+        chunks=chunks,
+        specs=specs,
+        required_fields={"as_built_state", "handover_item", "operational_runbook"},
+        insufficient_warning="INSUFFICIENT_CITABLE_ARCHITECTURE_HANDOVER_EVIDENCE",
+        missing_warning="MISSING_ARCHITECTURE_HANDOVER_CATEGORIES",
+    )
+
+
+@dataclass(frozen=True)
+class _ArchitecturePatternSpec:
+    field: str
+    pattern: re.Pattern[str]
+    reason: str
+    confidence: Confidence = "medium"
+
+
+def _extract_architecture_proposals(
+    *,
+    chunks: list[RetrievedChunk],
+    specs: list[_ArchitecturePatternSpec],
+    required_fields: set[str],
+    insufficient_warning: str,
+    missing_warning: str,
+) -> tuple[list[ArchflowArchitectureFieldProposal], list[str], list[str]]:
+    proposals: list[ArchflowArchitectureFieldProposal] = []
+    seen: set[tuple[str, str]] = set()
+    for chunk in chunks:
+        for spec in specs:
+            for match in spec.pattern.finditer(chunk.text):
+                quoted_text = _sentence_around(chunk.text, match.start(), match.end())
+                key = (spec.field, quoted_text.casefold())
+                if key in seen:
+                    continue
+                proposals.append(
+                    ArchflowArchitectureFieldProposal(
+                        field=spec.field,
+                        confidence=spec.confidence,
+                        proposal={
+                            "title": _title_from_text(quoted_text, spec.field.replace("_", " ").title()),
+                            "summary": quoted_text,
+                            "artifact_section": _section(chunk),
+                            "artifact_evidence_type": spec.field,
+                        },
+                        reason=spec.reason,
+                        citation=_citation_from_match(chunk, match),
+                    )
+                )
+                seen.add(key)
+    fields = {proposal.field for proposal in proposals}
+    missing_information = sorted(required_fields - fields)
+    warnings: list[str] = []
+    if not proposals:
+        warnings.append(insufficient_warning)
+    elif missing_information:
+        warnings.append(missing_warning)
     return proposals, missing_information, warnings
 
 

@@ -109,24 +109,62 @@ proposals for ArchFlow goals, capabilities, obligations, requirements, metrics,
 legal or methodological basis, and risks. The supported profile is
 `archflow_goal_extraction_v1`.
 
+`POST /api/v1/stratos/extractions/architecture-package/propose` extracts cited
+review findings for architecture packages. The supported profile is
+`architecture_package_review_v1`.
+
+`POST /api/v1/stratos/extractions/architecture-handover/propose` extracts cited
+handover and as-built evidence. The supported profile is
+`architecture_handover_v1`.
+
 The endpoint is deliberately proposal-only:
 
 - it retrieves only authorized chunks through Registry API authorization,
 - it accepts `external_system: "STRATOS_ARCHFLOW"` and never `source_system`,
+- it supports `ArchitectureArtifact`, `ArchflowSourceSet`,
+  `ArchflowGoalCatalogVersion`, and `ArchflowNeed` contexts,
+- it filters by `tenant_id`, `external_system`, `entity_type`,
+  `artifact_type`, and `context_tags` supplied by ArchFlow,
 - it returns only `proposed` values with citations,
 - every proposal includes `document_id`, `document_version_id`, `chunk_id`,
   page/section where available, a short `quoted_text`, and a viewer URL,
 - when evidence is insufficient, the response is `PARTIAL` with warnings such
-  as `INSUFFICIENT_CITABLE_ARCHFLOW_GOAL_EVIDENCE` or
+  as `INSUFFICIENT_CITABLE_ARCHFLOW_GOAL_EVIDENCE`,
+  `INSUFFICIENT_CITABLE_ARCHITECTURE_PACKAGE_EVIDENCE`,
+  `INSUFFICIENT_CITABLE_ARCHITECTURE_HANDOVER_EVIDENCE`, or
   `TARGET_DOCUMENT_NOT_RETRIEVED`,
 - persistence and feedback use the shared Registry API
   `document_extractions` and `document_extraction_feedback` tables.
+
+ArchFlow stores only references:
+
+- `tenant_id`,
+- `external_system = STRATOS_ARCHFLOW`,
+- `entity_type`, `entity_id`, and optional `need_id`,
+- `external_ref`, for example
+  `archflow-need:<needId>:architecture-artifact:<artifactId>`,
+- `document_id`, `document_version_id`, canonical AKB URL and citation URL,
+- `artifact_type`, `review_status`, `baseline_status`, and `context_tags`.
+
+Supported architecture artifact types are:
+
+- `TARGET_ARCHITECTURE`
+- `SOLUTION_ARCHITECTURE`
+- `INTEGRATION_SPEC`
+- `DATA_SECURITY_ASSESSMENT`
+- `ARCHITECTURE_DECISION`
+- `AS_BUILT_ARCHITECTURE`
+- `HANDOVER_PACKAGE`
 
 ArchFlow remains the source of truth for final goals, requirements, and
 relationships. It writes final records only after authorized human confirmation
 and then sends `accepted`, `edited`, or `rejected` feedback through
 `POST /api/v1/stratos/extractions/{extraction_id}/feedback` with
 `source_app: "STRATOS_ARCHFLOW"`.
+
+AKB remains the only Document AI backend. ArchFlow must not store binary
+documents, extracted text, chunks, embeddings, prompts, or RAG/LLM output copies
+outside AKB.
 
 ## Integration Notes
 
