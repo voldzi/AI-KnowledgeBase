@@ -110,6 +110,30 @@ def test_reset_title_prefers_explicit_metadata_title(tmp_path: Path) -> None:
     assert metadata["title_source"] == "metadata:nazev"
 
 
+def test_reset_title_does_not_use_catalog_section_as_document_title(tmp_path: Path) -> None:
+    markdown = tmp_path / "dia-dns-cloud-computing-a44d63ba1a.md"
+    markdown.write_text(
+        "\n".join(
+            [
+                "# DIA DNS cloud computing",
+                "",
+                "- Typ zdroje: metodika",
+                "- Klasifikace: public",
+                "",
+                "## Importní metadata",
+                "",
+                "- Původní katalogová položka: egovernment cloud",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    metadata = reset_pdf_first_corpus.parse_markdown_metadata(markdown)
+
+    assert metadata["title"] == "DIA DNS cloud computing"
+    assert metadata["title_source"] == "markdown_heading"
+
+
 def test_prepare_title_prefers_origin_title_over_ascii_pdf_filename() -> None:
     title = prepare_public_pdf_corpus.title_from_candidate(
         label="prvodce dokldn poadavk pro zpis sluby cloud computingu",

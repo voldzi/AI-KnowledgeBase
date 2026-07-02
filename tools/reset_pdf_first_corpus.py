@@ -455,7 +455,23 @@ def title_quality_score(value: str, source: str) -> int:
 
 
 def looks_generic_title(normalized: str) -> bool:
-    return normalized in {"zde", "download", "soubor", "dokument", "pdf", "verejny pdf dokument"}
+    return normalized in {
+        "zde",
+        "download",
+        "soubor",
+        "dokument",
+        "pdf",
+        "verejny pdf dokument",
+        "architektura egovernmentu",
+        "digitalni ekonomika",
+        "egovernment cloud",
+        "library",
+        "ostatni publikace",
+        "podpurne materialy",
+        "strategie akcni plan",
+        "umela inteligence",
+        "zpravy o cinnosti digitalni a informacni agentury",
+    }
 
 
 def looks_like_slug_title(value: str) -> bool:
