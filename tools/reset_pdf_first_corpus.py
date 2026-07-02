@@ -23,6 +23,17 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOMAINS = ("cz-digital-governance", "security-compliance-cz")
 CONFIRMATION = "reset-documents"
 TERMINAL_OK = {"completed", "completed_with_warnings"}
+KNOWN_TITLE_REPAIRS = {
+    "prvodce-zenm-aktiv-a-rizik-dle-vyhlky-o-kybernetick-bezpenosti": (
+        "Průvodce zněním aktiv a rizik dle vyhlášky o kybernetické bezpečnosti"
+    ),
+    "prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1": (
+        "Průvodce dokládáním požadavků pro zápis služby cloud computingu v.1"
+    ),
+    "prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1-2": (
+        "Průvodce dokládáním požadavků pro zápis služby cloud computingu v.1.2"
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -342,11 +353,24 @@ def select_document_title(
     if not scored:
         return "Veřejný PDF dokument", "fallback"
     _, source, title = max(scored, key=lambda item: item[0])
+    repaired_title = known_title_repair(path=path, candidates=[title])
+    if repaired_title and looks_like_czech_diacritics_loss(normalize_key(title)):
+        return repaired_title[:300], "known_title_repair"
     return title[:300], source
 
 
 def clean_title(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "").replace("\u00a0", " ")).strip(" -–—:\t\r\n")
+
+
+def known_title_repair(*, path: Path, candidates: list[str]) -> str:
+    identifiers = [path.stem, path.as_posix(), *candidates]
+    for identifier in identifiers:
+        normalized = slugify(identifier)
+        for broken_slug, title in sorted(KNOWN_TITLE_REPAIRS.items(), key=lambda item: len(item[0]), reverse=True):
+            if normalized == broken_slug or normalized.startswith(f"{broken_slug}-"):
+                return title
+    return ""
 
 
 def title_from_url(url: str) -> str:

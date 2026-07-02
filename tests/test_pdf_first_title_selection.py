@@ -48,6 +48,47 @@ def test_reset_title_prefers_czech_catalog_title_over_slug_heading(tmp_path: Pat
     assert metadata["title_source"] == "catalog_title"
 
 
+def test_reset_title_repairs_known_broken_czech_title(tmp_path: Path) -> None:
+    markdown = tmp_path / "prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1-2-0bd82f7187.md"
+    markdown.write_text(
+        "\n".join(
+            [
+                "# Prvodce dokldn poadavk pro zpis sluby cloud computingu v.1.2",
+                "",
+                "- Typ zdroje: metodika",
+                "- Klasifikace: public",
+                "- Zdroj PDF: https://example.test/prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1-2.pdf",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    metadata = reset_pdf_first_corpus.parse_markdown_metadata(markdown)
+
+    assert metadata["title"] == "Průvodce dokládáním požadavků pro zápis služby cloud computingu v.1.2"
+    assert metadata["title_source"] == "known_title_repair"
+
+
+def test_reset_title_repairs_known_broken_v1_without_matching_v12(tmp_path: Path) -> None:
+    markdown = tmp_path / "prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1-7f1da30bbf.md"
+    markdown.write_text(
+        "\n".join(
+            [
+                "# Prvodce dokldn poadavk pro zpis sluby cloud computingu v.1",
+                "",
+                "- Typ zdroje: metodika",
+                "- Klasifikace: public",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    metadata = reset_pdf_first_corpus.parse_markdown_metadata(markdown)
+
+    assert metadata["title"] == "Průvodce dokládáním požadavků pro zápis služby cloud computingu v.1"
+    assert metadata["title_source"] == "known_title_repair"
+
+
 def test_reset_title_prefers_explicit_metadata_title(tmp_path: Path) -> None:
     markdown = tmp_path / "fallback-slug-title.md"
     markdown.write_text(
