@@ -46,5 +46,5 @@ export default async function ChatPage() {
   } catch {
     suggestions = FALLBACK_SUGGESTIONS;
   }
-  return <AkbAssistantApp suggestions={suggestions} />;
+  return <AkbAssistantApp initialNowIso={new Date().toISOString()} suggestions={suggestions} />;
 }
