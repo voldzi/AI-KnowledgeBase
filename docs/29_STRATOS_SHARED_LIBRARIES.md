@@ -46,6 +46,11 @@ Use `external_system`, never `source_system`, for STRATOS integration payloads.
 
 ## Package Model
 
+General STRATOS UI primitives for AKB, Budget, ProjectFlow and ArchFlow use
+`@voldzi/stratos-ui@0.3.17` or newer compatible versions from the public npm
+registry. Applications must not add a scoped `.npmrc` that redirects
+`@voldzi/stratos-ui` to GitHub Packages.
+
 AKB-specific shared UI exports belong in the STRATOS shared UI package under an
 AKB module, for example:
 
@@ -68,12 +73,27 @@ General STRATOS UI primitives such as field help are consumed from the root
 package:
 
 ```ts
-import { FieldLabelWithHelp, HelpHint, SelectField } from "@voldzi/stratos-ui";
+import {
+  DirectoryPersonPicker,
+  FieldLabelWithHelp,
+  GlobalTopbar,
+  HelpHint,
+  SelectField,
+  StratosSettingsSurface,
+  SurfaceModeMenu,
+  createStratosProfileSettingsClient,
+  createStratosProfileSettingsPayload,
+  mergeStratosProfileSettings,
+} from "@voldzi/stratos-ui";
 import "@voldzi/stratos-ui/styles.css";
 ```
 
 Applications use `HelpHint`, `FieldLabelWithHelp`, `SelectField.description`
 and `SelectField.labelAccessory` instead of app-local help tooltip components.
+Applications use the shared profile/settings helpers for `settings.core` and
+store application-specific values under `settings.apps.<appId>`. Profile values
+such as avatar, language, theme, accent, display name and e-mail are not local
+component state and are not sourced from browser localStorage.
 
 ## Component Contracts
 

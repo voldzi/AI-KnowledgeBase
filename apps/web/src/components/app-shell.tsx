@@ -13,10 +13,17 @@ import {
   FilePlus2,
   LayoutDashboard,
   ListChecks,
-  LogOut,
   ShieldCheck,
-  UserRound
+  UserRound,
 } from "lucide-react";
+import {
+  broadcastStratosProfileSettingsUpdate,
+  createStratosProfileSettingsClient,
+  createStratosProfileSettingsPayload,
+  mergeStratosProfileSettings,
+  subscribeStratosProfileSettingsUpdate,
+  type StratosProfileSettingsEnvelope,
+} from "@voldzi/stratos-ui";
 
 import { isEmployeeChatOnly } from "@/lib/auth/authorization";
 import {
@@ -25,7 +32,7 @@ import {
   type SettingsSurfaceMode,
   type StratosSettingsCoreValue,
   type StratosSettingsCoreValueKey,
-  type StratosSettingsCoreValues
+  type StratosSettingsCoreValues,
 } from "@/components/app-settings-surface";
 import { ProjectTopbar } from "@/components/project-topbar";
 import {
@@ -35,7 +42,7 @@ import {
   StratosWorkspaceNav,
   StratosWorkspaceSidebar,
   type CommandCenterItem,
-  type StratosWorkspaceNavGroup
+  type StratosWorkspaceNavGroup,
 } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
@@ -49,7 +56,7 @@ const navigation = {
     { href: "/ingestion", label: "Zpracování", icon: FileClock },
     { href: "/chat", label: "Znalostní chat", icon: Bot },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
-    { href: "/help", label: "Nápověda", icon: CircleHelp }
+    { href: "/help", label: "Nápověda", icon: CircleHelp },
   ],
   en: [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -59,9 +66,12 @@ const navigation = {
     { href: "/ingestion", label: "Ingestion", icon: FileClock },
     { href: "/chat", label: "Knowledge chat", icon: Bot },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
-    { href: "/help", label: "Help", icon: CircleHelp }
-  ]
-} satisfies Record<AklLanguage, Array<{ href: string; label: string; icon: typeof UserRound }>>;
+    { href: "/help", label: "Help", icon: CircleHelp },
+  ],
+} satisfies Record<
+  AklLanguage,
+  Array<{ href: string; label: string; icon: typeof UserRound }>
+>;
 
 const shellCopy = {
   cs: {
@@ -74,7 +84,8 @@ const shellCopy = {
     commandCenterOpen: "Otevřít Command Center",
     commandCenterTitle: "Command Center",
     commandCenterPlaceholder: "Hledat v AKB nebo spustit akci",
-    commandCenterPreview: "Vyberte výsledek pro rychlé otevření nebo spuštění akce.",
+    commandCenterPreview:
+      "Vyberte výsledek pro rychlé otevření nebo spuštění akce.",
     commandCenterNoResults: "Nenalezen žádný výsledek.",
     commandCenterActions: "Akce",
     commandCenterClose: "Zavřít Command Center",
@@ -111,7 +122,7 @@ const shellCopy = {
     apiModeMock: "Mock API režim",
     apiModeProduction: "Produkční API klienti",
     authModeMock: "dev auth",
-    authModeOidc: "OIDC auth"
+    authModeOidc: "OIDC auth",
   },
   en: {
     assistantBrand: "Knowledge assistant",
@@ -123,7 +134,8 @@ const shellCopy = {
     commandCenterOpen: "Open Command Center",
     commandCenterTitle: "Command Center",
     commandCenterPlaceholder: "Search AKB or run an action",
-    commandCenterPreview: "Select a result to open a page or run a quick action.",
+    commandCenterPreview:
+      "Select a result to open a page or run a quick action.",
     commandCenterNoResults: "No result found.",
     commandCenterActions: "Actions",
     commandCenterClose: "Close Command Center",
@@ -160,18 +172,19 @@ const shellCopy = {
     apiModeMock: "Mock API mode",
     apiModeProduction: "Production API clients",
     authModeMock: "dev auth",
-    authModeOidc: "OIDC auth"
-  }
+    authModeOidc: "OIDC auth",
+  },
 } satisfies Record<AklLanguage, Record<string, string>>;
 
-type ShellModuleId = "documents" | "operations" | "ai" | "knowledge" | "governance";
+type ShellModuleId =
+  "documents" | "operations" | "ai" | "knowledge" | "governance";
 
 const moduleRouteGroups: Record<ShellModuleId, string[]> = {
   documents: ["/documents", "/upload", "/ingestion"],
   operations: ["/", "/tasks"],
   ai: ["/chat", "/help"],
   knowledge: [],
-  governance: ["/audit"]
+  governance: ["/audit"],
 };
 
 const moduleRootRoutes: Record<ShellModuleId, string> = {
@@ -179,7 +192,7 @@ const moduleRootRoutes: Record<ShellModuleId, string> = {
   operations: "/tasks",
   ai: "/chat",
   knowledge: "/chat",
-  governance: "/audit"
+  governance: "/audit",
 };
 
 interface AppShellProps {
@@ -198,6 +211,9 @@ interface AklUserProfile {
   email?: string;
   initials: string;
   roles: string[];
+  avatarColor?: string;
+  avatarId?: string;
+  avatarImageUrl?: string;
 }
 
 interface SettingsAccessInfo {
@@ -207,7 +223,7 @@ interface SettingsAccessInfo {
   permissions: string[];
 }
 
-interface ProfileSettingsPayload {
+interface ProfileSettingsPayload extends StratosProfileSettingsEnvelope {
   subject_id?: string;
   settings?: {
     core?: Record<string, unknown>;
@@ -231,58 +247,112 @@ const emptyRolePreview: RolePreviewSettings = {
   profileId: "",
   label: "",
   roles: [],
-  profiles: []
+  profiles: [],
 };
 
-export function AppShell({ children, apiMode, authMode, initialUser }: AppShellProps) {
+const avatarColors: Record<string, string> = {
+  amber: "#b45309",
+  blue: "#2563eb",
+  emerald: "#15803d",
+  graphite: "#111827",
+  rose: "#be123c",
+  slate: "#475569",
+  teal: "#0f8c7f",
+  violet: "#7c3aed",
+};
+
+export function AppShell({
+  children,
+  apiMode,
+  authMode,
+  initialUser,
+}: AppShellProps) {
   return (
     <LanguageProvider>
-      <AppShellContent apiMode={apiMode} authMode={authMode} initialUser={initialUser}>{children}</AppShellContent>
+      <AppShellContent
+        apiMode={apiMode}
+        authMode={authMode}
+        initialUser={initialUser}
+      >
+        {children}
+      </AppShellContent>
     </LanguageProvider>
   );
 }
 
-function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellProps) {
+function AppShellContent({
+  children,
+  apiMode,
+  authMode,
+  initialUser,
+}: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { language, setLanguage } = useLanguage();
-  const isEmbeddedPath = pathname === "/embed" || pathname.startsWith("/embed/") || pathname === "/akb/embed" || pathname.startsWith("/akb/embed/");
+  const isEmbeddedPath =
+    pathname === "/embed" ||
+    pathname.startsWith("/embed/") ||
+    pathname === "/akb/embed" ||
+    pathname.startsWith("/akb/embed/");
   const copy = shellCopy[language];
-  const apiModeLabel = apiMode === "mock" ? copy.apiModeMock : copy.apiModeProduction;
-  const authModeLabel = authMode === "mock" ? copy.authModeMock : copy.authModeOidc;
-  const [activeModule, setActiveModule] = useState<ShellModuleId>(() => moduleForPath(pathname));
+  const apiModeLabel =
+    apiMode === "mock" ? copy.apiModeMock : copy.apiModeProduction;
+  const authModeLabel =
+    authMode === "mock" ? copy.authModeMock : copy.authModeOidc;
+  const [activeModule, setActiveModule] = useState<ShellModuleId>(() =>
+    moduleForPath(pathname),
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsMode, setSettingsMode] = useState<SettingsSurfaceMode>("modal");
+  const [settingsMode, setSettingsMode] =
+    useState<SettingsSurfaceMode>("modal");
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const [rolePreview, setRolePreview] = useState<RolePreviewSettings>(emptyRolePreview);
-  const [savedRolePreviewProfileId, setSavedRolePreviewProfileId] = useState("");
+  const [rolePreview, setRolePreview] =
+    useState<RolePreviewSettings>(emptyRolePreview);
+  const [savedRolePreviewProfileId, setSavedRolePreviewProfileId] =
+    useState("");
+  const profileSettingsClient = useMemo(
+    () =>
+      createStratosProfileSettingsClient({
+        endpoint: withAppBasePath("/api/v1/profile/settings"),
+        credentials: "same-origin",
+      }),
+    [],
+  );
   const [accessInfo, setAccessInfo] = useState<SettingsAccessInfo>(() => ({
     subjectId: initialUser?.subjectId ?? "",
     roles: initialUser?.roles ?? [],
     groups: initialUser?.groups ?? [],
-    permissions: []
+    permissions: [],
   }));
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
-    name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
+    name:
+      authMode === "mock" ? "AKB Dev User" : (initialUser?.subjectId ?? "AKB"),
     email: authMode === "mock" ? "dev@akl.local" : undefined,
-    initials: authMode === "mock" ? "AD" : initialsFromName(initialUser?.subjectId ?? "AKB"),
-    roles: initialUser?.roles ?? []
+    initials:
+      authMode === "mock"
+        ? "AD"
+        : initialsFromName(initialUser?.subjectId ?? "AKB"),
+    roles: initialUser?.roles ?? [],
   }));
-  const [settingsValues, setSettingsValues] = useState<StratosSettingsCoreValues>(() =>
-    createSettingsValues({
-      authModeLabel,
-      language,
-      user: {
-        name: authMode === "mock" ? "AKB Dev User" : initialUser?.subjectId ?? "AKB",
-        email: authMode === "mock" ? "dev@akl.local" : undefined,
-        roles: initialUser?.roles ?? []
-      }
-    })
-  );
+  const [settingsValues, setSettingsValues] =
+    useState<StratosSettingsCoreValues>(() =>
+      createSettingsValues({
+        authModeLabel,
+        language,
+        user: {
+          name:
+            authMode === "mock"
+              ? "AKB Dev User"
+              : (initialUser?.subjectId ?? "AKB"),
+          email: authMode === "mock" ? "dev@akl.local" : undefined,
+          roles: initialUser?.roles ?? [],
+        },
+      }),
+    );
 
   useEffect(() => {
     setActiveModule(moduleForPath(pathname));
@@ -310,21 +380,40 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
         if (!active || !payload?.user) {
           return;
         }
-        const name = String(payload.user.name || payload.user.email || payload.user.subjectId || "AKB");
-        const email = typeof payload.user.email === "string" ? payload.user.email : undefined;
-        const roles = Array.isArray(payload.user.roles) ? payload.user.roles.filter((role: unknown): role is string => typeof role === "string") : [];
-        const groups = Array.isArray(payload.user.groups) ? payload.user.groups.filter((group: unknown): group is string => typeof group === "string") : [];
+        const name = String(
+          payload.user.name ||
+            payload.user.email ||
+            payload.user.subjectId ||
+            "AKB",
+        );
+        const email =
+          typeof payload.user.email === "string"
+            ? payload.user.email
+            : undefined;
+        const roles = Array.isArray(payload.user.roles)
+          ? payload.user.roles.filter(
+              (role: unknown): role is string => typeof role === "string",
+            )
+          : [];
+        const groups = Array.isArray(payload.user.groups)
+          ? payload.user.groups.filter(
+              (group: unknown): group is string => typeof group === "string",
+            )
+          : [];
         setUserProfile({
           name,
           email,
           initials: initialsFromName(name),
-          roles
+          roles,
         });
         setAccessInfo((current) => ({
           ...current,
-          subjectId: typeof payload.user.subjectId === "string" ? payload.user.subjectId : current.subjectId,
+          subjectId:
+            typeof payload.user.subjectId === "string"
+              ? payload.user.subjectId
+              : current.subjectId,
           roles,
-          groups
+          groups,
         }));
         if (payload.rolePreview) {
           const preview = normalizeRolePreview(payload.rolePreview);
@@ -349,22 +438,51 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           ? identity.display_name
           : typeof identity.email === "string" && identity.email
             ? identity.email
-            : payload.subject_id ?? initialUser?.subjectId ?? "AKB";
+            : (payload.subject_id ?? initialUser?.subjectId ?? "AKB");
       const fallbackUser: AklUserProfile = {
         name: fallbackName,
         email: typeof identity.email === "string" ? identity.email : undefined,
         initials: initialsFromName(fallbackName),
-        roles: roles.length ? roles : initialUser?.roles ?? []
+        roles: roles.length ? roles : (initialUser?.roles ?? []),
       };
       const nextValues = createSettingsValues({
         authModeLabel,
         language,
-        user: fallbackUser
+        user: fallbackUser,
       });
-      const mergedValues = settingsValuesFromCore(payload.settings?.core ?? {}, nextValues);
+      const mergedProfileSettings = mergeStratosProfileSettings(
+        payload,
+        "akb",
+        {
+          accent: ["accentColor"],
+          language: ["locale"],
+        },
+      );
+      const mergedValues = settingsValuesFromCore(
+        mergedProfileSettings,
+        nextValues,
+      );
       const nextLanguage = mergedValues.language === "en" ? "en" : "cs";
-      const nextName = typeof mergedValues.displayName === "string" && mergedValues.displayName ? mergedValues.displayName : fallbackUser.name;
-      const nextEmail = typeof mergedValues.email === "string" && mergedValues.email ? mergedValues.email : undefined;
+      const nextName =
+        typeof mergedValues.displayName === "string" && mergedValues.displayName
+          ? mergedValues.displayName
+          : fallbackUser.name;
+      const nextEmail =
+        typeof mergedValues.email === "string" && mergedValues.email
+          ? mergedValues.email
+          : undefined;
+      const avatarId =
+        typeof mergedValues.avatarId === "string"
+          ? mergedValues.avatarId
+          : "teal";
+      const avatarImageUrl =
+        typeof mergedValues.avatarImageUrl === "string"
+          ? mergedValues.avatarImageUrl
+          : "";
+      const avatarColor =
+        typeof mergedValues.avatarColor === "string" && mergedValues.avatarColor
+          ? avatarColorForValue(mergedValues.avatarColor)
+          : avatarColorForValue(avatarId);
 
       setSettingsValues(mergedValues);
       setSettingsDirty(false);
@@ -372,68 +490,89 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
         name: nextName,
         email: nextEmail,
         initials: initialsFromName(nextName),
-        roles: fallbackUser.roles
+        roles: fallbackUser.roles,
+        avatarColor,
+        avatarId,
+        avatarImageUrl,
       });
       setAccessInfo({
-        subjectId: typeof identity.subject_id === "string" ? identity.subject_id : payload.subject_id ?? initialUser?.subjectId ?? "",
+        subjectId:
+          typeof identity.subject_id === "string"
+            ? identity.subject_id
+            : (payload.subject_id ?? initialUser?.subjectId ?? ""),
         roles: fallbackUser.roles,
         groups,
-        permissions
+        permissions,
       });
       setLanguage(nextLanguage);
-      const appMode = payload.settings?.apps?.akb?.settingsMode;
+      const appMode = mergedProfileSettings.settingsMode;
       if (isSettingsSurfaceMode(appMode)) {
         setSettingsMode(appMode);
       }
-      const profileId = payload.settings?.apps?.akb?.rolePreviewProfileId;
+      const profileId = mergedProfileSettings.rolePreviewProfileId;
       if (typeof profileId === "string" && rolePreview.canUse) {
         setRolePreview((current) => {
-          const profile = current.profiles.find((item) => item.id === profileId);
+          const profile = current.profiles.find(
+            (item) => item.id === profileId,
+          );
           return {
             ...current,
             profileId,
             label: profile?.label ?? current.label,
-            roles: profile?.roles ?? current.roles
+            roles: profile?.roles ?? current.roles,
           };
         });
       }
     },
-    [authModeLabel, initialUser?.roles, initialUser?.subjectId, language, rolePreview.canUse, setLanguage]
+    [
+      authModeLabel,
+      initialUser?.roles,
+      initialUser?.subjectId,
+      language,
+      rolePreview.canUse,
+      setLanguage,
+    ],
   );
 
   const persistProfileSettings = useCallback(
     async (
       values: StratosSettingsCoreValues,
-      options: { mode?: SettingsSurfaceMode; rolePreviewProfileId?: string } = {}
+      options: {
+        mode?: SettingsSurfaceMode;
+        rolePreviewProfileId?: string;
+      } = {},
     ): Promise<ProfileSettingsPayload> => {
-      const response = await fetch(withAppBasePath("/api/v1/profile/settings"), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          settings: {
-            core: values,
-            apps: {
-              akb: {
-                settingsMode: options.mode ?? settingsMode,
-                rolePreviewProfileId: options.rolePreviewProfileId ?? rolePreview.profileId
-              }
-            }
-          }
-        })
+      const core = settingsCoreForPayload(values);
+      const saved = await profileSettingsClient.save(
+        createStratosProfileSettingsPayload(core, "akb", {
+          settingsMode: options.mode ?? settingsMode,
+          rolePreviewProfileId:
+            options.rolePreviewProfileId ?? rolePreview.profileId,
+        }),
+      );
+      broadcastStratosProfileSettingsUpdate({
+        accent: typeof core.accent === "string" ? core.accent : undefined,
+        avatarImageUrl:
+          typeof core.avatarImageUrl === "string"
+            ? core.avatarImageUrl
+            : undefined,
+        displayName:
+          typeof core.displayName === "string" ? core.displayName : undefined,
+        email: typeof core.email === "string" ? core.email : undefined,
+        language: typeof core.language === "string" ? core.language : undefined,
+        source: "akb",
+        themeColor:
+          typeof core.accentColor === "string" ? core.accentColor : undefined,
       });
-      if (!response.ok) {
-        throw new Error(`Profile settings save failed with ${response.status}`);
-      }
-      return await response.json() as ProfileSettingsPayload;
+      return saved as ProfileSettingsPayload;
     },
-    [rolePreview.profileId, settingsMode]
+    [profileSettingsClient, rolePreview.profileId, settingsMode],
   );
 
   useEffect(() => {
     let active = true;
-    fetch(withAppBasePath("/api/v1/profile/settings"), { credentials: "same-origin" })
-      .then((response) => (response.ok ? response.json() : null))
+    profileSettingsClient
+      .get()
       .then((payload: ProfileSettingsPayload | null) => {
         if (!active || !payload) {
           return;
@@ -444,7 +583,36 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     return () => {
       active = false;
     };
-  }, [applyProfileSettings]);
+  }, [applyProfileSettings, profileSettingsClient]);
+
+  useEffect(() => {
+    const refreshProfile = () => {
+      void profileSettingsClient
+        .get()
+        .then((payload) =>
+          applyProfileSettings(payload as ProfileSettingsPayload),
+        )
+        .catch(() => undefined);
+    };
+    const unsubscribe = subscribeStratosProfileSettingsUpdate((update) => {
+      if (update.source !== "akb") {
+        refreshProfile();
+      }
+    });
+    const handleFocus = () => refreshProfile();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshProfile();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [applyProfileSettings, profileSettingsClient]);
 
   useEffect(() => {
     if (settingsDirty) {
@@ -454,8 +622,11 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
       ...current,
       displayName: userProfile.name,
       email: userProfile.email ?? "",
-      role: userProfile.roles.length > 0 ? userProfile.roles.join(", ") : authModeLabel,
-      language
+      role:
+        userProfile.roles.length > 0
+          ? userProfile.roles.join(", ")
+          : authModeLabel,
+      language,
     }));
   }, [authModeLabel, language, settingsDirty, userProfile]);
 
@@ -464,19 +635,52 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     setMobileSidebarOpen(false);
   };
   const railItems = [
-    { id: "documents", href: moduleRootRoutes.documents, label: copy.moduleDocuments, icon: Database, onSelect: handleRailSelect },
-    { id: "operations", href: moduleRootRoutes.operations, label: copy.moduleOperations, icon: ListChecks, onSelect: handleRailSelect },
-    { id: "ai", href: moduleRootRoutes.ai, label: copy.moduleAi, icon: Bot, onSelect: handleRailSelect },
-    { id: "governance", href: moduleRootRoutes.governance, label: copy.moduleGovernance, icon: ShieldCheck, onSelect: handleRailSelect }
+    {
+      id: "documents",
+      href: moduleRootRoutes.documents,
+      label: copy.moduleDocuments,
+      icon: Database,
+      onSelect: handleRailSelect,
+    },
+    {
+      id: "operations",
+      href: moduleRootRoutes.operations,
+      label: copy.moduleOperations,
+      icon: ListChecks,
+      onSelect: handleRailSelect,
+    },
+    {
+      id: "ai",
+      href: moduleRootRoutes.ai,
+      label: copy.moduleAi,
+      icon: Bot,
+      onSelect: handleRailSelect,
+    },
+    {
+      id: "governance",
+      href: moduleRootRoutes.governance,
+      label: copy.moduleGovernance,
+      icon: ShieldCheck,
+      onSelect: handleRailSelect,
+    },
   ];
   const activeRailHref = moduleRootRoutes[activeModule];
-  const activeModuleLabel = railItems.find((item) => item.id === activeModule)?.label ?? copy.workspaceTitle;
+  const activeModuleLabel =
+    railItems.find((item) => item.id === activeModule)?.label ??
+    copy.workspaceTitle;
   const activeModuleRoutes = moduleRouteGroups[activeModule];
-  const activeSubmenuItem = navigation[language].find((item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)));
+  const activeSubmenuItem = navigation[language].find(
+    (item) =>
+      pathname === item.href ||
+      (item.href !== "/" && pathname.startsWith(item.href)),
+  );
   const activeTopbarContext = activeSubmenuItem?.label ?? activeModuleLabel;
   const activeModuleActions = useMemo(
-    () => navigation[language].filter((item) => activeModuleRoutes.includes(item.href)).slice(0, 2),
-    [activeModuleRoutes, language]
+    () =>
+      navigation[language]
+        .filter((item) => activeModuleRoutes.includes(item.href))
+        .slice(0, 2),
+    [activeModuleRoutes, language],
   );
   const workspaceGroups = useMemo<StratosWorkspaceNavGroup[]>(() => {
     const groupLabel = moduleGroupLabel(activeModule, copy);
@@ -486,8 +690,8 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
         label: groupLabel,
         items: navigation[language]
           .filter((item) => activeModuleRoutes.includes(item.href))
-          .map((item) => navItemToWorkspaceItem(item, pathname))
-      }
+          .map((item) => navItemToWorkspaceItem(item, pathname)),
+      },
     ];
   }, [activeModule, activeModuleRoutes, copy, language, pathname]);
   const commandCenterItems = useMemo<CommandCenterItem[]>(() => {
@@ -495,35 +699,37 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
       router.push(href);
       setCommandCenterOpen(false);
     };
-    const navigationItems: CommandCenterItem[] = navigation[language].map((item) => {
-      const Icon = item.icon;
-      const moduleId = moduleForPath(item.href);
-      return {
-        id: `nav:${item.href}`,
-        type: item.href === "/" ? "dashboard" : "action",
-        title: item.label,
-        subtitle: moduleGroupLabel(moduleId, copy),
-        detail: item.href,
-        section: copy.commandSections,
-        icon: <Icon size={18} aria-hidden="true" />,
-        tone: moduleTone(moduleId),
-        keywords: [item.href, moduleId],
-        primaryAction: {
-          id: `open:${item.href}`,
-          label: copy.commandOpen,
-          hint: "Enter",
-          onSelect: () => openRoute(item.href)
-        },
-        actions: [
-          {
-            id: `go:${item.href}`,
-            label: copy.commandGo,
+    const navigationItems: CommandCenterItem[] = navigation[language].map(
+      (item) => {
+        const Icon = item.icon;
+        const moduleId = moduleForPath(item.href);
+        return {
+          id: `nav:${item.href}`,
+          type: item.href === "/" ? "dashboard" : "action",
+          title: item.label,
+          subtitle: moduleGroupLabel(moduleId, copy),
+          detail: item.href,
+          section: copy.commandSections,
+          icon: <Icon size={18} aria-hidden="true" />,
+          tone: moduleTone(moduleId),
+          keywords: [item.href, moduleId],
+          primaryAction: {
+            id: `open:${item.href}`,
+            label: copy.commandOpen,
             hint: "Enter",
-            onSelect: () => openRoute(item.href)
-          }
-        ]
-      };
-    });
+            onSelect: () => openRoute(item.href),
+          },
+          actions: [
+            {
+              id: `go:${item.href}`,
+              label: copy.commandGo,
+              hint: "Enter",
+              onSelect: () => openRoute(item.href),
+            },
+          ],
+        };
+      },
+    );
     return [
       ...navigationItems,
       {
@@ -531,7 +737,10 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
         type: "action",
         title: language === "cs" ? "Založit dokument" : "Create document",
         subtitle: copy.moduleDocuments,
-        detail: language === "cs" ? "Zadat metadata a pokračovat nahráním první verze." : "Enter metadata and continue by uploading the first version.",
+        detail:
+          language === "cs"
+            ? "Zadat metadata a pokračovat nahráním první verze."
+            : "Enter metadata and continue by uploading the first version.",
         section: copy.commandTools,
         icon: <FilePlus2 size={18} aria-hidden="true" />,
         tone: "green",
@@ -540,15 +749,21 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           id: "new-document",
           label: copy.commandOpen,
           hint: "Enter",
-          onSelect: () => openRoute("/documents/new")
-        }
+          onSelect: () => openRoute("/documents/new"),
+        },
       },
       {
         id: "action:upload",
         type: "action",
-        title: language === "cs" ? "Nahrát verzi dokumentu" : "Upload document version",
+        title:
+          language === "cs"
+            ? "Nahrát verzi dokumentu"
+            : "Upload document version",
         subtitle: copy.moduleDocuments,
-        detail: language === "cs" ? "Vybrat originální soubor a spustit zpracování pro citace." : "Choose the original file and start citation processing.",
+        detail:
+          language === "cs"
+            ? "Vybrat originální soubor a spustit zpracování pro citace."
+            : "Choose the original file and start citation processing.",
         section: copy.commandTools,
         icon: <FilePlus2 size={18} aria-hidden="true" />,
         tone: "blue",
@@ -557,15 +772,18 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           id: "upload-document",
           label: copy.commandOpen,
           hint: "Enter",
-          onSelect: () => openRoute("/upload")
-        }
+          onSelect: () => openRoute("/upload"),
+        },
       },
       {
         id: "knowledge:chat",
         type: "report",
         title: language === "cs" ? "Dotaz se zdroji" : "Ask with citations",
         subtitle: copy.moduleKnowledge,
-        detail: language === "cs" ? "Otevřít znalostní chat s citacemi." : "Open knowledge chat with citations.",
+        detail:
+          language === "cs"
+            ? "Otevřít znalostní chat s citacemi."
+            : "Open knowledge chat with citations.",
         section: copy.commandKnowledge,
         icon: <Bot size={18} aria-hidden="true" />,
         tone: "purple",
@@ -574,9 +792,9 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           id: "open-chat",
           label: copy.commandOpen,
           hint: "Enter",
-          onSelect: () => openRoute("/chat")
-        }
-      }
+          onSelect: () => openRoute("/chat"),
+        },
+      },
     ];
   }, [copy, language, router]);
 
@@ -596,23 +814,59 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
     window.location.assign(withAppBasePath("/api/auth/logout"));
   };
 
-  const handleSettingsValueChange = (key: StratosSettingsCoreValueKey, value: StratosSettingsCoreValue) => {
-    setSettingsValues((current) => ({ ...current, [key]: value }));
+  const handleSettingsValueChange = (
+    key: StratosSettingsCoreValueKey,
+    value: StratosSettingsCoreValue,
+  ) => {
+    setSettingsValues((current) => {
+      if (key === "avatarId" && typeof value === "string") {
+        return {
+          ...current,
+          avatarColor: avatarColorForValue(value),
+          [key]: value,
+        };
+      }
+      return { ...current, [key]: value };
+    });
     setSettingsDirty(true);
   };
 
   const handleSettingsModeChange = (mode: SettingsSurfaceMode) => {
     setSettingsMode(mode);
-    setSettingsDirty(true);
+    persistProfileSettings(settingsValues, {
+      mode,
+      rolePreviewProfileId: rolePreview.profileId,
+    })
+      .then((payload) => applyProfileSettings(payload))
+      .catch(() => setSettingsDirty(true));
   };
 
-  const handleLanguageChange = async (nextLanguage: AklLanguage) => {
-    const nextValues = { ...settingsValues, language: nextLanguage };
-    setSettingsValues(nextValues);
-    setLanguage(nextLanguage);
+  const handleSettingsSave = async () => {
     try {
-      const payload = await persistProfileSettings(nextValues, { mode: settingsMode, rolePreviewProfileId: rolePreview.profileId });
-      applyProfileSettings(payload);
+      const savedProfile = await persistProfileSettings(settingsValues, {
+        mode: settingsMode,
+        rolePreviewProfileId: rolePreview.profileId,
+      });
+      applyProfileSettings(savedProfile);
+      if (
+        rolePreview.canUse &&
+        rolePreview.profileId !== savedRolePreviewProfileId
+      ) {
+        const response = await fetch(
+          withAppBasePath("/api/auth/role-preview"),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ profileId: rolePreview.profileId }),
+          },
+        ).catch(() => null);
+        if (response?.ok) {
+          window.location.reload();
+          return;
+        }
+      }
+      setSettingsDirty(false);
     } catch {
       setSettingsDirty(true);
     }
@@ -625,34 +879,9 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
       active: Boolean(profileId),
       profileId,
       label: profile?.label ?? "",
-      roles: profile?.roles ?? []
+      roles: profile?.roles ?? [],
     }));
     setSettingsDirty(true);
-  };
-
-  const handleSettingsSave = async () => {
-    try {
-      const savedProfile = await persistProfileSettings(settingsValues, {
-        mode: settingsMode,
-        rolePreviewProfileId: rolePreview.profileId
-      });
-      applyProfileSettings(savedProfile);
-      if (rolePreview.canUse && rolePreview.profileId !== savedRolePreviewProfileId) {
-        const response = await fetch(withAppBasePath("/api/auth/role-preview"), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          credentials: "same-origin",
-          body: JSON.stringify({ profileId: rolePreview.profileId })
-        }).catch(() => null);
-        if (response?.ok) {
-          window.location.reload();
-          return;
-        }
-      }
-      setSettingsDirty(false);
-    } catch {
-      setSettingsDirty(true);
-    }
   };
 
   if (isEmbeddedPath) {
@@ -662,29 +891,43 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
   if (isEmployeeChatOnly({ roles: userProfile.roles })) {
     return (
       <main className="akb-employee-portal-shell">
-        <header className="akb-employee-portal-topbar">
-          <Link className="akb-employee-portal-brand" href="/chat">
-            <span className="akb-employee-portal-mark" aria-hidden="true">AKB</span>
-            <span>
-              <strong>{copy.assistantBrand}</strong>
-              <small>{copy.assistantSubtitle}</small>
-            </span>
-          </Link>
-          <div className="akb-employee-portal-actions">
-            <button
-              className="akb-chat-icon-button"
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              title={copy.settings}
-              aria-label={copy.settings}
-            >
-              <UserRound size={16} aria-hidden="true" />
-            </button>
-            <button className="akb-chat-icon-button" type="button" onClick={handleLogout} title={copy.logout} aria-label={copy.logout}>
-              <LogOut size={16} aria-hidden="true" />
-            </button>
-          </div>
-        </header>
+        <ProjectTopbar
+          apiModeLabel={apiModeLabel}
+          authModeLabel={authModeLabel}
+          commandCenterLabel={copy.commandCenterOpen}
+          commandCenterPlaceholder={copy.commandCenterPlaceholder}
+          healthLabel={copy.healthOk}
+          labels={{
+            applications: copy.stratosApplications,
+            appComingSoon: copy.appComingSoon,
+            logout: copy.logout,
+            settings: copy.settings,
+            userMenu: copy.userMenu,
+          }}
+          language={language}
+          onCommandCenterOpen={() => setCommandCenterOpen(true)}
+          onLogout={handleLogout}
+          onSettingsOpen={() => setSettingsOpen(true)}
+          projectName={copy.assistantBrand}
+          user={userProfile}
+          workspaceName="AKB"
+        />
+        <CommandCenter
+          open={commandCenterOpen}
+          query={commandCenterQuery}
+          items={commandCenterItems}
+          labels={{
+            title: copy.commandCenterTitle,
+            placeholder: copy.commandCenterPlaceholder,
+            noResults: copy.commandCenterNoResults,
+            open: copy.commandCenterOpen,
+            close: copy.commandCenterClose,
+            actions: copy.commandCenterActions,
+            preview: copy.commandCenterPreview,
+          }}
+          onQueryChange={setCommandCenterQuery}
+          onClose={() => setCommandCenterOpen(false)}
+        />
         {children}
         {settingsOpen ? (
           <AppSettingsSurface
@@ -725,7 +968,9 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           footer={
             <>
               <div className="health-dot" aria-hidden="true" />
-              <span>{apiModeLabel} · {authModeLabel}</span>
+              <span>
+                {apiModeLabel} · {authModeLabel}
+              </span>
             </>
           }
         />
@@ -737,7 +982,10 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           collapsed={sidebarCollapsed}
           footer={copy.workspaceFooter}
           headerActions={
-            <div className="stratos-sidebar-hover-actions" aria-label={copy.allowedActions}>
+            <div
+              className="stratos-sidebar-hover-actions"
+              aria-label={copy.allowedActions}
+            >
               {activeModuleActions.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -759,17 +1007,28 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
               <button
                 className="stratos-sidebar-action"
                 type="button"
-                aria-label={sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar}
-                title={sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar}
+                aria-label={
+                  sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar
+                }
+                title={
+                  sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar
+                }
                 onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
               >
-                {sidebarCollapsed ? <ChevronsRight size={16} aria-hidden="true" /> : <ChevronsLeft size={16} aria-hidden="true" />}
+                {sidebarCollapsed ? (
+                  <ChevronsRight size={16} aria-hidden="true" />
+                ) : (
+                  <ChevronsLeft size={16} aria-hidden="true" />
+                )}
               </button>
             </div>
           }
         >
           {/* Mobile-only: section switcher that replaces the hidden AppRail on small screens */}
-          <nav className="sidebar-mobile-sections" aria-label={language === "cs" ? "Moduly AKB" : "AKB modules"}>
+          <nav
+            className="sidebar-mobile-sections"
+            aria-label={language === "cs" ? "Moduly AKB" : "AKB modules"}
+          >
             {railItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -792,7 +1051,11 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
           <StratosWorkspaceNav
             key={activeModule}
             groups={workspaceGroups}
-            ariaLabel={language === "cs" ? "Navigace pracovní plochy" : "Workspace navigation"}
+            ariaLabel={
+              language === "cs"
+                ? "Navigace pracovní plochy"
+                : "Workspace navigation"
+            }
             onNavigate={() => setMobileSidebarOpen(false)}
           />
         </StratosWorkspaceSidebar>
@@ -809,15 +1072,11 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
               applications: copy.stratosApplications,
               appComingSoon: copy.appComingSoon,
               logout: copy.logout,
-              saved: copy.saved,
-              saveFailed: copy.saveFailed,
-              saving: copy.saving,
               settings: copy.settings,
-              userMenu: copy.userMenu
+              userMenu: copy.userMenu,
             }}
             language={language}
             onCommandCenterOpen={() => setCommandCenterOpen(true)}
-            onLanguageChange={handleLanguageChange}
             onLogout={handleLogout}
             mobileMenuOpen={mobileSidebarOpen}
             onMobileMenuOpen={toggleMobileSidebar}
@@ -837,7 +1096,7 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
               open: copy.commandCenterOpen,
               close: copy.commandCenterClose,
               actions: copy.commandCenterActions,
-              preview: copy.commandCenterPreview
+              preview: copy.commandCenterPreview,
             }}
             onQueryChange={setCommandCenterQuery}
             onClose={() => setCommandCenterOpen(false)}
@@ -867,7 +1126,6 @@ function AppShellContent({ children, apiMode, authMode, initialUser }: AppShellP
       {children}
     </StratosAppShell>
   );
-
 }
 
 function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {
@@ -887,15 +1145,25 @@ function moduleTone(moduleId: ShellModuleId): CommandCenterItem["tone"] {
 }
 
 function normalizeRolePreview(value: unknown): RolePreviewSettings {
-  const input = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  const input =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
   const profiles = Array.isArray(input.profiles)
     ? input.profiles
-        .filter((profile): profile is Record<string, unknown> => typeof profile === "object" && profile !== null)
+        .filter(
+          (profile): profile is Record<string, unknown> =>
+            typeof profile === "object" && profile !== null,
+        )
         .map((profile) => ({
           id: String(profile.id ?? ""),
           label: String(profile.label ?? ""),
           description: String(profile.description ?? ""),
-          roles: Array.isArray(profile.roles) ? profile.roles.filter((role): role is string => typeof role === "string") : []
+          roles: Array.isArray(profile.roles)
+            ? profile.roles.filter(
+                (role): role is string => typeof role === "string",
+              )
+            : [],
         }))
         .filter((profile) => profile.id && profile.label)
     : [];
@@ -905,35 +1173,107 @@ function normalizeRolePreview(value: unknown): RolePreviewSettings {
     canUse: Boolean(input.canUse),
     active: Boolean(input.active),
     profileId,
-    label: typeof input.label === "string" ? input.label : selectedProfile?.label ?? "",
-    roles: Array.isArray(input.roles) ? input.roles.filter((role): role is string => typeof role === "string") : selectedProfile?.roles ?? [],
-    profiles
+    label:
+      typeof input.label === "string"
+        ? input.label
+        : (selectedProfile?.label ?? ""),
+    roles: Array.isArray(input.roles)
+      ? input.roles.filter((role): role is string => typeof role === "string")
+      : (selectedProfile?.roles ?? []),
+    profiles,
   };
 }
 
 function settingsValuesFromCore(
   core: Record<string, unknown>,
-  fallback: StratosSettingsCoreValues
+  fallback: StratosSettingsCoreValues,
 ): StratosSettingsCoreValues {
+  const avatarId = stringSetting(
+    core.avatarId,
+    stringSetting(core.avatarColor, stringSetting(fallback.avatarId, "teal")),
+  );
+  const avatarColor = stringSetting(
+    core.avatarColor,
+    avatarColorForValue(avatarId),
+  );
   return {
+    avatarId,
+    avatarColor,
+    avatarImageUrl: stringSetting(
+      core.avatarImageUrl,
+      stringSetting(fallback.avatarImageUrl, ""),
+    ),
     displayName: stringSetting(core.displayName, fallback.displayName),
     email: stringSetting(core.email, fallback.email),
     role: stringSetting(core.role, fallback.role),
-    language: core.language === "en" ? "en" : "cs",
+    language: core.language === "en" || core.locale === "en" ? "en" : "cs",
     theme: stringSetting(core.theme, stringSetting(fallback.theme, "system")),
-    accent: stringSetting(core.accent, stringSetting(fallback.accent, "teal")),
-    highContrast: booleanSetting(core.highContrast, booleanSetting(fallback.highContrast, false)),
-    timezone: stringSetting(core.timezone, stringSetting(fallback.timezone, "Europe/Prague")),
-    notifyTimezone: booleanSetting(core.notifyTimezone, booleanSetting(fallback.notifyTimezone, true)),
-    weekStart: stringSetting(core.weekStart, stringSetting(fallback.weekStart, "monday")),
-    timeFormat: stringSetting(core.timeFormat, stringSetting(fallback.timeFormat, "24h")),
-    dateFormat: stringSetting(core.dateFormat, stringSetting(fallback.dateFormat, "dd.mm.yyyy")),
-    compactMode: booleanSetting(core.compactMode, booleanSetting(fallback.compactMode, false)),
-    commandHints: booleanSetting(core.commandHints, booleanSetting(fallback.commandHints, true)),
-    flyoutToasts: booleanSetting(core.flyoutToasts, booleanSetting(fallback.flyoutToasts, true)),
-    markdown: booleanSetting(core.markdown, booleanSetting(fallback.markdown, true)),
-    keyboardShortcuts: booleanSetting(core.keyboardShortcuts, booleanSetting(fallback.keyboardShortcuts, true))
+    accent: stringSetting(
+      core.accent,
+      stringSetting(core.accentColor, stringSetting(fallback.accent, "teal")),
+    ),
+    highContrast: booleanSetting(
+      core.highContrast,
+      booleanSetting(fallback.highContrast, false),
+    ),
+    timezone: stringSetting(
+      core.timezone,
+      stringSetting(fallback.timezone, "Europe/Prague"),
+    ),
+    notifyTimezone: booleanSetting(
+      core.notifyTimezone,
+      booleanSetting(fallback.notifyTimezone, true),
+    ),
+    weekStart: stringSetting(
+      core.weekStart,
+      stringSetting(fallback.weekStart, "monday"),
+    ),
+    timeFormat: stringSetting(
+      core.timeFormat,
+      stringSetting(fallback.timeFormat, "24h"),
+    ),
+    dateFormat: stringSetting(
+      core.dateFormat,
+      stringSetting(fallback.dateFormat, "dd.mm.yyyy"),
+    ),
+    compactMode: booleanSetting(
+      core.compactMode,
+      booleanSetting(fallback.compactMode, false),
+    ),
+    commandHints: booleanSetting(
+      core.commandHints,
+      booleanSetting(fallback.commandHints, true),
+    ),
+    flyoutToasts: booleanSetting(
+      core.flyoutToasts,
+      booleanSetting(fallback.flyoutToasts, true),
+    ),
+    markdown: booleanSetting(
+      core.markdown,
+      booleanSetting(fallback.markdown, true),
+    ),
+    keyboardShortcuts: booleanSetting(
+      core.keyboardShortcuts,
+      booleanSetting(fallback.keyboardShortcuts, true),
+    ),
   };
+}
+
+function settingsCoreForPayload(
+  values: StratosSettingsCoreValues,
+): Record<string, unknown> {
+  const core: Record<string, unknown> = { ...values };
+  const language = typeof values.language === "string" ? values.language : "cs";
+  const accent = typeof values.accent === "string" ? values.accent : "teal";
+  const avatarId =
+    typeof values.avatarId === "string" ? values.avatarId : "teal";
+  core.locale = language;
+  core.accentColor = accent;
+  core.avatarColor =
+    typeof values.avatarColor === "string" && values.avatarColor
+      ? values.avatarColor
+      : avatarColorForValue(avatarId);
+  return core;
 }
 
 function stringSetting(value: unknown, fallback: string): string {
@@ -945,7 +1285,9 @@ function booleanSetting(value: unknown, fallback: boolean): boolean {
 }
 
 function arrayOfStrings(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function isSettingsSurfaceMode(value: unknown): value is SettingsSurfaceMode {
@@ -953,13 +1295,21 @@ function isSettingsSurfaceMode(value: unknown): value is SettingsSurfaceMode {
 }
 
 function moduleForPath(pathname: string): ShellModuleId {
-  const entry = (Object.entries(moduleRouteGroups) as Array<[ShellModuleId, string[]]>).find(([, routes]) =>
-    routes.some((route) => pathname === route || (route !== "/" && pathname.startsWith(route)))
+  const entry = (
+    Object.entries(moduleRouteGroups) as Array<[ShellModuleId, string[]]>
+  ).find(([, routes]) =>
+    routes.some(
+      (route) =>
+        pathname === route || (route !== "/" && pathname.startsWith(route)),
+    ),
   );
   return entry?.[0] ?? "operations";
 }
 
-function moduleGroupLabel(moduleId: ShellModuleId, copy: Record<string, string>) {
+function moduleGroupLabel(
+  moduleId: ShellModuleId,
+  copy: Record<string, string>,
+) {
   if (moduleId === "documents") {
     return copy.groupDocuments;
   }
@@ -978,13 +1328,16 @@ function moduleGroupLabel(moduleId: ShellModuleId, copy: Record<string, string>)
 function createSettingsValues({
   authModeLabel,
   language,
-  user
+  user,
 }: {
   authModeLabel: string;
   language: AklLanguage;
   user: Pick<AklUserProfile, "name" | "email" | "roles">;
 }): StratosSettingsCoreValues {
   return {
+    avatarId: "teal",
+    avatarColor: avatarColorForValue("teal"),
+    avatarImageUrl: "",
     displayName: user.name,
     email: user.email ?? "",
     role: user.roles.length > 0 ? user.roles.join(", ") : authModeLabel,
@@ -1001,13 +1354,20 @@ function createSettingsValues({
     commandHints: true,
     flyoutToasts: true,
     markdown: true,
-    keyboardShortcuts: true
+    keyboardShortcuts: true,
   };
+}
+
+function avatarColorForValue(value: string): string {
+  if (/^#[0-9a-f]{3,8}$/i.test(value)) {
+    return value;
+  }
+  return avatarColors[value] ?? avatarColors.teal;
 }
 
 function navItemToWorkspaceItem(
   item: (typeof navigation)[AklLanguage][number],
-  pathname: string
+  pathname: string,
 ): StratosWorkspaceNavGroup["items"][number] {
   const Icon = item.icon;
   return {
@@ -1015,7 +1375,9 @@ function navItemToWorkspaceItem(
     href: withAppBasePath(item.href),
     label: item.label,
     icon: <Icon size={16} aria-hidden="true" />,
-    active: pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+    active:
+      pathname === item.href ||
+      (item.href !== "/" && pathname.startsWith(item.href)),
   };
 }
 

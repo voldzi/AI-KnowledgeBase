@@ -115,22 +115,33 @@ Archived or expired conversations are omitted from the default list.
 ## STRATOS Profile Settings
 
 AKB settings use the shared STRATOS settings surface in
-`@voldzi/stratos-ui`. The browser reads and writes profile preferences only
-through the AKB web/API bridge:
+`@voldzi/stratos-ui` baseline `0.3.17+`. The browser reads and writes profile
+preferences only through the AKB web/API bridge and the shared helper pattern:
+
+```ts
+import {
+  createStratosProfileSettingsClient,
+  createStratosProfileSettingsPayload,
+  mergeStratosProfileSettings,
+} from "@voldzi/stratos-ui";
+```
 
 ```text
 GET /api/v1/profile/settings
 PUT /api/v1/profile/settings
 ```
 
+`PUT` accepts the shared helper payload shape `{ core, apps }` and the legacy
+AKB wrapper shape `{ settings: { core, apps } }`.
+
 The response contains `settings.core` for shared STRATOS values such as
-display name, email, language, theme, accent, accessibility and working
-preferences. AKB-specific values are stored under `settings.apps.akb`, for
-example the settings surface mode and optional admin role-preview preference.
-Roles, groups and allowed surfaces are returned as read-only `identity`
-metadata from Keycloak/RBAC and are never taken from saved profile settings.
-Browser `localStorage` is not a source of truth for avatar, language,
-appearance, or profile values.
+display name, email, avatar id/color/image reference, language/locale, theme,
+accent/accentColor, accessibility and working preferences. AKB-specific values
+are stored under `settings.apps.akb`, for example the settings surface mode and
+optional admin role-preview preference. Roles, groups and allowed surfaces are
+returned as read-only `identity` metadata from Keycloak/RBAC and are never taken
+from saved profile settings. Browser `localStorage` is not a source of truth for
+avatar, language, appearance, or profile values.
 
 Internally, the web bridge persists these values to Registry API:
 

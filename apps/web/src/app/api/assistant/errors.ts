@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { ApiClientError } from "@/lib/types";
 
 function isNextRedirectError(error: unknown): boolean {
-  const digest = typeof error === "object" && error !== null && "digest" in error ? (error as { digest?: unknown }).digest : undefined;
+  const digest =
+    typeof error === "object" && error !== null && "digest" in error
+      ? (error as { digest?: unknown }).digest
+      : undefined;
   return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
 }
 
@@ -12,10 +15,10 @@ export function badAssistantRequest(message: string) {
     {
       error: {
         code: "BAD_REQUEST",
-        message
-      }
+        message,
+      },
     },
-    { status: 400 }
+    { status: 400 },
   );
 }
 
@@ -23,11 +26,11 @@ export function unauthorizedAssistantRequest() {
   return NextResponse.json(
     {
       error: {
-        code: "AUTH_REQUIRED",
-        message: "Assistant request requires an active session."
-      }
+        code: "UNAUTHORIZED",
+        message: "Authentication is required.",
+      },
     },
-    { status: 401 }
+    { status: 401 },
   );
 }
 
@@ -42,10 +45,10 @@ export function assistantBridgeError(error: unknown) {
         error: {
           code: error.code,
           message: error.message,
-          trace_id: error.traceId
-        }
+          trace_id: error.traceId,
+        },
       },
-      { status: error.status }
+      { status: error.status },
     );
   }
 
@@ -53,9 +56,9 @@ export function assistantBridgeError(error: unknown) {
     {
       error: {
         code: "ASSISTANT_WORKFLOW_ERROR",
-        message: "Assistant request failed."
-      }
+        message: "Assistant request failed.",
+      },
     },
-    { status: 500 }
+    { status: 500 },
   );
 }
