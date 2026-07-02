@@ -33,6 +33,9 @@ KNOWN_TITLE_REPAIRS = {
     "prvodce-dokldn-poadavk-pro-zpis-sluby-cloud-computingu-v-1-2": (
         "Průvodce dokládáním požadavků pro zápis služby cloud computingu v.1.2"
     ),
+    "ploha-1-vzorov-politika-systmu-zen-bezpenosti-informac": (
+        "Příloha 1 - Vzorová politika systému řízení bezpečnosti informací"
+    ),
 }
 
 
@@ -354,7 +357,8 @@ def select_document_title(
         return "Veřejný PDF dokument", "fallback"
     _, source, title = max(scored, key=lambda item: item[0])
     repaired_title = known_title_repair(path=path, candidates=[title])
-    if repaired_title and looks_like_czech_diacritics_loss(normalize_key(title)):
+    normalized_title = normalize_key(title)
+    if repaired_title and (looks_like_czech_diacritics_loss(normalized_title) or looks_generic_title(normalized_title)):
         return repaired_title[:300], "known_title_repair"
     return title[:300], source
 
@@ -489,9 +493,14 @@ def looks_like_czech_diacritics_loss(normalized: str) -> bool:
         "vyhlky",
         "bezpenosti",
         "dokldn",
+        "informac",
+        "ploha",
         "poadavk",
         "sluby",
+        "systmu",
         "kybernetick",
+        "vzorov",
+        "zen",
     }
     return bool(set(normalized.split()).intersection(suspicious_tokens))
 

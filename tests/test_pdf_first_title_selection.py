@@ -89,6 +89,30 @@ def test_reset_title_repairs_known_broken_v1_without_matching_v12(tmp_path: Path
     assert metadata["title_source"] == "known_title_repair"
 
 
+def test_reset_title_repairs_known_broken_security_policy_attachment(tmp_path: Path) -> None:
+    markdown = tmp_path / "ploha-1-vzorov-politika-systmu-zen-bezpenosti-informac-6493c8d2d0.md"
+    markdown.write_text(
+        "\n".join(
+            [
+                "# Ploha 1 Vzorov politika systmu zen bezpenosti informac",
+                "",
+                "- Typ zdroje: strategie",
+                "- Klasifikace: public",
+                "",
+                "## Importní metadata",
+                "",
+                "- Původní katalogová položka: podpurne materialy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    metadata = reset_pdf_first_corpus.parse_markdown_metadata(markdown)
+
+    assert metadata["title"] == "Příloha 1 - Vzorová politika systému řízení bezpečnosti informací"
+    assert metadata["title_source"] == "known_title_repair"
+
+
 def test_reset_title_prefers_explicit_metadata_title(tmp_path: Path) -> None:
     markdown = tmp_path / "fallback-slug-title.md"
     markdown.write_text(
