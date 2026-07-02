@@ -326,6 +326,114 @@ Vrací stejný tvar jako návrh. Opakované `propose` se stejným
 kotvou, `profile` a `profile_version` vrátí stejný uložený výsledek. Nová verze
 dokumentu označí starší nefinální výsledek jako `SUPERSEDED`.
 
+### ArchFlow architektonické artefakty
+
+ArchFlow používá AKB jako jediný Document AI backend pro architekturu. ArchFlow
+ukládá pouze reference:
+
+- `tenant_id`,
+- `external_system = STRATOS_ARCHFLOW`,
+- `entity_type = ArchitectureArtifact`,
+- `entity_id`, případně `need_id`,
+- `external_ref = archflow-need:<needId>:architecture-artifact:<artifactId>`,
+- `document_id`, `document_version_id`,
+- canonical AKB URL a citation URL,
+- `artifact_type`, `review_status`, `baseline_status`,
+- `context_tags`.
+
+ArchFlow nesmí ukládat binární dokumenty, extrahovaný text, chunky, embeddingy
+ani LLM/RAG výstupy mimo AKB.
+
+Podporované typy artefaktů:
+
+- `TARGET_ARCHITECTURE`
+- `SOLUTION_ARCHITECTURE`
+- `INTEGRATION_SPEC`
+- `DATA_SECURITY_ASSESSMENT`
+- `ARCHITECTURE_DECISION`
+- `AS_BUILT_ARCHITECTURE`
+- `HANDOVER_PACKAGE`
+
+AKB garantuje sdílený výběr a zobrazení přes STRATOS komponenty
+`AkbDocumentPicker` a `AkbDocumentViewer`. Citace se otevírají přes AKB viewer
+na konkrétní chunk/stranu/sekci dokumentu. ArchFlow nepředává ani nepřebírá
+binární obsah; browser pracuje jen přes AKB web/BFF endpointy.
+
+#### Kontrola architektonického balíčku
+
+```http
+POST /api/v1/stratos/extractions/architecture-package/propose
+```
+
+Profil: `architecture_package_review_v1`.
+
+Příklad payloadu:
+
+```json
+{
+  "tenant_id": "default",
+  "external_system": "STRATOS_ARCHFLOW",
+  "external_ref": "archflow-need:need-1:architecture-artifact:artifact-1",
+  "entity_type": "ArchitectureArtifact",
+  "entity_id": "artifact-1",
+  "need_id": "need-1",
+  "artifact_type": "TARGET_ARCHITECTURE",
+  "document_id": "doc_...",
+  "document_version_id": "ver_...",
+  "documents": [
+    {
+      "document_id": "doc_...",
+      "document_version_id": "ver_...",
+      "canonical_url": "/akb/documents/doc_...",
+      "classification": "internal"
+    }
+  ],
+  "subject_id": "user-uuid",
+  "profile": "architecture_package_review_v1",
+  "profile_version": "1",
+  "classification_max": "internal",
+  "context_tags": [
+    "archflow",
+    "STRATOS_ARCHFLOW",
+    "need:need-1",
+    "architecture-artifact:artifact-1",
+    "artifact-type:TARGET_ARCHITECTURE"
+  ],
+  "max_chunks": 18,
+  "correlation_id": "corr_..."
+}
+```
+
+Endpoint vrací pouze citované návrhy pro oblasti jako rozsah balíčku,
+architektonická rozhodnutí, integrační požadavky, data/security kontroly,
+rizika a otevřené body.
+
+#### Předávací a as-built balíček
+
+```http
+POST /api/v1/stratos/extractions/architecture-handover/propose
+```
+
+Profil: `architecture_handover_v1`.
+
+Payload má stejný tvar jako kontrola architektonického balíčku, jen `profile`
+je `architecture_handover_v1` a `artifact_type` typicky
+`AS_BUILT_ARCHITECTURE` nebo `HANDOVER_PACKAGE`. Endpoint vrací citované návrhy
+pro as-built stav, předávací položky, provozní runbooky, vlastníky,
+akceptační evidenci a otevřená rizika.
+
+Všechny ArchFlow extraction workflow používají společné:
+
+```http
+GET /api/v1/stratos/extractions/{extraction_id}
+POST /api/v1/stratos/extractions/{extraction_id}/feedback
+```
+
+Filtrovat lze přes `external_system`, `tenant_id`, `entity_type`,
+`artifact_type` a `context_tags`. AKB v metadatech uložené extrakce zachová
+`artifact_type`, `need_id`, `source_documents`, `source_set_id`,
+`catalog_version_id` a `context_tags`.
+
 ### Návrh cílů, povinností a metrik pro ArchFlow
 
 ```http

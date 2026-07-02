@@ -29,6 +29,8 @@ from app.schemas import (
     AssistantChatResponse,
     AssistantConversationResponse,
     AssistantSuggestionsResponse,
+    ArchflowArchitectureExtractionProposeRequest,
+    ArchflowArchitectureExtractionResponse,
     ArchflowGoalExtractionProposeRequest,
     ArchflowGoalExtractionResponse,
     ContractExtractionProfilesResponse,
@@ -302,6 +304,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload.profile,
         )
         return await _service(request).propose_archflow_goal_extraction(payload, auth_context=auth_context)
+
+    @app.post(
+        "/api/v1/stratos/extractions/architecture-package/propose",
+        response_model=ArchflowArchitectureExtractionResponse,
+        tags=["stratos-extractions"],
+    )
+    async def propose_archflow_architecture_package_extraction(
+        payload: ArchflowArchitectureExtractionProposeRequest,
+        request: Request,
+    ) -> ArchflowArchitectureExtractionResponse:
+        auth_context = _guard_request(request)
+        if payload.profile != "architecture_package_review_v1":
+            raise RetrievalError(
+                "INVALID_EXTRACTION_PROFILE",
+                "architecture-package endpoint requires profile architecture_package_review_v1.",
+                status_code=422,
+                details={"profile": payload.profile},
+            )
+        logger.info(
+            "stratos_archflow_architecture_package_extraction_requested subject_id=%s tenant_id=%s "
+            "entity_type=%s entity_id=%s artifact_type=%s source_document_count=%s profile=%s content_logged=false",
+            payload.subject_id,
+            payload.tenant_id,
+            payload.entity_type,
+            payload.entity_id,
+            payload.artifact_type,
+            len(payload.documents),
+            payload.profile,
+        )
+        return await _service(request).propose_archflow_architecture_package_extraction(payload, auth_context=auth_context)
+
+    @app.post(
+        "/api/v1/stratos/extractions/architecture-handover/propose",
+        response_model=ArchflowArchitectureExtractionResponse,
+        tags=["stratos-extractions"],
+    )
+    async def propose_archflow_handover_extraction(
+        payload: ArchflowArchitectureExtractionProposeRequest,
+        request: Request,
+    ) -> ArchflowArchitectureExtractionResponse:
+        auth_context = _guard_request(request)
+        if payload.profile != "architecture_handover_v1":
+            raise RetrievalError(
+                "INVALID_EXTRACTION_PROFILE",
+                "architecture-handover endpoint requires profile architecture_handover_v1.",
+                status_code=422,
+                details={"profile": payload.profile},
+            )
+        logger.info(
+            "stratos_archflow_handover_extraction_requested subject_id=%s tenant_id=%s "
+            "entity_type=%s entity_id=%s artifact_type=%s source_document_count=%s profile=%s content_logged=false",
+            payload.subject_id,
+            payload.tenant_id,
+            payload.entity_type,
+            payload.entity_id,
+            payload.artifact_type,
+            len(payload.documents),
+            payload.profile,
+        )
+        return await _service(request).propose_archflow_handover_extraction(payload, auth_context=auth_context)
 
     @app.get(
         "/api/v1/stratos/extractions/{extraction_id}",

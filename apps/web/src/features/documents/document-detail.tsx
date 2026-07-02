@@ -3017,12 +3017,34 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   }
   if (
     mimeType.startsWith("text/") ||
+    mimeType === "application/bpmn+xml" ||
     mimeType === "application/json" ||
+    mimeType === "application/vnd.asyncapi" ||
+    mimeType === "application/vnd.asyncapi+json" ||
+    mimeType === "application/vnd.jgraph.mxfile" ||
+    mimeType === "application/vnd.oai.openapi" ||
+    mimeType === "application/vnd.oai.openapi+json" ||
+    mimeType === "application/vnd.opengroup.archimate.exchange+xml" ||
     mimeType === "application/xml" ||
+    mimeType === "application/x-yaml" ||
+    mimeType === "application/yaml" ||
     mimeType === "application/xhtml+xml" ||
+    filename.endsWith(".archimate") ||
+    filename.endsWith(".archimate3") ||
+    filename.endsWith(".asyncapi") ||
+    filename.endsWith(".bpmn") ||
+    filename.endsWith(".dio") ||
+    filename.endsWith(".drawio") ||
     filename.endsWith(".json") ||
+    filename.endsWith(".mermaid") ||
+    filename.endsWith(".mmd") ||
+    filename.endsWith(".openapi") ||
+    filename.endsWith(".plantuml") ||
+    filename.endsWith(".puml") ||
     filename.endsWith(".txt") ||
-    filename.endsWith(".xml")
+    filename.endsWith(".xml") ||
+    filename.endsWith(".yaml") ||
+    filename.endsWith(".yml")
   ) {
     return "text";
   }

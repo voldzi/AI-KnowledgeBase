@@ -72,6 +72,11 @@ Output layout:
 Each Markdown file contains title, classification, language, canonical URL, source PDF URL, SHA-256 and import
 provenance. It is not the primary user-facing document; the PDF is.
 
+Document titles must remain user-facing Czech titles. The preparation and reset tools therefore prefer, in order of
+quality, explicit metadata title, catalog title, PDF metadata, first plausible PDF heading, source PDF URL title, and only
+then the slug-like filename stem. Slug-derived ASCII titles are treated as a last-resort fallback because they can lose
+Czech diacritics.
+
 ## Reset Tool
 
 Dry-run is the default:
@@ -104,6 +109,30 @@ Default production inputs for the reset tool:
 
 By default the tool skips Markdown derivatives without a matching PDF and reports them under "Missing PDF Sources".
 Use `--include-markdown-fallback` only when a temporary Markdown-backed document is explicitly acceptable.
+
+## Repair Existing Titles
+
+If a previous import stored slug-derived titles such as `Prvodce ... vyhlky ... bezpenosti`, repair only document
+metadata and titles without touching binaries, versions, chunks, embeddings, or Qdrant:
+
+```bash
+python3 tools/repair_pdf_first_titles.py \
+  --domain public-digitalization-corpus \
+  --report reports/pdf_first_title_repair_report.dry-run.json
+```
+
+Apply requires explicit confirmation:
+
+```bash
+python3 tools/repair_pdf_first_titles.py \
+  --domain public-digitalization-corpus \
+  --apply \
+  --confirm repair-titles \
+  --report reports/pdf_first_title_repair_report.json
+```
+
+The repair script matches Registry documents by PDF-first metadata (`domain` and `source_path`), stores the previous
+title in `metadata.original_import_title`, records the title source, and writes a `document.title_repaired` audit event.
 
 ## Apply Behavior
 

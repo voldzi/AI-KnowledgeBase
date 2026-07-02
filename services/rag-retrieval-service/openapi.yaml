@@ -400,6 +400,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/architecture-package/propose:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Propose Archflow Architecture Package Extraction
+      operationId: propose_archflow_architecture_package_extraction_api_v1_stratos_extractions_architecture_package_propose_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchflowArchitectureExtractionProposeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchflowArchitectureExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/architecture-handover/propose:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Propose Archflow Handover Extraction
+      operationId: propose_archflow_handover_extraction_api_v1_stratos_extractions_architecture_handover_propose_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchflowArchitectureExtractionProposeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchflowArchitectureExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/stratos/extractions/{extraction_id}:
     get:
       tags:
@@ -586,6 +636,286 @@ components:
       - subject_id
       - query
       title: AnswerRequest
+    ArchflowArchitectureExtractionProposeRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_ARCHFLOW
+          title: External System
+          default: STRATOS_ARCHFLOW
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          enum:
+          - ArchitectureArtifact
+          - ArchflowSourceSet
+          - ArchflowGoalCatalogVersion
+          - ArchflowNeed
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        need_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Need Id
+        source_set_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Source Set Id
+        catalog_version_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Catalog Version Id
+        artifact_type:
+          type: string
+          enum:
+          - TARGET_ARCHITECTURE
+          - SOLUTION_ARCHITECTURE
+          - INTEGRATION_SPEC
+          - DATA_SECURITY_ASSESSMENT
+          - ARCHITECTURE_DECISION
+          - AS_BUILT_ARCHITECTURE
+          - HANDOVER_PACKAGE
+          title: Artifact Type
+        document_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Document Id
+        document_version_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Document Version Id
+        documents:
+          items:
+            $ref: '#/components/schemas/ArchflowSourceDocument'
+          type: array
+          maxItems: 50
+          title: Documents
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        profile:
+          type: string
+          enum:
+          - architecture_package_review_v1
+          - architecture_handover_v1
+          title: Profile
+        profile_version:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Profile Version
+          default: '1'
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        context_tags:
+          items:
+            type: string
+          type: array
+          title: Context Tags
+        max_chunks:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 18
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - external_ref
+      - entity_type
+      - entity_id
+      - artifact_type
+      - subject_id
+      - profile
+      title: ArchflowArchitectureExtractionProposeRequest
+    ArchflowArchitectureExtractionResponse:
+      properties:
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        external_system:
+          type: string
+          title: External System
+        external_ref:
+          type: string
+          title: External Ref
+        entity_type:
+          type: string
+          title: Entity Type
+        entity_id:
+          type: string
+          title: Entity Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        profile:
+          type: string
+          title: Profile
+        profile_version:
+          type: string
+          title: Profile Version
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - PROPOSED
+          - PARTIAL
+          - FAILED
+          - SUPERSEDED
+          - ACCEPTED_IN_SOURCE_APP
+          - REJECTED_IN_SOURCE_APP
+          title: Status
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        requested_by:
+          type: string
+          title: Requested By
+        proposals:
+          items:
+            $ref: '#/components/schemas/ArchflowArchitectureFieldProposal'
+          type: array
+          title: Proposals
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Source Chunk Ids
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - extraction_id
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_id
+      - document_version_id
+      - profile
+      - profile_version
+      - status
+      - classification
+      - requested_by
+      title: ArchflowArchitectureExtractionResponse
+    ArchflowArchitectureFieldProposal:
+      properties:
+        field:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Field
+        status:
+          type: string
+          const: proposed
+          title: Status
+          default: proposed
+        confidence:
+          type: string
+          enum:
+          - high
+          - medium
+          - low
+          - insufficient_source
+          - conflicting_sources
+          title: Confidence
+        proposal:
+          additionalProperties: true
+          type: object
+          title: Proposal
+        reason:
+          type: string
+          maxLength: 1000
+          minLength: 1
+          title: Reason
+        citation:
+          $ref: '#/components/schemas/ContractExtractionCitation'
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      additionalProperties: false
+      type: object
+      required:
+      - field
+      - confidence
+      - reason
+      - citation
+      title: ArchflowArchitectureFieldProposal
     ArchflowCandidateRequirement:
       properties:
         title:

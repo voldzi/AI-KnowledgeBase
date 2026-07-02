@@ -193,12 +193,13 @@ Budget & Contract uses `contract_financial_v1` through RAG Retrieval Service
 STRATOS extraction endpoints. AKB returns cited proposed values only; Budget
 owns human confirmation and final writes to its structured contract model.
 
-ArchFlow uses `archflow_goal_extraction_v1` through the same STRATOS extraction
-lifecycle over `ArchflowSourceSet` and published
-`ArchflowGoalCatalogVersion` contexts. AKB returns cited proposed goals,
-capabilities, obligations, requirements, metrics, legal basis, and risks only;
-ArchFlow owns human review, source-set/catalog-version audit snapshots, and
-final writes to `ArchflowGoal` and related source-app tables.
+ArchFlow uses `archflow_goal_extraction_v1`, `architecture_package_review_v1`,
+and `architecture_handover_v1` through the same STRATOS extraction lifecycle.
+AKB returns cited proposed goals, capabilities, obligations, requirements,
+metrics, legal basis, architecture package findings, as-built findings, and
+handover evidence only. ArchFlow stores only AKB references and owns human
+review, source-set/catalog-version/artifact audit snapshots, and final writes
+to `ArchflowGoal`, `ArchitectureArtifact`, and related source-app tables.
 
 Budget & Contract also uses the AKB web/BFF bridge for source opening and
 binary document downloads:

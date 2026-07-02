@@ -93,6 +93,43 @@ describe("source download", () => {
     assert.equal(decision.file.mime_type, "image/svg+xml");
   });
 
+  it("detects architecture and API source MIME types for native previews", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akl-source-architecture-"));
+    const settings = testSettings(root);
+    const content = new TextEncoder().encode("openapi: 3.1.0\ninfo:\n  title: Test");
+    const sha256 = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+    const samples = [
+      ["doc_123/ver_456/model.archimate", "application/vnd.opengroup.archimate.exchange+xml"],
+      ["doc_123/ver_456/process.bpmn", "application/bpmn+xml"],
+      ["doc_123/ver_456/diagram.drawio", "application/vnd.jgraph.mxfile"],
+      ["doc_123/ver_456/sequence.mmd", "text/vnd.mermaid"],
+      ["doc_123/ver_456/component.puml", "text/x-plantuml"],
+      ["doc_123/ver_456/openapi.yaml", "application/yaml"],
+      ["doc_123/ver_456/asyncapi.yml", "application/yaml"]
+    ] as const;
+
+    for (const [objectKey, expectedMimeType] of samples) {
+      const targetPath = path.join(root, "akl-documents", ...objectKey.split("/"));
+      await mkdir(path.dirname(targetPath), { recursive: true });
+      await writeFile(targetPath, content);
+
+      const decision = await createSourceOpenDecision(
+        {
+          document_id: "doc_123",
+          document_version_id: "ver_456",
+          source_file_uri: `s3://akl-documents/${objectKey}`,
+          file_hash: sha256,
+          viewer_mode: "text"
+        },
+        settings
+      );
+
+      assert.equal(decision.available, true);
+      assert.equal(decision.file.mime_type, expectedMimeType);
+      assert.equal(sourceContentTypeHeader(decision.file.mime_type), `${expectedMimeType}; charset=utf-8`);
+    }
+  });
+
   it("preserves deployment base path in signed source URLs", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akl-source-basepath-"));
     const settings = {

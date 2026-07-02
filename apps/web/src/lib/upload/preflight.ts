@@ -70,16 +70,26 @@ const DEFAULT_EXPIRES_IN_SECONDS = 15 * 60;
 const SHA256_PATTERN = /^sha256:[a-fA-F0-9]{64}$/;
 
 const ACCEPTED_MIME_TYPES = [
+  "application/bpmn+xml",
+  "application/mermaid",
   "application/json",
   "application/msword",
   "application/pdf",
   "application/rtf",
+  "application/vnd.asyncapi",
+  "application/vnd.asyncapi+json",
+  "application/vnd.jgraph.mxfile",
   "application/vnd.ms-excel.sheet.macroEnabled.12",
+  "application/vnd.oai.openapi",
+  "application/vnd.oai.openapi+json",
+  "application/vnd.opengroup.archimate.exchange+xml",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/xhtml+xml",
   "application/xml",
+  "application/x-yaml",
+  "application/yaml",
   "image/gif",
   "image/jpeg",
   "image/png",
@@ -90,13 +100,23 @@ const ACCEPTED_MIME_TYPES = [
   "text/markdown",
   "text/plain",
   "text/rtf",
-  "text/xml"
+  "text/vnd.mermaid",
+  "text/xml",
+  "text/x-plantuml",
+  "text/x-yaml",
+  "text/yaml"
 ];
 
 const EXTENSION_MIME_TYPES = new Map<string, string>([
+  [".archimate", "application/vnd.opengroup.archimate.exchange+xml"],
+  [".archimate3", "application/vnd.opengroup.archimate.exchange+xml"],
+  [".asyncapi", "application/vnd.asyncapi"],
+  [".bpmn", "application/bpmn+xml"],
   [".csv", "text/csv"],
+  [".dio", "application/vnd.jgraph.mxfile"],
   [".doc", "application/msword"],
   [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  [".drawio", "application/vnd.jgraph.mxfile"],
   [".gif", "image/gif"],
   [".htm", "text/html"],
   [".html", "text/html"],
@@ -105,9 +125,14 @@ const EXTENSION_MIME_TYPES = new Map<string, string>([
   [".json", "application/json"],
   [".md", "text/markdown"],
   [".markdown", "text/markdown"],
+  [".mermaid", "text/vnd.mermaid"],
+  [".mmd", "text/vnd.mermaid"],
+  [".openapi", "application/vnd.oai.openapi"],
   [".pdf", "application/pdf"],
+  [".plantuml", "text/x-plantuml"],
   [".png", "image/png"],
   [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  [".puml", "text/x-plantuml"],
   [".rtf", "application/rtf"],
   [".svg", "image/svg+xml"],
   [".txt", "text/plain"],
@@ -115,7 +140,9 @@ const EXTENSION_MIME_TYPES = new Map<string, string>([
   [".xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"],
   [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
   [".xhtml", "application/xhtml+xml"],
-  [".xml", "application/xml"]
+  [".xml", "application/xml"],
+  [".yaml", "application/yaml"],
+  [".yml", "application/yaml"]
 ]);
 
 export function getUploadSettings(env: Record<string, string | undefined> = process.env): UploadSettings {
@@ -377,7 +404,11 @@ function normalizeMimeType(filename: string, value?: string | null): string {
     (extension === ".rtf" && provided === "text/rtf") ||
     (extension === ".xml" && provided === "text/xml") ||
     (extension === ".svg" && provided === "application/xml") ||
-    (extension === ".htm" && provided === "text/html")
+    (extension === ".htm" && provided === "text/html") ||
+    (ARCHITECTURE_XML_EXTENSIONS.has(extension) && XML_MIME_ALIASES.has(provided)) ||
+    (ARCHITECTURE_TEXT_EXTENSIONS.has(extension) && TEXT_MIME_ALIASES.has(provided)) ||
+    (YAML_EXTENSIONS.has(extension) && YAML_MIME_ALIASES.has(provided)) ||
+    (API_SPEC_EXTENSIONS.has(extension) && API_SPEC_MIME_ALIASES.has(provided))
   ) {
     return provided;
   }
@@ -387,6 +418,31 @@ function normalizeMimeType(filename: string, value?: string | null): string {
     provided_mime_type: provided
   });
 }
+
+const ARCHITECTURE_XML_EXTENSIONS = new Set([".archimate", ".archimate3", ".bpmn", ".dio", ".drawio"]);
+const ARCHITECTURE_TEXT_EXTENSIONS = new Set([".mermaid", ".mmd", ".plantuml", ".puml"]);
+const YAML_EXTENSIONS = new Set([".yaml", ".yml"]);
+const API_SPEC_EXTENSIONS = new Set([".asyncapi", ".openapi"]);
+const XML_MIME_ALIASES = new Set([
+  "application/xml",
+  "text/xml",
+  "application/bpmn+xml",
+  "application/vnd.jgraph.mxfile",
+  "application/vnd.opengroup.archimate.exchange+xml"
+]);
+const TEXT_MIME_ALIASES = new Set(["application/mermaid", "text/plain", "text/vnd.mermaid", "text/x-plantuml"]);
+const YAML_MIME_ALIASES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml", "text/plain"]);
+const API_SPEC_MIME_ALIASES = new Set([
+  "application/json",
+  "application/vnd.asyncapi",
+  "application/vnd.asyncapi+json",
+  "application/vnd.oai.openapi",
+  "application/vnd.oai.openapi+json",
+  "application/yaml",
+  "application/x-yaml",
+  "text/yaml",
+  "text/x-yaml"
+]);
 
 function resolveObjectPath(payload: UploadTokenPayload, settings: UploadSettings): string {
   const root = path.resolve(settings.objectStorageRoot);
