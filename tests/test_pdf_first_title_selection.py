@@ -113,6 +113,45 @@ def test_reset_title_repairs_known_broken_security_policy_attachment(tmp_path: P
     assert metadata["title_source"] == "known_title_repair"
 
 
+def test_reset_title_repairs_known_broken_security_attachments(tmp_path: Path) -> None:
+    cases = {
+        "ploha-3-zjednoduen-dopadov-tabulka-b3db4b64e1.md": "Příloha 3 - Zjednodušená dopadová tabulka",
+        "ploha-4-struktura-podprnch-aktiv-1373ab4bda.md": "Příloha 4 - Struktura podpůrných aktiv",
+        "ploha-5-vzorov-pravidla-ochrany-jednitlivch-rovn-aktiv-8346f1c661.md": (
+            "Příloha 5 - Vzorová pravidla ochrany jednotlivých úrovní aktiv"
+        ),
+        "ploha-9-vzorov-zprva-o-hodnocen-rizik-ab7680e95d.md": (
+            "Příloha 9 - Vzorová zpráva o hodnocení rizik"
+        ),
+        "ploha-11-vzorov-zprva-o-hodnocen-rizik-pro-veejnou-zakzku-303244bfe4.md": (
+            "Příloha 11 - Vzorová zpráva o hodnocení rizik pro veřejnou zakázku"
+        ),
+        "ploha-14-zkratky-a-pouvan-pojmy-d679fb1bd0.md": "Příloha 14 - Zkratky a používané pojmy",
+    }
+    for filename, expected_title in cases.items():
+        markdown = tmp_path / filename
+        markdown.write_text(
+            "\n".join(
+                [
+                    f"# {filename.rsplit('-', 1)[0].replace('-', ' ').title()}",
+                    "",
+                    "- Typ zdroje: strategie",
+                    "- Klasifikace: public",
+                    "",
+                    "## Importní metadata",
+                    "",
+                    "- Původní katalogová položka: podpurne materialy",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        metadata = reset_pdf_first_corpus.parse_markdown_metadata(markdown)
+
+        assert metadata["title"] == expected_title
+        assert metadata["title_source"] == "known_title_repair"
+
+
 def test_reset_title_prefers_explicit_metadata_title(tmp_path: Path) -> None:
     markdown = tmp_path / "fallback-slug-title.md"
     markdown.write_text(

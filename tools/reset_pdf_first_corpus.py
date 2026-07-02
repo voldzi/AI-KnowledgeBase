@@ -36,6 +36,16 @@ KNOWN_TITLE_REPAIRS = {
     "ploha-1-vzorov-politika-systmu-zen-bezpenosti-informac": (
         "Příloha 1 - Vzorová politika systému řízení bezpečnosti informací"
     ),
+    "ploha-3-zjednoduen-dopadov-tabulka": "Příloha 3 - Zjednodušená dopadová tabulka",
+    "ploha-4-struktura-podprnch-aktiv": "Příloha 4 - Struktura podpůrných aktiv",
+    "ploha-5-vzorov-pravidla-ochrany-jednitlivch-rovn-aktiv": (
+        "Příloha 5 - Vzorová pravidla ochrany jednotlivých úrovní aktiv"
+    ),
+    "ploha-9-vzorov-zprva-o-hodnocen-rizik": "Příloha 9 - Vzorová zpráva o hodnocení rizik",
+    "ploha-11-vzorov-zprva-o-hodnocen-rizik-pro-veejnou-zakzku": (
+        "Příloha 11 - Vzorová zpráva o hodnocení rizik pro veřejnou zakázku"
+    ),
+    "ploha-14-zkratky-a-pouvan-pojmy": "Příloha 14 - Zkratky a používané pojmy",
 }
 
 
