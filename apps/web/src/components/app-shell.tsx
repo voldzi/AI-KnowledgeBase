@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   ChevronsLeft,
@@ -353,9 +353,14 @@ function AppShellContent({
         },
       }),
     );
+  const hasMountedForPathCloseRef = useRef(false);
 
   useEffect(() => {
     setActiveModule(moduleForPath(pathname));
+    if (!hasMountedForPathCloseRef.current) {
+      hasMountedForPathCloseRef.current = true;
+      return;
+    }
     // Navigation closes the mobile drawer so the destination page is visible.
     setMobileSidebarOpen(false);
   }, [pathname]);

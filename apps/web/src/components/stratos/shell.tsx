@@ -90,6 +90,7 @@ export function StratosAppRail({
               className={`stratos-nav-item ${active ? "stratos-nav-item--active" : ""}`}
               href={item.href}
               key={item.href}
+              role="button"
               title={item.label}
               onClick={() => item.onSelect?.(item)}
             >
