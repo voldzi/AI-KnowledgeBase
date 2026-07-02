@@ -28,9 +28,17 @@ export function StratosAppShell({
   sidebarCollapsed = false,
   topbar
 }: StratosAppShellProps) {
+  const shellClassName = [
+    "stratos-app-shell",
+    "stratos-akb-shell",
+    mobileSidebarOpen ? "is-mobile-sidebar-open" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
-      className="stratos-app-shell stratos-akb-shell"
+      className={shellClassName}
       data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
       data-mobile-sidebar-open={mobileSidebarOpen ? "true" : "false"}
     >
