@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildPublicAppUrl,
+  contextFromOidcAccessToken,
   contextFromOidcSession,
   createState,
   OIDC_REFRESH_COOKIE,
@@ -34,6 +35,26 @@ describe("OIDC web session", () => {
     assert.deepEqual(context.roles?.sort(), ["admin", "akl_admin", "document_manager", "reader"]);
     assert.deepEqual(context.groups, ["STRATOS Administrators"]);
     assert.equal(context.accessToken, accessToken);
+  });
+
+  it("extracts service identity from an OIDC bearer access token", () => {
+    const accessToken = jwt({
+      sub: "service-account-stratos-akb-service",
+      client_id: "stratos-akb-service",
+      exp: 3_600,
+      realm_access: { roles: ["stratos_service"] },
+      resource_access: { "akl-api": { roles: ["document_manager"] } },
+      groups: ["STRATOS Services"]
+    });
+
+    const context = contextFromOidcAccessToken(accessToken, 1_000);
+
+    assert.equal(context?.subjectId, "service-account-stratos-akb-service");
+    assert.deepEqual(context?.roles?.sort(), ["document_manager", "stratos_service"]);
+    assert.deepEqual(context?.groups, ["STRATOS Services"]);
+    assert.equal(context?.accessToken, accessToken);
+    assert.equal(contextFromOidcAccessToken("not-a-jwt", 1_000), null);
+    assert.equal(contextFromOidcAccessToken(jwt({ sub: "expired", exp: 1 }), 2_000), null);
   });
 
   it("seals and opens a session cookie payload", () => {

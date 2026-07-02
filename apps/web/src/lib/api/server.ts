@@ -10,6 +10,7 @@ import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
 import {
   buildPublicAppUrl,
+  contextFromOidcAccessToken,
   contextFromOidcSession,
   readSessionCookie,
   type OidcSession,
@@ -79,6 +80,14 @@ export async function getServerRequestContextForRequest(
 export async function getOptionalServerRequestContext(
   request?: RequestLike,
 ): Promise<ApiRequestContext | null> {
+  const bearerToken = bearerTokenFromRequest(request);
+  if (bearerToken) {
+    const bearerContext = contextFromOidcAccessToken(bearerToken);
+    if (bearerContext) {
+      return bearerContext;
+    }
+  }
+
   const session = await getOptionalServerOidcSession(request);
   if (session) {
     return contextFromOidcSession(session);
@@ -134,4 +143,16 @@ function cookieReaderFromRequest(request: RequestLike): CookieReader {
       return value === undefined ? undefined : { value };
     },
   };
+}
+
+function bearerTokenFromRequest(request?: RequestLike): string | null {
+  const authorization = request?.headers.get("authorization") ?? null;
+  if (!authorization) {
+    return null;
+  }
+  const [scheme, token] = authorization.trim().split(/\s+/, 2);
+  if (scheme?.toLowerCase() !== "bearer" || !token) {
+    return null;
+  }
+  return token;
 }
