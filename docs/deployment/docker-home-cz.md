@@ -315,9 +315,10 @@ Pokud Ollama běží mimo AKB compose stack, nastavte explicitní kandidátní
 endpointy. AKB neprohledává lokální síť; zkusí pouze uvedené URL v pořadí:
 
 ```env
-AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
-AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
-AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=3
+AKL_OLLAMA_BASE_URL=http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URLS=http://192.168.1.176:11434,http://192.168.200.2:11434
+AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=10
+AKL_INGESTION_EMBEDDING_CONCURRENCY=1
 ```
 
 Stanice `192.168.200.2` a `192.168.1.176` musí mít Ollama dostupnou na

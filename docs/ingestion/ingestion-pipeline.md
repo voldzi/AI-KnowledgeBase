@@ -12,7 +12,7 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 6. Parser router zvolí HTML/HTM/XHTML, XLSX/XLSM, PPTX, TXT/MD/CSV/JSON/XML, PDF nebo DOCX parser. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích; PPTX parser extrahuje slidy jako stránky s titulkem slidu jako sekcí, včetně tabulek a poznámek lektora; text parser bezpečně indexuje i strukturované textové zdroje CSV, JSON a XML.
 7. OCR fallback se použije při selhání parseru nebo nízkém množství extrahovaného textu.
 8. Logical chunker vytvoří `DocumentChunk` objekty s citovatelnými metadaty.
-9. Embedding klient pošle normalizované texty na LLM Gateway `/api/v1/embeddings` — dávky (`AKL_INGESTION_EMBEDDING_BATCH_SIZE`, default 32) běží paralelně s omezenou souběžností (`AKL_INGESTION_EMBEDDING_CONCURRENCY`, default 2), pořadí vektorů je zachováno.
+9. Embedding klient pošle normalizované texty na LLM Gateway `/api/v1/embeddings` — dávky (`AKL_INGESTION_EMBEDDING_BATCH_SIZE`, default 32) běží paralelně s omezenou souběžností (`AKL_INGESTION_EMBEDDING_CONCURRENCY`, obecný default 2). Produkční docker-home profil používá konzervativní `AKL_INGESTION_EMBEDDING_CONCURRENCY=1`, aby re-index netlačil na jednu Ollama instanci více paralelními embedding požadavky. Pořadí vektorů je zachováno.
 10. Qdrant indexer uloží vektory a chunk payloady.
 11. Služba uloží `IngestionReport` a auditně zapíše start/completed/failed událost přes Registry API.
 
