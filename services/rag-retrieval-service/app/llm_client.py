@@ -111,6 +111,7 @@ class HttpLLMGatewayClient:
                 "metadata": {"purpose": "rag_retrieval"},
             },
             auth_context=auth_context,
+            bearer_token_override=self._settings.llm_gateway_token,
         )
         data = payload.get("data", [])
         return [item["embedding"] for item in sorted(data, key=lambda item: item.get("index", 0))]
@@ -136,6 +137,7 @@ class HttpLLMGatewayClient:
                 "metadata": metadata,
             },
             auth_context=auth_context,
+            bearer_token_override=self._settings.llm_gateway_token,
         )
         return str(payload.get("content", "")).strip()
 
@@ -152,7 +154,11 @@ class HttpLLMGatewayClient:
                 async with client.stream(
                     "POST",
                     f"{self._settings.llm_gateway_base_url}/chat/completions",
-                    headers=outgoing_headers(self._settings, auth_context),
+                    headers=outgoing_headers(
+                        self._settings,
+                        auth_context,
+                        bearer_token_override=self._settings.llm_gateway_token,
+                    ),
                     json={
                         "model": self._settings.chat_model,
                         "messages": messages,

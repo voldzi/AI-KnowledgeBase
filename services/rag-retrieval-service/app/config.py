@@ -71,6 +71,7 @@ class Settings:
     qdrant_base_url: str
     qdrant_collection: str
     llm_gateway_base_url: str
+    llm_gateway_token: str | None
     governance_base_url: str
 
     request_timeout_seconds: float
@@ -197,6 +198,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         llm_gateway_base_url=_normalize_api_base_url(
             _get(source, "AKL_LLM_GATEWAY_BASE_URL", "http://localhost:8080/api/v1")
         ),
+        llm_gateway_token=source.get("AKL_LLM_GATEWAY_TOKEN") or None,
         governance_base_url=_normalize_api_base_url(
             _get(source, "AKL_GOVERNANCE_BASE_URL", "http://governance-service:8080/api/v1")
         ),

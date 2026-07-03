@@ -19,6 +19,7 @@ def outgoing_headers(
     auth_context: AuthContext | None = None,
     *,
     prefer_upstream_token: bool = False,
+    bearer_token_override: str | None = None,
 ) -> dict[str, str]:
     headers = {
         "Content-Type": "application/json",
@@ -37,7 +38,9 @@ def outgoing_headers(
             headers["X-AKL-Roles"] = ",".join(auth_context.roles)
         if auth_context.groups:
             headers["X-AKL-Groups"] = ",".join(auth_context.groups)
-    bearer_token = None if use_upstream_identity else auth_context.bearer_token if auth_context else None
+    bearer_token = bearer_token_override or (
+        None if use_upstream_identity else auth_context.bearer_token if auth_context else None
+    )
     if bearer_token:
         headers["Authorization"] = f"Bearer {bearer_token}"
     elif settings.upstream_bearer_token:
@@ -54,6 +57,7 @@ async def request_json_with_retry(
     json_body: dict[str, Any] | None = None,
     auth_context: AuthContext | None = None,
     prefer_upstream_token: bool = False,
+    bearer_token_override: str | None = None,
 ) -> dict[str, Any]:
     last_error: Exception | None = None
 
@@ -67,6 +71,7 @@ async def request_json_with_retry(
                         settings,
                         auth_context,
                         prefer_upstream_token=prefer_upstream_token,
+                        bearer_token_override=bearer_token_override,
                     ),
                     json=json_body,
                 )
