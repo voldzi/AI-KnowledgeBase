@@ -65,6 +65,8 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_OBJECT_STORAGE_MODE` | `local`, `http`, nebo `mock`. |
 | `AKL_OBJECT_STORAGE_ROOT` | Root pro lokální mapování `s3://bucket/key`. |
 | `AKL_INGESTION_OCR_PROVIDER` | `disabled`, `sidecar`, nebo `tesseract`. |
+| `AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE` | Výchozí auditovatelný profil vytěžení dokumentu. |
+| `AKL_INGESTION_PDF_ENGINE` | `auto`, `pymupdf`, nebo `pypdf`; `auto` preferuje layout-aware PyMuPDF a vrací se na `pypdf`. |
 | `AKL_INGESTION_EMBEDDING_CLIENT_MODE` | `http` nebo `mock`. |
 | `AKL_LLM_GATEWAY_BASE_URL` | Base URL LLM Gateway. |
 | `AKL_INGESTION_INDEXER_MODE` | `qdrant` nebo `mock`. |
@@ -92,8 +94,14 @@ V `http` režimu služba stáhne přímo z předané URI, typicky z presigned UR
 Nativní parsery:
 
 - TXT/MD přes plain-text parser,
-- PDF přes `pypdf`,
+- PDF přes layout-aware PyMuPDF v režimu `AKL_INGESTION_PDF_ENGINE=auto|pymupdf`, s fallbackem na `pypdf`,
 - DOCX přes `python-docx`.
+
+Ingestion report obsahuje `quality` blok s použitým `extraction_profile`, parserem,
+počtem stran s textem, prázdnými stranami, délkou extrahovaného textu, detekovanými
+tabulkami a jednoduchým `quality_score`. Stejné profilové údaje se ukládají do
+metadata chunků, aby šlo zpětně auditovat, jakým profilem a parserem byla konkrétní
+citace vytvořena.
 
 OCR fallback se spustí, pokud parser selže nebo extrahuje méně znaků než `AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR` a job má `ocr_enabled=true`.
 

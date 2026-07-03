@@ -45,6 +45,13 @@ class OcrProvider:
                     tables_detected=result.tables_detected,
                     ocr_used=True,
                     warnings=result.warnings,
+                    metadata={
+                        "parser_engine": "ocr_sidecar",
+                        "pages_with_text": result.pages_processed if result.text_length else 0,
+                        "empty_pages": [] if result.text_length else [1],
+                        "text_chars_extracted": result.text_length,
+                        "capabilities": ["ocr_text_sidecar"],
+                    },
                 )
         raise ParserError("OCR_SIDECAR_NOT_FOUND", "OCR sidecar text file was not found")
 
@@ -86,4 +93,11 @@ class OcrProvider:
             tables_detected=result.tables_detected,
             ocr_used=True,
             warnings=result.warnings,
+            metadata={
+                "parser_engine": "ocr_tesseract",
+                "pages_with_text": result.pages_processed if result.text_length else 0,
+                "empty_pages": [] if result.text_length else [1],
+                "text_chars_extracted": result.text_length,
+                "capabilities": ["image_ocr"],
+            },
         )

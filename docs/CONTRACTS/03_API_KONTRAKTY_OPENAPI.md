@@ -324,6 +324,7 @@ Create ingestion job request:
   "document_id": "doc_123",
   "document_version_id": "ver_456",
   "source_file_uri": "s3://akl-documents/doc_123/ver_456/file.pdf",
+  "extraction_profile": "document_text_v1",
   "parser_profile": "controlled_document",
   "ocr_enabled": true,
   "chunking_strategy": "legal_structured",
@@ -340,6 +341,7 @@ Job response:
   "document_id": "doc_123",
   "document_version_id": "ver_456",
   "source_file_uri": "s3://akl-documents/doc_123/ver_456/file.pdf",
+  "extraction_profile": "document_text_v1",
   "parser_profile": "controlled_document",
   "ocr_enabled": true,
   "chunking_strategy": "legal_structured",
@@ -347,6 +349,11 @@ Job response:
   "created_at": "2026-06-05T10:00:00Z"
 }
 ```
+
+Job report obsahuje volitelný blok `quality` s použitým profilem vytěžení,
+parserem, počtem stran s textem, prázdnými stranami, počtem detekovaných tabulek
+a `quality_score`. Tyto hodnoty slouží pro dohled a rozhodnutí, zda je potřeba
+OCR/layout reprocessing před tím, než se dokument použije pro citované odpovědi.
 
 ---
 

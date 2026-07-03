@@ -221,6 +221,13 @@ components:
           maxLength: 2048
           minLength: 1
           title: Source File Uri
+        extraction_profile:
+          anyOf:
+          - type: string
+            maxLength: 80
+            minLength: 1
+          - type: 'null'
+          title: Extraction Profile
         parser_profile:
           type: string
           maxLength: 80
@@ -268,6 +275,10 @@ components:
           - type: string
           - type: 'null'
           title: Source File Uri
+        extraction_profile:
+          type: string
+          title: Extraction Profile
+          default: document_text_v1
         parser_profile:
           type: string
           title: Parser Profile
@@ -308,6 +319,69 @@ components:
       - document_version_id
       - created_at
       title: IngestionJobResponse
+    IngestionQualityReport:
+      properties:
+        extraction_profile:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Extraction Profile
+        parser_name:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Parser Name
+        parser_engine:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Parser Engine
+        pages_processed:
+          type: integer
+          minimum: 0.0
+          title: Pages Processed
+        pages_with_text:
+          type: integer
+          minimum: 0.0
+          title: Pages With Text
+          default: 0
+        empty_pages:
+          items:
+            type: integer
+          type: array
+          title: Empty Pages
+        text_chars_extracted:
+          type: integer
+          minimum: 0.0
+          title: Text Chars Extracted
+          default: 0
+        tables_detected:
+          type: integer
+          minimum: 0.0
+          title: Tables Detected
+          default: 0
+        ocr_used:
+          type: boolean
+          title: Ocr Used
+          default: false
+        quality_score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Quality Score
+          default: 0
+        capabilities:
+          items:
+            type: string
+          type: array
+          title: Capabilities
+      type: object
+      required:
+      - extraction_profile
+      - parser_name
+      - pages_processed
+      title: IngestionQualityReport
     IngestionReport:
       properties:
         job_id:
@@ -334,6 +408,10 @@ components:
         ocr_used:
           type: boolean
           title: Ocr Used
+        quality:
+          anyOf:
+          - $ref: '#/components/schemas/IngestionQualityReport'
+          - type: 'null'
         warnings:
           items:
             $ref: '#/components/schemas/ReportMessage'

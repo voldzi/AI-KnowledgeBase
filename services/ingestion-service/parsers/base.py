@@ -39,6 +39,7 @@ class ParserResult:
     tables_detected: int = 0
     ocr_used: bool = False
     warnings: list[tuple[str, str]] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def text_length(self) -> int:

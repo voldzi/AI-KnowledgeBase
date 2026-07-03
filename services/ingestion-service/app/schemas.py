@@ -41,6 +41,7 @@ class IngestionJobCreate(BaseModel):
     document_id: str = Field(min_length=1, max_length=128)
     document_version_id: str = Field(min_length=1, max_length=128)
     source_file_uri: str = Field(min_length=1, max_length=2048)
+    extraction_profile: str | None = Field(default=None, min_length=1, max_length=80)
     parser_profile: str = Field(default="controlled_document", min_length=1, max_length=80)
     ocr_enabled: bool = True
     chunking_strategy: str = Field(default="legal_structured", min_length=1, max_length=80)
@@ -65,6 +66,7 @@ class IngestionJobResponse(BaseModel):
     document_id: str
     document_version_id: str
     source_file_uri: str | None = None
+    extraction_profile: str = "document_text_v1"
     parser_profile: str = "controlled_document"
     ocr_enabled: bool = True
     chunking_strategy: str = "legal_structured"
@@ -79,6 +81,20 @@ class ReportMessage(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
 
 
+class IngestionQualityReport(BaseModel):
+    extraction_profile: str = Field(min_length=1, max_length=80)
+    parser_name: str = Field(min_length=1, max_length=80)
+    parser_engine: str | None = Field(default=None, max_length=80)
+    pages_processed: int = Field(ge=0)
+    pages_with_text: int = Field(default=0, ge=0)
+    empty_pages: list[int] = Field(default_factory=list)
+    text_chars_extracted: int = Field(default=0, ge=0)
+    tables_detected: int = Field(default=0, ge=0)
+    ocr_used: bool = False
+    quality_score: float = Field(default=0, ge=0, le=1)
+    capabilities: list[str] = Field(default_factory=list)
+
+
 class IngestionReport(BaseModel):
     job_id: str
     status: JobStatus
@@ -87,6 +103,7 @@ class IngestionReport(BaseModel):
     chunks_created: int = Field(ge=0)
     tables_detected: int = Field(ge=0)
     ocr_used: bool
+    quality: IngestionQualityReport | None = None
     warnings: list[ReportMessage] = Field(default_factory=list)
     errors: list[ReportMessage] = Field(default_factory=list)
 

@@ -20,7 +20,7 @@ class ParserRouter:
             XlsxParser(),
             PptxParser(),
             TextParser(),
-            PdfParser(),
+            PdfParser(pdf_engine=settings.pdf_engine),
             DocxParser(),
         ]
         self.ocr_provider = OcrProvider(settings)
@@ -58,6 +58,7 @@ class ParserRouter:
                     tables_detected=result.tables_detected,
                     ocr_used=False,
                     warnings=warnings,
+                    metadata=result.metadata,
                 )
             if parse_error is not None:
                 raise ParserError(
