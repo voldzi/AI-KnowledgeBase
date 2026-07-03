@@ -151,6 +151,12 @@ Produkční start je odmítnut, pokud:
 - chybí `AKL_SERVICE_TOKEN`,
 - je povolen mock provider.
 
+V docker-home profilu používá LLM Gateway samostatný service token
+`AKL_LLM_GATEWAY_SERVICE_TOKEN`. Compose ho mapuje do LLM Gateway jako
+`AKL_SERVICE_TOKEN` a do klientských služeb jako `AKL_LLM_GATEWAY_TOKEN`.
+Tento token je pouze pro interní volání chat/embedding endpointů a nesmí se
+používat jako Registry/OIDC token pro autorizaci dokumentů.
+
 Služba loguje request id, correlation id, provider, model, počty vstupů, latenci, status a token usage. Neloguje celé prompty, odpovědi, embedding input texty, bearer tokeny ani API klíče.
 
 ## Headers
