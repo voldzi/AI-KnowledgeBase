@@ -26,6 +26,12 @@ AKB exposes several REST surfaces:
 
 Service-level summaries remain in `docs/api/`.
 
+Ingestion jobs accept an optional `extraction_profile` and return a `quality`
+block in job reports. The quality block records the parser/engine, pages with
+extractable text, empty pages, table count, OCR usage, and a bounded
+`quality_score`, so operators can identify documents that need OCR/layout
+reprocessing before they are trusted for citation-heavy answers.
+
 The web/API bridge may answer employee chat inventory questions directly
 from Registry API metadata when the user asks for document counts, lists,
 tables, or exports by topic. The current metadata report includes breakdowns by

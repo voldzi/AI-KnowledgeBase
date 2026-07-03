@@ -6,7 +6,7 @@ from app.errors import IngestionError
 from app.ids import utcnow
 from app.object_storage import ObjectStorageClient
 from app.registry_client import RegistryClient
-from app.schemas import IngestionReport, JobStatus, ReportMessage, StoredJob
+from app.schemas import IngestionQualityReport, IngestionReport, JobStatus, ReportMessage, StoredJob
 from app.security import AuthContext
 from app.store import JobStore
 from chunkers.logical import LogicalStructureChunker
@@ -47,6 +47,7 @@ class IngestionPipeline:
     ) -> StoredJob:
         job_id = stored_job.job.job_id
         request = stored_job.request
+        extraction_profile = stored_job.job.extraction_profile
         documents_processed = 0
         pages_processed = 0
         chunks_created = 0
@@ -65,6 +66,7 @@ class IngestionPipeline:
             metadata={
                 "document_id": request.document_id,
                 "document_version_id": request.document_version_id,
+                "extraction_profile": extraction_profile,
                 "parser_profile": request.parser_profile,
                 "chunking_strategy": request.chunking_strategy,
                 "embedding_profile": request.embedding_profile,
@@ -95,10 +97,13 @@ class IngestionPipeline:
             tables_detected = parser_result.tables_detected
             ocr_used = parser_result.ocr_used
             warnings.extend(_messages(parser_result.warnings))
+            quality = _quality_report(parser_result, extraction_profile=extraction_profile)
+            warnings.extend(_quality_warnings(quality, source_mime_type=source.mime_type))
 
             chunking_result = self.chunker.chunk(
                 parser_result,
                 document_metadata=document_metadata,
+                extraction_profile=extraction_profile,
                 parser_profile=request.parser_profile,
                 chunking_strategy=request.chunking_strategy,
                 source=source,
@@ -141,6 +146,7 @@ class IngestionPipeline:
                 chunks_created=chunks_created,
                 tables_detected=tables_detected,
                 ocr_used=ocr_used,
+                quality=quality,
                 warnings=warnings,
                 errors=[],
             )
@@ -153,9 +159,12 @@ class IngestionPipeline:
                 metadata={
                     "document_id": request.document_id,
                     "document_version_id": request.document_version_id,
+                    "extraction_profile": extraction_profile,
                     "chunks_created": chunks_created,
                     "indexed_chunks": indexing_result.indexed_chunks,
                     "ocr_used": ocr_used,
+                    "quality_score": quality.quality_score,
+                    "parser_engine": quality.parser_engine,
                     "status": final_status.value,
                 },
                 auth_context=auth_context,
@@ -291,3 +300,50 @@ class IngestionPipeline:
 
 def _messages(messages: list[tuple[str, str]]) -> list[ReportMessage]:
     return [ReportMessage(code=code, message=message) for code, message in messages]
+
+
+def _quality_report(parser_result, *, extraction_profile: str) -> IngestionQualityReport:
+    metadata = parser_result.metadata
+    pages_processed = max(0, parser_result.pages_processed)
+    pages_with_text = int(metadata.get("pages_with_text") or _pages_with_text(parser_result))
+    empty_pages = [int(page) for page in metadata.get("empty_pages", []) if isinstance(page, int)]
+    text_chars = int(metadata.get("text_chars_extracted") or parser_result.text_length)
+    coverage = (pages_with_text / pages_processed) if pages_processed else 0.0
+    expected_chars = max(1, pages_processed * 250)
+    density = min(1.0, text_chars / expected_chars)
+    quality_score = round(max(0.0, min(1.0, (coverage * 0.7) + (density * 0.3))), 2)
+
+    return IngestionQualityReport(
+        extraction_profile=extraction_profile,
+        parser_name=parser_result.parser_name,
+        parser_engine=metadata.get("parser_engine"),
+        pages_processed=pages_processed,
+        pages_with_text=pages_with_text,
+        empty_pages=empty_pages[:100],
+        text_chars_extracted=text_chars,
+        tables_detected=parser_result.tables_detected,
+        ocr_used=parser_result.ocr_used,
+        quality_score=quality_score,
+        capabilities=[str(item) for item in metadata.get("capabilities", [])],
+    )
+
+
+def _quality_warnings(quality: IngestionQualityReport, *, source_mime_type: str) -> list[ReportMessage]:
+    if source_mime_type != "application/pdf" or quality.pages_processed <= 0:
+        return []
+    coverage = quality.pages_with_text / quality.pages_processed
+    if coverage >= 0.6 or quality.ocr_used:
+        return []
+    return [
+        ReportMessage(
+            code="LOW_TEXT_COVERAGE",
+            message=(
+                "PDF text extraction covered fewer than 60% of pages. "
+                "Verify OCR sidecar or a layout/OCR extraction profile before relying on this document."
+            ),
+        )
+    ]
+
+
+def _pages_with_text(parser_result) -> int:
+    return len({block.page_number for block in parser_result.blocks if block.page_number and block.text.strip()})

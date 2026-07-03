@@ -12,6 +12,7 @@ KNOWN_OBJECT_STORAGE_MODES = {"local", "http", "mock"}
 KNOWN_EMBEDDING_MODES = {"http", "mock"}
 KNOWN_INDEXER_MODES = {"qdrant", "mock"}
 KNOWN_OCR_PROVIDERS = {"disabled", "sidecar", "tesseract"}
+KNOWN_PDF_ENGINES = {"auto", "pymupdf", "pypdf"}
 
 
 class ConfigError(ValueError):
@@ -77,6 +78,8 @@ class Settings:
     tesseract_command: str
     min_extracted_chars_before_ocr: int
 
+    default_extraction_profile: str
+    pdf_engine: str
     default_parser_profile: str
     default_chunking_strategy: str
     chunk_target_chars: int
@@ -116,6 +119,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     embedding_mode = _get(source, "AKL_INGESTION_EMBEDDING_CLIENT_MODE", "mock").strip().lower()
     indexer_mode = _get(source, "AKL_INGESTION_INDEXER_MODE", "mock").strip().lower()
     ocr_provider = _get(source, "AKL_INGESTION_OCR_PROVIDER", "sidecar").strip().lower()
+    pdf_engine = _get(source, "AKL_INGESTION_PDF_ENGINE", "auto").strip().lower()
 
     if auth_mode not in KNOWN_AUTH_MODES:
         raise ConfigError("AKL_AUTH_MODE must be one of: disabled, bearer, mock, oidc")
@@ -129,6 +133,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_INDEXER_MODE must be one of: qdrant, mock")
     if ocr_provider not in KNOWN_OCR_PROVIDERS:
         raise ConfigError("AKL_INGESTION_OCR_PROVIDER must be one of: disabled, sidecar, tesseract")
+    if pdf_engine not in KNOWN_PDF_ENGINES:
+        raise ConfigError("AKL_INGESTION_PDF_ENGINE must be one of: auto, pymupdf, pypdf")
 
     try:
         max_file_bytes = int(_get(source, "AKL_INGESTION_MAX_FILE_BYTES", str(50 * 1024 * 1024)))
@@ -217,6 +223,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ocr_language=_get(source, "AKL_INGESTION_OCR_LANGUAGE", "ces+eng"),
         tesseract_command=_get(source, "AKL_INGESTION_TESSERACT_COMMAND", "tesseract"),
         min_extracted_chars_before_ocr=min_extracted_chars_before_ocr,
+        default_extraction_profile=_get(source, "AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE", "document_text_v1"),
+        pdf_engine=pdf_engine,
         default_parser_profile=_get(source, "AKL_INGESTION_DEFAULT_PARSER_PROFILE", "controlled_document"),
         default_chunking_strategy=_get(source, "AKL_INGESTION_DEFAULT_CHUNKING_STRATEGY", "legal_structured"),
         chunk_target_chars=chunk_target_chars,
