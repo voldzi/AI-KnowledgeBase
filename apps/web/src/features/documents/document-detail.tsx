@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AccessAuditList, type AccessAuditListItem } from "@voldzi/stratos-ui";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -37,7 +38,6 @@ import {
   StratosPdfViewer,
   StratosSelect,
   StratosViewTabs,
-  type StratosDataTableColumn,
   type StratosViewTab
 } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
@@ -61,6 +61,7 @@ import type {
   SourceContext
 } from "@/lib/types";
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
+import { accessAuditToneForSeverity } from "@/features/audit/access-audit-items";
 
 interface DocumentDetailProps {
   document: Document;
@@ -660,6 +661,10 @@ export function DocumentDetail({
         copy
       }),
     [assignments, auditEvents, copy, document, relatedJobs, versions, workflowTasks]
+  );
+  const documentAuditItems = useMemo(
+    () => accessAuditItemsFromTraces(documentAuditTraces, copy, language),
+    [copy, documentAuditTraces, language]
   );
   const sourceContextSignals = useMemo(
     () => sourceContextSignalsForDocument({ document, versions, auditEvents, copy }),
@@ -1657,7 +1662,7 @@ export function DocumentDetail({
                 {copy.auditHidden}
               </div>
             </div>
-          ) : documentAuditTraces.length === 0 ? (
+          ) : documentAuditItems.length === 0 ? (
             <div className="panel__body">
               <div className="empty-state">
                 <CircleCheck size={22} aria-hidden="true" />
@@ -1665,12 +1670,9 @@ export function DocumentDetail({
               </div>
             </div>
           ) : (
-            <StratosDataTable
-              aria-label={copy.auditTitle}
-              rows={documentAuditTraces}
-              getRowId={(trace) => trace.event.audit_event_id}
-              columns={auditTraceColumns(copy, language)}
-            />
+            <div className="panel__body">
+              <AccessAuditList items={documentAuditItems} emptyLabel={copy.auditEmpty} />
+            </div>
           )}
         </section>
       ) : null}
@@ -1815,74 +1817,25 @@ function auditMetadataSummary(metadata: AuditEvent["metadata"]): string {
   return entries.length > 0 ? entries.join(", ") : "n/a";
 }
 
-function auditTraceColumns(
+function accessAuditItemsFromTraces(
+  traces: AuditTrace[],
   copy: (typeof detailCopy)[AklLanguage],
   language: AklLanguage
-): Array<StratosDataTableColumn<AuditTrace>> {
-  return [
-    {
-      id: "event",
-      label: copy.auditEvent,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.event_type,
-      render: (trace) => (
-        <span className="cell-title">
-          <strong>{trace.event.event_type}</strong>
-          <span>{trace.event.audit_event_id}</span>
-          <span>{copy.auditMetadata}: {auditMetadataSummary(trace.event.metadata)}</span>
-        </span>
-      )
-    },
-    {
-      id: "severity",
-      label: copy.auditSeverity,
-      width: 120,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.severity,
-      render: (trace) => <StatusBadge value={trace.event.severity} />
-    },
-    {
-      id: "actor",
-      label: copy.auditActor,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.actor_id,
-      render: (trace) => trace.event.actor_id
-    },
-    {
-      id: "resource",
-      label: copy.auditResource,
-      render: (trace) => (
-        <span className="cell-title">
-          <strong>{trace.event.resource_type}</strong>
-          <span>{trace.event.resource_id}</span>
-        </span>
-      )
-    },
-    {
-      id: "scope",
-      label: copy.auditScope,
-      render: (trace) => (
-        <div className="tag-list">
-          {trace.scopes.map((scope) => (
-            <span className="tag" key={`${trace.event.audit_event_id}-${scope}`}>{scope}</span>
-          ))}
-        </div>
-      )
-    },
-    {
-      id: "correlation",
-      label: copy.auditCorrelation,
-      render: (trace) => trace.event.correlation_id
-    },
-    {
-      id: "created",
-      label: copy.auditCreated,
-      width: 170,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.created_at,
-      render: (trace) => formatDateTime(trace.event.created_at, language)
-    }
-  ];
+): AccessAuditListItem[] {
+  return traces.map((trace) => ({
+    id: trace.event.audit_event_id,
+    title: trace.event.event_type,
+    tone: accessAuditToneForSeverity(trace.event.severity),
+    detail: [
+      `${copy.auditSeverity}: ${trace.event.severity}`,
+      `${copy.auditActor}: ${trace.event.actor_id}`,
+      `${copy.auditResource}: ${trace.event.resource_type} / ${trace.event.resource_id}`,
+      `${copy.auditScope}: ${trace.scopes.join(", ")}`,
+      `${copy.auditMetadata}: ${auditMetadataSummary(trace.event.metadata)}`,
+      `${copy.auditCorrelation}: ${trace.event.correlation_id}`,
+      `${copy.auditCreated}: ${formatDateTime(trace.event.created_at, language)}`
+    ].join(" · ")
+  }));
 }
 
 function assignmentRowsFrom(assignments: DocumentAssignment[], documentId: string): AssignmentFormRow[] {
