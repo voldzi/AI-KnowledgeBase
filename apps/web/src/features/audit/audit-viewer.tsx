@@ -1,12 +1,11 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
+import { AccessAuditList } from "@voldzi/stratos-ui";
 
-import { StatusBadge } from "@/components/status-badge";
-import { StratosDataTable, type StratosDataTableColumn } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuditEvent, AuthorizationHint } from "@/lib/types";
-import { formatDateTime } from "@/lib/format";
+import { accessAuditItemFromEvent } from "./access-audit-items";
 
 interface AuditViewerProps {
   events: AuditEvent[];
@@ -53,53 +52,18 @@ export function AuditViewer({ events, authorization }: AuditViewerProps) {
     );
   }
 
-  const columns: Array<StratosDataTableColumn<AuditEvent>> = [
-    {
-      id: "event",
-      label: copy.event,
-      sortable: true,
-      sortAccessor: (event) => event.event_type,
-      render: (event) => (
-        <span className="cell-title">
-          <strong>{event.event_type}</strong>
-          <span>{event.audit_event_id}</span>
-        </span>
-      )
-    },
-    {
-      id: "severity",
-      label: copy.severity,
-      width: 130,
-      sortable: true,
-      sortAccessor: (event) => event.severity,
-      render: (event) => <StatusBadge value={event.severity} />
-    },
-    {
-      id: "actor",
-      label: copy.actor,
-      sortable: true,
-      sortAccessor: (event) => event.actor_id,
-      render: (event) => event.actor_id
-    },
-    {
-      id: "resource",
-      label: copy.resource,
-      render: (event) => `${event.resource_type} / ${event.resource_id}`
-    },
-    {
-      id: "correlation",
-      label: copy.correlation,
-      render: (event) => event.correlation_id
-    },
-    {
-      id: "created",
-      label: copy.created,
-      width: 170,
-      sortable: true,
-      sortAccessor: (event) => event.created_at,
-      render: (event) => formatDateTime(event.created_at, language)
-    }
-  ];
+  const auditItems = events.map((event) =>
+    accessAuditItemFromEvent(event, {
+      language,
+      labels: {
+        actor: copy.actor,
+        resource: copy.resource,
+        correlation: copy.correlation,
+        created: copy.created
+      },
+      extraDetails: [`${copy.severity}: ${event.severity}`, `${copy.event}: ${event.audit_event_id}`]
+    })
+  );
 
   return (
     <section className="panel">
@@ -107,13 +71,9 @@ export function AuditViewer({ events, authorization }: AuditViewerProps) {
         <h2>{copy.title}</h2>
         <ShieldCheck size={18} aria-hidden="true" />
       </div>
-      <StratosDataTable
-        aria-label={copy.title}
-        rows={events}
-        columns={columns}
-        getRowId={(event) => event.audit_event_id}
-        emptyLabel={copy.empty}
-      />
+      <div className="panel__body">
+        <AccessAuditList items={auditItems} emptyLabel={copy.empty} />
+      </div>
     </section>
   );
 }

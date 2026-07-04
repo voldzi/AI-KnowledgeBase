@@ -80,7 +80,7 @@ Imported external corpora should preserve original sources. The Markdown folder 
 
 AKB now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search, view tabs, field help and document PDF viewing while `@voldzi/stratos-ui` is consumed from the public npm registry.
 
-The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, PDF citation-page rendering, workflow inbox filters/actions, upload/chat submits, ingestion refresh and dashboard inbox link. Shared imports include `GlobalTopbar`, `CommandCenter`, `SelectField`, `SettingsSurface`, `SurfaceModeMenu`, `DataTable`, `HelpHint`, `FieldLabelWithHelp`, `StratosPdfViewer`, and `@voldzi/stratos-ui/styles.css`.
+The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, PDF citation-page rendering, workflow inbox filters/actions, upload/chat submits, ingestion refresh and dashboard inbox link. Shared imports include `GlobalTopbar`, `CommandCenter`, `SelectField`, `SettingsSurface`, `SurfaceModeMenu`, `DataTable`, `HelpHint`, `FieldLabelWithHelp`, `AccessAuditList`, `AccessEffectiveMatrix`, `StratosPdfViewer`, and `@voldzi/stratos-ui/styles.css`.
 
 ### Workflow Inbox
 

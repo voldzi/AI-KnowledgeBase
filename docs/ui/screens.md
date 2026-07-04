@@ -118,12 +118,9 @@ Route: `/audit`
 
 Content:
 
-- event type
-- severity
-- actor
-- resource
-- correlation id
-- created timestamp
+- shared `AccessAuditList` timeline for audit events
+- event type, severity tone, actor, resource, correlation id and created timestamp in a compact detail line
+- no document body, prompt, answer or token payloads
 
 ## Admin Skeleton
 

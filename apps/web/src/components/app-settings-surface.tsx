@@ -7,7 +7,9 @@ import {
   SelectField,
   SettingsField,
   SettingsTextInput,
+  AccessEffectiveMatrix,
   StratosSettingsSurface,
+  type AccessMatrixTenant,
   type SettingsContentSection,
   type SettingsNavItem,
   type SettingsSurfaceMode,
@@ -75,6 +77,16 @@ const settingsCopy = {
     roles: "Role",
     groups: "Skupiny",
     permissions: "Povolené plochy",
+    accessActive: "Aktivní",
+    accessInactive: "Neaktivní",
+    accessEmpty: "Pro aktuální identitu není k dispozici žádný efektivní přístup.",
+    accessSource: "Keycloak / AKB RBAC",
+    accessTenant: "STRATOS",
+    accessEmployeeChat: "AKB chat",
+    accessWorkspace: "AKB dokumenty",
+    accessAdmin: "AKB administrace",
+    accessAllowed: "Povoleno",
+    accessDenied: "Nepovoleno",
     emptyAccess: "Nepřiřazeno",
     previewGroup: "Testování",
     previewTitle: "Náhled role",
@@ -104,6 +116,16 @@ const settingsCopy = {
     roles: "Roles",
     groups: "Groups",
     permissions: "Allowed surfaces",
+    accessActive: "Active",
+    accessInactive: "Inactive",
+    accessEmpty: "No effective access is available for the current identity.",
+    accessSource: "Keycloak / AKB RBAC",
+    accessTenant: "STRATOS",
+    accessEmployeeChat: "AKB chat",
+    accessWorkspace: "AKB documents",
+    accessAdmin: "AKB administration",
+    accessAllowed: "Allowed",
+    accessDenied: "Not allowed",
     emptyAccess: "Not assigned",
     previewGroup: "Testing",
     previewTitle: "Role preview",
@@ -136,6 +158,10 @@ export function AppSettingsSurface({
   values
 }: AppSettingsSurfaceProps) {
   const copy = settingsCopy[language];
+  const effectiveAccessTenants = useMemo<AccessMatrixTenant[]>(
+    () => buildEffectiveAccessTenants(accessInfo, copy),
+    [accessInfo, copy]
+  );
   const appNavItems = useMemo<SettingsNavItem[]>(
     () => [
       {
@@ -202,15 +228,11 @@ export function AppSettingsSurface({
             <SettingsField label={copy.subject} description={copy.accessDescription}>
               <SettingsTextInput value={accessInfo.subjectId || copy.emptyAccess} readOnly onChange={() => undefined} />
             </SettingsField>
-            <SettingsField label={copy.roles} description={copy.accessDescription}>
-              <SettingsTextInput value={accessInfo.roles.length ? accessInfo.roles.join(", ") : copy.emptyAccess} readOnly onChange={() => undefined} />
-            </SettingsField>
-            <SettingsField label={copy.groups} description={copy.accessDescription}>
-              <SettingsTextInput value={accessInfo.groups.length ? accessInfo.groups.join(", ") : copy.emptyAccess} readOnly onChange={() => undefined} />
-            </SettingsField>
-            <SettingsField label={copy.permissions} description={copy.accessDescription}>
-              <SettingsTextInput value={accessInfo.permissions.length ? accessInfo.permissions.join(", ") : copy.emptyAccess} readOnly onChange={() => undefined} />
-            </SettingsField>
+            <AccessEffectiveMatrix
+              tenants={effectiveAccessTenants}
+              emptyLabel={copy.accessEmpty}
+              labels={{ active: copy.accessActive, inactive: copy.accessInactive, empty: copy.accessEmpty }}
+            />
           </>
         )
       },
@@ -250,7 +272,7 @@ export function AppSettingsSurface({
           ]
         : [])
     ],
-    [accessInfo, apiModeLabel, authModeLabel, copy, onRolePreviewChange, rolePreview]
+    [accessInfo, apiModeLabel, authModeLabel, copy, effectiveAccessTenants, onRolePreviewChange, rolePreview]
   );
 
   return (
@@ -273,6 +295,40 @@ export function AppSettingsSurface({
       onValueChange={onValueChange}
     />
   );
+}
+
+function buildEffectiveAccessTenants(
+  accessInfo: SettingsAccessInfo,
+  copy: (typeof settingsCopy)[AklLanguage]
+): AccessMatrixTenant[] {
+  const permissions = new Set(accessInfo.permissions);
+  const roleLabel = accessInfo.roles.length > 0 ? accessInfo.roles.join(", ") : copy.emptyAccess;
+  const groupSuffix = accessInfo.groups.length > 0 ? ` · ${accessInfo.groups.join(", ")}` : "";
+  const application = (id: string, label: string, permission: string) => {
+    const active = permissions.has(permission);
+    return {
+      id,
+      label,
+      active,
+      role: active ? copy.accessAllowed : copy.accessDenied,
+      source: copy.accessSource,
+      reason: permission
+    };
+  };
+
+  return [
+    {
+      id: "stratos",
+      name: copy.accessTenant,
+      role: `${roleLabel}${groupSuffix}`,
+      active: accessInfo.permissions.length > 0 || accessInfo.roles.length > 0,
+      applications: [
+        application("akb-chat", copy.accessEmployeeChat, "employee_chat"),
+        application("akb-workspace", copy.accessWorkspace, "knowledge_workspace"),
+        application("akb-admin", copy.accessAdmin, "admin")
+      ]
+    }
+  ];
 }
 
 export type {
