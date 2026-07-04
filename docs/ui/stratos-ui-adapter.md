@@ -8,7 +8,7 @@ STRATOS repozitari je `@voldzi/stratos-ui` a obsahuje zejmena `AppShell`,
 ## Implementacni Rozhodnuti
 
 `@voldzi/stratos-ui` je cilovy zdroj sdilenych UI komponent. Povinna STRATOS
-UI baseline pro AKB web je `@voldzi/stratos-ui@0.3.19` nebo novejsi
+UI baseline pro AKB web je `@voldzi/stratos-ui@0.3.20` nebo novejsi
 kompatibilni patch/minor verze. Balicek se nema
 pripojovat pres `file:` dependency mimo Docker build context a AKB nema
 pridavat scoped `.npmrc` pro `@voldzi:registry=https://npm.pkg.github.com`.
@@ -22,6 +22,13 @@ Aktualni kompatibilni adapter je v `apps/web/src/components/stratos`:
 - shell a rail jsou AKB prop wrapper nad `@voldzi/stratos-ui` `AppShell`/`AppRail`; topbar, tlacitka, search box a view tabs pouzivaji stejne sdilene struktury jako STRATOS Budget,
 - dokumentovy PDF viewer je zapouzdreny jako `StratosPdfViewer`, aby stejny render citacni strany, textoveho highlightu a bbox overlaye mohl byt pozdeji prenesen do sdileneho STRATOS UI balicku,
 - feature komponenty nemusi znat, zda bezi nad lokalnim adapterem nebo budou pozdeji prepojeny primo na `@voldzi/stratos-ui`.
+
+Od baseline `0.3.20` nesmi AKB lokalne prepisovat shell layout, z-indexy
+popoveru ani picker vrstveni obecnymi hacky. `StratosAppShell` a
+`StratosAppRail` pouzivaji sdilene overlay chovani pro sirky 769-1280 px,
+status prvky v topbaru se v uzkych sirkach zkracuji podle sdileneho patternu a
+uzivatelske chyby se maji predavat pres sdileny `ErrorState` bez surovych
+technickych detailu typu JWT, OIDC, 401 nebo JSON payload.
 
 Pokud ma vyvojove prostredi lokalni `.npmrc`, ktere scope `@voldzi` smeruje na
 GitHub Packages kvuli jinym balickum, nesmi se tento override promitnout do AKB
@@ -119,7 +126,7 @@ Field-help API je sdilene v `@voldzi/stratos-ui`: AKB pouziva `HelpHint`, `Field
 
 Aktualni cesta na sdileny balicek:
 
-1. drzet dependency `@voldzi/stratos-ui` minimalne na `0.3.19` z verejneho npm registry,
+1. drzet dependency `@voldzi/stratos-ui` minimalne na `0.3.20` z verejneho npm registry,
 2. drzet `import "@voldzi/stratos-ui/styles.css";` v globalnim vstupu webu,
 3. premapovat zbyvajici adaptery v `apps/web/src/components/stratos/index.ts` na primy import ze sdilene knihovny, pokud sdilena knihovna pokryva stejne props,
 4. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,

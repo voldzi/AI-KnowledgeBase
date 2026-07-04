@@ -45,9 +45,9 @@ const chatCopy = {
     usedChunks: "Použité chunky",
     warnings: "Varování",
     noTechnicalWarnings: "Bez varování",
-    requestFailed: "RAG API vrátilo HTTP",
-    requestError: "Dotaz se nepodařilo odeslat.",
-    citationFailed: "Citation API vrátilo HTTP",
+    requestFailed: "Dotaz se nepodařilo odeslat. Zkuste to prosím znovu.",
+    requestError: "Dotaz se nepodařilo odeslat. Zkuste to prosím znovu.",
+    citationFailed: "Citaci se nepodařilo otevřít.",
     citationError: "Citaci se nepodařilo otevřít."
   },
   en: {
@@ -79,10 +79,10 @@ const chatCopy = {
     usedChunks: "Used chunks",
     warnings: "Warnings",
     noTechnicalWarnings: "No warnings",
-    requestFailed: "RAG API returned HTTP",
-    requestError: "RAG request failed.",
-    citationFailed: "Citation API returned HTTP",
-    citationError: "Citation open failed."
+    requestFailed: "The question could not be sent. Please try again.",
+    requestError: "The question could not be sent. Please try again.",
+    citationFailed: "The citation could not be opened.",
+    citationError: "The citation could not be opened."
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
@@ -116,7 +116,7 @@ export function KnowledgeChat({ initialAnswer, availableTags = [] }: KnowledgeCh
       .then(async (response) => {
         setOpeningChunkId(null);
         if (!response.ok) {
-          setSourceError(`${copy.citationFailed} ${response.status}.`);
+          setSourceError(copy.citationFailed);
           return;
         }
         const payload = (await response.json()) as { source_context: SourceContext };
@@ -168,7 +168,7 @@ export function KnowledgeChat({ initialAnswer, availableTags = [] }: KnowledgeCh
                 });
 
                 if (!response.ok || !response.body) {
-                  setError(`${copy.requestFailed} ${response.status}.`);
+                  setError(copy.requestFailed);
                   setSubmitting(false);
                   return;
                 }

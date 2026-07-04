@@ -46,8 +46,6 @@
   --stratos-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --stratos-radius-lg: 14px;
   --stratos-shadow-popover: 0 22px 58px rgba(28, 45, 52, 0.2);
-  --stratos-z-modal: 100;
-  --stratos-z-popover: 80;
 }
 
 * {
@@ -519,10 +517,6 @@ button {
   overflow: hidden;
 }
 
-.stratos-akb-shell[data-sidebar-open="false"][data-has-rail="true"][data-has-sidebar="true"] {
-  grid-template-columns: var(--stratos-shell-rail-width) 0 minmax(0, 1fr);
-}
-
 .stratos-akb-shell .stratos-app-shell-topbar {
   grid-column: 1 / -1;
   min-width: 0;
@@ -566,6 +560,15 @@ button {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+.stratos-akb-rail-frame .stratos-brand {
+  justify-content: center;
+  padding: 14px 0 16px;
+}
+
+.stratos-akb-rail-frame .stratos-brand > span:not(.stratos-brand__mark) {
+  display: none;
 }
 
 .stratos-akb-shell .stratos-app-rail {
@@ -617,6 +620,25 @@ button {
   min-height: 0;
   position: static;
   top: auto;
+}
+
+@media (min-width: 1281px) {
+  .stratos-akb-shell.is-sidebar-collapsed {
+    --stratos-shell-sidebar-width: var(
+      --stratos-workspace-sidebar-collapsed-width
+    );
+  }
+
+  .stratos-akb-shell[data-sidebar-open="false"][data-has-rail="true"][data-has-sidebar="true"] {
+    grid-template-columns:
+      var(--stratos-shell-rail-width) var(--stratos-shell-sidebar-width)
+      minmax(0, 1fr);
+  }
+
+  .stratos-akb-shell[data-sidebar-open="false"] .stratos-app-shell-sidebar {
+    opacity: 1;
+    width: var(--stratos-shell-sidebar-width);
+  }
 }
 
 .workspace,
@@ -5095,6 +5117,18 @@ button {
     z-index: 95;
   }
 
+  .stratos-akb-shell .stratos-app-shell-sidebar .stratos-workspace-sidebar {
+    bottom: auto;
+    box-shadow: none;
+    left: auto;
+    opacity: 1;
+    position: static;
+    top: auto;
+    transform: none;
+    visibility: visible;
+    width: 100%;
+  }
+
   .stratos-akb-shell:not(.is-mobile-sidebar-open) .stratos-app-shell-sidebar {
     opacity: 0 !important;
     pointer-events: none;
@@ -5236,6 +5270,12 @@ button {
     left: 0;
     top: 48px;
     width: min(288px, 86vw) !important;
+  }
+
+  .stratos-akb-shell .stratos-app-shell-sidebar .stratos-workspace-sidebar {
+    left: auto;
+    top: auto;
+    width: 100%;
   }
 
   .stratos-akb-shell .stratos-app-shell-content {
