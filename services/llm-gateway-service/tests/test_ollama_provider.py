@@ -5,7 +5,7 @@ import pytest
 import providers.ollama as ollama_module
 from app.config import load_settings
 from app.errors import GatewayError
-from app.schemas import ChatCompletionRequest
+from app.schemas import ChatCompletionRequest, EmbeddingsRequest
 from providers.ollama import OllamaProvider
 
 
@@ -78,6 +78,26 @@ async def test_ollama_provider_uses_default_max_tokens(monkeypatch: pytest.Monke
     payload = captured["json_body"]
     assert payload["think"] is False
     assert payload["options"]["num_predict"] == 768
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_passes_embedding_dimensions(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_request_json_with_retry(**kwargs):
+        captured.update(kwargs)
+        return {"embeddings": [[0.1, 0.2, 0.3]]}
+
+    monkeypatch.setattr(ollama_module, "request_json_with_retry", fake_request_json_with_retry)
+    provider = OllamaProvider(ollama_settings())
+
+    response = await provider.embeddings(
+        EmbeddingsRequest(model="qwen3-embedding:8b", input=["Test"], dimensions=1024)
+    )
+
+    payload = captured["json_body"]
+    assert payload == {"model": "qwen3-embedding:8b", "input": ["Test"], "dimensions": 1024}
+    assert response.provider == "ollama"
 
 
 @pytest.mark.asyncio

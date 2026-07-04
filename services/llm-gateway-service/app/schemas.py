@@ -57,6 +57,7 @@ class EmbeddingsRequest(BaseModel):
 
     model: str = Field(min_length=1)
     input: list[str] = Field(min_length=1)
+    dimensions: int | None = Field(default=None, ge=1, le=4096)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -141,6 +142,7 @@ class ModelTestEmbeddingRequest(BaseModel):
 
     model: str | None = Field(default=None, min_length=1)
     input: str = Field(min_length=1)
+    dimensions: int | None = Field(default=None, ge=1, le=4096)
 
 
 class EffectiveConfigResponse(BaseModel):
@@ -151,6 +153,7 @@ class EffectiveConfigResponse(BaseModel):
     enabled_providers: list[ProviderName]
     default_chat_model: str
     default_embedding_model: str
+    default_embedding_dimensions: int | None = None
     default_max_tokens: int
     model_provider_map: dict[str, ProviderName]
     allow_model_pull: bool

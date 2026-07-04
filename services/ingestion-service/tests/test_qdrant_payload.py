@@ -173,6 +173,23 @@ def test_embedding_client_accepts_llm_gateway_api_base_url(tmp_path) -> None:
     assert client._service_base_url() == "http://llm-gateway-service:8080"
 
 
+def test_embedding_profile_dimensions_map_is_parsed(tmp_path) -> None:
+    settings = _settings(
+        tmp_path,
+        {
+            "AKL_INGESTION_DEFAULT_EMBEDDING_MODEL": "qwen3-embedding:8b",
+            "AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS": "1024",
+            "AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP": '{"qwen3_enterprise":"qwen3-embedding:8b"}',
+            "AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP": '{"qwen3_enterprise":1024}',
+        },
+    )
+    client = EmbeddingClient(settings)
+
+    assert settings.default_embedding_dimensions == 1024
+    assert client._model_for_profile("qwen3_enterprise") == "qwen3-embedding:8b"
+    assert client._dimensions_for_profile("qwen3_enterprise") == 1024
+
+
 class _FakeResponse:
     def __init__(self, status_code: int, payload: dict | None = None) -> None:
         self.status_code = status_code

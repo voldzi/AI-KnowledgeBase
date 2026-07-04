@@ -693,9 +693,12 @@ Request:
 ```json
 {
   "model": "bge-m3",
-  "input": ["Text jednoho chunku."]
+  "input": ["Text jednoho chunku."],
+  "dimensions": 1024
 }
 ```
+
+`dimensions` is optional. Use it only for models that support explicit output size, for example the controlled `qwen3-embedding:8b` profile. Omit it for the stable `bge-m3` baseline.
 
 Response:
 

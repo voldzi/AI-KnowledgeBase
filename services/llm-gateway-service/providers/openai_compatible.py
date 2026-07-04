@@ -153,13 +153,16 @@ class OpenAICompatibleProvider(LLMProvider):
             )
 
     async def embeddings(self, request: EmbeddingsRequest) -> EmbeddingsResponse:
+        payload: dict[str, Any] = {"model": request.model, "input": request.input}
+        if request.dimensions is not None:
+            payload["dimensions"] = request.dimensions
         data = await request_json_with_retry(
             provider=self.name,
             settings=self.settings,
             method="POST",
             url=f"{self.settings.openai_base_url}/v1/embeddings",
             headers=outgoing_headers(self.settings, self.settings.openai_api_key),
-            json_body={"model": request.model, "input": request.input},
+            json_body=payload,
         )
 
         items = data.get("data", [])

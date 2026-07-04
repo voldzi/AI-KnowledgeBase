@@ -27,19 +27,22 @@ Required `.env` values:
 ```bash
 AKL_LLM_DEFAULT_PROVIDER=ollama
 AKL_LLM_ENABLED_PROVIDERS=ollama
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama"}
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama"}
 AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b-mlx
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS=
 AKL_LLM_DEFAULT_MAX_TOKENS=512
 AKL_OLLAMA_THINK=false
 AKL_OLLAMA_BASE_URLS=http://ollama:11434
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS=
 AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_EMBEDDING_MODEL=bge-m3
+AKL_RAG_EMBEDDING_DIMENSIONS=
 AKL_RAG_AUTHZ_MODE=dev
 AKL_RAG_REQUIRE_CITATIONS=true
 AKL_RAG_ENABLE_RERANKING=true
@@ -80,9 +83,31 @@ The effective config should show:
 active_provider=ollama
 default_chat_model=gemma4:12b-mlx
 default_embedding_model=bge-m3
+default_embedding_dimensions=null
 default_max_tokens=512
 ollama_think=false
 ```
+
+## Qwen3 Enterprise Embedding Profile
+
+`qwen3-embedding:8b` is available as a controlled enterprise retrieval candidate. Ollama returns 4096-dimensional vectors by default, but the AKB production profile constrains it to 1024 dimensions so it can be evaluated with the same Qdrant vector size as `bge-m3`.
+
+Use a separate collection while evaluating Qwen. Never mix vectors produced by different models in one Qdrant collection.
+
+```bash
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama"}
+AKL_LLM_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_RAG_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_RAG_EMBEDDING_DIMENSIONS=1024
+AKL_QDRANT_COLLECTION=akl_document_chunks_qwen3_8b_1024
+AKL_QDRANT_VECTOR_SIZE=1024
+AKL_QDRANT_DISTANCE=Cosine
+```
+
+Switch RAG traffic to the Qwen profile only after a full reindex into the Qwen collection and a cited-answer smoke pass. The stable default profile remains `bge-m3` until the Qwen collection is complete and validated.
 
 ## Host Ollama
 

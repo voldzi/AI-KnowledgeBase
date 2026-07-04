@@ -50,6 +50,31 @@ def _parse_json_object(value: str, variable_name: str) -> dict[str, str]:
     return result
 
 
+def _parse_json_int_object(value: str, variable_name: str) -> dict[str, int]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"{variable_name} must be a JSON object") from exc
+    if not isinstance(parsed, dict):
+        raise ConfigError(f"{variable_name} must be a JSON object")
+
+    result: dict[str, int] = {}
+    for key, item in parsed.items():
+        if not isinstance(key, str) or not isinstance(item, int):
+            raise ConfigError(f"{variable_name} keys must be strings and values must be integers")
+        if item <= 0:
+            raise ConfigError(f"{variable_name} values must be greater than zero")
+        result[key] = item
+    return result
+
+
+def _parse_optional_int(value: str) -> int | None:
+    stripped = value.strip()
+    if stripped == "":
+        return None
+    return int(stripped)
+
+
 @dataclass(frozen=True)
 class Settings:
     service_name: str
@@ -91,7 +116,9 @@ class Settings:
     llm_gateway_base_url: str
     llm_gateway_token: str | None
     default_embedding_model: str
+    default_embedding_dimensions: int | None
     embedding_profile_model_map: dict[str, str]
+    embedding_profile_dimensions_map: dict[str, int]
     embedding_batch_size: int
     embedding_concurrency: int
     mock_embedding_dimensions: int
@@ -146,6 +173,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         embedding_batch_size = int(_get(source, "AKL_INGESTION_EMBEDDING_BATCH_SIZE", "32"))
         embedding_concurrency = int(_get(source, "AKL_INGESTION_EMBEDDING_CONCURRENCY", "2"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
+        default_embedding_dimensions = _parse_optional_int(
+            _get(source, "AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS", "")
+        )
         qdrant_vector_size = int(_get(source, "AKL_QDRANT_VECTOR_SIZE", "1024"))
         request_timeout_seconds = float(_get(source, "AKL_INGESTION_REQUEST_TIMEOUT_SECONDS", "30"))
     except ValueError as exc:
@@ -171,6 +201,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_EMBEDDING_CONCURRENCY must be between 1 and 16")
     if mock_embedding_dimensions <= 0:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
+    if default_embedding_dimensions is not None and default_embedding_dimensions <= 0:
+        raise ConfigError("AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS must be greater than zero")
     if qdrant_vector_size <= 0:
         raise ConfigError("AKL_QDRANT_VECTOR_SIZE must be greater than zero")
     if request_timeout_seconds <= 0:
@@ -235,9 +267,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         llm_gateway_base_url=_get(source, "AKL_LLM_GATEWAY_BASE_URL", "http://localhost:8080").rstrip("/"),
         llm_gateway_token=source.get("AKL_LLM_GATEWAY_TOKEN") or service_account_token,
         default_embedding_model=_get(source, "AKL_INGESTION_DEFAULT_EMBEDDING_MODEL", "mock-embedding"),
+        default_embedding_dimensions=default_embedding_dimensions,
         embedding_profile_model_map=_parse_json_object(
             _get(source, "AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP", "{}"),
             "AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP",
+        ),
+        embedding_profile_dimensions_map=_parse_json_int_object(
+            _get(source, "AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP", "{}"),
+            "AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP",
         ),
         embedding_batch_size=embedding_batch_size,
         embedding_concurrency=embedding_concurrency,

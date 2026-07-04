@@ -59,6 +59,8 @@ def test_current_http_profile_uses_explicit_akl_env_names() -> None:
             "AKL_RAG_AUTHZ_MODE": "registry",
             "AKL_RAG_ENABLE_RERANKING": "false",
             "AKL_RAG_SOURCE_CONTEXT_WINDOW": "2",
+            "AKL_RAG_EMBEDDING_MODEL": "qwen3-embedding:8b",
+            "AKL_RAG_EMBEDDING_DIMENSIONS": "1024",
         }
     )
 
@@ -73,3 +75,5 @@ def test_current_http_profile_uses_explicit_akl_env_names() -> None:
     assert settings.no_answer_min_score == 0.15
     assert settings.enable_reranking is False
     assert settings.source_context_window == 2
+    assert settings.embedding_model == "qwen3-embedding:8b"
+    assert settings.embedding_dimensions == 1024

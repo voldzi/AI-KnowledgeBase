@@ -438,6 +438,12 @@ components:
         input:
           type: string
           minLength: 1
+        dimensions:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 4096
     EffectiveConfigResponse:
       type: object
       required:
@@ -448,6 +454,7 @@ components:
         - enabled_providers
         - default_chat_model
         - default_embedding_model
+        - default_embedding_dimensions
         - default_max_tokens
         - model_provider_map
         - allow_model_pull
@@ -471,6 +478,12 @@ components:
           type: string
         default_embedding_model:
           type: string
+        default_embedding_dimensions:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 4096
         default_max_tokens:
           type: integer
           minimum: 1
@@ -578,6 +591,12 @@ components:
           minItems: 1
           items:
             type: string
+        dimensions:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 4096
         metadata:
           type: object
           default: {}

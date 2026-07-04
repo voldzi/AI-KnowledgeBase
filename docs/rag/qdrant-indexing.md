@@ -100,6 +100,16 @@ curl -X DELETE http://localhost:6333/collections/akl_document_chunks
 
 Then rerun ingestion so the collection is recreated with the correct vector size.
 
+`qwen3-embedding:8b` is supported as an enterprise candidate profile. Ollama returns 4096 dimensions by default, but AKB can request 1024 dimensions through the LLM Gateway `dimensions` field and the corresponding service configuration:
+
+```bash
+AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_RAG_EMBEDDING_DIMENSIONS=1024
+```
+
+Evaluate Qwen in a parallel collection such as `akl_document_chunks_qwen3_8b_1024`. Do not reuse the `akl_document_chunks` collection unless it has been fully reset and reindexed with the target model and dimension.
+
 ## Smoke Verification
 
 Run:
