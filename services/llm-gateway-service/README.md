@@ -57,7 +57,7 @@ Routing is controlled by environment variables:
 ```text
 AKL_LLM_DEFAULT_PROVIDER=mock
 AKL_LLM_ENABLED_PROVIDERS=mock,ollama,openai
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama","meta-llama/Llama-3.1-8B-Instruct":"openai"}
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","meta-llama/Llama-3.1-8B-Instruct":"openai"}
 ```
 
 If a requested model is present in `AKL_LLM_MODEL_PROVIDER_MAP`, that provider is used. Otherwise the service uses `AKL_LLM_DEFAULT_PROVIDER`.

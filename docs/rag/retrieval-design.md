@@ -47,6 +47,8 @@ Real local RAG používá:
 - `AKL_RAG_RETRIEVER_MODE=qdrant`
 - `AKL_RAG_LLM_CLIENT_MODE=http`
 - `AKL_RAG_CHAT_MODEL=gemma4:12b-mlx`
+- `AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx`
+- `AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6`
 - `AKL_RAG_EMBEDDING_MODEL=bge-m3`
 - `AKL_RAG_ANSWER_MAX_TOKENS=512`
 - `AKL_RAG_SOURCE_CONTEXT_WINDOW=1`
@@ -54,6 +56,11 @@ Real local RAG používá:
 - Qdrant kolekci `akl_document_chunks` s vektorem velikosti `1024` a distance `Cosine`
 
 Mock/dev-test profil používá `mock-embedding` s výchozí dimenzí 8. Tento profil nesmí zapisovat ani číst real Qdrant kolekci vytvořenou pro `bge-m3`.
+
+`AKL_RAG_HIGH_QUALITY_CHAT_MODEL` je volitelný model pro komplexní citované
+odpovědi. Standardní zaměstnanecké dotazy zůstávají na `AKL_RAG_CHAT_MODEL`,
+zatímco extrakce, porovnání, checklisty, manažerské/auditní odpovědi a velký
+kontext používají high-quality model, pokud je nastavený.
 
 ## Qdrant payload
 

@@ -26,6 +26,7 @@ class LLMGatewayClient(Protocol):
         *,
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
+        model: str | None = None,
         auth_context: AuthContext | None = None,
     ) -> str:
         ...
@@ -35,6 +36,7 @@ class LLMGatewayClient(Protocol):
         *,
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
+        model: str | None = None,
         auth_context: AuthContext | None = None,
     ) -> AsyncIterator[str]:
         ...
@@ -60,6 +62,7 @@ class MockLLMGatewayClient:
         *,
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
+        model: str | None = None,
         auth_context: AuthContext | None = None,
     ) -> str:
         if self._settings.mock_chat_response:
@@ -80,9 +83,10 @@ class MockLLMGatewayClient:
         *,
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
+        model: str | None = None,
         auth_context: AuthContext | None = None,
     ) -> AsyncIterator[str]:
-        answer = await self.chat_completion(messages=messages, metadata=metadata, auth_context=auth_context)
+        answer = await self.chat_completion(messages=messages, metadata=metadata, model=model, auth_context=auth_context)
         for index, word in enumerate(answer.split(" ")):
             yield word if index == 0 else f" {word}"
 
@@ -124,15 +128,17 @@ class HttpLLMGatewayClient:
         *,
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
+        model: str | None = None,
         auth_context: AuthContext | None = None,
     ) -> str:
+        selected_model = model or self._settings.chat_model
         payload = await request_json_with_retry(
             dependency="llm-gateway",
             settings=self._settings,
             method="POST",
             url=f"{self._settings.llm_gateway_base_url}/chat/completions",
             json_body={
-                "model": self._settings.chat_model,
+                "model": selected_model,
                 "messages": messages,
                 "temperature": 0.1,
                 "max_tokens": self._settings.answer_max_tokens,
@@ -149,8 +155,10 @@ class HttpLLMGatewayClient:
         *,
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
+        model: str | None = None,
         auth_context: AuthContext | None = None,
     ) -> AsyncIterator[str]:
+        selected_model = model or self._settings.chat_model
         timeout = httpx.Timeout(self._settings.request_timeout_seconds, read=None)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -163,7 +171,7 @@ class HttpLLMGatewayClient:
                         bearer_token_override=self._settings.llm_gateway_token,
                     ),
                     json={
-                        "model": self._settings.chat_model,
+                        "model": selected_model,
                         "messages": messages,
                         "temperature": 0.1,
                         "max_tokens": self._settings.answer_max_tokens,
