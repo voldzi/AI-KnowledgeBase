@@ -27,7 +27,7 @@ Required `.env` values:
 ```bash
 AKL_LLM_DEFAULT_PROVIDER=ollama
 AKL_LLM_ENABLED_PROVIDERS=ollama
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama"}
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama"}
 AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b-mlx
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS=
@@ -41,6 +41,8 @@ AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
+AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_EMBEDDING_DIMENSIONS=
 AKL_RAG_AUTHZ_MODE=dev
@@ -67,6 +69,10 @@ curl -sS http://localhost:8083/api/v1/models/pull \
 curl -sS http://localhost:8083/api/v1/models/pull \
   -H 'Content-Type: application/json' \
   -d '{"model":"gemma4:12b-mlx","kind":"chat"}'
+
+curl -sS http://localhost:8083/api/v1/models/pull \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gemma4:31b-mlx","kind":"chat"}'
 ```
 
 Verify model visibility and effective config:
@@ -88,6 +94,11 @@ default_max_tokens=512
 ollama_think=false
 ```
 
+`AKL_RAG_CHAT_MODEL` is the standard fast answer model. `AKL_RAG_HIGH_QUALITY_CHAT_MODEL`
+is used by the RAG answer composer for complex extraction, comparison, checklist,
+FAQ, manager brief, audit and large-context answers. Keep both chat models in
+`AKL_LLM_MODEL_PROVIDER_MAP`; otherwise high-quality requests cannot be routed.
+
 ## Qwen3 Enterprise Embedding Profile
 
 `qwen3-embedding:8b` is available as a controlled enterprise retrieval candidate. Ollama returns 4096-dimensional vectors by default, but the AKB production profile constrains it to 1024 dimensions so it can be evaluated with the same Qdrant vector size as `bge-m3`.
@@ -95,7 +106,7 @@ ollama_think=false
 Use a separate collection while evaluating Qwen. Never mix vectors produced by different models in one Qdrant collection.
 
 ```bash
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama"}
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama"}
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
 AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS=1024
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
@@ -134,6 +145,7 @@ On macOS with a local Ollama service:
 ```bash
 ollama pull bge-m3
 ollama pull gemma4:12b-mlx
+ollama pull gemma4:31b-mlx
 ollama list
 ```
 

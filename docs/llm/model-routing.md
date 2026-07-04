@@ -49,6 +49,7 @@ AKL_LLM_ALLOW_MODEL_PULL=true
 AKL_OLLAMA_THINK=false
 AKL_LLM_MODEL_PROVIDER_MAP={
   "gemma4:12b-mlx": "ollama",
+  "gemma4:31b-mlx": "ollama",
   "bge-m3": "ollama",
   "qwen3-embedding:8b": "ollama"
 }
@@ -58,6 +59,8 @@ AKL_INGESTION_INDEXER_MODE=qdrant
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
+AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_AUTHZ_MODE=dev
 AKL_RAG_REQUIRE_CITATIONS=true
@@ -66,6 +69,23 @@ AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine
 ```
+
+## High-Quality Chat Routing
+
+`AKL_RAG_CHAT_MODEL` zustava rychly standardni chat model pro bezne
+zamestnanecke dotazy. `AKL_RAG_HIGH_QUALITY_CHAT_MODEL` je volitelny profil
+pro slozitejsi citovane odpovedi nad dokumentaci. Answer composer ho pouzije
+pro extrakce, checklisty, FAQ, manažerské/auditní odpovědi, porovnání,
+konflikty, velky kontext nebo kontext zkraceny limitem.
+
+```text
+AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
+AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
+```
+
+Model uvedeny v `AKL_RAG_HIGH_QUALITY_CHAT_MODEL` musi byt zaroven v
+`AKL_LLM_MODEL_PROVIDER_MAP`, jinak LLM Gateway request odmítne.
 
 ## Qwen3 Enterprise Embedding Profile
 
@@ -78,6 +98,7 @@ Recommended 1024-dimensional pilot profile:
 ```text
 AKL_LLM_MODEL_PROVIDER_MAP={
   "gemma4:12b-mlx": "ollama",
+  "gemma4:31b-mlx": "ollama",
   "bge-m3": "ollama",
   "qwen3-embedding:8b": "ollama"
 }

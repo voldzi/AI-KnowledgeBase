@@ -33,6 +33,11 @@ def _parse_optional_int(value: str) -> int | None:
     return int(stripped)
 
 
+def _parse_optional_str(value: str) -> str | None:
+    stripped = value.strip()
+    return stripped or None
+
+
 def _client_mode(env: Mapping[str, str], key: str, default: str) -> str:
     mode = _get(env, key, default).strip().lower()
     if mode not in CLIENT_MODES:
@@ -98,6 +103,8 @@ class Settings:
     embedding_model: str
     embedding_dimensions: int | None
     chat_model: str
+    high_quality_chat_model: str | None
+    high_quality_min_context_chunks: int
     mock_chat_response: str | None
     mock_registry_denied_document_ids: tuple[str, ...]
 
@@ -139,6 +146,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         confidence_high_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_HIGH_THRESHOLD", "0.75"))
         confidence_medium_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_MEDIUM_THRESHOLD", "0.5"))
         embedding_dimensions = _parse_optional_int(_get(source, "AKL_RAG_EMBEDDING_DIMENSIONS", ""))
+        high_quality_min_context_chunks = int(_get(source, "AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS", "6"))
     except ValueError as exc:
         raise ConfigError("Numeric AKL_RAG_* configuration value is invalid") from exc
 
@@ -166,6 +174,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_CONFIDENCE_HIGH_THRESHOLD must be >= AKL_RAG_CONFIDENCE_MEDIUM_THRESHOLD")
     if embedding_dimensions is not None and embedding_dimensions <= 0:
         raise ConfigError("AKL_RAG_EMBEDDING_DIMENSIONS must be greater than zero")
+    if high_quality_min_context_chunks <= 0:
+        raise ConfigError("AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS must be greater than zero")
 
     if env_name == "production":
         if auth_mode not in {"bearer", "oidc"}:
@@ -228,6 +238,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         embedding_model=_get(source, "AKL_RAG_EMBEDDING_MODEL", "mock-embedding"),
         embedding_dimensions=embedding_dimensions,
         chat_model=_get(source, "AKL_RAG_CHAT_MODEL", "mock-chat"),
+        high_quality_chat_model=_parse_optional_str(_get(source, "AKL_RAG_HIGH_QUALITY_CHAT_MODEL", "")),
+        high_quality_min_context_chunks=high_quality_min_context_chunks,
         mock_chat_response=source.get("AKL_RAG_MOCK_CHAT_RESPONSE") or None,
         mock_registry_denied_document_ids=denied,
     )

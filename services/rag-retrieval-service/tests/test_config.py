@@ -61,6 +61,9 @@ def test_current_http_profile_uses_explicit_akl_env_names() -> None:
             "AKL_RAG_SOURCE_CONTEXT_WINDOW": "2",
             "AKL_RAG_EMBEDDING_MODEL": "qwen3-embedding:8b",
             "AKL_RAG_EMBEDDING_DIMENSIONS": "1024",
+            "AKL_RAG_CHAT_MODEL": "gemma4:12b-mlx",
+            "AKL_RAG_HIGH_QUALITY_CHAT_MODEL": "gemma4:31b-mlx",
+            "AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS": "4",
         }
     )
 
@@ -77,3 +80,11 @@ def test_current_http_profile_uses_explicit_akl_env_names() -> None:
     assert settings.source_context_window == 2
     assert settings.embedding_model == "qwen3-embedding:8b"
     assert settings.embedding_dimensions == 1024
+    assert settings.chat_model == "gemma4:12b-mlx"
+    assert settings.high_quality_chat_model == "gemma4:31b-mlx"
+    assert settings.high_quality_min_context_chunks == 4
+
+
+def test_invalid_high_quality_min_context_chunks_is_rejected() -> None:
+    with pytest.raises(ConfigError, match="AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS"):
+        load_settings({"AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS": "0"})

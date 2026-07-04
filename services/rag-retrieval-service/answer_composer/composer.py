@@ -10,6 +10,27 @@ from app.security import AuthContext
 from policies.no_answer import NO_ANSWER_TEXT
 
 
+HIGH_QUALITY_ANSWER_MODES: frozenset[AnswerMode] = frozenset(
+    {
+        "compare",
+        "compare_documents",
+        "summary",
+        "extract_obligations",
+        "extract_roles",
+        "extract_deadlines",
+        "extract_risks",
+        "create_checklist",
+        "create_faq",
+        "create_kb_article",
+        "find_conflicts",
+        "find_missing_metadata",
+        "explain_process",
+        "manager_brief",
+        "audit_question",
+    }
+)
+
+
 @dataclass
 class StreamEvent:
     kind: str  # "meta" | "delta" | "done"
@@ -36,6 +57,11 @@ class AnswerComposer:
         auth_context: AuthContext | None = None,
     ) -> RagAnswer:
         selected, truncated = self._select_context(chunks[:max_chunks])
+        selected_chat_model = self._select_chat_model(
+            answer_mode=answer_mode,
+            selected_chunks=selected,
+            truncated=truncated,
+        )
         messages = [
             {
                 "role": "system",
@@ -55,7 +81,10 @@ class AnswerComposer:
                 "query_id": query_id,
                 "chunk_count": len(selected),
                 "used_chunk_ids": [chunk.chunk_id for chunk in selected],
+                "chat_model": selected_chat_model or self._settings.chat_model,
+                "chat_model_tier": "high_quality" if selected_chat_model else "standard",
             },
+            model=selected_chat_model,
             auth_context=auth_context,
         )
 
@@ -98,6 +127,11 @@ class AnswerComposer:
         auth_context: AuthContext | None = None,
     ) -> "AsyncIterator[StreamEvent]":
         selected, truncated = self._select_context(chunks[:max_chunks])
+        selected_chat_model = self._select_chat_model(
+            answer_mode=answer_mode,
+            selected_chunks=selected,
+            truncated=truncated,
+        )
         response_warnings = [*warnings]
         if truncated:
             response_warnings.append("CONTEXT_TRUNCATED")
@@ -135,7 +169,10 @@ class AnswerComposer:
                 "query_id": query_id,
                 "chunk_count": len(selected),
                 "used_chunk_ids": [chunk.chunk_id for chunk in selected],
+                "chat_model": selected_chat_model or self._settings.chat_model,
+                "chat_model_tier": "high_quality" if selected_chat_model else "standard",
             },
+            model=selected_chat_model,
             auth_context=auth_context,
         ):
             parts.append(delta)
@@ -183,6 +220,24 @@ class AnswerComposer:
             selected.append(chunk)
             total_chars = next_total
         return selected, truncated
+
+    def _select_chat_model(
+        self,
+        *,
+        answer_mode: AnswerMode,
+        selected_chunks: list[RetrievedChunk],
+        truncated: bool,
+    ) -> str | None:
+        high_quality_model = self._settings.high_quality_chat_model
+        if not high_quality_model:
+            return None
+        if answer_mode in HIGH_QUALITY_ANSWER_MODES:
+            return high_quality_model
+        if truncated:
+            return high_quality_model
+        if len(selected_chunks) >= self._settings.high_quality_min_context_chunks:
+            return high_quality_model
+        return None
 
 
 def _build_user_prompt(*, query: str, chunks: list[RetrievedChunk], response_language: ResponseLanguage = "cs") -> str:
