@@ -236,7 +236,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("document.assignments.updated")).toBeVisible();
     await expect(page.getByText("workflow.task.approve")).toBeVisible();
     await expect(page.getByText("citation.opened")).toBeVisible();
-    await expect(page.getByRole("cell", { name: /document_chunk\s+chunk_789/ })).toBeVisible();
+    await expect(page.getByText(/document_chunk\s*\/\s*chunk_789/)).toBeVisible();
   });
 
   test("DW-07 native preview opens an available signed image source with OCR bbox", async ({ page }) => {
