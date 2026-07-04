@@ -1,5 +1,9 @@
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
+import { AppRail, AppShell } from "@voldzi/stratos-ui";
+
+import { withAppBasePath } from "@/lib/app-url";
 
 export interface StratosNavItem {
   href: string;
@@ -29,27 +33,29 @@ export function StratosAppShell({
   topbar
 }: StratosAppShellProps) {
   const shellClassName = [
-    "stratos-app-shell",
     "stratos-akb-shell",
+    sidebarCollapsed ? "is-sidebar-collapsed" : "",
     mobileSidebarOpen ? "is-mobile-sidebar-open" : ""
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <div
+    <AppShell
       className={shellClassName}
-      data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-      data-mobile-sidebar-open={mobileSidebarOpen ? "true" : "false"}
+      rail={rail}
+      sidebar={sidebar}
+      sidebarOpen={mobileSidebarOpen}
+      topbar={topbar}
+      topbarPlacement="global"
+      onSidebarChange={(open) => {
+        if (!open) {
+          onMobileSidebarClose?.();
+        }
+      }}
     >
-      <div className="akl-sidebar-backdrop" aria-hidden="true" onClick={onMobileSidebarClose} />
-      <div className="stratos-app-shell__topbar">{topbar}</div>
-      {rail}
-      {sidebar}
-      <div className="stratos-workspace">
-        <main className="main-content">{children}</main>
-      </div>
-    </div>
+      {children}
+    </AppShell>
   );
 }
 
@@ -72,8 +78,14 @@ export function StratosAppRail({
   footer,
   items
 }: StratosAppRailProps) {
+  const router = useRouter();
+  const activeItem =
+    items.find((item) => item.href === activePathname) ??
+    items.find((item) => activePathname.startsWith(item.href) && item.href !== "/") ??
+    items[0];
+
   return (
-    <aside className="stratos-app-rail">
+    <div className="stratos-akb-rail-frame">
       <Link className="stratos-brand" href={brandHref}>
         <span className="stratos-brand__mark">{brandMark}</span>
         <span>
@@ -81,27 +93,26 @@ export function StratosAppRail({
           <small>{brandSubtitle}</small>
         </span>
       </Link>
-      <nav className="stratos-nav-list" aria-label="Primary">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const active = activePathname === item.href || (item.href !== "/" && activePathname.startsWith(item.href));
-          return (
-            <Link
-              className={`stratos-nav-item ${active ? "stratos-nav-item--active" : ""}`}
-              href={item.href}
-              key={item.href}
-              role="button"
-              title={item.label}
-              onClick={() => item.onSelect?.(item)}
-            >
-              <Icon size={17} strokeWidth={2} aria-hidden="true" />
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <AppRail
+        activeItemId={activeItem?.id ?? activePathname}
+        panelOpen
+        items={items.map((item) => ({
+          id: item.id ?? item.href,
+          icon: item.icon,
+          label: item.label,
+          tooltip: item.label
+        }))}
+        onItemSelect={(itemId) => {
+          const item = items.find((candidate) => (candidate.id ?? candidate.href) === itemId);
+          if (!item) {
+            return;
+          }
+          item.onSelect?.(item);
+          router.push(withAppBasePath(item.href));
+        }}
+      />
       <div className="stratos-app-rail__footer">{footer}</div>
-    </aside>
+    </div>
   );
 }
 
