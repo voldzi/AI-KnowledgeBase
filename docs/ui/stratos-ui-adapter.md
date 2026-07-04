@@ -8,7 +8,7 @@ STRATOS repozitari je `@voldzi/stratos-ui` a obsahuje zejmena `AppShell`,
 ## Implementacni Rozhodnuti
 
 `@voldzi/stratos-ui` je cilovy zdroj sdilenych UI komponent. Povinna STRATOS
-UI baseline pro AKB web je `@voldzi/stratos-ui@0.3.18` nebo novejsi
+UI baseline pro AKB web je `@voldzi/stratos-ui@0.3.19` nebo novejsi
 kompatibilni patch/minor verze. Balicek se nema
 pripojovat pres `file:` dependency mimo Docker build context a AKB nema
 pridavat scoped `.npmrc` pro `@voldzi:registry=https://npm.pkg.github.com`.
@@ -40,6 +40,7 @@ Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 - `DirectoryPersonPicker` pro vyber osoby z adresare
 - `AccessAuditList` pro auditni timeline a auditni vyrezy
 - `AccessEffectiveMatrix` pro read-only efektivni pristupy z RBAC
+- `GovernanceIssueList` pro normalizovane spravcovske governance nalezy
 - `createStratosProfileSettingsClient`
 - `createStratosProfileSettingsPayload`
 - `mergeStratosProfileSettings`
@@ -58,6 +59,8 @@ Prvni napojeni AKB pouzije tyto exporty z `@voldzi/stratos-ui`:
 - `StratosSettingsSurface` pro jednotne nastaveni profilu, vzhledu, preferenci a AKB aplikačních sekci.
 - `AccessAuditList` pro auditni timeline na `/audit`, dashboardu a detailu dokumentu.
 - `AccessEffectiveMatrix` pro read-only prehled efektivnich pristupu v nastaveni profilu.
+- `GovernanceIssueList` pro vysledky spravcovskych/provoznich kontrol v
+  detailu dokumentu; executive dashboard nema zobrazovat governance nalezy.
 - `createStratosProfileSettingsClient`, `createStratosProfileSettingsPayload`
   a `mergeStratosProfileSettings` pro cteni, slouceni a zapis profilu pres
   `GET/PUT /api/v1/profile/settings`; AKB neuklada profil, jazyk, vzhled ani
@@ -96,6 +99,11 @@ Adapter je zapojeny na techto plochach:
   timeline nebo kratky prehled pristupovych udalosti.
 - read-only efektivni pristupy v nastaveni profilu pres `AccessEffectiveMatrix`
   misto lokalnich textovych poli pro seznam roli a povolenych ploch.
+- governance nalezy v detailu dokumentu pres `GovernanceIssueList`; AKB
+  predava normalizovane polozky se zavaznosti, aplikaci, typem problemu,
+  entitou, popisem, doporucenou akci a odkazem na citovany podklad, pokud je
+  k dispozici. Opravy a synchronizace vazeb zustavaji server-side workflow, UI
+  pouze ukazuje auditovatelny stav a odkazy na reseni.
 
 AKB domenove komponenty zustavaji v AKB pouze tam, kde reprezentuji Document AI
 domenu: kontrolovane dokumenty, ingestion workflow, citace, governance a
@@ -111,7 +119,7 @@ Field-help API je sdilene v `@voldzi/stratos-ui`: AKB pouziva `HelpHint`, `Field
 
 Aktualni cesta na sdileny balicek:
 
-1. drzet dependency `@voldzi/stratos-ui` minimalne na `0.3.18` z verejneho npm registry,
+1. drzet dependency `@voldzi/stratos-ui` minimalne na `0.3.19` z verejneho npm registry,
 2. drzet `import "@voldzi/stratos-ui/styles.css";` v globalnim vstupu webu,
 3. premapovat zbyvajici adaptery v `apps/web/src/components/stratos/index.ts` na primy import ze sdilene knihovny, pokud sdilena knihovna pokryva stejne props,
 4. odstranit lokalni implementace, pokud sdilena knihovna pokryva stejne props,

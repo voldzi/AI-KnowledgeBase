@@ -229,6 +229,10 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Spustit Kontrola compliance" }).click();
     await expect(page.getByRole("heading", { name: "Výsledek governance kontroly" })).toBeVisible();
     await expect(page.getByText("governance_compliance_mock")).toBeVisible();
+    await expect(page.getByText("Aplikace: AKB").first()).toBeVisible();
+    await expect(page.getByText("Typ problému: governance.owner_or_gestor.required")).toBeVisible();
+    await expect(page.getByText(/Doporučená akce:/).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Otevřít podklad" }).first()).toBeVisible();
     await expect(page.getByText("WEB_BRIDGE_METADATA_CONTENT_ONLY")).toBeVisible();
 
     await page.getByRole("tab", { name: "Audit", exact: true }).click();
