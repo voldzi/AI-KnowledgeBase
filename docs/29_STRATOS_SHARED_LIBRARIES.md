@@ -47,7 +47,7 @@ Use `external_system`, never `source_system`, for STRATOS integration payloads.
 ## Package Model
 
 General STRATOS UI primitives for AKB, Budget, ProjectFlow and ArchFlow use
-`@voldzi/stratos-ui@0.3.18` or newer compatible versions from the public npm
+`@voldzi/stratos-ui@0.3.19` or newer compatible versions from the public npm
 registry. Applications must not add a scoped `.npmrc` that redirects
 `@voldzi/stratos-ui` to GitHub Packages.
 
@@ -78,6 +78,7 @@ import {
   AccessEffectiveMatrix,
   DirectoryPersonPicker,
   FieldLabelWithHelp,
+  GovernanceIssueList,
   GlobalTopbar,
   HelpHint,
   SelectField,
@@ -95,6 +96,10 @@ and `SelectField.labelAccessory` instead of app-local help tooltip components.
 Applications use `AccessAuditList` and `AccessEffectiveMatrix` for access audit
 timelines and read-only effective access summaries instead of app-local audit
 timeline or permission matrix implementations.
+Applications use `GovernanceIssueList` for normalized administrative findings
+with severity, application, issue type, entity, description, recommended action
+and optional resolution/evidence link. These findings belong to administrative
+or operational oversight surfaces, not executive dashboards.
 Applications use the shared profile/settings helpers for `settings.core` and
 store application-specific values under `settings.apps.<appId>`. Profile values
 such as avatar, language, theme, accent, display name and e-mail are not local

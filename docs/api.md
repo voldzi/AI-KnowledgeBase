@@ -121,7 +121,7 @@ Archived or expired conversations are omitted from the default list.
 ## STRATOS Profile Settings
 
 AKB settings use the shared STRATOS settings surface in
-`@voldzi/stratos-ui` baseline `0.3.18+`. The browser reads and writes profile
+`@voldzi/stratos-ui` baseline `0.3.19+`. The browser reads and writes profile
 preferences only through the AKB web/API bridge and the shared helper pattern:
 
 ```ts

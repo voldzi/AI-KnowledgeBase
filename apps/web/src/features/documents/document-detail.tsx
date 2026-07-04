@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AccessAuditList, type AccessAuditListItem } from "@voldzi/stratos-ui";
+import { AccessAuditList, GovernanceIssueList, type AccessAuditListItem, type GovernanceIssueListItem, type GovernanceIssueTone } from "@voldzi/stratos-ui";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -338,6 +338,13 @@ const detailCopy = {
     governanceWarnings: "Varování",
     governanceCounts: "Souhrn metrik",
     governanceFindings: "Nálezy",
+    governanceSeverity: "Závažnost",
+    governanceApplication: "Aplikace",
+    governanceProblemType: "Typ problému",
+    governanceEntity: "Entita",
+    governanceRecommendedAction: "Doporučená akce",
+    governanceOpenReference: "Otevřít podklad",
+    governanceReviewVersionChange: "Posoudit změnu v revizi dokumentu.",
     governanceCitations: "Citace",
     governanceMissing: "Chybějící informace",
     governanceNoItems: "Výsledek neobsahuje detailní položky.",
@@ -558,6 +565,13 @@ const detailCopy = {
     governanceWarnings: "Warnings",
     governanceCounts: "Metric summary",
     governanceFindings: "Findings",
+    governanceSeverity: "Severity",
+    governanceApplication: "Application",
+    governanceProblemType: "Problem type",
+    governanceEntity: "Entity",
+    governanceRecommendedAction: "Recommended action",
+    governanceOpenReference: "Open evidence",
+    governanceReviewVersionChange: "Review the change in document approval.",
     governanceCitations: "Citations",
     governanceMissing: "Missing information",
     governanceNoItems: "The result has no detailed items.",
@@ -2024,7 +2038,7 @@ function GovernanceResultPanel({
 }) {
   const result = run.result;
   const metrics = governanceMetrics(result);
-  const items = governanceResultItems(result);
+  const issues = governanceIssueItems(result, copy);
   const citations = governanceCitations(result);
 
   return (
@@ -2050,14 +2064,10 @@ function GovernanceResultPanel({
           </div>
         </div>
       ) : null}
-      {items.length > 0 ? (
-        <div className="timeline">
+      {issues.length > 0 ? (
+        <div className="stack">
           <strong>{copy.governanceFindings}</strong>
-          {items.map((item) => (
-            <div className="timeline-item" key={item}>
-              <span>{item}</span>
-            </div>
-          ))}
+          <GovernanceIssueList items={issues} emptyLabel={copy.governanceNoItems} />
         </div>
       ) : (
         <div className="empty-state">
@@ -3071,17 +3081,138 @@ function governanceMetrics(result: GovernanceServiceResponse): string[] {
   return [];
 }
 
-function governanceResultItems(result: GovernanceServiceResponse): string[] {
+function governanceIssueItems(
+  result: GovernanceServiceResponse,
+  copy: Record<string, string>
+): GovernanceIssueListItem[] {
   if ("changes" in result) {
-    return result.changes.map((change) => `${change.impact} ${change.change_type}: ${change.rationale}`);
+    return result.changes.map((change) =>
+      governanceIssueItem({
+        id: change.change_id,
+        severity: change.impact,
+        tone: governanceChangeTone(change.impact),
+        problemType: change.change_type,
+        entity: `${result.document_id} / ${result.left_version_id} -> ${result.right_version_id}`,
+        title: `${change.change_type}: ${change.impact}`,
+        description: change.rationale,
+        recommendedAction: copy.governanceReviewVersionChange,
+        citation: change.after_citation ?? change.before_citation ?? change.citations[0] ?? null,
+        copy
+      })
+    );
   }
   if ("findings" in result) {
-    return result.findings.map((finding) => `${finding.severity} ${finding.rule_id}: ${finding.message}`);
+    return result.findings.map((finding) =>
+      governanceIssueItem({
+        id: finding.finding_id,
+        severity: finding.severity,
+        tone: governanceSeverityTone(finding.severity),
+        problemType: finding.rule_id,
+        entity: finding.sources[0]?.title ?? finding.evidence_citations[0]?.document_title ?? result.result_id,
+        title: finding.rule_name,
+        description: finding.message,
+        recommendedAction: finding.recommendation,
+        citation: finding.evidence_citations[0] ?? finding.sources.find((source) => source.citation)?.citation ?? null,
+        copy
+      })
+    );
   }
   if ("conflicts" in result) {
-    return result.conflicts.map((conflict) => `${conflict.severity} ${conflict.conflict_type}: ${conflict.summary}`);
+    return result.conflicts.map((conflict) =>
+      governanceIssueItem({
+        id: conflict.conflict_id,
+        severity: conflict.severity,
+        tone: governanceSeverityTone(conflict.severity),
+        problemType: conflict.conflict_type,
+        entity: conflict.claims.map((claim) => claim.source.title).join(" / ") || result.result_id,
+        title: conflict.conflict_type,
+        description: conflict.summary,
+        recommendedAction: conflict.recommendation,
+        citation: conflict.claims[0]?.citation ?? null,
+        copy
+      })
+    );
   }
   return [];
+}
+
+function governanceIssueItem({
+  id,
+  severity,
+  tone,
+  problemType,
+  entity,
+  title,
+  description,
+  recommendedAction,
+  citation,
+  copy
+}: {
+  id: string;
+  severity: string;
+  tone: GovernanceIssueTone;
+  problemType: string;
+  entity: string;
+  title: ReactNode;
+  description: ReactNode;
+  recommendedAction: string;
+  citation: GovernanceCitation | null;
+  copy: Record<string, string>;
+}): GovernanceIssueListItem {
+  return {
+    id,
+    title,
+    detail: description,
+    badge: severity,
+    tone,
+    metadata: [
+      `${copy.governanceSeverity}: ${severity}`,
+      `${copy.governanceApplication}: AKB`,
+      `${copy.governanceProblemType}: ${problemType}`,
+      `${copy.governanceEntity}: ${entity}`,
+      `${copy.governanceRecommendedAction}: ${recommendedAction}`
+    ],
+    action: citation ? (
+      <StratosButtonLink href={governanceCitationHref(citation)}>
+        <ExternalLink size={15} aria-hidden="true" />
+        {copy.governanceOpenReference}
+      </StratosButtonLink>
+    ) : undefined
+  };
+}
+
+function governanceSeverityTone(severity: string): GovernanceIssueTone {
+  if (severity === "critical" || severity === "error") {
+    return "danger";
+  }
+  if (severity === "warning") {
+    return "warning";
+  }
+  if (severity === "info") {
+    return "info";
+  }
+  return "neutral";
+}
+
+function governanceChangeTone(impact: string): GovernanceIssueTone {
+  if (impact === "critical") {
+    return "danger";
+  }
+  if (impact === "material") {
+    return "warning";
+  }
+  if (impact === "minor") {
+    return "info";
+  }
+  if (impact === "none") {
+    return "good";
+  }
+  return "neutral";
+}
+
+function governanceCitationHref(citation: GovernanceCitation): string {
+  const params = new URLSearchParams({ tab: "viewer", chunk_id: citation.chunk_id });
+  return `/documents/${encodeURIComponent(citation.document_id)}?${params.toString()}`;
 }
 
 function governanceCitations(result: GovernanceServiceResponse): GovernanceCitation[] {
