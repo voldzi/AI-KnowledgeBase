@@ -27,6 +27,13 @@ def _parse_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
+def _parse_optional_int(value: str) -> int | None:
+    stripped = value.strip()
+    if stripped == "":
+        return None
+    return int(stripped)
+
+
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
     seen: set[str] = set()
     deduped: list[str] = []
@@ -72,6 +79,7 @@ class Settings:
     model_provider_map: dict[str, str]
     default_chat_model: str
     default_embedding_model: str
+    default_embedding_dimensions: int | None
     default_max_tokens: int
     allow_model_pull: bool
     allow_model_delete: bool
@@ -144,6 +152,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         rate_limit_per_minute = int(_get(source, "AKL_RATE_LIMIT_PER_MINUTE", "120"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
         default_max_tokens = int(_get(source, "AKL_LLM_DEFAULT_MAX_TOKENS", "512"))
+        default_embedding_dimensions = _parse_optional_int(
+            _get(source, "AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS", "")
+        )
     except ValueError as exc:
         raise ConfigError("Numeric AKL_* configuration value is invalid") from exc
 
@@ -163,6 +174,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
     if default_max_tokens <= 0:
         raise ConfigError("AKL_LLM_DEFAULT_MAX_TOKENS must be greater than zero")
+    if default_embedding_dimensions is not None and not 1 <= default_embedding_dimensions <= 4096:
+        raise ConfigError("AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS must be between 1 and 4096")
 
     ollama_base_url = _get(source, "AKL_OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
     configured_ollama_base_urls = _parse_csv(_get(source, "AKL_OLLAMA_BASE_URLS", ollama_base_url))
@@ -182,6 +195,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         model_provider_map=model_provider_map,
         default_chat_model=default_chat_model,
         default_embedding_model=default_embedding_model,
+        default_embedding_dimensions=default_embedding_dimensions,
         default_max_tokens=default_max_tokens,
         allow_model_pull=_parse_bool(_get(source, "AKL_LLM_ALLOW_MODEL_PULL", "false")),
         allow_model_delete=_parse_bool(_get(source, "AKL_LLM_ALLOW_MODEL_DELETE", "false")),

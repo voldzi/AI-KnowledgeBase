@@ -69,6 +69,22 @@ def test_current_ollama_profile_uses_explicit_akl_env_names() -> None:
     assert settings.ollama_think is True
 
 
+def test_default_embedding_dimensions_are_optional() -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "development",
+            "AKL_AUTH_MODE": "mock",
+            "AKL_LLM_DEFAULT_PROVIDER": "ollama",
+            "AKL_LLM_ENABLED_PROVIDERS": "ollama",
+            "AKL_LLM_DEFAULT_EMBEDDING_MODEL": "qwen3-embedding:8b",
+            "AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS": "1024",
+        }
+    )
+
+    assert settings.default_embedding_model == "qwen3-embedding:8b"
+    assert settings.default_embedding_dimensions == 1024
+
+
 def test_ollama_base_urls_are_parsed_and_deduplicated() -> None:
     settings = load_settings(
         {

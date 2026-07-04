@@ -184,6 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             EmbeddingsRequest(
                 model=model,
                 input=[payload.input],
+                dimensions=payload.dimensions or settings.default_embedding_dimensions,
                 metadata={"purpose": "model_manager_test_embedding"},
             )
         )

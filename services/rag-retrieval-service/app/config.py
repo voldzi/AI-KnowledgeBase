@@ -26,6 +26,13 @@ def _parse_bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _parse_optional_int(value: str) -> int | None:
+    stripped = value.strip()
+    if stripped == "":
+        return None
+    return int(stripped)
+
+
 def _client_mode(env: Mapping[str, str], key: str, default: str) -> str:
     mode = _get(env, key, default).strip().lower()
     if mode not in CLIENT_MODES:
@@ -89,6 +96,7 @@ class Settings:
     confidence_medium_threshold: float
 
     embedding_model: str
+    embedding_dimensions: int | None
     chat_model: str
     mock_chat_response: str | None
     mock_registry_denied_document_ids: tuple[str, ...]
@@ -130,6 +138,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         no_answer_min_score = float(_get(source, "AKL_RAG_NO_ANSWER_MIN_SCORE", "0.35"))
         confidence_high_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_HIGH_THRESHOLD", "0.75"))
         confidence_medium_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_MEDIUM_THRESHOLD", "0.5"))
+        embedding_dimensions = _parse_optional_int(_get(source, "AKL_RAG_EMBEDDING_DIMENSIONS", ""))
     except ValueError as exc:
         raise ConfigError("Numeric AKL_RAG_* configuration value is invalid") from exc
 
@@ -155,6 +164,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_NO_ANSWER_MIN_SCORE must be between 0 and 1")
     if confidence_high_threshold < confidence_medium_threshold:
         raise ConfigError("AKL_RAG_CONFIDENCE_HIGH_THRESHOLD must be >= AKL_RAG_CONFIDENCE_MEDIUM_THRESHOLD")
+    if embedding_dimensions is not None and embedding_dimensions <= 0:
+        raise ConfigError("AKL_RAG_EMBEDDING_DIMENSIONS must be greater than zero")
 
     if env_name == "production":
         if auth_mode not in {"bearer", "oidc"}:
@@ -215,6 +226,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         confidence_high_threshold=confidence_high_threshold,
         confidence_medium_threshold=confidence_medium_threshold,
         embedding_model=_get(source, "AKL_RAG_EMBEDDING_MODEL", "mock-embedding"),
+        embedding_dimensions=embedding_dimensions,
         chat_model=_get(source, "AKL_RAG_CHAT_MODEL", "mock-chat"),
         mock_chat_response=source.get("AKL_RAG_MOCK_CHAT_RESPONSE") or None,
         mock_registry_denied_document_ids=denied,

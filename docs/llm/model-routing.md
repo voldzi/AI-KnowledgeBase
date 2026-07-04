@@ -49,7 +49,8 @@ AKL_LLM_ALLOW_MODEL_PULL=true
 AKL_OLLAMA_THINK=false
 AKL_LLM_MODEL_PROVIDER_MAP={
   "gemma4:12b-mlx": "ollama",
-  "bge-m3": "ollama"
+  "bge-m3": "ollama",
+  "qwen3-embedding:8b": "ollama"
 }
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
@@ -64,6 +65,43 @@ AKL_RAG_ENABLE_RERANKING=true
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine
+```
+
+## Qwen3 Enterprise Embedding Profile
+
+`qwen3-embedding:8b` is supported as an enterprise retrieval candidate. It
+must be enabled as a controlled profile, not by mixing vectors into the
+existing `bge-m3` collection.
+
+Recommended 1024-dimensional pilot profile:
+
+```text
+AKL_LLM_MODEL_PROVIDER_MAP={
+  "gemma4:12b-mlx": "ollama",
+  "bge-m3": "ollama",
+  "qwen3-embedding:8b": "ollama"
+}
+AKL_LLM_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_RAG_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_RAG_EMBEDDING_DIMENSIONS=1024
+AKL_QDRANT_COLLECTION=akl_document_chunks_qwen3_8b_1024
+AKL_QDRANT_VECTOR_SIZE=1024
+AKL_QDRANT_DISTANCE=Cosine
+```
+
+Before switching RAG traffic to this profile, reindex the current document
+versions into the target Qdrant collection and run retrieval/citation quality
+checks. The current production baseline remains:
+
+```text
+AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_RAG_EMBEDDING_MODEL=bge-m3
+AKL_QDRANT_COLLECTION=akl_document_chunks
+AKL_QDRANT_VECTOR_SIZE=1024
 ```
 
 Použité endpointy:

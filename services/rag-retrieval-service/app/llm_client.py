@@ -100,16 +100,19 @@ class HttpLLMGatewayClient:
         *,
         auth_context: AuthContext | None = None,
     ) -> list[list[float]]:
+        json_body: dict[str, Any] = {
+            "model": self._settings.embedding_model,
+            "input": texts,
+            "metadata": {"purpose": "rag_retrieval"},
+        }
+        if self._settings.embedding_dimensions is not None:
+            json_body["dimensions"] = self._settings.embedding_dimensions
         payload = await request_json_with_retry(
             dependency="llm-gateway",
             settings=self._settings,
             method="POST",
             url=f"{self._settings.llm_gateway_base_url}/embeddings",
-            json_body={
-                "model": self._settings.embedding_model,
-                "input": texts,
-                "metadata": {"purpose": "rag_retrieval"},
-            },
+            json_body=json_body,
             auth_context=auth_context,
             bearer_token_override=self._settings.llm_gateway_token,
         )

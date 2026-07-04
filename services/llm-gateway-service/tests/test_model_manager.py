@@ -93,3 +93,16 @@ def test_model_manager_embedding_test_uses_default_mock_embedding_model() -> Non
     assert body["provider"] == "mock"
     assert body["model"] == "mock-embedding"
     assert len(body["data"][0]["embedding"]) == 8
+
+
+def test_model_manager_embedding_test_accepts_dimensions() -> None:
+    with make_client({"AKL_LLM_DEFAULT_EMBEDDING_MODEL": "mock-embedding"}) as client:
+        response = client.post(
+            "/api/v1/models/test-embedding",
+            json={"input": "Do not log this embedding input.", "dimensions": 1024},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "mock"
+    assert len(body["data"][0]["embedding"]) == 1024
