@@ -446,6 +446,13 @@ AKL_WEB_OIDC_ISSUER=https://login.zeleznalady.cz/realms/stratos
 AKL_WEB_OIDC_CLIENT_ID=akl-web
 ```
 
+AKB web is built with the Next.js `basePath=/akb`. The AKB-owned Caddy
+reverse proxy therefore removes an incoming `X-Forwarded-Prefix` header before
+forwarding `/akb/*` requests to the web container. Public nginx may still set
+`X-Forwarded-Prefix` for other STRATOS routing concerns, but AKB must not pass
+that header through to Next.js because it can make protected routes resolve as
+a static 404 instead of the expected OIDC redirect.
+
 ProjectFlow:
 
 ```env
