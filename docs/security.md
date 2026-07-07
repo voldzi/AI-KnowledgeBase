@@ -9,6 +9,10 @@ host applications do not make authorization decisions for AKB documents.
 - Production and STRATOS integration use OIDC/SSO through the STRATOS realm.
 - Server-to-server calls use service tokens or OIDC client credentials.
 - Service calls preserve `X-Request-ID` and `X-Correlation-ID`.
+- AIIP uses a dedicated service identity when possible:
+  `client_id=aiip-akb-service`, `audience=akl-api`, and roles
+  `stratos_service,document_manager`. Client secrets stay only in the host or
+  CI secret store.
 
 ## Authorization
 
@@ -68,6 +72,12 @@ short-lived signed source tokens where needed. Host STRATOS applications may
 propagate the current OIDC bearer token to AKB bridge routes; AKB forwards that
 token to backend services for authorization and never exposes persistent storage
 credentials to the browser.
+
+AIIP documents marked with `Tajné` in `metadata.aiip.sensitivity`,
+`metadata.aiip.input_data_sensitivity`, or
+`metadata.aiip.output_data_sensitivity` are rejected by the standard AKB
+external document upsert until a separate classified boundary is explicitly
+approved.
 
 ## Audit
 

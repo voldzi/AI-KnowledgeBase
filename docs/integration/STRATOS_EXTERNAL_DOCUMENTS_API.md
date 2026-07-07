@@ -622,6 +622,7 @@ vlastník zápisu do `Contract`, `ContractLine`, `ContractPaymentRule`,
 - `STRATOS_BUDGET`
 - `STRATOS_PROJECTFLOW`
 - `STRATOS_ARCHFLOW`
+- `STRATOS_AIIP`
 - `STRATOS_PROCESSFORGE`
 - `STRATOS_EXECUTIVE`
 - `STRATOS_PLATFORM`
@@ -655,7 +656,131 @@ AKB Registry aktuálně podporuje:
 - `meeting_record`
 - `contract`
 - `attachment`
+- `ai_intake`
+- `ai_requirement_card`
+- `ai_security_appendix`
+- `ai_governance_evidence`
 - `other`
+
+## AI Innovation Portal / AIIP
+
+AI Innovation Portal je STRATOS-compatible caller. Používá stejnou Registry a
+AKB web bridge vrstvu jako Budget, ProjectFlow nebo ArchFlow; nevzniká nová
+sada AIIP-specific AKB endpointů.
+
+Závazná hodnota:
+
+```text
+external_system = STRATOS_AIIP
+```
+
+AIIP zůstává source of truth pro AI požadavek, scoring, workflow a review. AKB
+je source of truth pro dokument, verzi, originální soubor, ingest, text/chunky,
+embeddings, citace, RAG audit a source-open. AIIP proto ukládá jen AKB
+reference a bezpečná metadata.
+
+Povolené první entity typy:
+
+```text
+InnovationRequest
+ImportJob
+SourceDocument
+KnowledgeArticle
+SecurityAssessment
+```
+
+Stabilní `external_ref` musí být čitelný, idempotentní a nemá se měnit při
+změně názvu požadavku nebo souboru. Doporučené tvary:
+
+```text
+aiip:idea:<ideaId>:source:<sourceDocumentId>
+aiip:idea:<ideaId>:quick-intake
+aiip:idea:<ideaId>:requirement-card
+aiip:idea:<ideaId>:data-security-appendix
+aiip:import:<importJobId>:source
+aiip:knowledge:<knowledgeArticleId>:article
+```
+
+AIIP document type mapping:
+
+| AIIP dokument | AKB `document_type` |
+| --- | --- |
+| quick intake | `ai_intake` |
+| requirement card | `ai_requirement_card` |
+| data security appendix | `ai_security_appendix` |
+| workflow/security evidence | `ai_governance_evidence` |
+| knowledge article | `knowledge_base_article` |
+
+Citlivost AIIP se mapuje před voláním AKB:
+
+| AIIP sensitivity | AKB classification |
+| --- | --- |
+| `Veřejné` | `public` |
+| `Interní` | `internal` |
+| `Citlivé` | `restricted` |
+| `Vyhrazené` | `restricted` |
+| `Důvěrné` | `confidential` |
+| `Neznámé` | `restricted` |
+
+AIIP payload s citlivostí `Tajné` v `metadata.aiip.sensitivity`,
+`metadata.aiip.input_data_sensitivity` nebo
+`metadata.aiip.output_data_sensitivity` je v běžném AKB profilu odmítnut
+validací `422`, dokud není provozně schválená oddělená classified boundary.
+
+Minimální AIIP requirement card payload:
+
+```json
+{
+  "tenant_id": "tenant_aiip_default",
+  "external_system": "STRATOS_AIIP",
+  "external_ref": "aiip:idea:idea_123:requirement-card",
+  "entity_type": "InnovationRequest",
+  "entity_id": "idea_123",
+  "document_type": "ai_requirement_card",
+  "title": "AI požadavek: Automatizace vyhodnocení formulářů",
+  "classification": "internal",
+  "owner": {
+    "user_id": "usr_analytik",
+    "display_name": "Klára Veselá"
+  },
+  "gestor_unit": "Analytické centrum",
+  "tags": [
+    "aiip",
+    "aiip-idea:idea_123",
+    "aiip-stage:NOVY_PODNET",
+    "aiip-document-type:requirement_card"
+  ],
+  "metadata": {
+    "aiip": {
+      "idea_id": "idea_123",
+      "import_job_id": "import_456",
+      "source_document_id": "srcdoc_789",
+      "schema_version": "AIIP-DOCX-1.0",
+      "document_type": "requirement_card",
+      "lifecycle_stage": "NOVY_PODNET",
+      "category": "Administrativa",
+      "ai_capability_type": "RAG",
+      "environment_recommendation": "Hybrid",
+      "input_data_sensitivity": "Interní",
+      "output_data_sensitivity": "Interní"
+    }
+  },
+  "source_location": {
+    "kind": "uploaded_file",
+    "file_name": "AI_pozadavek_02_Karta_pozadavku_import.docx",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "optional-64-char-hex",
+    "repository": "AIIP",
+    "path": "/ideas/idea_123/documents/srcdoc_789",
+    "version": "1"
+  },
+  "preview_url": "https://ip.zeleznalady.cz/ideas/idea_123"
+}
+```
+
+AIIP nesmí do AKB metadata posílat celý text požadavku mimo ingestovaný
+dokument, full prompt, LLM odpověď, embeddingy, workflow poznámky s osobními
+údaji, bearer tokeny, API keys ani jiné secrets.
 
 ## Klasifikace
 
@@ -899,6 +1024,30 @@ Authorization: Bearer <OIDC service token>
 Service token je vydaný pro STRATOS service identity, například
 `stratos-akb-service`, a musí mít audience `akl-api`. AKB web předá bearer token
 do interních API klientů, kde Registry API vynucuje oprávnění a audit.
+
+AIIP má mít samostatnou service identity, pokud provozní model nerozhodne jinak:
+
+```text
+client_id = aiip-akb-service
+audience = akl-api
+roles = stratos_service, document_manager
+```
+
+Doporučené proměnné na straně AIIP bez secretů:
+
+```text
+AIIP_AKB_REGISTRY_BASE_URL=http://registry-api:8000/api/v1
+AIIP_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb
+AIIP_AKB_RAG_BASE_URL=http://rag-retrieval-service:8080/api/v1
+AIIP_AKB_PUBLIC_BASE_URL=https://ip.zeleznalady.cz/akb
+AIIP_AKB_SYNC_REQUIRED=true
+AIIP_AKB_OIDC_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token
+AIIP_AKB_OIDC_CLIENT_ID=aiip-akb-service
+AIIP_AKB_OIDC_AUDIENCE=akl-api
+AIIP_AKB_OIDC_SCOPE=openid profile email
+```
+
+`AIIP_AKB_OIDC_CLIENT_SECRET` patří pouze do host secret store.
 
 Úspěšná odpověď:
 

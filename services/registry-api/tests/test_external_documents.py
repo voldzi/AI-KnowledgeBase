@@ -38,6 +38,58 @@ def _external_payload(**overrides):
     return payload
 
 
+def _aiip_payload(**overrides):
+    payload = _external_payload(
+        tenant_id="tenant_aiip_default",
+        external_system="STRATOS_AIIP",
+        external_ref="aiip:idea:idea_123:requirement-card",
+        entity_type="InnovationRequest",
+        entity_id="idea_123",
+        document_type="ai_requirement_card",
+        title="AI pozadavek: Automatizace vyhodnoceni formularu",
+        classification="internal",
+        owner={
+            "user_id": "usr_analyst",
+            "display_name": "AIIP analyst",
+        },
+        gestor_unit="Analyticke centrum",
+        tags=[
+            "aiip",
+            "aiip-idea:idea_123",
+            "aiip-stage:NOVY_PODNET",
+            "aiip-document-type:requirement_card",
+        ],
+        metadata={
+            "aiip": {
+                "idea_id": "idea_123",
+                "import_job_id": "import_456",
+                "source_document_id": "srcdoc_789",
+                "schema_version": "AIIP-DOCX-1.0",
+                "document_type": "requirement_card",
+                "lifecycle_stage": "NOVY_PODNET",
+                "category": "Administrativa",
+                "ai_capability_type": "RAG",
+                "environment_recommendation": "Hybrid",
+                "input_data_sensitivity": "Interni",
+                "output_data_sensitivity": "Interni",
+            }
+        },
+        source_location={
+            "kind": "uploaded_file",
+            "file_name": "AI_pozadavek_02_Karta_pozadavku_import.docx",
+            "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "sha256": "d" * 64,
+            "repository": "AIIP",
+            "path": "/ideas/idea_123/documents/srcdoc_789",
+            "version": "1",
+        },
+        akb_source_uri="s3://akl-documents/aiip/ideas/idea_123/requirement-card.docx",
+        preview_url="https://ip.zeleznalady.cz/ideas/idea_123",
+    )
+    payload.update(overrides)
+    return payload
+
+
 def test_external_document_upsert_creates_registry_document(client, admin_headers):
     response = client.post("/api/v1/external-documents/upsert", headers=admin_headers, json=_external_payload())
 
@@ -83,6 +135,76 @@ def test_external_document_upsert_is_idempotent(client, admin_headers):
     listing = client.get("/api/v1/documents", headers=admin_headers)
     assert listing.status_code == 200
     assert len(listing.json()["items"]) == 1
+
+
+def test_aiip_external_document_upsert_is_idempotent_and_filterable(client, admin_headers):
+    first = client.post("/api/v1/external-documents/upsert", headers=admin_headers, json=_aiip_payload())
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert first_body["created"] is True
+    assert first_body["external_document"]["tenant_id"] == "tenant_aiip_default"
+    assert first_body["external_document"]["external_system"] == "STRATOS_AIIP"
+    assert first_body["external_document"]["external_ref"] == "aiip:idea:idea_123:requirement-card"
+    assert first_body["external_document"]["entity_type"] == "InnovationRequest"
+    assert first_body["document"]["document_type"] == "ai_requirement_card"
+    assert first_body["document"]["classification"] == "internal"
+    assert "stratos_aiip" in first_body["document"]["tags"]
+    assert "aiip-idea:idea_123" in first_body["document"]["tags"]
+
+    second = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_aiip_payload(title="Updated AIIP title must not create duplicate"),
+    )
+    assert second.status_code == 200, second.text
+    second_body = second.json()
+    assert second_body["created"] is False
+    assert second_body["external_document"]["external_document_id"] == first_body["external_document"]["external_document_id"]
+    assert second_body["document"]["document_id"] == first_body["document"]["document_id"]
+
+    listing = client.get(
+        "/api/v1/documents"
+        "?tenant_id=tenant_aiip_default"
+        "&external_system=STRATOS_AIIP"
+        "&entity_type=InnovationRequest"
+        "&entity_id=idea_123"
+        "&external_ref=aiip%3Aidea%3Aidea_123%3Arequirement-card"
+        "&context_tag=aiip-idea%3Aidea_123",
+        headers=admin_headers,
+    )
+    assert listing.status_code == 200, listing.text
+    body = listing.json()
+    assert len(body["items"]) == 1
+    assert body["items"][0]["document_id"] == first_body["document"]["document_id"]
+    assert body["items"][0]["document_type"] == "ai_requirement_card"
+
+    audit = client.get("/api/v1/audit/events?event_type=external_document.upserted", headers=admin_headers)
+    assert audit.status_code == 200
+    assert any(
+        event["metadata"].get("external_system") == "STRATOS_AIIP"
+        and event["metadata"].get("external_ref") == "aiip:idea:idea_123:requirement-card"
+        for event in audit.json()["items"]
+    )
+
+
+def test_aiip_document_with_secret_sensitivity_is_rejected(client, admin_headers):
+    response = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_aiip_payload(
+            external_ref="aiip:idea:idea_123:data-security-appendix",
+            document_type="ai_security_appendix",
+            metadata={
+                "aiip": {
+                    "idea_id": "idea_123",
+                    "document_type": "data_security_appendix",
+                    "input_data_sensitivity": "Tajné",
+                }
+            },
+        ),
+    )
+
+    assert response.status_code == 422
 
 
 def test_document_metadata_summary_filters_external_context(client, admin_headers):

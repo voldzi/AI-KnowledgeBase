@@ -58,6 +58,10 @@ const documentTypeOptions: DocumentType[] = [
   "manual",
   "project_documentation",
   "contract",
+  "ai_intake",
+  "ai_requirement_card",
+  "ai_security_appendix",
+  "ai_governance_evidence",
   "other"
 ];
 

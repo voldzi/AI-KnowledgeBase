@@ -14,6 +14,9 @@ Implemented:
 - STRATOS contract extraction proposal API for `contract_financial_v1`.
 - STRATOS ArchFlow goal extraction proposal API for
   `archflow_goal_extraction_v1`.
+- scoped RAG over STRATOS-compatible external documents, including
+  `external_system: "STRATOS_AIIP"` documents once they are authorized and
+  indexed.
 
 Contract stubs still present:
 

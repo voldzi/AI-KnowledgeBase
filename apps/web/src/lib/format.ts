@@ -43,6 +43,10 @@ export function documentTypeLabel(value: string, language: AklLanguage = "cs"): 
       meeting_record: "záznam jednání",
       contract: "smlouva",
       attachment: "příloha",
+      ai_intake: "AI podnět",
+      ai_requirement_card: "karta AI požadavku",
+      ai_security_appendix: "bezpečnostní příloha AI",
+      ai_governance_evidence: "AI governance evidence",
       other: "ostatní"
     },
     en: {}
