@@ -453,6 +453,11 @@ forwarding `/akb/*` requests to the web container. Public nginx may still set
 that header through to Next.js because it can make protected routes resolve as
 a static 404 instead of the expected OIDC redirect.
 
+The docker-home compose profile defaults `AKL_WEB_BASE_PATH` to `/akb` for the
+web build and runtime environment. Keep the explicit value in
+`/srv/akl/env/akl.prod.env` for operational clarity, but a missing env value
+must not rebuild the Next.js image without the `/akb` base path.
+
 ProjectFlow:
 
 ```env

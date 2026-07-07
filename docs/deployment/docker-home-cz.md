@@ -329,10 +329,16 @@ Nedostupný kandidát se při výběru endpointu přeskočí po
 Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`:
 
 - `AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb`
+- `AKL_WEB_BASE_PATH=/akb`
 - `AKL_WEB_SESSION_SECRET=<long random secret>`
 - `AKL_WEB_UPLOAD_SIGNING_SECRET=<long random secret>`
 - `AKL_EVAL_SERVICE_TOKEN=<long random service token>`
 - `AKL_GOVERNANCE_SERVICE_TOKEN=<long random service token>`
+
+Compose profil pro `docker.home.cz` má pro web build i runtime bezpečný fallback
+`/akb`, aby se Next.js image při chybějící env hodnotě nepostavil pro root `/`.
+Produkční env má ale explicitní `AKL_WEB_BASE_PATH=/akb` dál obsahovat kvůli
+kontrole a čitelnosti provozní konfigurace.
 
 Vzor je v `infra/docker-compose/docker-home.env.example`. Ten je šablona, ne produkční soubor.
 

@@ -57,7 +57,7 @@ services:
       PLATFORM_HOST: 0.0.0.0
       PLATFORM_PORT: 8080
       PLATFORM_READY_TIMEOUT_SECONDS: ${PLATFORM_READY_TIMEOUT_SECONDS:-3}
-      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,web=http://web:3000${AKL_WEB_BASE_PATH:-}/health}
+      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,web=http://web:3000${AKL_WEB_BASE_PATH:-/akb}/health}
     networks:
       - app_zone
       - management_zone
@@ -70,7 +70,7 @@ services:
     build:
       context: ../../apps/web
       args:
-        NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-}
+        NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
     image: ${WEB_IMAGE:-akl/web:docker-home}
     restart: unless-stopped
     environment:
@@ -87,7 +87,7 @@ services:
       AKL_WEB_OIDC_CLIENT_SECRET: ${AKL_WEB_OIDC_CLIENT_SECRET:-}
       AKL_WEB_OIDC_SCOPES: ${AKL_WEB_OIDC_SCOPES:-openid profile email}
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
-      NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-}
+      NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}
       AKL_WEB_OBJECT_STORAGE_ROOT: /data/object-storage
       AKL_WEB_UPLOAD_BUCKET: ${AKL_WEB_UPLOAD_BUCKET:-akl-documents}
