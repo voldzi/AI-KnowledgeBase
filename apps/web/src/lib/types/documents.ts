@@ -10,6 +10,10 @@ export type DocumentType =
   | "meeting_record"
   | "contract"
   | "attachment"
+  | "ai_intake"
+  | "ai_requirement_card"
+  | "ai_security_appendix"
+  | "ai_governance_evidence"
   | "other";
 
 export type DocumentStatus =
@@ -26,6 +30,7 @@ export type ExternalSourceSystem =
   | "STRATOS_BUDGET"
   | "STRATOS_PROJECTFLOW"
   | "STRATOS_ARCHFLOW"
+  | "STRATOS_AIIP"
   | "STRATOS_PROCESSFORGE"
   | "STRATOS_EXECUTIVE"
   | "STRATOS_PLATFORM";

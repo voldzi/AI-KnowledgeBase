@@ -1,8 +1,9 @@
 from datetime import date, datetime
 from enum import Enum
+import unicodedata
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DocumentType(str, Enum):
@@ -17,6 +18,10 @@ class DocumentType(str, Enum):
     meeting_record = "meeting_record"
     contract = "contract"
     attachment = "attachment"
+    ai_intake = "ai_intake"
+    ai_requirement_card = "ai_requirement_card"
+    ai_security_appendix = "ai_security_appendix"
+    ai_governance_evidence = "ai_governance_evidence"
     other = "other"
 
 
@@ -41,6 +46,7 @@ class ExternalSourceSystem(str, Enum):
     stratos_budget = "STRATOS_BUDGET"
     stratos_projectflow = "STRATOS_PROJECTFLOW"
     stratos_archflow = "STRATOS_ARCHFLOW"
+    stratos_aiip = "STRATOS_AIIP"
     stratos_processforge = "STRATOS_PROCESSFORGE"
     stratos_executive = "STRATOS_EXECUTIVE"
     stratos_platform = "STRATOS_PLATFORM"
@@ -93,6 +99,11 @@ class SourceLocation(BaseModel):
         if len(normalized) != 64 or any(char not in "0123456789abcdefABCDEF" for char in normalized):
             raise ValueError("sha256 must be a 64-character hex digest, optionally prefixed with sha256:")
         return value
+
+
+def _is_aiip_secret_sensitivity(value: str) -> bool:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return normalized.strip().casefold() == "tajne"
 
 
 class Action(str, Enum):
@@ -341,6 +352,19 @@ class ExternalDocumentUpsertRequest(BaseModel):
     preview_url: str | None = Field(default=None, max_length=2048)
     access_policies: list[AccessPolicyCreate] | None = None
     assignments: list[DocumentAssignmentCreate] | None = None
+
+    @model_validator(mode="after")
+    def reject_aiip_classified_sensitivity(self) -> "ExternalDocumentUpsertRequest":
+        if self.external_system != ExternalSourceSystem.stratos_aiip:
+            return self
+        aiip_metadata = self.metadata.get("aiip")
+        if not isinstance(aiip_metadata, dict):
+            return self
+        for key in ("sensitivity", "input_data_sensitivity", "output_data_sensitivity"):
+            value = aiip_metadata.get(key)
+            if isinstance(value, str) and _is_aiip_secret_sensitivity(value):
+                raise ValueError("AIIP documents marked as Tajne require a classified boundary and cannot be ingested")
+        return self
 
 
 class ExternalDocumentCurrentUpdateRequest(BaseModel):

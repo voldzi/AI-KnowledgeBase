@@ -212,6 +212,10 @@ const DOCUMENT_TYPE_LABELS_CS: Record<Document["document_type"], string> = {
   meeting_record: "záznam z jednání",
   contract: "smlouva",
   attachment: "příloha",
+  ai_intake: "AI podnět",
+  ai_requirement_card: "karta AI požadavku",
+  ai_security_appendix: "bezpečnostní příloha AI",
+  ai_governance_evidence: "AI governance evidence",
   other: "ostatní"
 };
 
@@ -227,6 +231,10 @@ const DOCUMENT_TYPE_LABELS_EN: Record<Document["document_type"], string> = {
   meeting_record: "meeting record",
   contract: "contract",
   attachment: "attachment",
+  ai_intake: "AI intake",
+  ai_requirement_card: "AI requirement card",
+  ai_security_appendix: "AI security appendix",
+  ai_governance_evidence: "AI governance evidence",
   other: "other"
 };
 
@@ -242,6 +250,10 @@ const DOCUMENT_TYPE_ALIASES: Array<{ type: Document["document_type"]; terms: str
   { type: "project_documentation", terms: ["projektova dokumentace", "projektová dokumentace", "project documentation"] },
   { type: "meeting_record", terms: ["zaznam z jednani", "záznam z jednání", "meeting record"] },
   { type: "knowledge_base_article", terms: ["znalostni clanek", "znalostní článek", "knowledge base article"] },
+  { type: "ai_intake", terms: ["ai podnet", "ai podnět", "quick intake", "ai intake"] },
+  { type: "ai_requirement_card", terms: ["karta ai pozadavku", "karta ai požadavku", "requirement card"] },
+  { type: "ai_security_appendix", terms: ["bezpecnostni priloha ai", "bezpečnostní příloha ai", "data security appendix"] },
+  { type: "ai_governance_evidence", terms: ["ai governance evidence", "workflow evidence", "security evidence"] },
   { type: "other", terms: ["ostatni", "ostatní", "other"] }
 ];
 

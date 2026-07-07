@@ -45,6 +45,10 @@ project_documentation
 meeting_record
 contract
 attachment
+ai_intake
+ai_requirement_card
+ai_security_appendix
+ai_governance_evidence
 other
 ```
 
