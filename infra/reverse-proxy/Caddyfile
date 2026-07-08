@@ -38,10 +38,8 @@
 	}
 
 	handle /akb {
-		rewrite * /
-		reverse_proxy {$WEB_UPSTREAM:web:3000} {
-			import correlation_headers
-		}
+		header Cache-Control "no-store"
+		redir /akb/dashboard 307
 	}
 
 	@akb path /akb/*
