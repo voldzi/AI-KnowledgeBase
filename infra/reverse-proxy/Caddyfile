@@ -37,7 +37,11 @@
 		}
 	}
 
-	redir /akb /akb/chat 307
+	handle /akb {
+		reverse_proxy {$WEB_UPSTREAM:web:3000} {
+			import correlation_headers
+		}
+	}
 
 	@akb path /akb/*
 	handle @akb {
