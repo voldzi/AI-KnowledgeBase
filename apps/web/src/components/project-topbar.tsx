@@ -5,7 +5,7 @@ import { Activity, Menu, X } from "lucide-react";
 import {
   GlobalTopbar,
   TopbarStatusIndicator,
-  buildStratosTopbarApps,
+  type GlobalTopbarApp,
   type TopbarStatusIndicatorTone,
 } from "@voldzi/stratos-ui";
 
@@ -118,16 +118,61 @@ export function ProjectTopbar({
     };
   }, [apiModeLabel, authModeLabel, healthLabel]);
 
-  const stratosApps = buildStratosTopbarApps("akb", {
-    "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
-    projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
-    archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
-    processforge: process.env.NEXT_PUBLIC_PROCESSFORGE_URL,
-  });
+  const stratosBaseUrl =
+    process.env.NEXT_PUBLIC_STRATOS_HOME_URL ?? "https://stratos.zeleznalady.cz";
+  const stratosApps: GlobalTopbarApp[] = [
+    {
+      id: "stratos",
+      label: "STRATOS",
+      href: stratosBaseUrl,
+    },
+    {
+      id: "projectflow",
+      label: "ProjectFlow",
+      href:
+        process.env.NEXT_PUBLIC_PROJECTFLOW_URL ??
+        `${stratosBaseUrl.replace(/\/+$/, "")}/project`,
+    },
+    {
+      id: "archflow",
+      label: "ArchFlow",
+      href:
+        process.env.NEXT_PUBLIC_ARCHFLOW_URL ??
+        `${stratosBaseUrl.replace(/\/+$/, "")}/arch`,
+    },
+    {
+      id: "processforge",
+      label: "ProcessForge",
+      href:
+        process.env.NEXT_PUBLIC_PROCESSFORGE_URL ??
+        `${stratosBaseUrl.replace(/\/+$/, "")}/process`,
+    },
+    {
+      id: "aiip",
+      label: "AIIP",
+      href:
+        process.env.NEXT_PUBLIC_AIIP_PUBLIC_URL ??
+        process.env.NEXT_PUBLIC_AIIP_URL ??
+        `${stratosBaseUrl.replace(/\/+$/, "")}/aiip`,
+    },
+    {
+      id: "akb",
+      label: "AKB",
+      href:
+        process.env.NEXT_PUBLIC_AKB_PUBLIC_URL ??
+        `${stratosBaseUrl.replace(/\/+$/, "")}/akb`,
+      active: true,
+    },
+  ];
 
   return (
     <GlobalTopbar
       apps={stratosApps}
+      mobileBehavior={{
+        context: "hide",
+        actions: "overflow",
+        status: "compact",
+      }}
       mobileMenuTrigger={
         onMobileMenuOpen ? (
           <button

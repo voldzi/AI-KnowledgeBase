@@ -47,7 +47,7 @@ Use `external_system`, never `source_system`, for STRATOS integration payloads.
 ## Package Model
 
 General STRATOS UI primitives for AKB, Budget, ProjectFlow and ArchFlow use
-`@voldzi/stratos-ui@0.3.20` or newer compatible versions from the public npm
+`@voldzi/stratos-ui@0.3.24` or newer compatible versions from the public npm
 registry. Applications must not add a scoped `.npmrc` that redirects
 `@voldzi/stratos-ui` to GitHub Packages.
 
@@ -105,8 +105,9 @@ store application-specific values under `settings.apps.<appId>`. Profile values
 such as avatar, language, theme, accent, display name and e-mail are not local
 component state and are not sourced from browser localStorage.
 
-Version `0.3.20` is the responsive shell baseline: submenu/sidebar panels use
-the shared overlay behavior for compact widths, topbar status elements collapse
+Version `0.3.24` is the responsive shell baseline: submenu/sidebar panels use
+the shared overlay behavior for compact widths, `GlobalTopbar` consumes native
+`href` app-switcher items and `mobileBehavior`, topbar status elements collapse
 to compact indicators in narrow layouts, picker/popover layering comes from the
 shared tokens, and `ErrorState` must present user-safe messages instead of raw
 JWT, OIDC, 401 or JSON payload details.
