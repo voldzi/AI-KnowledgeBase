@@ -4,17 +4,33 @@ export type AklSurface = "employee_chat" | "knowledge_workspace" | "admin";
 
 const MANAGEMENT_ROLES = new Set([
   "admin",
+  "akl_admin",
+  "akb_admin",
+  "stratos_admin",
+  "stratos_superadmin",
   "document_manager",
+  "akl_document_manager",
   "document_owner",
+  "akl_document_owner",
   "document_gestor",
+  "akl_document_gestor",
   "reviewer",
+  "akl_reviewer",
   "auditor",
-  "service_governance"
+  "akl_auditor",
+  "service_governance",
+  "akl_service_governance"
 ]);
 
-const ADMIN_ROLES = new Set(["admin"]);
+const ADMIN_ROLES = new Set([
+  "admin",
+  "akl_admin",
+  "akb_admin",
+  "stratos_admin",
+  "stratos_superadmin"
+]);
 
-const EMPLOYEE_CHAT_ROLES = new Set(["reader", "stratos_user", "akb_user"]);
+const EMPLOYEE_CHAT_ROLES = new Set(["reader", "akl_reader", "stratos_user", "akb_user"]);
 
 export function hasAnyRole(roles: readonly string[] | undefined, allowed: ReadonlySet<string>): boolean {
   return (roles ?? []).some((role) => allowed.has(role));

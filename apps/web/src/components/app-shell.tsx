@@ -190,7 +190,7 @@ const moduleRouteGroups: Record<ShellModuleId, string[]> = {
 
 const moduleRootRoutes: Record<ShellModuleId, string> = {
   documents: "/documents",
-  operations: "/tasks",
+  operations: "/",
   ai: "/chat",
   knowledge: "/chat",
   governance: "/audit",
@@ -311,6 +311,9 @@ function AppShellContent({
   const [settingsMode, setSettingsMode] =
     useState<SettingsSurfaceMode>("modal");
   const [settingsDirty, setSettingsDirty] = useState(false);
+  const [settingsSaveError, setSettingsSaveError] = useState<string | null>(
+    null,
+  );
   const [rolePreview, setRolePreview] =
     useState<RolePreviewSettings>(emptyRolePreview);
   const [savedRolePreviewProfileId, setSavedRolePreviewProfileId] =
@@ -492,6 +495,7 @@ function AppShellContent({
 
       setSettingsValues(mergedValues);
       setSettingsDirty(false);
+      setSettingsSaveError(null);
       setUserProfile({
         name: nextName,
         email: nextEmail,
@@ -516,16 +520,19 @@ function AppShellContent({
         setSettingsMode(appMode);
       }
       const profileId = mergedProfileSettings.rolePreviewProfileId;
-      if (typeof profileId === "string" && rolePreview.canUse) {
+      if (typeof profileId === "string") {
         setRolePreview((current) => {
+          if (!current.canUse) {
+            return current;
+          }
           const profile = current.profiles.find(
             (item) => item.id === profileId,
           );
           return {
             ...current,
             profileId,
-            label: profile?.label ?? current.label,
-            roles: profile?.roles ?? current.roles,
+            label: profile?.label ?? (profileId ? current.label : ""),
+            roles: profile?.roles ?? (profileId ? current.roles : []),
           };
         });
       }
@@ -642,17 +649,17 @@ function AppShellContent({
   };
   const railItems = [
     {
-      id: "documents",
-      href: moduleRootRoutes.documents,
-      label: copy.moduleDocuments,
-      icon: Database,
-      onSelect: handleRailSelect,
-    },
-    {
       id: "operations",
       href: moduleRootRoutes.operations,
       label: copy.moduleOperations,
       icon: ListChecks,
+      onSelect: handleRailSelect,
+    },
+    {
+      id: "documents",
+      href: moduleRootRoutes.documents,
+      label: copy.moduleDocuments,
+      icon: Database,
       onSelect: handleRailSelect,
     },
     {
@@ -834,10 +841,12 @@ function AppShellContent({
       return { ...current, [key]: value };
     });
     setSettingsDirty(true);
+    setSettingsSaveError(null);
   };
 
   const handleSettingsModeChange = (mode: SettingsSurfaceMode) => {
     setSettingsMode(mode);
+    setSettingsSaveError(null);
     persistProfileSettings(settingsValues, {
       mode,
       rolePreviewProfileId: rolePreview.profileId,
@@ -847,15 +856,16 @@ function AppShellContent({
   };
 
   const handleSettingsSave = async () => {
+    const nextRolePreviewProfileId = rolePreview.profileId;
     try {
+      setSettingsSaveError(null);
       const savedProfile = await persistProfileSettings(settingsValues, {
         mode: settingsMode,
-        rolePreviewProfileId: rolePreview.profileId,
+        rolePreviewProfileId: nextRolePreviewProfileId,
       });
-      applyProfileSettings(savedProfile);
       if (
         rolePreview.canUse &&
-        rolePreview.profileId !== savedRolePreviewProfileId
+        nextRolePreviewProfileId !== savedRolePreviewProfileId
       ) {
         const response = await fetch(
           withAppBasePath("/api/auth/role-preview"),
@@ -863,17 +873,20 @@ function AppShellContent({
             method: "POST",
             headers: { "content-type": "application/json" },
             credentials: "same-origin",
-            body: JSON.stringify({ profileId: rolePreview.profileId }),
+            body: JSON.stringify({ profileId: nextRolePreviewProfileId }),
           },
-        ).catch(() => null);
-        if (response?.ok) {
-          window.location.reload();
-          return;
+        );
+        if (!response.ok) {
+          throw new Error(copy.saveFailed);
         }
+        window.location.reload();
+        return;
       }
+      applyProfileSettings(savedProfile);
       setSettingsDirty(false);
     } catch {
       setSettingsDirty(true);
+      setSettingsSaveError(copy.saveFailed);
     }
   };
 
@@ -887,6 +900,7 @@ function AppShellContent({
       roles: profile?.roles ?? [],
     }));
     setSettingsDirty(true);
+    setSettingsSaveError(null);
   };
 
   if (isEmbeddedPath) {
@@ -949,6 +963,7 @@ function AppShellContent({
             onValueChange={handleSettingsValueChange}
             accessInfo={accessInfo}
             rolePreview={rolePreview}
+            saveError={settingsSaveError}
             userInitials={userProfile.initials}
             values={settingsValues}
           />
@@ -976,7 +991,7 @@ function AppShellContent({
       rail={
         <AppRail
           workspaceMark={
-            <Link className="stratos-akb-rail-mark" href={withAppBasePath("/")}>
+            <Link className="stratos-akb-rail-mark" href="/">
               AKB
             </Link>
           }
@@ -994,7 +1009,7 @@ function AppShellContent({
               return;
             }
             item.onSelect();
-            router.push(withAppBasePath(item.href));
+            router.push(item.href);
           }}
         />
       }
@@ -1139,6 +1154,7 @@ function AppShellContent({
               onValueChange={handleSettingsValueChange}
               accessInfo={accessInfo}
               rolePreview={rolePreview}
+              saveError={settingsSaveError}
               userInitials={userProfile.initials}
               values={settingsValues}
             />

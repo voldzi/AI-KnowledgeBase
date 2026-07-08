@@ -45,10 +45,35 @@ describe("AKB web authorization", () => {
     }
   });
 
-  it("keeps admin as the only admin surface role", () => {
-    assert.equal(canUseAdminSurface({ roles: ["admin"] }), true);
+  it("accepts STRATOS AKL-prefixed role aliases", () => {
+    for (const role of [
+      "akl_document_manager",
+      "akl_reviewer",
+      "akl_auditor",
+      "akl_document_owner",
+      "akl_document_gestor"
+    ]) {
+      const context = { subjectId: `user_${role}`, roles: [role] };
+      assert.equal(canUseKnowledgeWorkspace(context), true);
+      assert.equal(isEmployeeChatOnly(context), false);
+      assert.equal(surfaceForContext(context), "knowledge_workspace");
+    }
+
+    assert.equal(isEmployeeChatOnly({ roles: ["akl_reader"] }), true);
+  });
+
+  it("keeps administration limited to admin-equivalent roles", () => {
+    for (const role of [
+      "admin",
+      "akl_admin",
+      "akb_admin",
+      "stratos_admin",
+      "stratos_superadmin"
+    ]) {
+      assert.equal(canUseAdminSurface({ roles: [role] }), true);
+      assert.equal(surfaceForContext({ roles: [role, "reader"] }), "admin");
+    }
     assert.equal(canUseAdminSurface({ roles: ["document_manager"] }), false);
-    assert.equal(surfaceForContext({ roles: ["admin", "reader"] }), "admin");
   });
 
   it("allows signed role preview only for the current admin user", () => {
