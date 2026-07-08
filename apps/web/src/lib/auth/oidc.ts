@@ -59,6 +59,29 @@ export function buildPublicAppUrl(config: AklConfig, path: string): string {
   return `${publicBaseUrl}${normalizedPath === "/" ? "" : normalizedPath}`;
 }
 
+export function normalizeReturnToForPublicBase(
+  config: AklConfig,
+  returnTo: string | null | undefined,
+): string {
+  const safeReturnTo =
+    returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
+      ? returnTo
+      : "/";
+  const oidc = requireOidcConfig(config);
+  const publicBaseUrl = new URL(
+    oidc.redirectUri.replace(/\/api\/auth\/callback$/, ""),
+  );
+  const publicBasePath = publicBaseUrl.pathname.replace(/\/+$/, "");
+  if (
+    publicBasePath &&
+    (safeReturnTo === publicBasePath ||
+      safeReturnTo.startsWith(`${publicBasePath}/`))
+  ) {
+    return safeReturnTo.slice(publicBasePath.length) || "/";
+  }
+  return safeReturnTo;
+}
+
 export async function exchangeAuthorizationCode(
   config: AklConfig,
   code: string,

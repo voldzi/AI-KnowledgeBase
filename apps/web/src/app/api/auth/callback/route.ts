@@ -9,6 +9,7 @@ import {
   OIDC_SESSION_COOKIE,
   OIDC_STATE_COOKIE,
   buildPublicAppUrl,
+  normalizeReturnToForPublicBase,
   requireOidcConfig,
   safeReturnToFromState,
   sealBrowserSession,
@@ -24,7 +25,10 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const expectedState = request.cookies.get(OIDC_STATE_COOKIE)?.value;
-  const returnTo = safeReturnToFromState(state, "/chat");
+  const returnTo = normalizeReturnToForPublicBase(
+    config,
+    safeReturnToFromState(state, "/"),
+  );
 
   if (!code || !state || state !== expectedState) {
     console.warn("OIDC callback rejected due to invalid state.");

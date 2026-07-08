@@ -6,6 +6,7 @@ import {
   contextFromOidcAccessToken,
   contextFromOidcSession,
   createState,
+  normalizeReturnToForPublicBase,
   OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
@@ -192,8 +193,17 @@ describe("OIDC web session", () => {
     const state = createState("/chat");
 
     assert.equal(safeReturnToFromState(state, "/"), "/chat");
-    assert.equal(safeReturnToFromState("not-base64-json", "/chat"), "/chat");
-    assert.equal(safeReturnToFromState(null, "/chat"), "/chat");
+    assert.equal(safeReturnToFromState("not-base64-json", "/"), "/");
+    assert.equal(safeReturnToFromState(null, "/"), "/");
+  });
+
+  it("normalizes return paths against the configured public base path", () => {
+    const config = testOidcConfig();
+
+    assert.equal(normalizeReturnToForPublicBase(config, "/akb/dashboard"), "/dashboard");
+    assert.equal(normalizeReturnToForPublicBase(config, "/akb"), "/");
+    assert.equal(normalizeReturnToForPublicBase(config, "/dashboard"), "/dashboard");
+    assert.equal(normalizeReturnToForPublicBase(config, "https://example.invalid"), "/");
   });
 });
 
