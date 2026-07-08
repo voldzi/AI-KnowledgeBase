@@ -10,9 +10,15 @@ import { DashboardOverview } from "./dashboard-overview";
 
 export const dynamic = "force-dynamic";
 
-export async function DashboardPage() {
+interface DashboardPageProps {
+  returnTo?: string;
+}
+
+export async function DashboardPage({
+  returnTo = "/dashboard",
+}: DashboardPageProps = {}) {
   const clients = getServerApiClients();
-  const context = await getServerRequestContextForPath("/dashboard");
+  const context = await getServerRequestContextForPath(returnTo);
   redirectEmployeeChatOnly(context);
   const [documents, jobs, auditEvents, registryTasks, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
