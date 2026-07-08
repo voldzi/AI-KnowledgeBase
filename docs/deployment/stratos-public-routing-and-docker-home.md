@@ -537,7 +537,7 @@ by default. For `/akb` deployments the generated source endpoint is
 `/akb/api/documents/source/content`; `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` is
 only an explicit override.
 
-The exact `/akb` path canonically redirects to `/akb/`, not directly to
+The exact `/akb` path redirects to `/akb/dashboard`, not directly to
 `/akb/chat`; the web shell owns the initial route and starts on the first AKB
 menu item for users with workspace access.
 

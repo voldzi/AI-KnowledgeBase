@@ -32,7 +32,7 @@
 		respond "AKB Platform reverse proxy" 200
 	}
 
-	redir /akb /akb/ 307
+	redir /akb /akb/dashboard 307
 
 	@akb path /akb/*
 	handle @akb {
