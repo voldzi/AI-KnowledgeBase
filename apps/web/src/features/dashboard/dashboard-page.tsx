@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/page-header";
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import {
+  getServerApiClients,
+  getServerRequestContextForPath,
+} from "@/lib/api/server";
 import { redirectEmployeeChatOnly } from "@/lib/auth/server-route-guard";
 import { ApiClientError, type AuditEvent } from "@/lib/types";
 
@@ -9,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function DashboardPage() {
   const clients = getServerApiClients();
-  const context = await getServerRequestContext();
+  const context = await getServerRequestContextForPath("/dashboard");
   redirectEmployeeChatOnly(context);
   const [documents, jobs, auditEvents, registryTasks, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
