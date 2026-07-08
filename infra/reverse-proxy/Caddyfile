@@ -37,11 +37,7 @@
 		}
 	}
 
-	handle /akb {
-		reverse_proxy {$WEB_UPSTREAM:web:3000} {
-			import correlation_headers
-		}
-	}
+	redir /akb /akb/ 307
 
 	@akb path /akb/*
 	handle @akb {
