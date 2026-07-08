@@ -41,6 +41,7 @@
 	handle @akb {
 		reverse_proxy {$WEB_UPSTREAM:web:3000} {
 			import correlation_headers
+			header_up -X-Forwarded-Prefix
 		}
 	}
 
