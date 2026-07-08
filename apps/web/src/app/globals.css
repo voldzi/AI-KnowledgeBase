@@ -610,47 +610,6 @@ button {
   backdrop-filter: blur(14px);
 }
 
-.stratos-global-topbar {
-  align-items: center;
-  background: rgba(245, 247, 248, 0.92);
-  border-bottom: 1px solid var(--border);
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(240px, 1fr) minmax(280px, 560px) minmax(
-      260px,
-      1fr
-    );
-  min-height: 48px;
-  padding: 0 12px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-}
-
-.stratos-global-topbar-left,
-.stratos-global-topbar-right,
-.stratos-global-topbar-center,
-.stratos-global-topbar-context,
-.stratos-user-menu-profile,
-.stratos-user-menu-item,
-.stratos-app-switcher-trigger,
-.stratos-app-switcher-item,
-.stratos-user-avatar-trigger {
-  align-items: center;
-  display: flex;
-}
-
-.stratos-global-topbar-left {
-  gap: 12px;
-  min-width: 0;
-}
-
-/* Hamburger trigger — hidden on desktop, shown ≤1100px where the workspace
-   sidebar becomes an overlay drawer. */
-.stratos-global-topbar-mobile-trigger {
-  display: none;
-}
-
 .akl-mobile-menu-trigger {
   align-items: center;
   background: transparent;
@@ -686,99 +645,6 @@ button {
   display: none;
 }
 
-.stratos-global-topbar-center {
-  justify-content: center;
-  min-width: 0;
-}
-
-.stratos-global-topbar-right {
-  gap: 8px;
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.stratos-global-topbar-switcher,
-.stratos-global-topbar-user {
-  flex: 0 0 auto;
-  position: relative;
-}
-
-.stratos-global-topbar-context {
-  min-width: 0;
-}
-
-.stratos-app-switcher-trigger,
-.stratos-user-avatar-trigger {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--ink);
-  cursor: pointer;
-  min-height: 32px;
-  transition:
-    background var(--stratos-duration-fast) var(--stratos-ease),
-    border-color var(--stratos-duration-fast) var(--stratos-ease),
-    box-shadow var(--stratos-duration-fast) var(--stratos-ease);
-}
-
-.stratos-app-switcher-trigger {
-  gap: 8px;
-  max-width: 220px;
-  padding: 3px 8px 3px 4px;
-}
-
-.stratos-app-switcher-trigger:hover,
-.stratos-user-avatar-trigger:hover,
-.stratos-app-switcher-trigger[aria-expanded="true"],
-.stratos-user-avatar-trigger[aria-expanded="true"] {
-  background: #fbfbfc;
-  border-color: #cfd6df;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1);
-}
-
-.stratos-app-switcher-label {
-  font-size: 14px;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stratos-app-switcher-mark {
-  background: var(--accent);
-  border-radius: 8px;
-  color: #ffffff;
-  display: inline-grid;
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 900;
-  height: 26px;
-  place-items: center;
-  text-transform: uppercase;
-  width: 26px;
-}
-
-.stratos-user-avatar-trigger {
-  border-radius: 999px;
-  gap: 5px;
-  padding: 3px 6px 3px 4px;
-}
-
-.stratos-user-avatar {
-  background: #111827;
-  border-radius: 999px;
-  box-shadow: 0 0 0 2px #ffffff;
-  color: #ffffff;
-  display: inline-grid;
-  font-size: 13px;
-  font-weight: 900;
-  height: 30px;
-  line-height: 1;
-  place-items: center;
-  position: relative;
-  width: 30px;
-}
-
 .stratos-user-avatar .akb-topbar-avatar-fill,
 .stratos-user-avatar .akb-topbar-avatar-image {
   border-radius: inherit;
@@ -794,134 +660,6 @@ button {
 
 .stratos-user-avatar .akb-topbar-avatar-image {
   display: block;
-}
-
-.stratos-user-avatar.is-large {
-  font-size: 18px;
-  height: 46px;
-  width: 46px;
-}
-
-.stratos-user-status-dot {
-  background: #2aa66a;
-  border: 2px solid #ffffff;
-  border-radius: 999px;
-  bottom: -1px;
-  height: 10px;
-  position: absolute;
-  right: -1px;
-  width: 10px;
-}
-
-.stratos-topbar-popover {
-  animation: stratosTopbarMenuIn 140ms var(--stratos-ease);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
-  min-width: 280px;
-  overflow: hidden;
-  position: absolute;
-  top: calc(100% + 8px);
-  transform-origin: top center;
-  z-index: 80;
-}
-
-.stratos-app-switcher-menu {
-  left: 0;
-  padding: 10px;
-  width: 320px;
-}
-
-.stratos-user-menu {
-  padding: 12px;
-  right: 0;
-  width: 320px;
-}
-
-.stratos-topbar-popover-heading {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  padding: 4px 6px 10px;
-  text-transform: uppercase;
-}
-
-.stratos-app-switcher-list {
-  display: grid;
-  gap: 4px;
-}
-
-.stratos-app-switcher-item {
-  background: transparent;
-  border: 0;
-  border-radius: 10px;
-  color: var(--ink);
-  cursor: pointer;
-  gap: 10px;
-  min-height: 44px;
-  text-align: left;
-  width: 100%;
-}
-
-.stratos-app-switcher-item > span:last-child,
-.stratos-user-menu-profile > span:last-child {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.stratos-app-switcher-item strong,
-.stratos-user-menu-profile strong {
-  font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stratos-app-switcher-item small,
-.stratos-user-menu-profile small {
-  color: var(--muted);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stratos-app-switcher-item:hover,
-.stratos-app-switcher-item.is-active,
-.stratos-user-menu-item:hover {
-  background: var(--surface-2);
-}
-
-.stratos-app-switcher-item.is-disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.stratos-user-menu-profile {
-  gap: 12px;
-  padding: 6px 6px 14px;
-}
-
-.stratos-user-menu-section {
-  border-top: 1px solid var(--border);
-  display: grid;
-  gap: 3px;
-  padding-top: 10px;
-}
-
-.stratos-user-menu-item {
-  background: transparent;
-  border: 0;
-  border-radius: 10px;
-  color: var(--ink);
-  cursor: pointer;
-  font: 700 14px/1 var(--stratos-font-sans);
-  gap: 10px;
-  min-height: 38px;
-  padding: 0 10px;
-  width: 100%;
 }
 
 .breadcrumb {
@@ -1033,18 +771,6 @@ button {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@keyframes stratosTopbarMenuIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
@@ -5002,10 +4728,6 @@ button {
     display: block;
   }
 
-  .stratos-global-topbar-mobile-trigger {
-    display: flex;
-  }
-
   .sidebar__footer {
     display: none;
   }
@@ -5134,28 +4856,6 @@ button {
     width: min(288px, 86vw);
   }
 
-  /* Topbar: hide the command bar (center) and status chips — keep hamburger,
-     app switcher and avatar. */
-  .stratos-global-topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding: 0 8px;
-  }
-
-  .stratos-global-topbar-center,
-  .akl-topbar-status {
-    display: none;
-  }
-
-  .stratos-global-topbar-context .breadcrumb {
-    overflow: hidden;
-    white-space: nowrap;
-  }
-
-  .stratos-global-topbar-context .breadcrumb strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   /* Module switcher in the drawer: stretch over the body padding (12px).
      2×2 grid — four labels don't fit side by side in a 288px drawer. */
   .sidebar-mobile-sections {
@@ -5221,14 +4921,10 @@ button {
     width: 100%;
   }
 
-  .stratos-akb-shell .stratos-app-shell-content {
-    padding: 18px;
-  }
 }
 
 @media (max-width: 720px) {
   .main-content,
-  .stratos-akb-shell .stratos-app-shell-content,
   .employee-content {
     padding: 18px;
   }
