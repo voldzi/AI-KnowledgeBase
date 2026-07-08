@@ -13,7 +13,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@voldzi/stratos-ui": "0.3.20",
+    "@voldzi/stratos-ui": "0.3.23",
     "effect": "^3.21.4",
     "lucide-react": "1.21.0",
     "next": "16.2.9",
