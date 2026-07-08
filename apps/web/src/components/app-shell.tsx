@@ -50,7 +50,7 @@ import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
 
 const navigation = {
   cs: [
-    { href: "/dashboard", label: "Přehled", icon: LayoutDashboard },
+    { href: "/", label: "Přehled", icon: LayoutDashboard },
     { href: "/tasks", label: "Úkoly", icon: ListChecks },
     { href: "/documents", label: "Dokumenty", icon: Database },
     { href: "/upload", label: "Nahrát", icon: FilePlus2 },
@@ -60,7 +60,7 @@ const navigation = {
     { href: "/help", label: "Nápověda", icon: CircleHelp },
   ],
   en: [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tasks", label: "Tasks", icon: ListChecks },
     { href: "/documents", label: "Documents", icon: Database },
     { href: "/upload", label: "Upload", icon: FilePlus2 },
@@ -190,7 +190,7 @@ const moduleRouteGroups: Record<ShellModuleId, string[]> = {
 
 const moduleRootRoutes: Record<ShellModuleId, string> = {
   documents: "/documents",
-  operations: "/dashboard",
+  operations: "/",
   ai: "/chat",
   knowledge: "/chat",
   governance: "/audit",
