@@ -38,6 +38,7 @@
 	}
 
 	handle /akb {
+		rewrite * /
 		reverse_proxy {$WEB_UPSTREAM:web:3000} {
 			import correlation_headers
 		}
