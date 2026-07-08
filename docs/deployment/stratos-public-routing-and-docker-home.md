@@ -47,6 +47,7 @@ Minimalni routovani:
 
 ```text
 /          -> Budget & Contract upstream, docker.home.cz:3230
+/akb       -> AKB upstream, docker.home.cz:3220
 /akb/      -> AKB upstream, docker.home.cz:3220
 /project/  -> ProjectFlow upstream, docker.home.cz:3231
 /arch/     -> ArchFlow upstream, docker.home.cz:3232
@@ -535,6 +536,10 @@ AKB web derives signed source-download URLs from `NEXT_PUBLIC_AKL_BASE_PATH`
 by default. For `/akb` deployments the generated source endpoint is
 `/akb/api/documents/source/content`; `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` is
 only an explicit override.
+
+The exact `/akb` path is handled by the AKB upstream. It must not redirect
+directly to `/akb/chat`; the web shell owns the initial route and starts on the
+first AKB menu item for users with workspace access.
 
 ## Povinné Porty Na docker.home.cz
 
