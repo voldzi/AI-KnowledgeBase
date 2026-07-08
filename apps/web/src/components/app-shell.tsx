@@ -17,12 +17,18 @@ import {
   UserRound,
 } from "lucide-react";
 import {
+  AppRail,
+  AppShell as StratosUiAppShell,
+  WorkspaceNav,
+  WorkspaceSidebar,
   broadcastStratosProfileSettingsUpdate,
   createStratosProfileSettingsClient,
   createStratosProfileSettingsPayload,
   mergeStratosProfileSettings,
   subscribeStratosProfileSettingsUpdate,
+  type AppRailItem,
   type StratosProfileSettingsEnvelope,
+  type WorkspaceNavGroup,
 } from "@voldzi/stratos-ui";
 
 import { isEmployeeChatOnly } from "@/lib/auth/authorization";
@@ -36,13 +42,8 @@ import {
 } from "@/components/app-settings-surface";
 import { ProjectTopbar } from "@/components/project-topbar";
 import {
-  StratosAppRail,
-  StratosAppShell,
   CommandCenter,
-  StratosWorkspaceNav,
-  StratosWorkspaceSidebar,
   type CommandCenterItem,
-  type StratosWorkspaceNavGroup,
 } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
@@ -669,7 +670,6 @@ function AppShellContent({
       onSelect: handleRailSelect,
     },
   ];
-  const activeRailHref = moduleRootRoutes[activeModule];
   const activeModuleLabel =
     railItems.find((item) => item.id === activeModule)?.label ??
     copy.workspaceTitle;
@@ -687,7 +687,7 @@ function AppShellContent({
         .slice(0, 2),
     [activeModuleRoutes, language],
   );
-  const workspaceGroups = useMemo<StratosWorkspaceNavGroup[]>(() => {
+  const workspaceGroups = useMemo<WorkspaceNavGroup[]>(() => {
     const groupLabel = moduleGroupLabel(activeModule, copy);
     return [
       {
@@ -958,30 +958,48 @@ function AppShellContent({
   }
 
   return (
-    <StratosAppShell
-      sidebarCollapsed={sidebarCollapsed}
-      mobileSidebarOpen={mobileSidebarOpen}
-      onMobileSidebarClose={() => setMobileSidebarOpen(false)}
+    <StratosUiAppShell
+      className={[
+        "stratos-akb-shell",
+        sidebarCollapsed ? "is-sidebar-collapsed" : "",
+        mobileSidebarOpen ? "is-mobile-sidebar-open" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      sidebarOpen={mobileSidebarOpen}
+      onSidebarChange={(open) => {
+        if (!open) {
+          setMobileSidebarOpen(false);
+        }
+      }}
+      topbarPlacement="global"
       rail={
-        <StratosAppRail
-          activePathname={activeRailHref}
-          brandHref="/"
-          brandMark="AKB"
-          brandName="AKB Platform"
-          brandSubtitle="AI Knowledge Base"
-          items={railItems}
-          footer={
-            <>
-              <div className="health-dot" aria-hidden="true" />
-              <span>
-                {apiModeLabel} · {authModeLabel}
-              </span>
-            </>
+        <AppRail
+          workspaceMark={
+            <Link className="stratos-akb-rail-mark" href={withAppBasePath("/")}>
+              AKB
+            </Link>
           }
+          activeItemId={activeModule}
+          panelOpen
+          items={railItems.map<AppRailItem>((item) => ({
+            id: item.id,
+            icon: item.icon,
+            label: item.label,
+            tooltip: item.label,
+          }))}
+          onItemSelect={(itemId) => {
+            const item = railItems.find((candidate) => candidate.id === itemId);
+            if (!item) {
+              return;
+            }
+            item.onSelect();
+            router.push(withAppBasePath(item.href));
+          }}
         />
       }
       sidebar={
-        <StratosWorkspaceSidebar
+        <WorkspaceSidebar
           title={activeModuleLabel}
           subtitle={copy.workspaceSubtitle}
           collapsed={sidebarCollapsed}
@@ -1053,7 +1071,7 @@ function AppShellContent({
               );
             })}
           </nav>
-          <StratosWorkspaceNav
+          <WorkspaceNav
             key={activeModule}
             groups={workspaceGroups}
             ariaLabel={
@@ -1063,7 +1081,7 @@ function AppShellContent({
             }
             onNavigate={() => setMobileSidebarOpen(false)}
           />
-        </StratosWorkspaceSidebar>
+        </WorkspaceSidebar>
       }
       topbar={
         <>
@@ -1129,7 +1147,7 @@ function AppShellContent({
       }
     >
       {children}
-    </StratosAppShell>
+    </StratosUiAppShell>
   );
 }
 
@@ -1373,7 +1391,7 @@ function avatarColorForValue(value: string): string {
 function navItemToWorkspaceItem(
   item: (typeof navigation)[AklLanguage][number],
   pathname: string,
-): StratosWorkspaceNavGroup["items"][number] {
+): WorkspaceNavGroup["items"][number] {
   const Icon = item.icon;
   return {
     id: item.href,

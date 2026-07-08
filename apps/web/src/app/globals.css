@@ -205,23 +205,6 @@ button {
   padding: 9px 10px;
 }
 
-.stratos-app-rail .stratos-brand {
-  justify-content: center;
-  padding: 0 0 20px;
-}
-
-.stratos-app-rail .stratos-brand > span:not(.stratos-brand__mark),
-.stratos-app-rail .stratos-nav-item span:not(.stratos-workspace-nav-icon),
-.stratos-app-rail .stratos-app-rail__footer span {
-  display: none;
-}
-
-.stratos-app-rail .stratos-nav-item {
-  height: 44px;
-  justify-content: center;
-  padding: 0;
-}
-
 .nav-item:hover,
 .nav-item--active,
 .stratos-nav-item:hover,
@@ -230,8 +213,7 @@ button {
   color: #ffffff;
 }
 
-.sidebar__footer,
-.stratos-app-rail__footer {
+.sidebar__footer {
   align-items: center;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   color: #a8bdc4;
@@ -479,9 +461,8 @@ button {
 }
 
 /* STRATOS shared shell compatibility.
-   AKB keeps its public adapter props, but renders the same AppShell/AppRail
-   structure as Budget & Contract so shared shell styles and mobile behavior
-   remain aligned across STRATOS applications. */
+   AKB uses @voldzi/stratos-ui AppShell/AppRail/WorkspaceSidebar directly;
+   local CSS only maps AKB domain spacing and color onto shared shell classes. */
 .stratos-akb-shell {
   --stratos-shell-rail-width: var(--stratos-rail-width);
   --stratos-shell-sidebar-width: var(--stratos-workspace-sidebar-width);
@@ -553,26 +534,7 @@ button {
   overflow: hidden;
 }
 
-.stratos-akb-shell .stratos-akb-rail-frame {
-  background: #102027;
-  color: #eef6f8;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.stratos-akb-rail-frame .stratos-brand {
-  justify-content: center;
-  padding: 14px 0 16px;
-}
-
-.stratos-akb-rail-frame .stratos-brand > span:not(.stratos-brand__mark) {
-  display: none;
-}
-
 .stratos-akb-shell .stratos-app-rail {
-  background: transparent;
   flex: 1 1 auto;
   min-height: 0;
   position: static;
@@ -591,24 +553,6 @@ button {
   letter-spacing: 0;
   text-decoration: none;
   width: 40px;
-}
-
-.stratos-akb-rail-footer {
-  align-items: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  color: #a8bdc4;
-  display: flex;
-  font-size: 11px;
-  gap: 7px;
-  justify-content: center;
-  min-height: 46px;
-  overflow: hidden;
-  padding: 8px 6px;
-  text-align: center;
-}
-
-.stratos-akb-rail-footer span {
-  display: none;
 }
 
 .stratos-akb-shell .stratos-app-shell-backdrop {
@@ -5062,8 +5006,7 @@ button {
     display: flex;
   }
 
-  .sidebar__footer,
-  .stratos-app-rail__footer {
+  .sidebar__footer {
     display: none;
   }
 
