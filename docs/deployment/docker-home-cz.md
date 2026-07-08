@@ -53,7 +53,7 @@ cd /srv/akl/repo
 git checkout main
 ```
 
-Docker Compose na `docker.home.cz` při použití `-f infra/docker-compose/docker-compose.docker-home.yml` automaticky načítá `.env` podle compose project adresáře. Produkční hodnoty proto patří mimo Git do `/srv/akl/env/akl.prod.env` a do checkoutu se zkopírují pouze jako lokální necommitované soubory `.env`.
+Produkční hodnoty patří mimo Git do `/srv/akl/env/akl.prod.env`. Standardní deploy skript tento soubor předává Docker Compose explicitně přes `--env-file`, aby build i runtime používaly stejné hodnoty. Bootstrap zároveň do checkoutu obnovuje lokální necommitované `.env` kopie pro nouzové ruční Compose příkazy.
 
 Po klonování nebo po čistém bootstrapu checkoutu spustit jeden příkaz:
 
@@ -393,9 +393,10 @@ Skript provede:
 
 - bootstrap checkoutu,
 - preflight,
-- compose render,
+- compose render s `/srv/akl/env/akl.prod.env`,
 - image build,
-- `docker compose up -d`.
+- validaci, že web image má zabalený `/akb` base path,
+- `docker compose up -d` se stejným env souborem.
 
 8. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
 
