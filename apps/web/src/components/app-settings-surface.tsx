@@ -34,6 +34,7 @@ interface AppSettingsSurfaceProps {
   onSave: () => void;
   onValueChange: (key: StratosSettingsCoreValueKey, value: StratosSettingsCoreValue) => void;
   rolePreview: RolePreviewSettings;
+  saveError?: string | null;
   userInitials: string;
   values: StratosSettingsCoreValues;
 }
@@ -154,6 +155,7 @@ export function AppSettingsSurface({
   onSave,
   onValueChange,
   rolePreview,
+  saveError,
   userInitials,
   values
 }: AppSettingsSurfaceProps) {
@@ -287,6 +289,7 @@ export function AppSettingsSurface({
       logoutLabel={copy.logout}
       roleReadOnly
       dirty={dirty}
+      saveError={saveError}
       mode={mode}
       onClose={onClose}
       onLogout={onLogout}
