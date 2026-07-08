@@ -39,7 +39,7 @@
 
 	handle /akb {
 		header Cache-Control "no-store"
-		redir /akb/dashboard 307
+		redir * /akb/dashboard 307
 	}
 
 	@akb path /akb/*
