@@ -4,12 +4,14 @@ import { getAklConfig } from "@/lib/api/config";
 import {
   cookieOptions,
   exchangeAuthorizationCode,
+  OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
   OIDC_STATE_COOKIE,
   buildPublicAppUrl,
   requireOidcConfig,
   safeReturnToFromState,
+  sealAccessToken,
   sealBrowserSession,
   sealRefreshToken,
   sessionFromTokens
@@ -42,6 +44,9 @@ export async function GET(request: NextRequest) {
   const response = redirectByReplacingLocation(buildPublicAppUrl(config, returnTo));
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.set(OIDC_SESSION_COOKIE, sealBrowserSession(session, oidc.sessionSecret), cookieOptions(config));
+  if (session.accessToken) {
+    response.cookies.set(OIDC_ACCESS_COOKIE, sealAccessToken(session.accessToken, oidc.sessionSecret), cookieOptions(config));
+  }
   if (session.refreshToken) {
     response.cookies.set(OIDC_REFRESH_COOKIE, sealRefreshToken(session.refreshToken, oidc.sessionSecret), cookieOptions(config));
   }
@@ -53,6 +58,7 @@ function redirectToLogin(config: ReturnType<typeof getAklConfig>, returnTo: stri
   const response = redirectByReplacingLocation(loginUrl);
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.delete(OIDC_SESSION_COOKIE);
+  response.cookies.delete(OIDC_ACCESS_COOKIE);
   response.cookies.delete(OIDC_REFRESH_COOKIE);
   return response;
 }

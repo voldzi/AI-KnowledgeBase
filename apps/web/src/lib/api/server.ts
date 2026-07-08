@@ -13,6 +13,7 @@ import {
   contextFromOidcAccessToken,
   contextFromOidcSession,
   readSessionCookie,
+  refreshOidcSession,
   type OidcSession,
 } from "../auth/oidc";
 
@@ -122,7 +123,8 @@ export async function getOptionalServerOidcSession(
   const cookieStore = request
     ? cookieReaderFromRequest(request)
     : await cookies();
-  return readSessionCookie(cookieStore, config);
+  const session = readSessionCookie(cookieStore, config);
+  return session ? refreshOidcSession(config, session) : null;
 }
 
 function cookieReaderFromRequest(request: RequestLike): CookieReader {

@@ -6,12 +6,14 @@ import {
   contextFromOidcAccessToken,
   contextFromOidcSession,
   createState,
+  OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
   openSession,
   readSessionCookie,
   refreshOidcSession,
   safeReturnToFromState,
+  sealAccessToken,
   sealBrowserSession,
   sealRefreshToken,
   sealSession,
@@ -76,13 +78,15 @@ describe("OIDC web session", () => {
     assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1, { allowExpired: true })?.subjectId, "user-123");
   });
 
-  it("keeps access and refresh tokens out of the browser session cookie", () => {
+  it("keeps tokens out of the metadata session cookie and restores encrypted token cookies", () => {
     const config = testOidcConfig();
+    const accessToken = jwt({ sub: "user-123" });
     const session = sessionFromTokens(
-      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
+      { access_token: accessToken, refresh_token: "refresh-token", expires_in: 600 },
       1_000
     );
     const browserSession = sealBrowserSession(session, "test-secret");
+    const accessCookie = sealAccessToken(accessToken, "test-secret");
     const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
     const opened = openSession(browserSession, "test-secret", 2_000);
     const read = readSessionCookie(
@@ -90,6 +94,7 @@ describe("OIDC web session", () => {
         get: (name: string) =>
           ({
             [OIDC_SESSION_COOKIE]: { value: browserSession },
+            [OIDC_ACCESS_COOKIE]: { value: accessCookie },
             [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
           })[name]
       },
@@ -99,8 +104,38 @@ describe("OIDC web session", () => {
 
     assert.equal(opened?.accessToken, undefined);
     assert.equal(opened?.refreshToken, undefined);
-    assert.equal(read?.accessToken, undefined);
+    assert.equal(read?.accessToken, accessToken);
     assert.equal(read?.refreshToken, "refresh-token");
+  });
+
+  it("refreshes a non-expired metadata session when the access token is absent", async () => {
+    const config = testOidcConfig();
+    const refreshedAccessToken = jwt({
+      sub: "user-123",
+      realm_access: { roles: ["reader"] }
+    });
+    const session = {
+      ...sessionFromTokens(
+        { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-old", expires_in: 600 },
+        1_000
+      ),
+      accessToken: undefined
+    };
+
+    const refreshed = await refreshOidcSession(config, session, 60_000, async () =>
+      new Response(
+        JSON.stringify({
+          access_token: refreshedAccessToken,
+          refresh_token: "refresh-new",
+          expires_in: 600
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    assert.equal(refreshed?.accessToken, refreshedAccessToken);
+    assert.equal(refreshed?.refreshToken, "refresh-new");
+    assert.deepEqual(refreshed?.roles, ["reader"]);
   });
 
   it("refreshes an expired web session with the OIDC refresh token", async () => {
