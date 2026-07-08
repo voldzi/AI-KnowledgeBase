@@ -37,7 +37,11 @@
 		}
 	}
 
-	@akb path /akb /akb/*
+	handle /akb {
+		redir /akb/chat 307
+	}
+
+	@akb path /akb/*
 	handle @akb {
 		request_header -X-Forwarded-Prefix
 		reverse_proxy {$WEB_UPSTREAM:web:3000} {
