@@ -64,10 +64,12 @@ docker compose --env-file .env.local-prod \
 - Report `failed_documents` is `0`.
 - Report `chunks_created` is greater than `0`.
 - Report `qdrant_points` is greater than `0`.
+- Report `opensearch_documents` is greater than `0` when `AKL_PHASE_03_REQUIRE_OPENSEARCH=true`.
 - Qdrant contains payloads with:
   - `document_type=project_documentation`
   - `tags` including `akb-docs`
   - `document_version_id` matching imported Registry versions
+- OpenSearch contains matching `project_documentation` chunks with the `akb-docs` tag.
 - RAG answers the configured smoke query with at least one citation.
 - `GET /api/v1/citations/{chunk_id}/open` returns `source_file_uri`, `viewer_mode`, and `chunk_text`.
 - `GET /chat` renders the Employee Chat Portal UI.

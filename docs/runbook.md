@@ -63,6 +63,37 @@ remain in `docs/deployment/` and `docs/OPERATIONS/`.
 3. Check parser/OCR/embedding/Qdrant logs for the same correlation id.
 4. Retry ingestion through the approved API only after the root cause is fixed.
 
+### `EMBEDDING_REQUEST_FAILED` With Gateway HTTP 403
+
+1. Correlate the ingestion job with LLM Gateway logs and confirm the rejected
+   path is `/api/v1/embeddings`.
+2. Compare only token length and a short SHA-256 fingerprint between
+   ingestion `AKL_LLM_GATEWAY_TOKEN` and gateway `AKL_SERVICE_TOKEN`; never
+   print either token.
+3. Verify the effective non-secret contract:
+
+   ```text
+   subject=svc-ingestion
+   audience=llm-gateway-service
+   roles include service_ingestion
+   AKL_LLM_REQUIRE_CALLER_IDENTITY=true
+   ```
+
+4. Confirm ingestion uses its gateway service token, not the caller OIDC token.
+   `X-AKL-On-Behalf-Of` may contain the caller id, but `X-AKL-Subject` must
+   remain `svc-ingestion`.
+5. After a token or identity configuration change, recreate both ingestion and
+   LLM Gateway containers so neither keeps stale environment values.
+6. Verify both `/ready` endpoints, run one authenticated embedding smoke, then
+   call the AKB `retry-ingestion` bridge once and poll until `INDEXED` or a
+   terminal failure.
+
+Repeated upload confirmation is not a retry mechanism. An exact replay returns
+the existing version/job with HTTP 200; use `retry-ingestion` after fixing a
+terminal `FAILED` job. Po retry ověřte nejen webový status, ale také Registry
+`current_ingestion_job_id` a `current_ingestion_status`; ingestion je nyní
+synchronizuje auditovaně ve stavech `INGESTING`, `INDEXED` a `FAILED`.
+
 ## High Latency
 
 1. Split latency by web bridge, Registry, RAG, Qdrant, and LLM Gateway.

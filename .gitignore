@@ -47,6 +47,7 @@ tmp/
 *.sqlite
 *.db
 services/evaluation-service/reports/*.json
+services/evaluation-service/app/security 2.py
 services/rag-retrieval-service/app/security 2.py
 
 # Docker / local volumes / backups

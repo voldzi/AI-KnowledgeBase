@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
+import httpx
+
 from app.config import Settings
 from app.context import get_correlation_id
+from app.errors import RetrievalError
 from app.http_utils import request_json_with_retry
 from app.security import AuthContext
 
@@ -15,6 +20,15 @@ class AuthzFilterResult:
     denied_document_ids: set[str]
 
 
+@dataclass(frozen=True)
+class IdempotencyReservation:
+    state: str
+    record_id: str
+    response_status: int | None = None
+    response_body: dict[str, object] | None = None
+    audit_event_id: str | None = None
+
+
 class RegistryClient(Protocol):
     async def filter_allowed_documents(
         self,
@@ -22,6 +36,7 @@ class RegistryClient(Protocol):
         subject_id: str,
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
     ) -> AuthzFilterResult:
         ...
 
@@ -33,6 +48,28 @@ class RegistryClient(Protocol):
         resource_id: str,
         metadata: dict[str, object],
         resource_type: str = "rag_query",
+        auth_context: AuthContext | None = None,
+    ) -> str | None:
+        ...
+
+    async def reserve_idempotency(
+        self,
+        *,
+        client_id: str,
+        operation: str,
+        idempotency_key: str,
+        input_hash: str,
+        auth_context: AuthContext | None = None,
+    ) -> IdempotencyReservation:
+        ...
+
+    async def complete_idempotency(
+        self,
+        *,
+        record_id: str,
+        response_status: int,
+        response_body: dict[str, object],
+        audit_event_id: str | None,
         auth_context: AuthContext | None = None,
     ) -> None:
         ...
@@ -91,6 +128,7 @@ class MockRegistryClient:
         self._extractions: dict[str, dict[str, object]] = {}
         self._extraction_identity: dict[tuple[object, ...], str] = {}
         self._feedback: dict[str, dict[str, object]] = {}
+        self._idempotency: dict[tuple[str, str, str], dict[str, object]] = {}
 
     async def filter_allowed_documents(
         self,
@@ -98,6 +136,7 @@ class MockRegistryClient:
         subject_id: str,
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
     ) -> AuthzFilterResult:
         denied = {
             document_id
@@ -116,8 +155,60 @@ class MockRegistryClient:
         metadata: dict[str, object],
         resource_type: str = "rag_query",
         auth_context: AuthContext | None = None,
+    ) -> str | None:
+        from uuid import uuid4
+
+        return f"audit_{uuid4().hex}"
+
+    async def reserve_idempotency(
+        self,
+        *,
+        client_id: str,
+        operation: str,
+        idempotency_key: str,
+        input_hash: str,
+        auth_context: AuthContext | None = None,
+    ) -> IdempotencyReservation:
+        from uuid import uuid4
+
+        identity = (client_id, operation, idempotency_key)
+        record = self._idempotency.get(identity)
+        if record is None:
+            record = {"record_id": f"idem_{uuid4().hex}", "input_hash": input_hash, "status": "processing"}
+            self._idempotency[identity] = record
+            state = "reserved"
+        elif record["input_hash"] != input_hash:
+            state = "conflict"
+        elif record["status"] == "completed":
+            state = "replay"
+        else:
+            state = "processing"
+        return IdempotencyReservation(
+            state=state,
+            record_id=str(record["record_id"]),
+            response_status=record.get("response_status") if isinstance(record.get("response_status"), int) else None,
+            response_body=record.get("response_body") if isinstance(record.get("response_body"), dict) else None,
+            audit_event_id=record.get("audit_event_id") if isinstance(record.get("audit_event_id"), str) else None,
+        )
+
+    async def complete_idempotency(
+        self,
+        *,
+        record_id: str,
+        response_status: int,
+        response_body: dict[str, object],
+        audit_event_id: str | None,
+        auth_context: AuthContext | None = None,
     ) -> None:
-        return None
+        for record in self._idempotency.values():
+            if record.get("record_id") == record_id:
+                record.update(
+                    status="completed",
+                    response_status=response_status,
+                    response_body=response_body,
+                    audit_event_id=audit_event_id,
+                )
+                return
 
     async def append_conversation_messages(
         self,
@@ -236,6 +327,55 @@ class MockRegistryClient:
 class HttpRegistryClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._service_token_value: str | None = None
+        self._service_token_expires_at = 0.0
+        self._service_token_lock = asyncio.Lock()
+
+    async def _service_token(self) -> str | None:
+        settings = self._settings
+        if not (
+            settings.registry_service_token_url
+            and settings.registry_service_client_id
+            and settings.registry_service_client_secret
+        ):
+            return None
+        now = time.monotonic()
+        if self._service_token_value and now < self._service_token_expires_at:
+            return self._service_token_value
+        async with self._service_token_lock:
+            now = time.monotonic()
+            if self._service_token_value and now < self._service_token_expires_at:
+                return self._service_token_value
+            try:
+                async with httpx.AsyncClient(timeout=self._settings.request_timeout_seconds) as client:
+                    response = await client.post(
+                        settings.registry_service_token_url,
+                        data={
+                            "grant_type": "client_credentials",
+                            "client_id": settings.registry_service_client_id,
+                            "client_secret": settings.registry_service_client_secret,
+                        },
+                    )
+                response.raise_for_status()
+                payload = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise RetrievalError(
+                    "REGISTRY_SERVICE_AUTH_UNAVAILABLE",
+                    "RAG service identity could not be obtained.",
+                    status_code=503,
+                ) from exc
+            access_token = payload.get("access_token")
+            if not isinstance(access_token, str) or not access_token:
+                raise RetrievalError(
+                    "REGISTRY_SERVICE_AUTH_INVALID",
+                    "RAG service identity response did not contain an access token.",
+                    status_code=503,
+                )
+            expires_in = payload.get("expires_in")
+            lifetime = int(expires_in) if isinstance(expires_in, (int, float)) else 60
+            self._service_token_value = access_token
+            self._service_token_expires_at = now + max(5, lifetime - 30)
+            return access_token
 
     async def filter_allowed_documents(
         self,
@@ -243,6 +383,7 @@ class HttpRegistryClient:
         subject_id: str,
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
     ) -> AuthzFilterResult:
         if not candidate_document_ids:
             return AuthzFilterResult(allowed_document_ids=set(), denied_document_ids=set())
@@ -251,9 +392,22 @@ class HttpRegistryClient:
             "subject_id": subject_id,
             "action": "rag.query",
             "candidate_document_ids": candidate_document_ids,
-            "roles": list(auth_context.roles) if auth_context else [],
-            "groups": list(auth_context.groups) if auth_context else [],
+            "candidate_policy_hashes": candidate_policy_hashes or {},
         }
+        if self._settings.auth_mode in {"disabled", "mock"}:
+            body.update(
+                {
+                    "roles": list(auth_context.roles) if auth_context else [],
+                    "groups": list(auth_context.groups) if auth_context else [],
+                    "capabilities": list(auth_context.capabilities) if auth_context else [],
+                    "scopes": list(auth_context.scopes) if auth_context else [],
+                    "organization_id": auth_context.organization_id if auth_context else "org_stratos",
+                    "identity_active": auth_context.identity_active if auth_context else True,
+                    "membership_active": auth_context.membership_active if auth_context else True,
+                    "application_access_active": auth_context.application_access_active if auth_context else True,
+                }
+            )
+        service_token = await self._service_token() if auth_context and auth_context.service_identity else None
         payload = await request_json_with_retry(
             dependency="registry-api",
             settings=self._settings,
@@ -261,6 +415,8 @@ class HttpRegistryClient:
             url=f"{self._settings.registry_base_url}/authz/filter-documents",
             json_body=body,
             auth_context=auth_context,
+            bearer_token_override=service_token,
+            service_identity=service_token is not None,
         )
         return AuthzFilterResult(
             allowed_document_ids=set(payload.get("allowed_document_ids", [])),
@@ -276,7 +432,7 @@ class HttpRegistryClient:
         metadata: dict[str, object],
         resource_type: str = "rag_query",
         auth_context: AuthContext | None = None,
-    ) -> None:
+    ) -> str | None:
         body = {
             "actor_id": actor_id,
             "event_type": event_type,
@@ -286,14 +442,80 @@ class HttpRegistryClient:
             "correlation_id": get_correlation_id(),
             "metadata": {"service": self._settings.service_name, **metadata},
         }
-        await request_json_with_retry(
+        service_token = await self._service_token()
+        payload = await request_json_with_retry(
             dependency="registry-api",
             settings=self._settings,
             method="POST",
             url=f"{self._settings.registry_base_url}/audit/events",
             json_body=body,
             auth_context=auth_context,
-            prefer_upstream_token=True,
+            prefer_upstream_token=service_token is None,
+            bearer_token_override=service_token,
+            service_identity=service_token is not None,
+        )
+        value = payload.get("audit_event_id")
+        return value if isinstance(value, str) else None
+
+    async def reserve_idempotency(
+        self,
+        *,
+        client_id: str,
+        operation: str,
+        idempotency_key: str,
+        input_hash: str,
+        auth_context: AuthContext | None = None,
+    ) -> IdempotencyReservation:
+        service_token = await self._service_token()
+        payload = await request_json_with_retry(
+            dependency="registry-api",
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.registry_base_url}/integrations/idempotency/reserve",
+            json_body={
+                "client_id": client_id,
+                "operation": operation,
+                "idempotency_key": idempotency_key,
+                "input_hash": input_hash,
+                "retention_seconds": 86400,
+            },
+            auth_context=auth_context,
+            prefer_upstream_token=service_token is None,
+            bearer_token_override=service_token,
+            service_identity=service_token is not None,
+        )
+        return IdempotencyReservation(
+            state=str(payload.get("state") or "processing"),
+            record_id=str(payload.get("record_id") or ""),
+            response_status=payload.get("response_status") if isinstance(payload.get("response_status"), int) else None,
+            response_body=payload.get("response_body") if isinstance(payload.get("response_body"), dict) else None,
+            audit_event_id=payload.get("audit_event_id") if isinstance(payload.get("audit_event_id"), str) else None,
+        )
+
+    async def complete_idempotency(
+        self,
+        *,
+        record_id: str,
+        response_status: int,
+        response_body: dict[str, object],
+        audit_event_id: str | None,
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        service_token = await self._service_token()
+        await request_json_with_retry(
+            dependency="registry-api",
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.registry_base_url}/integrations/idempotency/{record_id}/complete",
+            json_body={
+                "response_status": response_status,
+                "response_body": response_body,
+                "audit_event_id": audit_event_id,
+            },
+            auth_context=auth_context,
+            prefer_upstream_token=service_token is None,
+            bearer_token_override=service_token,
+            service_identity=service_token is not None,
         )
 
     async def append_conversation_messages(
@@ -414,6 +636,7 @@ class DevAuthzRegistryClient:
         subject_id: str,
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
     ) -> AuthzFilterResult:
         return AuthzFilterResult(
             allowed_document_ids=set(candidate_document_ids),
@@ -429,13 +652,47 @@ class DevAuthzRegistryClient:
         metadata: dict[str, object],
         resource_type: str = "rag_query",
         auth_context: AuthContext | None = None,
-    ) -> None:
-        await self._audit_client.write_audit_event(
+    ) -> str | None:
+        return await self._audit_client.write_audit_event(
             actor_id=actor_id,
             event_type=event_type,
             resource_id=resource_id,
             metadata=metadata,
             resource_type=resource_type,
+            auth_context=auth_context,
+        )
+
+    async def reserve_idempotency(
+        self,
+        *,
+        client_id: str,
+        operation: str,
+        idempotency_key: str,
+        input_hash: str,
+        auth_context: AuthContext | None = None,
+    ) -> IdempotencyReservation:
+        return await self._audit_client.reserve_idempotency(
+            client_id=client_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            input_hash=input_hash,
+            auth_context=auth_context,
+        )
+
+    async def complete_idempotency(
+        self,
+        *,
+        record_id: str,
+        response_status: int,
+        response_body: dict[str, object],
+        audit_event_id: str | None,
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        await self._audit_client.complete_idempotency(
+            record_id=record_id,
+            response_status=response_status,
+            response_body=response_body,
+            audit_event_id=audit_event_id,
             auth_context=auth_context,
         )
 

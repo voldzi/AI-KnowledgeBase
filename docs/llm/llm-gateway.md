@@ -102,15 +102,23 @@ ollama_think: false
 Ollama endpoint může být jeden nebo řízený failover seznam:
 
 ```text
-AKL_OLLAMA_BASE_URL=http://192.168.1.176:11434
-AKL_OLLAMA_BASE_URLS=http://192.168.1.176:11434,http://192.168.200.2:11434
-AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=10
+AKL_OLLAMA_BASE_URL=http://192.168.200.3:11434
+AKL_OLLAMA_BASE_URLS=http://192.168.200.3:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_LLM_CHAT_MODEL_FALLBACKS={"gemma4:31b-mlx":["gemma4:12b-mlx"]}
+AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=3
 ```
 
 `AKL_OLLAMA_BASE_URLS` je explicitní allowlist. Gateway neprohledává lokální síť; pouze zkusí nakonfigurované URL v pořadí.
+Před chatem gateway načte katalog modelů z dostupných uzlů. Nejprve hledá
+požadovaný model napříč celým allowlistem a teprve pokud není nikde dostupný,
+použije první dostupný model z explicitního `AKL_LLM_CHAT_MODEL_FALLBACKS`.
+Odpověď uvádí skutečně použitý model a fallback se zapisuje jako strukturované
+varování bez obsahu dotazu nebo odpovědi.
 Každý kandidát se nejdřív ověří krátkým timeoutem
 `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS`; plný LLM request se posílá až na aktivní
-endpoint.
+endpoint. Poslední úspěšný endpoint se v běžícím procesu zkouší jako první,
+aby mrtvý preferovaný kandidát nezpomaloval readiness ani každý další dotaz.
+Při jeho výpadku se znovu vyhodnotí celý explicitní seznam.
 
 Pro thinking-capable Ollama modely gateway podporuje:
 
@@ -156,6 +164,19 @@ V docker-home profilu používá LLM Gateway samostatný service token
 `AKL_SERVICE_TOKEN` a do klientských služeb jako `AKL_LLM_GATEWAY_TOKEN`.
 Tento token je pouze pro interní volání chat/embedding endpointů a nesmí se
 používat jako Registry/OIDC token pro autorizaci dokumentů.
+
+Produkční kontrakt navíc vynucuje:
+
+```text
+AKL_LLM_REQUIRE_CALLER_IDENTITY=true
+AKL_LLM_GATEWAY_AUDIENCE=llm-gateway-service
+AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES=service_ingestion,service_rag
+```
+
+Ingestion volá gateway jako `svc-ingestion` s rolí `service_ingestion`; RAG
+jako `svc-rag` s rolí `service_rag`. Caller OIDC token z browseru nebo AIIP se
+do tohoto downstream volání nepoužívá. Ingestion ho zachová pouze v auditní
+hlavičce `X-AKL-On-Behalf-Of`.
 
 Služba loguje request id, correlation id, provider, model, počty vstupů, latenci, status a token usage. Neloguje celé prompty, odpovědi, embedding input texty, bearer tokeny ani API klíče.
 

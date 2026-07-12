@@ -1,0 +1,10 @@
+{
+  "fixtureVersion": "conformance-1.0.0",
+  "cases": [
+    { "id": "allow-internal-read", "request": { "operation": "read", "identityActive": true, "membershipActive": true, "applicationAccess": true, "capability": true, "scopeMatches": true, "policyBinding": { "policyVersion": "information-policy-2.0.0", "handlingClass": "INTERNAL", "legalClassification": "NONE", "obligations": ["AUDIT_ACCESS"] } }, "expected": { "decision": "ALLOW", "reasonCodes": ["POLICY_ALLOW"], "obligations": ["AUDIT_ACCESS"] } },
+    { "id": "deny-disabled-identity", "request": { "operation": "read", "identityActive": false, "membershipActive": true, "applicationAccess": true, "capability": true, "scopeMatches": true, "policyBinding": { "policyVersion": "information-policy-2.0.0", "handlingClass": "INTERNAL", "legalClassification": "NONE", "obligations": [] } }, "expected": { "decision": "DENY", "reasonCodes": ["IDENTITY_DISABLED"] } },
+    { "id": "deny-missing-capability", "request": { "operation": "export", "identityActive": true, "membershipActive": true, "applicationAccess": true, "capability": false, "scopeMatches": true, "policyBinding": { "policyVersion": "information-policy-2.0.0", "handlingClass": "INTERNAL", "legalClassification": "NONE", "obligations": [] } }, "expected": { "decision": "DENY", "reasonCodes": ["CAPABILITY_MISSING"] } },
+    { "id": "deny-policy-unavailable", "request": { "operation": "export", "identityActive": true, "membershipActive": true, "applicationAccess": true, "capability": true, "scopeMatches": true, "policyBinding": null }, "expected": { "decision": "DENY", "reasonCodes": ["POLICY_UNAVAILABLE"] } },
+    { "id": "deny-classified-content", "request": { "operation": "upload", "identityActive": true, "membershipActive": true, "applicationAccess": true, "capability": true, "scopeMatches": true, "policyBinding": { "policyVersion": "information-policy-2.0.0", "handlingClass": "RESTRICTED", "legalClassification": "D", "obligations": [] } }, "expected": { "decision": "DENY", "reasonCodes": ["LEGAL_CLASSIFICATION_UNSUPPORTED"] } }
+  ]
+}

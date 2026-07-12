@@ -1,0 +1,21 @@
+{
+  "catalogVersion": "capabilities-1.0.0",
+  "organizationId": "org_stratos",
+  "scopeTypes": ["own", "organization", "organization_unit", "budget_scope", "portfolio", "project", "document", "recipient_set"],
+  "applications": {
+    "executive-center": ["executive-center:access", "executive-center:read_portfolio", "executive-center:read_audit", "executive-center:manage_access"],
+    "budget": ["budget:access", "budget:read", "budget:manage_plan", "budget:manage_contract", "budget:manage_procurement", "budget:export", "budget:read_audit", "budget:manage_access"],
+    "projectflow": ["projectflow:access", "projectflow:read", "projectflow:manage_project", "projectflow:manage_schedule", "projectflow:manage_team", "projectflow:export", "projectflow:read_audit", "projectflow:manage_access"],
+    "archflow": ["archflow:access", "archflow:submit_own", "archflow:read_own", "archflow:triage", "archflow:review", "archflow:decide", "archflow:handoff_budget", "archflow:read_audit", "archflow:manage_access"],
+    "processforge": ["processforge:access", "processforge:read", "processforge:design", "processforge:publish", "processforge:read_audit"],
+    "akb": ["akb:access", "akb:chat", "akb:upload", "akb:read_document", "akb:manage_document", "akb:export", "akb:read_audit", "akb:manage_access"],
+    "aiip": ["aiip:access", "aiip:submit", "aiip:read_own", "aiip:update_own", "aiip:read_unit", "aiip:read_organization", "aiip:triage", "aiip:prepare_decision", "aiip:approve", "aiip:handoff", "aiip:publish_knowledge", "aiip:read_audit", "aiip:manage_access", "aiip:admin"],
+    "security-preflight": ["security-preflight:access", "security-preflight:submit_scan", "security-preflight:read_scan", "security-preflight:external_operation", "security-preflight:export", "security-preflight:read_audit", "security-preflight:manage_access"]
+  },
+  "defaultStratosUserAccess": {
+    "akb": { "capabilities": ["akb:access", "akb:chat"], "scopes": [{ "type": "organization" }] },
+    "aiip": { "capabilities": ["aiip:access", "aiip:submit", "aiip:read_own", "aiip:update_own"], "scopes": [{ "type": "own" }] },
+    "archflow": { "capabilities": ["archflow:access", "archflow:submit_own", "archflow:read_own"], "scopes": [{ "type": "own" }] }
+  },
+  "explicitGrantRequired": ["executive-center", "budget", "projectflow", "security-preflight"]
+}

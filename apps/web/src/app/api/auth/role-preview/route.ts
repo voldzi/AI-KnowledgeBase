@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
-import { contextFromOidcSession } from "@/lib/auth/oidc";
 import { canUseAdminSurface } from "@/lib/auth/authorization";
 import {
   createRolePreview,
@@ -11,7 +10,7 @@ import {
   rolePreviewCookieOptions,
   sealRolePreview
 } from "@/lib/auth/role-preview";
-import { getOptionalServerOidcSession } from "@/lib/api/server";
+import { getOptionalServerOidcSession, getOptionalServerRequestContext } from "@/lib/api/server";
 
 export const runtime = "nodejs";
 
@@ -69,7 +68,8 @@ async function getCurrentSubjectForRolePreview(request: NextRequest): Promise<{ 
   const config = getAklConfig();
   if (config.authMode === "oidc") {
     const session = await getOptionalServerOidcSession(request);
-    if (!session || !canUseAdminSurface(contextFromOidcSession(session))) {
+    const context = session ? await getOptionalServerRequestContext(request) : null;
+    if (!session || !context || !canUseAdminSurface(context)) {
       return null;
     }
     return { subjectId: session.subjectId };

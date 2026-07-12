@@ -216,14 +216,18 @@ function testOidcConfig() {
       registry: "http://registry/api/v1",
       ingestion: "http://ingestion/api/v1",
       rag: "http://rag/api/v1",
-      governance: "http://governance/api/v1"
+      governance: "http://governance/api/v1",
+      evaluation: "http://evaluation/api/v1"
     },
     oidc: {
       issuer: "https://login.example/realms/stratos",
       clientId: "akl-web",
       redirectUri: "https://stratos.example/akb/api/auth/callback",
       scopes: "openid profile email",
-      sessionSecret: "test-secret"
+      sessionSecret: "test-secret",
+      stratosAuthMeUrl: "https://stratos.example/api/v1/auth/me",
+      accessProjectionTimeoutMs: 3_000,
+      accessProjectionCacheTtlMs: 0
     }
   } as const;
 }

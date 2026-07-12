@@ -10,12 +10,11 @@ import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
 import {
   buildPublicAppUrl,
-  contextFromOidcAccessToken,
-  contextFromOidcSession,
   readSessionCookie,
   refreshOidcSession,
   type OidcSession,
 } from "../auth/oidc";
+import { contextFromStratosAccessProjection } from "../auth/access-projection";
 
 type RequestLike = Request & {
   cookies?: {
@@ -83,15 +82,13 @@ export async function getOptionalServerRequestContext(
 ): Promise<ApiRequestContext | null> {
   const bearerToken = bearerTokenFromRequest(request);
   if (bearerToken) {
-    const bearerContext = contextFromOidcAccessToken(bearerToken);
-    if (bearerContext) {
-      return bearerContext;
-    }
+    return contextFromStratosAccessProjection(bearerToken, getAklConfig());
   }
 
   const session = await getOptionalServerOidcSession(request);
   if (session) {
-    return contextFromOidcSession(session);
+    if (!session.accessToken) return null;
+    return contextFromStratosAccessProjection(session.accessToken, getAklConfig());
   }
 
   const config = getAklConfig();
@@ -109,6 +106,19 @@ export async function getOptionalServerRequestContext(
       .split(",")
       .map((group) => group.trim())
       .filter(Boolean),
+    capabilities: (process.env.AKL_WEB_DEV_CAPABILITIES ?? "")
+      .split(",")
+      .map((capability) => capability.trim())
+      .filter(Boolean),
+    scopes: (process.env.AKL_WEB_DEV_SCOPES ?? "")
+      .split(",")
+      .map((scope) => scope.trim())
+      .filter(Boolean),
+    organizationId: process.env.AKL_WEB_DEV_ORGANIZATION_ID ?? "org_stratos",
+    identityActive: true,
+    membershipActive: true,
+    applicationAccessActive: true,
+    authorizationSource: "mock",
     accessToken: config.devAccessToken,
   });
 }

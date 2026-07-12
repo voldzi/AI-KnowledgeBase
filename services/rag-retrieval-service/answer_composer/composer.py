@@ -83,6 +83,7 @@ class AnswerComposer:
                 "used_chunk_ids": [chunk.chunk_id for chunk in selected],
                 "chat_model": selected_chat_model or self._settings.chat_model,
                 "chat_model_tier": "high_quality" if selected_chat_model else "standard",
+                **_policy_metadata(selected),
             },
             model=selected_chat_model,
             auth_context=auth_context,
@@ -99,9 +100,9 @@ class AnswerComposer:
                 missing_information="LLM Gateway nevratil odpoved.",
             )
 
-        response_warnings = [*warnings]
+        response_warnings = _merge_warnings(warnings, _source_quality_warnings(selected))
         if truncated:
-            response_warnings.append("CONTEXT_TRUNCATED")
+            response_warnings = _merge_warnings(response_warnings, ["CONTEXT_TRUNCATED"])
 
         return RagAnswer(
             query_id=query_id,
@@ -111,6 +112,8 @@ class AnswerComposer:
             warnings=response_warnings,
             used_chunks=[chunk.chunk_id for chunk in selected],
             missing_information=None,
+            policy_bindings=_answer_policy_bindings(selected),
+            obligations=list(_policy_metadata(selected).get("obligations", [])),
         )
 
     async def compose_stream(
@@ -132,9 +135,9 @@ class AnswerComposer:
             selected_chunks=selected,
             truncated=truncated,
         )
-        response_warnings = [*warnings]
+        response_warnings = _merge_warnings(warnings, _source_quality_warnings(selected))
         if truncated:
-            response_warnings.append("CONTEXT_TRUNCATED")
+            response_warnings = _merge_warnings(response_warnings, ["CONTEXT_TRUNCATED"])
 
         yield StreamEvent(
             kind="meta",
@@ -146,6 +149,8 @@ class AnswerComposer:
                 warnings=response_warnings,
                 used_chunks=[chunk.chunk_id for chunk in selected],
                 missing_information=None,
+                policy_bindings=_answer_policy_bindings(selected),
+                obligations=list(_policy_metadata(selected).get("obligations", [])),
             ),
         )
 
@@ -171,6 +176,7 @@ class AnswerComposer:
                 "used_chunk_ids": [chunk.chunk_id for chunk in selected],
                 "chat_model": selected_chat_model or self._settings.chat_model,
                 "chat_model_tier": "high_quality" if selected_chat_model else "standard",
+                **_policy_metadata(selected),
             },
             model=selected_chat_model,
             auth_context=auth_context,
@@ -204,6 +210,8 @@ class AnswerComposer:
                 warnings=response_warnings,
                 used_chunks=[chunk.chunk_id for chunk in selected],
                 missing_information=None,
+                policy_bindings=_answer_policy_bindings(selected),
+                obligations=list(_policy_metadata(selected).get("obligations", [])),
             ),
         )
 
@@ -271,6 +279,50 @@ def _build_user_prompt(*, query: str, chunks: list[RetrievedChunk], response_lan
             ]
         )
     return "\n".join(lines)
+
+
+def _source_quality_warnings(chunks: list[RetrievedChunk]) -> list[str]:
+    warnings: list[str] = []
+    for chunk in chunks:
+        metadata = chunk.metadata
+        parser_quality = metadata.get("parser_quality")
+        quality_tier = str(
+            metadata.get("quality_tier")
+            or (parser_quality.get("quality_tier") if isinstance(parser_quality, dict) else "")
+            or ""
+        ).strip().lower()
+        requires_review = metadata.get("requires_review")
+        if requires_review is None and isinstance(parser_quality, dict):
+            requires_review = parser_quality.get("requires_review")
+        parser_name = str(metadata.get("parser_name") or "").strip().lower()
+        parser_engine = str(metadata.get("parser_engine") or "").strip().lower()
+
+        if _truthy(metadata.get("ocr_used")) or parser_name.startswith("ocr") or parser_engine in {"ocrmypdf", "tesseract"}:
+            warnings.append("SOURCE_OCR_USED")
+        if quality_tier == "poor":
+            warnings.append("SOURCE_LOW_EXTRACTION_QUALITY")
+        if quality_tier == "review" or _truthy(requires_review):
+            warnings.append("SOURCE_QUALITY_REVIEW_REQUIRED")
+    return _merge_warnings([], warnings)
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "ano"}
+    return bool(value)
+
+
+def _merge_warnings(*groups: list[str]) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for warning in group:
+            if warning and warning not in seen:
+                seen.add(warning)
+                merged.append(warning)
+    return merged
 
 
 def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage = "cs") -> str:
@@ -351,6 +403,62 @@ def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:
                 section_path=chunk.citation.section_path,
                 page_number=chunk.citation.page_number,
                 chunk_id=chunk.chunk_id,
+                policy_binding_id=_metadata_text(chunk.metadata, "policy_binding_id"),
+                policy_version=_metadata_text(chunk.metadata, "policy_version"),
+                policy_hash=_metadata_text(chunk.metadata, "policy_hash"),
             )
         )
     return citations
+
+
+def _metadata_text(metadata: dict[str, object], key: str) -> str | None:
+    value = metadata.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _policy_metadata(chunks: list[RetrievedChunk]) -> dict[str, object]:
+    rank = {"PUBLIC": 0, "INTERNAL": 1, "RESTRICTED": 2}
+    handling_class = "PUBLIC"
+    obligations: set[str] = set()
+    binding_ids: set[str] = set()
+    policy_hashes: set[str] = set()
+    for chunk in chunks:
+        summary = chunk.metadata.get("policy_summary")
+        if isinstance(summary, dict):
+            candidate = summary.get("handlingClass")
+            if isinstance(candidate, str) and rank.get(candidate, -1) > rank[handling_class]:
+                handling_class = candidate
+            raw_obligations = summary.get("obligations")
+            if isinstance(raw_obligations, list):
+                obligations.update(item for item in raw_obligations if isinstance(item, str))
+        binding_id = _metadata_text(chunk.metadata, "policy_binding_id")
+        policy_hash = _metadata_text(chunk.metadata, "policy_hash")
+        if binding_id:
+            binding_ids.add(binding_id)
+        if policy_hash:
+            policy_hashes.add(policy_hash)
+    if not binding_ids:
+        return {}
+    return {
+        "policy_version": "information-policy-2.0.0",
+        "policy_binding_ids": sorted(binding_ids),
+        "policy_hashes": sorted(policy_hashes),
+        "handling_class": handling_class,
+        "legal_classification": "NONE",
+        "obligations": sorted(obligations),
+    }
+
+
+def _answer_policy_bindings(chunks: list[RetrievedChunk]) -> list[dict[str, str]]:
+    bindings: dict[tuple[str, str], dict[str, str]] = {}
+    for chunk in chunks:
+        binding_id = _metadata_text(chunk.metadata, "policy_binding_id")
+        policy_hash = _metadata_text(chunk.metadata, "policy_hash")
+        policy_version = _metadata_text(chunk.metadata, "policy_version")
+        if binding_id and policy_hash and policy_version:
+            bindings[(binding_id, policy_hash)] = {
+                "policy_binding_id": binding_id,
+                "policy_version": policy_version,
+                "policy_hash": policy_hash,
+            }
+    return [bindings[key] for key in sorted(bindings)]

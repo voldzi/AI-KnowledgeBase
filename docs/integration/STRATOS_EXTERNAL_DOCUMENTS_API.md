@@ -835,6 +835,7 @@ Tyto endpointy používá STRATOS backend adapter přes service token nebo OIDC 
 POST /api/v1/external-documents/upsert
 GET  /api/v1/external-documents/{external_document_id}
 PATCH /api/v1/external-documents/{external_document_id}/current
+PATCH /api/v1/documents/{document_id}/external-references/current
 GET  /api/v1/external-documents/by-ref?tenant_id=...&external_system=...&external_ref=...
 
 POST /api/v1/external-documents/{external_document_id}/versions
@@ -954,9 +955,38 @@ Response:
   "file_id": "file_...",
   "ingestion_job_id": "job_...",
   "ingestion_status": "INGESTING",
+  "idempotent_replay": false,
   "canonical_open_url": "https://stratos.zeleznalady.cz/akb/documents/doc_...?tab=viewer"
 }
 ```
+
+Potvrzení je idempotentní podle vazby
+`tenant_id + external_system + external_ref + version_label + file_hash`.
+Externí trojice se ověřuje přes `external_document_id` a `document_id`; pokud
+je v requestu zopakovaná, musí přesně souhlasit.
+
+- první potvrzení vytvoří verzi/job, vrátí HTTP `201` a
+  `idempotent_replay=false`,
+- opakované potvrzení stejného labelu a SHA-256 vrátí HTTP `200`, stejné
+  `document_version_id`, `file_id` a existující nejnovější
+  `ingestion_job_id`, bez nové verze nebo jobu,
+- stejný `version_label` s jiným SHA-256 vrátí HTTP `409` a kód
+  `UPLOAD_VERSION_HASH_CONFLICT`,
+- nesoulad tenant/system/ref/document vazby vrátí HTTP `409` a kód
+  `UPLOAD_EXTERNAL_IDENTITY_CONFLICT`.
+
+Pokud verze existuje, ale předchozí pokus skončil před založením ingestion
+jobu, confirm chybějící job bezpečně doplní. Existující `FAILED` job se při
+replayi nezdvojuje; pro nový pokus se používá explicitní `retry-ingestion`.
+Oprávněný uživatel může stejnou akci spustit také v detailu dokumentu na
+záložce `Zpracování`; ovládací prvek se zobrazuje pouze při `can_ingest` a po
+dokončení ukáže ID nového jobu a výsledný lifecycle stav.
+
+Ingestion Service po autorizovaném spuštění synchronizuje nový job do Registry
+přes `PATCH /api/v1/documents/{document_id}/external-references/current`.
+Externí reference stejné verze proto auditovaně přejde přes `INGESTING` do
+`INDEXED`, případně `FAILED`; retry už nenechá `current_ingestion_job_id`
+ukazovat na starší pokus.
 
 ### Ingestion status
 
@@ -995,6 +1025,13 @@ POST /akb/api/stratos/documents/{document_id}/retry-ingestion
 GET  /akb/api/stratos/citations/{chunk_id}/open-url
 GET  /akb/embed/documents/{document_id}
 ```
+
+For `stratos-integration-envelope-1`, upload preflight requires both
+`information_policy` (`information-policy-2.0.0`) and `integration_envelope`.
+Their organization, binding id/version/hash, and classification must match.
+Confirm repeats the policy object and must match the policy hash signed into
+the preflight token. Unknown obligations, classified content, or stale binding
+state are rejected before binary storage or ingestion.
 
 Bridge routy:
 

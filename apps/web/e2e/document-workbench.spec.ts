@@ -29,6 +29,18 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Vyčistit" }).click();
     await expect(page.getByText("Zobrazeno 9 z 9")).toBeVisible();
     await expect(page.locator("#document-registry-classification")).toHaveText("Vše");
+
+    await expect(page.getByRole("link", { name: "Nový koncept" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Nahrát verzi" })).toBeDisabled();
+    await page.getByRole("checkbox", { name: "Select row 2" }).check();
+    await expect(page.getByRole("button", { name: "Nový koncept" })).toBeDisabled();
+    await expect(page.getByRole("link", { name: "Nahrát verzi" })).toHaveAttribute(
+      "href",
+      appPath("/upload?document_id=doc_102"),
+    );
+    await expect(page.getByText("Vybraný dokument")).toBeVisible();
+    await page.getByRole("button", { name: "Zrušit výběr" }).click();
+    await expect(page.getByRole("link", { name: "Nový koncept" })).toBeVisible();
   });
 
   test("DW-02 new document flow creates first version and guides the operator onward", async ({ page }) => {
@@ -148,23 +160,28 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("heading", { name: "Založit dokument a první verzi" }).first()).toBeVisible();
 
     await page.getByRole("button", { name: "Smlouva" }).click();
-    await expect(page.locator("#gestor")).toHaveValue("Právní");
     await expect(page.locator("#tags")).toHaveValue("controlled-document,akb,smlouva");
+    await expect(page.getByRole("region", { name: "Gestor" })).toContainText("Aktuální uživatel");
+    await page.getByRole("region", { name: "Schvalovatel" }).getByRole("button", { name: "Přidat" }).click();
+    await expect(page.getByRole("region", { name: "Schvalovatel" })).toContainText("admins");
     await page.locator("#title").fill("E2E založení dokumentu");
-    await page.setInputFiles("#source-file", {
+    await page.setInputFiles('input[type="file"]', {
       name: "new-document.pdf",
       mimeType: "application/pdf",
       buffer: Buffer.from("%PDF-1.4\nE2E\n")
     });
-    await expect(page.locator("form").getByText("Soubor připraven")).toBeVisible();
+    await expect(page.locator("form").getByRole("status")).toHaveText("Soubor připraven");
 
     await page.getByRole("button", { name: "Založit dokument a spustit zpracování" }).click();
 
     expect(documentPayload).toMatchObject({
       document_type: "contract",
       classification: "restricted",
-      gestor_unit: "Právní",
-      tags: "controlled-document,akb,smlouva"
+      tags: "controlled-document,akb,smlouva",
+      assignments: [
+        { role: "gestor", subject_id: "user_dev", display_label: "Aktuální uživatel" },
+        { role: "approver", subject_id: "admins", display_label: "admins" },
+      ],
     });
     await expect(page.getByText("Dokument je založený")).toBeVisible();
     await expect(page.getByText("Originální soubor je uložený v AKB a zpracování citací běží na pozadí.")).toBeVisible();
@@ -177,8 +194,8 @@ test.describe("Document Workbench product paths", () => {
 
     await page.getByRole("button", { name: "Založit další dokument" }).click();
     await expect(page.locator("#title")).toHaveValue("");
-    await expect(page.locator("#gestor")).toHaveValue("IT");
     await expect(page.locator("#tags")).toHaveValue("controlled-document,akb,smernice");
+    await expect(page.getByRole("region", { name: "Schvalovatel" })).toContainText("Role zatím není přiřazena.");
     await expect(page.getByText("Dokument je založený")).toHaveCount(0);
   });
 
@@ -193,7 +210,7 @@ test.describe("Document Workbench product paths", () => {
 
     await page.goto(appPath("/upload?document_id=doc_102"));
     await expect(page.getByRole("heading", { name: "Nahrání nové verze" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Metodika vyjimek z bezpecnostnich pravidel" })).toBeVisible();
+    await expect(page.getByLabel("Vybraný dokument")).toContainText("Metodika vyjimek z bezpecnostnich pravidel");
     await expect(page.getByRole("textbox", { name: "Umístění zdroje" })).toHaveValue(/doc_102/);
   });
 
@@ -218,7 +235,9 @@ test.describe("Document Workbench product paths", () => {
 
     await page.getByRole("tab", { name: "Schválení", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Publikace", exact: true })).toBeVisible();
-    await expect(page.getByText("Publikační akce nejsou pro tuto relaci povolené.")).toBeVisible();
+    await expect(
+      page.getByText("Nejdřív dokončete revizi a schválení. Teprve potom lze aktuální verzi publikovat."),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: "Publikovat schválenou verzi" })).toBeDisabled();
     await expect(page.getByRole("heading", { name: "Organizační odpovědnosti" })).toBeVisible();
     await expect(page.locator('input[value="Security reviewers"]')).toBeVisible();
@@ -480,12 +499,13 @@ test.describe("Document Workbench product paths", () => {
     await page.goto(appPath("/help"));
     await expect(page.getByRole("heading", { name: "Nápověda" })).toBeVisible();
 
+    const shell = page.locator(".stratos-app-shell");
     await page.getByLabel("Otevřít navigaci").click();
-    await expect(page.locator(".stratos-app-shell")).toHaveClass(/is-mobile-sidebar-open/);
+    await expect(shell).toHaveAttribute("data-sidebar-open", "true");
 
     await page.getByLabel("Navigace pracovní plochy").getByRole("link", { name: "Znalostní chat" }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/chat"));
-    await expect(page.locator(".stratos-app-shell")).not.toHaveClass(/is-mobile-sidebar-open/);
+    await expect(shell).toHaveAttribute("data-sidebar-open", "false");
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
   });
 
@@ -493,17 +513,99 @@ test.describe("Document Workbench product paths", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(appPath("/tasks"));
 
-    await page.getByLabel("Otevřít navigaci").click();
-    await expect(page.locator(".stratos-app-shell")).toHaveClass(/is-mobile-sidebar-open/);
+    const shell = page.locator(".stratos-app-shell");
+    const mobileRail = page.getByRole("navigation", { name: "Moduly AKB" });
+    await mobileRail.getByRole("button", { name: "Dokumenty" }).click();
+    await expect(shell).toHaveAttribute("data-sidebar-open", "true");
+    await expect(
+      page.locator(".stratos-workspace-sidebar-header").getByRole("heading", { name: "Dokumenty" }),
+    ).toBeVisible();
 
-    await page.locator(".sidebar-mobile-sections").getByRole("link", { name: "Dokumenty" }).click();
+    await page.getByLabel("Navigace pracovní plochy").getByRole("link", { name: "Dokumenty", exact: true }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/documents"));
-    await expect(page.locator(".stratos-app-shell")).not.toHaveClass(/is-mobile-sidebar-open/);
+    await expect(shell).toHaveAttribute("data-sidebar-open", "false");
     await expect(page.getByRole("heading", { name: "Registr dokumentů" }).first()).toBeVisible();
   });
 
+  test("DW-15B shared drawer closes by button, backdrop and Escape and restores focus", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(appPath("/help"));
+
+    const shell = page.locator(".stratos-app-shell");
+    const openNavigation = page.getByLabel("Otevřít navigaci");
+
+    await openNavigation.click();
+    await page.locator(".stratos-app-shell-sidebar").getByRole("button", { name: "Zavřít navigaci" }).click();
+    await expect(shell).toHaveAttribute("data-sidebar-open", "false");
+    await expect(openNavigation).toBeFocused();
+
+    await openNavigation.click();
+    await page.locator(".stratos-app-shell-backdrop").click({ position: { x: 380, y: 400 } });
+    await expect(shell).toHaveAttribute("data-sidebar-open", "false");
+    await expect(openNavigation).toBeFocused();
+
+    await openNavigation.click();
+    await page.keyboard.press("Escape");
+    await expect(shell).toHaveAttribute("data-sidebar-open", "false");
+    await expect(openNavigation).toBeFocused();
+  });
+
+  test("DW-15C shared topbar exposes switcher, breadcrumb and system status", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(appPath("/intelligence/quality"));
+
+    await expect(page.getByLabel("Aktuální umístění")).toContainText("Intelligence");
+    await expect(page.getByLabel("Aktuální umístění")).toContainText("Kvalita vyhledávání");
+    await expect(page.getByLabel("Stav systému", { exact: true })).toBeVisible();
+
+    const appSwitcher = page.locator(".stratos-app-switcher-trigger");
+    await appSwitcher.click();
+    const appMenu = page.getByRole("menu", { name: "STRATOS aplikace" });
+    await expect(appMenu).toBeVisible();
+    await expect(appSwitcher).toContainText("AI KnowledgeBase");
+    await expect(appMenu.getByText("AI KnowledgeBase", { exact: true })).toHaveCount(0);
+
+    const budget = appMenu.getByRole("menuitem", { name: "Budget & Contract" });
+    const projectFlow = appMenu.getByRole("menuitem", { name: "ProjectFlow" });
+    const aiip = appMenu.getByRole("menuitem", { name: "AI Innovation Portal" });
+    await expect(budget).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(projectFlow).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(budget).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(aiip).toBeFocused();
+    await page.keyboard.press("Home");
+    await expect(budget).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(appMenu).toBeHidden();
+    await expect(appSwitcher).toBeFocused();
+  });
+
+  test("DW-15C2 mobile app switcher opens with one tap", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(appPath("/help"));
+
+    const appSwitcher = page.locator(".stratos-app-switcher-trigger");
+    await appSwitcher.click();
+    const appMenu = page.getByRole("menu", { name: "STRATOS aplikace" });
+    await expect(appMenu).toBeVisible();
+    await expect(appMenu.getByText("AI KnowledgeBase", { exact: true })).toHaveCount(0);
+  });
+
+  test("DW-15D compact tablet rail opens the shared sidebar", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto(appPath("/tasks"));
+
+    const shell = page.locator(".stratos-app-shell");
+    await expect(shell).toHaveAttribute("data-sidebar-open", "false");
+    await page.locator(".stratos-app-rail").getByRole("button", { name: "Provoz" }).click();
+    await expect(shell).toHaveAttribute("data-sidebar-open", "true");
+    await expect(page.getByLabel("Navigace pracovní plochy")).toBeVisible();
+  });
+
   test("DW-17 STRATOS rail navigation does not duplicate the configured base path", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(appPath("/tasks"));
 
     const rail = page.locator(".stratos-app-rail");

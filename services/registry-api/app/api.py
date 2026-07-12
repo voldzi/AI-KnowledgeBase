@@ -11,12 +11,17 @@ from sqlalchemy.orm import Session, selectinload
 from starlette import status
 
 from app.audit import add_audit_event
+from app.access_governance import GovernanceDenied, GovernanceUnavailable, governance_client
 from app.auth import Principal, get_current_principal
 from app.config import get_settings
 from app.database import get_db
 from app.errors import problem
+from app.information_policy import legacy_classification, policy_columns
 from app.middleware import get_correlation_id
 from app.models import (
+    AnalystCase,
+    AnalystEvidenceItem,
+    AnalystSavedQuery,
     AuditEvent,
     AssistantConversation,
     AssistantConversationShare,
@@ -29,11 +34,13 @@ from app.models import (
     DocumentFile,
     DocumentVersion,
     ExternalDocumentRef,
+    IntegrationIdempotencyRecord,
     WorkflowTask,
     make_id,
     utcnow,
 )
 from app.permissions import (
+    ACTION_CAPABILITIES,
     Decision,
     SubjectContext,
     context_for_principal,
@@ -45,6 +52,14 @@ from app.permissions import (
 )
 from app.schemas import (
     Action,
+    AnalystCaseCreate,
+    AnalystCaseListResponse,
+    AnalystCasePatch,
+    AnalystCaseResponse,
+    AnalystEvidenceCreate,
+    AnalystEvidenceResponse,
+    AnalystSavedQueryCreate,
+    AnalystSavedQueryResponse,
     AuditEventCreate,
     AuditEventListResponse,
     AuditEventResponse,
@@ -70,6 +85,9 @@ from app.schemas import (
     DocumentMetadataSummaryResponse,
     DocumentMetadataSummaryTopic,
     DocumentPatch,
+    DocumentReadinessIssue,
+    DocumentReadinessResponse,
+    DocumentReadinessSeverity,
     DocumentResponse,
     DocumentStatus,
     DocumentType,
@@ -78,10 +96,15 @@ from app.schemas import (
     DocumentVersionListResponse,
     DocumentVersionResponse,
     ExternalDocumentCurrentUpdateRequest,
+    ExternalDocumentCurrentListResponse,
     ExternalDocumentResponse,
     ExternalDocumentRefResponse,
     ExternalDocumentUpsertRequest,
     HealthResponse,
+    IntegrationIdempotencyCompleteRequest,
+    IntegrationIdempotencyCompleteResponse,
+    IntegrationIdempotencyReserveRequest,
+    IntegrationIdempotencyReserveResponse,
     ProfileSettingsBundle,
     ProfileSettingsPutRequest,
     ProfileSettingsResponse,
@@ -166,6 +189,61 @@ DOCUMENT_STATUS_TRANSITIONS = {
     DocumentStatus.cancelled.value: {
         DocumentStatus.cancelled.value,
     },
+}
+
+READINESS_DOCUMENT_NUMBER_KEYS = {
+    "document_number",
+    "document_no",
+    "number",
+    "cislo",
+    "evidencni_cislo",
+    "reference",
+    "reference_number",
+}
+
+READINESS_ISSUE_DATE_KEYS = {
+    "issued_at",
+    "issue_date",
+    "date_issued",
+    "published_at",
+    "publication_date",
+    "datum_vydani",
+}
+
+READINESS_SCOPE_KEYS = {
+    "agenda",
+    "area",
+    "domain",
+    "scope",
+    "oblast",
+    "pusobnost",
+    "topic",
+}
+
+READINESS_REVIEW_KEYS = {
+    "requires_review",
+    "manual_review_required",
+    "ocr_requires_review",
+}
+
+READINESS_QUALITY_KEYS = {
+    "quality_tier",
+    "parser_quality",
+    "ocr_quality_tier",
+    "ingestion_quality_tier",
+}
+
+READINESS_INGESTION_FAILED_STATUSES = {
+    DocumentExtractionStatus.failed.value,
+    "FAILED",
+    "ERROR",
+}
+
+READINESS_INGESTION_REVIEW_STATUSES = {
+    DocumentExtractionStatus.partial.value,
+    DocumentExtractionStatus.rejected_in_source_app.value,
+    "CANCELLED",
+    "COMPLETED_WITH_WARNINGS",
 }
 
 
@@ -273,8 +351,20 @@ def _external_document_metadata(payload: ExternalDocumentUpsertRequest) -> dict[
         if payload.source_location is not None
         else None
     )
+    envelope_metadata = (
+        {
+            "schema_version": payload.integration_envelope.schema_version,
+            "source_system": payload.integration_envelope.source_system,
+            "correlation_id": payload.integration_envelope.correlation_id,
+            "idempotency_key": payload.integration_envelope.idempotency_key,
+            "policy_hash": payload.integration_envelope.policy_hash,
+        }
+        if payload.integration_envelope is not None
+        else None
+    )
     return {
         **dict(payload.metadata),
+        **({"integration_envelope": envelope_metadata} if envelope_metadata else {}),
         "external": {
             "tenant_id": payload.tenant_id,
             "external_system": external_system,
@@ -300,6 +390,10 @@ def _external_document_policies(payload: ExternalDocumentUpsertRequest) -> list[
             for policy in payload.access_policies
         ]
 
+    reader_subjects = ["role:reader"]
+    if payload.external_system == ExternalSourceSystem.stratos_aiip:
+        reader_subjects.append("role:service_aiip")
+
     return [
         DocumentAccessPolicy(
             subjects=[
@@ -324,7 +418,7 @@ def _external_document_policies(payload: ExternalDocumentUpsertRequest) -> list[
             },
         ),
         DocumentAccessPolicy(
-            subjects=["role:reader"],
+            subjects=reader_subjects,
             actions=[Action.document_read.value, Action.rag_query.value],
             constraints={
                 "tenant_id": payload.tenant_id,
@@ -542,6 +636,16 @@ def _get_version(db: Session, document_id: str, version_id: str) -> DocumentVers
     return version
 
 
+def _document_version_response(version: DocumentVersion) -> DocumentVersionResponse:
+    latest_file = max(
+        version.files,
+        key=lambda item: (item.uploaded_at, item.file_id),
+        default=None,
+    )
+    response = DocumentVersionResponse.model_validate(version)
+    return response.model_copy(update={"file_id": latest_file.file_id if latest_file else None})
+
+
 def _commit_or_conflict(db: Session) -> None:
     try:
         db.commit()
@@ -551,14 +655,16 @@ def _commit_or_conflict(db: Session) -> None:
 
 
 def _require_authz_api_caller(principal: Principal, subject_id: str) -> None:
-    caller = context_for_principal(principal)
-    service_roles = {role for role in caller.roles if role.startswith("service_")}
-    if principal.subject_id == subject_id or {"admin", "document_manager"} & caller.roles or service_roles:
+    if (
+        principal.subject_id == subject_id
+        or principal.service_identity
+        or (not principal.dynamic_access_loaded and "admin" in principal.roles)
+    ):
         return
     raise problem(
         status.HTTP_403_FORBIDDEN,
         "forbidden",
-        "Only service accounts, admins, document managers, or the same subject can call this authz check",
+        "Only an authenticated subject or a verified service identity can call this authz check",
     )
 
 
@@ -569,11 +675,156 @@ def _authz_subject_context(
     subject_id: str,
     roles: list[str],
     groups: list[str],
+    capabilities: list[str] | None = None,
+    scopes: list[str] | None = None,
+    organization_id: str = "org_stratos",
+    identity_active: bool = True,
+    membership_active: bool = True,
+    application_access_active: bool = True,
 ) -> SubjectContext:
     if principal.subject_id == subject_id:
         caller = context_for_principal(principal, db)
-        return context_for_subject(db, subject_id, caller.roles, caller.groups)
-    return context_for_subject(db, subject_id, roles, groups)
+        return caller
+    if principal.dynamic_access_loaded or principal.service_identity:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "forbidden",
+            "Dynamic access context cannot be delegated through request fields",
+        )
+    return context_for_subject(
+        db,
+        subject_id,
+        roles,
+        groups,
+        capabilities=capabilities,
+        scopes=scopes,
+        organization_id=organization_id,
+        identity_active=identity_active,
+        membership_active=membership_active,
+        application_access_active=application_access_active,
+    )
+
+
+def _service_action_decision(
+    *,
+    principal: Principal,
+    subject_id: str,
+    action: str,
+    document: Document | None,
+    capability_override: str | None = None,
+    operation_override: str | None = None,
+) -> Decision:
+    if not principal.service_identity:
+        raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "Service identity is required")
+    required = ACTION_CAPABILITIES.get(action, set())
+    capability = capability_override or _primary_capability(action, required)
+    policy_summary = dict(document.policy_summary) if document is not None else None
+    policy_hash = document.policy_hash if document is not None else None
+    if document is not None and (not policy_summary or not policy_hash):
+        return Decision(False, "Document policy binding is unavailable", {}, ("POLICY_UNAVAILABLE",))
+    try:
+        response = governance_client(get_settings()).decide(
+            actor_subject_id=subject_id,
+            capability_id=capability,
+            operation=operation_override or _central_operation(action, document is None),
+            policy_binding=policy_summary,
+            policy_hash=policy_hash,
+        )
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_decision_credential_rejected",
+            "STRATOS rejected the AKB runtime credential",
+        ) from exc
+    except GovernanceUnavailable as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_decision_unavailable",
+            "STRATOS policy decision endpoint is unavailable",
+        ) from exc
+    reason_codes = tuple(str(item) for item in response.get("reasonCodes", []) if isinstance(item, str))
+    if response.get("decision") != "ALLOW":
+        return Decision(False, "STRATOS denied the delegated operation", {}, reason_codes or ("POLICY_DENY",))
+    if document is None:
+        return Decision(True, "STRATOS allowed the delegated operation", {}, reason_codes)
+    derived = SubjectContext(
+        subject_id=subject_id,
+        roles=set(),
+        groups=set(),
+        capabilities={capability},
+        scopes={"organization"},
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        access_v2=True,
+    )
+    return evaluate_document_access(derived, action, document)
+
+
+def _primary_capability(action: str, required: set[str]) -> str:
+    preferred = {
+        Action.document_read.value: "akb:read_document",
+        Action.rag_query.value: "akb:chat",
+        Action.rag_compare.value: "akb:chat",
+        Action.rag_check_compliance.value: "akb:chat",
+        Action.audit_write.value: "akb:read_audit",
+    }
+    capability = preferred.get(action)
+    if capability:
+        return capability
+    if not required:
+        raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "No central capability maps to this action")
+    return sorted(required)[0]
+
+
+def _central_operation(action: str, global_action: bool) -> str:
+    if global_action:
+        return "access"
+    if action in {Action.rag_query.value, Action.rag_compare.value, Action.rag_check_compliance.value}:
+        return "ai"
+    if action in {Action.document_create.value, Action.document_version_create.value}:
+        return "upload"
+    return "read"
+
+
+def _audit_service_decision_coordinates(event_type: str) -> tuple[str, str]:
+    if event_type.startswith(("aiip.", "rag.", "assistant.")):
+        return "akb:chat", "ai"
+    if event_type in {"chunk.opened", "citation.opened", "source.opened"}:
+        return "akb:read_document", "read"
+    if event_type.startswith(("ingestion.", "document_extraction.")):
+        return "akb:manage_document", "upload"
+    return "akb:access", "access"
+
+
+def _require_v2_policy(principal: Principal, policy) -> None:
+    if principal.access_v2 and policy is None:
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "policy_unavailable",
+            "Information Policy V2 binding is required for this operation",
+            {"reason_codes": ["POLICY_UNAVAILABLE"]},
+        )
+
+
+def _ensure_policy_binding_registered(policy) -> None:
+    if policy is None:
+        return
+    try:
+        governance_client(get_settings()).ensure_binding_registered(policy)
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_registry_credential_rejected",
+            "STRATOS Policy Registry rejected the AKB runtime credential",
+        ) from exc
+    except GovernanceUnavailable as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_registry_unavailable",
+            "STRATOS Policy Registry is unavailable",
+        ) from exc
 
 
 def _add_days(value, days: int):
@@ -1020,6 +1271,7 @@ def upsert_external_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
+    _require_v2_policy(principal, payload.information_policy)
     existing_ref = db.execute(
         select(ExternalDocumentRef)
         .where(
@@ -1037,16 +1289,32 @@ def upsert_external_document(
         return _external_document_response(existing_ref, created=False)
 
     require_global_action(principal, Action.document_create, db)
+    _ensure_policy_binding_registered(payload.information_policy)
+    if payload.information_policy is not None and payload.tenant_id not in {
+        "org_stratos",
+        payload.information_policy.audience.organization_id,
+    }:
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "organization_mismatch",
+            "tenant_id must identify org_stratos for Information Policy V2 documents",
+        )
+    binding_columns = policy_columns(payload.information_policy)
     document = Document(
         document_id=make_id("doc"),
         title=payload.title,
         document_type=payload.document_type.value,
         status=DocumentStatus.draft.value,
-        classification=payload.classification.value,
+        classification=(
+            legacy_classification(payload.information_policy)
+            if payload.information_policy is not None
+            else payload.classification.value
+        ),
         owner_id=payload.owner.user_id,
         gestor_unit=payload.gestor_unit,
         tags=sorted({*payload.tags, "external", payload.external_system.value.lower()}),
         document_metadata=_external_document_metadata(payload),
+        **binding_columns,
     )
     document.access_policies = _external_document_policies(payload)
     assignment_payloads = _validated_assignment_payloads(
@@ -1146,7 +1414,60 @@ def update_external_document_current(
 ) -> ExternalDocumentResponse:
     external_ref = _get_external_document_ref(db, external_document_id)
     require_document_action(principal, Action.document_ingest, external_ref.document, db)
+    _apply_external_document_current(db, external_ref, payload)
+    _audit_external_document_current(db, external_ref, principal.subject_id, source="external-document")
+    _commit_or_conflict(db)
+    db.refresh(external_ref)
+    return _external_document_response(external_ref, created=False)
 
+
+@router.patch(
+    "/documents/{document_id}/external-references/current",
+    response_model=ExternalDocumentCurrentListResponse,
+)
+def update_document_external_references_current(
+    document_id: str,
+    payload: ExternalDocumentCurrentUpdateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentCurrentListResponse:
+    document = _get_document(db, document_id)
+    require_document_action(principal, Action.document_ingest, document, db)
+    if payload.current_document_version_id is not None:
+        _get_version(db, document_id, payload.current_document_version_id)
+
+    external_refs = list(
+        db.execute(
+            select(ExternalDocumentRef)
+            .where(ExternalDocumentRef.document_id == document_id)
+            .order_by(ExternalDocumentRef.external_document_id)
+        ).scalars()
+    )
+    if payload.current_document_version_id is not None:
+        external_refs = [
+            external_ref
+            for external_ref in external_refs
+            if external_ref.current_document_version_id in {None, payload.current_document_version_id}
+        ]
+    for external_ref in external_refs:
+        _apply_external_document_current(db, external_ref, payload)
+        _audit_external_document_current(db, external_ref, principal.subject_id, source="ingestion-service")
+
+    _commit_or_conflict(db)
+    for external_ref in external_refs:
+        db.refresh(external_ref)
+    return ExternalDocumentCurrentListResponse(
+        document_id=document_id,
+        updated=len(external_refs),
+        items=[ExternalDocumentRefResponse.model_validate(external_ref) for external_ref in external_refs],
+    )
+
+
+def _apply_external_document_current(
+    db: Session,
+    external_ref: ExternalDocumentRef,
+    payload: ExternalDocumentCurrentUpdateRequest,
+) -> None:
     if "current_document_version_id" in payload.model_fields_set:
         if payload.current_document_version_id is not None:
             _get_version(db, external_ref.document_id, payload.current_document_version_id)
@@ -1177,9 +1498,17 @@ def update_external_document_current(
             else None
         )
 
+
+def _audit_external_document_current(
+    db: Session,
+    external_ref: ExternalDocumentRef,
+    actor_id: str,
+    *,
+    source: str,
+) -> None:
     add_audit_event(
         db,
-        actor_id=principal.subject_id,
+        actor_id=actor_id,
         event_type="external_document.current_updated",
         resource_type="external_document",
         resource_id=external_ref.external_document_id,
@@ -1190,11 +1519,9 @@ def update_external_document_current(
             "current_file_id": external_ref.current_file_id,
             "current_ingestion_job_id": external_ref.current_ingestion_job_id,
             "current_ingestion_status": external_ref.current_ingestion_status,
+            "source": source,
         },
     )
-    _commit_or_conflict(db)
-    db.refresh(external_ref)
-    return _external_document_response(external_ref, created=False)
 
 
 @router.post(
@@ -1378,17 +1705,25 @@ def create_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
+    _require_v2_policy(principal, payload.information_policy)
     require_global_action(principal, Action.document_create, db)
+    _ensure_policy_binding_registered(payload.information_policy)
+    binding_columns = policy_columns(payload.information_policy)
     document = Document(
         document_id=make_id("doc"),
         title=payload.title,
         document_type=payload.document_type.value,
         status=DocumentStatus.draft.value,
-        classification=payload.classification.value,
+        classification=(
+            legacy_classification(payload.information_policy)
+            if payload.information_policy is not None
+            else payload.classification.value
+        ),
         owner_id=payload.owner_id,
         gestor_unit=payload.gestor_unit,
         tags=payload.tags,
         document_metadata=payload.metadata,
+        **binding_columns,
     )
     document.access_policies = _policy_models(document, payload)
     assignment_payloads = _validated_assignment_payloads(
@@ -1530,6 +1865,419 @@ def document_metadata_summary(
     )
 
 
+@router.get("/documents/readiness-report", response_model=DocumentReadinessResponse)
+def document_readiness_report(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+    status_filter: DocumentStatus | None = Query(default=None, alias="status"),
+    classification: Classification | None = None,
+    document_type: DocumentType | None = None,
+    owner_id: str | None = None,
+    tag: str | None = None,
+    topic: list[str] | None = Query(default=None),
+    tenant_id: str | None = None,
+    external_system: ExternalSourceSystem | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    external_ref: str | None = None,
+    context_tag: list[str] | None = Query(default=None),
+    max_issues: Annotated[int, Query(ge=0, le=200)] = 50,
+) -> DocumentReadinessResponse:
+    documents = _authorized_document_metadata_rows(
+        db=db,
+        principal=principal,
+        status_filter=status_filter,
+        classification=classification,
+        document_type=document_type,
+        owner_id=owner_id,
+        tag=tag,
+        tenant_id=tenant_id,
+        external_system=external_system,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        external_ref=external_ref,
+        context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
+    )
+    topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
+    if topics:
+        documents = [
+            document
+            for document in documents
+            if any(_document_matches_metadata_topic(document, candidate) for candidate in topics)
+        ]
+
+    duplicate_hashes = _duplicate_source_hashes(documents)
+    issues: list[DocumentReadinessIssue] = []
+    ready_documents = 0
+    review_documents = 0
+    blocked_documents = 0
+
+    for document in documents:
+        document_issues = _document_readiness_issues(document, duplicate_hashes)
+        issues.extend(document_issues)
+        severities = {issue.severity for issue in document_issues}
+        if DocumentReadinessSeverity.critical in severities:
+            blocked_documents += 1
+        elif DocumentReadinessSeverity.warning in severities:
+            review_documents += 1
+        else:
+            ready_documents += 1
+
+    total = len(documents)
+    return DocumentReadinessResponse(
+        generated_at=utcnow(),
+        total_visible_documents=total,
+        ready_documents=ready_documents,
+        review_documents=review_documents,
+        blocked_documents=blocked_documents,
+        readiness_score=round(ready_documents / total, 4) if total else 1.0,
+        issue_counts=_counter_buckets(Counter(issue.code for issue in issues), limit=50),
+        by_severity=_counter_buckets(Counter(issue.severity.value for issue in issues), limit=3),
+        by_document_type=_counter_buckets(Counter(document.document_type for document in documents)),
+        by_classification=_counter_buckets(Counter(document.classification for document in documents)),
+        by_status=_counter_buckets(Counter(document.status for document in documents)),
+        issues=issues[:max_issues],
+        warnings=["REGISTRY_DOCUMENT_READINESS_REPORT"],
+    )
+
+
+def _document_readiness_issues(
+    document: Document,
+    duplicate_hashes: set[str],
+) -> list[DocumentReadinessIssue]:
+    issues: list[DocumentReadinessIssue] = []
+    versions = list(document.versions)
+    metadata = dict(document.document_metadata or {})
+
+    if not document.owner_id and not _has_active_assignment(document, DocumentAssignmentRole.owner.value):
+        issues.append(
+            _readiness_issue(
+                document,
+                code="owner_missing",
+                severity=DocumentReadinessSeverity.critical,
+                recommendation="Assign a document owner before the record can be used in pilot evidence.",
+            )
+        )
+    if not document.gestor_unit and not _has_active_assignment(document, DocumentAssignmentRole.gestor.value):
+        issues.append(
+            _readiness_issue(
+                document,
+                code="gestor_missing",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Assign the responsible gestor or unit required by the controlled-document lifecycle.",
+            )
+        )
+
+    if not document.access_policies:
+        issues.append(
+            _readiness_issue(
+                document,
+                code="access_policy_missing",
+                severity=DocumentReadinessSeverity.critical,
+                recommendation="Add explicit access policies before the document is available for retrieval or source opening.",
+            )
+        )
+    elif not _has_policy_for_action(document, Action.rag_query.value):
+        issues.append(
+            _readiness_issue(
+                document,
+                code="rag_access_policy_missing",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Add a policy granting rag.query to the intended authorized role or group.",
+            )
+        )
+    elif not _has_authorized_group_policy(document):
+        issues.append(
+            _readiness_issue(
+                document,
+                code="authorized_group_missing",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Bind document access to an operational role or group, not only to named users or administrators.",
+            )
+        )
+
+    if document.classification == Classification.public.value:
+        issues.append(
+            _readiness_issue(
+                document,
+                code="classification_public_review",
+                severity=DocumentReadinessSeverity.info,
+                recommendation="Confirm that a public classification is intentional for an internal AKB controlled-document corpus.",
+            )
+        )
+
+    if not versions:
+        issues.append(
+            _readiness_issue(
+                document,
+                code="source_version_missing",
+                severity=DocumentReadinessSeverity.critical,
+                recommendation="Create at least one source-backed document version before ingestion or RAG use.",
+            )
+        )
+    else:
+        valid_versions = [version for version in versions if version.status == DocumentStatus.valid.value]
+        if not valid_versions:
+            severity = (
+                DocumentReadinessSeverity.critical
+                if document.status in {DocumentStatus.approved.value, DocumentStatus.valid.value}
+                else DocumentReadinessSeverity.warning
+            )
+            issues.append(
+                _readiness_issue(
+                    document,
+                    code="valid_version_missing",
+                    severity=severity,
+                    recommendation="Publish one reviewed version so answers can prefer a valid source.",
+                )
+            )
+        if not any(version.valid_from for version in versions):
+            issues.append(
+                _readiness_issue(
+                    document,
+                    code="validity_date_missing",
+                    severity=DocumentReadinessSeverity.warning,
+                    recommendation="Record validity/effectivity dates for lifecycle and stale-source checks.",
+                )
+            )
+        if not any(_normalized_source_hash(version.file_hash) for version in versions):
+            issues.append(
+                _readiness_issue(
+                    document,
+                    code="source_hash_missing",
+                    severity=DocumentReadinessSeverity.warning,
+                    recommendation="Store the source file hash to support duplicate detection and reproducible audit evidence.",
+                )
+            )
+        document_hashes = {
+            normalized_hash
+            for normalized_hash in (_normalized_source_hash(version.file_hash) for version in versions)
+            if normalized_hash
+        }
+        if document_hashes.intersection(duplicate_hashes):
+            issues.append(
+                _readiness_issue(
+                    document,
+                    code="duplicate_source_hash",
+                    severity=DocumentReadinessSeverity.warning,
+                    recommendation="Review whether this source file is intentionally reused or should be consolidated as a duplicate.",
+                    details={"duplicate_hashes": sorted(document_hashes.intersection(duplicate_hashes))},
+                )
+            )
+
+    if not _metadata_has_any_key(metadata, READINESS_DOCUMENT_NUMBER_KEYS):
+        issues.append(
+            _readiness_issue(
+                document,
+                code="document_number_missing",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Add the document number or reference identifier to Registry metadata.",
+            )
+        )
+    if not _metadata_has_any_key(metadata, READINESS_ISSUE_DATE_KEYS):
+        issues.append(
+            _readiness_issue(
+                document,
+                code="issue_date_missing",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Add the issue/publication date to Registry metadata.",
+            )
+        )
+    if not document.tags and not _metadata_has_any_key(metadata, READINESS_SCOPE_KEYS):
+        issues.append(
+            _readiness_issue(
+                document,
+                code="scope_metadata_missing",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Add tags or scope/domain metadata so users can find the document by area of responsibility.",
+            )
+        )
+
+    issues.extend(_ingestion_readiness_issues(document))
+    issues.extend(_quality_readiness_issues(document))
+    return issues
+
+
+def _ingestion_readiness_issues(document: Document) -> list[DocumentReadinessIssue]:
+    statuses = [
+        str(external_ref.current_ingestion_status).upper()
+        for external_ref in document.external_refs
+        if external_ref.current_ingestion_status
+    ]
+    if not statuses:
+        return [
+            _readiness_issue(
+                document,
+                code="ingestion_status_missing",
+                severity=DocumentReadinessSeverity.info,
+                recommendation="Link the latest ingestion job/status when the source is processed for RAG.",
+            )
+        ]
+    if any(status in READINESS_INGESTION_FAILED_STATUSES for status in statuses):
+        return [
+            _readiness_issue(
+                document,
+                code="ingestion_failed",
+                severity=DocumentReadinessSeverity.critical,
+                recommendation="Repair the failed ingestion job before the document can support cited answers.",
+                details={"statuses": statuses},
+            )
+        ]
+    if any(status in READINESS_INGESTION_REVIEW_STATUSES for status in statuses):
+        return [
+            _readiness_issue(
+                document,
+                code="ingestion_requires_review",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Review the ingestion output and warnings before relying on this document in answers.",
+                details={"statuses": statuses},
+            )
+        ]
+    if any(status in {"PENDING", "RUNNING", "PROPOSED"} for status in statuses):
+        return [
+            _readiness_issue(
+                document,
+                code="ingestion_in_progress",
+                severity=DocumentReadinessSeverity.info,
+                recommendation="Wait for ingestion completion before pilot acceptance sampling.",
+                details={"statuses": statuses},
+            )
+        ]
+    return []
+
+
+def _quality_readiness_issues(document: Document) -> list[DocumentReadinessIssue]:
+    metadata_sources: list[object] = [document.document_metadata]
+    metadata_sources.extend(external_ref.ref_metadata for external_ref in document.external_refs)
+    review_flags = [
+        value
+        for metadata in metadata_sources
+        for value in _metadata_values_for_keys(metadata, READINESS_REVIEW_KEYS)
+    ]
+    quality_values = [
+        str(value).strip().lower()
+        for metadata in metadata_sources
+        for value in _metadata_values_for_keys(metadata, READINESS_QUALITY_KEYS)
+        if value is not None
+    ]
+    if any(str(value).strip().lower() in {"1", "true", "yes", "ano"} for value in review_flags):
+        return [
+            _readiness_issue(
+                document,
+                code="quality_review_required",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Resolve extraction/OCR quality review before using the document as a primary source.",
+            )
+        ]
+    if any(value == "poor" for value in quality_values):
+        return [
+            _readiness_issue(
+                document,
+                code="low_extraction_quality",
+                severity=DocumentReadinessSeverity.critical,
+                recommendation="Reprocess or manually verify low-quality extraction/OCR before RAG use.",
+                details={"quality_values": quality_values},
+            )
+        ]
+    if any(value == "review" for value in quality_values):
+        return [
+            _readiness_issue(
+                document,
+                code="quality_review_required",
+                severity=DocumentReadinessSeverity.warning,
+                recommendation="Resolve extraction/OCR quality review before using the document as a primary source.",
+                details={"quality_values": quality_values},
+            )
+        ]
+    return []
+
+
+def _readiness_issue(
+    document: Document,
+    *,
+    code: str,
+    severity: DocumentReadinessSeverity,
+    recommendation: str,
+    details: dict[str, object] | None = None,
+) -> DocumentReadinessIssue:
+    return DocumentReadinessIssue(
+        code=code,
+        severity=severity,
+        document_id=document.document_id,
+        title=document.title,
+        recommendation=recommendation,
+        details=dict(details or {}),
+    )
+
+
+def _duplicate_source_hashes(documents: list[Document]) -> set[str]:
+    document_ids_by_hash: dict[str, set[str]] = {}
+    for document in documents:
+        for version in document.versions:
+            source_hash = _normalized_source_hash(version.file_hash)
+            if source_hash:
+                document_ids_by_hash.setdefault(source_hash, set()).add(document.document_id)
+    return {
+        source_hash
+        for source_hash, document_ids in document_ids_by_hash.items()
+        if len(document_ids) > 1
+    }
+
+
+def _normalized_source_hash(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    return normalized.removeprefix("sha256:")
+
+
+def _has_active_assignment(document: Document, role: str) -> bool:
+    return any(assignment.active and assignment.role == role for assignment in document.assignments)
+
+
+def _has_policy_for_action(document: Document, action: str) -> bool:
+    return any(action in policy.actions or "*" in policy.actions for policy in document.access_policies)
+
+
+def _has_authorized_group_policy(document: Document) -> bool:
+    for policy in document.access_policies:
+        if (
+            "*" not in policy.actions
+            and Action.document_read.value not in policy.actions
+            and Action.rag_query.value not in policy.actions
+        ):
+            continue
+        for subject in policy.subjects:
+            if subject.startswith("group:"):
+                return True
+            if subject.startswith("role:") and subject not in {"role:admin"}:
+                return True
+    return False
+
+
+def _metadata_has_any_key(value: object, expected_keys: set[str]) -> bool:
+    return bool(_metadata_values_for_keys(value, expected_keys))
+
+
+def _metadata_values_for_keys(value: object, expected_keys: set[str]) -> list[object]:
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        values: list[object] = []
+        for key, item in value.items():
+            normalized_key = _normalize_metadata_text(str(key)).replace(" ", "_")
+            if normalized_key in expected_keys:
+                values.append(item)
+            values.extend(_metadata_values_for_keys(item, expected_keys))
+        return values
+    if isinstance(value, list):
+        values: list[object] = []
+        for item in value:
+            values.extend(_metadata_values_for_keys(item, expected_keys))
+        return values
+    return []
+
+
 def _authorized_document_metadata_rows(
     *,
     db: Session,
@@ -1552,6 +2300,7 @@ def _authorized_document_metadata_rows(
             selectinload(Document.access_policies),
             selectinload(Document.assignments),
             selectinload(Document.external_refs),
+            selectinload(Document.versions),
         )
         .order_by(desc(Document.created_at))
     )
@@ -1813,6 +2562,11 @@ def patch_document(
         document.gestor_unit = payload.gestor_unit
     if payload.classification is not None:
         document.classification = payload.classification.value
+    if payload.information_policy is not None:
+        _ensure_policy_binding_registered(payload.information_policy)
+        for field, value in policy_columns(payload.information_policy).items():
+            setattr(document, field, value)
+        document.classification = legacy_classification(payload.information_policy)
     if payload.tags is not None:
         document.tags = payload.tags
     if payload.metadata is not None:
@@ -1884,6 +2638,19 @@ def create_document_version(
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_version_create, document, db)
+    _ensure_policy_binding_registered(payload.information_policy)
+
+    binding_columns = (
+        policy_columns(payload.information_policy)
+        if payload.information_policy is not None
+        else {
+            "organization_id": document.organization_id,
+            "policy_binding_id": document.policy_binding_id,
+            "policy_version": document.policy_version,
+            "policy_hash": document.policy_hash,
+            "policy_summary": dict(document.policy_summary),
+        }
+    )
 
     version = DocumentVersion(
         document_version_id=make_id("ver"),
@@ -1900,6 +2667,7 @@ def create_document_version(
         ),
         file_hash=payload.file_hash,
         change_summary=payload.change_summary,
+        **binding_columns,
     )
     db.add(version)
     file: DocumentFile | None = None
@@ -1925,8 +2693,7 @@ def create_document_version(
     )
     _commit_or_conflict(db)
     db.refresh(version)
-    response = DocumentVersionResponse.model_validate(version)
-    return response.model_copy(update={"file_id": file.file_id if file is not None else None})
+    return _document_version_response(version)
 
 
 @router.get("/documents/{document_id}/versions", response_model=DocumentVersionListResponse)
@@ -1957,7 +2724,11 @@ def list_document_versions(
             (DocumentVersion.valid_to.is_(None) | (DocumentVersion.valid_to >= valid_on)),
         )
     versions = list(db.execute(stmt).scalars())
-    return DocumentVersionListResponse(items=versions, limit=limit, offset=offset)
+    return DocumentVersionListResponse(
+        items=[_document_version_response(version) for version in versions],
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(
@@ -1969,10 +2740,10 @@ def get_document_version(
     version_id: str,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> DocumentVersion:
+) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_read, document, db)
-    return _get_version(db, document_id, version_id)
+    return _document_version_response(_get_version(db, document_id, version_id))
 
 
 @router.post(
@@ -1984,14 +2755,14 @@ def publish_document_version(
     version_id: str,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> DocumentVersion:
+) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_version_publish, document, db)
     version = _get_version(db, document_id, version_id)
     _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
     db.refresh(version)
-    return version
+    return _document_version_response(version)
 
 
 @router.post(
@@ -2003,7 +2774,7 @@ def archive_document_version(
     version_id: str,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> DocumentVersion:
+) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_version_archive, document, db)
     version = _get_version(db, document_id, version_id)
@@ -2011,7 +2782,7 @@ def archive_document_version(
     _archive_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
     db.refresh(version)
-    return version
+    return _document_version_response(version)
 
 
 @router.post("/authz/check", response_model=AuthzCheckResponse)
@@ -2021,24 +2792,63 @@ def check_authorization(
     principal: Principal = Depends(get_current_principal),
 ) -> AuthzCheckResponse:
     _require_authz_api_caller(principal, payload.subject_id)
-    context = _authz_subject_context(
-        db,
-        principal,
-        subject_id=payload.subject_id,
-        roles=payload.roles,
-        groups=payload.groups,
-    )
-
     if payload.resource.document_id:
         document = _get_document(db, payload.resource.document_id)
-        decision = evaluate_document_access(context, payload.action.value, document)
+        decision = (
+            _service_action_decision(
+                principal=principal,
+                subject_id=payload.subject_id,
+                action=payload.action.value,
+                document=document,
+            )
+            if principal.service_identity
+            else evaluate_document_access(
+                _authz_subject_context(
+                    db,
+                    principal,
+                    subject_id=payload.subject_id,
+                    roles=payload.roles,
+                    groups=payload.groups,
+                    capabilities=payload.capabilities,
+                    scopes=payload.scopes,
+                    organization_id=payload.organization_id,
+                    identity_active=payload.identity_active,
+                    membership_active=payload.membership_active,
+                    application_access_active=payload.application_access_active,
+                ),
+                payload.action.value,
+                document,
+            )
+        )
     else:
-        classification = payload.resource.classification.value if payload.resource.classification else None
-        decision = evaluate_global_action(context, payload.action.value, classification)
+        if principal.service_identity:
+            decision = _service_action_decision(
+                principal=principal,
+                subject_id=payload.subject_id,
+                action=payload.action.value,
+                document=None,
+            )
+        else:
+            context = _authz_subject_context(
+                db,
+                principal,
+                subject_id=payload.subject_id,
+                roles=payload.roles,
+                groups=payload.groups,
+                capabilities=payload.capabilities,
+                scopes=payload.scopes,
+                organization_id=payload.organization_id,
+                identity_active=payload.identity_active,
+                membership_active=payload.membership_active,
+                application_access_active=payload.application_access_active,
+            )
+            classification = payload.resource.classification.value if payload.resource.classification else None
+            decision = evaluate_global_action(context, payload.action.value, classification)
 
     return AuthzCheckResponse(
         allowed=decision.allowed,
         reason=decision.reason,
+        reason_codes=list(decision.reason_codes),
         constraints=decision.constraints,
     )
 
@@ -2050,12 +2860,18 @@ def filter_authorized_documents(
     principal: Principal = Depends(get_current_principal),
 ) -> AuthzFilterDocumentsResponse:
     _require_authz_api_caller(principal, payload.subject_id)
-    context = _authz_subject_context(
+    context = None if principal.service_identity else _authz_subject_context(
         db,
         principal,
         subject_id=payload.subject_id,
         roles=payload.roles,
         groups=payload.groups,
+        capabilities=payload.capabilities,
+        scopes=payload.scopes,
+        organization_id=payload.organization_id,
+        identity_active=payload.identity_active,
+        membership_active=payload.membership_active,
+        application_access_active=payload.application_access_active,
     )
 
     rows = db.execute(
@@ -2072,8 +2888,22 @@ def filter_authorized_documents(
         if document is None:
             denied_document_ids.append(document_id)
             continue
-        decision: Decision = evaluate_document_access(context, payload.action.value, document)
-        if decision.allowed:
+        decision: Decision = (
+            _service_action_decision(
+                principal=principal,
+                subject_id=payload.subject_id,
+                action=payload.action.value,
+                document=document,
+            )
+            if principal.service_identity
+            else evaluate_document_access(context, payload.action.value, document)
+        )
+        candidate_hashes = set(payload.candidate_policy_hashes.get(document_id, []))
+        policy_hash_matches = (
+            (context is not None and not context.access_v2)
+            or (bool(document.policy_hash) and candidate_hashes == {document.policy_hash})
+        )
+        if decision.allowed and policy_hash_matches:
             allowed_document_ids.append(document_id)
         else:
             denied_document_ids.append(document_id)
@@ -2233,6 +3063,249 @@ def apply_workflow_task_action(
     return task
 
 
+ANALYST_CASE_ADMIN_ROLES = {"admin", "document_manager", "auditor"}
+
+
+def _analyst_case_query():
+    return select(AnalystCase).options(
+        selectinload(AnalystCase.saved_queries),
+        selectinload(AnalystCase.evidence_items),
+    )
+
+
+def _analyst_case_allowed(case: AnalystCase, context: SubjectContext) -> bool:
+    return case.owner_id == context.subject_id or bool(context.roles & ANALYST_CASE_ADMIN_ROLES)
+
+
+def _get_analyst_case_for_principal(
+    db: Session,
+    case_id: str,
+    principal: Principal,
+    *,
+    owner_required: bool = False,
+) -> tuple[AnalystCase, SubjectContext]:
+    context = require_global_action(principal, Action.rag_query, db)
+    case = db.execute(_analyst_case_query().where(AnalystCase.case_id == case_id)).scalar_one_or_none()
+    if case is None:
+        raise problem(status.HTTP_404_NOT_FOUND, "analyst_case_not_found", "Analyst case was not found")
+    if not _analyst_case_allowed(case, context):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "analyst_case_access_denied",
+            "Analyst case is not visible to the current subject",
+        )
+    if owner_required and case.owner_id != context.subject_id and "admin" not in context.roles:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "analyst_case_owner_required",
+            "Only the analyst case owner can update this case",
+        )
+    return case, context
+
+
+@router.get("/intelligence/cases", response_model=AnalystCaseListResponse)
+def list_analyst_cases(
+    include_archived: bool = False,
+    limit: Limit = 50,
+    offset: Offset = 0,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AnalystCaseListResponse:
+    context = require_global_action(principal, Action.rag_query, db)
+    stmt = _analyst_case_query().order_by(desc(AnalystCase.updated_at)).limit(limit).offset(offset)
+    if "admin" not in context.roles:
+        stmt = stmt.where(AnalystCase.owner_id == context.subject_id)
+    if not include_archived:
+        stmt = stmt.where(AnalystCase.status != "archived")
+    cases = list(db.execute(stmt).scalars())
+    return AnalystCaseListResponse(items=cases, limit=limit, offset=offset)
+
+
+@router.post(
+    "/intelligence/cases",
+    response_model=AnalystCaseResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_analyst_case(
+    payload: AnalystCaseCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AnalystCase:
+    context = require_global_action(principal, Action.rag_query, db)
+    case = AnalystCase(
+        case_id=make_id("case"),
+        title=payload.title,
+        description=payload.description,
+        owner_id=context.subject_id,
+        classification=payload.classification.value,
+        tags=payload.tags,
+        case_metadata=payload.metadata,
+    )
+    db.add(case)
+    add_audit_event(
+        db,
+        actor_id=context.subject_id,
+        event_type="intelligence.case.created",
+        resource_type="analyst_case",
+        resource_id=case.case_id,
+        metadata={
+            "classification": case.classification,
+            "tag_count": len(case.tags),
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(case)
+    db.refresh(case, attribute_names=["saved_queries", "evidence_items"])
+    return case
+
+
+@router.get("/intelligence/cases/{case_id}", response_model=AnalystCaseResponse)
+def get_analyst_case(
+    case_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AnalystCase:
+    case, _ = _get_analyst_case_for_principal(db, case_id, principal)
+    return case
+
+
+@router.patch("/intelligence/cases/{case_id}", response_model=AnalystCaseResponse)
+def update_analyst_case(
+    case_id: str,
+    payload: AnalystCasePatch,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AnalystCase:
+    case, context = _get_analyst_case_for_principal(db, case_id, principal, owner_required=True)
+    if payload.title is not None:
+        case.title = payload.title
+    if payload.description is not None:
+        case.description = payload.description
+    if payload.status is not None:
+        case.status = payload.status
+    if payload.classification is not None:
+        case.classification = payload.classification.value
+    if payload.tags is not None:
+        case.tags = payload.tags
+    if payload.metadata is not None:
+        case.case_metadata = payload.metadata
+    case.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=context.subject_id,
+        event_type="intelligence.case.updated",
+        resource_type="analyst_case",
+        resource_id=case.case_id,
+        metadata={
+            "status": case.status,
+            "classification": case.classification,
+            "tag_count": len(case.tags),
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(case)
+    db.refresh(case, attribute_names=["saved_queries", "evidence_items"])
+    return case
+
+
+@router.post(
+    "/intelligence/cases/{case_id}/saved-queries",
+    response_model=AnalystSavedQueryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_analyst_saved_query(
+    case_id: str,
+    payload: AnalystSavedQueryCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AnalystSavedQuery:
+    case, context = _get_analyst_case_for_principal(db, case_id, principal, owner_required=True)
+    saved_query = AnalystSavedQuery(
+        saved_query_id=make_id("qry"),
+        case_id=case.case_id,
+        title=payload.title,
+        query_text=payload.query_text,
+        query_mode=payload.query_mode,
+        search_fields=payload.search_fields,
+        filters=payload.filters,
+        created_by=context.subject_id,
+    )
+    db.add(saved_query)
+    case.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=context.subject_id,
+        event_type="intelligence.case.query_saved",
+        resource_type="analyst_case",
+        resource_id=case.case_id,
+        metadata={
+            "saved_query_id": saved_query.saved_query_id,
+            "query_mode": saved_query.query_mode,
+            "query_length": len(saved_query.query_text),
+            "search_field_count": len(saved_query.search_fields),
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(saved_query)
+    return saved_query
+
+
+@router.post(
+    "/intelligence/cases/{case_id}/evidence",
+    response_model=AnalystEvidenceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_analyst_evidence(
+    case_id: str,
+    payload: AnalystEvidenceCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AnalystEvidenceItem:
+    case, context = _get_analyst_case_for_principal(db, case_id, principal, owner_required=True)
+    if payload.document_id:
+        document = _get_document(db, payload.document_id)
+        require_document_action(principal, Action.document_read, document, db)
+    evidence = AnalystEvidenceItem(
+        evidence_id=make_id("evd"),
+        case_id=case.case_id,
+        title=payload.title,
+        note=payload.note,
+        document_id=payload.document_id,
+        document_version_id=payload.document_version_id,
+        document_title=payload.document_title,
+        chunk_id=payload.chunk_id,
+        page_number=payload.page_number,
+        section_title=payload.section_title,
+        source_file_name=payload.source_file_name,
+        score=payload.score,
+        snippet=payload.snippet,
+        entity_types=payload.entity_types,
+        entity_values=payload.entity_values,
+        evidence_metadata=payload.metadata,
+        created_by=context.subject_id,
+    )
+    db.add(evidence)
+    case.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=context.subject_id,
+        event_type="intelligence.case.evidence_added",
+        resource_type="analyst_case",
+        resource_id=case.case_id,
+        metadata={
+            "evidence_id": evidence.evidence_id,
+            "document_id": evidence.document_id,
+            "document_version_id": evidence.document_version_id,
+            "chunk_id": evidence.chunk_id,
+            "entity_type_count": len(evidence.entity_types),
+            "entity_value_count": len(evidence.entity_values),
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(evidence)
+    return evidence
+
+
 @router.post(
     "/audit/events",
     response_model=AuditEventResponse,
@@ -2243,7 +3316,25 @@ def create_audit_event(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AuditEvent:
-    require_global_action(principal, Action.audit_write, db)
+    if principal.service_identity:
+        capability, operation = _audit_service_decision_coordinates(payload.event_type)
+        decision = _service_action_decision(
+            principal=principal,
+            subject_id=payload.actor_id,
+            action=Action.audit_write.value,
+            document=None,
+            capability_override=capability,
+            operation_override=operation,
+        )
+        if not decision.allowed:
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "forbidden",
+                decision.reason,
+                {"reason_codes": list(decision.reason_codes)},
+            )
+    else:
+        require_global_action(principal, Action.audit_write, db)
     event = add_audit_event(
         db,
         actor_id=payload.actor_id,
@@ -2257,6 +3348,133 @@ def create_audit_event(
     _commit_or_conflict(db)
     db.refresh(event)
     return event
+
+
+@router.post(
+    "/integrations/idempotency/reserve",
+    response_model=IntegrationIdempotencyReserveResponse,
+)
+def reserve_integration_idempotency(
+    payload: IntegrationIdempotencyReserveRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> IntegrationIdempotencyReserveResponse:
+    if not principal.service_identity and not (
+        not principal.dynamic_access_loaded
+        and principal.roles.intersection({"service_aiip", "service_rag", "admin"})
+    ):
+        raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "Integration idempotency access denied")
+
+    now = utcnow()
+    record = db.scalar(
+        select(IntegrationIdempotencyRecord).where(
+            IntegrationIdempotencyRecord.client_id == payload.client_id,
+            IntegrationIdempotencyRecord.operation == payload.operation,
+            IntegrationIdempotencyRecord.idempotency_key == payload.idempotency_key,
+        ).with_for_update()
+    )
+    if record is not None:
+        expires_at = (
+            record.expires_at
+            if record.expires_at.tzinfo is not None
+            else record.expires_at.replace(tzinfo=timezone.utc)
+        )
+    else:
+        expires_at = None
+    if record is not None and expires_at is not None and expires_at <= now:
+        db.delete(record)
+        db.flush()
+        record = None
+
+    if record is not None:
+        if record.input_hash != payload.input_hash:
+            state = "conflict"
+        elif record.status == "completed" and record.response_body is not None:
+            state = "replay"
+        else:
+            updated_at = (
+                record.updated_at
+                if record.updated_at.tzinfo is not None
+                else record.updated_at.replace(tzinfo=timezone.utc)
+            )
+            if updated_at <= now - timedelta(minutes=5):
+                record.expires_at = now + timedelta(seconds=payload.retention_seconds)
+                record.updated_at = now
+                record.response_status = None
+                record.response_body = None
+                record.audit_event_id = None
+                db.commit()
+                db.refresh(record)
+                state = "reserved"
+            else:
+                state = "processing"
+        return IntegrationIdempotencyReserveResponse(
+            state=state,
+            record_id=record.record_id,
+            response_status=record.response_status,
+            response_body=record.response_body,
+            audit_event_id=record.audit_event_id,
+            expires_at=record.expires_at,
+        )
+
+    record = IntegrationIdempotencyRecord(
+        client_id=payload.client_id,
+        operation=payload.operation,
+        idempotency_key=payload.idempotency_key,
+        input_hash=payload.input_hash,
+        status="processing",
+        expires_at=now + timedelta(seconds=payload.retention_seconds),
+    )
+    db.add(record)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return reserve_integration_idempotency(payload, db, principal)
+    db.refresh(record)
+    return IntegrationIdempotencyReserveResponse(
+        state="reserved",
+        record_id=record.record_id,
+        expires_at=record.expires_at,
+    )
+
+
+@router.post(
+    "/integrations/idempotency/{record_id}/complete",
+    response_model=IntegrationIdempotencyCompleteResponse,
+)
+def complete_integration_idempotency(
+    record_id: str,
+    payload: IntegrationIdempotencyCompleteRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> IntegrationIdempotencyCompleteResponse:
+    if not principal.service_identity and not (
+        not principal.dynamic_access_loaded
+        and principal.roles.intersection({"service_aiip", "service_rag", "admin"})
+    ):
+        raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "Integration idempotency access denied")
+    record = db.get(IntegrationIdempotencyRecord, record_id)
+    expires_at = None
+    if record is not None:
+        expires_at = (
+            record.expires_at
+            if record.expires_at.tzinfo is not None
+            else record.expires_at.replace(tzinfo=timezone.utc)
+        )
+    if record is None or expires_at is None or expires_at <= utcnow():
+        raise problem(status.HTTP_404_NOT_FOUND, "idempotency_record_not_found", "Idempotency record was not found")
+    record.status = "completed"
+    record.response_status = payload.response_status
+    record.response_body = payload.response_body
+    record.audit_event_id = payload.audit_event_id
+    db.commit()
+    db.refresh(record)
+    return IntegrationIdempotencyCompleteResponse(
+        record_id=record.record_id,
+        status="completed",
+        expires_at=record.expires_at,
+    )
 
 
 @router.get("/audit/events", response_model=AuditEventListResponse)

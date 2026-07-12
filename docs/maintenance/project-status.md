@@ -14,7 +14,7 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - RAG Retrieval Service obsahuje prvni STRATOS Document AI extraction profil
   `contract_financial_v1` pro Budget smlouvy; vysledky a feedback se
   perzistuji v Registry API jako navrhy s citacemi.
-- Web aplikace obsahuje Document Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Chat Portal.
+- Web aplikace obsahuje Document Workbench, Intelligence Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Chat Portal.
 - Web shell, zakladni UI primitiva a PDF viewer jsou sladene se STRATOS portfoliem pres lokalni `apps/web/src/components/stratos` adapter.
 - Upload/source opening a native preview jsou rozsirene na bezne Office, PDF, obrazkove, textove a strukturovane typy; stare binarni Office formaty `.doc/.xls/.ppt` zustavaji pro plnohodnotnou ingestion/rendering konverzni backlog.
 - Produkcni audit 2026-06-11 potvrdil, ze stavajici importovane dokumenty maji jako aktualni zdroj Markdown derivaty; 20 dostupnych raw PDF originalu se migruje pres `tools/import_original_pdf_versions.py`, 3 dokumenty cekaji na doplneni originalniho PDF.
@@ -62,6 +62,44 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
 - `/help` obsahuje napovedu pro dokumentove role, upload, viewer/citace, workflow, governance a troubleshooting.
 - UI zaklad pouziva STRATOS kompatibilni shell, rail, button, search, view tab a PDF viewer komponenty. Lokalni adapter zustava nahraditelny sdilenym `@stratos/ui` balickem, az bude dostupny v AKL build contextu.
 
+### Intelligence Workbench
+
+- `/intelligence` je TOVEK-like analyticky modul nad rizenymi dokumenty bez
+  naruseni stavajiciho Document Workbench, Knowledge Chat, STRATOS bridge,
+  citaci, source opening nebo auditnich toku.
+- Modul ma lokalni submenu `Overview`, `Corpus`, `Search`, `Cases`,
+  `Entities`, `Relationships` a `Quality`, aby uzivatel nepracoval v jedne
+  dlouhe strance.
+- Stranka pouziva existujici permission-scoped Registry kontrakty:
+  `listDocuments`, `documents/metadata-summary` a
+  `documents/readiness-report`.
+- UI zobrazuje velikost opravneného korpusu, readiness skore, pocty dokumentu
+  k revizi/blokaci, facety podle typu/klasifikace/vlastnika, nejcastejsi
+  readiness signaly, vzorky problemu, metadata-derived kandidatni entity a
+  relationship seeds.
+- OpenSearch Intelligence vrstva doplnuje chunk-level entity facety, citovane
+  evidence search, pokrocile analyst search rezimy a evidence-backed
+  relationship edges. Web bridge pro vsechny search/graph dotazy nejdriv
+  odvozuje `allowed_document_ids` z Registry API a vysledky znovu orezava pred
+  browserem.
+- Search sekce obsahuje AKB Query Composer v1: vizualni query boxy/chipy,
+  navrhy poli, operatoru, pojmu z opravneného korpusu, metadat, OpenSearch
+  entit a ulozenych dotazu ve spisech. Composer generuje dotaz do stavajiciho
+  analyst search toku a respektuje stejnou permission-scoped hranici jako
+  zbytek Intelligence UI. Nove pouziva web bridge
+  `POST /api/intelligence/query/suggestions`, ktery vraci serverove navrhy,
+  validaci syntaxe, inferred search mode/search fields a odhad narocnosti
+  dotazu; lokalni navrhy zustavaji jen fallback.
+- Registry API uklada Intelligence analyst cases, saved queries a evidence sety.
+  Intelligence UI umi zalozit spis, vybrat aktivni spis, ulozit aktualni
+  analyticky dotaz a pridavat citovane nalezy do evidence setu.
+- Kazdy dokumentovy vysledek vede zpet do autoritativniho AKB detailu
+  `/documents/{document_id}`; zdroje se neexportuji mimo AKB viewer/source
+  boundary.
+- Aktualni vrstva je corpus + chunk intelligence analytika s perzistentnim
+  analyst case workflow. Timeline, mapy, watchlisty, case exporty a persistentni
+  graph snapshots zustavaji dalsi navazujici rezy.
+
 ### Workflow
 
 - Registry API ma perzistentni `workflow_tasks`.
@@ -97,6 +135,11 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 10. Security/compliance hardening: OIDC a dokumentova authz musi projit negativnimi testy na urovni dokumentu, chunku a source opening.
 11. Source originality: stavajici produkcni Markdown derivaty se prevadeji na dostupne originalni PDF zdroje pres `tools/import_original_pdf_versions.py`; dokumenty bez raw PDF zustavaji Markdown-backed, dokud neni original doplnen.
 12. STRATOS package integration: lokalni UI adapter je kompatibilni mezikrok vcetne `StratosPdfViewer`; primy import `@stratos/ui` ceka na sjednoceny workspace nebo publikovany balicek dostupny pro Docker build.
+13. Intelligence depth: `/intelligence` ma corpus/readiness analytiku,
+    OpenSearch entity/search vrstvu, evidence-backed relationship panel a
+    perzistentni analyst cases/saved queries/evidence sets, ale jeste nema
+    export case reportu, perzistentni relation snapshots, watchlisty ani
+    timeline/mapove zobrazeni.
 
 ## Next Recommended Implementation Slices
 
@@ -108,6 +151,10 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 6. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.
 7. RAG evaluation: eval dataset pro citace, no-answer rate, retrieval precision a regression gate.
 8. STRATOS UI package switch: po sjednoceni repozitaru/build contextu nahradit lokalni adapter primym `@stratos/ui`.
+9. Intelligence entity layer: extrahovat entity z chunku, ulozit mentiony s
+   citacemi, pridat deduplikaci aliasu a zobrazit detail entity.
+10. Intelligence graph/cases: ulozit evidence-backed vztahy, pridat graf,
+    watchlisty, alerty po ingestion a analyticky case workspace.
 
 ## Maintenance Rule
 

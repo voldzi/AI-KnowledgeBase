@@ -9,18 +9,21 @@ export default async function AdminPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/admin");
   requirePageAccess(context, "admin");
-  const authorization = await clients.registry.getAuthorizationHints(context);
+  const [authorization, roleMappings] = await Promise.all([
+    clients.registry.getAuthorizationHints(context),
+    clients.registry.listRoleMappings(context, true),
+  ]);
 
   return (
     <>
       <PageHeader
         title={{ cs: "Administrace", en: "Administration" }}
         description={{
-          cs: "Základní správa mapování rolí, připravenosti OIDC, policy hintů a dostupnosti služeb.",
-          en: "Early administration surface for role mapping, OIDC readiness, policy hints and service connectivity."
+          cs: "Správa identit z adresáře a Registry mapování aplikačních rolí AKB.",
+          en: "Manage directory identities and Registry-backed AKB role mappings."
         }}
       />
-      <AdminSkeleton authorization={authorization} />
+      <AdminSkeleton authorization={authorization} initialRoleMappings={roleMappings} />
     </>
   );
 }

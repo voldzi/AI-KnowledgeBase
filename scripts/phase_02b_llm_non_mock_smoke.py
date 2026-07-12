@@ -13,6 +13,9 @@ LLM_URL = os.getenv("AKL_SMOKE_LLM_URL", "http://localhost:8083").rstrip("/")
 CHAT_MODEL = os.getenv("AKL_LLM_SMOKE_CHAT_MODEL", "gemma4:12b-mlx")
 EMBEDDING_MODEL = os.getenv("AKL_LLM_SMOKE_EMBEDDING_MODEL", "bge-m3")
 BEARER_TOKEN = os.getenv("AKL_SMOKE_LLM_BEARER_TOKEN")
+CALLER_SUBJECT = os.getenv("AKL_LLM_SMOKE_SUBJECT", "svc-rag")
+CALLER_ROLES = os.getenv("AKL_LLM_SMOKE_ROLES", "service_rag")
+GATEWAY_AUDIENCE = os.getenv("AKL_LLM_GATEWAY_AUDIENCE", "llm-gateway-service")
 
 
 def main() -> int:
@@ -126,7 +129,14 @@ def request_json(
         "X-Service-Name": "phase-02b-smoke",
     }
     if BEARER_TOKEN:
-        headers["Authorization"] = f"Bearer {BEARER_TOKEN}"
+        headers.update(
+            {
+                "Authorization": f"Bearer {BEARER_TOKEN}",
+                "X-AKL-Subject": CALLER_SUBJECT,
+                "X-AKL-Roles": CALLER_ROLES,
+                "X-AKL-Audience": GATEWAY_AUDIENCE,
+            }
+        )
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
 

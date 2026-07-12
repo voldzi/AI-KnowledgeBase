@@ -15,15 +15,19 @@ AKL_QDRANT_BASE_URL=http://qdrant:6333
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine
-AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_RAG_RETRIEVER_MODE=qdrant
+AKL_RAG_FULLTEXT_MODE=opensearch
 ```
 
 ## Writer
 
-Only Ingestion Service writes document chunks to Qdrant. It reads Registry metadata over HTTP and never reads Registry database tables directly.
+Only Ingestion Service writes document chunks to Qdrant. In the real local RAG
+profile it also writes the same chunks to OpenSearch for BM25/fulltext. It
+reads Registry metadata over HTTP and never reads Registry database tables
+directly.
 
 Indexing path:
 
@@ -33,6 +37,7 @@ source_file_uri
   -> logical chunks
   -> LLM Gateway embeddings
   -> Qdrant upsert
+  -> OpenSearch bulk upsert
 ```
 
 ## Payload Contract

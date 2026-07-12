@@ -174,7 +174,7 @@ paths:
     post:
       tags: [chat]
       summary: Create a chat completion
-      description: "Set `stream=true` to receive `text/event-stream` chunks followed by `data: [DONE]`."
+      description: "Set `stream=true` to receive `text/event-stream` chunks followed by `data: [DONE]`. Production service callers also send `X-AKL-Subject`, `X-AKL-Audience`, and `X-AKL-Roles`."
       security:
         - bearerAuth: []
       requestBody:
@@ -197,6 +197,8 @@ paths:
           $ref: "#/components/responses/Error"
         "401":
           $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
         "502":
@@ -205,6 +207,7 @@ paths:
     post:
       tags: [embeddings]
       summary: Create embeddings
+      description: "Production service callers use an audience-bound gateway token plus `X-AKL-Subject`, `X-AKL-Audience`, and `X-AKL-Roles`."
       security:
         - bearerAuth: []
       requestBody:
@@ -223,6 +226,8 @@ paths:
         "400":
           $ref: "#/components/responses/Error"
         "401":
+          $ref: "#/components/responses/Error"
+        "403":
           $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
@@ -522,6 +527,68 @@ components:
         content:
           type: string
           minLength: 1
+    InformationPolicyMetadata:
+      type: object
+      description: >-
+        Information Policy V2 context inherited from every document or chunk in the
+        request. External providers reject requests without a supported binding.
+      properties:
+        purpose:
+          type:
+            - string
+            - "null"
+        policy_binding_id:
+          type:
+            - string
+            - "null"
+        policy_binding_ids:
+          type: array
+          items:
+            type: string
+          default: []
+        policy_version:
+          type:
+            - string
+            - "null"
+          enum: [information-policy-2.0.0, null]
+        policy_hash:
+          type:
+            - string
+            - "null"
+          pattern: '^sha256:[a-f0-9]{64}$'
+        policy_hashes:
+          type: array
+          items:
+            type: string
+            pattern: '^sha256:[a-f0-9]{64}$'
+          default: []
+        handling_class:
+          type:
+            - string
+            - "null"
+          enum: [PUBLIC, INTERNAL, RESTRICTED, null]
+        legal_classification:
+          type:
+            - string
+            - "null"
+          enum: [NONE, null]
+        obligations:
+          type: array
+          items:
+            type: string
+            enum:
+              - AUDIT_ACCESS
+              - NO_EXTERNAL_AI
+              - LOCAL_PROCESSING_ONLY
+              - NO_PUBLIC_EXPORT
+              - NO_EXPORT
+              - WATERMARK
+              - ENCRYPT_AT_REST
+              - RECIPIENT_CONFIRMATION
+              - ORIGINATOR_APPROVAL
+              - PAP_ENFORCEMENT
+          default: []
+      additionalProperties: true
     ChatCompletionRequest:
       type: object
       required: [model, messages]
@@ -560,8 +627,7 @@ components:
           type: boolean
           default: false
         metadata:
-          type: object
-          default: {}
+          $ref: "#/components/schemas/InformationPolicyMetadata"
     ChatCompletionResponse:
       type: object
       required: [id, model, content, finish_reason, usage, provider]
@@ -598,8 +664,7 @@ components:
           minimum: 1
           maximum: 4096
         metadata:
-          type: object
-          default: {}
+          $ref: "#/components/schemas/InformationPolicyMetadata"
     EmbeddingsResponse:
       type: object
       required: [model, data, provider]

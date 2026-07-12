@@ -9,7 +9,10 @@ export default async function NewDocumentPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/documents/new");
   requirePageAccess(context, "knowledge_workspace");
-  const authorization = await clients.registry.getAuthorizationHints(context);
+  const [authorization, directoryUsers] = await Promise.all([
+    clients.registry.getAuthorizationHints(context),
+    clients.registry.searchDirectoryUsers("", context, 50).catch(() => []),
+  ]);
 
   return (
     <>
@@ -20,7 +23,11 @@ export default async function NewDocumentPage() {
           en: "Enter metadata, attach the original file and AKB creates the document, version 1.0 and citation processing in one flow."
         }}
       />
-      <NewDocumentForm authorization={authorization} />
+      <NewDocumentForm
+        authorization={authorization}
+        currentSubjectId={context.subjectId}
+        directoryUsers={directoryUsers}
+      />
     </>
   );
 }

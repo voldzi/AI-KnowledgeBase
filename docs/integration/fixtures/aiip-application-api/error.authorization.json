@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "AUTH_ROLE_REQUIRED",
+    "message": "The service_aiip role is required.",
+    "details": {},
+    "trace_id": "corr-contract-error-0004",
+    "request_id": "req-contract-error-0004",
+    "correlation_id": "corr-contract-error-0004",
+    "audit_event_id": null
+  }
+}

@@ -9,6 +9,7 @@ from typing import Any
 from app.config import Settings
 from app.object_storage import SourceObject
 from app.schemas import DocumentChunk, DocumentMetadata
+from intelligence.entities import build_intelligence_metadata
 from parsers.base import ParsedBlock, ParserResult
 
 
@@ -143,11 +144,15 @@ class LogicalStructureChunker:
                 "text_chars_extracted": parser_result.metadata.get("text_chars_extracted"),
                 "tables_detected": parser_result.tables_detected,
                 "ocr_used": parser_result.ocr_used,
+                "quality_score": parser_result.metadata.get("quality_score"),
+                "quality_tier": parser_result.metadata.get("quality_tier"),
+                "requires_review": parser_result.metadata.get("requires_review"),
             },
             "source_file_sha256": source.sha256,
             "source_file_uri": source.uri,
             "source_file_name": source.filename,
             "source_mime_type": source.mime_type,
+            "intelligence": build_intelligence_metadata(text),
         }
         document_title = document_metadata.title or document_metadata.document_id
         version_label = document_metadata.version_label or document_metadata.document_version_id
@@ -159,6 +164,14 @@ class LogicalStructureChunker:
             document_title=document_title,
             version_label=version_label,
             document_type=document_metadata.document_type,
+            tenant_id=document_metadata.tenant_id,
+            external_system=document_metadata.external_system,
+            external_ref=document_metadata.external_ref,
+            organization_id=document_metadata.organization_id,
+            policy_binding_id=document_metadata.policy_binding_id,
+            policy_version=document_metadata.policy_version,
+            policy_hash=document_metadata.policy_hash,
+            policy_summary=document_metadata.policy_summary,
             text=text,
             normalized_text=normalized_text,
             page_number=first.page_number,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from starlette import status
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -23,14 +23,22 @@ from app.object_storage import ObjectStorageClient
 from app.pipeline import IngestionPipeline
 from app.registry_client import RegistryClient
 from app.schemas import (
+    AnalystSearchRequest,
+    AnalystSearchResponse,
     HealthResponse,
     IngestionJobCreate,
     IngestionJobResponse,
     IngestionReport,
+    EntityFacetReport,
+    EntityRelationshipRequest,
+    EntityRelationshipResponse,
+    EntitySearchRequest,
+    EntitySearchResponse,
     JobStatus,
     ReadinessResponse,
     ReindexRequest,
     ReindexResponse,
+    ReportMessage,
     StoredJob,
 )
 from app.security import AuthContext, auth_context_for_request, require_service_auth
@@ -38,7 +46,7 @@ from app.store import JobStore
 from app.telemetry import configure_telemetry
 from chunkers.logical import LogicalStructureChunker
 from embeddings.client import EmbeddingClient
-from indexers.qdrant import QdrantIndexer
+from indexers.factory import create_indexer
 from parsers.router import ParserRouter
 
 logger = logging.getLogger("akl.ingestion")
@@ -57,7 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.parser_router = ParserRouter(resolved_settings)
         app.state.chunker = LogicalStructureChunker(resolved_settings)
         app.state.embedding_client = EmbeddingClient(resolved_settings)
-        app.state.indexer = QdrantIndexer(resolved_settings)
+        app.state.indexer = create_indexer(resolved_settings)
         app.state.pipeline = IngestionPipeline(
             store=app.state.store,
             registry=app.state.registry,
@@ -181,6 +189,123 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if stored_job.report is None:
             raise IngestionError("REPORT_NOT_READY", "Ingestion report is not available yet", status_code=404)
         return stored_job.report
+
+    @app.get(
+        "/api/v1/intelligence/entities/facets",
+        response_model=EntityFacetReport,
+        tags=["intelligence"],
+    )
+    async def get_entity_facets(
+        request: Request,
+        limit: int = Query(default=8, ge=1, le=50),
+        value_limit: int = Query(default=10, ge=1, le=50),
+    ) -> EntityFacetReport:
+        _guard_request(request)
+        indexer = _indexer(request)
+        if not hasattr(indexer, "entity_facets"):
+            settings = _settings(request)
+            return EntityFacetReport(
+                status="unavailable",
+                index_name=settings.opensearch_index,
+                total_chunks=0,
+                chunks_with_entities=0,
+                generated_at=utcnow(),
+                warnings=[
+                    ReportMessage(
+                        code="OPENSEARCH_INDEXER_NOT_CONFIGURED",
+                        message="OpenSearch indexer is not configured for entity facets.",
+                    )
+                ],
+            )
+        return await indexer.entity_facets(limit=limit, value_limit=value_limit)
+
+    @app.post(
+        "/api/v1/intelligence/entities/search",
+        response_model=EntitySearchResponse,
+        tags=["intelligence"],
+    )
+    async def search_entities(
+        payload: EntitySearchRequest,
+        request: Request,
+    ) -> EntitySearchResponse:
+        _guard_request(request)
+        indexer = _indexer(request)
+        if not hasattr(indexer, "entity_search"):
+            settings = _settings(request)
+            return EntitySearchResponse(
+                status="unavailable",
+                index_name=settings.opensearch_index,
+                total_hits=0,
+                returned_hits=0,
+                hits=[],
+                generated_at=utcnow(),
+                warnings=[
+                    ReportMessage(
+                        code="OPENSEARCH_INDEXER_NOT_CONFIGURED",
+                        message="OpenSearch indexer is not configured for entity search.",
+                    )
+                ],
+        )
+        return await indexer.entity_search(payload)
+
+    @app.post(
+        "/api/v1/intelligence/analyst/search",
+        response_model=AnalystSearchResponse,
+        tags=["intelligence"],
+    )
+    async def analyst_search(
+        payload: AnalystSearchRequest,
+        request: Request,
+    ) -> AnalystSearchResponse:
+        _guard_request(request)
+        indexer = _indexer(request)
+        if not hasattr(indexer, "analyst_search"):
+            settings = _settings(request)
+            return AnalystSearchResponse(
+                status="unavailable",
+                index_name=settings.opensearch_index,
+                query_mode=payload.query_mode,
+                total_hits=0,
+                returned_hits=0,
+                hits=[],
+                generated_at=utcnow(),
+                warnings=[
+                    ReportMessage(
+                        code="OPENSEARCH_INDEXER_NOT_CONFIGURED",
+                        message="OpenSearch indexer is not configured for analyst search.",
+                    )
+                ],
+            )
+        return await indexer.analyst_search(payload)
+
+    @app.post(
+        "/api/v1/intelligence/entities/relationships",
+        response_model=EntityRelationshipResponse,
+        tags=["intelligence"],
+    )
+    async def entity_relationships(
+        payload: EntityRelationshipRequest,
+        request: Request,
+    ) -> EntityRelationshipResponse:
+        _guard_request(request)
+        indexer = _indexer(request)
+        if not hasattr(indexer, "entity_relationships"):
+            settings = _settings(request)
+            return EntityRelationshipResponse(
+                status="unavailable",
+                index_name=settings.opensearch_index,
+                total_edges=0,
+                returned_edges=0,
+                edges=[],
+                generated_at=utcnow(),
+                warnings=[
+                    ReportMessage(
+                        code="OPENSEARCH_INDEXER_NOT_CONFIGURED",
+                        message="OpenSearch indexer is not configured for entity relationships.",
+                    )
+                ],
+            )
+        return await indexer.entity_relationships(payload)
 
     @app.post(
         "/api/v1/ingestion/jobs/{job_id}/cancel",

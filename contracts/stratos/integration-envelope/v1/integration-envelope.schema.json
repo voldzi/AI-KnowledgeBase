@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/contracts/integration-envelope/v1/integration-envelope.schema.json",
+  "title": "STRATOS Integration Envelope V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "organizationId", "sourceSystem", "externalRef", "actor", "correlationId", "idempotencyKey", "policyBindingId", "policyVersion", "policyHash", "classification", "payload"],
+  "properties": {
+    "schemaVersion": { "const": "stratos-integration-envelope-1" },
+    "organizationId": { "const": "org_stratos" },
+    "sourceSystem": { "enum": ["STRATOS_AIIP", "STRATOS_ARCHFLOW", "STRATOS_BUDGET", "STRATOS_PROJECTFLOW", "STRATOS_AKB", "STRATOS_SECURITY_PREFLIGHT"] },
+    "externalRef": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "actor": {
+      "type": "object", "additionalProperties": false, "required": ["type", "subjectId"],
+      "properties": { "type": { "enum": ["person", "service"] }, "subjectId": { "type": "string", "minLength": 1 } }
+    },
+    "correlationId": { "type": "string", "minLength": 8, "maxLength": 200 },
+    "idempotencyKey": { "type": "string", "minLength": 8, "maxLength": 200 },
+    "policyBindingId": { "type": "string", "minLength": 8 },
+    "policyVersion": { "const": "information-policy-2.0.0" },
+    "policyHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "classification": {
+      "type": "object", "additionalProperties": false, "required": ["handlingClass", "legalClassification", "tlp", "pap"],
+      "properties": {
+        "handlingClass": { "enum": ["PUBLIC", "INTERNAL", "RESTRICTED"] },
+        "legalClassification": { "const": "NONE" },
+        "tlp": { "type": ["string", "null"], "enum": [null, "TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"] },
+        "pap": { "type": ["string", "null"], "enum": [null, "PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"] }
+      }
+    },
+    "payload": { "type": "object" }
+  }
+}

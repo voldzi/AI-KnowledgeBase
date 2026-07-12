@@ -43,16 +43,24 @@ def test_invalid_source_context_window_is_rejected() -> None:
         load_settings({"AKL_RAG_SOURCE_CONTEXT_WINDOW": "6"})
 
 
-def test_current_http_profile_uses_explicit_akl_env_names() -> None:
+def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:
+    secret_file = tmp_path / "registry-client-secret"
+    secret_file.write_text("registry-secret\n")
     settings = load_settings(
         {
             "AKL_ENV": "development",
             "AKL_AUTH_MODE": "disabled",
             "AKL_RAG_DEPENDENCY_MODE": "http",
             "AKL_RAG_RETRIEVER_MODE": "qdrant",
+            "AKL_RAG_FULLTEXT_MODE": "opensearch",
             "AKL_QDRANT_BASE_URL": "http://qdrant:6333",
             "AKL_QDRANT_COLLECTION": "document_chunks",
+            "AKL_OPENSEARCH_BASE_URL": "http://opensearch:9200",
+            "AKL_OPENSEARCH_INDEX": "document_chunks_search",
             "AKL_REGISTRY_BASE_URL": "http://registry-api:8000",
+            "AKL_REGISTRY_SERVICE_TOKEN_URL": "https://login.example/token",
+            "AKL_REGISTRY_SERVICE_CLIENT_ID": "akb-rag-service",
+            "AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE": str(secret_file),
             "AKL_LLM_GATEWAY_BASE_URL": "http://llm-gateway:8080",
             "AKL_RAG_DEFAULT_MAX_CHUNKS": "6",
             "AKL_RAG_NO_ANSWER_MIN_SCORE": "0.15",
@@ -68,11 +76,16 @@ def test_current_http_profile_uses_explicit_akl_env_names() -> None:
     )
 
     assert settings.retriever_mode == "qdrant"
+    assert settings.fulltext_mode == "opensearch"
     assert settings.registry_client_mode == "http"
     assert settings.llm_client_mode == "http"
     assert settings.qdrant_base_url == "http://qdrant:6333"
     assert settings.qdrant_collection == "document_chunks"
+    assert settings.opensearch_base_url == "http://opensearch:9200"
+    assert settings.opensearch_index == "document_chunks_search"
     assert settings.registry_base_url == "http://registry-api:8000/api/v1"
+    assert settings.registry_service_client_id == "akb-rag-service"
+    assert settings.registry_service_client_secret == "registry-secret"
     assert settings.llm_gateway_base_url == "http://llm-gateway:8080/api/v1"
     assert settings.default_max_chunks == 6
     assert settings.no_answer_min_score == 0.15

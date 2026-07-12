@@ -23,6 +23,7 @@ import {
   LockKeyhole,
   Network,
   Plus,
+  RotateCcw,
   Save,
   ShieldAlert,
   ShieldCheck,
@@ -366,6 +367,11 @@ const detailCopy = {
     validity: "Platnost",
     changeSummary: "Souhrn změny",
     ingestionStatus: "Stav zpracování",
+    retryIngestion: "Spustit znovu",
+    retryingIngestion: "Spouštím zpracování",
+    retryIngestionStarted: "Nové zpracování bylo spuštěno.",
+    retryIngestionIndexed: "Dokument byl znovu zpracován a zařazen do indexu.",
+    retryIngestionFailed: "Opakované zpracování selhalo.",
     created: "vytvořeno",
     noJob: "K tomuto dokumentu není aktuálně připojené žádné zpracování.",
     auditTitle: "Auditní stopa dokumentu",
@@ -593,6 +599,11 @@ const detailCopy = {
     validity: "Validity",
     changeSummary: "Change summary",
     ingestionStatus: "Ingestion status",
+    retryIngestion: "Run again",
+    retryingIngestion: "Starting ingestion",
+    retryIngestionStarted: "A new ingestion job was started.",
+    retryIngestionIndexed: "The document was reprocessed and added to the index.",
+    retryIngestionFailed: "The ingestion retry failed.",
     created: "created",
     noJob: "No processing job is currently linked to this document.",
     auditTitle: "Document audit trail",
@@ -692,6 +703,8 @@ export function DocumentDetail({
   const loadedRequestedChunkRef = useRef<string | null>(null);
   const [workflowAction, setWorkflowAction] = useState<"publish" | "archive" | null>(null);
   const [workflowFeedback, setWorkflowFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [retryingIngestion, setRetryingIngestion] = useState(false);
+  const [ingestionFeedback, setIngestionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [savingAssignments, setSavingAssignments] = useState(false);
   const [assignmentFeedback, setAssignmentFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [governanceAction, setGovernanceAction] = useState<GovernanceActionKind | null>(null);
@@ -759,6 +772,47 @@ export function DocumentDetail({
       setWorkflowFeedback({ tone: "error", message: `${copy.workflowActionFailed}${suffix}` });
     } finally {
       setWorkflowAction(null);
+    }
+  }
+
+  async function retryDocumentIngestion() {
+    if (!authorization.can_ingest || !currentVersion || retryingIngestion) {
+      return;
+    }
+    setRetryingIngestion(true);
+    setIngestionFeedback(null);
+    try {
+      const response = await fetch(
+        withAppBasePath(`/api/stratos/documents/${encodeURIComponent(document.document_id)}/retry-ingestion`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      const payload = (await response.json()) as {
+        ingestion_job_id: string;
+        ingestion_status: string;
+      };
+      const failed = ["FAILED", "PERMISSION_DENIED"].includes(payload.ingestion_status);
+      const message = failed
+        ? copy.retryIngestionFailed
+        : payload.ingestion_status === "INDEXED"
+          ? copy.retryIngestionIndexed
+          : copy.retryIngestionStarted;
+      setIngestionFeedback({
+        tone: failed ? "error" : "success",
+        message: `${message} ${payload.ingestion_job_id} · ${payload.ingestion_status}`
+      });
+      router.refresh();
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setIngestionFeedback({ tone: "error", message: `${copy.retryIngestionFailed}${suffix}` });
+    } finally {
+      setRetryingIngestion(false);
     }
   }
 
@@ -1638,9 +1692,28 @@ export function DocumentDetail({
         <section className="panel">
           <div className="panel__header">
             <h2>{copy.ingestionStatus}</h2>
-            <FileClock size={18} aria-hidden="true" />
+            {authorization.can_ingest && currentVersion ? (
+              <StratosButton
+                type="button"
+                onClick={() => void retryDocumentIngestion()}
+                disabled={retryingIngestion}
+              >
+                <RotateCcw size={16} aria-hidden="true" />
+                {retryingIngestion ? copy.retryingIngestion : copy.retryIngestion}
+              </StratosButton>
+            ) : (
+              <FileClock size={18} aria-hidden="true" />
+            )}
           </div>
           <div className="panel__body timeline">
+            {ingestionFeedback ? (
+              <div
+                className={`notice ${ingestionFeedback.tone === "error" ? "notice--danger" : ""}`}
+                role={ingestionFeedback.tone === "error" ? "alert" : "status"}
+              >
+                {ingestionFeedback.message}
+              </div>
+            ) : null}
             {relatedJobs.length > 0 ? (
               relatedJobs.map((job) => (
                 <div className="timeline-item" key={job.job_id}>

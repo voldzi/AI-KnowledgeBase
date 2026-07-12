@@ -150,6 +150,11 @@ def test_aiip_external_document_upsert_is_idempotent_and_filterable(client, admi
     assert first_body["document"]["classification"] == "internal"
     assert "stratos_aiip" in first_body["document"]["tags"]
     assert "aiip-idea:idea_123" in first_body["document"]["tags"]
+    assert any(
+        "role:service_aiip" in policy["subjects"]
+        and "rag.query" in policy["actions"]
+        for policy in first_body["document"]["access_policies"]
+    )
 
     second = client.post(
         "/api/v1/external-documents/upsert",
@@ -331,12 +336,32 @@ def test_document_version_accepts_source_location(client, admin_headers):
                 "content_type": "application/pdf",
             },
             "file_hash": "sha256:" + "b" * 64,
+            "file": {
+                "filename": "256-2022-S.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 123456,
+                "sha256": "sha256:" + "b" * 64,
+                "uploaded_by": "user_admin",
+            },
         },
     )
 
     assert response.status_code == 201, response.text
     assert response.json()["source_location"]["kind"] == "object_storage"
     assert response.json()["source_location"]["storage_ref"] == "stratos-budget/contracts/256-2022-S.pdf"
+    file_id = response.json()["file_id"]
+    assert file_id.startswith("file_")
+
+    listed = client.get(f"/api/v1/documents/{document_id}/versions", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["items"][0]["file_id"] == file_id
+
+    fetched = client.get(
+        f"/api/v1/documents/{document_id}/versions/{response.json()['document_version_id']}",
+        headers=admin_headers,
+    )
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["file_id"] == file_id
 
 
 def test_external_document_current_can_be_updated_after_ingestion_start(client, admin_headers, reader_headers):
@@ -399,9 +424,36 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
     assert current["akb_source_uri"] == "s3://akl-documents/stratos/contracts/256-2022-S.pdf"
     assert current["source_location"]["kind"] == "object_storage"
 
+    forbidden_by_document = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=reader_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_status": "INDEXED",
+        },
+    )
+    assert forbidden_by_document.status_code == 403
+
+    by_document = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_status": "INDEXED",
+        },
+    )
+    assert by_document.status_code == 200, by_document.text
+    assert by_document.json()["updated"] == 1
+    assert by_document.json()["items"][0]["external_document_id"] == external_document_id
+    assert by_document.json()["items"][0]["current_ingestion_job_id"] == "job_stratos_456"
+    assert by_document.json()["items"][0]["current_ingestion_status"] == "INDEXED"
+
     audit = client.get("/api/v1/audit/events?event_type=external_document.current_updated", headers=admin_headers)
     assert audit.status_code == 200
     assert audit.json()["items"][0]["resource_id"] == external_document_id
+    assert audit.json()["items"][0]["metadata"]["source"] == "ingestion-service"
 
 
 def test_external_document_can_be_opened_by_authorized_reader(client, admin_headers, reader_headers):

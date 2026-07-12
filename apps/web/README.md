@@ -17,9 +17,22 @@ This service provides:
 - audit viewer
 - admin UI skeleton
 - typed API clients for Registry API, Ingestion Service and RAG Retrieval Service
+- Retrieval Quality Lab backed by Evaluation Service
 - mock API mode for early development
 
 It does not directly access PostgreSQL, Qdrant, Ollama, vLLM or internal MinIO APIs. Upload/download flows use signed object storage URIs only.
+
+## STRATOS UI Shell
+
+The web application consumes `@voldzi/stratos-ui@0.3.32` and imports
+`@voldzi/stratos-ui/styles.css` once in the root layout. The AKB shell composes
+the shared `AppShell`, `GlobalTopbar`, `AppRail`, rail/sidebar controller,
+`WorkspaceSidebar`, `WorkspaceNav`, `CommandCenterTrigger`, breadcrumb and
+status group directly. The shared STRATOS application catalog owns switcher
+names, icons, order and availability; AKB supplies only `currentAppId="akb"`
+and environment-specific destination URLs. AKB retains routing, authorization
+and domain commands; responsive drawer, backdrop, focus management, popovers
+and mobile rail styling remain owned by the shared package.
 
 ## Local Run
 
@@ -51,6 +64,7 @@ AKL_REGISTRY_API_BASE_URL=http://localhost:8001/api/v1 \
 AKL_INGESTION_API_BASE_URL=http://localhost:8090/api/v1 \
 AKL_RAG_API_BASE_URL=http://localhost:8082/api/v1 \
 AKL_GOVERNANCE_API_BASE_URL=http://localhost:8085/api/v1 \
+AKL_EVALUATION_API_BASE_URL=http://localhost:8084/api/v1 \
 AKL_WEB_DEV_SUBJECT=user_dev \
 AKL_WEB_DEV_ROLES=admin,document_manager,reader \
 pnpm dev -- --port 3002
@@ -69,6 +83,10 @@ Copy `.env.example` to `.env.local` for local overrides.
 | `AKL_INGESTION_API_BASE_URL` | Ingestion Service `/api/v1` base URL |
 | `AKL_RAG_API_BASE_URL` | RAG Retrieval Service `/api/v1` base URL |
 | `AKL_GOVERNANCE_API_BASE_URL` | Governance Service `/api/v1` base URL |
+| `AKL_EVALUATION_API_BASE_URL` | Evaluation Service `/api/v1` base URL |
+| `AKL_WEB_STRATOS_AUTH_ME_URL` | Authoritative STRATOS `GET /api/v1/auth/me` projection endpoint |
+| `AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS` | Projection timeout; defaults to 3000 ms |
+| `AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS` | Projection cache TTL; defaults to zero and never exceeds token expiry |
 | `AKL_DEV_ACCESS_TOKEN` | Optional local integration token |
 | `AKL_WEB_DEV_SUBJECT` | Local mock-auth subject sent to APIs in development |
 | `AKL_WEB_DEV_ROLES` | Comma-separated local mock-auth roles |
@@ -80,6 +98,9 @@ Copy `.env.example` to `.env.local` for local overrides.
 | `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` | Optional same-origin content endpoint path for signed source opening; defaults to `${NEXT_PUBLIC_AKL_BASE_PATH}/api/documents/source/content` |
 
 Production refuses to start when `AKL_API_CLIENT_MODE=mock` or `AKL_AUTH_MODE=mock`.
+OIDC mode also requires the STRATOS access projection endpoint. The web server
+uses the bearer token only to load that projection; it does not authorize from
+static capability/scope claims or client-supplied authorization headers.
 
 ## API Client Separation
 

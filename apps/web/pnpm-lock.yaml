@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@voldzi/stratos-ui':
-        specifier: 0.3.24
-        version: 0.3.24(lucide-react@1.21.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: 0.3.32
+        version: 0.3.32(lucide-react@1.21.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       effect:
         specifier: ^3.21.4
         version: 3.21.4
@@ -551,8 +551,8 @@ packages:
   '@ungap/structured-clone@1.3.2':
     resolution: {integrity: sha512-5jsZFwgR5rTdKwidH9Qmat75RKwqfpKlWWB1frDkljN127mwqBu8K0PYo7/hFpF03IEJpfVPpCQDY/eDx3iHvA==}
 
-  '@voldzi/stratos-ui@0.3.24':
-    resolution: {integrity: sha512-1yrz2kj4YvDcC6jt/iWLu41ZlEUvrMtGiQkPWj4eDjrG2FsXe/4k/cNme9oB2UBXrBcQc++DknxX1jh6GEIk8w==}
+  '@voldzi/stratos-ui@0.3.32':
+    resolution: {integrity: sha512-oXsz1NuBSYfib4bf1MVWC5XFW5DGifJBHu/tFLkCsMCzCI4lJuJo5pDMCrC921lAdqdG/eMVXJfeI/b7z5O+sA==}
     peerDependencies:
       lucide-react: ^1.21.0
       pdfjs-dist: ^6.1.200
@@ -1300,7 +1300,7 @@ snapshots:
 
   '@ungap/structured-clone@1.3.2': {}
 
-  '@voldzi/stratos-ui@0.3.24(lucide-react@1.21.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@voldzi/stratos-ui@0.3.32(lucide-react@1.21.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       lucide-react: 1.21.0(react@19.2.7)
       pdfjs-dist: 6.1.200

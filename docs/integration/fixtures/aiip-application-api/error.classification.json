@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "CLASSIFICATION_NOT_ALLOWED",
+    "message": "AIIP processing is allowed only for public and internal data.",
+    "details": {},
+    "trace_id": "corr-contract-error-0001",
+    "request_id": "req-contract-error-0001",
+    "correlation_id": "corr-contract-error-0001",
+    "audit_event_id": null
+  }
+}

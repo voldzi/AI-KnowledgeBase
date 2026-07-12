@@ -15,6 +15,7 @@ import {
   LifeBuoy,
   MessageSquare,
   MessageSquarePlus,
+  PanelLeftOpen,
   PanelRightOpen,
   Pin,
   Search,
@@ -334,6 +335,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso, initialConversations));
   const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations));
   const [threadSearch, setThreadSearch] = useState("");
+  const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
@@ -409,6 +411,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     setSourceError(null);
     setOpeningSourceId(null);
     setCitationModalOpen(false);
+    setMobileThreadsOpen(false);
   }
 
   function createThread() {
@@ -418,6 +421,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
+    setMobileThreadsOpen(false);
   }
 
   function redirectToLoginAfterUnauthorized() {
@@ -719,7 +723,11 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   return (
     <>
       <section className="akb-chat-app" aria-label="AKB Assistant">
-        <aside className="akb-chat-sidebar" aria-label={copy.threadList}>
+        <aside
+          id="akb-chat-thread-panel"
+          className={`akb-chat-sidebar${mobileThreadsOpen ? " is-mobile-open" : ""}`}
+          aria-label={copy.threadList}
+        >
           <div className="akb-chat-sidebar__brand">
             <div className="akb-chat-mark" aria-hidden="true">
               <Bot size={18} />
@@ -728,6 +736,15 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               <strong>AKB Assistant</strong>
               <span>{copy.ready}</span>
             </div>
+            <button
+              className="akb-chat-icon-button akb-chat-sidebar__close"
+              type="button"
+              onClick={() => setMobileThreadsOpen(false)}
+              title={copy.close}
+              aria-label={copy.close}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
           </div>
           <StratosButton tone="primary" type="button" onClick={createThread}>
             <MessageSquarePlus size={16} aria-hidden="true" />
@@ -766,6 +783,17 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               <p>{copy.appSubtitle}</p>
             </div>
             <div className="akb-chat-header__actions">
+              <button
+                className="akb-chat-icon-button akb-chat-mobile-threads"
+                type="button"
+                onClick={() => setMobileThreadsOpen((open) => !open)}
+                title={copy.threadList}
+                aria-label={copy.threadList}
+                aria-controls="akb-chat-thread-panel"
+                aria-expanded={mobileThreadsOpen}
+              >
+                <PanelLeftOpen size={16} aria-hidden="true" />
+              </button>
               <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                 <Archive size={16} aria-hidden="true" />
               </button>

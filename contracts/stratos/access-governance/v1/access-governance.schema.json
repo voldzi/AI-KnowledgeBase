@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/contracts/access-governance/v1/access-governance.schema.json",
+  "title": "STRATOS Access Governance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "organizationId", "identity", "membership", "applicationAccess"],
+  "properties": {
+    "schemaVersion": { "const": "stratos-access-1" },
+    "organizationId": { "const": "org_stratos" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectId", "kind", "active"],
+      "properties": {
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "kind": { "enum": ["person", "service"] },
+        "active": { "type": "boolean" },
+        "globalRoles": { "type": "array", "uniqueItems": true, "items": { "enum": ["stratos_user", "stratos_admin"] } }
+      }
+    },
+    "membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active"],
+      "properties": { "active": { "type": "boolean" }, "validUntil": { "type": ["string", "null"], "format": "date-time" } }
+    },
+    "applicationAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicationId", "active", "profileId", "capabilities", "scopes"],
+      "properties": {
+        "applicationId": { "enum": ["executive-center", "budget", "projectflow", "archflow", "processforge", "akb", "aiip", "security-preflight"] },
+        "active": { "type": "boolean" },
+        "profileId": { "type": ["string", "null"] },
+        "capabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_.-]*$" } },
+        "scopes": { "type": "array", "items": { "$ref": "#/$defs/scope" } },
+        "validUntil": { "type": ["string", "null"], "format": "date-time" },
+        "suspended": { "type": "boolean", "default": false }
+      }
+    }
+  },
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["own", "organization", "organization_unit", "budget_scope", "portfolio", "project", "document", "recipient_set"] },
+        "id": { "type": ["string", "null"], "maxLength": 200 }
+      }
+    }
+  }
+}

@@ -72,8 +72,10 @@ export async function POST(request: NextRequest) {
     "X-Correlation-ID": ctx.correlationId,
     "X-AKL-Subject": ctx.subjectId,
   });
-  if (ctx.roles?.length) headers.set("X-AKL-Roles", ctx.roles.join(","));
-  if (ctx.groups?.length) headers.set("X-AKL-Groups", ctx.groups.join(","));
+  if (ctx.authorizationSource === "mock") {
+    if (ctx.roles?.length) headers.set("X-AKL-Roles", ctx.roles.join(","));
+    if (ctx.groups?.length) headers.set("X-AKL-Groups", ctx.groups.join(","));
+  }
   if (ctx.accessToken) headers.set("Authorization", `Bearer ${ctx.accessToken}`);
 
   let upstream: Response;

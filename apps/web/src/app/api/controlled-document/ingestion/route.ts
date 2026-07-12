@@ -27,8 +27,9 @@ export async function POST(request: NextRequest) {
       return badRequest("source_file_uri is required.");
     }
 
+    let uploadPayload = null;
     if (uploadToken) {
-      assertUploadMatchesIngestionPayload(uploadToken, {
+      uploadPayload = assertUploadMatchesIngestionPayload(uploadToken, {
         document_id: documentId,
         upload_session_id: uploadSessionId,
         source_file_uri: sourceFileUri,
@@ -37,6 +38,16 @@ export async function POST(request: NextRequest) {
         file_size: Number.isFinite(Number(body.file_size)) ? Number(body.file_size) : null,
         file_type: body.file_type ? String(body.file_type).trim() : null
       });
+    }
+
+    const document = await clients.registry.getDocument(documentId, context);
+    if (
+      uploadPayload &&
+      (document.policy_binding_id !== uploadPayload.policy_binding_id ||
+        document.policy_version !== uploadPayload.policy_version ||
+        document.policy_hash !== uploadPayload.policy_hash)
+    ) {
+      return badRequest("Document policy changed after upload preflight.", 409);
     }
 
     const version = await clients.registry.createDocumentVersion(

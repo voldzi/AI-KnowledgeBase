@@ -132,6 +132,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/aiip/harmonize:
+    post:
+      tags:
+      - aiip-integration
+      summary: Aiip Harmonize
+      operationId: aiip_harmonize_api_v1_integrations_aiip_harmonize_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiipHarmonizeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiipApplicationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/aiip/duplicates/search:
+    post:
+      tags:
+      - aiip-integration
+      summary: Aiip Duplicate Search
+      operationId: aiip_duplicate_search_api_v1_integrations_aiip_duplicates_search_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiipDuplicateSearchRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiipApplicationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/chunks/{chunk_id}/source-context:
     get:
       tags:
@@ -572,6 +622,441 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
+    AiipApplicationResponse:
+      properties:
+        schema_version:
+          type: string
+          const: '1.0'
+          title: Schema Version
+          default: '1.0'
+        request_id:
+          type: string
+          title: Request Id
+        correlation_id:
+          type: string
+          title: Correlation Id
+        audit_event_id:
+          type: string
+          title: Audit Event Id
+        status:
+          type: string
+          const: completed
+          title: Status
+          default: completed
+        result:
+          anyOf:
+          - $ref: '#/components/schemas/AiipHarmonizeResult'
+          - $ref: '#/components/schemas/AiipDuplicateSearchResult'
+          title: Result
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        model:
+          $ref: '#/components/schemas/AiipModelMetadata'
+        prompt_template_version:
+          type: string
+          title: Prompt Template Version
+        retrieval_index_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Retrieval Index Version
+        usage:
+          $ref: '#/components/schemas/AiipUsage'
+        latency_ms:
+          type: integer
+          minimum: 0.0
+          title: Latency Ms
+      additionalProperties: false
+      type: object
+      required:
+      - request_id
+      - correlation_id
+      - audit_event_id
+      - result
+      - model
+      - prompt_template_version
+      - usage
+      - latency_ms
+      title: AiipApplicationResponse
+    AiipDuplicateCandidate:
+      properties:
+        candidate_id:
+          type: string
+          title: Candidate Id
+        source_system:
+          type: string
+          title: Source System
+        source_record_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Record Id
+        akb_document_id:
+          type: string
+          title: Akb Document Id
+        score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Score
+        matched_areas:
+          items:
+            type: string
+          type: array
+          title: Matched Areas
+        citations:
+          items:
+            $ref: '#/components/schemas/AiipDuplicateCitation'
+          type: array
+          title: Citations
+      additionalProperties: false
+      type: object
+      required:
+      - candidate_id
+      - source_system
+      - akb_document_id
+      - score
+      title: AiipDuplicateCandidate
+    AiipDuplicateCitation:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        chunk_id:
+          type: string
+          title: Chunk Id
+        document_title:
+          type: string
+          title: Document Title
+        version_label:
+          type: string
+          title: Version Label
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - chunk_id
+      - document_title
+      - version_label
+      title: AiipDuplicateCitation
+    AiipDuplicateSearchRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        processing_purpose:
+          type: string
+          const: duplicate_detection
+          title: Processing Purpose
+        model_preference:
+          type: string
+          enum:
+          - standard
+          - high_quality
+          title: Model Preference
+          default: standard
+        record:
+          $ref: '#/components/schemas/AiipRecordInput'
+        limit:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Limit
+          default: 10
+        offset:
+          type: integer
+          maximum: 200.0
+          minimum: 0.0
+          title: Offset
+          default: 0
+        min_score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Min Score
+          default: 0.35
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - classification
+      - processing_purpose
+      - record
+      title: AiipDuplicateSearchRequest
+    AiipDuplicateSearchResult:
+      properties:
+        candidates:
+          items:
+            $ref: '#/components/schemas/AiipDuplicateCandidate'
+          type: array
+          title: Candidates
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+        returned:
+          type: integer
+          title: Returned
+        has_more:
+          type: boolean
+          title: Has More
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - limit
+      - offset
+      - returned
+      title: AiipDuplicateSearchResult
+    AiipFieldProvenance:
+      properties:
+        source:
+          type: string
+          enum:
+          - aiip_record
+          - model_inference
+          title: Source
+        input_fields:
+          items:
+            type: string
+          type: array
+          title: Input Fields
+        prompt_template_version:
+          type: string
+          title: Prompt Template Version
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - prompt_template_version
+      title: AiipFieldProvenance
+    AiipFieldSuggestion:
+      properties:
+        field:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Field
+        proposed_value:
+          title: Proposed Value
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+        provenance:
+          $ref: '#/components/schemas/AiipFieldProvenance'
+      additionalProperties: false
+      type: object
+      required:
+      - field
+      - proposed_value
+      - confidence
+      - provenance
+      title: AiipFieldSuggestion
+    AiipHarmonizeRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        processing_purpose:
+          type: string
+          const: idea_harmonization
+          title: Processing Purpose
+        model_preference:
+          type: string
+          enum:
+          - standard
+          - high_quality
+          title: Model Preference
+          default: standard
+        locale:
+          type: string
+          enum:
+          - cs
+          - en
+          title: Locale
+          default: cs
+        record:
+          $ref: '#/components/schemas/AiipRecordInput'
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - classification
+      - processing_purpose
+      - record
+      title: AiipHarmonizeRequest
+    AiipHarmonizeResult:
+      properties:
+        suggestions:
+          items:
+            $ref: '#/components/schemas/AiipFieldSuggestion'
+          type: array
+          maxItems: 30
+          title: Suggestions
+        review_required:
+          type: boolean
+          const: true
+          title: Review Required
+          default: true
+      additionalProperties: false
+      type: object
+      title: AiipHarmonizeResult
+    AiipModelMetadata:
+      properties:
+        requested_preference:
+          type: string
+          enum:
+          - standard
+          - high_quality
+          title: Requested Preference
+        requested_model:
+          type: string
+          title: Requested Model
+        actual_model:
+          type: string
+          title: Actual Model
+        fallback_applied:
+          type: boolean
+          title: Fallback Applied
+        model_digest:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model Digest
+      additionalProperties: false
+      type: object
+      required:
+      - requested_preference
+      - requested_model
+      - actual_model
+      - fallback_applied
+      title: AiipModelMetadata
+    AiipRecordInput:
+      properties:
+        record_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Record Id
+        record_version:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Record Version
+        title:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: Title
+        summary:
+          type: string
+          maxLength: 12000
+          minLength: 1
+          title: Summary
+        problem_statement:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Problem Statement
+        proposed_solution:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Proposed Solution
+        expected_benefits:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          title: Expected Benefits
+        strategic_domains:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          title: Strategic Domains
+        keywords:
+          items:
+            type: string
+          type: array
+          maxItems: 30
+          title: Keywords
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - record_id
+      - title
+      - summary
+      title: AiipRecordInput
+    AiipUsage:
+      properties:
+        prompt_tokens:
+          type: integer
+          minimum: 0.0
+          title: Prompt Tokens
+          default: 0
+        completion_tokens:
+          type: integer
+          minimum: 0.0
+          title: Completion Tokens
+          default: 0
+        total_tokens:
+          type: integer
+          minimum: 0.0
+          title: Total Tokens
+          default: 0
+      additionalProperties: false
+      type: object
+      title: AiipUsage
     AnswerRequest:
       properties:
         subject_id:
@@ -1879,6 +2364,21 @@ components:
           type: string
           minLength: 1
           title: Chunk Id
+        policy_binding_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Binding Id
+        policy_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Version
+        policy_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Hash
       additionalProperties: false
       type: object
       required:
@@ -2305,6 +2805,18 @@ components:
           - type: string
           - type: 'null'
           title: Missing Information
+        policy_bindings:
+          items:
+            additionalProperties:
+              type: string
+            type: object
+          type: array
+          title: Policy Bindings
+        obligations:
+          items:
+            type: string
+          type: array
+          title: Obligations
       type: object
       required:
       - query_id
@@ -2329,6 +2841,10 @@ components:
             - meeting_record
             - contract
             - attachment
+            - ai_intake
+            - ai_requirement_card
+            - ai_security_appendix
+            - ai_governance_evidence
             - other
           type: array
           title: Document Types
@@ -2350,6 +2866,30 @@ components:
             type: string
           type: array
           title: Tags
+        document_ids:
+          items:
+            type: string
+          type: array
+          title: Document Ids
+        document_version_ids:
+          items:
+            type: string
+          type: array
+          title: Document Version Ids
+        tenant_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Tenant Id
+        external_system:
+          anyOf:
+          - type: string
+            maxLength: 80
+            minLength: 1
+          - type: 'null'
+          title: External System
       additionalProperties: false
       type: object
       title: RagQueryFilters
@@ -2499,6 +3039,7 @@ components:
           - sparse
           - hybrid
           - qdrant
+          - opensearch
           title: Retrieval Method
         text:
           type: string
@@ -2533,6 +3074,21 @@ components:
         document_title:
           type: string
           title: Document Title
+        policy_binding_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Binding Id
+        policy_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Version
+        policy_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Hash
         source_file_uri:
           anyOf:
           - type: string

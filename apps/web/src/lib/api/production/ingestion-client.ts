@@ -1,6 +1,13 @@
 import type {
+  AnalystSearchRequest,
+  AnalystSearchResponse,
   ApiRequestContext,
   CreateIngestionJobRequest,
+  EntityFacetReport,
+  EntityRelationshipRequest,
+  EntityRelationshipResponse,
+  EntitySearchRequest,
+  EntitySearchResponse,
   IngestionApiClient,
   IngestionJob,
   IngestionReport
@@ -68,6 +75,70 @@ export class ProductionIngestionClient implements IngestionApiClient {
       baseUrl: this.baseUrl,
       path: `/ingestion/jobs/${jobId}/cancel`,
       method: "POST",
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  getEntityFacets(
+    context: ApiRequestContext,
+    options: { limit?: number; valueLimit?: number } = {}
+  ): Promise<EntityFacetReport> {
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+    if (options.valueLimit !== undefined) {
+      params.set("value_limit", String(options.valueLimit));
+    }
+    const query = params.toString();
+    return requestJson<EntityFacetReport>({
+      service: "ingestion-service",
+      operation: "getEntityFacets",
+      baseUrl: this.baseUrl,
+      path: `/intelligence/entities/facets${query ? `?${query}` : ""}`,
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  searchEntities(request: EntitySearchRequest, context: ApiRequestContext): Promise<EntitySearchResponse> {
+    return requestJson<EntitySearchResponse>({
+      service: "ingestion-service",
+      operation: "searchEntities",
+      baseUrl: this.baseUrl,
+      path: "/intelligence/entities/search",
+      method: "POST",
+      body: request,
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  analystSearch(request: AnalystSearchRequest, context: ApiRequestContext): Promise<AnalystSearchResponse> {
+    return requestJson<AnalystSearchResponse>({
+      service: "ingestion-service",
+      operation: "analystSearch",
+      baseUrl: this.baseUrl,
+      path: "/intelligence/analyst/search",
+      method: "POST",
+      body: request,
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  getEntityRelationships(
+    request: EntityRelationshipRequest,
+    context: ApiRequestContext
+  ): Promise<EntityRelationshipResponse> {
+    return requestJson<EntityRelationshipResponse>({
+      service: "ingestion-service",
+      operation: "getEntityRelationships",
+      baseUrl: this.baseUrl,
+      path: "/intelligence/entities/relationships",
+      method: "POST",
+      body: request,
       context,
       fetcher: this.fetcher
     });

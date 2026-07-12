@@ -13,7 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.import_docs_folder import ImportOptions, run_import, write_reports  # noqa: E402
+from tools.import_docs_folder import ImportOptions, opensearch_headers, parse_bool_env, run_import, write_reports  # noqa: E402
 
 
 REGISTRY_URL = os.getenv("AKL_SMOKE_REGISTRY_URL", "http://localhost:8001").rstrip("/")
@@ -22,6 +22,9 @@ RAG_URL = os.getenv("AKL_SMOKE_RAG_URL", "http://localhost:8082").rstrip("/")
 LLM_URL = os.getenv("AKL_SMOKE_LLM_URL", "http://localhost:8083").rstrip("/")
 QDRANT_URL = os.getenv("AKL_SMOKE_QDRANT_URL", "http://localhost:6333").rstrip("/")
 QDRANT_COLLECTION = os.getenv("AKL_QDRANT_COLLECTION", "akl_document_chunks")
+OPENSEARCH_URL = os.getenv("AKL_SMOKE_OPENSEARCH_URL", os.getenv("AKL_IMPORT_OPENSEARCH_URL", "http://localhost:9200")).rstrip("/")
+OPENSEARCH_INDEX = os.getenv("AKL_IMPORT_OPENSEARCH_INDEX", os.getenv("AKL_OPENSEARCH_INDEX", "akl_document_chunks"))
+REQUIRE_OPENSEARCH = parse_bool_env(os.getenv("AKL_PHASE_03_REQUIRE_OPENSEARCH", "true"))
 DOCS_TAG = os.getenv("AKL_PHASE_03_DOCS_TAG", "akb-docs")
 DOCS_QUERY = os.getenv("AKL_PHASE_03_DOCS_QUERY", "Jak funguje RAG retrieval a citace?")
 INGESTION_CONTAINER = os.getenv("AKL_SMOKE_INGESTION_CONTAINER", "akl-ingestion-service-1")
@@ -37,13 +40,16 @@ def main() -> int:
     report = import_docs_subset()
     verify_report(report)
     qdrant_count = verify_docs_qdrant_points()
+    opensearch_count = verify_docs_opensearch_documents()
     answer = query_rag_architecture()
 
     print("OK found_documents=", report["totals"]["found_documents"])
     print("OK imported_documents=", report["totals"]["imported_documents"])
     print("OK chunks_created=", report["totals"]["chunks_created"])
     print("OK qdrant_points=", report["totals"]["qdrant_points"])
+    print("OK opensearch_documents=", report["totals"]["opensearch_documents"])
     print("OK docs_qdrant_count=", qdrant_count)
+    print("OK docs_opensearch_count=", opensearch_count)
     print("OK cited_chunk_id=", answer["citations"][0]["chunk_id"])
     print("OK query_id=", answer["query_id"])
     print("OK report=", REPORT_PATH)
@@ -76,6 +82,9 @@ def import_docs_subset() -> dict[str, Any]:
         ingestion_url=INGESTION_URL,
         qdrant_url=QDRANT_URL,
         qdrant_collection=QDRANT_COLLECTION,
+        opensearch_url=OPENSEARCH_URL,
+        opensearch_index=OPENSEARCH_INDEX,
+        require_opensearch=REQUIRE_OPENSEARCH,
         ingestion_container=INGESTION_CONTAINER,
         subject_id=os.getenv("AKL_IMPORT_SUBJECT_ID", "docs-import"),
         roles=os.getenv("AKL_IMPORT_ROLES", ROLES),
@@ -101,6 +110,8 @@ def verify_report(report: dict[str, Any]) -> None:
         raise RuntimeError(f"Docs import created no chunks: {totals}")
     if int(totals.get("qdrant_points", 0)) < 1:
         raise RuntimeError(f"Docs import observed no Qdrant points: {totals}")
+    if REQUIRE_OPENSEARCH and int(totals.get("opensearch_documents", 0)) < 1:
+        raise RuntimeError(f"Docs import observed no OpenSearch documents: {totals}")
 
 
 def verify_docs_qdrant_points() -> int:
@@ -121,6 +132,30 @@ def verify_docs_qdrant_points() -> int:
     count = int(body.get("result", {}).get("count", 0))
     if count < 1:
         raise RuntimeError(f"Qdrant contains no project documentation points: {body}")
+    return count
+
+
+def verify_docs_opensearch_documents() -> int:
+    if not REQUIRE_OPENSEARCH:
+        return 0
+    body = request_json(
+        "POST",
+        f"{OPENSEARCH_URL}/{OPENSEARCH_INDEX}/_count",
+        {
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"document_type": "project_documentation"}},
+                        {"term": {"tags": DOCS_TAG}},
+                    ]
+                }
+            }
+        },
+        headers=opensearch_headers(),
+    )
+    count = int(body.get("count", 0))
+    if count < 1:
+        raise RuntimeError(f"OpenSearch contains no project documentation chunks: {body}")
     return count
 
 

@@ -28,12 +28,13 @@ describe("health endpoints", () => {
   });
 
   it("returns readiness status from configuration", async () => {
-    const response = ready();
+    const response = await ready();
     const body = await response.json();
 
     assert.equal(response.status, 200);
     assert.equal(body.service, "web-frontend");
     assert.equal(body.status, "ready");
+    assert.equal(body.dependencies.registry, "mock");
   });
 
   it("returns root readiness status for service baseline compatibility", async () => {

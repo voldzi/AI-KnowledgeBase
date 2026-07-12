@@ -486,38 +486,14 @@ BUDGET_OIDC_CLIENT_ID=budget-web
 
 ## Topbar App Switcher
 
-Vsechny aplikace musi v levem hornim app switcheru pouzivat stejne polozky a stejne adresy:
+Vsechny aplikace pouzivaji centralni katalog z `@voldzi/stratos-ui`. AKB
+predava `GlobalTopbar` pouze `currentAppId="akb"` a URL overrides pro dane
+prostredi. Nazvy, ikony, poradi a stav ProcessForge se neskladaji lokalne.
 
-```json
-[
-  {
-    "id": "budget-contract",
-    "label": "Budget & Contract",
-    "shortLabel": "BC",
-    "href": "https://stratos.zeleznalady.cz/"
-  },
-  {
-    "id": "akb",
-    "label": "AKB",
-    "shortLabel": "AK",
-    "href": "https://stratos.zeleznalady.cz/akb"
-  },
-  {
-    "id": "projectflow",
-    "label": "ProjectFlow",
-    "shortLabel": "PF",
-    "href": "https://stratos.zeleznalady.cz/project"
-  },
-  {
-    "id": "archflow",
-    "label": "ArchFlow",
-    "shortLabel": "AF",
-    "href": "https://stratos.zeleznalady.cz/arch"
-  }
-]
-```
-
-Aktivni aplikace oznaci svuj zaznam `active: true`. Ostatni aplikace musi byt klikatelne, ne disabled, pokud uz maji cilovy verejny route kontrakt.
+Aktualni aplikace AI KnowledgeBase zustava v triggeru switcheru a z rozbalene
+nabidky cilu se automaticky vynecha. Ostatni nakonfigurovane aplikace jsou
+klikatelne; dostupnost a disabled duvody ridi sdileny katalog a volitelna
+role/environment availability.
 
 ## AKB Stav Na docker.home.cz
 
@@ -529,7 +505,8 @@ Aktualni pilot:
 - AKB proxy port: `3220`,
 - Docker subnets: `10.246.240.0/24` az `10.246.244.0/24`,
 - PostgreSQL: `haproxy.home.cz:5000`,
-- Ollama pilot: `http://192.168.200.2:11434` pres VPN notebook,
+- Ollama: preferovany endpoint `http://192.168.200.3:11434`, rizeny failover
+  na `192.168.200.2` a `192.168.1.176`,
 - object storage bridge: `/srv/seaweedfs/akl`.
 
 AKB web derives signed source-download URLs from `NEXT_PUBLIC_AKL_BASE_PATH`

@@ -7,6 +7,9 @@ from app.schemas import RagQueryFilters
 from retrievers.qdrant import (
     QdrantHybridRetriever,
     _fuse_ranked_chunks,
+    _opensearch_filter,
+    _opensearch_hits_to_chunks,
+    _opensearch_query,
     _point_to_chunk,
     _points_to_lexical_chunks,
     _qdrant_filter,
@@ -21,6 +24,10 @@ def test_qdrant_payload_metadata_fallback_builds_citation() -> None:
             "document_version_id": "ver_real",
             "text": "The owner approves the exception.",
             "classification": "internal",
+            "policy_binding_id": "pol_testbinding01",
+            "policy_version": "information-policy-2.0.0",
+            "policy_hash": "sha256:" + "c" * 64,
+            "policy_summary": {"handlingClass": "INTERNAL", "obligations": ["AUDIT_ACCESS"]},
             "page_number": 2,
             "section_path": ["Article 4", "Paragraph 2"],
             "metadata": {
@@ -43,6 +50,43 @@ def test_qdrant_payload_metadata_fallback_builds_citation() -> None:
     assert chunk.metadata["document_type"] == "directive"
     assert chunk.metadata["status"] == "valid"
     assert chunk.metadata["tags"] == ["phase02"]
+    assert chunk.metadata["policy_binding_id"] == "pol_testbinding01"
+    assert chunk.metadata["policy_hash"] == "sha256:" + "c" * 64
+
+
+def test_qdrant_payload_preserves_parser_quality_metadata() -> None:
+    chunk = _point_to_chunk(
+        {
+            "chunk_id": "chunk_ocr",
+            "document_id": "doc_ocr",
+            "document_version_id": "ver_ocr",
+            "text": "OCR text from scanned source.",
+            "metadata": {
+                "document_title": "Scanned Directive",
+                "version_label": "1.0",
+                "parser_name": "ocr_ocrmypdf",
+                "parser_engine": "ocrmypdf",
+                "ocr_used": True,
+                "quality_tier": "review",
+                "requires_review": True,
+                "parser_quality": {
+                    "quality_score": 0.62,
+                    "quality_tier": "review",
+                    "requires_review": True,
+                },
+            },
+        },
+        score=0.8,
+        dense_score=0.7,
+        sparse_score=0.9,
+    )
+
+    assert chunk.metadata["parser_name"] == "ocr_ocrmypdf"
+    assert chunk.metadata["parser_engine"] == "ocrmypdf"
+    assert chunk.metadata["ocr_used"] is True
+    assert chunk.metadata["quality_tier"] == "review"
+    assert chunk.metadata["requires_review"] is True
+    assert chunk.metadata["parser_quality"]["quality_score"] == 0.62
 
 
 def test_qdrant_lexical_fallback_promotes_project_risk_chunks() -> None:
@@ -70,6 +114,102 @@ def test_qdrant_lexical_fallback_promotes_project_risk_chunks() -> None:
     assert chunks[0].chunk_id == "chunk_risk"
     assert chunks[0].score >= 0.35
     assert chunks[0].metadata["lexical_fallback"] is True
+
+
+def test_opensearch_hits_convert_to_cited_chunks() -> None:
+    payload = {
+        "hits": {
+            "max_score": 12.0,
+            "hits": [
+                {
+                    "_score": 12.0,
+                    "_source": {
+                        "chunk_id": "chunk_os",
+                        "document_id": "doc_os",
+                        "document_version_id": "ver_os",
+                        "document_title": "RMO 12/2024",
+                        "version_label": "1.0",
+                        "text": "Gestor odpovida za aktualizaci dokumentace.",
+                        "classification": "internal",
+                        "document_type": "directive",
+                        "status": "valid",
+                        "page_number": 3,
+                    },
+                }
+            ],
+        }
+    }
+
+    chunks = _opensearch_hits_to_chunks(query="RMO 12/2024 gestor", payload=payload)
+
+    assert len(chunks) == 1
+    assert chunks[0].chunk_id == "chunk_os"
+    assert chunks[0].retrieval_method == "opensearch"
+    assert chunks[0].citation.document_title == "RMO 12/2024"
+    assert chunks[0].metadata["opensearch_score"] == 12.0
+    assert chunks[0].metadata["lexical_fallback"] is True
+
+
+def test_opensearch_query_contains_weighted_fields_and_filters() -> None:
+    query = _opensearch_query(
+        query="RMO 12/2024 gestor",
+        filters=RagQueryFilters(document_types=["directive"], tags=["logistika"], only_valid=True),
+        limit=20,
+    )
+
+    assert query["size"] == 20
+    bool_query = query["query"]["bool"]
+    assert bool_query["minimum_should_match"] == 1
+    assert any("document_title^6" in clause["multi_match"]["fields"] for clause in bool_query["should"])
+    expanded_clause = next(
+        clause["multi_match"]
+        for clause in bool_query["should"]
+        if clause.get("multi_match", {}).get("boost") == 1.4
+    )
+    assert "rozkaz ministra obrany" in expanded_clause["query"]
+    assert any(
+        clause.get("multi_match", {}).get("query") == "rmo 12/2024"
+        and clause["multi_match"].get("boost") == 5
+        for clause in bool_query["should"]
+    )
+    assert any("wildcard" in clause and clause["wildcard"]["document_title.keyword"]["value"] == "*rmo 12/2024*" for clause in bool_query["should"])
+    assert {"terms": {"document_type": ["directive"]}} in bool_query["filter"]
+    assert {"terms": {"tags": ["logistika"]}} in bool_query["filter"]
+    assert {"term": {"status": "valid"}} in bool_query["filter"]
+
+
+def test_opensearch_filter_limits_classification() -> None:
+    filters = _opensearch_filter(RagQueryFilters(classification_max="restricted"))
+
+    assert {"terms": {"classification": ["public", "internal", "restricted"]}} in filters
+
+
+def test_aiip_tenant_filters_apply_to_both_retrieval_indexes() -> None:
+    filters = RagQueryFilters(
+        tenant_id="tenant-aiip",
+        external_system="STRATOS_AIIP",
+    )
+
+    assert {"key": "tenant_id", "match": {"value": "tenant-aiip"}} in _qdrant_filter(filters)["must"]
+    assert {"key": "external_system", "match": {"value": "STRATOS_AIIP"}} in _qdrant_filter(filters)["must"]
+    assert {"term": {"tenant_id": "tenant-aiip"}} in _opensearch_filter(filters)
+    assert {"term": {"external_system": "STRATOS_AIIP"}} in _opensearch_filter(filters)
+
+
+def test_document_version_filters_apply_to_both_retrieval_indexes() -> None:
+    filters = RagQueryFilters(
+        document_ids=["doc_contract"],
+        document_version_ids=["ver_contract_1"],
+        only_valid=False,
+    )
+
+    assert {"key": "document_id", "match": {"any": ["doc_contract"]}} in _qdrant_filter(filters)["must"]
+    assert {
+        "key": "document_version_id",
+        "match": {"any": ["ver_contract_1"]},
+    } in _qdrant_filter(filters)["must"]
+    assert {"terms": {"document_id": ["doc_contract"]}} in _opensearch_filter(filters)
+    assert {"terms": {"document_version_id": ["ver_contract_1"]}} in _opensearch_filter(filters)
 
 
 def test_qdrant_valid_filter_allows_missing_valid_from_for_valid_documents() -> None:

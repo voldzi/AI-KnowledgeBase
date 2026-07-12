@@ -56,3 +56,16 @@ export function documentTypeLabel(value: string, language: AklLanguage = "cs"): 
   }
   return value.replaceAll("_", " ");
 }
+
+export function documentStatusLabel(value: string, language: AklLanguage = "cs"): string {
+  const labels: Record<string, Record<AklLanguage, string>> = {
+    draft: { cs: "Koncept", en: "Draft" },
+    review: { cs: "K revizi", en: "In review" },
+    approved: { cs: "Schváleno", en: "Approved" },
+    valid: { cs: "Platný", en: "Valid" },
+    superseded: { cs: "Nahrazeno", en: "Superseded" },
+    archived: { cs: "Archivováno", en: "Archived" },
+    cancelled: { cs: "Zrušeno", en: "Cancelled" },
+  };
+  return labels[value]?.[language] ?? value.replaceAll("_", " ");
+}

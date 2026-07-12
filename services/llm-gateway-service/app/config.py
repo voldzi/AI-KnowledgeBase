@@ -64,6 +64,36 @@ def _parse_model_map(value: str) -> dict[str, str]:
     return parsed
 
 
+def _parse_chat_model_fallbacks(value: str) -> dict[str, tuple[str, ...]]:
+    try:
+        raw = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS must be a JSON object") from exc
+
+    if not isinstance(raw, dict):
+        raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS must be a JSON object")
+
+    parsed: dict[str, tuple[str, ...]] = {}
+    for model, fallbacks in raw.items():
+        if not isinstance(model, str) or not model.strip():
+            raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS keys must be non-empty strings")
+        values = [fallbacks] if isinstance(fallbacks, str) else fallbacks
+        if not isinstance(values, list) or not values:
+            raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS values must be strings or non-empty arrays")
+        normalized = tuple(
+            fallback.strip()
+            for fallback in values
+            if isinstance(fallback, str) and fallback.strip()
+        )
+        if len(normalized) != len(values):
+            raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS entries must be non-empty strings")
+        requested = model.strip()
+        if requested in normalized:
+            raise ConfigError("A chat model cannot fall back to itself")
+        parsed[requested] = _dedupe(normalized)
+    return parsed
+
+
 @dataclass(frozen=True)
 class Settings:
     service_name: str
@@ -73,10 +103,14 @@ class Settings:
 
     auth_mode: str
     service_token: str | None
+    require_caller_identity: bool
+    gateway_audience: str
+    allowed_caller_roles: tuple[str, ...]
 
     default_provider: str
     enabled_providers: tuple[str, ...]
     model_provider_map: dict[str, str]
+    chat_model_fallbacks: dict[str, tuple[str, ...]]
     default_chat_model: str
     default_embedding_model: str
     default_embedding_dimensions: int | None
@@ -109,11 +143,29 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     default_provider = _get(source, "AKL_LLM_DEFAULT_PROVIDER", "mock").strip().lower()
     enabled_providers = _parse_csv(_get(source, "AKL_LLM_ENABLED_PROVIDERS", default_provider))
     model_provider_map = _parse_model_map(_get(source, "AKL_LLM_MODEL_PROVIDER_MAP", "{}"))
+    chat_model_fallbacks = _parse_chat_model_fallbacks(
+        _get(source, "AKL_LLM_CHAT_MODEL_FALLBACKS", "{}")
+    )
     default_chat_model = _get(source, "AKL_LLM_DEFAULT_CHAT_MODEL", "gemma4:12b-mlx")
     default_embedding_model = _get(source, "AKL_LLM_DEFAULT_EMBEDDING_MODEL", "bge-m3")
     env_name = _get(source, "AKL_ENV", "development").strip().lower()
     auth_mode = _get(source, "AKL_AUTH_MODE", "disabled").strip().lower()
     service_token = source.get("AKL_SERVICE_TOKEN") or None
+    require_caller_identity = _parse_bool(
+        _get(
+            source,
+            "AKL_LLM_REQUIRE_CALLER_IDENTITY",
+            "true" if env_name == "production" else "false",
+        )
+    )
+    gateway_audience = _get(source, "AKL_LLM_GATEWAY_AUDIENCE", "llm-gateway-service")
+    allowed_caller_roles = _parse_csv(
+        _get(
+            source,
+            "AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES",
+            "service_ingestion,service_rag",
+        )
+    )
 
     if default_provider not in KNOWN_PROVIDERS:
         raise ConfigError(f"Unknown AKL_LLM_DEFAULT_PROVIDER '{default_provider}'")
@@ -190,9 +242,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         log_level=_get(source, "AKL_LOG_LEVEL", "INFO").upper(),
         auth_mode=auth_mode,
         service_token=service_token,
+        require_caller_identity=require_caller_identity,
+        gateway_audience=gateway_audience,
+        allowed_caller_roles=allowed_caller_roles,
         default_provider=default_provider,
         enabled_providers=enabled_providers,
         model_provider_map=model_provider_map,
+        chat_model_fallbacks=chat_model_fallbacks,
         default_chat_model=default_chat_model,
         default_embedding_model=default_embedding_model,
         default_embedding_dimensions=default_embedding_dimensions,
