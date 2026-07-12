@@ -71,10 +71,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: { code: "STALE_SOURCE_TOKEN", message: "The source version is no longer available." } }, { status: 409 });
     }
     if (
-      version.policy_binding_id !== payload.policy_binding_id ||
-      version.policy_version !== payload.policy_version ||
-      version.policy_hash !== payload.policy_hash ||
-      (context.capabilities?.length && !payload.policy_hash)
+      (version.policy_binding_id ?? null) !== payload.policy_binding_id ||
+      (version.policy_version ?? null) !== payload.policy_version ||
+      (version.policy_hash ?? null) !== payload.policy_hash ||
+      (context.authorizationSource !== "mock" && context.capabilities?.length && !payload.policy_hash)
     ) {
       return NextResponse.json({ error: { code: "STALE_POLICY_BINDING", message: "The source policy binding changed." } }, { status: 409 });
     }

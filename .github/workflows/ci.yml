@@ -216,6 +216,7 @@ jobs:
       - name: Validate docker.home.cz compose config
         run: |
           GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
+          AKL_STRATOS_POLICY_SERVICE_TOKEN=dummy-stratos-policy-service-token \
           docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \
@@ -224,6 +225,7 @@ jobs:
       - name: Validate docker.home.cz observability compose config
         run: |
           GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
+          AKL_STRATOS_POLICY_SERVICE_TOKEN=dummy-stratos-policy-service-token \
           docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \
