@@ -13,7 +13,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.import_docs_folder import ImportOptions, parse_bool_env, run_import, write_reports  # noqa: E402
+from tools.import_docs_folder import (  # noqa: E402
+    ImportOptions,
+    bearer_subject_id,
+    load_information_policy_file,
+    parse_bool_env,
+    run_import,
+    write_reports,
+)
 
 
 REGISTRY_URL = os.getenv("AKL_SMOKE_REGISTRY_URL", "http://localhost:8001").rstrip("/")
@@ -28,9 +35,11 @@ REQUIRE_OPENSEARCH = parse_bool_env(os.getenv("AKL_PHASE_03_REQUIRE_OPENSEARCH",
 DOCS_TAG = os.getenv("AKL_PHASE_03_DOCS_TAG", "akb-docs")
 DOCS_QUERY = os.getenv("AKL_PHASE_03_DOCS_QUERY", "Jak funguje RAG retrieval a citace?")
 INGESTION_CONTAINER = os.getenv("AKL_SMOKE_INGESTION_CONTAINER", "akl-ingestion-service-1")
-SUBJECT_ID = os.getenv("AKL_SMOKE_SUBJECT_ID", "user_dev")
+BEARER_TOKEN = os.getenv("AKL_SMOKE_BEARER_TOKEN") or None
+SUBJECT_ID = bearer_subject_id(BEARER_TOKEN) if BEARER_TOKEN else os.getenv("AKL_SMOKE_SUBJECT_ID", "user_dev")
 ROLES = os.getenv("AKL_SMOKE_ROLES", "admin,document_manager,reader")
 REPORT_PATH = Path(os.getenv("AKL_PHASE_03_VIEWER_IMPORT_REPORT", "/tmp/akl_phase3_document_viewer_import_report.json"))
+INFORMATION_POLICY_FILE = os.getenv("AKL_IMPORT_INFORMATION_POLICY_FILE")
 
 
 def main() -> int:
@@ -84,6 +93,9 @@ def import_docs_subset() -> dict[str, Any]:
         storage_prefix=os.getenv("AKL_IMPORT_STORAGE_PREFIX", "docs-import"),
         timeout_seconds=int(os.getenv("AKL_IMPORT_TIMEOUT_SECONDS", "180")),
         okf_profile=False,
+        bearer_token=os.getenv("AKL_IMPORT_BEARER_TOKEN") or BEARER_TOKEN,
+        information_policy=load_information_policy_file(INFORMATION_POLICY_FILE),
+        approve_for_publish=True,
     )
     report = run_import(options)
     write_reports(report, REPORT_PATH)
@@ -205,9 +217,12 @@ def request_json(
         "Content-Type": "application/json",
         "X-Request-ID": "phase03-document-viewer-smoke",
         "X-Correlation-ID": "phase03-document-viewer-smoke",
-        "X-AKL-Subject": SUBJECT_ID,
-        "X-AKL-Roles": ROLES,
     }
+    if BEARER_TOKEN:
+        request_headers["Authorization"] = f"Bearer {BEARER_TOKEN}"
+    else:
+        request_headers["X-AKL-Subject"] = SUBJECT_ID
+        request_headers["X-AKL-Roles"] = ROLES
     if headers:
         request_headers.update(headers)
     request = urllib.request.Request(url, data=data, method=method, headers=request_headers)
