@@ -19,6 +19,10 @@ Service logs are structured JSON where implemented and include:
 Logs must not include full prompts, full answers, full source text, secrets,
 tokens, passwords, private keys, or unnecessary personal data.
 
+Next.js incoming-request logging suppresses the signed source content and
+preview routes so their short-lived query credentials are not written to the
+development terminal log.
+
 ## Request And Correlation IDs
 
 AKB propagates:
