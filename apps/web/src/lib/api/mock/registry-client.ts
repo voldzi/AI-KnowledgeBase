@@ -3,7 +3,11 @@ import type {
   ApplyWorkflowTaskActionRequest,
   AuditEvent,
   AuditEventListOptions,
+  AnalystCase,
   AuthorizationHint,
+  CreateAnalystCaseRequest,
+  CreateAnalystEvidenceRequest,
+  CreateAnalystSavedQueryRequest,
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
@@ -13,6 +17,9 @@ import type {
   DocumentMetadataSummary,
   DocumentMetadataSummaryBucket,
   DocumentMetadataSummaryOptions,
+  DocumentReadinessIssue,
+  DocumentReadinessReport,
+  DocumentReadinessReportOptions,
   DocumentVersion,
   ProfileSettingsBundle,
   ProfileSettingsPutRequest,
@@ -21,6 +28,7 @@ import type {
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
   RoleMapping,
+  UpdateAnalystCaseRequest,
   UpsertRoleMappingRequest,
   WorkflowTaskListOptions,
   AssistantConversationDetail,
@@ -29,6 +37,7 @@ import type {
   AssistantConversationPatchRequest,
   AssistantConversationShareReplaceRequest,
 } from "@/lib/types";
+import { canUseAdminSurface } from "@/lib/auth/authorization";
 import { ApiClientError } from "@/lib/types";
 
 import {
@@ -52,6 +61,8 @@ export class MockRegistryClient implements RegistryApiClient {
     string,
     AssistantConversationDetail
   >();
+  private readonly analystCases = new Map<string, AnalystCase>();
+  private readonly roleMappings = new Map<string, RoleMapping>();
 
   async listDocuments(
     _context: ApiRequestContext,
@@ -118,6 +129,62 @@ export class MockRegistryClient implements RegistryApiClient {
         (document) => document.owner ?? document.owner_id ?? "Bez vlastníka",
       ),
       warnings: ["REGISTRY_METADATA_SUMMARY"],
+    };
+  }
+
+  async getDocumentReadinessReport(
+    context: ApiRequestContext,
+    options: DocumentReadinessReportOptions = {},
+  ): Promise<DocumentReadinessReport> {
+    const documents = await this.listDocuments(context, options);
+    const issues = documents.flatMap((document) =>
+      mockReadinessIssues(document),
+    );
+    const issueDocumentIds = new Set(issues.map((issue) => issue.document_id));
+    const blockedDocumentIds = new Set(
+      issues
+        .filter((issue) => issue.severity === "critical")
+        .map((issue) => issue.document_id),
+    );
+    const reviewDocumentIds = new Set(
+      issues
+        .filter((issue) => issue.severity === "warning")
+        .map((issue) => issue.document_id),
+    );
+    const blockedDocuments = blockedDocumentIds.size;
+    const reviewDocuments = [...issueDocumentIds].filter(
+      (documentId) => !blockedDocumentIds.has(documentId) && reviewDocumentIds.has(documentId),
+    ).length;
+    const readyDocuments = Math.max(
+      documents.length - blockedDocuments - reviewDocuments,
+      0,
+    );
+    const maxIssues = options.maxIssues ?? 50;
+
+    return {
+      generated_at: new Date().toISOString(),
+      total_visible_documents: documents.length,
+      ready_documents: readyDocuments,
+      review_documents: reviewDocuments,
+      blocked_documents: blockedDocuments,
+      readiness_score:
+        documents.length > 0 ? Number((readyDocuments / documents.length).toFixed(4)) : 1,
+      issue_counts: summarizeValues(issues.map((issue) => issue.code)),
+      by_severity: summarizeValues(issues.map((issue) => issue.severity)),
+      by_document_type: summarizeDocuments(
+        documents,
+        (document) => document.document_type ?? "other",
+      ),
+      by_classification: summarizeDocuments(
+        documents,
+        (document) => document.classification ?? "internal",
+      ),
+      by_status: summarizeDocuments(
+        documents,
+        (document) => document.status ?? "draft",
+      ),
+      issues: issues.slice(0, maxIssues),
+      warnings: ["REGISTRY_DOCUMENT_READINESS_REPORT"],
     };
   }
 
@@ -366,9 +433,13 @@ export class MockRegistryClient implements RegistryApiClient {
   }
 
   async getAuthorizationHints(
-    _context: ApiRequestContext,
+    context: ApiRequestContext,
   ): Promise<AuthorizationHint> {
-    return cloneMock(mockAuthorization);
+    return cloneMock({
+      ...mockAuthorization,
+      can_manage_admin: canUseAdminSurface(context),
+      can_publish: mockAuthorization.can_publish || canUseAdminSurface(context),
+    });
   }
 
   async listWorkflowTasks(
@@ -620,6 +691,114 @@ export class MockRegistryClient implements RegistryApiClient {
     return cloneMock(nextTask);
   }
 
+  async listAnalystCases(
+    context: ApiRequestContext,
+    includeArchived = false,
+  ): Promise<AnalystCase[]> {
+    return cloneMock(
+      [...this.analystCases.values()]
+        .filter((candidate) => candidate.owner_id === context.subjectId || context.roles?.includes("admin"))
+        .filter((candidate) => includeArchived || candidate.status !== "archived")
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at)),
+    );
+  }
+
+  async createAnalystCase(
+    request: CreateAnalystCaseRequest,
+    context: ApiRequestContext,
+  ): Promise<AnalystCase> {
+    const now = new Date().toISOString();
+    const analystCase: AnalystCase = {
+      case_id: `case_mock_${this.analystCases.size + 1}`,
+      title: request.title,
+      description: request.description ?? null,
+      status: "open",
+      owner_id: context.subjectId,
+      classification: request.classification ?? "internal",
+      tags: [...new Set(request.tags ?? [])],
+      metadata: request.metadata ?? {},
+      saved_queries: [],
+      evidence_items: [],
+      created_at: now,
+      updated_at: now,
+    };
+    this.analystCases.set(analystCase.case_id, analystCase);
+    return cloneMock(analystCase);
+  }
+
+  async getAnalystCase(caseId: string, context: ApiRequestContext): Promise<AnalystCase> {
+    return cloneMock(this.requireAnalystCase(caseId, context));
+  }
+
+  async updateAnalystCase(
+    caseId: string,
+    request: UpdateAnalystCaseRequest,
+    context: ApiRequestContext,
+  ): Promise<AnalystCase> {
+    const analystCase = this.requireAnalystCase(caseId, context);
+    analystCase.title = request.title ?? analystCase.title;
+    if (request.description !== undefined) analystCase.description = request.description;
+    analystCase.status = request.status ?? analystCase.status;
+    analystCase.classification = request.classification ?? analystCase.classification;
+    analystCase.tags = request.tags ? [...new Set(request.tags)] : analystCase.tags;
+    analystCase.metadata = request.metadata ?? analystCase.metadata;
+    analystCase.updated_at = new Date().toISOString();
+    return cloneMock(analystCase);
+  }
+
+  async createAnalystSavedQuery(
+    caseId: string,
+    request: CreateAnalystSavedQueryRequest,
+    context: ApiRequestContext,
+  ): Promise<AnalystCase["saved_queries"][number]> {
+    const analystCase = this.requireAnalystCase(caseId, context);
+    const savedQuery: AnalystCase["saved_queries"][number] = {
+      saved_query_id: `qry_mock_${analystCase.saved_queries.length + 1}`,
+      case_id: caseId,
+      title: request.title,
+      query_text: request.query_text,
+      query_mode: request.query_mode,
+      search_fields: request.search_fields,
+      filters: request.filters ?? {},
+      created_by: context.subjectId,
+      created_at: new Date().toISOString(),
+    };
+    analystCase.saved_queries.push(savedQuery);
+    analystCase.updated_at = savedQuery.created_at;
+    return cloneMock(savedQuery);
+  }
+
+  async createAnalystEvidence(
+    caseId: string,
+    request: CreateAnalystEvidenceRequest,
+    context: ApiRequestContext,
+  ): Promise<AnalystCase["evidence_items"][number]> {
+    const analystCase = this.requireAnalystCase(caseId, context);
+    const evidence: AnalystCase["evidence_items"][number] = {
+      evidence_id: `evd_mock_${analystCase.evidence_items.length + 1}`,
+      case_id: caseId,
+      title: request.title,
+      note: request.note ?? null,
+      document_id: request.document_id ?? null,
+      document_version_id: request.document_version_id ?? null,
+      document_title: request.document_title ?? null,
+      chunk_id: request.chunk_id ?? null,
+      page_number: request.page_number ?? null,
+      section_title: request.section_title ?? null,
+      source_file_name: request.source_file_name ?? null,
+      score: request.score ?? null,
+      snippet: request.snippet ?? null,
+      entity_types: request.entity_types ?? [],
+      entity_values: request.entity_values ?? [],
+      metadata: request.metadata ?? {},
+      created_by: context.subjectId,
+      created_at: new Date().toISOString(),
+    };
+    analystCase.evidence_items.push(evidence);
+    analystCase.updated_at = evidence.created_at;
+    return cloneMock(evidence);
+  }
+
   async listAuditEvents(
     _context: ApiRequestContext,
     options: AuditEventListOptions = {},
@@ -670,9 +849,13 @@ export class MockRegistryClient implements RegistryApiClient {
 
   async listRoleMappings(
     _context: ApiRequestContext,
-    _includeRemoved = false,
+    includeRemoved = false,
   ): Promise<RoleMapping[]> {
-    return [];
+    return cloneMock(
+      [...this.roleMappings.values()]
+        .filter((member) => includeRemoved || member.status !== "removed")
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at)),
+    );
   }
 
   async importDirectoryUser(
@@ -692,13 +875,20 @@ export class MockRegistryClient implements RegistryApiClient {
     _context: ApiRequestContext,
   ): Promise<RoleMapping> {
     const now = new Date().toISOString();
-    return {
-      role_mapping_id: `rm_mock_${Date.now()}`,
+    const existing = [...this.roleMappings.values()].find((member) => (
+      member.subject_type === request.subject_type &&
+      member.subject_id === request.subject_id &&
+      member.role === request.role
+    ));
+    const member: RoleMapping = {
+      role_mapping_id: existing?.role_mapping_id ?? `rm_mock_${Date.now()}`,
       ...request,
-      display_name: null,
-      created_at: now,
+      display_name: existing?.display_name ?? mockDirectoryDisplayName(request.subject_id),
+      created_at: existing?.created_at ?? now,
       updated_at: now,
     };
+    this.roleMappings.set(member.role_mapping_id, member);
+    return cloneMock(member);
   }
 
   async updateRoleMappingStatus(
@@ -706,17 +896,23 @@ export class MockRegistryClient implements RegistryApiClient {
     status: string,
     _context: ApiRequestContext,
   ): Promise<RoleMapping> {
+    const existing = this.roleMappings.get(roleMappingId);
+    if (!existing) {
+      throw new ApiClientError(
+        "Role mapping not found",
+        404,
+        "ROLE_MAPPING_NOT_FOUND",
+        "mock-trace",
+      );
+    }
     const now = new Date().toISOString();
-    return {
-      role_mapping_id: roleMappingId,
-      subject_type: "user",
-      subject_id: "unknown",
-      role: "unknown",
+    const member = {
+      ...existing,
       status,
-      display_name: null,
-      created_at: now,
       updated_at: now,
     };
+    this.roleMappings.set(roleMappingId, member);
+    return cloneMock(member);
   }
 
   async getProfileSettings(
@@ -893,6 +1089,19 @@ export class MockRegistryClient implements RegistryApiClient {
     return document;
   }
 
+  private requireAnalystCase(caseId: string, context: ApiRequestContext): AnalystCase {
+    const analystCase = this.analystCases.get(caseId);
+    if (!analystCase || (analystCase.owner_id !== context.subjectId && !context.roles?.includes("admin"))) {
+      throw new ApiClientError(
+        "Analyst case not found",
+        404,
+        "ANALYST_CASE_NOT_FOUND",
+        "mock-trace",
+      );
+    }
+    return analystCase;
+  }
+
   private requireAssistantConversation(
     conversationId: string,
     context: ApiRequestContext,
@@ -988,10 +1197,13 @@ function summarizeDocuments(
   documents: Document[],
   keyForDocument: (document: Document) => string,
 ): DocumentMetadataSummaryBucket[] {
+  return summarizeValues(documents.map(keyForDocument));
+}
+
+function summarizeValues(values: string[]): DocumentMetadataSummaryBucket[] {
   const counts = new Map<string, number>();
-  for (const document of documents) {
-    const key = keyForDocument(document);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
   }
   return [...counts.entries()]
     .map(([key, count]) => ({ key, label: key, count }))
@@ -999,6 +1211,48 @@ function summarizeDocuments(
       (left, right) =>
         right.count - left.count || left.label.localeCompare(right.label, "cs"),
     );
+}
+
+function mockReadinessIssues(document: Document): DocumentReadinessIssue[] {
+  const issues: DocumentReadinessIssue[] = [];
+  const metadata = document.metadata ?? {};
+  const hasDocumentNumber = [
+    metadata.document_number,
+    metadata.doc_number,
+    metadata.number,
+    metadata.contract_number,
+  ].some((value) => typeof value === "string" && value.trim().length > 0);
+  if (!hasDocumentNumber) {
+    issues.push({
+      code: "document_number_missing",
+      severity: "warning",
+      document_id: document.document_id,
+      title: document.title,
+      recommendation: "Doplnit evidencni cislo dokumentu pred analytickym pouzitim.",
+      details: { field: "metadata.document_number" },
+    });
+  }
+  if (document.status === "draft" || document.status === "review") {
+    issues.push({
+      code: "valid_version_missing",
+      severity: "warning",
+      document_id: document.document_id,
+      title: document.title,
+      recommendation: "Publikovat nebo potvrdit platnou verzi pred ostrym pouzitim.",
+      details: { status: document.status },
+    });
+  }
+  if (document.classification === "public") {
+    issues.push({
+      code: "classification_public_review",
+      severity: "info",
+      document_id: document.document_id,
+      title: document.title,
+      recommendation: "Overit, ze verejna klasifikace odpovida obsahu dokumentu.",
+      details: { classification: document.classification },
+    });
+  }
+  return issues;
 }
 
 function workflowTaskMatchesOptions(
@@ -1046,6 +1300,12 @@ function auditEventMatchesOptions(
     return false;
   }
   return true;
+}
+
+function mockDirectoryDisplayName(subjectId: string): string | null {
+  if (subjectId === "mock-user-1") return "Jan Novák";
+  if (subjectId === "mock-user-2") return "Eva Horáková";
+  return null;
 }
 
 function assignmentFor(

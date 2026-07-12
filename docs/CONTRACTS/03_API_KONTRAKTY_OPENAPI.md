@@ -296,6 +296,24 @@ resolve
 
 Action endpoint zapisuje rozhodnuti do `workflow_tasks.metadata`, meni stav tasku podle akce a vytvari audit event `workflow.task.<action>`. `approve` nad review taskem posouva dokument do `approved`, `request_changes` vraci review/approved dokument na `draft`, `publish` vola stejny publish gate jako dokumentovy endpoint a `archive` vola archive endpoint logiku. Idempotentni synchronizace odvozenych tasku smi aktualizovat zdrojova metadata, ale nesmi prepsat `status`, vlastnika ani `last_action` po lidskem rozhodnuti.
 
+### 2.7 Intelligence analyst cases
+
+```text
+GET  /intelligence/cases
+POST /intelligence/cases
+GET  /intelligence/cases/{case_id}
+PATCH /intelligence/cases/{case_id}
+POST /intelligence/cases/{case_id}/saved-queries
+POST /intelligence/cases/{case_id}/evidence
+```
+
+Analyst cases jsou perzistentni pracovní spisy pro TOVEK-like praci v AKB.
+Ukládají metadata spisu, uložené dotazy a evidence sety s odkazy na
+`document_id`, `document_version_id`, `chunk_id`, stránku a sekci. Nemění
+řízené dokumenty, verze ani zdrojové soubory. Zápis dotazu a evidence vytváří
+audit události `intelligence.case.*`; audit metadata nesmí obsahovat tělo
+dokumentu, snippet ani plný query text.
+
 ---
 
 ## 3. Ingestion Service API
@@ -352,8 +370,27 @@ Job response:
 
 Job report obsahuje volitelný blok `quality` s použitým profilem vytěžení,
 parserem, počtem stran s textem, prázdnými stranami, počtem detekovaných tabulek
-a `quality_score`. Tyto hodnoty slouží pro dohled a rozhodnutí, zda je potřeba
-OCR/layout reprocessing před tím, než se dokument použije pro citované odpovědi.
+a `quality_score`, `quality_tier` a `requires_review`. Tyto hodnoty slouží pro
+dohled a rozhodnutí, zda je potřeba OCR/layout reprocessing před tím, než se
+dokument použije pro citované odpovědi.
+
+### 3.2 Intelligence Endpoints
+
+```text
+GET  /intelligence/entities/facets
+POST /intelligence/analyst/search
+POST /intelligence/entities/search
+POST /intelligence/entities/relationships
+```
+
+Tyto endpointy jsou read-only nad OpenSearch chunk indexem. Search a
+relationship requesty vyžadují `allowed_document_ids`; web bridge je odvozuje z
+Registry API dokumentů viditelných aktuálnímu uživateli a vrácené evidence ještě
+jednou filtruje před odesláním do browseru.
+
+`POST /intelligence/analyst/search` podporuje režimy `smart`, `boolean`,
+`phrase`, `proximity` a `fielded`. Fielded dotazy používají aliasy `title:`,
+`body:`, `section:`, `entity:`, `source:`, `type:` a `class:`.
 
 ---
 
@@ -779,6 +816,12 @@ POST /api/controlled-document/upload/preflight
 PUT  /api/controlled-document/upload/sessions/{sessionId}/content
 POST /api/controlled-document/ingestion
 ```
+
+STRATOS upload a retrieval kontrakty publikuji `policy_binding_id`,
+`policy_version` a `policy_hash`. Vstupni preflight navic validuje plny
+`information-policy-2.0.0` binding a `stratos-integration-envelope-1` pred
+ulozenim binarniho obsahu. Qdrant/OpenSearch vysledek bez aktualniho hashe je
+pro capability principal odmitnut fail closed.
 
 `preflight` prijima `document_id`, `file_name`, `file_size`, `file_type` a `sha256`, vraci `upload_session_id`, `source_file_uri`, `upload_url`, expiraci a povinne upload hlavicky. `content` overuje HMAC upload token, velikost a SHA-256 a uklada objekt do storage dostupneho Ingestion Service. `ingestion` pri pritomnosti `upload_token` overi, ze metadata draft verze odpovidaji podepsane upload session.
 

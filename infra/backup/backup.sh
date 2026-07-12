@@ -24,7 +24,7 @@ fi
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TARGET_DIR="$BACKUP_ROOT/akl-backup-$TIMESTAMP"
-mkdir -p "$TARGET_DIR"/{postgres,minio,qdrant,keycloak,config}
+mkdir -p "$TARGET_DIR"/{postgres,minio,qdrant,keycloak,evaluation,config}
 
 compose() {
   if [[ -f "$ENV_FILE" ]]; then
@@ -61,6 +61,16 @@ for collection in "${collections[@]}"; do
       -o "$TARGET_DIR/qdrant/$collection-$snapshot_name"
   fi
 done
+
+echo "Backing up Evaluation Service datasets and reports"
+if [[ -n "$(compose ps --status running -q evaluation-service 2>/dev/null)" ]]; then
+  compose exec -T evaluation-service sh -c \
+    'tar -C /data -czf - evaluation-datasets evaluation-reports' \
+    > "$TARGET_DIR/evaluation/evaluation-data.tar.gz"
+else
+  printf '%s\n' "Evaluation Service was not running; evaluation volumes were not archived." \
+    > "$TARGET_DIR/evaluation/NOT_BACKED_UP.txt"
+fi
 
 echo "Backing up Keycloak realm configuration"
 cp "$ROOT_DIR/infra/keycloak/realm-akl.json" "$TARGET_DIR/keycloak/realm-akl.json"

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/contracts/information-policy/v2/information-policy.schema.json",
+  "title": "STRATOS Information Policy Binding V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "policyBindingId", "policyVersion", "handlingClass", "legalClassification", "contentCategories", "audience", "obligations"],
+  "properties": {
+    "schemaVersion": { "const": "stratos-information-policy-2" },
+    "policyBindingId": { "type": "string", "pattern": "^pol_[A-Za-z0-9_-]{8,}$" },
+    "policyVersion": { "type": "string", "minLength": 1 },
+    "handlingClass": { "enum": ["PUBLIC", "INTERNAL", "RESTRICTED"] },
+    "legalClassification": { "const": "NONE" },
+    "tlp": { "type": ["string", "null"], "enum": [null, "TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"] },
+    "pap": { "type": ["string", "null"], "enum": [null, "PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"] },
+    "contentCategories": { "type": "array", "uniqueItems": true, "items": { "enum": ["PERSONAL_DATA", "FINANCIAL", "CONTRACTUAL", "SECURITY", "CYBER_THREAT", "SOURCE_CODE", "AUTHENTICATION", "AUDIT", "PUBLIC_INFORMATION"] } },
+    "audience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organizationId", "scopeType"],
+      "properties": {
+        "organizationId": { "const": "org_stratos" },
+        "scopeType": { "enum": ["organization", "organization_unit", "project", "document", "recipient_set", "public"] },
+        "scopeIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "recipientSubjectIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "obligations": { "type": "array", "uniqueItems": true, "items": { "enum": ["AUDIT_ACCESS", "NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY", "NO_PUBLIC_EXPORT", "NO_EXPORT", "WATERMARK", "ENCRYPT_AT_REST", "RECIPIENT_CONFIRMATION", "ORIGINATOR_APPROVAL", "PAP_ENFORCEMENT"] } },
+    "originatorId": { "type": ["string", "null"] },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "reviewAt": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

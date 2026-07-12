@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import { createUploadPreflightDecision } from "@/lib/upload/preflight";
+import { parseInformationPolicy, policyHash } from "@/lib/stratos/information-policy";
 
 import { uploadErrorResponse } from "../errors";
 
@@ -15,12 +16,18 @@ export async function POST(request: NextRequest) {
     const forbidden = requireApiAccess(context, "knowledge_workspace");
     if (forbidden) return forbidden;
     const body = await request.json();
+    const documentId = String(body.document_id ?? "");
+    const document = await getServerApiClients().registry.getDocument(documentId, context);
+    const informationPolicy = parseInformationPolicy(document.policy_summary);
     const preflight = createUploadPreflightDecision({
-      document_id: String(body.document_id ?? ""),
+      document_id: documentId,
       file_name: String(body.file_name ?? ""),
       file_size: Number(body.file_size),
       file_type: body.file_type ? String(body.file_type) : null,
-      sha256: String(body.sha256 ?? "")
+      sha256: String(body.sha256 ?? ""),
+      policy_binding_id: informationPolicy.policyBindingId,
+      policy_version: informationPolicy.policyVersion,
+      policy_hash: policyHash(informationPolicy)
     });
 
     return NextResponse.json({ preflight }, { status: 201 });

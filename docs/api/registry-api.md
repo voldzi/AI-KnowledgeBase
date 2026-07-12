@@ -12,6 +12,7 @@ Implementováno:
 - DocumentAccessPolicy datový model a vyhodnocení.
 - DocumentAssignment datový model pro owner/gestor/reviewer/approver/auditor/steward role, SLA a eskalace.
 - Authorization check a bulk filter API.
+- Perzistentní Intelligence analyst cases, saved queries a evidence sety.
 - AuditEvent API a interní auditní body.
 - Health/readiness, jednotný error envelope a correlation id.
 
@@ -47,9 +48,17 @@ GET    /documents/{document_id}/versions
 GET    /documents/{document_id}/versions/{version_id}
 POST   /documents/{document_id}/versions/{version_id}/publish
 POST   /documents/{document_id}/versions/{version_id}/archive
+PATCH  /documents/{document_id}/external-references/current
 
 POST   /authz/check
 POST   /authz/filter-documents
+
+GET    /intelligence/cases
+POST   /intelligence/cases
+GET    /intelligence/cases/{case_id}
+PATCH  /intelligence/cases/{case_id}
+POST   /intelligence/cases/{case_id}/saved-queries
+POST   /intelligence/cases/{case_id}/evidence
 
 POST   /audit/events
 GET    /audit/events
@@ -85,10 +94,17 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 ## Integrační body
 
 - Web Frontend používá `/documents`, `/versions`, `/workflow/tasks`, `/documents/{document_id}/assignments` a auditní list. Detail dokumentu filtruje auditní události podle resource id a metadat dokumentu/verze/tasku.
-- Ingestion Service čte metadata dokumentů a může zapisovat auditní události.
+- Ingestion Service čte metadata dokumentů, zapisuje auditní události a přes
+  `/documents/{document_id}/external-references/current` synchronizuje poslední
+  job i stavy `INGESTING`, `INDEXED` a `FAILED` do všech odpovídajících
+  externích referencí stejné verze.
 - RAG Retrieval Service volá `/authz/filter-documents` a zapisuje auditní události.
 - Evaluation a Governance služby používají registry metadata, authorization check a audit.
 - Workflow inbox bere odpovednost, SLA a eskalacni metadata z `document_assignments`, pokud jsou pro dokument nastavena.
+- Intelligence Workbench ukládá analytické spisy, uložené dotazy a evidence
+  sety přes `/intelligence/cases`. Evidence ukládá odkazy na
+  `document_id`, `document_version_id`, `chunk_id`, stránku/sekci a bounded
+  snippet; nemění dokumentové záznamy ani zdrojové soubory.
 - RAG Retrieval Service uklada STRATOS Document AI navrhy do
   `/document-extractions` a nasledny feedback do
   `/document-extractions/{extraction_id}/feedback`.

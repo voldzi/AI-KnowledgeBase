@@ -2,23 +2,31 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   Bot,
-  ChevronsLeft,
-  ChevronsRight,
   CircleHelp,
   Database,
   FileClock,
   FilePlus2,
+  FlaskConical,
   LayoutDashboard,
   ListChecks,
+  Network,
   ShieldCheck,
+  UserCog,
   UserRound,
 } from "lucide-react";
 import {
   AppRail,
   AppShell as StratosUiAppShell,
+  CommandCenter,
   WorkspaceNav,
   WorkspaceSidebar,
   broadcastStratosProfileSettingsUpdate,
@@ -26,12 +34,17 @@ import {
   createStratosProfileSettingsPayload,
   mergeStratosProfileSettings,
   subscribeStratosProfileSettingsUpdate,
+  useRailSectionSidebarController,
   type AppRailItem,
+  type CommandCenterItem,
   type StratosProfileSettingsEnvelope,
   type WorkspaceNavGroup,
 } from "@voldzi/stratos-ui";
 
-import { isEmployeeChatOnly } from "@/lib/auth/authorization";
+import {
+  canAccessWorkspaceRoute,
+  isEmployeeChatOnly,
+} from "@/lib/auth/authorization";
 import {
   AppSettingsSurface,
   type RolePreviewSettings,
@@ -41,10 +54,6 @@ import {
   type StratosSettingsCoreValues,
 } from "@/components/app-settings-surface";
 import { ProjectTopbar } from "@/components/project-topbar";
-import {
-  CommandCenter,
-  type CommandCenterItem,
-} from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
 
@@ -53,26 +62,48 @@ const navigation = {
     { href: "/dashboard", label: "Přehled", icon: LayoutDashboard },
     { href: "/tasks", label: "Úkoly", icon: ListChecks },
     { href: "/documents", label: "Dokumenty", icon: Database },
-    { href: "/upload", label: "Nahrát", icon: FilePlus2 },
     { href: "/ingestion", label: "Zpracování", icon: FileClock },
     { href: "/chat", label: "Znalostní chat", icon: Bot },
+    { href: "/intelligence", label: "Intelligence", icon: Network },
+    { href: "/intelligence/quality", label: "Kvalita vyhledávání", icon: FlaskConical },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
+    { href: "/admin", label: "Administrace", icon: UserCog },
     { href: "/help", label: "Nápověda", icon: CircleHelp },
   ],
   en: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tasks", label: "Tasks", icon: ListChecks },
     { href: "/documents", label: "Documents", icon: Database },
-    { href: "/upload", label: "Upload", icon: FilePlus2 },
     { href: "/ingestion", label: "Ingestion", icon: FileClock },
     { href: "/chat", label: "Knowledge chat", icon: Bot },
+    { href: "/intelligence", label: "Intelligence", icon: Network },
+    { href: "/intelligence/quality", label: "Retrieval quality", icon: FlaskConical },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
+    { href: "/admin", label: "Administration", icon: UserCog },
     { href: "/help", label: "Help", icon: CircleHelp },
   ],
 } satisfies Record<
   AklLanguage,
   Array<{ href: string; label: string; icon: typeof UserRound }>
 >;
+
+const sidebarOverlayMediaQuery = "(max-width: 1280px)";
+
+function subscribeSidebarOverlay(onChange: () => void) {
+  const mediaQuery = window.matchMedia(sidebarOverlayMediaQuery);
+  mediaQuery.addEventListener("change", onChange);
+  return () => mediaQuery.removeEventListener("change", onChange);
+}
+
+function getSidebarOverlaySnapshot() {
+  return window.matchMedia(sidebarOverlayMediaQuery).matches;
+}
+
+function getServerSidebarOverlaySnapshot() {
+  // Closed is the safer initial state for mobile SSR; desktop is activated
+  // immediately after hydration without a visual layout change.
+  return true;
+}
 
 const shellCopy = {
   cs: {
@@ -81,10 +112,10 @@ const shellCopy = {
     serviceAvailable: "Služba dostupná",
     knowledgeManagement: "Správa znalostí",
     help: "Nápověda",
-    searchPlaceholder: "Najít dokument, verzi, citaci nebo auditní událost",
+    searchPlaceholder: "Najít sekci nebo spustit povolenou akci",
     commandCenterOpen: "Otevřít Command Center",
     commandCenterTitle: "Command Center",
-    commandCenterPlaceholder: "Hledat v AKB nebo spustit akci",
+    commandCenterPlaceholder: "Najít sekci nebo spustit povolenou akci",
     commandCenterPreview:
       "Vyberte výsledek pro rychlé otevření nebo spuštění akce.",
     commandCenterNoResults: "Nenalezen žádný výsledek.",
@@ -96,7 +127,6 @@ const shellCopy = {
     commandTools: "Nástroje",
     commandKnowledge: "Znalosti",
     stratosApplications: "Aplikace STRATOS",
-    appComingSoon: "Připravuje se",
     userMenu: "Uživatelské menu",
     settings: "Nastavení",
     logout: "Odhlásit",
@@ -106,20 +136,20 @@ const shellCopy = {
     workspaceTitle: "AKB pracovní plocha",
     workspaceSubtitle: "Dokumenty, workflow a znalosti",
     workspaceFooter: "STRATOS jednotné rozhraní",
-    collapseSidebar: "Zasunout submenu",
-    expandSidebar: "Rozbalit submenu",
+    closeSidebar: "Zavřít navigaci",
     moduleDocuments: "Dokumenty",
     moduleOperations: "Provoz",
     moduleAi: "AI",
     moduleKnowledge: "Znalosti",
+    moduleIntelligence: "Intelligence",
     moduleGovernance: "Dohled",
     groupWorkspace: "Pracovní plocha",
     groupDocuments: "Dokumenty",
     groupAi: "AI asistenti",
     groupKnowledge: "Znalosti",
+    groupIntelligence: "Analytika",
     groupGovernance: "Dohled",
-    allowedActions: "Povolené akce",
-    healthOk: "Stav OK",
+    healthOk: "Stav systému",
     apiModeMock: "Mock API režim",
     apiModeProduction: "Produkční API klienti",
     authModeMock: "dev auth",
@@ -131,10 +161,10 @@ const shellCopy = {
     serviceAvailable: "Service available",
     knowledgeManagement: "Knowledge management",
     help: "Help",
-    searchPlaceholder: "Find document, version, citation, or audit event",
+    searchPlaceholder: "Find a section or run an allowed action",
     commandCenterOpen: "Open Command Center",
     commandCenterTitle: "Command Center",
-    commandCenterPlaceholder: "Search AKB or run an action",
+    commandCenterPlaceholder: "Find a section or run an allowed action",
     commandCenterPreview:
       "Select a result to open a page or run a quick action.",
     commandCenterNoResults: "No result found.",
@@ -146,7 +176,6 @@ const shellCopy = {
     commandTools: "Tools",
     commandKnowledge: "Knowledge",
     stratosApplications: "STRATOS applications",
-    appComingSoon: "Coming soon",
     userMenu: "User menu",
     settings: "Settings",
     logout: "Logout",
@@ -156,20 +185,20 @@ const shellCopy = {
     workspaceTitle: "AKB workspace",
     workspaceSubtitle: "Documents, workflow and knowledge",
     workspaceFooter: "STRATOS unified interface",
-    collapseSidebar: "Collapse submenu",
-    expandSidebar: "Expand submenu",
+    closeSidebar: "Close navigation",
     moduleDocuments: "Documents",
     moduleOperations: "Operations",
     moduleAi: "AI",
     moduleKnowledge: "Knowledge",
+    moduleIntelligence: "Intelligence",
     moduleGovernance: "Governance",
     groupWorkspace: "Workspace",
     groupDocuments: "Documents",
     groupAi: "AI assistants",
     groupKnowledge: "Knowledge",
+    groupIntelligence: "Analytics",
     groupGovernance: "Governance",
-    allowedActions: "Allowed actions",
-    healthOk: "Health OK",
+    healthOk: "System status",
     apiModeMock: "Mock API mode",
     apiModeProduction: "Production API clients",
     authModeMock: "dev auth",
@@ -178,14 +207,15 @@ const shellCopy = {
 } satisfies Record<AklLanguage, Record<string, string>>;
 
 type ShellModuleId =
-  "documents" | "operations" | "ai" | "knowledge" | "governance";
+  "documents" | "operations" | "ai" | "knowledge" | "intelligence" | "governance";
 
 const moduleRouteGroups: Record<ShellModuleId, string[]> = {
   documents: ["/documents", "/upload", "/ingestion"],
   operations: ["/dashboard", "/tasks", "/"],
   ai: ["/chat", "/help"],
   knowledge: [],
-  governance: ["/audit"],
+  intelligence: ["/intelligence", "/intelligence/quality"],
+  governance: ["/audit", "/admin"],
 };
 
 const moduleRootRoutes: Record<ShellModuleId, string> = {
@@ -193,6 +223,7 @@ const moduleRootRoutes: Record<ShellModuleId, string> = {
   operations: "/dashboard",
   ai: "/chat",
   knowledge: "/chat",
+  intelligence: "/intelligence",
   governance: "/audit",
 };
 
@@ -204,6 +235,7 @@ interface AppShellProps {
     subjectId: string;
     roles: string[];
     groups: string[];
+    capabilities?: string[];
   } | null;
 }
 
@@ -212,6 +244,7 @@ interface AklUserProfile {
   email?: string;
   initials: string;
   roles: string[];
+  capabilities: string[];
   avatarColor?: string;
   avatarId?: string;
   avatarImageUrl?: string;
@@ -220,6 +253,7 @@ interface AklUserProfile {
 interface SettingsAccessInfo {
   subjectId: string;
   roles: string[];
+  capabilities: string[];
   groups: string[];
   permissions: string[];
 }
@@ -239,6 +273,7 @@ interface ProfileSettingsPayload extends StratosProfileSettingsEnvelope {
     roles?: unknown[];
     groups?: unknown[];
     permissions?: unknown[];
+    capabilities?: unknown[];
   };
 }
 
@@ -303,8 +338,35 @@ function AppShellContent({
   const [activeModule, setActiveModule] = useState<ShellModuleId>(() =>
     moduleForPath(pathname),
   );
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const [overlaySidebarOpen, setOverlaySidebarOpen] = useState(false);
+  const sidebarOverlay = useSyncExternalStore(
+    subscribeSidebarOverlay,
+    getSidebarOverlaySnapshot,
+    getServerSidebarOverlaySnapshot,
+  );
+  const shellSidebarOpen = sidebarOverlay
+    ? overlaySidebarOpen
+    : desktopSidebarOpen;
+  const handleSidebarOpenChange = useCallback(
+    (open: boolean) => {
+      if (sidebarOverlay) {
+        setOverlaySidebarOpen(open);
+        return;
+      }
+      setDesktopSidebarOpen(open);
+    },
+    [sidebarOverlay],
+  );
+  const railSidebar = useRailSectionSidebarController<ShellModuleId>({
+    activeSectionId: activeModule,
+    sidebarOpen: shellSidebarOpen,
+    onSectionChange: setActiveModule,
+    onSidebarOpenChange: handleSidebarOpenChange,
+    desktopBehavior: "toggle-active",
+    mobileBehavior: "open-sidebar",
+    overlayMediaQuery: sidebarOverlayMediaQuery,
+  });
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -329,6 +391,7 @@ function AppShellContent({
   const [accessInfo, setAccessInfo] = useState<SettingsAccessInfo>(() => ({
     subjectId: initialUser?.subjectId ?? "",
     roles: initialUser?.roles ?? [],
+    capabilities: initialUser?.capabilities ?? [],
     groups: initialUser?.groups ?? [],
     permissions: [],
   }));
@@ -341,6 +404,7 @@ function AppShellContent({
         ? "AD"
         : initialsFromName(initialUser?.subjectId ?? "AKB"),
     roles: initialUser?.roles ?? [],
+    capabilities: initialUser?.capabilities ?? [],
   }));
   const [settingsValues, setSettingsValues] =
     useState<StratosSettingsCoreValues>(() =>
@@ -357,29 +421,10 @@ function AppShellContent({
         },
       }),
     );
-  const hasMountedForPathCloseRef = useRef(false);
-
   useEffect(() => {
     setActiveModule(moduleForPath(pathname));
-    if (!hasMountedForPathCloseRef.current) {
-      hasMountedForPathCloseRef.current = true;
-      return;
-    }
-    // Navigation closes the mobile drawer so the destination page is visible.
-    setMobileSidebarOpen(false);
-  }, [pathname]);
-
-  const toggleMobileSidebar = () => {
-    setMobileSidebarOpen((open) => {
-      if (open) {
-        return false;
-      }
-      // The desktop "collapsed" state hides the sidebar body — undo it so the
-      // drawer always opens fully expanded on mobile.
-      setSidebarCollapsed(false);
-      return true;
-    });
-  };
+    railSidebar.closeSidebarAfterNavigation();
+  }, [pathname, railSidebar.closeSidebarAfterNavigation]);
 
   useEffect(() => {
     let active = true;
@@ -409,11 +454,17 @@ function AppShellContent({
               (group: unknown): group is string => typeof group === "string",
             )
           : [];
+        const capabilities = Array.isArray(payload.user.capabilities)
+          ? payload.user.capabilities.filter(
+              (capability: unknown): capability is string => typeof capability === "string",
+            )
+          : [];
         setUserProfile({
           name,
           email,
           initials: initialsFromName(name),
           roles,
+          capabilities,
         });
         setAccessInfo((current) => ({
           ...current,
@@ -422,6 +473,7 @@ function AppShellContent({
               ? payload.user.subjectId
               : current.subjectId,
           roles,
+          capabilities,
           groups,
         }));
         if (payload.rolePreview) {
@@ -442,6 +494,7 @@ function AppShellContent({
       const roles = arrayOfStrings(identity.roles);
       const groups = arrayOfStrings(identity.groups);
       const permissions = arrayOfStrings(identity.permissions);
+      const capabilities = arrayOfStrings(identity.capabilities);
       const fallbackName =
         typeof identity.display_name === "string" && identity.display_name
           ? identity.display_name
@@ -453,6 +506,7 @@ function AppShellContent({
         email: typeof identity.email === "string" ? identity.email : undefined,
         initials: initialsFromName(fallbackName),
         roles: roles.length ? roles : (initialUser?.roles ?? []),
+        capabilities: capabilities.length ? capabilities : (initialUser?.capabilities ?? []),
       };
       const nextValues = createSettingsValues({
         authModeLabel,
@@ -501,6 +555,7 @@ function AppShellContent({
         email: nextEmail,
         initials: initialsFromName(nextName),
         roles: fallbackUser.roles,
+        capabilities: fallbackUser.capabilities,
         avatarColor,
         avatarId,
         avatarImageUrl,
@@ -511,6 +566,7 @@ function AppShellContent({
             ? identity.subject_id
             : (payload.subject_id ?? initialUser?.subjectId ?? ""),
         roles: fallbackUser.roles,
+        capabilities: fallbackUser.capabilities,
         groups,
         permissions,
       });
@@ -643,75 +699,91 @@ function AppShellContent({
     }));
   }, [authModeLabel, language, settingsDirty, userProfile]);
 
-  const handleRailSelect = () => {
-    setSidebarCollapsed(false);
-    setMobileSidebarOpen(false);
-  };
-  const railItems = [
+  const accessibleNavigation = useMemo(
+    () =>
+      navigation[language].filter((item) =>
+        canAccessWorkspaceRoute(userProfile.roles, item.href, userProfile.capabilities),
+      ),
+    [language, userProfile.capabilities, userProfile.roles],
+  );
+  const railDefinitions: Array<{
+    id: ShellModuleId;
+    label: string;
+    icon: typeof UserRound;
+  }> = [
     {
       id: "operations",
-      href: moduleRootRoutes.operations,
       label: copy.moduleOperations,
       icon: ListChecks,
-      onSelect: handleRailSelect,
     },
     {
       id: "documents",
-      href: moduleRootRoutes.documents,
       label: copy.moduleDocuments,
       icon: Database,
-      onSelect: handleRailSelect,
     },
     {
       id: "ai",
-      href: moduleRootRoutes.ai,
       label: copy.moduleAi,
       icon: Bot,
-      onSelect: handleRailSelect,
+    },
+    {
+      id: "intelligence",
+      label: copy.moduleIntelligence,
+      icon: Network,
     },
     {
       id: "governance",
-      href: moduleRootRoutes.governance,
       label: copy.moduleGovernance,
       icon: ShieldCheck,
-      onSelect: handleRailSelect,
     },
   ];
+  const railItems = railDefinitions.flatMap((definition) => {
+    const routes = moduleRouteGroups[definition.id];
+    const preferredRoute = accessibleNavigation.find(
+      (item) => item.href === moduleRootRoutes[definition.id],
+    );
+    const firstRoute =
+      preferredRoute ??
+      accessibleNavigation.find((item) => routes.includes(item.href));
+    return firstRoute
+      ? [
+          {
+            ...definition,
+            href: firstRoute.href,
+          },
+        ]
+      : [];
+  });
   const activeModuleLabel =
     railItems.find((item) => item.id === activeModule)?.label ??
     copy.workspaceTitle;
   const activeModuleRoutes = moduleRouteGroups[activeModule];
-  const activeSubmenuItem = navigation[language].find(
-    (item) =>
-      pathname === item.href ||
-      (item.href !== "/" && pathname.startsWith(item.href)),
-  );
+  const activeSubmenuItem = accessibleNavigation
+    .filter(
+      (item) =>
+        pathname === item.href ||
+        (item.href !== "/" && pathname.startsWith(`${item.href}/`)),
+    )
+    .sort((left, right) => right.href.length - left.href.length)[0];
   const activeTopbarContext = activeSubmenuItem?.label ?? activeModuleLabel;
-  const activeModuleActions = useMemo(
-    () =>
-      navigation[language]
-        .filter((item) => activeModuleRoutes.includes(item.href))
-        .slice(0, 2),
-    [activeModuleRoutes, language],
-  );
   const workspaceGroups = useMemo<WorkspaceNavGroup[]>(() => {
     const groupLabel = moduleGroupLabel(activeModule, copy);
     return [
       {
         id: activeModule,
         label: groupLabel,
-        items: navigation[language]
+        items: accessibleNavigation
           .filter((item) => activeModuleRoutes.includes(item.href))
-          .map((item) => navItemToWorkspaceItem(item, pathname)),
+          .map((item) => navItemToWorkspaceItem(item, activeSubmenuItem?.href)),
       },
     ];
-  }, [activeModule, activeModuleRoutes, copy, language, pathname]);
+  }, [accessibleNavigation, activeModule, activeModuleRoutes, activeSubmenuItem?.href, copy]);
   const commandCenterItems = useMemo<CommandCenterItem[]>(() => {
     const openRoute = (href: string) => {
       router.push(href);
       setCommandCenterOpen(false);
     };
-    const navigationItems: CommandCenterItem[] = navigation[language].map(
+    const navigationItems: CommandCenterItem[] = accessibleNavigation.map(
       (item) => {
         const Icon = item.icon;
         const moduleId = moduleForPath(item.href);
@@ -742,9 +814,9 @@ function AppShellContent({
         };
       },
     );
-    return [
-      ...navigationItems,
-      {
+    const quickActions: CommandCenterItem[] = [];
+    if (canAccessWorkspaceRoute(userProfile.roles, "/documents/new", userProfile.capabilities)) {
+      quickActions.push({
         id: "action:new-document",
         type: "action",
         title: language === "cs" ? "Založit dokument" : "Create document",
@@ -763,31 +835,9 @@ function AppShellContent({
           hint: "Enter",
           onSelect: () => openRoute("/documents/new"),
         },
-      },
-      {
-        id: "action:upload",
-        type: "action",
-        title:
-          language === "cs"
-            ? "Nahrát verzi dokumentu"
-            : "Upload document version",
-        subtitle: copy.moduleDocuments,
-        detail:
-          language === "cs"
-            ? "Vybrat originální soubor a spustit zpracování pro citace."
-            : "Choose the original file and start citation processing.",
-        section: copy.commandTools,
-        icon: <FilePlus2 size={18} aria-hidden="true" />,
-        tone: "blue",
-        keywords: ["upload", "ingestion", "nahrat"],
-        primaryAction: {
-          id: "upload-document",
-          label: copy.commandOpen,
-          hint: "Enter",
-          onSelect: () => openRoute("/upload"),
-        },
-      },
-      {
+      });
+    }
+    quickActions.push({
         id: "knowledge:chat",
         type: "report",
         title: language === "cs" ? "Dotaz se zdroji" : "Ask with citations",
@@ -806,9 +856,9 @@ function AppShellContent({
           hint: "Enter",
           onSelect: () => openRoute("/chat"),
         },
-      },
-    ];
-  }, [copy, language, router]);
+      });
+    return [...navigationItems, ...quickActions];
+  }, [accessibleNavigation, copy, language, router, userProfile.roles]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -907,22 +957,15 @@ function AppShellContent({
     return <main className="akb-embed-shell">{children}</main>;
   }
 
-  if (isEmployeeChatOnly({ roles: userProfile.roles })) {
+  if (isEmployeeChatOnly({ roles: userProfile.roles, capabilities: userProfile.capabilities })) {
     return (
-      <main className="akb-employee-portal-shell">
+      <div className="akb-employee-portal-shell">
         <ProjectTopbar
           apiModeLabel={apiModeLabel}
           authModeLabel={authModeLabel}
           commandCenterLabel={copy.commandCenterOpen}
           commandCenterPlaceholder={copy.commandCenterPlaceholder}
           healthLabel={copy.healthOk}
-          labels={{
-            applications: copy.stratosApplications,
-            appComingSoon: copy.appComingSoon,
-            logout: copy.logout,
-            settings: copy.settings,
-            userMenu: copy.userMenu,
-          }}
           language={language}
           onCommandCenterOpen={() => setCommandCenterOpen(true)}
           onLogout={handleLogout}
@@ -968,35 +1011,31 @@ function AppShellContent({
             values={settingsValues}
           />
         ) : null}
-      </main>
+      </div>
     );
   }
 
   return (
     <StratosUiAppShell
-      className={[
-        "stratos-akb-shell",
-        sidebarCollapsed ? "is-sidebar-collapsed" : "",
-        mobileSidebarOpen ? "is-mobile-sidebar-open" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      sidebarOpen={mobileSidebarOpen}
-      onSidebarChange={(open) => {
-        if (!open) {
-          setMobileSidebarOpen(false);
-        }
-      }}
+      className="stratos-akb-shell"
+      sidebarOpen={shellSidebarOpen}
+      sidebarCloseLabel={copy.closeSidebar}
+      showSidebarClose={false}
+      onSidebarChange={handleSidebarOpenChange}
       topbarPlacement="global"
       rail={
         <AppRail
           workspaceMark={
-            <Link className="stratos-akb-rail-mark" href="/">
+            <Link href="/" aria-label="AKB">
               AKB
             </Link>
           }
           activeItemId={activeModule}
-          panelOpen
+          panelOpen={shellSidebarOpen}
+          mobileFallback="bottom"
+          mobileAriaLabel={
+            language === "cs" ? "Moduly AKB" : "AKB modules"
+          }
           items={railItems.map<AppRailItem>((item) => ({
             id: item.id,
             icon: item.icon,
@@ -1008,8 +1047,18 @@ function AppShellContent({
             if (!item) {
               return;
             }
-            item.onSelect();
-            router.push(item.href);
+            const shouldNavigate =
+              !railSidebar.isOverlayViewport() && item.id !== activeModule;
+            railSidebar.selectRailItem(item.id);
+            if (shouldNavigate) {
+              router.push(item.href);
+            }
+          }}
+          onMobileItemSelect={(itemId) => {
+            const item = railItems.find((candidate) => candidate.id === itemId);
+            if (item) {
+              railSidebar.selectMobileRailItem(item.id);
+            }
           }}
         />
       }
@@ -1017,75 +1066,10 @@ function AppShellContent({
         <WorkspaceSidebar
           title={activeModuleLabel}
           subtitle={copy.workspaceSubtitle}
-          collapsed={sidebarCollapsed}
+          closeLabel={copy.closeSidebar}
+          onClose={railSidebar.closeSidebar}
           footer={copy.workspaceFooter}
-          headerActions={
-            <div
-              className="stratos-sidebar-hover-actions"
-              aria-label={copy.allowedActions}
-            >
-              {activeModuleActions.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    className="stratos-sidebar-action stratos-sidebar-action-link"
-                    href={item.href}
-                    key={item.href}
-                    title={item.label}
-                    aria-label={item.label}
-                    onClick={() => {
-                      setSidebarCollapsed(false);
-                      setMobileSidebarOpen(false);
-                    }}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                  </Link>
-                );
-              })}
-              <button
-                className="stratos-sidebar-action"
-                type="button"
-                aria-label={
-                  sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar
-                }
-                title={
-                  sidebarCollapsed ? copy.expandSidebar : copy.collapseSidebar
-                }
-                onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-              >
-                {sidebarCollapsed ? (
-                  <ChevronsRight size={16} aria-hidden="true" />
-                ) : (
-                  <ChevronsLeft size={16} aria-hidden="true" />
-                )}
-              </button>
-            </div>
-          }
         >
-          {/* Mobile-only: section switcher that replaces the hidden AppRail on small screens */}
-          <nav
-            className="sidebar-mobile-sections"
-            aria-label={language === "cs" ? "Moduly AKB" : "AKB modules"}
-          >
-            {railItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className={`sidebar-mobile-section-btn${activeModule === item.id ? " is-active" : ""}`}
-                  aria-current={activeModule === item.id ? "true" : undefined}
-                  onClick={() => {
-                    setSidebarCollapsed(false);
-                    setMobileSidebarOpen(false);
-                  }}
-                >
-                  <Icon size={15} aria-hidden="true" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
           <WorkspaceNav
             key={activeModule}
             groups={workspaceGroups}
@@ -1094,7 +1078,29 @@ function AppShellContent({
                 ? "Navigace pracovní plochy"
                 : "Workspace navigation"
             }
-            onNavigate={() => setMobileSidebarOpen(false)}
+            onNavigate={railSidebar.closeSidebarAfterNavigation}
+            renderLink={({
+              href,
+              className,
+              children: linkChildren,
+              onClick,
+              ariaCurrent,
+              title,
+              target,
+              rel,
+            }) => (
+              <Link
+                href={href}
+                className={className}
+                onClick={onClick}
+                aria-current={ariaCurrent}
+                title={title}
+                target={target}
+                rel={rel}
+              >
+                {linkChildren}
+              </Link>
+            )}
           />
         </WorkspaceSidebar>
       }
@@ -1106,18 +1112,11 @@ function AppShellContent({
             commandCenterLabel={copy.commandCenterOpen}
             commandCenterPlaceholder={copy.commandCenterPlaceholder}
             healthLabel={copy.healthOk}
-            labels={{
-              applications: copy.stratosApplications,
-              appComingSoon: copy.appComingSoon,
-              logout: copy.logout,
-              settings: copy.settings,
-              userMenu: copy.userMenu,
-            }}
             language={language}
             onCommandCenterOpen={() => setCommandCenterOpen(true)}
             onLogout={handleLogout}
-            mobileMenuOpen={mobileSidebarOpen}
-            onMobileMenuOpen={toggleMobileSidebar}
+            mobileMenuOpen={shellSidebarOpen}
+            onMobileMenuOpen={railSidebar.toggleSidebar}
             onSettingsOpen={() => setSettingsOpen(true)}
             projectName={activeTopbarContext}
             user={userProfile}
@@ -1358,6 +1357,9 @@ function moduleGroupLabel(
   if (moduleId === "knowledge") {
     return copy.groupKnowledge;
   }
+  if (moduleId === "intelligence") {
+    return copy.groupIntelligence;
+  }
   if (moduleId === "governance") {
     return copy.groupGovernance;
   }
@@ -1406,17 +1408,15 @@ function avatarColorForValue(value: string): string {
 
 function navItemToWorkspaceItem(
   item: (typeof navigation)[AklLanguage][number],
-  pathname: string,
+  activeHref: string | undefined,
 ): WorkspaceNavGroup["items"][number] {
   const Icon = item.icon;
   return {
     id: item.href,
-    href: withAppBasePath(item.href),
+    href: item.href,
     label: item.label,
     icon: <Icon size={16} aria-hidden="true" />,
-    active:
-      pathname === item.href ||
-      (item.href !== "/" && pathname.startsWith(item.href)),
+    active: activeHref === item.href,
   };
 }
 

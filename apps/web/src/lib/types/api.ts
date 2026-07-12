@@ -8,10 +8,30 @@ import type {
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
+  DocumentReadinessReport,
+  DocumentReadinessReportOptions,
   DocumentVersion,
   ReplaceDocumentAssignmentsRequest
 } from "./documents";
-import type { CreateIngestionJobRequest, IngestionJob, IngestionReport } from "./ingestion";
+import type {
+  AnalystSearchRequest,
+  AnalystSearchResponse,
+  CreateIngestionJobRequest,
+  EntityFacetReport,
+  EntityRelationshipRequest,
+  EntityRelationshipResponse,
+  EntitySearchRequest,
+  EntitySearchResponse,
+  IngestionJob,
+  IngestionReport
+} from "./ingestion";
+import type {
+  AnalystCase,
+  CreateAnalystCaseRequest,
+  CreateAnalystEvidenceRequest,
+  CreateAnalystSavedQueryRequest,
+  UpdateAnalystCaseRequest
+} from "./intelligence";
 import type {
   CompareVersionsRequest,
   CompareVersionsResponse,
@@ -20,6 +40,13 @@ import type {
   ConflictDetectionRequest,
   ConflictDetectionResponse
 } from "./governance";
+import type {
+  EvaluationDataset,
+  EvaluationDatasetCreate,
+  EvaluationQualityOverview,
+  EvaluationRun,
+  EvaluationRunRequest
+} from "./evaluation";
 import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTask, WorkflowTaskListOptions } from "./workflow";
 import type {
   AssistantChatRequest,
@@ -84,6 +111,13 @@ export interface ApiRequestContext {
   subjectId: string;
   roles?: string[];
   groups?: string[];
+  capabilities?: string[];
+  scopes?: string[];
+  organizationId?: string;
+  identityActive?: boolean;
+  membershipActive?: boolean;
+  applicationAccessActive?: boolean;
+  authorizationSource?: "mock" | "stratos_projection";
   accessToken?: string;
   requestId?: string;
   correlationId?: string;
@@ -104,6 +138,10 @@ export interface RegistryApiClient {
     context: ApiRequestContext,
     options?: DocumentMetadataSummaryOptions
   ): Promise<DocumentMetadataSummary>;
+  getDocumentReadinessReport(
+    context: ApiRequestContext,
+    options?: DocumentReadinessReportOptions
+  ): Promise<DocumentReadinessReport>;
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document>;
   createDocument(request: CreateDocumentRequest, context: ApiRequestContext): Promise<Document>;
   listDocumentAssignments(documentId: string, context: ApiRequestContext): Promise<DocumentAssignment[]>;
@@ -135,6 +173,24 @@ export interface RegistryApiClient {
     request: ApplyWorkflowTaskActionRequest,
     context: ApiRequestContext
   ): Promise<RegistryWorkflowTask>;
+  listAnalystCases(context: ApiRequestContext, includeArchived?: boolean): Promise<AnalystCase[]>;
+  createAnalystCase(request: CreateAnalystCaseRequest, context: ApiRequestContext): Promise<AnalystCase>;
+  getAnalystCase(caseId: string, context: ApiRequestContext): Promise<AnalystCase>;
+  updateAnalystCase(
+    caseId: string,
+    request: UpdateAnalystCaseRequest,
+    context: ApiRequestContext
+  ): Promise<AnalystCase>;
+  createAnalystSavedQuery(
+    caseId: string,
+    request: CreateAnalystSavedQueryRequest,
+    context: ApiRequestContext
+  ): Promise<AnalystCase["saved_queries"][number]>;
+  createAnalystEvidence(
+    caseId: string,
+    request: CreateAnalystEvidenceRequest,
+    context: ApiRequestContext
+  ): Promise<AnalystCase["evidence_items"][number]>;
   listAuditEvents(context: ApiRequestContext, options?: AuditEventListOptions): Promise<AuditEvent[]>;
   createAuditEvent(request: CreateAuditEventRequest, context: ApiRequestContext): Promise<AuditEvent>;
   searchDirectoryUsers(query: string, context: ApiRequestContext, limit?: number): Promise<DirectoryUser[]>;
@@ -169,6 +225,13 @@ export interface IngestionApiClient {
   createJob(request: CreateIngestionJobRequest, context: ApiRequestContext): Promise<IngestionJob>;
   getReport(jobId: string, context: ApiRequestContext): Promise<IngestionReport>;
   cancelJob(jobId: string, context: ApiRequestContext): Promise<IngestionJob>;
+  getEntityFacets(context: ApiRequestContext, options?: { limit?: number; valueLimit?: number }): Promise<EntityFacetReport>;
+  searchEntities(request: EntitySearchRequest, context: ApiRequestContext): Promise<EntitySearchResponse>;
+  analystSearch(request: AnalystSearchRequest, context: ApiRequestContext): Promise<AnalystSearchResponse>;
+  getEntityRelationships(
+    request: EntityRelationshipRequest,
+    context: ApiRequestContext
+  ): Promise<EntityRelationshipResponse>;
 }
 
 export interface RagApiClient {
@@ -187,11 +250,27 @@ export interface GovernanceApiClient {
   detectConflicts(request: ConflictDetectionRequest, context: ApiRequestContext): Promise<ConflictDetectionResponse>;
 }
 
+export interface EvaluationApiClient {
+  getQualityOverview(
+    context: ApiRequestContext,
+    options?: { datasetId?: string; limit?: number }
+  ): Promise<EvaluationQualityOverview>;
+  createDataset(
+    request: EvaluationDatasetCreate,
+    context: ApiRequestContext
+  ): Promise<EvaluationDataset>;
+  runEvaluation(
+    request: EvaluationRunRequest,
+    context: ApiRequestContext
+  ): Promise<EvaluationRun>;
+}
+
 export interface ApiClients {
   registry: RegistryApiClient;
   ingestion: IngestionApiClient;
   rag: RagApiClient;
   governance: GovernanceApiClient;
+  evaluation: EvaluationApiClient;
 }
 
 export class ApiClientError extends Error {

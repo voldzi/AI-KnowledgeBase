@@ -37,6 +37,10 @@
         "description": "Service role for ingestion workers."
       },
       {
+        "name": "service_aiip",
+        "description": "Application service role for AI Innovation Portal."
+      },
+      {
         "name": "service_rag",
         "description": "Service role for RAG retrieval."
       },

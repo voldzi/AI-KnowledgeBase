@@ -47,7 +47,7 @@ Use `external_system`, never `source_system`, for STRATOS integration payloads.
 ## Package Model
 
 General STRATOS UI primitives for AKB, Budget, ProjectFlow and ArchFlow use
-`@voldzi/stratos-ui@0.3.24` or newer compatible versions from the public npm
+`@voldzi/stratos-ui@0.3.29` or newer compatible versions from the public npm
 registry. Applications must not add a scoped `.npmrc` that redirects
 `@voldzi/stratos-ui` to GitHub Packages.
 

@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { UploadWizard } from "@/features/documents/upload-wizard";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,9 @@ export default async function UploadPage({ searchParams }: UploadPageProps) {
   requirePageAccess(context, "knowledge_workspace");
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const requestedDocumentId = firstSearchParamValue(resolvedSearchParams.document_id);
+  if (!requestedDocumentId) {
+    redirect("/documents");
+  }
   const [documents, authorization] = await Promise.all([
     clients.registry.listDocuments(context),
     clients.registry.getAuthorizationHints(context)
@@ -22,29 +26,26 @@ export default async function UploadPage({ searchParams }: UploadPageProps) {
   const requestedDocument = requestedDocumentId
     ? documents.find((document) => document.document_id === requestedDocumentId)
     : null;
-  const initialVersions = requestedDocument
-    ? await clients.registry
-      .listDocumentVersions(requestedDocument.document_id, context)
-      .catch(() => [])
-    : [];
-  const versionsByDocumentId = requestedDocument
-    ? { [requestedDocument.document_id]: initialVersions }
-    : {};
+  if (!requestedDocument) {
+    redirect("/documents");
+  }
+  const initialVersions = await clients.registry
+    .listDocumentVersions(requestedDocument.document_id, context)
+    .catch(() => []);
 
   return (
     <>
       <PageHeader
         title={{ cs: "Nahrání nové verze", en: "Upload a new version" }}
         description={{
-          cs: "Vyberte dokument a originální soubor. AKB soubor ověří, bezpečně uloží, založí verzi a spustí zpracování pro citace.",
-          en: "Choose a document and original file. AKB verifies and stores the file securely, creates a version and starts citation processing."
+          cs: `Nahrajte novou verzi dokumentu ${requestedDocument.title}. AKB soubor ověří, bezpečně uloží a spustí zpracování pro citace.`,
+          en: `Upload a new version of ${requestedDocument.title}. AKB verifies and stores the file securely and starts citation processing.`
         }}
       />
       <UploadWizard
-        documents={documents}
+        document={requestedDocument}
         authorization={authorization}
-        initialDocumentId={requestedDocumentId}
-        versionsByDocumentId={versionsByDocumentId}
+        versions={initialVersions}
       />
     </>
   );

@@ -34,6 +34,7 @@ from the flat standard documents.
 3. API and security contracts:
    - `api.md`
    - `security.md`
+   - `security/access-information-policy-v2.md`
    - `CONTRACTS/03_API_KONTRAKTY_OPENAPI.md`
    - `CONTRACTS/05_DATOVE_KONTRAKTY.md`
    - `CONTRACTS/06_SECURITY_AUTHZ_MODEL.md`
@@ -43,11 +44,18 @@ from the flat standard documents.
    - `runbook.md`
 5. STRATOS shared integration:
    - `29_STRATOS_SHARED_LIBRARIES.md`
+   - `ui/stratos-ui-adapter.md`
+   - `qa/stratos-shell-qa.md`
    - `integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
    - `integration/STRATOS_OKF_PROFILE.md`
    - `integration/STRATOS_IT_MANAGEMENT_PROFILE.md`
-6. Current implementation status:
+   - `integration/AKB_AIIP_APPLICATION_API.md`
+6. Intelligence Workbench:
+   - `intelligence/workbench.md`
+   - `evaluation/retrieval-quality-lab.md`
+7. Current implementation status:
    - `maintenance/project-status.md`
+   - `qa/access-information-policy-v2-impact-report.md`
 
 ## Active Documentation Homes
 
@@ -71,6 +79,8 @@ from the flat standard documents.
   - `CONTRACTS/`
   - `ui/`
   - `integration/README.md`
+- Intelligence and analytical workbench:
+  - `intelligence/`
 - QA and evaluation:
   - `qa/`
   - `evaluation/`

@@ -19,9 +19,9 @@ technical compatibility prefixes unless an explicit migration changes them.
 
 | Component | Responsibility |
 | --- | --- |
-| `apps/web` | Next.js web frontend, AKB web/API bridge, auth callback handling, document viewer, employee chat portal, and admin workspace. |
-| `services/registry-api` | Document registry, versions, assignments, authorization checks, external document references, workflow tasks, audit events. |
-| `services/ingestion-service` | Ingestion jobs, source parsing, OCR fallback, logical chunking, embeddings, Qdrant indexing, ingestion reports. |
+| `apps/web` | Next.js web frontend, AKB web/API bridge, auth callback handling, document viewer, employee chat portal, Intelligence Workbench, and admin workspace. |
+| `services/registry-api` | Document registry, versions, assignments, authorization checks, external document references, workflow tasks, audit events, permission-scoped document readiness aggregates, and Intelligence analyst cases with saved queries/evidence references. |
+| `services/ingestion-service` | Ingestion jobs, source parsing, OCR fallback, logical chunking, embeddings, Qdrant/OpenSearch indexing, ingestion reports. |
 | `services/rag-retrieval-service` | Permission-aware retrieval, answer composition, source context, citation opening, employee chat APIs. |
 | `services/llm-gateway-service` | LLM provider routing, model management, chat completions, embeddings. |
 | `services/evaluation-service` | RAG quality evaluations, datasets, runs, reports. |
@@ -35,6 +35,9 @@ technical compatibility prefixes unless an explicit migration changes them.
   ingestion artifacts. Local and production-like profiles map `s3://` URIs to
   configured storage roots; production targets SeaweedFS/S3-compatible storage.
 - Qdrant stores indexed chunk vectors and citation payload metadata.
+- OpenSearch stores the same chunks as a BM25/fulltext index for exact titles,
+  document numbers, sections, abbreviations, Czech lexical recall, Intelligence
+  entity facets, analyst search and evidence-backed relationship exploration.
 - Keycloak/STRATOS OIDC is the enterprise identity provider.
 
 ## Core Data Flow
@@ -44,8 +47,11 @@ browser -> AKB web bridge -> Registry API
 browser -> AKB web bridge -> upload session -> AKB object storage
 Registry document/version -> Ingestion Service -> parser/OCR/chunker
 Ingestion Service -> LLM Gateway embeddings -> Qdrant
-question -> RAG Retrieval Service -> Registry authz -> Qdrant -> LLM Gateway
+Ingestion Service -> OpenSearch fulltext index
+question -> RAG Retrieval Service -> Registry authz -> Qdrant/OpenSearch -> LLM Gateway
 citation/source open -> AKB web bridge/viewer -> signed AKB source endpoint
+intelligence workbench -> AKB web route -> Registry metadata/readiness/case APIs
+intelligence workbench -> AKB web bridge -> Ingestion OpenSearch intelligence endpoints
 ```
 
 ## Portable Knowledge Bundles
@@ -61,7 +67,17 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
 ## Service Boundaries
 
 - Registry does not parse documents, create embeddings, call LLMs, or write to
-  Qdrant.
+  Qdrant/OpenSearch.
+- Registry may derive corpus readiness reports from metadata, assignments,
+  policies, versions, source hashes, external ingestion status, and quality
+  flags. These reports are governance evidence; they do not inspect document
+  bodies.
+- Intelligence Workbench is an analytical surface in `apps/web` over
+  permission-scoped Registry document lists, metadata summaries, readiness
+  aggregates, analyst-owned cases, saved queries, evidence references, and
+  Ingestion-owned OpenSearch Intelligence endpoints. It does not mutate
+  controlled document records, versions or source files, and it does not
+  replace RAG/citation workflows.
 - Ingestion does not publish document versions or answer RAG queries.
 - RAG does not mutate document registry state except audit events.
 - LLM Gateway does not own retrieval, authorization, document storage, or UI.
@@ -72,8 +88,11 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
 ## Authentication And Authorization
 
 Local development can use mock/dev auth. Production and STRATOS integration use
-OIDC/service tokens. Authorization is enforced by AKB backend services, not by
-STRATOS host applications or browser-only checks.
+OIDC/service tokens for verified identity. User authorization is loaded from
+the current STRATOS access projection and delegated service operations use the
+central STRATOS policy decision endpoint. Authorization is enforced by AKB
+backend services, not by static token claims, client headers, STRATOS host
+applications, or browser-only checks.
 
 Detailed security model: `docs/security.md` and
 `docs/security/enterprise-security-model.md`.

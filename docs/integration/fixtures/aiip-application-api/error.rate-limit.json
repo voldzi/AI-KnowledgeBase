@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "AIIP request rate limit exceeded.",
+    "details": {},
+    "trace_id": "corr-contract-error-0002",
+    "request_id": "req-contract-error-0002",
+    "correlation_id": "corr-contract-error-0002",
+    "audit_event_id": null
+  }
+}

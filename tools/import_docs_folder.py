@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
 import fnmatch
 import hashlib
@@ -31,6 +32,8 @@ DEFAULT_REGISTRY_URL = "http://localhost:8001"
 DEFAULT_INGESTION_URL = "http://localhost:8090"
 DEFAULT_QDRANT_URL = "http://localhost:6333"
 DEFAULT_QDRANT_COLLECTION = "akl_document_chunks"
+DEFAULT_OPENSEARCH_URL = "http://localhost:9200"
+DEFAULT_OPENSEARCH_INDEX = "akl_document_chunks"
 DEFAULT_INGESTION_CONTAINER = "akl-ingestion-service-1"
 DEFAULT_SUBJECT_ID = "docs-import"
 DEFAULT_ROLES = "admin,document_manager,reader"
@@ -54,6 +57,9 @@ class ImportOptions:
     ingestion_url: str
     qdrant_url: str
     qdrant_collection: str
+    opensearch_url: str
+    opensearch_index: str
+    require_opensearch: bool
     ingestion_container: str
     subject_id: str
     roles: str
@@ -87,6 +93,20 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
         default=os.getenv("AKL_QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION),
     )
     parser.add_argument(
+        "--opensearch-url",
+        default=os.getenv("AKL_IMPORT_OPENSEARCH_URL", DEFAULT_OPENSEARCH_URL),
+    )
+    parser.add_argument(
+        "--opensearch-index",
+        default=os.getenv("AKL_IMPORT_OPENSEARCH_INDEX", os.getenv("AKL_OPENSEARCH_INDEX", DEFAULT_OPENSEARCH_INDEX)),
+    )
+    parser.add_argument(
+        "--require-opensearch",
+        action="store_true",
+        default=parse_bool_env(os.getenv("AKL_IMPORT_REQUIRE_OPENSEARCH", "false")),
+        help="Fail when OpenSearch does not contain all chunks for imported/reindexed documents.",
+    )
+    parser.add_argument(
         "--ingestion-container",
         default=os.getenv("AKL_IMPORT_INGESTION_CONTAINER", os.getenv("AKL_SMOKE_INGESTION_CONTAINER", DEFAULT_INGESTION_CONTAINER)),
     )
@@ -116,6 +136,9 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
         ingestion_url=args.ingestion_url.rstrip("/"),
         qdrant_url=args.qdrant_url.rstrip("/"),
         qdrant_collection=args.qdrant_collection,
+        opensearch_url=args.opensearch_url.rstrip("/"),
+        opensearch_index=args.opensearch_index,
+        require_opensearch=args.require_opensearch,
         ingestion_container=args.ingestion_container,
         subject_id=args.subject_id,
         roles=args.roles,
@@ -187,11 +210,18 @@ def run_import(options: ImportOptions) -> dict[str, Any]:
         "ingestion_url": options.ingestion_url,
         "qdrant_url": options.qdrant_url,
         "qdrant_collection": options.qdrant_collection,
+        "opensearch_url": options.opensearch_url,
+        "opensearch_index": options.opensearch_index,
+        "require_opensearch": options.require_opensearch,
         "totals": report_totals(files, report_items, errors),
         "documents": report_items,
         "errors": errors,
     }
     return report
+
+
+def parse_bool_env(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
@@ -329,6 +359,7 @@ def base_report_item(
         "ingestion_job_id": None,
         "chunks_created": 0,
         "qdrant_points": 0,
+        "opensearch_documents": None,
         "error": None,
     }
 
@@ -430,8 +461,10 @@ def documents_by_source_path(options: ImportOptions) -> dict[str, dict[str, Any]
 def handle_skip_existing(existing: dict[str, Any], options: ImportOptions) -> dict[str, Any]:
     latest_version = latest_document_version(existing["document_id"], options)
     qdrant_points = 0
+    opensearch_documents = None
     if latest_version:
         qdrant_points = qdrant_count(latest_version["document_version_id"], options)
+        opensearch_documents = opensearch_count(latest_version["document_version_id"], options)
     return {
         "action": "skipped_existing",
         "status": "skipped",
@@ -439,6 +472,7 @@ def handle_skip_existing(existing: dict[str, Any], options: ImportOptions) -> di
         "document_version_id": latest_version.get("document_version_id") if latest_version else None,
         "version_label": latest_version.get("version_label") if latest_version else None,
         "qdrant_points": qdrant_points,
+        "opensearch_documents": opensearch_documents,
     }
 
 
@@ -462,7 +496,14 @@ def import_existing_version(path: Path, rel_path: str, existing: dict[str, Any],
     ingestion = run_ingestion(existing["document_id"], latest_version["document_version_id"], latest_version["source_file_uri"], options)
     report = wait_for_ingestion_report(ingestion["job_id"], options)
     qdrant_points = qdrant_count(latest_version["document_version_id"], options)
+    opensearch_documents = opensearch_count(latest_version["document_version_id"], options)
     require_qdrant_points(latest_version["document_version_id"], report["chunks_created"], qdrant_points)
+    require_opensearch_documents(
+        latest_version["document_version_id"],
+        report["chunks_created"],
+        opensearch_documents,
+        options,
+    )
     return {
         "action": "reindexed_existing_version",
         "status": "imported",
@@ -472,6 +513,7 @@ def import_existing_version(path: Path, rel_path: str, existing: dict[str, Any],
         "ingestion_job_id": ingestion["job_id"],
         "chunks_created": report["chunks_created"],
         "qdrant_points": qdrant_points,
+        "opensearch_documents": opensearch_documents,
     }
 
 
@@ -490,7 +532,14 @@ def import_new_version(
     ingestion = run_ingestion(existing["document_id"], published["document_version_id"], source_uri, options)
     report = wait_for_ingestion_report(ingestion["job_id"], options)
     qdrant_points = qdrant_count(published["document_version_id"], options)
+    opensearch_documents = opensearch_count(published["document_version_id"], options)
     require_qdrant_points(published["document_version_id"], report["chunks_created"], qdrant_points)
+    require_opensearch_documents(
+        published["document_version_id"],
+        report["chunks_created"],
+        opensearch_documents,
+        options,
+    )
     return {
         "action": "created_new_version",
         "status": "imported",
@@ -500,6 +549,7 @@ def import_new_version(
         "ingestion_job_id": ingestion["job_id"],
         "chunks_created": report["chunks_created"],
         "qdrant_points": qdrant_points,
+        "opensearch_documents": opensearch_documents,
     }
 
 
@@ -512,7 +562,14 @@ def import_new_document(path: Path, rel_path: str, options: ImportOptions, metad
     ingestion = run_ingestion(document["document_id"], published["document_version_id"], source_uri, options)
     report = wait_for_ingestion_report(ingestion["job_id"], options)
     qdrant_points = qdrant_count(published["document_version_id"], options)
+    opensearch_documents = opensearch_count(published["document_version_id"], options)
     require_qdrant_points(published["document_version_id"], report["chunks_created"], qdrant_points)
+    require_opensearch_documents(
+        published["document_version_id"],
+        report["chunks_created"],
+        opensearch_documents,
+        options,
+    )
     return {
         "action": "created_document",
         "status": "imported",
@@ -522,6 +579,7 @@ def import_new_document(path: Path, rel_path: str, options: ImportOptions, metad
         "ingestion_job_id": ingestion["job_id"],
         "chunks_created": report["chunks_created"],
         "qdrant_points": qdrant_points,
+        "opensearch_documents": opensearch_documents,
     }
 
 
@@ -710,11 +768,46 @@ def qdrant_count(document_version_id: str, options: ImportOptions) -> int:
     return int(body.get("result", {}).get("count", 0))
 
 
+def opensearch_count(document_version_id: str, options: ImportOptions) -> int | None:
+    if not options.opensearch_url:
+        return None
+    try:
+        body = request_json(
+            "POST",
+            f"{options.opensearch_url}/{options.opensearch_index}/_count",
+            {"query": {"term": {"document_version_id": document_version_id}}},
+            options=options,
+            headers=opensearch_headers(),
+        )
+    except Exception:
+        if options.require_opensearch:
+            raise
+        return None
+    return int(body.get("count", 0))
+
+
 def require_qdrant_points(document_version_id: str, chunks_created: int, qdrant_points: int) -> None:
     if qdrant_points < chunks_created:
         raise RuntimeError(
             f"Qdrant points for {document_version_id} are lower than chunks_created: "
             f"{qdrant_points} < {chunks_created}"
+        )
+
+
+def require_opensearch_documents(
+    document_version_id: str,
+    chunks_created: int,
+    opensearch_documents: int | None,
+    options: ImportOptions,
+) -> None:
+    if not options.require_opensearch:
+        return
+    if opensearch_documents is None:
+        raise RuntimeError(f"OpenSearch count was not available for {document_version_id}")
+    if opensearch_documents < chunks_created:
+        raise RuntimeError(
+            f"OpenSearch documents for {document_version_id} are lower than chunks_created: "
+            f"{opensearch_documents} < {chunks_created}"
         )
 
 
@@ -850,6 +943,18 @@ def qdrant_headers() -> dict[str, str]:
     return {"api-key": api_key} if api_key else {}
 
 
+def opensearch_headers() -> dict[str, str]:
+    api_key = os.getenv("AKL_OPENSEARCH_API_KEY")
+    if api_key:
+        return {"Authorization": f"ApiKey {api_key}"}
+    username = os.getenv("AKL_OPENSEARCH_USERNAME")
+    password = os.getenv("AKL_OPENSEARCH_PASSWORD")
+    if username and password:
+        token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+        return {"Authorization": f"Basic {token}"}
+    return {}
+
+
 def report_totals(files: list[Path], items: list[dict[str, Any]], errors: list[dict[str, str]]) -> dict[str, int]:
     return {
         "found_documents": len(files),
@@ -858,6 +963,7 @@ def report_totals(files: list[Path], items: list[dict[str, Any]], errors: list[d
         "failed_documents": len(errors),
         "chunks_created": sum(int(item.get("chunks_created") or 0) for item in items),
         "qdrant_points": sum(int(item.get("qdrant_points") or 0) for item in items),
+        "opensearch_documents": sum(int(item.get("opensearch_documents") or 0) for item in items),
     }
 
 
@@ -884,11 +990,12 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         f"- failed_documents: `{totals['failed_documents']}`",
         f"- chunks_created: `{totals['chunks_created']}`",
         f"- qdrant_points: `{totals['qdrant_points']}`",
+        f"- opensearch_documents: `{totals['opensearch_documents']}`",
         "",
         "## Documents",
         "",
-        "| Source | Action | Status | Chunks | Qdrant points | Error |",
-        "|---|---:|---:|---:|---:|---|",
+        "| Source | Action | Status | Chunks | Qdrant points | OpenSearch docs | Error |",
+        "|---|---:|---:|---:|---:|---:|---|",
     ]
     for item in report["documents"]:
         error = item.get("error") or {}
@@ -900,6 +1007,7 @@ def render_markdown_report(report: dict[str, Any]) -> str:
             f"{item.get('status') or ''} | "
             f"{item.get('chunks_created') or 0} | "
             f"{item.get('qdrant_points') or 0} | "
+            f"{item.get('opensearch_documents') if item.get('opensearch_documents') is not None else ''} | "
             f"{message} |"
         )
     if report["errors"]:
@@ -919,6 +1027,7 @@ def print_summary(report: dict[str, Any], report_path: Path) -> None:
     print(f"failed_documents={totals['failed_documents']}")
     print(f"chunks_created={totals['chunks_created']}")
     print(f"qdrant_points={totals['qdrant_points']}")
+    print(f"opensearch_documents={totals['opensearch_documents']}")
     print(f"report={report_path}")
 
 

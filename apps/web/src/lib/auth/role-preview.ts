@@ -49,6 +49,12 @@ export const ROLE_PREVIEW_PROFILES: RolePreviewProfile[] = [
     roles: ["auditor", "reader"]
   },
   {
+    id: "analyst",
+    label: "Analytik",
+    description: "Pracuje s inteligentním hledáním, entitami, vazbami a analytickými spisy.",
+    roles: ["analyst", "reader"]
+  },
+  {
     id: "manager",
     label: "Správce dokumentů",
     description: "Zakládá dokumenty, nahrává verze a řeší provozní workflow.",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -26,12 +27,15 @@ from app.schemas import (
 from providers.base import LLMProvider
 from providers.http_utils import outgoing_headers, provider_error, request_json_with_retry
 
+logger = logging.getLogger(__name__)
+
 
 class OllamaProvider(LLMProvider):
     name = "ollama"
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._active_base_url: str | None = None
 
     async def list_models(self) -> list[ModelInfo]:
         models, _ = await self._fetch_model_items(allow_empty=False)
@@ -125,14 +129,15 @@ class OllamaProvider(LLMProvider):
         return [item for item in models if isinstance(item, dict)], active_base_url
 
     async def chat_completion(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
-        active_base_url = await self._resolve_active_base_url()
+        active_base_url, effective_model = await self._resolve_chat_route(request.model)
+        effective_request = request.model_copy(update={"model": effective_model})
         data = await request_json_with_retry(
             provider=self.name,
             settings=self.settings,
             method="POST",
             url=f"{active_base_url}/api/chat",
             headers=outgoing_headers(self.settings),
-            json_body=_chat_payload(request, self.settings, stream=False),
+            json_body=_chat_payload(effective_request, self.settings, stream=False),
         )
 
         message = data.get("message", {})
@@ -147,7 +152,7 @@ class OllamaProvider(LLMProvider):
                 "EMPTY_CONTENT_THINKING_ONLY",
                 "Ollama returned thinking output but empty content. Disable thinking with think=false or increase max_tokens.",
                 status_code=502,
-                details={"provider": self.name, "model": request.model, "finish_reason": finish_reason},
+                details={"provider": self.name, "model": effective_model, "finish_reason": finish_reason},
             )
 
         prompt_tokens = int(data.get("prompt_eval_count") or 0)
@@ -155,7 +160,7 @@ class OllamaProvider(LLMProvider):
 
         return ChatCompletionResponse(
             id=f"cmpl_{uuid.uuid4().hex}",
-            model=request.model,
+            model=effective_model,
             content=content,
             finish_reason=finish_reason,
             usage=Usage(
@@ -171,20 +176,21 @@ class OllamaProvider(LLMProvider):
         request: ChatCompletionRequest,
     ) -> AsyncIterator[ChatCompletionChunk]:
         completion_id = f"cmpl_{uuid.uuid4().hex}"
-        stream_url = await self._resolve_stream_url("/api/chat")
+        active_base_url, effective_model = await self._resolve_chat_route(request.model)
+        effective_request = request.model_copy(update={"model": effective_model})
         async for item in _stream_json_lines(
             provider=self.name,
             settings=self.settings,
-            url=stream_url,
+            url=f"{active_base_url}/api/chat",
             headers=outgoing_headers(self.settings),
-            json_body=_chat_payload(request, self.settings, stream=True),
+            json_body=_chat_payload(effective_request, self.settings, stream=True),
         ):
             message = item.get("message", {})
             delta = message.get("content", "") if isinstance(message, dict) else ""
             finish_reason = str(item.get("done_reason")) if item.get("done") else None
             yield ChatCompletionChunk(
                 id=completion_id,
-                model=request.model,
+                model=effective_model,
                 delta=str(delta),
                 finish_reason=finish_reason,
                 provider="ollama",
@@ -235,7 +241,7 @@ class OllamaProvider(LLMProvider):
         retry_attempts: int | None = None,
     ) -> tuple[dict[str, Any], str]:
         last_error: GatewayError | None = None
-        for base_url in self.settings.ollama_base_urls:
+        for base_url in self._candidate_base_urls():
             try:
                 data = await request_json_with_retry(
                     provider=self.name,
@@ -247,8 +253,11 @@ class OllamaProvider(LLMProvider):
                     timeout_seconds=timeout_seconds,
                     retry_attempts=retry_attempts,
                 )
+                self._active_base_url = base_url
                 return data, base_url
             except GatewayError as exc:
+                if self._active_base_url == base_url:
+                    self._active_base_url = None
                 last_error = exc
                 continue
 
@@ -257,6 +266,15 @@ class OllamaProvider(LLMProvider):
             details["candidate_count"] = len(self.settings.ollama_base_urls)
             raise GatewayError(last_error.code, last_error.message, last_error.status_code, details)
         raise provider_error(self.name, "Ollama provider has no configured endpoints")
+
+    def _candidate_base_urls(self) -> tuple[str, ...]:
+        active_base_url = self._active_base_url
+        if active_base_url not in self.settings.ollama_base_urls:
+            return self.settings.ollama_base_urls
+        return (
+            active_base_url,
+            *(base_url for base_url in self.settings.ollama_base_urls if base_url != active_base_url),
+        )
 
     async def _post_with_endpoint_fallback(
         self,
@@ -294,9 +312,68 @@ class OllamaProvider(LLMProvider):
         )
         return active_base_url
 
-    async def _resolve_stream_url(self, path: str) -> str:
-        active_base_url = await self._resolve_active_base_url()
-        return f"{active_base_url}{path}"
+    async def _resolve_chat_route(self, requested_model: str) -> tuple[str, str]:
+        fallback_models = self.settings.chat_model_fallbacks.get(requested_model, ())
+        fallback_routes: dict[str, str] = {}
+        reachable_endpoint_count = 0
+        last_error: GatewayError | None = None
+        for base_url in self._candidate_base_urls():
+            try:
+                data = await request_json_with_retry(
+                    provider=self.name,
+                    settings=self.settings,
+                    method="GET",
+                    url=f"{base_url}/api/tags",
+                    headers=outgoing_headers(self.settings),
+                    timeout_seconds=self.settings.ollama_endpoint_timeout_seconds,
+                    retry_attempts=0,
+                )
+            except GatewayError as exc:
+                if self._active_base_url == base_url:
+                    self._active_base_url = None
+                last_error = exc
+                continue
+            models = data.get("models", [])
+            if not isinstance(models, list):
+                continue
+            reachable_endpoint_count += 1
+            available_models = {
+                str(item.get("name"))
+                for item in models
+                if isinstance(item, dict) and item.get("name")
+            }
+            if requested_model in available_models:
+                self._active_base_url = base_url
+                return base_url, requested_model
+            for fallback_model in fallback_models:
+                if fallback_model in available_models and fallback_model not in fallback_routes:
+                    fallback_routes[fallback_model] = base_url
+
+        for fallback_model in fallback_models:
+            base_url = fallback_routes.get(fallback_model)
+            if base_url is None:
+                continue
+            self._active_base_url = base_url
+            logger.warning(
+                "ollama_chat_model_fallback requested_model=%s effective_model=%s",
+                requested_model,
+                fallback_model,
+            )
+            return base_url, fallback_model
+
+        if last_error is not None and reachable_endpoint_count == 0:
+            raise last_error
+        raise GatewayError(
+            "OLLAMA_MODEL_UNAVAILABLE",
+            "The requested Ollama chat model and its configured fallbacks are unavailable.",
+            status_code=503,
+            details={
+                "provider": self.name,
+                "requested_model": requested_model,
+                "fallback_count": len(fallback_models),
+                "reachable_endpoint_count": reachable_endpoint_count,
+            },
+        )
 
 
 def _chat_payload(request: ChatCompletionRequest, settings: Settings, stream: bool) -> dict[str, Any]:

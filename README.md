@@ -29,8 +29,9 @@ AKL_OLLAMA_THINK=false
 AKL_LLM_DEFAULT_MAX_TOKENS=512
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
-AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
 AKL_RAG_RETRIEVER_MODE=qdrant
+AKL_RAG_FULLTEXT_MODE=opensearch
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_EMBEDDING_MODEL=bge-m3
@@ -155,7 +156,7 @@ RAG citations in Knowledge Chat are clickable. Opening a citation calls the assi
 
 ## Profiles
 
-The real local RAG profile uses `bge-m3` embeddings with Qdrant collection `akl_document_chunks`, vector size `1024`, and distance `Cosine`. Ingestion creates the collection if it is missing and fails clearly if an existing collection has a different vector size.
+The real local RAG profile uses `bge-m3` embeddings with Qdrant collection `akl_document_chunks`, vector size `1024`, and distance `Cosine`. Ingestion creates the collection if it is missing and fails clearly if an existing collection has a different vector size. It also indexes the same chunks into OpenSearch index `akl_document_chunks` for BM25/fulltext recall over exact titles, document numbers, sections, abbreviations, Czech inflections, and controlled-document synonym expansion.
 
 The mock/dev-test profile is documented in `docs/deployment/llm-profiles.md`. Mock embeddings are 8-dimensional by default and must not be used with the real `bge-m3` Qdrant collection.
 

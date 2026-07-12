@@ -42,6 +42,15 @@ class Document(Base, TimestampMixin):
     classification: Mapped[str] = mapped_column(
         String(32), nullable=False, default="internal", index=True
     )
+    organization_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="org_stratos", index=True
+    )
+    policy_binding_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    policy_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    policy_hash: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    policy_summary: Mapped[dict[str, object]] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
     owner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     gestor_unit: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     tags: Mapped[list[str]] = mapped_column(
@@ -93,6 +102,15 @@ class DocumentVersion(Base):
     )
     version_label: Mapped[str] = mapped_column(String(80), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft", index=True)
+    organization_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="org_stratos", index=True
+    )
+    policy_binding_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    policy_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    policy_hash: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    policy_summary: Mapped[dict[str, object]] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     source_file_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
@@ -448,6 +466,107 @@ class AssistantMessage(Base):
     conversation: Mapped[AssistantConversation] = relationship(back_populates="messages")
 
 
+class AnalystCase(Base, TimestampMixin):
+    __tablename__ = "analyst_cases"
+    __table_args__ = (
+        Index("ix_analyst_cases_owner_status", "owner_id", "status"),
+        Index("ix_analyst_cases_updated", "updated_at"),
+    )
+
+    case_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("case")
+    )
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open", index=True)
+    owner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    classification: Mapped[str] = mapped_column(String(32), nullable=False, default="internal", index=True)
+    tags: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(json_type()), nullable=False, default=list
+    )
+    case_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+
+    saved_queries: Mapped[list["AnalystSavedQuery"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="AnalystSavedQuery.created_at",
+    )
+    evidence_items: Mapped[list["AnalystEvidenceItem"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="AnalystEvidenceItem.created_at",
+    )
+
+
+class AnalystSavedQuery(Base):
+    __tablename__ = "analyst_saved_queries"
+    __table_args__ = (
+        Index("ix_analyst_saved_queries_case", "case_id", "created_at"),
+    )
+
+    saved_query_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("qry")
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("analyst_cases.case_id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    query_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="smart")
+    search_fields: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(json_type()), nullable=False, default=list
+    )
+    filters: Mapped[dict[str, object]] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    case: Mapped[AnalystCase] = relationship(back_populates="saved_queries")
+
+
+class AnalystEvidenceItem(Base):
+    __tablename__ = "analyst_evidence_items"
+    __table_args__ = (
+        Index("ix_analyst_evidence_case", "case_id", "created_at"),
+        Index("ix_analyst_evidence_document", "document_id", "document_version_id"),
+        Index("ix_analyst_evidence_chunk", "chunk_id"),
+    )
+
+    evidence_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("evd")
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("analyst_cases.case_id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    document_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    document_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    chunk_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    section_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    source_file_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    score: Mapped[float | None] = mapped_column(nullable=True)
+    snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entity_types: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(json_type()), nullable=False, default=list
+    )
+    entity_values: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(json_type()), nullable=False, default=list
+    )
+    evidence_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    case: Mapped[AnalystCase] = relationship(back_populates="evidence_items")
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     __table_args__ = (
@@ -468,6 +587,34 @@ class AuditEvent(Base):
         "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class IntegrationIdempotencyRecord(Base, TimestampMixin):
+    __tablename__ = "integration_idempotency_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id",
+            "operation",
+            "idempotency_key",
+            name="uq_integration_idempotency_identity",
+        ),
+        Index("ix_integration_idempotency_expires", "expires_at"),
+    )
+
+    record_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("idem")
+    )
+    client_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    operation: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="processing", index=True)
+    response_status: Mapped[int | None] = mapped_column(nullable=True)
+    response_body: Mapped[dict[str, object] | None] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=True
+    )
+    audit_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
 class WorkflowTask(Base, TimestampMixin):

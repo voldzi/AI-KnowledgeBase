@@ -57,7 +57,7 @@ services:
       PLATFORM_HOST: 0.0.0.0
       PLATFORM_PORT: 8080
       PLATFORM_READY_TIMEOUT_SECONDS: ${PLATFORM_READY_TIMEOUT_SECONDS:-3}
-      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,web=http://akl-web-1:3000${AKL_WEB_BASE_PATH:-/akb}/health}
+      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,opensearch=http://opensearch:9200,web=http://akl-web-1:3000${AKL_WEB_BASE_PATH:-/akb}/health}
     networks:
       - app_zone
       - management_zone
@@ -82,10 +82,14 @@ services:
       AKL_INGESTION_API_BASE_URL: http://ingestion-service:8090/api/v1
       AKL_RAG_API_BASE_URL: http://rag-retrieval-service:8080/api/v1
       AKL_GOVERNANCE_API_BASE_URL: http://governance-service:8080/api/v1
+      AKL_EVALUATION_API_BASE_URL: http://evaluation-service:8080/api/v1
       AKL_WEB_OIDC_ISSUER: ${AKL_WEB_OIDC_ISSUER:?AKL_WEB_OIDC_ISSUER must be set}
       AKL_WEB_OIDC_CLIENT_ID: ${AKL_WEB_OIDC_CLIENT_ID:-akl-web}
       AKL_WEB_OIDC_CLIENT_SECRET: ${AKL_WEB_OIDC_CLIENT_SECRET:-}
       AKL_WEB_OIDC_SCOPES: ${AKL_WEB_OIDC_SCOPES:-openid profile email}
+      AKL_WEB_STRATOS_AUTH_ME_URL: ${AKL_WEB_STRATOS_AUTH_ME_URL:?AKL_WEB_STRATOS_AUTH_ME_URL must be set}
+      AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS: ${AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS:-3000}
+      AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS: ${AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS:-0}
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}
@@ -105,8 +109,20 @@ services:
         condition: service_healthy
       governance-service:
         condition: service_started
+      evaluation-service:
+        condition: service_healthy
     networks:
       - app_zone
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://$${HOSTNAME}:3000${AKL_WEB_BASE_PATH:-/akb}/health >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging: *json-logging
 
   registry-api:
@@ -125,6 +141,12 @@ services:
       AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}
       AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
       AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:?AKL_OIDC_JWKS_URL must be set}
+      AKL_STRATOS_AUTH_ME_URL: ${AKL_STRATOS_AUTH_ME_URL:?AKL_STRATOS_AUTH_ME_URL must be set}
+      AKL_STRATOS_POLICY_BINDINGS_URL: ${AKL_STRATOS_POLICY_BINDINGS_URL:?AKL_STRATOS_POLICY_BINDINGS_URL must be set}
+      AKL_STRATOS_POLICY_DECISIONS_URL: ${AKL_STRATOS_POLICY_DECISIONS_URL:?AKL_STRATOS_POLICY_DECISIONS_URL must be set}
+      AKL_STRATOS_POLICY_SERVICE_TOKEN: ${AKL_STRATOS_POLICY_SERVICE_TOKEN:?AKL_STRATOS_POLICY_SERVICE_TOKEN must be set}
+      AKL_STRATOS_ACCESS_TIMEOUT_SECONDS: ${AKL_STRATOS_ACCESS_TIMEOUT_SECONDS:-3}
+      AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS: ${AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS:-0}
       AKL_KEYCLOAK_ADMIN_BASE_URL: ${AKL_KEYCLOAK_ADMIN_BASE_URL:-}
       AKL_KEYCLOAK_REALM: ${AKL_KEYCLOAK_REALM:-stratos}
       STRATOS_KEYCLOAK_DIRECTORY_CLIENT_ID: ${STRATOS_KEYCLOAK_DIRECTORY_CLIENT_ID:-}
@@ -147,6 +169,9 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_INGESTION_AUTH_MODE:-oidc}
+      AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:?AKL_OIDC_JWKS_URL must be set}
       AKL_SERVICE_ACCOUNT_SUBJECT: ${AKL_INGESTION_SERVICE_ACCOUNT_SUBJECT:-svc-ingestion}
       AKL_SERVICE_ACCOUNT_ROLES: ${AKL_INGESTION_SERVICE_ACCOUNT_ROLES:-service_ingestion,document_manager}
       AKL_INGESTION_REGISTRY_CLIENT_MODE: http
@@ -155,20 +180,28 @@ services:
       AKL_OBJECT_STORAGE_ROOT: /data/object-storage
       AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE: ${AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE:-document_text_v1}
       AKL_INGESTION_PDF_ENGINE: ${AKL_INGESTION_PDF_ENGINE:-auto}
+      AKL_INGESTION_OCR_PROVIDER: ${AKL_INGESTION_OCR_PROVIDER:-ocrmypdf}
+      AKL_INGESTION_OCR_LANGUAGE: ${AKL_INGESTION_OCR_LANGUAGE:-ces+eng}
+      AKL_INGESTION_OCRMYPDF_COMMAND: ${AKL_INGESTION_OCRMYPDF_COMMAND:-ocrmypdf}
+      AKL_INGESTION_OCR_TIMEOUT_SECONDS: ${AKL_INGESTION_OCR_TIMEOUT_SECONDS:-300}
+      AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR: ${AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR:-20}
       AKL_INGESTION_EMBEDDING_CLIENT_MODE: ${AKL_INGESTION_EMBEDDING_CLIENT_MODE:-http}
       AKL_LLM_GATEWAY_BASE_URL: http://llm-gateway-service:8080/api/v1
       AKL_LLM_GATEWAY_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:?AKL_LLM_GATEWAY_SERVICE_TOKEN must be set}
+      AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
       AKL_INGESTION_DEFAULT_EMBEDDING_MODEL: ${AKL_INGESTION_DEFAULT_EMBEDDING_MODEL:-bge-m3}
       AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS: ${AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS:-}
       AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP: ${AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP:-{}}
       AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP: ${AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP:-{}}
       AKL_INGESTION_EMBEDDING_BATCH_SIZE: ${AKL_INGESTION_EMBEDDING_BATCH_SIZE:-32}
       AKL_INGESTION_EMBEDDING_CONCURRENCY: ${AKL_INGESTION_EMBEDDING_CONCURRENCY:-1}
-      AKL_INGESTION_INDEXER_MODE: qdrant
+      AKL_INGESTION_INDEXER_MODE: ${AKL_INGESTION_INDEXER_MODE:-qdrant,opensearch}
       AKL_QDRANT_BASE_URL: http://qdrant:6333
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
       AKL_QDRANT_VECTOR_SIZE: ${AKL_QDRANT_VECTOR_SIZE:-1024}
       AKL_QDRANT_DISTANCE: ${AKL_QDRANT_DISTANCE:-Cosine}
+      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-http://opensearch:9200}
+      AKL_OPENSEARCH_INDEX: ${AKL_OPENSEARCH_INDEX:-akl_document_chunks}
       AKL_INGESTION_JOB_STORE_PATH: /data/ingestion-jobs
       AKL_INGESTION_PROCESS_JOBS_INLINE: ${AKL_INGESTION_PROCESS_JOBS_INLINE:-true}
     volumes:
@@ -178,6 +211,8 @@ services:
       registry-api:
         condition: service_healthy
       qdrant:
+        condition: service_started
+      opensearch:
         condition: service_started
       llm-gateway-service:
         condition: service_healthy
@@ -197,18 +232,28 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_RAG_AUTH_MODE:-oidc}
+      AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:?AKL_OIDC_JWKS_URL must be set}
       AKL_SERVICE_ACCOUNT_SUBJECT: ${AKL_RAG_SERVICE_ACCOUNT_SUBJECT:-svc-rag}
       AKL_SERVICE_ACCOUNT_ROLES: ${AKL_RAG_SERVICE_ACCOUNT_ROLES:-service_rag}
       AKL_RAG_DEPENDENCY_MODE: http
       AKL_RAG_REGISTRY_CLIENT_MODE: http
       AKL_RAG_RETRIEVER_MODE: qdrant
+      AKL_RAG_FULLTEXT_MODE: ${AKL_RAG_FULLTEXT_MODE:-opensearch}
       AKL_RAG_LLM_CLIENT_MODE: http
       AKL_RAG_AUTHZ_MODE: ${AKL_RAG_AUTHZ_MODE:-registry}
       AKL_REGISTRY_BASE_URL: http://registry-api:8000/api/v1
+      AKL_REGISTRY_SERVICE_TOKEN_URL: ${AKL_RAG_REGISTRY_TOKEN_URL:-https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token}
+      AKL_REGISTRY_SERVICE_CLIENT_ID: ${AKL_RAG_REGISTRY_CLIENT_ID:-akb-rag-service}
+      AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE: /run/secrets/akb-rag-service-client-secret
       AKL_QDRANT_BASE_URL: http://qdrant:6333
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
+      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-http://opensearch:9200}
+      AKL_OPENSEARCH_INDEX: ${AKL_OPENSEARCH_INDEX:-akl_document_chunks}
       AKL_LLM_GATEWAY_BASE_URL: http://llm-gateway-service:8080/api/v1
       AKL_LLM_GATEWAY_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:?AKL_LLM_GATEWAY_SERVICE_TOKEN must be set}
+      AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
       AKL_GOVERNANCE_BASE_URL: http://governance-service:8080/api/v1
       AKL_RAG_CHAT_MODEL: ${AKL_RAG_CHAT_MODEL:-gemma4:12b-mlx}
       AKL_RAG_HIGH_QUALITY_CHAT_MODEL: ${AKL_RAG_HIGH_QUALITY_CHAT_MODEL:-}
@@ -219,10 +264,14 @@ services:
       AKL_RAG_SOURCE_CONTEXT_WINDOW: ${AKL_RAG_SOURCE_CONTEXT_WINDOW:-1}
       AKL_RAG_REQUIRE_CITATIONS: ${AKL_RAG_REQUIRE_CITATIONS:-true}
       AKL_RAG_ENABLE_RERANKING: ${AKL_RAG_ENABLE_RERANKING:-true}
+    volumes:
+      - ${AKL_RAG_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/akb-rag-service.client-secret}:/run/secrets/akb-rag-service-client-secret:ro
     depends_on:
       registry-api:
         condition: service_healthy
       qdrant:
+        condition: service_started
+      opensearch:
         condition: service_started
       llm-gateway-service:
         condition: service_healthy
@@ -243,17 +292,21 @@ services:
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_LLM_AUTH_MODE:-bearer}
       AKL_SERVICE_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:?AKL_LLM_GATEWAY_SERVICE_TOKEN must be set}
+      AKL_LLM_REQUIRE_CALLER_IDENTITY: ${AKL_LLM_REQUIRE_CALLER_IDENTITY:-true}
+      AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
+      AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES: ${AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES:-service_ingestion,service_rag}
       AKL_LLM_DEFAULT_PROVIDER: ${AKL_LLM_DEFAULT_PROVIDER:-ollama}
-      AKL_LLM_ENABLED_PROVIDERS: ${AKL_LLM_ENABLED_PROVIDERS:-mock,ollama}
+      AKL_LLM_ENABLED_PROVIDERS: ${AKL_LLM_ENABLED_PROVIDERS:-ollama}
       AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama","mock-chat":"mock","mock-embedding":"mock"}}
       AKL_LLM_DEFAULT_CHAT_MODEL: ${AKL_LLM_DEFAULT_CHAT_MODEL:-gemma4:12b-mlx}
+      AKL_LLM_CHAT_MODEL_FALLBACKS: ${AKL_LLM_CHAT_MODEL_FALLBACKS:-{"gemma4:31b-mlx":["gemma4:12b-mlx"]}}
       AKL_LLM_DEFAULT_EMBEDDING_MODEL: ${AKL_LLM_DEFAULT_EMBEDDING_MODEL:-bge-m3}
       AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS: ${AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS:-}
       AKL_LLM_DEFAULT_MAX_TOKENS: ${AKL_LLM_DEFAULT_MAX_TOKENS:-512}
       AKL_LLM_ALLOW_MODEL_PULL: ${AKL_LLM_ALLOW_MODEL_PULL:-false}
       AKL_LLM_ALLOW_MODEL_DELETE: ${AKL_LLM_ALLOW_MODEL_DELETE:-false}
-      AKL_OLLAMA_BASE_URL: ${AKL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      AKL_OLLAMA_BASE_URLS: ${AKL_OLLAMA_BASE_URLS:-http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434}
+      AKL_OLLAMA_BASE_URL: ${AKL_OLLAMA_BASE_URL:-http://192.168.200.3:11434}
+      AKL_OLLAMA_BASE_URLS: ${AKL_OLLAMA_BASE_URLS:-http://192.168.200.3:11434,http://192.168.200.2:11434,http://192.168.1.176:11434,http://host.docker.internal:11434}
       AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS: ${AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS:-3}
       AKL_OLLAMA_THINK: ${AKL_OLLAMA_THINK:-false}
       AKL_OPENAI_COMPAT_BASE_URL: ${AKL_OPENAI_COMPAT_BASE_URL:-http://vllm:8000}
@@ -273,15 +326,30 @@ services:
       AKL_SERVICE_NAME: evaluation-service
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
-      AKL_AUTH_MODE: ${AKL_EVAL_AUTH_MODE:-bearer}
-      AKL_SERVICE_TOKEN: ${AKL_EVAL_SERVICE_TOKEN:?AKL_EVAL_SERVICE_TOKEN must be set}
+      AKL_AUTH_MODE: ${AKL_EVAL_AUTH_MODE:-oidc}
+      AKL_SERVICE_TOKEN: ${AKL_EVAL_SERVICE_TOKEN:-}
+      AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:?AKL_OIDC_JWKS_URL must be set}
+      AKL_STRATOS_AUTH_ME_URL: ${AKL_STRATOS_AUTH_ME_URL:?AKL_STRATOS_AUTH_ME_URL must be set}
+      AKL_STRATOS_ACCESS_TIMEOUT_SECONDS: ${AKL_STRATOS_ACCESS_TIMEOUT_SECONDS:-3}
       AKL_EVAL_DEPENDENCY_MODE: http
       AKL_EVAL_RAG_CLIENT_MODE: http
       AKL_EVAL_REGISTRY_CLIENT_MODE: http
       AKL_RAG_BASE_URL: http://rag-retrieval-service:8080/api/v1
       AKL_REGISTRY_BASE_URL: http://registry-api:8000/api/v1
+      AKL_EVAL_DATASETS_DIR: /data/evaluation-datasets
+      AKL_EVAL_SEED_DATASETS_DIR: /app/datasets
       AKL_EVAL_REPORTS_DIR: /data/evaluation-reports
+      AKL_EVAL_CONCURRENCY: ${AKL_EVAL_CONCURRENCY:-4}
+      AKL_EVAL_GATE_RETRIEVAL_RECALL_MIN: ${AKL_EVAL_GATE_RETRIEVAL_RECALL_MIN:-0.95}
+      AKL_EVAL_GATE_RETRIEVAL_NDCG_MIN: ${AKL_EVAL_GATE_RETRIEVAL_NDCG_MIN:-0.85}
+      AKL_EVAL_GATE_FALSE_ZERO_RESULT_RATE_MAX: ${AKL_EVAL_GATE_FALSE_ZERO_RESULT_RATE_MAX:-0.02}
+      AKL_EVAL_GATE_AUTHORIZATION_LEAK_RATE_MAX: ${AKL_EVAL_GATE_AUTHORIZATION_LEAK_RATE_MAX:-0}
+      AKL_EVAL_GATE_CITATION_TRACEABILITY_MIN: ${AKL_EVAL_GATE_CITATION_TRACEABILITY_MIN:-1}
+      AKL_EVAL_GATE_RETRIEVAL_LATENCY_P95_MS_MAX: ${AKL_EVAL_GATE_RETRIEVAL_LATENCY_P95_MS_MAX:-3000}
     volumes:
+      - evaluation-datasets:/data/evaluation-datasets
       - evaluation-reports:/data/evaluation-reports
     depends_on:
       registry-api:
@@ -328,6 +396,27 @@ services:
       - management_zone
     logging: *json-logging
 
+  opensearch:
+    image: ${OPENSEARCH_IMAGE:-opensearchproject/opensearch:2}
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/9200' >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
+    logging: *json-logging
+
 networks:
   public_zone:
     driver: bridge
@@ -361,5 +450,7 @@ volumes:
   caddy-data:
   caddy-config:
   qdrant-data:
+  opensearch-data:
   ingestion-jobs:
   evaluation-reports:
+  evaluation-datasets:

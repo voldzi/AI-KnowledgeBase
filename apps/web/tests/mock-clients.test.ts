@@ -51,6 +51,134 @@ describe("mock API clients", () => {
     assert.equal(job.status, "queued");
   });
 
+  it("returns document readiness reports in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    const report = await clients.registry.getDocumentReadinessReport(context, {
+      maxIssues: 3
+    });
+
+    assert.ok(report.total_visible_documents > 0);
+    assert.ok(report.readiness_score >= 0);
+    assert.ok(report.readiness_score <= 1);
+    assert.ok(report.issue_counts.length > 0);
+    assert.ok(report.issues.length <= 3);
+    assert.equal(report.warnings[0], "REGISTRY_DOCUMENT_READINESS_REPORT");
+  });
+
+  it("derives admin authorization hints from the effective mock role", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    const readerHints = await clients.registry.getAuthorizationHints({ ...context, roles: ["reader"] });
+    const adminHints = await clients.registry.getAuthorizationHints({ ...context, roles: ["admin"] });
+
+    assert.equal(readerHints.can_manage_admin, false);
+    assert.equal(adminHints.can_manage_admin, true);
+    assert.equal(adminHints.can_publish, true);
+  });
+
+  it("keeps admin role mappings stateful in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = { ...createMockContext(), roles: ["admin"] };
+
+    const created = await clients.registry.upsertRoleMapping(
+      { subject_type: "user", subject_id: "mock-user-1", role: "analyst", status: "active" },
+      context,
+    );
+    const active = await clients.registry.listRoleMappings(context);
+    const removed = await clients.registry.updateRoleMappingStatus(created.role_mapping_id, "removed", context);
+
+    assert.equal(created.display_name, "Jan Novák");
+    assert.equal(active.length, 1);
+    assert.equal(removed.subject_id, "mock-user-1");
+    assert.equal((await clients.registry.listRoleMappings(context)).length, 0);
+    assert.equal((await clients.registry.listRoleMappings(context, true)).length, 1);
+  });
+
+  it("returns ingestion entity facets in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    const report = await clients.ingestion.getEntityFacets(context);
+
+    assert.equal(report.status, "ready");
+    assert.ok(report.chunks_with_entities > 0);
+    assert.equal(report.entity_types[0]?.key, "document_number");
+    assert.equal(report.entity_groups[0]?.values[0]?.key, "RMO12/2024");
+  });
+
+  it("runs analyst search in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext();
+
+    const report = await clients.ingestion.analystSearch(
+      {
+        query: "title:RMO AND entity:RMO12/2024",
+        query_mode: "fielded",
+        search_fields: ["title", "entity"],
+        allowed_document_ids: ["doc_109"],
+        limit: 3
+      },
+      context
+    );
+
+    assert.equal(report.status, "ready");
+    assert.equal(report.query_mode, "fielded");
+    assert.equal(report.returned_hits, 1);
+    assert.equal(report.hits[0]?.document_id, "doc_109");
+  });
+
+  it("keeps analyst cases stateful in mock mode", async () => {
+    const clients = createApiClients({ env });
+    const context = createMockContext({ subjectId: "analyst_1", roles: ["reader"] });
+
+    const analystCase = await clients.registry.createAnalystCase(
+      {
+        title: "RMO evidence",
+        tags: ["rmo", "ai", "rmo"],
+        metadata: { source: "test" }
+      },
+      context
+    );
+    const savedQuery = await clients.registry.createAnalystSavedQuery(
+      analystCase.case_id,
+      {
+        title: "RMO fielded",
+        query_text: "title:RMO AND entity:RMO12/2024",
+        query_mode: "fielded",
+        search_fields: ["title", "entity"],
+        filters: { classification: "internal" }
+      },
+      context
+    );
+    const evidence = await clients.registry.createAnalystEvidence(
+      analystCase.case_id,
+      {
+        title: "RMO chunk",
+        document_id: "doc_109",
+        document_version_id: "ver_109_1",
+        document_title: "Směrnice RMO 12/2024 pro řízení AI",
+        chunk_id: "chunk_mock_rmo_1",
+        page_number: 3,
+        snippet: "RMO 12/2024",
+        entity_types: ["document_number"],
+        entity_values: ["RMO12/2024"]
+      },
+      context
+    );
+
+    const cases = await clients.registry.listAnalystCases(context);
+    const detail = await clients.registry.getAnalystCase(analystCase.case_id, context);
+
+    assert.equal(cases.length, 1);
+    assert.equal(savedQuery.query_mode, "fielded");
+    assert.equal(evidence.chunk_id, "chunk_mock_rmo_1");
+    assert.equal(detail.saved_queries.length, 1);
+    assert.equal(detail.evidence_items.length, 1);
+  });
+
   it("keeps profile settings stateful in mock mode", async () => {
     const clients = createApiClients({ env });
     const context = createMockContext({ subjectId: "user_settings", roles: ["reader"], groups: ["staff"] });

@@ -6,18 +6,22 @@ import { NextResponse } from "next/server";
 import {
   canUseAdminSurface,
   canUseEmployeeChat,
+  canUseIntelligence,
   canUseKnowledgeWorkspace,
   isEmployeeChatOnly
 } from "@/lib/auth/authorization";
 import type { ApiRequestContext } from "@/lib/types";
 
-type PageAccess = "employee_chat" | "knowledge_workspace" | "admin";
+type PageAccess = "employee_chat" | "knowledge_workspace" | "intelligence" | "admin";
 
 export function requirePageAccess(context: ApiRequestContext, access: PageAccess): void {
   if (access === "employee_chat" && canUseEmployeeChat(context)) {
     return;
   }
   if (access === "knowledge_workspace" && canUseKnowledgeWorkspace(context)) {
+    return;
+  }
+  if (access === "intelligence" && canUseIntelligence(context)) {
     return;
   }
   if (access === "admin" && canUseAdminSurface(context)) {
@@ -49,6 +53,9 @@ export function requireApiAccess(context: ApiRequestContext, access: PageAccess)
     return null;
   }
   if (access === "knowledge_workspace" && canUseKnowledgeWorkspace(context)) {
+    return null;
+  }
+  if (access === "intelligence" && canUseIntelligence(context)) {
     return null;
   }
   if (access === "admin" && canUseAdminSurface(context)) {

@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "request_id": "req-contract-0001",
+  "correlation_id": "corr-contract-0001",
+  "audit_event_id": "audit_contract_0001",
+  "status": "completed",
+  "result": {
+    "suggestions": [
+      {
+        "field": "normalized_title",
+        "proposed_value": "Automatizace kontroly uplnosti podkladu",
+        "confidence": 0.91,
+        "provenance": {
+          "source": "model_inference",
+          "input_fields": [
+            "title",
+            "summary"
+          ],
+          "prompt_template_version": "aiip-harmonize-v1"
+        }
+      }
+    ],
+    "review_required": true
+  },
+  "warnings": [],
+  "model": {
+    "requested_preference": "high_quality",
+    "requested_model": "gemma4:31b-mlx",
+    "actual_model": "gemma4:12b-mlx",
+    "fallback_applied": true,
+    "model_digest": null
+  },
+  "prompt_template_version": "aiip-harmonize-v1",
+  "retrieval_index_version": null,
+  "usage": {
+    "prompt_tokens": 120,
+    "completion_tokens": 48,
+    "total_tokens": 168
+  },
+  "latency_ms": 1420
+}

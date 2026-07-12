@@ -72,5 +72,14 @@ if [[ "${RESTORE_QDRANT_SNAPSHOTS:-false}" == "true" && -d "$BACKUP_SOURCE/qdran
   done
 fi
 
+if [[ -f "$BACKUP_SOURCE/evaluation/evaluation-data.tar.gz" ]]; then
+  echo "Restoring Evaluation Service datasets and reports"
+  compose stop evaluation-service
+  compose run --rm --no-deps -T evaluation-service sh -c \
+    'mkdir -p /data/evaluation-datasets /data/evaluation-reports && rm -rf /data/evaluation-datasets/* /data/evaluation-reports/* && tar -C /data -xzf -' \
+    < "$BACKUP_SOURCE/evaluation/evaluation-data.tar.gz"
+  compose up -d evaluation-service
+fi
+
 echo "Restore completed from $BACKUP_SOURCE"
 echo "Keycloak realm files are in $BACKUP_SOURCE/keycloak. Import them through Keycloak admin tooling for controlled environments."

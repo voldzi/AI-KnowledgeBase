@@ -7,7 +7,7 @@ import { withCorrelationDefaults } from "./correlation";
 export type AklFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface JsonRequestOptions {
-  service: "registry-api" | "ingestion-service" | "rag-retrieval-service" | "governance-service";
+  service: "registry-api" | "ingestion-service" | "rag-retrieval-service" | "governance-service" | "evaluation-service";
   operation: string;
   baseUrl: string;
   path: string;
@@ -38,12 +38,18 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
     "X-Correlation-ID": context.correlationId
   });
 
-  headers.set("X-AKL-Subject", context.subjectId);
-  if (context.roles?.length) {
-    headers.set("X-AKL-Roles", context.roles.join(","));
-  }
-  if (context.groups?.length) {
-    headers.set("X-AKL-Groups", context.groups.join(","));
+  if (context.authorizationSource === "mock") {
+    headers.set("X-AKL-Subject", context.subjectId);
+    if (context.roles?.length) headers.set("X-AKL-Roles", context.roles.join(","));
+    if (context.groups?.length) headers.set("X-AKL-Groups", context.groups.join(","));
+    if (context.capabilities?.length) headers.set("X-STRATOS-Capabilities", context.capabilities.join(","));
+    if (context.scopes?.length) headers.set("X-STRATOS-Scopes", context.scopes.join(","));
+    if (context.organizationId) headers.set("X-STRATOS-Organization-ID", context.organizationId);
+    if (context.identityActive !== undefined) headers.set("X-STRATOS-Identity-Active", String(context.identityActive));
+    if (context.membershipActive !== undefined) headers.set("X-STRATOS-Membership-Active", String(context.membershipActive));
+    if (context.applicationAccessActive !== undefined) {
+      headers.set("X-STRATOS-Application-Access-Active", String(context.applicationAccessActive));
+    }
   }
 
   if (context.accessToken) {

@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { Activity, Menu, X } from "lucide-react";
 import {
+  CommandCenterTrigger,
   GlobalTopbar,
-  TopbarStatusIndicator,
-  type GlobalTopbarApp,
+  GlobalTopbarBreadcrumb,
+  TopbarStatusGroup,
+  WorkspaceSidebarTriggerButton,
   type TopbarStatusIndicatorTone,
 } from "@voldzi/stratos-ui";
 
@@ -35,13 +37,6 @@ interface ProjectTopbarProps {
   projectName: string;
   user: AklTopbarUserProfile;
   workspaceName: string;
-  labels: {
-    applications: string;
-    appComingSoon: string;
-    logout: string;
-    settings: string;
-    userMenu: string;
-  };
 }
 
 type HealthState = {
@@ -49,13 +44,43 @@ type HealthState = {
   tone: TopbarStatusIndicatorTone;
 };
 
+const dependencyLabels: Record<AklLanguage, Record<string, string>> = {
+  cs: {
+    registry: "Registry",
+    ingestion: "ingestce",
+    rag: "AI odpovědi",
+    governance: "governance",
+  },
+  en: {
+    registry: "Registry",
+    ingestion: "ingestion",
+    rag: "AI answers",
+    governance: "governance",
+  },
+};
+
+function unavailableDependencies(
+  payload: unknown,
+  language: AklLanguage,
+): string[] {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const dependencies = (payload as { dependencies?: unknown }).dependencies;
+  if (!dependencies || typeof dependencies !== "object") {
+    return [];
+  }
+  return Object.entries(dependencies)
+    .filter(([, status]) => status !== "ready" && status !== "mock")
+    .map(([name]) => dependencyLabels[language][name] ?? name);
+}
+
 export function ProjectTopbar({
   apiModeLabel,
   authModeLabel,
   commandCenterLabel,
   commandCenterPlaceholder,
   healthLabel,
-  labels,
   language,
   mobileMenuOpen = false,
   onCommandCenterOpen,
@@ -75,27 +100,30 @@ export function ProjectTopbar({
     let active = true;
     const updateHealth = async () => {
       try {
-        const response = await fetch(withAppBasePath("/api/health"), {
+        const response = await fetch(withAppBasePath("/api/ready"), {
           credentials: "same-origin",
           cache: "no-store",
         });
         if (!active) {
           return;
         }
+        const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
+          const unavailable = unavailableDependencies(payload, language);
           setHealthState({
-            label: `${healthLabel}: HTTP ${response.status} · ${apiModeLabel} · ${authModeLabel}`,
-            tone: "danger",
+            label: unavailable.length > 0
+              ? `${healthLabel}: ${language === "cs" ? "omezeno" : "degraded"} (${unavailable.join(", ")}) · ${apiModeLabel} · ${authModeLabel}`
+              : `${healthLabel}: HTTP ${response.status} · ${apiModeLabel} · ${authModeLabel}`,
+            tone: unavailable.length > 0 ? "warning" : "danger",
           });
           return;
         }
-        const payload = await response.json().catch(() => ({}));
         const status =
           typeof payload.status === "string" ? payload.status : "ok";
         setHealthState({
-          label: `${healthLabel}: ${status} · ${apiModeLabel} · ${authModeLabel}`,
+          label: `${healthLabel}: ${status === "ready" ? language === "cs" ? "připraveno" : "ready" : status} · ${apiModeLabel} · ${authModeLabel}`,
           tone:
-            status === "ok"
+            status === "ready"
               ? apiModeLabel.toLowerCase().includes("mock")
                 ? "warning"
                 : "good"
@@ -104,7 +132,7 @@ export function ProjectTopbar({
       } catch {
         if (active) {
           setHealthState({
-            label: `${healthLabel}: nedostupné · ${apiModeLabel} · ${authModeLabel}`,
+            label: `${healthLabel}: ${language === "cs" ? "nedostupné" : "unavailable"} · ${apiModeLabel} · ${authModeLabel}`,
             tone: "danger",
           });
         }
@@ -116,58 +144,18 @@ export function ProjectTopbar({
       active = false;
       window.clearInterval(interval);
     };
-  }, [apiModeLabel, authModeLabel, healthLabel]);
-
-  const stratosBaseUrl =
-    process.env.NEXT_PUBLIC_STRATOS_HOME_URL ?? "https://stratos.zeleznalady.cz";
-  const stratosApps: GlobalTopbarApp[] = [
-    {
-      id: "stratos",
-      label: "STRATOS",
-      href: stratosBaseUrl,
-    },
-    {
-      id: "projectflow",
-      label: "ProjectFlow",
-      href:
-        process.env.NEXT_PUBLIC_PROJECTFLOW_URL ??
-        `${stratosBaseUrl.replace(/\/+$/, "")}/project`,
-    },
-    {
-      id: "archflow",
-      label: "ArchFlow",
-      href:
-        process.env.NEXT_PUBLIC_ARCHFLOW_URL ??
-        `${stratosBaseUrl.replace(/\/+$/, "")}/arch`,
-    },
-    {
-      id: "processforge",
-      label: "ProcessForge",
-      href:
-        process.env.NEXT_PUBLIC_PROCESSFORGE_URL ??
-        `${stratosBaseUrl.replace(/\/+$/, "")}/process`,
-    },
-    {
-      id: "aiip",
-      label: "AIIP",
-      href:
-        process.env.NEXT_PUBLIC_AIIP_PUBLIC_URL ??
-        process.env.NEXT_PUBLIC_AIIP_URL ??
-        `${stratosBaseUrl.replace(/\/+$/, "")}/aiip`,
-    },
-    {
-      id: "akb",
-      label: "AKB",
-      href:
-        process.env.NEXT_PUBLIC_AKB_PUBLIC_URL ??
-        `${stratosBaseUrl.replace(/\/+$/, "")}/akb`,
-      active: true,
-    },
-  ];
+  }, [apiModeLabel, authModeLabel, healthLabel, language]);
 
   return (
     <GlobalTopbar
-      apps={stratosApps}
+      currentAppId="akb"
+      appUrls={{
+        "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
+        projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
+        "security-preflight": process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_URL,
+        archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
+        aiip: process.env.NEXT_PUBLIC_AIIP_URL,
+      }}
       mobileBehavior={{
         context: "hide",
         actions: "overflow",
@@ -175,11 +163,9 @@ export function ProjectTopbar({
       }}
       mobileMenuTrigger={
         onMobileMenuOpen ? (
-          <button
-            type="button"
-            className="akl-mobile-menu-trigger"
-            aria-expanded={mobileMenuOpen}
-            aria-label={
+          <WorkspaceSidebarTriggerButton
+            expanded={mobileMenuOpen}
+            label={
               mobileMenuOpen
                 ? language === "cs"
                   ? "Zavřít navigaci"
@@ -189,20 +175,21 @@ export function ProjectTopbar({
                   : "Open navigation"
             }
             onClick={onMobileMenuOpen}
-          >
-            {mobileMenuOpen ? (
-              <X size={20} aria-hidden="true" />
-            ) : (
-              <Menu size={20} aria-hidden="true" />
-            )}
-          </button>
+            icon={
+              mobileMenuOpen ? (
+                <X size={20} aria-hidden="true" />
+              ) : (
+                <Menu size={20} aria-hidden="true" />
+              )
+            }
+          />
         ) : undefined
       }
       labels={{
-        applications: labels.applications,
-        userMenu: labels.userMenu,
-        settings: labels.settings,
-        logout: labels.logout,
+        applications: "STRATOS aplikace",
+        userMenu: "Uživatelské menu",
+        settings: "Nastavení",
+        logout: "Odhlásit",
       }}
       user={{
         name: user.name,
@@ -225,33 +212,35 @@ export function ProjectTopbar({
         ),
       }}
       context={
-        <div className="breadcrumb">
-          <span>{workspaceName}</span>
-          <span>/</span>
-          <strong>{projectName}</strong>
-        </div>
+        <GlobalTopbarBreadcrumb
+          ariaLabel={language === "cs" ? "Aktuální umístění" : "Current location"}
+          items={[
+            { id: "workspace", label: workspaceName },
+            { id: "project", label: projectName, current: true },
+          ]}
+        />
       }
       center={
-        <button
-          type="button"
-          className="search-box command-search-trigger"
+        <CommandCenterTrigger
+          label={commandCenterPlaceholder}
           aria-label={commandCenterLabel}
           onClick={onCommandCenterOpen}
-        >
-          <span>{commandCenterPlaceholder}</span>
-          <kbd>⌘K</kbd>
-        </button>
+        />
       }
       status={
-        <div className="akl-topbar-status">
-          <TopbarStatusIndicator
-            label={healthState.label}
-            tone={healthState.tone}
-            compact
-          >
-            <Activity size={15} aria-hidden="true" />
-          </TopbarStatusIndicator>
-        </div>
+        <TopbarStatusGroup
+          label={healthLabel}
+          ariaLive="polite"
+          items={[
+            {
+              id: "system-health",
+              label: healthState.label,
+              tone: healthState.tone,
+              compact: true,
+              icon: <Activity size={15} aria-hidden="true" />,
+            },
+          ]}
+        />
       }
       onLogout={onLogout}
       onSettings={onSettingsOpen}

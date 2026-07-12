@@ -73,6 +73,11 @@ class ParserRouter:
         if parse_error is not None:
             warnings.append((parse_error.code, parse_error.message))
         warnings.extend(ocr_result.warnings)
+        metadata = dict(ocr_result.metadata)
+        if result is not None:
+            metadata["ocr_fallback_from_parser"] = result.parser_name
+            metadata["ocr_fallback_native_text_chars"] = result.text_length
+            metadata["ocr_fallback_native_pages"] = result.pages_processed
         return ParserResult(
             parser_name=ocr_result.parser_name,
             blocks=ocr_result.blocks,
@@ -80,6 +85,7 @@ class ParserRouter:
             tables_detected=ocr_result.tables_detected,
             ocr_used=True,
             warnings=warnings,
+            metadata=metadata,
         )
 
     def _parser_for(self, source: SourceObject) -> DocumentParser:

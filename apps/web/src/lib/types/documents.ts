@@ -26,6 +26,26 @@ export type DocumentStatus =
   | "cancelled";
 
 export type Classification = "public" | "internal" | "restricted" | "confidential";
+export interface InformationPolicyBindingSummary {
+  schemaVersion: "stratos-information-policy-2";
+  policyBindingId: string;
+  policyVersion: "information-policy-2.0.0";
+  handlingClass: "PUBLIC" | "INTERNAL" | "RESTRICTED";
+  legalClassification: "NONE";
+  tlp?: "TLP:RED" | "TLP:AMBER+STRICT" | "TLP:AMBER" | "TLP:GREEN" | "TLP:CLEAR" | null;
+  pap?: "PAP:RED" | "PAP:AMBER" | "PAP:GREEN" | "PAP:CLEAR" | null;
+  contentCategories: string[];
+  audience: {
+    organizationId: "org_stratos";
+    scopeType: "organization" | "organization_unit" | "project" | "document" | "recipient_set" | "public";
+    scopeIds?: string[];
+    recipientSubjectIds?: string[];
+  };
+  obligations: string[];
+  originatorId?: string | null;
+  issuedAt?: string | null;
+  reviewAt?: string | null;
+}
 export type ExternalSourceSystem =
   | "STRATOS_BUDGET"
   | "STRATOS_PROJECTFLOW"
@@ -82,6 +102,11 @@ export interface Document {
   document_type: DocumentType;
   status: DocumentStatus;
   classification: Classification;
+  organization_id?: string;
+  policy_binding_id?: string | null;
+  policy_version?: string | null;
+  policy_hash?: string | null;
+  policy_summary?: InformationPolicyBindingSummary | Record<string, never>;
   owner_id: string;
   owner: string;
   gestor_unit: string | null;
@@ -137,12 +162,48 @@ export interface DocumentMetadataSummaryOptions {
 
 export interface DocumentListOptions extends DocumentMetadataSummaryOptions {}
 
+export type DocumentReadinessSeverity = "critical" | "warning" | "info";
+
+export interface DocumentReadinessIssue {
+  code: string;
+  severity: DocumentReadinessSeverity;
+  document_id: string;
+  title: string;
+  recommendation: string;
+  details: Record<string, unknown>;
+}
+
+export interface DocumentReadinessReport {
+  generated_at: string;
+  total_visible_documents: number;
+  ready_documents: number;
+  review_documents: number;
+  blocked_documents: number;
+  readiness_score: number;
+  issue_counts: DocumentMetadataSummaryBucket[];
+  by_severity: DocumentMetadataSummaryBucket[];
+  by_document_type: DocumentMetadataSummaryBucket[];
+  by_classification: DocumentMetadataSummaryBucket[];
+  by_status: DocumentMetadataSummaryBucket[];
+  issues: DocumentReadinessIssue[];
+  warnings: string[];
+}
+
+export interface DocumentReadinessReportOptions extends DocumentMetadataSummaryOptions {
+  maxIssues?: number;
+}
+
 export interface DocumentVersion {
   document_version_id: string;
   document_id: string;
   file_id?: string | null;
   version_label: string;
   status: DocumentStatus;
+  organization_id?: string;
+  policy_binding_id?: string | null;
+  policy_version?: string | null;
+  policy_hash?: string | null;
+  policy_summary?: InformationPolicyBindingSummary | Record<string, never>;
   valid_from: string | null;
   valid_to: string | null;
   source_file_uri: string;
@@ -190,6 +251,7 @@ export interface CreateDocumentRequest {
   owner_id: string;
   gestor_unit: string;
   classification: Classification;
+  information_policy?: InformationPolicyBindingSummary;
   tags: string[];
   metadata?: Record<string, unknown>;
   assignments?: DocumentAssignmentInput[];
@@ -207,6 +269,7 @@ export interface CreateVersionRequest {
   source_file_uri: string;
   file_hash?: string | null;
   change_summary: string;
+  information_policy?: InformationPolicyBindingSummary;
   file?: {
     filename?: string | null;
     mime_type?: string | null;

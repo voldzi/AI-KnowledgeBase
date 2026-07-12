@@ -13,6 +13,8 @@ Kazdy dataset obsahuje sadu testovacich pripadu. Jeden pripad definuje:
 - dotaz,
 - subject id a filtry stejne jako RAG kontrakt,
 - ocekavane relevantni chunky,
+- ocekavane relevantni dokumenty a graded relevance `0..3`,
+- zakazane chunky pro autorizacni negativni testy,
 - ocekavane citace,
 - ocekavane termy v odpovedi,
 - zakazane termy v odpovedi,
@@ -28,6 +30,9 @@ Retrieval se meri z odpovedi RAG endpointu `/api/v1/rag/retrieve`.
 - recall = relevantni vracene chunky / ocekavane relevantni chunky,
 - hit rate = 1, pokud je vracen alespon jeden ocekavany relevantni chunk,
 - MRR = reciprocal rank prvniho ocekavaneho relevantniho chunku.
+- nDCG = kvalita poradi s podporou graded relevance.
+- false-zero rate = podil odpoveditelnych dotazu bez jedineho vysledku.
+- authorization-leak rate = podil explicitne zakazanych chunku, ktere retrieval vratil.
 
 Pokud case nema ocekavane relevantni chunky, idealni retrieval je prazdny vysledek.
 
@@ -92,6 +97,18 @@ Service meri:
 - celkovou case latency.
 
 Latency zatim nevstupuje do overall score. Je reportovana samostatne.
+
+Service reportuje p50/p95 retrieval latenci a p95 celkove latence. Produkcni
+quality gate muze p95 vyhodnotit jako samostatnou podminku.
+
+## Dataset maturity a quality gate
+
+`draft` pripady jsou diagnosticke a nevstupuji do gate. `silver` pripady jsou
+deterministicky odvozene, `gold` pripady jsou potvrzene odbornym posouzenim.
+Gate vyhodnocuje recall, nDCG, false-zero rate, autorizacni unik, dohledatelnost
+citaci a retrieval p95. Kazdy beh se porovnava s poslednim plne zmerenym během
+stejneho datasetu; behy s chybami nebo bez vyhodnotitelneho gate se jako baseline
+nepouziji.
 
 ## Bezpecnost
 

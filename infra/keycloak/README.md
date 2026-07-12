@@ -25,6 +25,7 @@ The roles mirror `docs/CONTRACTS/06_SECURITY_AUTHZ_MODEL.md`:
 - `reader`
 - `auditor`
 - `service_ingestion`
+- `service_aiip`
 - `service_rag`
 - `service_llm_gateway`
 - `service_evaluation`
@@ -74,5 +75,24 @@ AKL_WEB_SESSION_SECRET=<long random value>
 ```
 
 `akl-web` and `stratos-akl-adapter` include an `akl-api` audience mapper because Registry API validates bearer tokens with `AKL_OIDC_AUDIENCE=akl-api`.
+
+Provision the confidential `aiip-service` client, its single application role,
+and the `akb-api` audience with:
+
+```bash
+./scripts/ensure_aiip_service_client.sh
+```
+
+The script writes the generated secret to
+`/srv/akl/env/aiip-service.client-secret` with mode `0600` and never prints the
+secret. The file is handed to AIIP through the production secret-management
+process; it is not consumed by AKB containers and must not be committed.
+
+The production RAG service additionally needs a separate short-lived-token
+identity for Registry calls. Provision it with the same helper using
+`AIIP_CLIENT_ID=akb-rag-service`, `AIIP_ROLE=service_rag`,
+`AIIP_AUDIENCE=akl-api`, and
+`AIIP_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret`. This secret is
+mounted read-only only into the RAG container.
 
 The target STRATOS public routing model is documented in `docs/deployment/stratos-public-routing-and-docker-home.md`. The `akl.zeleznalady.cz` standalone domain can remain as a temporary Keycloak redirect alias during migration, but the target public AKB URL is `/akb` under `https://stratos.zeleznalady.cz`.

@@ -181,7 +181,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       document_version_id: version.document_version_id,
       source_file_uri: version.source_file_uri,
       file_hash: version.file_hash,
-      viewer_mode: viewerMode
+      viewer_mode: viewerMode,
+      policy_binding_id: version.policy_binding_id,
+      policy_version: version.policy_version,
+      policy_hash: version.policy_hash
     });
 
     if (!sourceOpen.available || !sourceOpen.download_url) {

@@ -57,10 +57,29 @@ export async function GET(request: NextRequest) {
   try {
     const token = request.nextUrl.searchParams.get("token") ?? "";
     const payload = verifySourceDownloadToken(token);
-    const source = await readSourceObject(payload);
     const context = await getOptionalServerRequestContext(request);
-    if (context) {
-      const clients = getServerApiClients();
+    if (!context) {
+      return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "An active session is required." } }, { status: 401 });
+    }
+    const clients = getServerApiClients();
+    const [document, versions] = await Promise.all([
+      clients.registry.getDocument(payload.document_id, context),
+      clients.registry.listDocumentVersions(payload.document_id, context)
+    ]);
+    const version = versions.find((item) => item.document_version_id === payload.document_version_id);
+    if (!version || document.document_id !== version.document_id) {
+      return NextResponse.json({ error: { code: "STALE_SOURCE_TOKEN", message: "The source version is no longer available." } }, { status: 409 });
+    }
+    if (
+      version.policy_binding_id !== payload.policy_binding_id ||
+      version.policy_version !== payload.policy_version ||
+      version.policy_hash !== payload.policy_hash ||
+      (context.capabilities?.length && !payload.policy_hash)
+    ) {
+      return NextResponse.json({ error: { code: "STALE_POLICY_BINDING", message: "The source policy binding changed." } }, { status: 409 });
+    }
+    const source = await readSourceObject(payload);
+    {
       void clients.registry.createAuditEvent(
         {
           actor_id: context.subjectId,

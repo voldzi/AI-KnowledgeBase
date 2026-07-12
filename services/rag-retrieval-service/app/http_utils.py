@@ -20,6 +20,8 @@ def outgoing_headers(
     *,
     prefer_upstream_token: bool = False,
     bearer_token_override: str | None = None,
+    service_identity: bool = False,
+    audience: str | None = None,
 ) -> dict[str, str]:
     headers = {
         "Content-Type": "application/json",
@@ -27,8 +29,10 @@ def outgoing_headers(
         "X-Correlation-ID": get_correlation_id(),
         "X-Service-Name": settings.service_name,
     }
-    use_upstream_identity = prefer_upstream_token and settings.upstream_bearer_token
-    if use_upstream_identity:
+    use_service_identity = service_identity or (
+        prefer_upstream_token and bool(settings.upstream_bearer_token)
+    )
+    if use_service_identity:
         headers["X-AKL-Subject"] = settings.service_account_subject
         if settings.service_account_roles:
             headers["X-AKL-Roles"] = ",".join(settings.service_account_roles)
@@ -38,8 +42,10 @@ def outgoing_headers(
             headers["X-AKL-Roles"] = ",".join(auth_context.roles)
         if auth_context.groups:
             headers["X-AKL-Groups"] = ",".join(auth_context.groups)
+    if audience:
+        headers["X-AKL-Audience"] = audience
     bearer_token = bearer_token_override or (
-        None if use_upstream_identity else auth_context.bearer_token if auth_context else None
+        None if use_service_identity else auth_context.bearer_token if auth_context else None
     )
     if bearer_token:
         headers["Authorization"] = f"Bearer {bearer_token}"
@@ -58,6 +64,8 @@ async def request_json_with_retry(
     auth_context: AuthContext | None = None,
     prefer_upstream_token: bool = False,
     bearer_token_override: str | None = None,
+    service_identity: bool = False,
+    audience: str | None = None,
 ) -> dict[str, Any]:
     last_error: Exception | None = None
 
@@ -72,6 +80,8 @@ async def request_json_with_retry(
                         auth_context,
                         prefer_upstream_token=prefer_upstream_token,
                         bearer_token_override=bearer_token_override,
+                        service_identity=service_identity,
+                        audience=audience,
                     ),
                     json=json_body,
                 )

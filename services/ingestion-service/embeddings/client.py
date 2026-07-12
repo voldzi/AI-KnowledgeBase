@@ -42,6 +42,7 @@ class EmbeddingClient:
         *,
         embedding_profile: str,
         auth_context: AuthContext | None = None,
+        policy_metadata: dict[str, Any] | None = None,
     ) -> EmbeddingBatch:
         model = self._model_for_profile(embedding_profile)
         dimensions = self._dimensions_for_profile(embedding_profile)
@@ -71,6 +72,7 @@ class EmbeddingClient:
                     model=model,
                     dimensions=dimensions,
                     auth_context=auth_context,
+                    policy_metadata=policy_metadata,
                 )
 
         # gather preserves input order, so vectors stay aligned with texts
@@ -87,11 +89,12 @@ class EmbeddingClient:
         model: str,
         dimensions: int | None,
         auth_context: AuthContext | None = None,
+        policy_metadata: dict[str, Any] | None = None,
     ) -> list[list[float]]:
         payload = {
             "model": model,
             "input": texts,
-            "metadata": {"purpose": "document_ingestion"},
+            "metadata": {"purpose": "document_ingestion", **(policy_metadata or {})},
         }
         if dimensions is not None:
             payload["dimensions"] = dimensions
@@ -148,18 +151,18 @@ class EmbeddingClient:
             "X-Request-ID": get_request_id(),
             "X-Correlation-ID": get_correlation_id(),
             "X-Service-Name": self.settings.service_name,
+            "X-AKL-Subject": self.settings.service_account_subject,
+            "X-AKL-Audience": self.settings.llm_gateway_audience,
         }
+        if self.settings.service_account_roles:
+            headers["X-AKL-Roles"] = ",".join(self.settings.service_account_roles)
         if auth_context:
-            headers["X-AKL-Subject"] = auth_context.subject_id
-            if auth_context.roles:
-                headers["X-AKL-Roles"] = ",".join(auth_context.roles)
-            if auth_context.groups:
-                headers["X-AKL-Groups"] = ",".join(auth_context.groups)
-        bearer_token = auth_context.bearer_token if auth_context else None
+            headers["X-AKL-On-Behalf-Of"] = auth_context.subject_id
+        bearer_token = self.settings.llm_gateway_token or (
+            auth_context.bearer_token if auth_context else None
+        )
         if bearer_token:
             headers["Authorization"] = f"Bearer {bearer_token}"
-        elif self.settings.llm_gateway_token:
-            headers["Authorization"] = f"Bearer {self.settings.llm_gateway_token}"
         return headers
 
 

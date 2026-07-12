@@ -13,15 +13,16 @@ from app.errors import EvaluationError
 logger = logging.getLogger(__name__)
 
 
-def outgoing_headers(settings: Settings) -> dict[str, str]:
+def outgoing_headers(settings: Settings, *, bearer_token: str | None = None) -> dict[str, str]:
     headers = {
         "Content-Type": "application/json",
         "X-Request-ID": get_request_id(),
         "X-Correlation-ID": get_correlation_id(),
         "X-Service-Name": settings.service_name,
     }
-    if settings.upstream_bearer_token:
-        headers["Authorization"] = f"Bearer {settings.upstream_bearer_token}"
+    resolved_token = bearer_token or settings.upstream_bearer_token
+    if resolved_token:
+        headers["Authorization"] = f"Bearer {resolved_token}"
     return headers
 
 
@@ -32,6 +33,7 @@ async def request_json_with_retry(
     method: str,
     url: str,
     json_body: dict[str, Any] | None = None,
+    bearer_token: str | None = None,
 ) -> dict[str, Any]:
     last_error: Exception | None = None
 
@@ -41,7 +43,7 @@ async def request_json_with_retry(
                 response = await client.request(
                     method,
                     url,
-                    headers=outgoing_headers(settings),
+                    headers=outgoing_headers(settings, bearer_token=bearer_token),
                     json=json_body,
                 )
 

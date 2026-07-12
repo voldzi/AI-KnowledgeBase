@@ -103,6 +103,43 @@ def test_large_context_uses_high_quality_chat_model() -> None:
     assert llm.metadata[0]["chat_model_tier"] == "high_quality"
 
 
+def test_source_quality_metadata_is_promoted_to_answer_warnings() -> None:
+    llm = CaptureLLMClient()
+    settings = _settings()
+    composer = AnswerComposer(settings, llm)
+
+    answer = asyncio.run(
+        composer.compose(
+            query_id="query-ocr-quality",
+            query="Co rika sken?",
+            chunks=[
+                _chunk("chunk_ocr").model_copy(
+                    update={
+                        "metadata": {
+                            "ocr_used": True,
+                            "parser_engine": "ocrmypdf",
+                            "parser_quality": {
+                                "quality_tier": "review",
+                                "requires_review": True,
+                            },
+                        }
+                    }
+                )
+            ],
+            confidence="medium",
+            warnings=["BASE_WARNING"],
+            max_chunks=4,
+            answer_mode="normative_with_citations",
+        )
+    )
+
+    assert answer.warnings == [
+        "BASE_WARNING",
+        "SOURCE_OCR_USED",
+        "SOURCE_QUALITY_REVIEW_REQUIRED",
+    ]
+
+
 def _settings():
     return load_settings(
         {

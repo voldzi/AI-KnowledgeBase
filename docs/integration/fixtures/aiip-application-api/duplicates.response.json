@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "request_id": "req-contract-0002",
+  "correlation_id": "corr-contract-0002",
+  "audit_event_id": "audit_contract_0002",
+  "status": "completed",
+  "result": {
+    "candidates": [
+      {
+        "candidate_id": "idea_contract_existing_007",
+        "source_system": "STRATOS_AIIP",
+        "source_record_id": "idea_contract_existing_007",
+        "akb_document_id": "doc_contract_0007",
+        "score": 0.87,
+        "matched_areas": [
+          "title",
+          "keywords"
+        ],
+        "citations": [
+          {
+            "document_id": "doc_contract_0007",
+            "document_version_id": "ver_contract_0007",
+            "chunk_id": "chunk_contract_0007_01",
+            "document_title": "Kontrola uplnosti vstupnich podkladu",
+            "version_label": "sha256-example-existing",
+            "section_path": [
+              "Popis napadu"
+            ],
+            "page_number": 1
+          }
+        ]
+      }
+    ],
+    "limit": 10,
+    "offset": 0,
+    "returned": 1,
+    "has_more": false
+  },
+  "warnings": [],
+  "model": {
+    "requested_preference": "standard",
+    "requested_model": "bge-m3",
+    "actual_model": "bge-m3",
+    "fallback_applied": false,
+    "model_digest": null
+  },
+  "prompt_template_version": "aiip-duplicates-v1",
+  "retrieval_index_version": "qdrant:akl_chunks:bge-m3",
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "latency_ms": 185
+}

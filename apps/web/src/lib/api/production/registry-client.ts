@@ -3,12 +3,16 @@ import type {
   ApplyWorkflowTaskActionRequest,
   AuditEvent,
   AuditEventListOptions,
+  AnalystCase,
   AuthorizationHint,
   AssistantConversationDetail,
   AssistantConversationListResponse,
   AssistantConversationMessageAppendRequest,
   AssistantConversationPatchRequest,
   AssistantConversationShareReplaceRequest,
+  CreateAnalystCaseRequest,
+  CreateAnalystEvidenceRequest,
+  CreateAnalystSavedQueryRequest,
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
@@ -18,6 +22,8 @@ import type {
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
+  DocumentReadinessReport,
+  DocumentReadinessReportOptions,
   DocumentVersion,
   ProfileSettingsPutRequest,
   ProfileSettingsResponse,
@@ -25,6 +31,7 @@ import type {
   ReplaceDocumentAssignmentsRequest,
   RegistryWorkflowTask,
   RoleMapping,
+  UpdateAnalystCaseRequest,
   UpsertRoleMappingRequest,
   WorkflowTaskListOptions
 } from "@/lib/types";
@@ -78,6 +85,22 @@ export class ProductionRegistryClient implements RegistryApiClient {
     return this.get<DocumentMetadataSummary>(
       `/documents/metadata-summary${query ? `?${query}` : ""}`,
       "getDocumentMetadataSummary",
+      context
+    );
+  }
+
+  getDocumentReadinessReport(
+    context: ApiRequestContext,
+    options: DocumentReadinessReportOptions = {}
+  ): Promise<DocumentReadinessReport> {
+    const params = registryDocumentParams(options);
+    if (options.maxIssues !== undefined) {
+      params.set("max_issues", String(options.maxIssues));
+    }
+    const query = params.toString();
+    return this.get<DocumentReadinessReport>(
+      `/documents/readiness-report${query ? `?${query}` : ""}`,
+      "getDocumentReadinessReport",
       context
     );
   }
@@ -244,6 +267,67 @@ export class ProductionRegistryClient implements RegistryApiClient {
       `/workflow/tasks/${encodeURIComponent(taskId)}/actions`,
       request,
       "applyWorkflowTaskAction",
+      context
+    );
+  }
+
+  async listAnalystCases(context: ApiRequestContext, includeArchived = false): Promise<AnalystCase[]> {
+    const params = new URLSearchParams({ include_archived: String(includeArchived), limit: "50", offset: "0" });
+    const response = await this.get<ListEnvelope<AnalystCase>>(
+      `/intelligence/cases?${params}`,
+      "listAnalystCases",
+      context
+    );
+    return response.items;
+  }
+
+  createAnalystCase(request: CreateAnalystCaseRequest, context: ApiRequestContext): Promise<AnalystCase> {
+    return this.post<AnalystCase>("/intelligence/cases", request, "createAnalystCase", context);
+  }
+
+  getAnalystCase(caseId: string, context: ApiRequestContext): Promise<AnalystCase> {
+    return this.get<AnalystCase>(
+      `/intelligence/cases/${encodeURIComponent(caseId)}`,
+      "getAnalystCase",
+      context
+    );
+  }
+
+  updateAnalystCase(
+    caseId: string,
+    request: UpdateAnalystCaseRequest,
+    context: ApiRequestContext
+  ): Promise<AnalystCase> {
+    return this.patch<AnalystCase>(
+      `/intelligence/cases/${encodeURIComponent(caseId)}`,
+      request,
+      "updateAnalystCase",
+      context
+    );
+  }
+
+  createAnalystSavedQuery(
+    caseId: string,
+    request: CreateAnalystSavedQueryRequest,
+    context: ApiRequestContext
+  ): Promise<AnalystCase["saved_queries"][number]> {
+    return this.post<AnalystCase["saved_queries"][number]>(
+      `/intelligence/cases/${encodeURIComponent(caseId)}/saved-queries`,
+      request,
+      "createAnalystSavedQuery",
+      context
+    );
+  }
+
+  createAnalystEvidence(
+    caseId: string,
+    request: CreateAnalystEvidenceRequest,
+    context: ApiRequestContext
+  ): Promise<AnalystCase["evidence_items"][number]> {
+    return this.post<AnalystCase["evidence_items"][number]>(
+      `/intelligence/cases/${encodeURIComponent(caseId)}/evidence`,
+      request,
+      "createAnalystEvidence",
       context
     );
   }

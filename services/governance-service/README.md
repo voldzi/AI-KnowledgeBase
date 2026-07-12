@@ -29,6 +29,10 @@ GET  /health
 GET  /ready
 ```
 
+Readiness checks Registry and RAG concurrently and marks a dependency
+`not_ready` after a three-second bound instead of waiting for the full request
+timeout.
+
 OpenAPI kontrakt je v `openapi.yaml` a runtime OpenAPI je dostupne jako `/openapi.json`.
 
 ## Hlavni Toky

@@ -37,8 +37,9 @@ AKL_OLLAMA_BASE_URLS=http://ollama:11434
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS=
-AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
 AKL_RAG_RETRIEVER_MODE=qdrant
+AKL_RAG_FULLTEXT_MODE=opensearch
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
@@ -51,6 +52,7 @@ AKL_RAG_ENABLE_RERANKING=true
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine
+AKL_OPENSEARCH_INDEX=akl_document_chunks
 ```
 
 Start the compose stack with the Ollama profile:
@@ -134,11 +136,12 @@ one that responds. It does not scan LAN ranges.
 
 ```bash
 AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
-AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.3:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
 ```
 
-For local LAN stations such as `192.168.200.2` or `192.168.1.176`, Ollama must listen on an address
-reachable from the AKB host, not only on `127.0.0.1`.
+For local LAN stations such as `192.168.200.3`, `192.168.200.2` or
+`192.168.1.176`, Ollama must listen on an address reachable from the AKB host,
+not only on `127.0.0.1`.
 
 On macOS with a local Ollama service:
 

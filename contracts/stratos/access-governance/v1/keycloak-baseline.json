@@ -1,0 +1,10 @@
+{
+  "realm": "stratos",
+  "organizationId": "org_stratos",
+  "realmRoles": ["stratos_user", "stratos_admin"],
+  "deprecatedRealmRoles": ["stratos_superadmin", "stratos_auditor", "stratos_service", "document_manager", "budget_admin", "budget_manager", "budget_contract_manager", "budget_reader", "projectflow_admin", "projectflow_manager", "projectflow_member", "projectflow_reader", "portfolio_manager", "finance_controller", "project_owner", "architecture_reviewer", "process_designer"],
+  "groups": [{ "path": "/stratos", "defaultRoles": ["stratos_user"] }],
+  "serviceClients": ["budget-api", "projectflow-api", "stratos-directory-reader", "stratos-aiip-handoff", "stratos-akb-service"],
+  "publicClients": ["budget-web", "projectflow-web", "archflow-web", "processforge-web"],
+  "directoryReaderRealmManagementRoles": ["view-users", "query-users"]
+}

@@ -36,6 +36,9 @@
       },
       "forbidden_answer_terms": [],
       "max_chunks": 4,
+      "judgment_status": "gold",
+      "query_category": "procedural",
+      "role": "employee",
       "metadata": {
         "topic": "exceptions"
       },
@@ -65,6 +68,9 @@
         "schvaluje gestor"
       ],
       "max_chunks": 4,
+      "judgment_status": "gold",
+      "query_category": "negative_control",
+      "role": "employee",
       "metadata": {
         "topic": "negative-control"
       },
@@ -84,5 +90,6 @@
     "smoke",
     "rag",
     "citations"
-  ]
+  ],
+  "visibility": "shared"
 }

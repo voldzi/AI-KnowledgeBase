@@ -315,15 +315,15 @@ Pokud Ollama běží mimo AKB compose stack, nastavte explicitní kandidátní
 endpointy. AKB neprohledává lokální síť; zkusí pouze uvedené URL v pořadí:
 
 ```env
-AKL_OLLAMA_BASE_URL=http://192.168.1.176:11434
-AKL_OLLAMA_BASE_URLS=http://192.168.1.176:11434,http://192.168.200.2:11434
-AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=10
+AKL_OLLAMA_BASE_URL=http://192.168.200.3:11434
+AKL_OLLAMA_BASE_URLS=http://192.168.200.3:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=3
 AKL_INGESTION_EMBEDDING_CONCURRENCY=1
 ```
 
-Stanice `192.168.200.2` a `192.168.1.176` musí mít Ollama dostupnou na
-síťovém rozhraní dosažitelném z `docker.home.cz`, nejen na `127.0.0.1`.
-Nedostupný kandidát se při výběru endpointu přeskočí po
+Stanice `192.168.200.3`, `192.168.200.2` a `192.168.1.176` musí mít Ollama
+dostupnou na síťovém rozhraní dosažitelném z `docker.home.cz`, nejen na
+`127.0.0.1`. Nedostupný kandidát se při výběru endpointu přeskočí po
 `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS`.
 
 Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`:
@@ -334,6 +334,12 @@ Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`
 - `AKL_WEB_UPLOAD_SIGNING_SECRET=<long random secret>`
 - `AKL_EVAL_SERVICE_TOKEN=<long random service token>`
 - `AKL_GOVERNANCE_SERVICE_TOKEN=<long random service token>`
+
+Evaluation Service runs with `AKL_EVAL_AUTH_MODE=oidc` for the web Quality Lab,
+validates the caller token against the shared AKB issuer/audience/JWKS settings,
+and forwards that identity to RAG/Registry. The legacy evaluation service token
+remains only for explicit bearer-mode automation. Persist and back up both
+`evaluation-datasets` and `evaluation-reports` volumes.
 
 Compose profil pro `docker.home.cz` má pro web build i runtime bezpečný fallback
 `/akb`, aby se Next.js image při chybějící env hodnotě nepostavil pro root `/`.

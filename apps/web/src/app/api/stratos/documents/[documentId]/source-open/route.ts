@@ -144,7 +144,10 @@ const sourceOpenProgram = Effect.gen(function* () {
         document_version_id: version.document_version_id,
         source_file_uri: version.source_file_uri,
         file_hash: version.file_hash,
-        viewer_mode: viewerModeForUri(version.source_file_uri)
+        viewer_mode: viewerModeForUri(version.source_file_uri),
+        policy_binding_id: version.policy_binding_id,
+        policy_version: version.policy_version,
+        policy_hash: version.policy_hash
       }),
     catch: operationalFailure
   });

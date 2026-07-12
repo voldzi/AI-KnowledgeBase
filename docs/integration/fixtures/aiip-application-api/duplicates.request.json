@@ -1,0 +1,19 @@
+{
+  "tenant_id": "tenant_contract_test",
+  "classification": "internal",
+  "processing_purpose": "duplicate_detection",
+  "model_preference": "standard",
+  "record": {
+    "record_id": "idea_contract_001",
+    "record_version": "sha256-example-v1",
+    "title": "Automatizace kontroly podkladu",
+    "summary": "Navrh na kontrolu uplnosti podkladu pred schvalenim.",
+    "keywords": [
+      "kontrola",
+      "podklady"
+    ]
+  },
+  "limit": 10,
+  "offset": 0,
+  "min_score": 0.35
+}

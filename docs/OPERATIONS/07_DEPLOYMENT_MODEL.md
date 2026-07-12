@@ -30,6 +30,7 @@ evaluation-service
 governance-service
 postgres
 qdrant
+opensearch
 minio
 keycloak
 ollama
@@ -61,6 +62,7 @@ Server 3 — document processing
 Server 4 — search
 - rag-retrieval-service
 - qdrant
+- opensearch
 
 Server 5 — AI compute
 - llm-gateway-service
@@ -85,9 +87,11 @@ Server 6 — observability
 | Ingestion | Registry API | HTTPS | metadata, authz, audit |
 | Ingestion | MinIO | S3 API | soubory |
 | Ingestion | Qdrant | HTTP/gRPC | indexace |
+| Ingestion | OpenSearch | HTTP | fulltext indexace |
 | Ingestion | LLM Gateway | HTTPS | embeddings |
 | RAG | Registry API | HTTPS | authz, metadata, audit |
 | RAG | Qdrant | HTTP/gRPC | retrieval |
+| RAG | OpenSearch | HTTP | BM25/fulltext retrieval |
 | RAG | LLM Gateway | HTTPS | generování odpovědi |
 | LLM Gateway | Ollama/vLLM | HTTP | lokální/AI síť |
 
@@ -144,6 +148,7 @@ Zálohovat:
 - PostgreSQL,
 - MinIO bucket,
 - Qdrant collections,
+- OpenSearch indexes,
 - Keycloak konfiguraci,
 - konfigurační soubory,
 - eval datasety.

@@ -18,10 +18,10 @@ from app.schemas import (
 
 
 class RagClient(Protocol):
-    async def retrieve(self, payload: RetrieveRequest) -> RetrieveResponse:
+    async def retrieve(self, payload: RetrieveRequest, *, bearer_token: str | None = None) -> RetrieveResponse:
         ...
 
-    async def query(self, payload: RagQueryRequest) -> RagAnswer:
+    async def query(self, payload: RagQueryRequest, *, bearer_token: str | None = None) -> RagAnswer:
         ...
 
     async def readiness(self) -> str:
@@ -29,7 +29,7 @@ class RagClient(Protocol):
 
 
 class MockRagClient:
-    async def retrieve(self, payload: RetrieveRequest) -> RetrieveResponse:
+    async def retrieve(self, payload: RetrieveRequest, *, bearer_token: str | None = None) -> RetrieveResponse:
         chunks = _mock_chunks(payload.query)[: payload.max_chunks]
         return RetrieveResponse(
             query_id=_query_id(payload.query),
@@ -37,7 +37,7 @@ class MockRagClient:
             warnings=[] if chunks else ["NO_RETRIEVAL_CANDIDATES"],
         )
 
-    async def query(self, payload: RagQueryRequest) -> RagAnswer:
+    async def query(self, payload: RagQueryRequest, *, bearer_token: str | None = None) -> RagAnswer:
         chunks = _mock_chunks(payload.query)[: payload.max_chunks]
         query_id = _query_id(payload.query)
         if not chunks:
@@ -70,23 +70,25 @@ class HttpRagClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def retrieve(self, payload: RetrieveRequest) -> RetrieveResponse:
+    async def retrieve(self, payload: RetrieveRequest, *, bearer_token: str | None = None) -> RetrieveResponse:
         response = await request_json_with_retry(
             dependency="rag-retrieval-service",
             settings=self._settings,
             method="POST",
             url=f"{self._settings.rag_base_url}/rag/retrieve",
             json_body=payload.model_dump(mode="json"),
+            bearer_token=bearer_token,
         )
         return RetrieveResponse.model_validate(response)
 
-    async def query(self, payload: RagQueryRequest) -> RagAnswer:
+    async def query(self, payload: RagQueryRequest, *, bearer_token: str | None = None) -> RagAnswer:
         response = await request_json_with_retry(
             dependency="rag-retrieval-service",
             settings=self._settings,
             method="POST",
             url=f"{self._settings.rag_base_url}/rag/query",
             json_body=payload.model_dump(mode="json"),
+            bearer_token=bearer_token,
         )
         return RagAnswer.model_validate(response)
 

@@ -13,6 +13,7 @@ import { getAklConfig } from "@/lib/api/config";
 import { requestJson } from "@/lib/api/http-client";
 import { withAppBasePath } from "@/lib/app-url";
 import { getUploadSettings, type UploadSettings } from "@/lib/upload/preflight";
+import { parseInformationPolicy, parseIntegrationEnvelope, policyHash } from "@/lib/stratos/information-policy";
 
 export type StratosIngestionStatus =
   | "REGISTERED"
@@ -83,7 +84,11 @@ export interface StratosUploadConfirmResult {
   file_id: string;
   ingestion_job_id: string;
   ingestion_status: StratosIngestionStatus;
+  idempotent_replay: boolean;
   canonical_open_url: string;
+  policy_binding_id: string;
+  policy_version: string;
+  policy_hash: string;
 }
 
 export interface SourceLocationInput {
@@ -204,6 +209,8 @@ export async function upsertExternalDocument(
     fileType: optionalString(body, "file_type"),
     sha256: optionalString(body, "sha256")
   });
+  const informationPolicy = parseInformationPolicy(body.information_policy);
+  const integrationEnvelope = parseIntegrationEnvelope(body.integration_envelope, informationPolicy);
 
   return requestJson<ExternalDocumentResponse>({
     service: "registry-api",
@@ -221,6 +228,8 @@ export async function upsertExternalDocument(
       document_type: requiredString(body, "document_type"),
       title,
       classification: optionalString(body, "classification") ?? "internal",
+      information_policy: informationPolicy,
+      integration_envelope: integrationEnvelope ?? undefined,
       owner: {
         user_id: requiredString(body, "owner_actor_id"),
         display_name: optionalString(body, "owner_display_name") ?? undefined
@@ -235,8 +244,22 @@ export async function upsertExternalDocument(
           external_ref: requiredString(body, "external_ref"),
           entity_type: requiredString(body, "entity_type"),
           entity_id: requiredString(body, "entity_id"),
-          context_tags: stringList(body.context_tags)
-        }
+          context_tags: stringList(body.context_tags),
+          policy_binding_id: informationPolicy.policyBindingId,
+          policy_version: informationPolicy.policyVersion,
+          policy_hash: policyHash(informationPolicy)
+        },
+        ...(integrationEnvelope
+          ? {
+              integration_envelope: {
+                schema_version: integrationEnvelope.schemaVersion,
+                source_system: integrationEnvelope.sourceSystem,
+                correlation_id: integrationEnvelope.correlationId,
+                idempotency_key: integrationEnvelope.idempotencyKey,
+                policy_hash: integrationEnvelope.policyHash
+              }
+            }
+          : {})
       },
       source_location: sourceLocation,
       citation_base_url: optionalString(body, "citation_base_url") ?? undefined,
@@ -268,6 +291,29 @@ export async function updateExternalDocumentCurrent(
     method: "PATCH",
     context,
     body
+  });
+}
+
+export async function getExternalDocument(
+  externalDocumentId: string,
+  context: ApiRequestContext
+): Promise<ExternalDocumentResponse> {
+  const config = getAklConfig();
+  if (config.apiClientMode !== "production") {
+    throw new ApiClientError(
+      "STRATOS document bridge requires AKL_API_CLIENT_MODE=production because external document state is a Registry contract.",
+      503,
+      "STRATOS_BRIDGE_REQUIRES_REGISTRY",
+      "web-stratos-bridge"
+    );
+  }
+
+  return requestJson<ExternalDocumentResponse>({
+    service: "registry-api",
+    operation: "stratosExternalDocumentGet",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: `/external-documents/${encodeURIComponent(externalDocumentId)}`,
+    context
   });
 }
 

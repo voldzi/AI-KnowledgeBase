@@ -1,0 +1,28 @@
+{
+  "tenant_id": "tenant_contract_test",
+  "classification": "internal",
+  "processing_purpose": "idea_harmonization",
+  "model_preference": "high_quality",
+  "locale": "cs",
+  "record": {
+    "record_id": "idea_contract_001",
+    "record_version": "sha256-example-v1",
+    "title": "Automatizace kontroly podkladu",
+    "summary": "Navrh na kontrolu uplnosti podkladu pred schvalenim.",
+    "problem_statement": "Neuplne podklady prodluzuji schvaleni.",
+    "proposed_solution": "Asistovana kontrola povinnych poli a priloh.",
+    "expected_benefits": [
+      "Mene vracenych podkladu"
+    ],
+    "strategic_domains": [
+      "procesni efektivita"
+    ],
+    "keywords": [
+      "kontrola",
+      "podklady"
+    ],
+    "metadata": {
+      "fixture": true
+    }
+  }
+}
