@@ -115,6 +115,26 @@ def test_capability_and_scope_are_both_required(client) -> None:
     assert "SCOPE_MISMATCH" in wrong_scope.json()["error"]["details"]["reason_codes"]
 
 
+def test_central_organization_scope_with_id_allows_document_version(client) -> None:
+    document = create_document(client, information_policy=policy()).json()
+
+    response = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document",
+            scopes="organization:org_stratos",
+        ),
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/policy-v2/central-scope.pdf",
+            "file_hash": f"sha256:{'c' * 64}",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+
+
 def test_tlp_red_requires_explicit_recipient(client) -> None:
     binding = policy(scope_type="recipient_set")
     binding.update({"tlp": "TLP:RED", "originatorId": "originator"})

@@ -6,8 +6,9 @@ Date: 2026-07-12
 
 AKB G2/G3 is implemented and verified locally. No production deployment, data
 reset, reset rehearsal, or backup restore was performed as part of this work.
-G4, both G5 rehearsals, G6 isolated restore, and G7 remain coordinated STRATOS
-release gates.
+The AKB portion of G4 has passed in an isolated shared environment. Both G5
+rehearsals, G6 isolated restore, and G7 remain coordinated STRATOS release
+gates.
 
 ## Delivered
 
@@ -64,10 +65,28 @@ G4 follow-up coverage also includes immediate deny after AKB application
 suspension, forged claim/header isolation, and fail-closed behavior when the
 STRATOS projection is unavailable.
 
+## G4 Shared Environment Evidence
+
+The published G4 commit was exercised with a real STRATOS Keycloak realm,
+authoritative `/api/v1/auth/me` projection, central Policy Registry and policy
+decision endpoint, PostgreSQL Registry, ingestion, Qdrant, OpenSearch, RAG, and
+a deterministic local mock LLM provider. The controlled-document flow passed
+policy registration, workflow approval, version publication, ingestion into
+both indexes, RAG citation generation, and citation source-open with an
+unchanged binding id and policy hash. Missing policy, unknown obligation, and
+stale candidate hash scenarios were denied.
+
+The first shared run found that an authoritative scope serialized as
+`organization:org_stratos` was accepted for global actions but rejected for
+document actions. Registry now treats that scope as the explicit organization
+equivalent of the legacy bare `organization` scope. A regression test covers
+version creation with the central scope representation. The complete Registry
+suite passes with 79 tests.
+
 ## Remaining Gates
 
-1. G4: deploy all owners to an isolated integration environment and execute the
-   cross-application and AKB end-to-end flows.
+1. G4: retain the shared AKB evidence and complete the remaining coordinated
+   cross-application acceptance checks before declaring the gate closed.
 2. G5: run `tools/reset_akb_epoch.py` twice against disposable G4 data and retain
    both reports proving zero old identifiers.
 3. G6: restore an accepted backup into a separate environment and verify source,

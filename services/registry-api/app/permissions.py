@@ -337,7 +337,10 @@ def _scope_allows(context: SubjectContext, document: Document, binding: Informat
         return context.subject_id in recipients
     if document.owner_id == context.subject_id and "own" in context.scopes:
         return True
-    if "organization" in context.scopes:
+    if (
+        "organization" in context.scopes
+        or f"organization:{context.organization_id}" in context.scopes
+    ):
         return True
     if audience.scope_type == "public":
         return True
