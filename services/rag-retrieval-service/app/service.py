@@ -376,6 +376,7 @@ class RagRetrievalService:
                 filters=RagQueryFilters(
                     document_types=["contract", "attachment", "other"],
                     document_ids=[payload.document_id],
+                    document_version_ids=[payload.document_version_id],
                     only_valid=False,
                     classification_max=payload.classification_max,
                     tags=payload.context_tags,

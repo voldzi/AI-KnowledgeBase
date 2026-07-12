@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from retrievers.scoring import sparse_score
+from app.schemas import RagQueryFilters
+from retrievers.scoring import payload_matches_filters, sparse_score
 
 
 def test_sparse_score_maps_project_risk_query_to_failure_scenarios() -> None:
@@ -35,3 +36,22 @@ def test_sparse_score_prefers_specific_failure_scenarios_over_generic_limits() -
         "Jaká jsou největší rizika projektu?",
         generic,
     )
+
+
+def test_payload_filters_exact_document_version() -> None:
+    filters = RagQueryFilters(
+        document_ids=["doc_contract"],
+        document_version_ids=["ver_contract_1"],
+        only_valid=False,
+    )
+    matching = {
+        "document_id": "doc_contract",
+        "document_version_id": "ver_contract_1",
+        "classification": "internal",
+    }
+    other_version = {**matching, "document_version_id": "ver_contract_2"}
+    other_document = {**matching, "document_id": "doc_other"}
+
+    assert payload_matches_filters(matching, filters) is True
+    assert payload_matches_filters(other_version, filters) is False
+    assert payload_matches_filters(other_document, filters) is False

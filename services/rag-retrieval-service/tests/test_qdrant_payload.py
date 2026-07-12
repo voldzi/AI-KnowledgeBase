@@ -86,6 +86,22 @@ def test_qdrant_valid_filter_allows_missing_valid_from_for_valid_documents() -> 
     )
 
 
+def test_qdrant_filter_targets_exact_document_version() -> None:
+    qdrant_filter = _qdrant_filter(
+        RagQueryFilters(
+            document_ids=["doc_contract"],
+            document_version_ids=["ver_contract_1"],
+            only_valid=False,
+        )
+    )
+
+    assert {"key": "document_id", "match": {"any": ["doc_contract"]}} in qdrant_filter["must"]
+    assert {
+        "key": "document_version_id",
+        "match": {"any": ["ver_contract_1"]},
+    } in qdrant_filter["must"]
+
+
 def test_qdrant_fusion_keeps_best_score_for_duplicate_chunk() -> None:
     weak_vector = _point_to_chunk(
         {

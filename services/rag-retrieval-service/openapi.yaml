@@ -2350,6 +2350,16 @@ components:
             type: string
           type: array
           title: Tags
+        document_ids:
+          items:
+            type: string
+          type: array
+          title: Document Ids
+        document_version_ids:
+          items:
+            type: string
+          type: array
+          title: Document Version Ids
       additionalProperties: false
       type: object
       title: RagQueryFilters

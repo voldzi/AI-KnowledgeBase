@@ -169,6 +169,14 @@ def payload_matches_filters(payload: dict[str, object], filters: RagQueryFilters
     if filters.document_types and document_type not in filters.document_types:
         return False
 
+    document_id = payload.get("document_id")
+    if filters.document_ids and document_id not in filters.document_ids:
+        return False
+
+    document_version_id = payload.get("document_version_id")
+    if filters.document_version_ids and document_version_id not in filters.document_version_ids:
+        return False
+
     classification = payload.get("classification")
     if not isinstance(classification, str) or not classification_allowed(classification, filters.classification_max):
         return False

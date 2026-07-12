@@ -68,6 +68,7 @@ def test_contract_extraction_targets_the_requested_document_and_allows_draft_ver
 
     assert response.status_code == 200, response.text
     assert captured["filters"].document_ids == ["doc_contract"]
+    assert captured["filters"].document_version_ids == ["ver_contract_1"]
     assert captured["filters"].only_valid is False
 
 

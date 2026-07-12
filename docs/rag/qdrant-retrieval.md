@@ -71,7 +71,11 @@ The retriever preserves these fields in `RetrievedChunk.citation`; answer citati
    k=60). The fused order decides ranking; `chunk.score` keeps the calibrated
    hybrid value used by the no-answer policy and confidence thresholds. The
    RRF value is exposed as `metadata.rrf_score`.
-4. Metadata filters restrict classification, document type, tags, and validity.
+4. Metadata filters restrict classification, document type, tags, validity,
+   `document_id`, and `document_version_id`. Explicit STRATOS extraction uses
+   both identifiers so chunks from another version cannot consume the result
+   limit before the requested version is evaluated. The same filter semantics
+   apply in mock retrieval tests.
 5. Registry API authz filters candidate document IDs with action `rag.query`.
 6. Lexical reranking is applied inside the RAG service.
 7. Answer composer receives only authorized chunks above `AKL_RAG_NO_ANSWER_MIN_SCORE`.
