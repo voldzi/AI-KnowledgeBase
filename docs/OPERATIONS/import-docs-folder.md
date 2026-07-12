@@ -94,6 +94,16 @@ When OpenSearch is reachable, it also contains `opensearch_documents`; set `AKL_
 python3 scripts/phase_03_docs_import_smoke.py
 ```
 
+For an OIDC/STRATOS governance profile, provide the bearer token only through
+`AKL_SMOKE_BEARER_TOKEN` (or `AKL_IMPORT_BEARER_TOKEN`) and point
+`AKL_IMPORT_INFORMATION_POLICY_FILE` to a non-secret JSON file containing the
+exact Registry-issued binding. When a bearer token is present, the importer
+does not send the legacy `X-AKL-Subject` or `X-AKL-Roles` headers. The same
+binding is persisted on the document and every imported version. The smoke
+scripts complete the Registry review task before publication. Direct importer
+runs must opt into that controlled action with `--approve-for-publish` (or
+`AKL_IMPORT_APPROVE_FOR_PUBLISH=true`).
+
 The smoke test imports a limited subset of `docs/`, verifies Qdrant points and OpenSearch documents, and asks RAG:
 
 ```text

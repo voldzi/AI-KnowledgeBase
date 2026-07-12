@@ -67,6 +67,9 @@ class ImportOptions:
     storage_prefix: str
     timeout_seconds: int
     okf_profile: bool
+    bearer_token: str | None
+    information_policy: dict[str, Any] | None
+    approve_for_publish: bool
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -120,6 +123,17 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
         action="store_true",
         help="Treat Markdown sources as STRATOS OKF concepts and merge YAML frontmatter into AKB metadata.",
     )
+    parser.add_argument(
+        "--information-policy-file",
+        default=os.getenv("AKL_IMPORT_INFORMATION_POLICY_FILE"),
+        help="JSON file containing a STRATOS Registry-issued Information Policy V2 binding.",
+    )
+    parser.add_argument(
+        "--approve-for-publish",
+        action="store_true",
+        default=parse_bool_env(os.getenv("AKL_IMPORT_APPROVE_FOR_PUBLISH", "false")),
+        help="Complete the Registry review task before publishing valid imports.",
+    )
     args = parser.parse_args(argv)
 
     if args.limit is not None and args.limit <= 0:
@@ -146,7 +160,33 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
         storage_prefix=args.storage_prefix.strip("/"),
         timeout_seconds=args.timeout_seconds,
         okf_profile=args.okf_profile,
+        bearer_token=os.getenv("AKL_IMPORT_BEARER_TOKEN") or None,
+        information_policy=load_information_policy_file(args.information_policy_file),
+        approve_for_publish=args.approve_for_publish,
     )
+
+
+def load_information_policy_file(value: str | None) -> dict[str, Any] | None:
+    if not value:
+        return None
+    path = Path(value).expanduser().resolve()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Information policy file must contain a JSON object: {path}")
+    return payload
+
+
+def bearer_subject_id(token: str) -> str:
+    try:
+        encoded_payload = token.split(".", 2)[1]
+        padded_payload = encoded_payload + "=" * (-len(encoded_payload) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded_payload).decode("utf-8"))
+    except (IndexError, ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("OIDC bearer token does not contain a readable JWT payload") from exc
+    subject_id = payload.get("sub") if isinstance(payload, dict) else None
+    if not isinstance(subject_id, str) or not subject_id:
+        raise ValueError("OIDC bearer token does not contain a subject")
+    return subject_id
 
 
 def run_import(options: ImportOptions) -> dict[str, Any]:
@@ -595,6 +635,8 @@ def create_document(path: Path, rel_path: str, metadata: dict[str, Any], options
         "metadata": document_metadata(path, rel_path, metadata),
         "access_policies": access_policies(options.subject_id, metadata["classification"]),
     }
+    if options.information_policy is not None:
+        payload["information_policy"] = options.information_policy
     document = request_json(
         "POST",
         f"{options.registry_url}/api/v1/documents",
@@ -624,6 +666,8 @@ def patch_existing_document(
         "metadata": document_metadata(path, rel_path, metadata),
         "access_policies": access_policies(options.subject_id, metadata["classification"]),
     }
+    if options.information_policy is not None:
+        payload["information_policy"] = options.information_policy
     patch_document(document_id, payload, options)
 
 
@@ -655,6 +699,8 @@ def create_version(
             "uploaded_by": options.subject_id,
         },
     }
+    if options.information_policy is not None:
+        payload["information_policy"] = options.information_policy
     try:
         return request_json(
             "POST",
@@ -684,6 +730,8 @@ def publish_if_valid(
 ) -> dict[str, Any]:
     if metadata.get("status", "valid") != "valid":
         return version
+    if options.approve_for_publish:
+        approve_document_for_publication(document_id, options)
     published = request_json(
         "POST",
         f"{options.registry_url}/api/v1/documents/{document_id}/versions/{version['document_version_id']}/publish",
@@ -692,6 +740,34 @@ def publish_if_valid(
     if published.get("status") != "valid":
         raise RuntimeError(f"Published version is not valid: {published}")
     return published
+
+
+def approve_document_for_publication(document_id: str, options: ImportOptions) -> None:
+    document = request_json("GET", f"{options.registry_url}/api/v1/documents/{document_id}", options=options)
+    if document.get("status") != "review":
+        document = patch_document(document_id, {"status": "review"}, options)
+    if document.get("status") != "review":
+        raise RuntimeError(f"Document did not enter review before publication: {document}")
+
+    query = urllib.parse.urlencode({"kind": "review", "document_id": document_id, "limit": 100})
+    body = request_json("GET", f"{options.registry_url}/api/v1/workflow/tasks?{query}", options=options)
+    tasks = body.get("items") or []
+    task = next(
+        (
+            item
+            for item in tasks
+            if item.get("document_id") == document_id and item.get("status") != "resolved"
+        ),
+        None,
+    )
+    if not isinstance(task, dict) or not task.get("task_id"):
+        raise RuntimeError(f"No open review task found for document {document_id}: {tasks}")
+    request_json(
+        "POST",
+        f"{options.registry_url}/api/v1/workflow/tasks/{task['task_id']}/actions",
+        {"action": "approve", "comment": "Approved by the controlled documentation import workflow."},
+        options=options,
+    )
 
 
 def latest_document_version(document_id: str, options: ImportOptions) -> dict[str, Any] | None:
@@ -918,9 +994,12 @@ def request_json(
         "Content-Type": "application/json",
         "X-Request-ID": "docs-folder-import",
         "X-Correlation-ID": "docs-folder-import",
-        "X-AKL-Subject": options.subject_id,
-        "X-AKL-Roles": options.roles,
     }
+    if options.bearer_token:
+        request_headers["Authorization"] = f"Bearer {options.bearer_token}"
+    else:
+        request_headers["X-AKL-Subject"] = options.subject_id
+        request_headers["X-AKL-Roles"] = options.roles
     if headers:
         request_headers.update(headers)
     request = urllib.request.Request(url, data=data, method=method, headers=request_headers)
