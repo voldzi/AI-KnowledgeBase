@@ -386,6 +386,9 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
     if filters.document_types:
         must.append({"key": "document_type", "match": {"any": filters.document_types}})
 
+    if filters.document_ids:
+        must.append({"key": "document_id", "match": {"any": filters.document_ids}})
+
     if filters.tags:
         must.append({"key": "tags", "match": {"any": filters.tags}})
 

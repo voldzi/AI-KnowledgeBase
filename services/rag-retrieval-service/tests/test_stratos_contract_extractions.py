@@ -52,6 +52,25 @@ def test_contract_extraction_proposes_cited_financial_fields() -> None:
     assert "chunk_contract_1" in body["source_chunk_ids"]
 
 
+def test_contract_extraction_targets_the_requested_document_and_allows_draft_versions(monkeypatch) -> None:
+    from app.service import RagRetrievalService
+
+    captured = {}
+    original = RagRetrievalService._retrieve_authorized
+
+    async def capture_retrieval(self, *, payload, query_id, auth_context=None):
+        captured["filters"] = payload.filters
+        return await original(self, payload=payload, query_id=query_id, auth_context=auth_context)
+
+    monkeypatch.setattr(RagRetrievalService, "_retrieve_authorized", capture_retrieval)
+    with make_client() as client:
+        response = client.post("/api/v1/stratos/extractions/contracts/propose", json=_payload())
+
+    assert response.status_code == 200, response.text
+    assert captured["filters"].document_ids == ["doc_contract"]
+    assert captured["filters"].only_valid is False
+
+
 def test_contract_extraction_is_idempotent_for_same_document_version() -> None:
     with make_client() as client:
         first = client.post("/api/v1/stratos/extractions/contracts/propose", json=_payload())

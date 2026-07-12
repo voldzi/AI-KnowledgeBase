@@ -85,6 +85,7 @@ class RagQueryFilters(BaseModel):
     only_valid: bool = True
     classification_max: Classification = "internal"
     tags: list[str] = Field(default_factory=list)
+    document_ids: list[str] = Field(default_factory=list)
 
 
 class ChunkCitation(BaseModel):
