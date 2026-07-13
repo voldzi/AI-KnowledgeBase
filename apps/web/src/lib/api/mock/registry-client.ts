@@ -17,6 +17,7 @@ import type {
   DocumentMetadataSummary,
   DocumentMetadataSummaryBucket,
   DocumentMetadataSummaryOptions,
+  DocumentPublication,
   DocumentReadinessIssue,
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
@@ -317,6 +318,19 @@ export class MockRegistryClient implements RegistryApiClient {
   ): Promise<DocumentVersion[]> {
     return cloneMock(
       this.versions.filter((version) => version.document_id === documentId),
+    );
+  }
+
+  async getDocumentPublication(
+    _documentId: string,
+    _versionId: string,
+    _context: ApiRequestContext,
+  ): Promise<DocumentPublication> {
+    throw new ApiClientError(
+      "Document publication not found",
+      404,
+      "DOCUMENT_PUBLICATION_NOT_FOUND",
+      "mock-trace",
     );
   }
 

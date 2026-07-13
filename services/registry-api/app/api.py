@@ -1,24 +1,39 @@
 import re
+import secrets
 import unicodedata
 from collections import Counter
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from hashlib import sha256
+import json
+from threading import Lock
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import desc, select, text
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.security import APIKeyHeader
+from sqlalchemy import delete, desc, select, text
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette import status
 
 from app.audit import add_audit_event
-from app.access_governance import GovernanceDenied, GovernanceUnavailable, governance_client
+from app.access_governance import (
+    GovernanceDenied,
+    GovernanceInvalidResponse,
+    GovernanceUnavailable,
+    governance_client,
+    validate_public_decision_response,
+)
 from app.auth import Principal, get_current_principal
 from app.config import get_settings
 from app.database import get_db
 from app.errors import problem
 from app.information_policy import (
     InformationPolicyBinding,
+    POLICY_VERSION,
     canonical_policy_hash,
+    anonymous_public_eligible,
     legacy_classification,
     policy_columns,
 )
@@ -37,12 +52,28 @@ from app.models import (
     DocumentExtraction,
     DocumentExtractionFeedback,
     DocumentFile,
+    DocumentPublication,
     DocumentVersion,
     ExternalDocumentRef,
     IntegrationIdempotencyRecord,
     WorkflowTask,
     make_id,
     utcnow,
+)
+from app.public_documents import (
+    PUBLIC_DOCUMENT_SNAPSHOT_SCHEMA,
+    PublicDocumentIntegrityError,
+    build_public_snapshot,
+    canonical_snapshot_hash,
+    exact_source_file,
+    normalize_public_text,
+    validate_public_slug,
+    validate_publication_integrity,
+)
+from app.public_delivery_limiter import (
+    PublicDeliveryCapacityExceeded,
+    PublicDeliveryLease,
+    public_delivery_limiter,
 )
 from app.permissions import (
     ACTION_CAPABILITIES,
@@ -92,6 +123,9 @@ from app.schemas import (
     DocumentMetadataSummaryResponse,
     DocumentMetadataSummaryTopic,
     DocumentPatch,
+    DocumentPublicationPutRequest,
+    DocumentPublicationResponse,
+    DocumentPublicationStatus,
     DocumentReadinessIssue,
     DocumentReadinessResponse,
     DocumentReadinessSeverity,
@@ -116,6 +150,8 @@ from app.schemas import (
     ProfileSettingsBundle,
     ProfileSettingsPutRequest,
     ProfileSettingsResponse,
+    PublicDocumentMetadataResponse,
+    PublicDocumentSourceResolutionResponse,
     WorkflowTaskActionRequest,
     WorkflowTaskKind,
     WorkflowTaskListResponse,
@@ -134,6 +170,13 @@ from app.schemas import (
 
 router = APIRouter(prefix="/api/v1")
 health_router = APIRouter()
+public_delivery_header = APIKeyHeader(
+    name="X-AKB-Public-Delivery-Token",
+    scheme_name="akbPublicDeliveryToken",
+    auto_error=False,
+)
+_public_audit_prune_lock = Lock()
+_public_audit_last_prune_bucket: tuple[int, int] | None = None
 
 Limit = Annotated[int, Query(ge=1, le=200)]
 Offset = Annotated[int, Query(ge=0)]
@@ -566,7 +609,12 @@ def _get_document(db: Session, document_id: str) -> Document:
     document = db.execute(
         select(Document)
         .where(Document.document_id == document_id)
-        .options(selectinload(Document.access_policies), selectinload(Document.assignments))
+        .options(
+            selectinload(Document.access_policies),
+            selectinload(Document.assignments),
+            selectinload(Document.versions),
+            selectinload(Document.publications),
+        )
     ).scalar_one_or_none()
     if document is None:
         raise problem(status.HTTP_404_NOT_FOUND, "document_not_found", "Document was not found")
@@ -663,9 +711,11 @@ def _commit_or_conflict(db: Session) -> None:
 
 
 def _require_authz_api_caller(principal: Principal, subject_id: str) -> None:
+    if principal.service_identity:
+        _require_service_route(principal, "authz")
+        return
     if (
         principal.subject_id == subject_id
-        or principal.service_identity
         or (not principal.dynamic_access_loaded and "admin" in principal.roles)
     ):
         return
@@ -674,6 +724,27 @@ def _require_authz_api_caller(principal: Principal, subject_id: str) -> None:
         "forbidden",
         "Only an authenticated subject or a verified service identity can call this authz check",
     )
+
+
+def _require_service_route(principal: Principal, route: str) -> str:
+    client_id = principal.service_client_id
+    if not principal.service_identity or not client_id:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "service_client_unbound",
+            "A verified service client identity is required",
+        )
+    settings = get_settings()
+    if (
+        client_id not in settings.trusted_service_clients
+        or route not in settings.service_route_grants.get(client_id, frozenset())
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "service_route_forbidden",
+            "The service client is not allowed to call this route",
+        )
+    return client_id
 
 
 def _authz_subject_context(
@@ -732,7 +803,6 @@ def _service_action_decision(
         return Decision(False, "Document policy binding is unavailable", {}, ("POLICY_UNAVAILABLE",))
     try:
         response = governance_client(get_settings()).decide(
-            actor_subject_id=subject_id,
             capability_id=capability,
             operation=operation_override or _central_operation(action, document is None),
             scope=(
@@ -928,17 +998,9 @@ def _register_governed_resource(
             "governance_registered_at": None,
         }
 
-    actor_subject_id: str | None = None
     credential_token = principal.bearer_token
     if principal.service_identity:
         credential_token = settings.stratos_policy_service_token
-        actor_subject_id = delegated_actor_subject_id
-        if not actor_subject_id:
-            raise problem(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "delegated_actor_required",
-                "A verified delegated actor is required for service-initiated governed resource registration",
-            )
     if not credential_token:
         raise problem(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -948,7 +1010,7 @@ def _register_governed_resource(
     try:
         registration = governance_client(settings).register_information_resource(
             credential_token=credential_token,
-            actor_subject_id=actor_subject_id,
+            audit_actor_subject_id=delegated_actor_subject_id,
             resource_type=resource_type,
             resource_id=resource_id,
             source_version=source_version,
@@ -980,6 +1042,432 @@ def _register_governed_resource(
         "governance_registration_status": "REGISTERED",
         "governance_registered_at": utcnow(),
     }
+
+
+def _document_publication_response(publication: DocumentPublication) -> DocumentPublicationResponse:
+    return DocumentPublicationResponse.model_validate(publication)
+
+
+def _document_publication(
+    db: Session,
+    *,
+    document_id: str,
+    document_version_id: str,
+) -> DocumentPublication | None:
+    return db.execute(
+        select(DocumentPublication).where(
+            DocumentPublication.document_id == document_id,
+            DocumentPublication.document_version_id == document_version_id,
+        )
+    ).scalar_one_or_none()
+
+
+def _lock_publication_source(
+    db: Session,
+    *,
+    document_id: str,
+    document_version_id: str | None = None,
+) -> None:
+    db.execute(
+        select(Document.document_id)
+        .where(Document.document_id == document_id)
+        .with_for_update()
+    ).scalar_one()
+    if document_version_id is not None:
+        db.execute(
+            select(DocumentVersion.document_version_id)
+            .where(
+                DocumentVersion.document_id == document_id,
+                DocumentVersion.document_version_id == document_version_id,
+            )
+            .with_for_update()
+        ).scalar_one()
+
+
+def _require_publication_lifecycle_closed(
+    db: Session,
+    *,
+    document_id: str,
+    document_version_id: str | None = None,
+) -> None:
+    _lock_publication_source(
+        db,
+        document_id=document_id,
+        document_version_id=document_version_id,
+    )
+    statement = select(DocumentPublication.publication_id).where(
+        DocumentPublication.document_id == document_id,
+        DocumentPublication.status != DocumentPublicationStatus.revoked.value,
+    )
+    if document_version_id is not None:
+        statement = statement.where(
+            DocumentPublication.document_version_id == document_version_id
+        )
+    if (
+        db.execute(statement.limit(1).with_for_update()).scalar_one_or_none()
+        is None
+    ):
+        return
+    target = "document version" if document_version_id is not None else "document"
+    raise problem(
+        status.HTTP_409_CONFLICT,
+        "publication_lifecycle_active",
+        f"The {target} has an active public publication; revoke it through the "
+        "publication endpoint before archiving or deleting it",
+    )
+
+
+def _require_interactive_publication_actor(
+    *,
+    principal: Principal,
+    version: DocumentVersion,
+    status_value: str,
+) -> None:
+    settings = get_settings()
+    if principal.service_identity or not principal.bearer_token:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "interactive_publication_required",
+            "Public publication requires an interactive bearer credential",
+        )
+    if settings.auth_mode != "mock" and not principal.dynamic_access_loaded:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "access_projection_required",
+            "Public publication requires a current STRATOS access projection",
+        )
+    if (
+        not principal.identity_active
+        or not principal.membership_active
+        or not principal.application_access_active
+        or principal.organization_id != "org_stratos"
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "publication_actor_inactive",
+            "The publication actor does not have active AKB organization access",
+        )
+    if status_value == DocumentPublicationStatus.revoked.value:
+        required_capabilities = {"akb:publish_public"}
+    elif status_value == DocumentPublicationStatus.published.value:
+        required_capabilities = {"akb:assign_policy", "akb:publish_public"}
+    else:
+        required_capabilities = {"akb:assign_policy"}
+    missing = sorted(required_capabilities.difference(principal.capabilities))
+    if missing:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "publication_capability_missing",
+            "The current access projection does not allow this publication transition",
+            {"required_capabilities": sorted(required_capabilities), "missing_capabilities": missing},
+        )
+
+    scope_type = version.governance_scope_type or "organization"
+    scope_id = version.governance_scope_id or (
+        "org_stratos" if scope_type == "organization" else None
+    )
+    accepted_scopes = {scope_type}
+    if scope_id:
+        accepted_scopes.add(f"{scope_type}:{scope_id}")
+    if scope_type != "organization":
+        accepted_scopes.update({"organization", "organization:org_stratos"})
+    if not accepted_scopes.intersection(principal.scopes):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "publication_scope_mismatch",
+            "The current access projection does not cover the governed document version scope",
+            {"required_scope": {"type": scope_type, "id": scope_id}},
+        )
+
+
+def _public_policy_decision(
+    *,
+    public_slug: str,
+    operation: str,
+    publication: DocumentPublication | None,
+) -> tuple[dict[str, object], str]:
+    try:
+        decision = validate_public_decision_response(
+            governance_client(get_settings()).public_decide(
+                public_slug=public_slug,
+                operation=operation,
+            )
+        )
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_policy_decision_rejected",
+            "Public policy verification is unavailable",
+        ) from exc
+    except GovernanceInvalidResponse as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_policy_decision_invalid",
+            "Public policy verification returned an invalid response",
+        ) from exc
+    except GovernanceUnavailable as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_policy_decision_unavailable",
+            "Public policy verification is unavailable",
+        ) from exc
+
+    decision_id = decision["decisionId"]
+    decision_value = decision["decision"]
+    expected_policy_version = publication.policy_version if publication is not None else POLICY_VERSION
+    if decision["policyVersion"] != expected_policy_version:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        )
+    if decision_value != "ALLOW":
+        return decision, decision_id
+    central_publication = decision.get("publication")
+    if publication is None or not isinstance(central_publication, dict):
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        )
+    expected_coordinates = {
+        "id": publication.central_publication_id,
+        "application": "AKB",
+        "resourceType": "document_version",
+        "resourceId": publication.document_version_id,
+        "sourceVersion": publication.source_version,
+        "publicSlug": publication.public_slug,
+        "policyBindingId": publication.policy_binding_id,
+        "policyHash": publication.policy_hash,
+    }
+    if any(central_publication.get(key) != value for key, value in expected_coordinates.items()):
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        )
+    if not isinstance(central_publication.get("publishedAt"), str):
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        )
+    return decision, decision_id
+
+
+def _audit_public_delivery(
+    db: Session,
+    *,
+    publication: DocumentPublication,
+    operation: str,
+    decision_id: str,
+    outcome: str,
+    reason_codes: list[str] | None = None,
+) -> None:
+    settings = get_settings()
+    now = utcnow()
+    _prune_public_delivery_audit(
+        db,
+        now=now,
+        retention_days=settings.public_audit_retention_days,
+        interval_seconds=settings.public_audit_prune_interval_seconds,
+    )
+    window_seconds = settings.public_audit_window_seconds
+    window_epoch = int(now.timestamp()) // window_seconds * window_seconds
+    window_start = datetime.fromtimestamp(window_epoch, timezone.utc)
+    normalized_reasons = sorted(set(reason_codes or []))
+    aggregate_coordinates = {
+        "publication_id": publication.publication_id,
+        "document_version_id": publication.document_version_id,
+        "policy_binding_id": publication.policy_binding_id,
+        "policy_hash": publication.policy_hash,
+        "operation": operation,
+        "outcome": outcome,
+        "reason_codes": normalized_reasons,
+        "window_epoch": window_epoch,
+    }
+    aggregate_key = sha256(
+        json.dumps(
+            aggregate_coordinates,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    metadata = {
+        "operation": operation,
+        "decision_id": decision_id,
+        "public_slug": publication.public_slug,
+        "document_version_id": publication.document_version_id,
+        "policy_binding_id": publication.policy_binding_id,
+        "policy_hash": publication.policy_hash,
+        "reason_codes": normalized_reasons,
+        "aggregation_window_started_at": window_start.isoformat().replace("+00:00", "Z"),
+        "aggregation_window_seconds": window_seconds,
+    }
+    values = {
+        "audit_event_id": f"pubaudit_{aggregate_key[:55]}",
+        "actor_id": "anonymous:public",
+        "event_type": f"public.document.{outcome.lower()}",
+        "resource_type": "document_publication",
+        "resource_id": publication.publication_id,
+        "severity": "info" if outcome == "ALLOW" else "warning",
+        "correlation_id": get_correlation_id(),
+        "aggregate_key": aggregate_key,
+        "occurrence_count": 1,
+        "last_seen_at": now,
+        "event_metadata": metadata,
+        "created_at": window_start,
+    }
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        statement = postgresql_insert(AuditEvent).values(**values)
+        db.execute(
+            statement.on_conflict_do_update(
+                index_elements=[AuditEvent.aggregate_key],
+                set_={
+                    AuditEvent.occurrence_count: AuditEvent.occurrence_count + 1,
+                    AuditEvent.last_seen_at: now,
+                    AuditEvent.correlation_id: get_correlation_id(),
+                    AuditEvent.event_metadata: metadata,
+                },
+            )
+        )
+    elif dialect == "sqlite":
+        statement = sqlite_insert(AuditEvent).values(**values)
+        db.execute(
+            statement.on_conflict_do_update(
+                index_elements=[AuditEvent.aggregate_key],
+                set_={
+                    AuditEvent.occurrence_count: AuditEvent.occurrence_count + 1,
+                    AuditEvent.last_seen_at: now,
+                    AuditEvent.correlation_id: get_correlation_id(),
+                    AuditEvent.event_metadata: metadata,
+                },
+            )
+        )
+    else:
+        existing = db.execute(
+            select(AuditEvent).where(AuditEvent.aggregate_key == aggregate_key)
+        ).scalar_one_or_none()
+        if existing is None:
+            db.add(AuditEvent(**values))
+        else:
+            existing.occurrence_count += 1
+            existing.last_seen_at = now
+            existing.correlation_id = get_correlation_id()
+            existing.event_metadata = metadata
+    _commit_or_conflict(db)
+
+
+def _prune_public_delivery_audit(
+    db: Session,
+    *,
+    now: datetime,
+    retention_days: int,
+    interval_seconds: int,
+    force: bool = False,
+) -> int:
+    global _public_audit_last_prune_bucket
+    bucket = int(now.timestamp()) // interval_seconds
+    if not force:
+        with _public_audit_prune_lock:
+            marker = (interval_seconds, bucket)
+            if _public_audit_last_prune_bucket == marker:
+                return 0
+            _public_audit_last_prune_bucket = marker
+    result = db.execute(
+        delete(AuditEvent).where(
+            AuditEvent.actor_id == "anonymous:public",
+            AuditEvent.event_type.like("public.document.%"),
+            AuditEvent.last_seen_at < now - timedelta(days=retention_days),
+        )
+    )
+    return int(result.rowcount or 0)
+
+
+def _authorized_publication(
+    db: Session,
+    *,
+    public_slug: str,
+    operation: str,
+) -> tuple[DocumentPublication, str]:
+    publication = db.execute(
+        select(DocumentPublication).where(DocumentPublication.public_slug == public_slug)
+    ).scalar_one_or_none()
+    decision, decision_id = _public_policy_decision(
+        public_slug=public_slug,
+        operation=operation,
+        publication=publication,
+    )
+    if decision.get("decision") != "ALLOW" or publication is None:
+        if publication is not None:
+            _audit_public_delivery(
+                db,
+                publication=publication,
+                operation=operation,
+                decision_id=decision_id,
+                outcome="DENY",
+                reason_codes=[
+                    item for item in decision.get("reasonCodes", []) if isinstance(item, str)
+                ],
+            )
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        )
+    try:
+        validate_publication_integrity(
+            publication,
+            publication.document,
+            publication.document_version,
+        )
+    except PublicDocumentIntegrityError:
+        _audit_public_delivery(
+            db,
+            publication=publication,
+            operation=operation,
+            decision_id=decision_id,
+            outcome="DENY",
+            reason_codes=["LOCAL_PUBLICATION_INTEGRITY_FAILED"],
+        )
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        )
+    _audit_public_delivery(
+        db,
+        publication=publication,
+        operation=operation,
+        decision_id=decision_id,
+        outcome="ALLOW",
+        reason_codes=[
+            item for item in decision.get("reasonCodes", []) if isinstance(item, str)
+        ],
+    )
+    return publication, decision_id
+
+
+def _acquire_public_delivery_capacity(
+    request: Request,
+    *,
+    public_slug: str,
+) -> PublicDeliveryLease:
+    try:
+        return public_delivery_limiter(get_settings()).acquire(
+            request.headers,
+            public_slug,
+        )
+    except PublicDeliveryCapacityExceeded as exc:
+        error = problem(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "public_rate_limited",
+            "Public document delivery is temporarily busy",
+        )
+        error.headers = {"Retry-After": str(exc.retry_after_seconds)}
+        raise error from exc
 
 
 def _add_days(value, days: int):
@@ -1109,6 +1597,11 @@ def _archive_version(
     version: DocumentVersion,
     actor_id: str,
 ) -> None:
+    _require_publication_lifecycle_closed(
+        db,
+        document_id=document.document_id,
+        document_version_id=version.document_version_id,
+    )
     version.status = DocumentStatus.archived.value
     has_other_valid = db.execute(
         select(DocumentVersion.document_version_id).where(
@@ -2495,6 +2988,7 @@ def _authorized_document_metadata_rows(
             selectinload(Document.assignments),
             selectinload(Document.external_refs),
             selectinload(Document.versions),
+            selectinload(Document.publications),
         )
         .order_by(desc(Document.created_at))
     )
@@ -2837,6 +3331,7 @@ def delete_document(
 ) -> Response:
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_delete, document, db)
+    _require_publication_lifecycle_closed(db, document_id=document.document_id)
     document.status = DocumentStatus.cancelled.value
     for version in document.versions:
         if version.status == DocumentStatus.valid.value:
@@ -3036,6 +3531,489 @@ def archive_document_version(
     return _document_version_response(version)
 
 
+@router.get(
+    "/documents/{document_id}/versions/{version_id}/publication",
+    response_model=DocumentPublicationResponse,
+)
+def get_document_publication(
+    document_id: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentPublicationResponse:
+    version = _get_version(db, document_id, version_id)
+    _require_interactive_publication_actor(
+        principal=principal,
+        version=version,
+        status_value=DocumentPublicationStatus.draft.value,
+    )
+    publication = _document_publication(
+        db,
+        document_id=document_id,
+        document_version_id=version_id,
+    )
+    if publication is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "document_publication_not_found",
+            "Document publication was not found",
+        )
+    return _document_publication_response(publication)
+
+
+@router.put(
+    "/documents/{document_id}/versions/{version_id}/publication",
+    response_model=DocumentPublicationResponse,
+)
+def put_document_publication(
+    document_id: str,
+    version_id: str,
+    payload: DocumentPublicationPutRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentPublicationResponse:
+    document = _get_document(db, document_id)
+    version = _get_version(db, document_id, version_id)
+    _lock_publication_source(
+        db,
+        document_id=document_id,
+        document_version_id=version_id,
+    )
+    db.refresh(document)
+    db.refresh(version)
+    requested_status = payload.status.value
+    _require_interactive_publication_actor(
+        principal=principal,
+        version=version,
+        status_value=requested_status,
+    )
+    existing = _document_publication(
+        db,
+        document_id=document_id,
+        document_version_id=version_id,
+    )
+
+    if requested_status == DocumentPublicationStatus.revoked.value:
+        if existing is None:
+            raise problem(
+                status.HTTP_404_NOT_FOUND,
+                "document_publication_not_found",
+                "Document publication was not found",
+            )
+        policy_binding_id = existing.policy_binding_id
+        policy_hash = existing.policy_hash
+        public_slug = existing.public_slug
+    else:
+        if (
+            version.status != DocumentStatus.valid.value
+            or version.published_at is None
+            or version.governance_registration_status != "REGISTERED"
+            or not version.governed_resource_id
+            or version.governed_source_version != version.document_version_id
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "document_version_not_publication_ready",
+                "Only a centrally registered, published, valid immutable document version can be prepared for public delivery",
+            )
+        try:
+            binding = InformationPolicyBinding.model_validate(version.policy_summary)
+        except ValueError as exc:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "public_policy_invalid",
+                "The immutable document version does not contain a valid public policy binding",
+            ) from exc
+        policy_hash = canonical_policy_hash(binding)
+        if (
+            not anonymous_public_eligible(binding)
+            or version.policy_binding_id != binding.policy_binding_id
+            or version.policy_version != binding.policy_version
+            or version.policy_hash != policy_hash
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "public_policy_ineligible",
+                "The immutable document version policy is not eligible for anonymous publication",
+            )
+        policy_binding_id = binding.policy_binding_id
+        if payload.public_slug is None:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "public_slug_required",
+                "publicSlug is required for a draft or published public document",
+            )
+        try:
+            public_slug = validate_public_slug(payload.public_slug)
+        except PublicDocumentIntegrityError as exc:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "public_slug_invalid",
+                str(exc),
+            ) from exc
+
+    scope = {"type": version.governance_scope_type or "organization"}
+    if version.governance_scope_id:
+        scope["id"] = version.governance_scope_id
+    elif scope["type"] == "organization":
+        scope["id"] = "org_stratos"
+
+    if existing is not None and existing.status == DocumentPublicationStatus.published.value:
+        if requested_status == DocumentPublicationStatus.draft.value:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "published_version_immutable",
+                "A published document version cannot return to draft",
+            )
+        if requested_status == DocumentPublicationStatus.published.value:
+            try:
+                validate_publication_integrity(existing, document, version)
+                requested_description = normalize_public_text(
+                    payload.public_description,
+                    max_length=2000,
+                )
+            except PublicDocumentIntegrityError as exc:
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "published_version_integrity_failed",
+                    "The published immutable document version failed its integrity check",
+                ) from exc
+            if (
+                existing.public_slug != public_slug
+                or existing.policy_binding_id != policy_binding_id
+                or existing.policy_hash != policy_hash
+                or (
+                    payload.public_description is not None
+                    and existing.public_snapshot.get("description") != requested_description
+                )
+            ):
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "published_version_immutable",
+                    "A published document version is immutable; publish a new version instead",
+                )
+
+    if existing is not None and existing.status == DocumentPublicationStatus.revoked.value:
+        if requested_status != DocumentPublicationStatus.revoked.value:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "revoked_version_terminal",
+                "A revoked document publication is terminal; publish a new immutable version instead",
+            )
+
+    source: DocumentFile | None = None
+    snapshot: dict[str, object] | None = None
+    snapshot_hash: str | None = None
+    if requested_status != DocumentPublicationStatus.revoked.value and not (
+        existing is not None
+        and existing.status == DocumentPublicationStatus.published.value
+    ):
+        slug_owner = db.execute(
+            select(DocumentPublication).where(
+                DocumentPublication.public_slug == public_slug,
+                DocumentPublication.document_version_id != version_id,
+            )
+        ).scalar_one_or_none()
+        if slug_owner is not None:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "public_slug_conflict",
+                "publicSlug is already assigned to another immutable document version",
+            )
+        try:
+            source = exact_source_file(version)
+            snapshot = build_public_snapshot(
+                document,
+                version,
+                source,
+                public_description=payload.public_description,
+            )
+        except PublicDocumentIntegrityError as exc:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "public_snapshot_invalid",
+                "The public metadata or exact source descriptor failed validation",
+            ) from exc
+        snapshot_hash = canonical_snapshot_hash(snapshot)
+
+    try:
+        central = governance_client(get_settings()).upsert_information_publication(
+            credential_token=principal.bearer_token or "",
+            resource_type="document_version",
+            resource_id=version.document_version_id,
+            source_version=version.document_version_id,
+            scope=scope,
+            policy_binding_id=policy_binding_id,
+            policy_hash=policy_hash,
+            public_slug=public_slug,
+            status=requested_status,
+            reason=payload.reason,
+        )
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "public_publication_denied",
+            "STRATOS denied the public publication transition",
+        ) from exc
+    except GovernanceUnavailable as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_publication_unavailable",
+            "STRATOS public publication governance is unavailable",
+        ) from exc
+    if central.governed_resource_id != version.governed_resource_id:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_publication_mismatch",
+            "STRATOS returned conflicting public publication coordinates",
+        )
+    if central.policy_hash != policy_hash:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_publication_mismatch",
+            "STRATOS returned conflicting public publication coordinates",
+        )
+    if existing is not None and existing.central_publication_id not in {
+        None,
+        central.publication_id,
+    }:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_publication_mismatch",
+            "STRATOS returned a different public publication identifier",
+        )
+
+    if requested_status == DocumentPublicationStatus.revoked.value:
+        if existing is None:
+            raise problem(
+                status.HTTP_404_NOT_FOUND,
+                "document_publication_not_found",
+                "Document publication was not found",
+            )
+        if existing.status != DocumentPublicationStatus.revoked.value:
+            existing.status = DocumentPublicationStatus.revoked.value
+            existing.revoked_by = principal.subject_id
+            existing.revoked_at = utcnow()
+            existing.reason = payload.reason
+            add_audit_event(
+                db,
+                actor_id=principal.subject_id,
+                event_type="document.publication.revoked",
+                resource_type="document_publication",
+                resource_id=existing.publication_id,
+                metadata={
+                    "document_id": document_id,
+                    "document_version_id": version_id,
+                    "public_slug": existing.public_slug,
+                    "central_publication_id": central.publication_id,
+                    "reason": payload.reason,
+                },
+            )
+            _commit_or_conflict(db)
+            db.refresh(existing)
+        return _document_publication_response(existing)
+
+    if existing is not None and existing.status == DocumentPublicationStatus.published.value:
+        return _document_publication_response(existing)
+
+    if source is None or snapshot is None or snapshot_hash is None:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "public_snapshot_unavailable",
+            "The immutable public snapshot is unavailable",
+        )
+    now = utcnow()
+    publication = existing or DocumentPublication(
+        publication_id=make_id("pub"),
+        document_id=document_id,
+        document_version_id=version_id,
+        public_slug=public_slug,
+        status=requested_status,
+        snapshot_schema=PUBLIC_DOCUMENT_SNAPSHOT_SCHEMA,
+        public_snapshot=snapshot,
+        public_snapshot_hash=snapshot_hash,
+        source_file_uri=source.uri,
+        source_file_hash=snapshot["file"]["sha256"],
+        source_filename=snapshot["file"]["filename"],
+        source_mime_type=snapshot["file"]["mimeType"],
+        source_size_bytes=snapshot["file"]["sizeBytes"],
+        governed_resource_id=version.governed_resource_id,
+        source_version=version.document_version_id,
+        policy_binding_id=policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=policy_hash,
+        central_publication_id=central.publication_id,
+        reason=payload.reason,
+    )
+    if existing is not None:
+        publication.public_slug = public_slug
+        publication.status = requested_status
+        publication.snapshot_schema = PUBLIC_DOCUMENT_SNAPSHOT_SCHEMA
+        publication.public_snapshot = snapshot
+        publication.public_snapshot_hash = snapshot_hash
+        publication.source_file_uri = source.uri
+        publication.source_file_hash = snapshot["file"]["sha256"]
+        publication.source_filename = snapshot["file"]["filename"]
+        publication.source_mime_type = snapshot["file"]["mimeType"]
+        publication.source_size_bytes = snapshot["file"]["sizeBytes"]
+        publication.governed_resource_id = version.governed_resource_id
+        publication.source_version = version.document_version_id
+        publication.policy_binding_id = policy_binding_id
+        publication.policy_version = binding.policy_version
+        publication.policy_hash = policy_hash
+        publication.central_publication_id = central.publication_id
+        publication.reason = payload.reason
+    else:
+        db.add(publication)
+    if requested_status == DocumentPublicationStatus.published.value:
+        publication.approved_by = principal.subject_id
+        publication.published_by = principal.subject_id
+        publication.published_at = now
+    event_suffix = (
+        "published"
+        if requested_status == DocumentPublicationStatus.published.value
+        else "drafted"
+    )
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type=f"document.publication.{event_suffix}",
+        resource_type="document_publication",
+        resource_id=publication.publication_id,
+        metadata={
+            "document_id": document_id,
+            "document_version_id": version_id,
+            "public_slug": public_slug,
+            "central_publication_id": central.publication_id,
+            "policy_binding_id": policy_binding_id,
+            "policy_hash": policy_hash,
+            "public_snapshot_hash": snapshot_hash,
+            "reason": payload.reason,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(publication)
+    return _document_publication_response(publication)
+
+
+@router.get(
+    "/public/documents/{public_slug}",
+    response_model=PublicDocumentMetadataResponse,
+    responses={
+        429: {
+            "description": "Public delivery capacity limit reached",
+            "headers": {
+                "Retry-After": {
+                    "schema": {"type": "integer", "minimum": 1},
+                    "description": "Seconds before retrying public delivery",
+                }
+            },
+        }
+    },
+    openapi_extra={"security": []},
+)
+def get_public_document_metadata(
+    public_slug: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> PublicDocumentMetadataResponse:
+    try:
+        normalized_slug = validate_public_slug(public_slug)
+    except PublicDocumentIntegrityError as exc:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        ) from exc
+    lease = _acquire_public_delivery_capacity(request, public_slug=normalized_slug)
+    try:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        publication, decision_id = _authorized_publication(
+            db,
+            public_slug=normalized_slug,
+            operation="public_read",
+        )
+        return PublicDocumentMetadataResponse(
+            snapshot=publication.public_snapshot,
+            decision_id=decision_id,
+        )
+    finally:
+        lease.release()
+
+
+@router.get(
+    "/internal/public/documents/{public_slug}/source",
+    response_model=PublicDocumentSourceResolutionResponse,
+    responses={
+        429: {
+            "description": "Public delivery capacity limit reached",
+            "headers": {
+                "Retry-After": {
+                    "schema": {"type": "integer", "minimum": 1},
+                    "description": "Seconds before retrying public delivery",
+                }
+            },
+        }
+    },
+    include_in_schema=True,
+)
+def resolve_public_document_source(
+    public_slug: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    delivery_token: Annotated[str | None, Depends(public_delivery_header)] = None,
+) -> PublicDocumentSourceResolutionResponse:
+    settings = get_settings()
+    configured_token = settings.public_delivery_internal_token or ""
+    if (
+        not configured_token
+        or not delivery_token
+        or not secrets.compare_digest(delivery_token, configured_token)
+    ):
+        raise problem(
+            status.HTTP_401_UNAUTHORIZED,
+            "public_delivery_unauthorized",
+            "The internal public delivery credential is invalid",
+        )
+    try:
+        normalized_slug = validate_public_slug(public_slug)
+    except PublicDocumentIntegrityError as exc:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "public_document_unavailable",
+            "The public document is unavailable",
+        ) from exc
+    lease = _acquire_public_delivery_capacity(request, public_slug=normalized_slug)
+    try:
+        response.headers["Cache-Control"] = "no-store"
+        publication, decision_id = _authorized_publication(
+            db,
+            public_slug=normalized_slug,
+            operation="public_download",
+        )
+        return PublicDocumentSourceResolutionResponse(
+            publication_id=publication.publication_id,
+            public_slug=publication.public_slug,
+            document_id=publication.document_id,
+            document_version_id=publication.document_version_id,
+            source_version=publication.source_version,
+            source_file_uri=publication.source_file_uri,
+            filename=publication.source_filename,
+            mime_type=publication.source_mime_type,
+            size_bytes=publication.source_size_bytes,
+            sha256=publication.source_file_hash,
+            policy_binding_id=publication.policy_binding_id,
+            policy_version=publication.policy_version,
+            policy_hash=publication.policy_hash,
+            decision_id=decision_id,
+        )
+    finally:
+        lease.release()
+
+
 @router.post("/authz/check", response_model=AuthzCheckResponse)
 def check_authorization(
     payload: AuthzCheckRequest,
@@ -3133,7 +4111,11 @@ def filter_authorized_documents(
     rows = db.execute(
         select(Document)
         .where(Document.document_id.in_(payload.candidate_document_ids))
-        .options(selectinload(Document.access_policies))
+        .options(
+            selectinload(Document.access_policies),
+            selectinload(Document.versions),
+            selectinload(Document.publications),
+        )
     ).scalars()
     documents_by_id = {document.document_id: document for document in rows}
     candidate_version_ids = {
@@ -3176,19 +4158,29 @@ def filter_authorized_documents(
             or (bool(document.policy_hash) and candidate_hashes == {document.policy_hash})
         )
         candidate_versions = set(payload.candidate_document_versions.get(document_id, []))
-        versions_match = (
-            (context is not None and not context.access_v2)
-            or (
-                bool(candidate_versions)
-                and all(
-                    (version := versions_by_id.get(version_id)) is not None
-                    and version.document_id == document_id
-                    and version.status == DocumentStatus.valid.value
-                    and version.policy_hash == document.policy_hash
-                    for version_id in candidate_versions
+        if decision.constraints.get("public_version_ids"):
+            active_public_versions = {
+                item
+                for item in decision.constraints.get("public_version_ids", [])
+                if isinstance(item, str)
+            }
+            versions_match = bool(candidate_versions) and candidate_versions.issubset(
+                active_public_versions
+            )
+        else:
+            versions_match = (
+                (context is not None and not context.access_v2)
+                or (
+                    bool(candidate_versions)
+                    and all(
+                        (version := versions_by_id.get(version_id)) is not None
+                        and version.document_id == document_id
+                        and version.status == DocumentStatus.valid.value
+                        and version.policy_hash == document.policy_hash
+                        for version_id in candidate_versions
+                    )
                 )
             )
-        )
         if decision.allowed and policy_hash_matches and versions_match:
             allowed_document_ids.append(document_id)
         else:
@@ -3240,7 +4232,11 @@ def list_workflow_tasks(
         for document in db.execute(
             select(Document)
             .where(Document.document_id.in_(document_ids))
-            .options(selectinload(Document.access_policies))
+            .options(
+                selectinload(Document.access_policies),
+                selectinload(Document.versions),
+                selectinload(Document.publications),
+            )
         ).scalars()
     }
     elevated_task_roles = {"admin", "document_manager", "auditor", "service_governance"}
@@ -3603,10 +4599,11 @@ def create_audit_event(
     principal: Principal = Depends(get_current_principal),
 ) -> AuditEvent:
     if principal.service_identity:
+        _require_service_route(principal, "audit")
         capability, operation = _audit_service_decision_coordinates(payload.event_type)
         decision = _service_action_decision(
             principal=principal,
-            subject_id=payload.actor_id,
+            subject_id=principal.subject_id,
             action=Action.audit_write.value,
             document=None,
             capability_override=capability,
@@ -3621,19 +4618,32 @@ def create_audit_event(
             )
     else:
         require_global_action(principal, Action.audit_write, db)
+    event_metadata = dict(payload.metadata)
+    if payload.actor_id != principal.subject_id:
+        event_metadata["reported_actor_id"] = payload.actor_id
+    if principal.service_client_id:
+        event_metadata["service_client_id"] = principal.service_client_id
     event = add_audit_event(
         db,
-        actor_id=payload.actor_id,
+        actor_id=principal.subject_id,
         event_type=payload.event_type,
         resource_type=payload.resource_type,
         resource_id=payload.resource_id,
         severity=payload.severity.value,
         correlation_id=payload.correlation_id or get_correlation_id(),
-        metadata=payload.metadata,
+        metadata=event_metadata,
     )
     _commit_or_conflict(db)
     db.refresh(event)
     return event
+
+
+def _idempotency_namespaces(principal: Principal) -> frozenset[str]:
+    client_id = _require_service_route(principal, "idempotency")
+    settings = get_settings()
+    return frozenset(
+        {client_id, *settings.service_namespace_delegations.get(client_id, frozenset())}
+    )
 
 
 @router.post(
@@ -3645,11 +4655,13 @@ def reserve_integration_idempotency(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> IntegrationIdempotencyReserveResponse:
-    if not principal.service_identity and not (
-        not principal.dynamic_access_loaded
-        and principal.roles.intersection({"service_aiip", "service_rag", "admin"})
-    ):
-        raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "Integration idempotency access denied")
+    allowed_namespaces = _idempotency_namespaces(principal)
+    if payload.client_id not in allowed_namespaces:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "idempotency_namespace_forbidden",
+            "The service client cannot reserve this idempotency namespace",
+        )
 
     now = utcnow()
     record = db.scalar(
@@ -3735,12 +4747,12 @@ def complete_integration_idempotency(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> IntegrationIdempotencyCompleteResponse:
-    if not principal.service_identity and not (
-        not principal.dynamic_access_loaded
-        and principal.roles.intersection({"service_aiip", "service_rag", "admin"})
-    ):
-        raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "Integration idempotency access denied")
-    record = db.get(IntegrationIdempotencyRecord, record_id)
+    allowed_namespaces = _idempotency_namespaces(principal)
+    record = db.scalar(
+        select(IntegrationIdempotencyRecord)
+        .where(IntegrationIdempotencyRecord.record_id == record_id)
+        .with_for_update()
+    )
     expires_at = None
     if record is not None:
         expires_at = (
@@ -3750,6 +4762,12 @@ def complete_integration_idempotency(
         )
     if record is None or expires_at is None or expires_at <= utcnow():
         raise problem(status.HTTP_404_NOT_FOUND, "idempotency_record_not_found", "Idempotency record was not found")
+    if record.client_id not in allowed_namespaces:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "idempotency_namespace_forbidden",
+            "The service client cannot complete this idempotency namespace",
+        )
     record.status = "completed"
     record.response_status = payload.response_status
     record.response_body = payload.response_body

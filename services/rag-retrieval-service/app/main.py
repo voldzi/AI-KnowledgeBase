@@ -125,7 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/rag/retrieve", response_model=RetrieveResponse, tags=["rag"])
     async def retrieve(payload: RetrieveRequest, request: Request) -> RetrieveResponse:
-        auth_context = _guard_request(request)
+        auth_context = _guard_subject_request(request, payload.subject_id)
         logger.info(
             "rag_retrieve_requested subject_id=%s max_chunks=%s answer_text_logged=false",
             payload.subject_id,
@@ -135,7 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/rag/query", response_model=RagAnswer, tags=["rag"])
     async def query(payload: RagQueryRequest, request: Request) -> RagAnswer:
-        auth_context = _guard_request(request)
+        auth_context = _guard_subject_request(request, payload.subject_id)
         logger.info(
             "rag_query_requested subject_id=%s answer_mode=%s max_chunks=%s query_text_logged=false",
             payload.subject_id,
@@ -146,7 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/rag/query-stream", tags=["rag"])
     async def query_stream(payload: RagQueryRequest, request: Request) -> StreamingResponse:
-        auth_context = _guard_request(request)
+        auth_context = _guard_subject_request(request, payload.subject_id)
         logger.info(
             "rag_query_stream_requested subject_id=%s answer_mode=%s max_chunks=%s query_text_logged=false",
             payload.subject_id,
@@ -174,7 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/rag/answer", response_model=RagAnswer, tags=["rag"])
     async def answer(payload: AnswerRequest, request: Request) -> RagAnswer:
-        auth_context = _guard_request(request)
+        auth_context = _guard_subject_request(request, payload.subject_id)
         logger.info(
             "rag_answer_requested subject_id=%s chunk_count=%s query_text_logged=false",
             payload.subject_id,
@@ -192,7 +192,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         response: Response,
     ) -> AiipApplicationResponse:
-        auth_context = _guard_aiip_request(request, payload.classification)
+        auth_context = _guard_aiip_request(
+            request,
+            classification=payload.classification,
+            tenant_id=payload.tenant_id,
+        )
         idempotency_key = _aiip_idempotency_key(request)
         execution = await _service(request).aiip_harmonize(
             payload,
@@ -213,7 +217,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         response: Response,
     ) -> AiipApplicationResponse:
-        auth_context = _guard_aiip_request(request, payload.classification)
+        auth_context = _guard_aiip_request(
+            request,
+            classification=payload.classification,
+            tenant_id=payload.tenant_id,
+        )
         idempotency_key = _aiip_idempotency_key(request)
         execution = await _service(request).aiip_duplicate_search(
             payload,
@@ -510,17 +518,63 @@ def _service(request: Request) -> RagRetrievalService:
     return request.app.state.rag_service
 
 
-def _guard_request(request: Request) -> AuthContext:
+def _authenticate_request(request: Request) -> AuthContext:
     require_service_auth(request, _settings(request))
     return auth_context_for_request(request, _settings(request))
 
 
-def _guard_aiip_request(request: Request, classification: str) -> AuthContext:
+def _guard_request(request: Request) -> AuthContext:
+    context = _authenticate_request(request)
+    if context.service_identity:
+        raise RetrievalError(
+            "SERVICE_ROUTE_FORBIDDEN",
+            "Service identities are not allowed on this end-user route.",
+            status_code=403,
+        )
+    return context
+
+
+def _guard_subject_request(request: Request, subject_id: str) -> AuthContext:
     context = _guard_request(request)
-    if "service_aiip" not in context.roles:
+    settings = _settings(request)
+    if settings.auth_mode in {"oidc", "bearer"}:
+        if context.service_identity:
+            raise RetrievalError(
+                "USER_DELEGATION_REQUIRED",
+                "Generic RAG routes require a verified end-user bearer token.",
+                status_code=403,
+            )
+        if not context.bearer_token or context.subject_id != subject_id:
+            raise RetrievalError(
+                "SUBJECT_DELEGATION_MISMATCH",
+                "The request subject must match the verified bearer identity.",
+                status_code=403,
+            )
+    return context
+
+
+def _guard_aiip_request(
+    request: Request,
+    *,
+    classification: str,
+    tenant_id: str,
+) -> AuthContext:
+    context = _authenticate_request(request)
+    settings = _settings(request)
+    if (
+        not context.service_identity
+        or context.service_client_id not in settings.aiip_service_client_ids
+        or "service_aiip" not in context.roles
+    ):
         raise RetrievalError(
             "AUTH_FORBIDDEN",
-            "The service_aiip role is required for this endpoint.",
+            "This endpoint requires an explicitly allowed AIIP service client.",
+            status_code=403,
+        )
+    if tenant_id != "org_stratos":
+        raise RetrievalError(
+            "ORGANIZATION_SCOPE_NOT_ALLOWED",
+            "AIIP processing is restricted to organization org_stratos.",
             status_code=403,
         )
     if classification not in {"public", "internal"}:

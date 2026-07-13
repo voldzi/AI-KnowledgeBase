@@ -24,6 +24,7 @@ class AuthContext:
     application_access_active: bool = True
     bearer_token: str | None = None
     service_identity: bool = False
+    service_client_id: str | None = None
 
 
 def require_service_auth(request: Request, settings: Settings) -> None:
@@ -55,6 +56,7 @@ def require_service_auth(request: Request, settings: Settings) -> None:
             groups=(),
             bearer_token=token,
             service_identity=True,
+            service_client_id=None,
             identity_active=True,
             membership_active=False,
             application_access_active=False,
@@ -63,7 +65,7 @@ def require_service_auth(request: Request, settings: Settings) -> None:
 
     claims = _verified_oidc_claims(token, settings)
     request.state.principal = "verified-oidc"
-    request.state.auth_context = _oidc_context(claims, token)
+    request.state.auth_context = _oidc_context(claims, token, settings)
 
 
 def auth_context_for_request(request: Request, settings: Settings) -> AuthContext:
@@ -100,6 +102,16 @@ def _auth_context(
     groups = _csv_header(request.headers.get("X-AKL-Groups")) or _claim_list(claims.get("groups"))
     capabilities = _csv_header(request.headers.get("X-STRATOS-Capabilities"))
     scopes = _csv_header(request.headers.get("X-STRATOS-Scopes"))
+    service_client_id = request.headers.get("X-AKL-Service-Client-ID")
+    if service_client_id and (
+        service_client_id not in settings.trusted_service_client_ids
+        or subject_id != f"service-account-{service_client_id}"
+    ):
+        raise RetrievalError(
+            "UNTRUSTED_SERVICE_IDENTITY",
+            "The service client is not trusted by AKB RAG.",
+            status_code=403,
+        )
     if not roles and settings.auth_mode in {"disabled", "mock", "bearer"}:
         roles = settings.service_account_roles
 
@@ -114,6 +126,8 @@ def _auth_context(
         membership_active=_header_bool(request, "X-STRATOS-Membership-Active", True),
         application_access_active=_header_bool(request, "X-STRATOS-Application-Access-Active", True),
         bearer_token=bearer_token,
+        service_identity=bool(service_client_id),
+        service_client_id=service_client_id,
     )
 
 
@@ -124,7 +138,14 @@ def _csv_header(value: str | None) -> tuple[str, ...]:
 
 
 def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
-    if not settings.oidc_issuer or not settings.oidc_audience or not settings.oidc_jwks_url:
+    accepted_audiences = tuple(
+        dict.fromkeys(
+            value
+            for value in (settings.oidc_user_audience, settings.oidc_aiip_audience)
+            if value
+        )
+    )
+    if not settings.oidc_issuer or not accepted_audiences or not settings.oidc_jwks_url:
         raise RetrievalError("AUTH_CONFIG_INVALID", "OIDC verification is not configured", status_code=503)
     try:
         signing_key = PyJWKClient(settings.oidc_jwks_url).get_signing_key_from_jwt(token)
@@ -132,7 +153,7 @@ def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
             token,
             signing_key.key,
             algorithms=["RS256", "ES256"],
-            audience=settings.oidc_audience,
+            audience=list(accepted_audiences),
             issuer=settings.oidc_issuer,
         )
     except jwt.PyJWTError as exc:
@@ -140,12 +161,36 @@ def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
     return claims
 
 
-def _oidc_context(claims: dict[str, Any], token: str) -> AuthContext:
+def _oidc_context(claims: dict[str, Any], token: str, settings: Settings) -> AuthContext:
     roles = _claim_roles(claims)
     subject = _claim_str(claims, "sub")
     if not subject:
         raise RetrievalError("AUTH_REQUIRED", "Bearer token subject is missing", status_code=401)
-    service_identity = _is_service_identity(claims)
+    service_client_id, conflicting_client_claims = _service_client_id(claims)
+    service_looking = _is_service_identity(claims)
+    trusted_service = bool(
+        service_looking
+        and service_client_id
+        and service_client_id in settings.trusted_service_client_ids
+        and _service_account_matches_client(claims, service_client_id)
+    )
+    if conflicting_client_claims or (service_looking and not trusted_service):
+        raise RetrievalError(
+            "UNTRUSTED_SERVICE_IDENTITY",
+            "The bearer token does not identify an explicitly trusted AKB service client.",
+            status_code=403,
+        )
+    expected_audience = (
+        settings.oidc_aiip_audience
+        if trusted_service and service_client_id in settings.aiip_service_client_ids
+        else settings.oidc_user_audience
+    )
+    if not expected_audience or expected_audience not in _claim_audiences(claims):
+        raise RetrievalError(
+            "OIDC_AUDIENCE_FORBIDDEN",
+            "The bearer token audience is not valid for this caller type.",
+            status_code=403,
+        )
     return AuthContext(
         subject_id=subject,
         roles=roles,
@@ -153,11 +198,12 @@ def _oidc_context(claims: dict[str, Any], token: str) -> AuthContext:
         capabilities=(),
         scopes=(),
         organization_id="org_stratos",
-        identity_active=service_identity,
+        identity_active=trusted_service,
         membership_active=False,
         application_access_active=False,
         bearer_token=token,
-        service_identity=service_identity,
+        service_identity=trusted_service,
+        service_client_id=service_client_id if trusted_service else None,
     )
 
 
@@ -170,6 +216,13 @@ def _claim_list(value: Any) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
     return tuple(item for item in value if isinstance(item, str) and item)
+
+
+def _claim_audiences(claims: dict[str, Any]) -> frozenset[str]:
+    value = claims.get("aud")
+    if isinstance(value, str) and value:
+        return frozenset({value})
+    return frozenset(_claim_list(value))
 
 
 def _claim_roles(claims: dict[str, Any]) -> tuple[str, ...]:
@@ -197,3 +250,25 @@ def _is_service_identity(claims: dict[str, Any]) -> bool:
         str(claims.get("sub") or "").startswith("service-account-")
         or str(claims.get("preferred_username") or "").startswith("service-account-")
     )
+
+
+def _service_client_id(claims: dict[str, Any]) -> tuple[str | None, bool]:
+    values = {
+        value
+        for key in ("azp", "client_id")
+        if isinstance((value := claims.get(key)), str) and value
+    }
+    if len(values) > 1:
+        return None, True
+    return (next(iter(values)) if values else None), False
+
+
+def _service_account_matches_client(claims: dict[str, Any], client_id: str) -> bool:
+    expected = f"service-account-{client_id}"
+    subject = str(claims.get("sub") or "")
+    username = str(claims.get("preferred_username") or "")
+    if username and username != expected:
+        return False
+    if subject.startswith("service-account-") and subject != expected:
+        return False
+    return expected in {subject, username}

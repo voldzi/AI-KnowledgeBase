@@ -75,7 +75,7 @@ class InformationPolicyBinding(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, use_enum_values=True)
 
     schema_version: Literal["stratos-information-policy-2"] = Field(alias="schemaVersion")
-    policy_binding_id: str = Field(alias="policyBindingId", pattern=r"^pol_[A-Za-z0-9_-]{8,}$")
+    policy_binding_id: str = Field(alias="policyBindingId", pattern=r"^(?:pol|pb)_[A-Za-z0-9_-]{8,}$")
     policy_version: Literal["information-policy-2.0.0"] = Field(alias="policyVersion")
     handling_class: HandlingClass = Field(alias="handlingClass")
     legal_classification: Literal["NONE"] = Field(alias="legalClassification")

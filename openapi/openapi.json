@@ -36,6 +36,9 @@
       "name": "AKB Web API"
     },
     {
+      "name": "AKB Public Documents"
+    },
+    {
       "name": "Registry API"
     },
     {
@@ -1961,6 +1964,264 @@
                 "schema": {
                   "$ref": "#/components/schemas/RegistryApiDocumentVersionResponse"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/documents/{document_id}/versions/{version_id}/publication": {
+      "get": {
+        "summary": "Get Document Publication",
+        "operationId": "registry_api_get_document_publication_api_v1_documents__document_id__versions__version_id__publication_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentPublicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "put": {
+        "summary": "Put Document Publication",
+        "operationId": "registry_api_put_document_publication_api_v1_documents__document_id__versions__version_id__publication_put",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiDocumentPublicationPutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentPublicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/public/documents/{public_slug}": {
+      "get": {
+        "summary": "Get Public Document Metadata",
+        "operationId": "registry_api_get_public_document_metadata_api_v1_public_documents__public_slug__get",
+        "parameters": [
+          {
+            "name": "public_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Public Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiPublicDocumentMetadataResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Public delivery capacity limit reached",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                "description": "Seconds before retrying public delivery"
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+
+        ],
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/internal/public/documents/{public_slug}/source": {
+      "get": {
+        "summary": "Resolve Public Document Source",
+        "operationId": "registry_api_resolve_public_document_source_api_v1_internal_public_documents__public_slug__source_get",
+        "security": [
+          {
+            "akbPublicDeliveryToken": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "public_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Public Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiPublicDocumentSourceResolutionResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Public delivery capacity limit reached",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                "description": "Seconds before retrying public delivery"
               }
             }
           },
@@ -9347,6 +9608,339 @@
         }
       }
     },
+    "/api/public/documents/{publicSlug}": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Public Documents"
+        ],
+        "summary": "Read sanitized immutable public document metadata",
+        "description": "Anonymous delivery. The Registry performs a fresh central public_read decision and the web boundary applies an exact metadata allowlist. No document body, extracted text, chunk, embedding, prompt, answer, RAG output, or storage URI is returned.",
+        "operationId": "web_get_public_document_metadata",
+        "security": [
+
+        ],
+        "parameters": [
+          {
+            "name": "publicSlug",
+            "in": "path",
+            "required": true,
+            "description": "Opaque immutable public publication slug.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sanitized immutable public metadata after a fresh central public_read decision.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always no-store.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiPublicDocumentMetadataResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-client/publicSlug or global rate/concurrency capacity reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before the fixed delivery-capacity window should be retried.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication missing, denied, revoked, stale, mismatched, or locally invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Registry response did not match the strict public allowlist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Central public policy verification or private source delivery unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/documents/{publicSlug}/source": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Public Documents"
+        ],
+        "summary": "Download a verified immutable public document source",
+        "description": "Anonymous delivery. The web boundary requests a fresh central public_download decision through the private Registry resolver, verifies size and SHA-256 with bounded-memory I/O before streaming, supports Range/ETag, and never exposes the storage URI. Per-client/publicSlug and global rate limits plus held-through-stream concurrency limits return 429 when exceeded.",
+        "operationId": "web_download_public_document_source",
+        "security": [
+
+        ],
+        "parameters": [
+          {
+            "name": "publicSlug",
+            "in": "path",
+            "required": true,
+            "description": "Opaque immutable public publication slug.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "description": "Optional single RFC 9110 byte range.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "description": "Strong immutable-source ETag validator.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "description": "Deliver the requested range only when this strong ETag matches.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified bytes for the exact immutable public document version.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always no-store.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Byte-range delivery is supported.",
+                "schema": {
+                  "type": "string",
+                  "const": "bytes"
+                }
+              },
+              "ETag": {
+                "description": "Strong ETag derived from the verified immutable SHA-256.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Verified byte range for the exact immutable public document version.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always no-store.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Byte-range delivery is supported.",
+                "schema": {
+                  "type": "string",
+                  "const": "bytes"
+                }
+              },
+              "ETag": {
+                "description": "Strong ETag derived from the verified immutable SHA-256.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "description": "Exact delivered byte range and total immutable size.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The freshly authorized immutable source still matches If-None-Match.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always no-store.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Byte-range delivery is supported.",
+                "schema": {
+                  "type": "string",
+                  "const": "bytes"
+                }
+              },
+              "ETag": {
+                "description": "Strong ETag derived from the verified immutable SHA-256.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Requested byte range is not satisfiable.",
+            "headers": {
+              "Content-Range": {
+                "description": "Total immutable source size (`bytes */size`).",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-client/publicSlug or global rate/concurrency capacity reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before the fixed delivery-capacity window should be retried.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Publication missing, denied, revoked, stale, mismatched, or locally invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Registry response did not match the strict public allowlist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Central public policy verification or private source delivery unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ready": {
       "servers": [
         {
@@ -10088,6 +10682,11 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "akbPublicDeliveryToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-AKB-Public-Delivery-Token"
       }
     },
     "responses": {
@@ -11964,6 +12563,17 @@
             ],
             "title": "Correlation Id"
           },
+          "occurrence_count": {
+            "type": "integer",
+            "minimum": 1.0,
+            "default": 1,
+            "title": "Occurrence Count"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
@@ -11984,6 +12594,7 @@
           "resource_id",
           "severity",
           "correlation_id",
+          "last_seen_at",
           "created_at"
         ],
         "title": "AuditEventResponse"
@@ -13658,6 +14269,211 @@
         "type": "object",
         "title": "DocumentPatch"
       },
+      "RegistryApiDocumentPublicationPutRequest": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentPublicationStatus"
+          },
+          "publicSlug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publicslug"
+          },
+          "publicDescription": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publicdescription"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "DocumentPublicationPutRequest"
+      },
+      "RegistryApiDocumentPublicationResponse": {
+        "properties": {
+          "publication_id": {
+            "type": "string",
+            "title": "Publication Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "public_slug": {
+            "type": "string",
+            "title": "Public Slug"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentPublicationStatus"
+          },
+          "snapshot_schema": {
+            "type": "string",
+            "title": "Snapshot Schema"
+          },
+          "public_snapshot_hash": {
+            "type": "string",
+            "title": "Public Snapshot Hash"
+          },
+          "governed_resource_id": {
+            "type": "string",
+            "title": "Governed Resource Id"
+          },
+          "source_version": {
+            "type": "string",
+            "title": "Source Version"
+          },
+          "policy_binding_id": {
+            "type": "string",
+            "title": "Policy Binding Id"
+          },
+          "policy_version": {
+            "type": "string",
+            "title": "Policy Version"
+          },
+          "policy_hash": {
+            "type": "string",
+            "title": "Policy Hash"
+          },
+          "central_publication_id": {
+            "type": "string",
+            "title": "Central Publication Id"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "published_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published By"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "revoked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked By"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "publication_id",
+          "document_id",
+          "document_version_id",
+          "public_slug",
+          "status",
+          "snapshot_schema",
+          "public_snapshot_hash",
+          "governed_resource_id",
+          "source_version",
+          "policy_binding_id",
+          "policy_version",
+          "policy_hash",
+          "central_publication_id",
+          "approved_by",
+          "published_by",
+          "published_at",
+          "revoked_by",
+          "revoked_at",
+          "reason",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentPublicationResponse"
+      },
+      "RegistryApiDocumentPublicationStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "PUBLISHED",
+          "REVOKED"
+        ],
+        "title": "DocumentPublicationStatus"
+      },
       "RegistryApiDocumentReadinessIssue": {
         "properties": {
           "code": {
@@ -15011,7 +15827,7 @@
           },
           "policyBindingId": {
             "type": "string",
-            "pattern": "^pol_[A-Za-z0-9_-]{8,}$",
+            "pattern": "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$",
             "title": "Policybindingid"
           },
           "policyVersion": {
@@ -15561,6 +16377,217 @@
           "settings"
         ],
         "title": "ProfileSettingsResponse"
+      },
+      "RegistryApiPublicDocumentMetadataResponse": {
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/RegistryApiPublicDocumentSnapshot"
+          },
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "snapshot",
+          "decision_id"
+        ],
+        "title": "PublicDocumentMetadataResponse"
+      },
+      "RegistryApiPublicDocumentSnapshot": {
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "const": "akb-public-document-1",
+            "title": "Schemaversion"
+          },
+          "documentId": {
+            "type": "string",
+            "title": "Documentid"
+          },
+          "documentVersionId": {
+            "type": "string",
+            "title": "Documentversionid"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "documentType": {
+            "type": "string",
+            "title": "Documenttype"
+          },
+          "versionLabel": {
+            "type": "string",
+            "title": "Versionlabel"
+          },
+          "validFrom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validfrom"
+          },
+          "validTo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validto"
+          },
+          "publishedAt": {
+            "type": "string",
+            "title": "Publishedat"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "file": {
+            "$ref": "#/components/schemas/RegistryApiPublicDocumentSnapshotFile"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "documentId",
+          "documentVersionId",
+          "title",
+          "documentType",
+          "versionLabel",
+          "validFrom",
+          "validTo",
+          "publishedAt",
+          "description",
+          "file"
+        ],
+        "title": "PublicDocumentSnapshot"
+      },
+      "RegistryApiPublicDocumentSnapshotFile": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "mimeType": {
+            "type": "string",
+            "title": "Mimetype"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Sizebytes"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "mimeType",
+          "sizeBytes",
+          "sha256"
+        ],
+        "title": "PublicDocumentSnapshotFile"
+      },
+      "RegistryApiPublicDocumentSourceResolutionResponse": {
+        "properties": {
+          "publication_id": {
+            "type": "string",
+            "title": "Publication Id"
+          },
+          "public_slug": {
+            "type": "string",
+            "title": "Public Slug"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "source_version": {
+            "type": "string",
+            "title": "Source Version"
+          },
+          "source_file_uri": {
+            "type": "string",
+            "title": "Source File Uri"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "policy_binding_id": {
+            "type": "string",
+            "title": "Policy Binding Id"
+          },
+          "policy_version": {
+            "type": "string",
+            "title": "Policy Version"
+          },
+          "policy_hash": {
+            "type": "string",
+            "title": "Policy Hash"
+          },
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "publication_id",
+          "public_slug",
+          "document_id",
+          "document_version_id",
+          "source_version",
+          "source_file_uri",
+          "filename",
+          "mime_type",
+          "size_bytes",
+          "sha256",
+          "policy_binding_id",
+          "policy_version",
+          "policy_hash",
+          "decision_id"
+        ],
+        "title": "PublicDocumentSourceResolutionResponse"
       },
       "RegistryApiRoleMappingListResponse": {
         "properties": {

@@ -40,6 +40,10 @@ def _parse_optional_str(value: str) -> str | None:
     return stripped or None
 
 
+def _parse_csv(value: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
+
+
 def _client_mode(env: Mapping[str, str], key: str, default: str) -> str:
     mode = _get(env, key, default).strip().lower()
     if mode not in CLIENT_MODES:
@@ -87,6 +91,10 @@ class Settings:
     oidc_issuer: str | None
     oidc_audience: str | None
     oidc_jwks_url: str | None
+    oidc_user_audience: str | None
+    oidc_aiip_audience: str | None
+    trusted_service_client_ids: tuple[str, ...]
+    aiip_service_client_ids: tuple[str, ...]
 
     registry_client_mode: str
     retriever_mode: str
@@ -143,6 +151,22 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     service_token = source.get("AKL_SERVICE_TOKEN") or None
     dependency_mode = _get(source, "AKL_RAG_DEPENDENCY_MODE", "mock").strip().lower()
     authz_mode = _get(source, "AKL_RAG_AUTHZ_MODE", "dev").strip().lower()
+    trusted_service_client_ids = _parse_csv(
+        _get(source, "AKL_TRUSTED_SERVICE_CLIENT_IDS", "")
+    )
+    aiip_service_client_ids = _parse_csv(
+        _get(source, "AKL_RAG_AIIP_SERVICE_CLIENT_IDS", "")
+    )
+    oidc_user_audience = _parse_optional_str(
+        _get(
+            source,
+            "AKL_RAG_USER_OIDC_AUDIENCE",
+            _get(source, "AKL_OIDC_AUDIENCE", ""),
+        )
+    )
+    oidc_aiip_audience = _parse_optional_str(
+        _get(source, "AKL_RAG_AIIP_OIDC_AUDIENCE", "")
+    )
 
     if auth_mode not in AUTH_MODES:
         raise ConfigError("AKL_AUTH_MODE must be one of: disabled, bearer, mock, oidc")
@@ -159,6 +183,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     if fulltext_mode not in FULLTEXT_MODES:
         raise ConfigError("AKL_RAG_FULLTEXT_MODE must be one of: qdrant, opensearch")
+    unknown_aiip_clients = set(aiip_service_client_ids).difference(trusted_service_client_ids)
+    if unknown_aiip_clients:
+        raise ConfigError(
+            "AKL_RAG_AIIP_SERVICE_CLIENT_IDS must be a subset of AKL_TRUSTED_SERVICE_CLIENT_IDS"
+        )
 
     try:
         request_timeout_seconds = float(_get(source, "AKL_RAG_REQUEST_TIMEOUT_SECONDS", "30"))
@@ -214,11 +243,24 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Production requires AKL_SERVICE_TOKEN")
         if registry_client_mode == "mock" or retriever_mode == "mock" or llm_client_mode == "mock":
             raise ConfigError("Production must use non-mock clients for Registry API, Qdrant, and LLM Gateway")
+        if auth_mode != "oidc":
+            raise ConfigError("Production RAG requires AKL_AUTH_MODE=oidc for user delegation")
         if auth_mode == "oidc" and not all(
             source.get(name)
             for name in ("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE", "AKL_OIDC_JWKS_URL")
         ):
             raise ConfigError("Production OIDC requires issuer, audience, and JWKS URL")
+        if not source.get("AKL_RAG_USER_OIDC_AUDIENCE") or not source.get(
+            "AKL_RAG_AIIP_OIDC_AUDIENCE"
+        ):
+            raise ConfigError(
+                "Production OIDC requires AKL_RAG_USER_OIDC_AUDIENCE and "
+                "AKL_RAG_AIIP_OIDC_AUDIENCE"
+            )
+        if not trusted_service_client_ids:
+            raise ConfigError("Production OIDC requires AKL_TRUSTED_SERVICE_CLIENT_IDS")
+        if not aiip_service_client_ids:
+            raise ConfigError("Production requires AKL_RAG_AIIP_SERVICE_CLIENT_IDS")
 
     denied = tuple(
         item.strip()
@@ -243,6 +285,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         oidc_issuer=source.get("AKL_OIDC_ISSUER") or None,
         oidc_audience=source.get("AKL_OIDC_AUDIENCE") or None,
         oidc_jwks_url=source.get("AKL_OIDC_JWKS_URL") or None,
+        oidc_user_audience=oidc_user_audience,
+        oidc_aiip_audience=oidc_aiip_audience,
+        trusted_service_client_ids=trusted_service_client_ids,
+        aiip_service_client_ids=aiip_service_client_ids,
         registry_client_mode=registry_client_mode,
         retriever_mode=retriever_mode,
         fulltext_mode=fulltext_mode,

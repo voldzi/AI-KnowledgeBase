@@ -73,7 +73,7 @@ export function parseInformationPolicy(value: unknown): InformationPolicyBinding
   requiredEqual(policy.policyVersion, INFORMATION_POLICY_VERSION, "policyVersion");
   requiredEqual(policy.legalClassification, "NONE", "legalClassification", "LEGAL_CLASSIFICATION_UNSUPPORTED");
   const policyBindingId = requiredText(policy.policyBindingId, "policyBindingId");
-  if (!/^pol_[A-Za-z0-9_-]{8,}$/.test(policyBindingId)) fail("POLICY_BINDING_INVALID", "policyBindingId is invalid.");
+  if (!/^(?:pol|pb)_[A-Za-z0-9_-]{8,}$/.test(policyBindingId)) fail("POLICY_BINDING_INVALID", "policyBindingId is invalid.");
   const handlingClass = enumText(policy.handlingClass, HANDLING_CLASSES, "handlingClass");
   const tlp = nullableEnum(policy.tlp, TLP_VALUES, "tlp");
   const pap = nullableEnum(policy.pap, PAP_VALUES, "pap");

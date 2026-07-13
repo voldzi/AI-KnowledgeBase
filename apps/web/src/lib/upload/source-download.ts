@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { open, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 export interface SourceOpenRequest {
   document_id: string;
@@ -57,6 +58,15 @@ export interface SourceDownloadSettings {
   signingSecret: string;
   publicDownloadBasePath: string;
   expiresInSeconds: number;
+}
+
+export interface VerifiedSourceObject {
+  size_bytes: number;
+  mime_type: string;
+  filename: string;
+  sha256: string;
+  openStream(start?: number, end?: number): ReadableStream<Uint8Array>;
+  close(): Promise<void>;
 }
 
 export class SourceDownloadError extends Error {
@@ -266,6 +276,84 @@ export async function readSourceObject(
     });
   }
   return { bytes, mime_type: payload.file_type, filename: payload.file_name, sha256 };
+}
+
+export async function openVerifiedSourceObject(
+  payload: SourceDownloadTokenPayload,
+  expectedSize: number,
+  settings: SourceDownloadSettings = getSourceDownloadSettings()
+): Promise<VerifiedSourceObject> {
+  const targetPath = resolveObjectPath({ bucket: payload.bucket, object_key: payload.object_key }, settings);
+  const handle = await open(targetPath, "r").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") {
+      throw new SourceDownloadError(404, "SOURCE_OBJECT_NOT_FOUND", "Source object is not available in object storage.");
+    }
+    throw error;
+  });
+  let streamOpened = false;
+  try {
+    const sourceStat = await handle.stat();
+    if (!sourceStat.isFile() || sourceStat.size !== expectedSize) {
+      throw new SourceDownloadError(
+        409,
+        "SOURCE_DESCRIPTOR_MISMATCH",
+        "Source object size does not match Registry metadata."
+      );
+    }
+    const digest = createHash("sha256");
+    if (sourceStat.size > 0) {
+      const verificationStream = handle.createReadStream({
+        autoClose: false,
+        start: 0,
+        end: sourceStat.size - 1,
+        highWaterMark: 64 * 1024
+      });
+      for await (const chunk of verificationStream) digest.update(chunk as Buffer);
+    }
+    const sha256 = `sha256:${digest.digest("hex")}`;
+    if (payload.sha256 && payload.sha256 !== sha256) {
+      throw new SourceDownloadError(409, "SOURCE_HASH_MISMATCH", "Source object SHA-256 does not match Registry metadata.", {
+        expected_sha256: payload.sha256,
+        actual_sha256: sha256
+      });
+    }
+    return {
+      size_bytes: sourceStat.size,
+      mime_type: payload.file_type,
+      filename: payload.file_name,
+      sha256,
+      openStream(start = 0, end = Math.max(0, sourceStat.size - 1)) {
+        if (streamOpened) {
+          throw new SourceDownloadError(500, "SOURCE_STREAM_ALREADY_OPEN", "Source object stream is already open.");
+        }
+        streamOpened = true;
+        if (sourceStat.size === 0) {
+          void handle.close();
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            }
+          });
+        }
+        if (start < 0 || end < start || end >= sourceStat.size) {
+          void handle.close();
+          throw new SourceDownloadError(416, "SOURCE_RANGE_INVALID", "Source byte range is invalid.");
+        }
+        return Readable.toWeb(
+          handle.createReadStream({ autoClose: true, start, end, highWaterMark: 64 * 1024 })
+        ) as ReadableStream<Uint8Array>;
+      },
+      async close() {
+        if (!streamOpened) {
+          streamOpened = true;
+          await handle.close();
+        }
+      }
+    };
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 export function sourceContentTypeHeader(mimeType: string): string {

@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+
+import app.api as api_module
 from app.models import RoleMapping
 
 
@@ -390,6 +393,11 @@ def test_audit_write_and_read(client):
     event = created.json()
     assert event["audit_event_id"].startswith("audit_")
     assert event["correlation_id"] == "corr-audit"
+    assert event["actor_id"] == "user_auditor"
+    assert event["metadata"] == {
+        "service": "rag-retrieval-service",
+        "reported_actor_id": "svc-rag",
+    }
 
     listing = client.get("/api/v1/audit/events?event_type=rag.query.executed", headers=auditor_headers)
     assert listing.status_code == 200
@@ -397,4 +405,43 @@ def test_audit_write_and_read(client):
 
     detail = client.get(f"/api/v1/audit/events/{event['audit_event_id']}", headers=auditor_headers)
     assert detail.status_code == 200
-    assert detail.json()["metadata"] == {"service": "rag-retrieval-service"}
+    assert detail.json()["metadata"] == {
+        "service": "rag-retrieval-service",
+        "reported_actor_id": "svc-rag",
+    }
+
+
+def test_service_audit_actor_is_bound_to_verified_principal(client, monkeypatch):
+    monkeypatch.setattr(
+        api_module,
+        "governance_client",
+        lambda _settings: SimpleNamespace(
+            decide=lambda **_kwargs: {
+                "decision": "ALLOW",
+                "reasonCodes": ["CAPABILITY_ALLOW"],
+            }
+        ),
+    )
+    response = client.post(
+        "/api/v1/audit/events",
+        headers={
+            "X-AKL-Subject": "service-account-akb-rag-service",
+            "X-AKL-Roles": "service_rag",
+            "X-AKL-Service-Client-ID": "akb-rag-service",
+        },
+        json={
+            "actor_id": "user-victim",
+            "event_type": "rag.query.executed",
+            "resource_type": "rag_query",
+            "resource_id": "query-forged-actor",
+            "metadata": {
+                "reported_actor_id": "attacker-controlled",
+                "service_client_id": "attacker-controlled",
+            },
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["actor_id"] == "service-account-akb-rag-service"
+    assert response.json()["metadata"]["reported_actor_id"] == "user-victim"
+    assert response.json()["metadata"]["service_client_id"] == "akb-rag-service"

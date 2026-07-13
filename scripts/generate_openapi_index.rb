@@ -224,8 +224,144 @@ def aiip_web_operation(path)
   }
 end
 
+def public_document_web_operation(path)
+  source = path.end_with?("/source")
+  parameters = [
+    {
+      "name" => "publicSlug",
+      "in" => "path",
+      "required" => true,
+      "description" => "Opaque immutable public publication slug.",
+      "schema" => { "type" => "string", "minLength" => 1 }
+    }
+  ]
+  if source
+    parameters.concat([
+      {
+        "name" => "Range",
+        "in" => "header",
+        "required" => false,
+        "description" => "Optional single RFC 9110 byte range.",
+        "schema" => { "type" => "string" }
+      },
+      {
+        "name" => "If-None-Match",
+        "in" => "header",
+        "required" => false,
+        "description" => "Strong immutable-source ETag validator.",
+        "schema" => { "type" => "string" }
+      },
+      {
+        "name" => "If-Range",
+        "in" => "header",
+        "required" => false,
+        "description" => "Deliver the requested range only when this strong ETag matches.",
+        "schema" => { "type" => "string" }
+      }
+    ])
+  end
+  success_content = if source
+    {
+      "application/octet-stream" => {
+        "schema" => { "type" => "string", "format" => "binary" }
+      }
+    }
+  else
+    {
+      "application/json" => {
+        "schema" => { "$ref" => "#/components/schemas/RegistryApiPublicDocumentMetadataResponse" }
+      }
+    }
+  end
+  responses = {
+    "200" => {
+      "description" => source ?
+        "Verified bytes for the exact immutable public document version." :
+        "Sanitized immutable public metadata after a fresh central public_read decision.",
+      "headers" => {
+        "Cache-Control" => {
+          "description" => "Always no-store.",
+          "schema" => { "type" => "string", "const" => "no-store" }
+        }
+      },
+      "content" => success_content
+    }
+  }
+  if source
+    responses["200"]["headers"].merge!({
+      "Accept-Ranges" => {
+        "description" => "Byte-range delivery is supported.",
+        "schema" => { "type" => "string", "const" => "bytes" }
+      },
+      "ETag" => {
+        "description" => "Strong ETag derived from the verified immutable SHA-256.",
+        "schema" => { "type" => "string" }
+      }
+    })
+    responses["206"] = Marshal.load(Marshal.dump(responses["200"]))
+    responses["206"]["description"] = "Verified byte range for the exact immutable public document version."
+    responses["206"]["headers"]["Content-Range"] = {
+      "description" => "Exact delivered byte range and total immutable size.",
+      "schema" => { "type" => "string" }
+    }
+    responses["304"] = {
+      "description" => "The freshly authorized immutable source still matches If-None-Match.",
+      "headers" => responses["200"]["headers"]
+    }
+    responses["416"] = {
+      "description" => "Requested byte range is not satisfiable.",
+      "headers" => {
+        "Content-Range" => {
+          "description" => "Total immutable source size (`bytes */size`).",
+          "schema" => { "type" => "string" }
+        }
+      },
+      "content" => {
+        "application/json" => {
+          "schema" => { "$ref" => "#/components/schemas/AkbErrorResponse" }
+        }
+      }
+    }
+  end
+  {
+    "429" => "Per-client/publicSlug or global rate/concurrency capacity reached",
+    "404" => "Publication missing, denied, revoked, stale, mismatched, or locally invalid",
+    "502" => "Registry response did not match the strict public allowlist",
+    "503" => "Central public policy verification or private source delivery unavailable"
+  }.each do |status, description|
+    responses[status] = {
+      "description" => description,
+      "content" => {
+        "application/json" => {
+          "schema" => { "$ref" => "#/components/schemas/AkbErrorResponse" }
+        }
+      }
+    }
+  end
+  responses["429"]["headers"] = {
+    "Retry-After" => {
+      "description" => "Seconds before the fixed delivery-capacity window should be retried.",
+      "schema" => { "type" => "integer", "minimum" => 1 }
+    }
+  }
+  {
+    "tags" => ["AKB Public Documents"],
+    "summary" => source ? "Download a verified immutable public document source" : "Read sanitized immutable public document metadata",
+    "description" => source ?
+      "Anonymous delivery. The web boundary requests a fresh central public_download decision through the private Registry resolver, verifies size and SHA-256 with bounded-memory I/O before streaming, supports Range/ETag, and never exposes the storage URI. Per-client/publicSlug and global rate limits plus held-through-stream concurrency limits return 429 when exceeded." :
+      "Anonymous delivery. The Registry performs a fresh central public_read decision and the web boundary applies an exact metadata allowlist. No document body, extracted text, chunk, embedding, prompt, answer, RAG output, or storage URI is returned.",
+    "operationId" => source ? "web_download_public_document_source" : "web_get_public_document_metadata",
+    "security" => [],
+    "parameters" => parameters,
+    "responses" => responses
+  }
+end
+
 def web_operation(method, path)
   return aiip_web_operation(path) if method == "POST" && AIIP_PUBLIC_PATHS.include?(path)
+  if method == "GET" && path.match?(%r{\A/api/public/documents/\{publicSlug\}(?:/source)?\z})
+    return public_document_web_operation(path)
+  end
 
   operation_id = "web_#{method.downcase}_#{path.gsub(%r{[^a-zA-Z0-9]+}, "_").gsub(/^_|_$/, "")}"
   responses = {
@@ -430,7 +566,8 @@ spec = {
   ],
   "tags" => [
     { "name" => "System" },
-    { "name" => "AKB Web API" }
+    { "name" => "AKB Web API" },
+    { "name" => "AKB Public Documents" }
   ] + SERVICES.map { |service| { "name" => service[:title] } },
   "paths" => {},
   "components" => {
@@ -671,6 +808,11 @@ SERVICES.each do |service|
 
   schemas.each do |name, schema|
     spec["components"]["schemas"]["#{service[:prefix]}#{name}"] = deep_rewrite_refs(schema, ref_map)
+  end
+  source.dig("components", "securitySchemes")&.each do |name, scheme|
+    existing = spec["components"]["securitySchemes"][name]
+    next if existing
+    spec["components"]["securitySchemes"][name] = scheme
   end
 
   source.fetch("paths", {}).each do |path, path_item|

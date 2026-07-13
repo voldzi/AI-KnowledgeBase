@@ -1,10 +1,24 @@
-def _headers(role: str = "service_aiip") -> dict[str, str]:
-    return {
-        "X-AKL-Subject": "svc-aiip",
+def _headers(
+    role: str = "service_aiip",
+    *,
+    client_id: str | None = None,
+) -> dict[str, str]:
+    resolved_client_id = client_id or {
+        "service_aiip": "aiip-service",
+        "service_rag": "akb-rag-service",
+        "service_evaluation": "svc-evaluation",
+    }.get(role)
+    headers = {
+        "X-AKL-Subject": (
+            f"service-account-{resolved_client_id}" if resolved_client_id else "svc-aiip"
+        ),
         "X-AKL-Roles": role,
         "X-Request-ID": "req-aiip",
         "X-Correlation-ID": "corr-aiip",
     }
+    if resolved_client_id:
+        headers["X-AKL-Service-Client-ID"] = resolved_client_id
+    return headers
 
 
 def _reserve(client, *, key: str = "idem-aiip-0001", input_hash: str = "a" * 64):
@@ -63,6 +77,37 @@ def test_idempotency_access_rejects_unrelated_role(client):
         },
     )
     assert response.status_code == 403
+
+
+def test_idempotency_reserve_rejects_cross_client_namespace(client):
+    response = client.post(
+        "/api/v1/integrations/idempotency/reserve",
+        headers=_headers("service_evaluation"),
+        json={
+            "client_id": "aiip-service",
+            "operation": "harmonize",
+            "idempotency_key": "idem-cross-client-1",
+            "input_hash": "a" * 64,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "idempotency_namespace_forbidden"
+
+
+def test_idempotency_completion_rejects_foreign_caller(client):
+    reserved = _reserve(client, key="idem-cross-complete")
+    response = client.post(
+        f"/api/v1/integrations/idempotency/{reserved.json()['record_id']}/complete",
+        headers=_headers("service_evaluation"),
+        json={
+            "response_status": 200,
+            "response_body": {"result": "forged"},
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "idempotency_namespace_forbidden"
 
 
 def test_stale_processing_reservation_can_be_reclaimed(client, db_session):

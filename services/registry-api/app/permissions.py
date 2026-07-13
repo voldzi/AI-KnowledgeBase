@@ -6,11 +6,22 @@ from sqlalchemy.orm import Session
 from starlette import status
 
 from app.auth import Principal
-from app.access_governance import GovernanceDenied, GovernanceUnavailable, governance_client
+from app.access_governance import (
+    GovernanceDenied,
+    GovernanceInvalidResponse,
+    GovernanceUnavailable,
+    governance_client,
+)
 from app.config import get_settings
 from app.errors import problem
-from app.information_policy import InformationPolicyBinding, POLICY_VERSION
+from app.information_policy import (
+    InformationPolicyBinding,
+    POLICY_VERSION,
+    anonymous_public_eligible,
+    canonical_policy_hash,
+)
 from app.models import Document, RoleMapping
+from app.public_documents import PublicDocumentIntegrityError, validate_publication_integrity
 from app.schemas import Action, Classification
 
 
@@ -139,7 +150,7 @@ OWNER_ACTIONS = {
 
 ACTION_CAPABILITIES: dict[str, set[str]] = {
     Action.document_create.value: {"akb:upload"},
-    Action.document_read.value: {"akb:read_document", "akb:chat"},
+    Action.document_read.value: {"akb:read_document"},
     Action.document_update.value: {"akb:manage_document"},
     Action.document_delete.value: {"akb:manage_document"},
     Action.document_version_create.value: {"akb:upload", "akb:manage_document"},
@@ -309,6 +320,91 @@ def context_for_principal(principal: Principal, db: Session | None = None) -> Su
     )
 
 
+def active_true_public_version_ids(
+    document: Document,
+    binding: InformationPolicyBinding | None = None,
+) -> frozenset[str]:
+    if binding is None:
+        try:
+            binding = InformationPolicyBinding.model_validate(document.policy_summary)
+        except ValueError:
+            return frozenset()
+    expected_hash = canonical_policy_hash(binding)
+    if (
+        not anonymous_public_eligible(binding)
+        or document.policy_binding_id != binding.policy_binding_id
+        or document.policy_version != binding.policy_version
+        or document.policy_hash != expected_hash
+    ):
+        return frozenset()
+    versions = {version.document_version_id: version for version in document.versions}
+    active: set[str] = set()
+    for publication in document.publications:
+        version = versions.get(publication.document_version_id)
+        if (
+            publication.status != "PUBLISHED"
+            or publication.revoked_at is not None
+            or publication.published_at is None
+            or not publication.central_publication_id
+            or publication.policy_binding_id != binding.policy_binding_id
+            or publication.policy_version != binding.policy_version
+            or publication.policy_hash != expected_hash
+            or version is None
+        ):
+            continue
+        try:
+            validate_publication_integrity(publication, document, version)
+        except PublicDocumentIntegrityError:
+            continue
+        active.add(version.document_version_id)
+    return frozenset(active)
+
+
+def centrally_allowed_true_public_version_ids(
+    document: Document,
+    binding: InformationPolicyBinding | None = None,
+) -> frozenset[str]:
+    local_version_ids = active_true_public_version_ids(document, binding)
+    if not local_version_ids:
+        return frozenset()
+    allowed: set[str] = set()
+    client = governance_client(get_settings())
+    for publication in document.publications:
+        if publication.document_version_id not in local_version_ids:
+            continue
+        try:
+            decision = client.public_decide(
+                public_slug=publication.public_slug,
+                operation="public_read",
+            )
+        except (GovernanceDenied, GovernanceInvalidResponse, GovernanceUnavailable) as exc:
+            raise problem(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "public_policy_decision_unavailable",
+                "Fresh public policy verification is unavailable",
+            ) from exc
+        central_publication = decision.get("publication")
+        expected = {
+            "id": publication.central_publication_id,
+            "application": "AKB",
+            "resourceType": "document_version",
+            "resourceId": publication.document_version_id,
+            "sourceVersion": publication.source_version,
+            "publicSlug": publication.public_slug,
+            "policyBindingId": publication.policy_binding_id,
+            "policyHash": publication.policy_hash,
+        }
+        if (
+            decision.get("decision") == "ALLOW"
+            and decision.get("policyVersion") == publication.policy_version
+            and isinstance(central_publication, dict)
+            and all(central_publication.get(key) == value for key, value in expected.items())
+            and isinstance(central_publication.get("publishedAt"), str)
+        ):
+            allowed.add(publication.document_version_id)
+    return frozenset(allowed)
+
+
 def _v2_base_decision(context: SubjectContext, action: str) -> Decision | None:
     constraints = {
         "organization_id": context.organization_id,
@@ -345,13 +441,15 @@ def _scope_allows(context: SubjectContext, document: Document, binding: Informat
         or f"organization:{context.organization_id}" in context.scopes
     ):
         return True
-    if audience.scope_type == "public":
-        return True
     if f"document:{document.document_id}" in context.scopes:
         return True
     for scope_id in audience.scope_ids:
         if f"{audience.scope_type}:{scope_id}" in context.scopes:
             return True
+    # `public` is a synthetic projection, not an ordinary audience scope.  It
+    # is evaluated only by the exact-public branch below.
+    if audience.scope_type == "public":
+        return False
     return audience.scope_type in context.scopes and not audience.scope_ids
 
 
@@ -373,7 +471,20 @@ def _v2_document_decision(context: SubjectContext, action: str, document: Docume
         binding = InformationPolicyBinding.model_validate(document.policy_summary)
     except ValueError:
         return Decision(False, "Document policy binding is invalid", constraints, ("POLICY_BINDING_INVALID",))
-    if not _scope_allows(context, document, binding):
+    scoped_access = _scope_allows(context, document, binding)
+    if not scoped_access and "public" in context.scopes:
+        if action != Action.rag_query.value:
+            return Decision(
+                False,
+                "Public-only access is available only through the governed RAG/public projection",
+                constraints,
+                ("PUBLIC_PROJECTION_REQUIRED",),
+            )
+        public_version_ids = centrally_allowed_true_public_version_ids(document, binding)
+        if binding.audience.scope_type != "public" or not public_version_ids:
+            return Decision(False, "Document is not actively public", constraints, ("PUBLICATION_INACTIVE",))
+        constraints["public_version_ids"] = sorted(public_version_ids)
+    elif not scoped_access:
         return Decision(False, "Document audience or scope does not match", constraints, ("SCOPE_MISMATCH",))
     constraints["obligations"] = list(binding.obligations)
     return Decision(True, "Capability, scope and information policy allow access", constraints, ("POLICY_ALLOW",))
@@ -447,6 +558,20 @@ def evaluate_runtime_document_access(
     )
     if not decision.allowed:
         return decision
+    # The public-projection branch above has already performed a fresh anonymous
+    # decision for each exact immutable publication/version.  Sending that
+    # result through the authenticated, scope-oriented PDP would evaluate a
+    # different resource contract (normally the document's organization
+    # scope) and can turn an exact public ALLOW into an unrelated DENY.
+    # Conversely, this bypass is deliberately unavailable to ordinary scoped
+    # access or to full document reads.
+    context = context_for_principal(principal)
+    if (
+        action == Action.rag_query.value
+        and "public" in context.scopes
+        and bool(decision.constraints.get("public_version_ids"))
+    ):
+        return decision
     settings = get_settings()
     if settings.auth_mode == "mock":
         return decision
@@ -456,7 +581,6 @@ def evaluate_runtime_document_access(
     capability = _primary_capability(action)
     try:
         response = governance_client(settings).decide(
-            actor_subject_id=principal.subject_id,
             capability_id=capability,
             operation=_central_operation(action),
             scope=document_governance_scope(document),

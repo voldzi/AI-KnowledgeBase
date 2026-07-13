@@ -666,6 +666,98 @@ class DocumentVersionListResponse(BaseModel):
     offset: int
 
 
+class DocumentPublicationStatus(str, Enum):
+    draft = "DRAFT"
+    published = "PUBLISHED"
+    revoked = "REVOKED"
+
+
+class DocumentPublicationPutRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    status: DocumentPublicationStatus
+    public_slug: str | None = Field(default=None, alias="publicSlug", min_length=3, max_length=120)
+    public_description: str | None = Field(
+        default=None,
+        alias="publicDescription",
+        max_length=2000,
+    )
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class DocumentPublicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    publication_id: str
+    document_id: str
+    document_version_id: str
+    public_slug: str
+    status: DocumentPublicationStatus
+    snapshot_schema: str
+    public_snapshot_hash: str
+    governed_resource_id: str
+    source_version: str
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    central_publication_id: str
+    approved_by: str | None
+    published_by: str | None
+    published_at: datetime | None
+    revoked_by: str | None
+    revoked_at: datetime | None
+    reason: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PublicDocumentSnapshotFile(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    filename: str
+    mime_type: str = Field(alias="mimeType")
+    size_bytes: int = Field(alias="sizeBytes", ge=0)
+    sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class PublicDocumentSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    schema_version: Literal["akb-public-document-1"] = Field(alias="schemaVersion")
+    document_id: str = Field(alias="documentId")
+    document_version_id: str = Field(alias="documentVersionId")
+    title: str
+    document_type: str = Field(alias="documentType")
+    version_label: str = Field(alias="versionLabel")
+    valid_from: str | None = Field(alias="validFrom")
+    valid_to: str | None = Field(alias="validTo")
+    published_at: str = Field(alias="publishedAt")
+    description: str | None
+    file: PublicDocumentSnapshotFile
+
+
+class PublicDocumentMetadataResponse(BaseModel):
+    snapshot: PublicDocumentSnapshot
+    decision_id: str
+
+
+class PublicDocumentSourceResolutionResponse(BaseModel):
+    publication_id: str
+    public_slug: str
+    document_id: str
+    document_version_id: str
+    source_version: str
+    source_file_uri: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    decision_id: str
+
+
 class AuthzResource(BaseModel):
     document_id: str | None = None
     document_version_id: str | None = None
@@ -734,6 +826,8 @@ class AuditEventResponse(BaseModel):
     resource_id: str
     severity: AuditSeverity
     correlation_id: str | None
+    occurrence_count: int = Field(default=1, ge=1)
+    last_seen_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="event_metadata")
     created_at: datetime
 

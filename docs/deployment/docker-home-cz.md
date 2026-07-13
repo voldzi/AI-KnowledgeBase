@@ -4,7 +4,8 @@ Tento plán popisuje první produkční nasazení AKL / AI KnowledgeBase jako so
 
 ## Cílový Stav
 
-- AKL běží z větve `main` stažené z GitHubu do `/srv/akl`.
+- AKL běží z přesného schváleného SHA chráněné větve `main`, rozbaleného jako
+  read-only release v `/srv/akl/releases/<full-sha>`.
 - PostgreSQL je jediná produkční relační databáze. SQLite se v produkci nepoužívá.
 - Dokumentové binární zdroje jsou oddělené od databáze a ukládají se do dedikovaného AKL prostoru nad SeaweedFS.
 - Keycloak používá STRATOS realm a STRATOS login theme. AKB je klient v tomto realm.
@@ -27,7 +28,11 @@ Na `docker.home.cz` připravit:
 
 ```text
 /srv/akl/
-  repo/                  # checkout AI-KnowledgeBase z main
+  git/
+    AI-KnowledgeBase.git/ # bare mirror, bez pracovního stromu
+  releases/
+    <full-sha>/           # ověřený read-only Git strom
+  current -> releases/<full-sha>
   env/
     akl.prod.env          # produkční env, bez commitu
   secrets/
@@ -35,70 +40,43 @@ Na `docker.home.cz` připravit:
   data/
     qdrant/
     logs/
-  backups/
+  backups/                # Registry custom dump + checksum + inventory
+  deployments/            # nesekretní záznamy pokusů
+  repo/                   # volitelný legacy/maintenance checkout, ne deploy source
 ```
 
-Volitelný observability stack používá stejné checkout a env soubory. Hodnota
+Volitelný observability stack používá stejný immutable release a env soubor. Hodnota
 `GRAFANA_ADMIN_USER` a `GRAFANA_ADMIN_PASSWORD` musí být nastavené v
 `/srv/akl/env/akl.prod.env`, ne v Gitu. Tento účet je jen break-glass přístup.
 Cílové přihlašování Grafany používá STRATOS Keycloak realm přes klienta
 `akb-grafana`; role `stratos_admin` se mapuje na Grafana `GrafanaAdmin`.
 
-Checkout:
+Produkční hodnoty patří mimo Git do `/srv/akl/env/akl.prod.env` s oprávněním
+`0600`. Release workflow vždy předává Docker Compose explicitní project,
+`--env-file` a compose soubor z cílového release. Během deploye se v
+`/srv/akl/repo` nesmí spustit `git pull`, `git checkout` ani `git switch` a z
+tohoto pracovního stromu se nesmí buildovat. Bare mirror spravuje workflow
+samostatně.
 
-```bash
-mkdir -p /srv/akl
-git clone https://github.com/voldzi/AI-KnowledgeBase.git /srv/akl/repo
-cd /srv/akl/repo
-git checkout main
-```
-
-Produkční hodnoty patří mimo Git do `/srv/akl/env/akl.prod.env`. Standardní deploy skript tento soubor předává Docker Compose explicitně přes `--env-file`, aby build i runtime používaly stejné hodnoty. Bootstrap zároveň do checkoutu obnovuje lokální necommitované `.env` kopie pro nouzové ruční Compose příkazy.
-
-Po klonování nebo po čistém bootstrapu checkoutu spustit jeden příkaz:
-
-```bash
-cd /srv/akl/repo
-./scripts/bootstrap_docker_home_checkout.sh /srv/akl/env/akl.prod.env
-```
-
-Tento bootstrap:
-
-- nainstaluje repozitářové hooky,
-- vytvoří lokální `.env` kopie pro Compose,
-- připraví checkout na přímé `docker compose` použití.
-
-Pokud je potřeba jednotlivé kroky spustit samostatně:
-
-```bash
-cd /srv/akl/repo
-./scripts/install_git_hooks.sh
-./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
-```
-
-Hooky po merge, `git pull`, `git switch` nebo `git checkout` automaticky spustí `scripts/link_docker_home_env.sh`, pokud na serveru existuje `/srv/akl/env/akl.prod.env`. Jinými slovy: produkční hodnoty se dál spravují jen v `/srv/akl/env/akl.prod.env`, ale pracovní checkout si z nich po aktualizaci sám obnoví lokální `.env` kopie.
-
-Tím začne fungovat i přímé spuštění:
-
-```bash
-docker compose -f infra/docker-compose/docker-compose.docker-home.yml config
-```
-
-bez doplňování `--env-file`.
+Úplný one-time bootstrap a běžný postup je v
+`docs/OPERATIONS/immutable-docker-home-release.md`.
 
 Volitelný OpenTelemetry/observability override:
 
 ```bash
-cd /srv/akl/repo
 docker compose \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  --project-name akl \
+  --env-file /srv/akl/env/akl.prod.env \
+  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml \
+  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home-observability.yml \
   config
 
 docker compose \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
-  up -d
+  --project-name akl \
+  --env-file /srv/akl/env/akl.prod.env \
+  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml \
+  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home-observability.yml \
+  up -d tempo loki otel-collector prometheus grafana
 ```
 
 Tento override přidá `otel-collector`, `tempo`, `prometheus`, `grafana` a
@@ -110,14 +88,13 @@ nebo Loki.
 Před zapnutím Grafana OIDC vytvořit nebo aktualizovat Keycloak klienta:
 
 ```bash
-cd /srv/akl/repo
 KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
-./scripts/ensure_grafana_keycloak_client.sh
-./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
+/srv/akl/current/scripts/ensure_grafana_keycloak_client.sh
 docker compose \
+  --project-name akl \
   --env-file /srv/akl/env/akl.prod.env \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
+  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml \
+  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home-observability.yml \
   up -d grafana
 ```
 
@@ -259,7 +236,7 @@ Mount na serveru:
 
 ```yaml
 volumes:
-  - /srv/akl/repo/infra/keycloak/themes/stratos:/opt/keycloak/themes/stratos:ro
+  - /srv/akl/current/infra/keycloak/themes/stratos:/opt/keycloak/themes/stratos:ro
 ```
 
 Bootstrap postup:
@@ -375,71 +352,78 @@ Veřejně vystavit jen STRATOS shell a aplikační path prefixy přes DMZ revers
 
 ## 7. Nasazovací Postup
 
-1. Připravit `/srv/akl/repo` z `main`.
-2. Připravit `/srv/akl/env/akl.prod.env`.
+1. Vybrat schválený plný 40znakový Git SHA z chráněného `main`; větev ani
+   pohyblivý tag nejsou release identita.
+2. Připravit persistentní `/srv/akl/env/akl.prod.env` s mode `0600`, včetně
+   `AKL_RELEASE_GIT_URL`, `AKL_RELEASE_TRUSTED_REF` a
+   `AKL_RELEASE_COMPOSE_PROJECT`.
 3. Vytvořit Keycloak STRATOS realm a theme.
 4. Vytvořit prázdné PostgreSQL databáze.
 5. Připravit SeaweedFS prostor `akl-documents`.
-6. Spustit preflight:
+6. Ověřit aktuální release, služby, health/readiness, HAProxy dostupnost,
+   volné místo a poslední zálohu pouze read-only kontrolami.
+7. Spustit exact-SHA release z posledního ověřeného release:
 
 ```bash
-cd /srv/akl/repo
-AKL_PROD_ENV_FILE=/srv/akl/env/akl.prod.env \
-./scripts/docker_home_preflight.sh
+RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+/srv/akl/current/scripts/deploy_docker_home_release.sh --sha "$RELEASE_SHA"
 ```
 
-7. Pro plný nasazovací běh lze použít jednotný deploy skript:
+Při prvním přechodu, kdy `/srv/akl/current` ještě neexistuje, lze použít
+kompatibilní vstupní bod pouze po ověření, že všechny immutable release skripty
+v maintenance checkoutu nemají lokální změny:
 
 ```bash
-cd /srv/akl/repo
-./scripts/deploy_docker_home.sh
+test -z "$(git -C /srv/akl/repo status --porcelain -- scripts/)"
+/srv/akl/repo/scripts/deploy_docker_home.sh --sha "$RELEASE_SHA"
 ```
 
-Skript provede:
+Tento příkaz checkout neaktualizuje a nic z něj nebuildí. Workflow:
 
-- bootstrap checkoutu,
-- preflight,
-- compose render s `/srv/akl/env/akl.prod.env`,
-- image build,
-- validaci, že web image má zabalený `/akb` base path,
-- `docker compose up -d` se stejným env souborem.
+- ověří SHA vůči bare mirroru a vytvoří read-only
+  `/srv/akl/releases/<full-sha>`,
+- při prvním přechodu zachytí přesný běžící Registry predecessor (container,
+  image ID/reference a Compose labely); dirty `/srv/akl/repo` nemění a nikdy
+  jej nepoužije jako build context nebo runtime release,
+- sestaví a restartuje jen dotčené `registry-api`,
+  `rag-retrieval-service` a `web`,
+- před Registry backupem zastaví a ověří odstavení jediného Compose Registry
+  writeru, poté vytvoří PostgreSQL custom dump, SHA-256, `pg_restore --list`
+  a inventory s plnou Alembic revizí v `/srv/akl/backups`,
+- před migrací nebo startem zapíše atomický forward-only marker
+  `/srv/akl/state/applied-runtime.env`,
+- vyžaduje shodu plného SHA tagu, image ID, release/Compose labelů a health
+  každé dotčené služby a dále readiness a fail-closed public smoke,
+- až poté atomicky přepne `/srv/akl/current`.
 
-8. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
+Při chybě se symlink nepřepne. Marker posledního potenciálně aplikovaného SHA
+ale zůstane ve stavu `failed`; obyčejný deploy ani nepříbuzný SHA jej nesmí
+obejít. Přesný starý Registry container se automaticky obnoví jen při chybě
+před markerem a před migrací. Pokud už byl image restartován nebo migrace
+provedena, nepouštět starý image ani Alembic downgrade. Připravit schválený
+potomek přesně označeného chybného SHA a použít forward-fix:
 
 ```bash
-cd /srv/akl/repo
-docker compose -f infra/docker-compose/docker-compose.docker-home.yml config >/tmp/akl-compose-rendered.yml
+/srv/akl/current/scripts/rollback_docker_home_release.sh \
+  --failed-sha 0123456789abcdef0123456789abcdef01234567 \
+  --forward-fix-sha 89abcdef0123456789abcdef0123456789abcdef
 ```
 
-9. Sestavit image:
+Pokud první immutable pokus selže až po zápisu markeru a `/srv/akl/current`
+ještě neexistuje, stejný wrapper se spustí z
+`/srv/akl/releases/<failed-sha>/scripts/`; dirty checkout se ani pro recovery
+nepoužije jako release.
 
-```bash
-cd /srv/akl/repo
-DOCKER_BUILDKIT=1 docker compose \
-  --env-file /srv/akl/env/akl.prod.env \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  build
-```
-
-10. Spustit DB migrace.
-11. Spustit služby:
-
-```bash
-docker compose \
-  --env-file /srv/akl/env/akl.prod.env \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  up -d
-```
-
-13. Připojit reverse proxy.
+Detailní povinný postup, backup kontrola a recovery jsou v
+`docs/OPERATIONS/immutable-docker-home-release.md`.
 
 ## 8. Smoke Testy Po Nasazení
 
 Minimální smoke:
 
 ```bash
-curl -fsS https://stratos.zeleznalady.cz/akb/health
-curl -fsS https://stratos.zeleznalady.cz/akb/ready
+curl -fsS https://stratos.zeleznalady.cz/akb/api/health
+curl -fsS https://stratos.zeleznalady.cz/akb/api/ready
 ```
 
 Funkční smoke:
@@ -464,7 +448,9 @@ Zálohovat:
 - `/srv/akl/env` bez publikace do GitHubu,
 - release commit SHA.
 
-Obnova se provádí z prázdného checkoutu `main`, obnovy DB/object storage/Qdrant a importu Keycloak realm.
+Obnova se provádí z ověřeného immutable release SHA, obnovy DB/object
+storage/Qdrant a importu Keycloak realm. Běžný rollback po neúspěšném release je
+forward-fix; žádný release skript automatickou obnovu DB neprovádí.
 
 ## 10. Blokery Před Produkčním Go-Live
 

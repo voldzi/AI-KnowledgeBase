@@ -23,6 +23,7 @@ import type {
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
+  DocumentPublication,
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
@@ -144,6 +145,18 @@ export class ProductionRegistryClient implements RegistryApiClient {
       context
     );
     return response.items;
+  }
+
+  getDocumentPublication(
+    documentId: string,
+    versionId: string,
+    context: ApiRequestContext
+  ): Promise<DocumentPublication> {
+    return this.get<DocumentPublication>(
+      `/documents/${documentId}/versions/${versionId}/publication`,
+      "getDocumentPublication",
+      context
+    );
   }
 
   createDocumentVersion(

@@ -96,6 +96,8 @@ def _settings():
             "AKL_RAG_CHAT_MODEL": "gemma4:12b-mlx",
             "AKL_RAG_HIGH_QUALITY_CHAT_MODEL": "gemma4:31b-mlx",
             "AKL_SERVICE_ACCOUNT_ROLES": "service_rag",
+            "AKL_TRUSTED_SERVICE_CLIENT_IDS": "aiip-service,akb-rag-service",
+            "AKL_RAG_AIIP_SERVICE_CLIENT_IDS": "aiip-service",
         }
     )
 
@@ -114,7 +116,13 @@ def _service(llm: AiipLLMClient) -> RagRetrievalService:
 
 
 def _auth() -> AuthContext:
-    return AuthContext(subject_id="svc-aiip", roles=("service_aiip",), groups=())
+    return AuthContext(
+        subject_id="service-account-aiip-service",
+        roles=("service_aiip",),
+        groups=(),
+        service_identity=True,
+        service_client_id="aiip-service",
+    )
 
 
 def _record() -> dict[str, Any]:
@@ -150,7 +158,7 @@ def _valid_harmonize_output() -> str:
 def test_harmonize_validates_json_records_model_fallback_and_replays() -> None:
     service = _service(AiipLLMClient([_valid_harmonize_output()]))
     payload = AiipHarmonizeRequest(
-        tenant_id="stratos",
+        tenant_id="org_stratos",
         classification="internal",
         processing_purpose="idea_harmonization",
         model_preference="high_quality",
@@ -171,7 +179,7 @@ def test_harmonize_validates_json_records_model_fallback_and_replays() -> None:
 def test_harmonize_repair_failure_returns_stable_422() -> None:
     service = _service(AiipLLMClient(["not json", "still not json"]))
     payload = AiipHarmonizeRequest(
-        tenant_id="stratos",
+        tenant_id="org_stratos",
         classification="internal",
         processing_purpose="idea_harmonization",
         record=_record(),
@@ -185,7 +193,7 @@ def test_harmonize_repair_failure_returns_stable_422() -> None:
 def test_duplicate_search_returns_authorized_cited_candidate() -> None:
     service = _service(AiipLLMClient([]))
     payload = AiipDuplicateSearchRequest(
-        tenant_id="stratos",
+        tenant_id="org_stratos",
         classification="internal",
         processing_purpose="duplicate_detection",
         record=_record(),
@@ -213,12 +221,13 @@ def test_endpoint_rejects_sensitive_classification_before_service_call() -> None
             "/api/v1/integrations/aiip/harmonize",
             headers={
                 "Authorization": "Bearer mock-token",
-                "X-AKL-Subject": "svc-aiip",
+                "X-AKL-Subject": "service-account-aiip-service",
                 "X-AKL-Roles": "service_aiip",
+                "X-AKL-Service-Client-ID": "aiip-service",
                 "Idempotency-Key": "idem-sensitive-1",
             },
             json={
-                "tenant_id": "stratos",
+                "tenant_id": "org_stratos",
                 "classification": "restricted",
                 "processing_purpose": "idea_harmonization",
                 "record": _record(),

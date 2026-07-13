@@ -28,6 +28,34 @@ def test_production_rejects_mock_clients() -> None:
         )
 
 
+def _production_env() -> dict[str, str]:
+    return {
+        "AKL_ENV": "production",
+        "AKL_AUTH_MODE": "oidc",
+        "AKL_OIDC_ISSUER": "https://login.example/realms/stratos",
+        "AKL_OIDC_AUDIENCE": "akl-api",
+        "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
+        "AKL_RAG_USER_OIDC_AUDIENCE": "akl-api",
+        "AKL_RAG_AIIP_OIDC_AUDIENCE": "akb-api",
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "aiip-service,akb-rag-service",
+        "AKL_RAG_AIIP_SERVICE_CLIENT_IDS": "aiip-service",
+        "AKL_RAG_DEPENDENCY_MODE": "http",
+        "AKL_RAG_AUTHZ_MODE": "registry",
+    }
+
+
+def test_production_requires_service_and_per_caller_audience_allowlists() -> None:
+    values = _production_env()
+    values["AKL_TRUSTED_SERVICE_CLIENT_IDS"] = ""
+    with pytest.raises(ConfigError, match="AKL_TRUSTED_SERVICE_CLIENT_IDS"):
+        load_settings(values)
+
+    values = _production_env()
+    values["AKL_RAG_AIIP_OIDC_AUDIENCE"] = ""
+    with pytest.raises(ConfigError, match="AKL_RAG_USER_OIDC_AUDIENCE"):
+        load_settings(values)
+
+
 def test_invalid_threshold_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_NO_ANSWER_MIN_SCORE"):
         load_settings({"AKL_RAG_NO_ANSWER_MIN_SCORE": "2"})

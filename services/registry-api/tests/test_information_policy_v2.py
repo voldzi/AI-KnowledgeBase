@@ -62,6 +62,12 @@ def create_document(client, *, information_policy: dict | None = None):
     )
 
 
+def test_policy_binding_id_accepts_registry_and_central_namespaces() -> None:
+    assert InformationPolicyBinding.model_validate(policy(binding_id="pol_registrybinding01")).policy_binding_id == "pol_registrybinding01"
+    assert InformationPolicyBinding.model_validate(policy(binding_id="pb_budget_projectflow_12345678")).policy_binding_id == "pb_budget_projectflow_12345678"
+
+
+
 def test_v2_document_and_version_store_immutable_policy_snapshot(client) -> None:
     binding = policy()
     created = create_document(client, information_policy=binding)
@@ -125,7 +131,7 @@ def test_capability_and_scope_are_both_required(client) -> None:
     assert "SCOPE_MISMATCH" in wrong_scope.json()["error"]["details"]["reason_codes"]
 
 
-def test_financial_area_scope_isolates_it_from_logistics(client) -> None:
+def test_financial_area_scope_isolates_it_from_logistics(client, db_session) -> None:
     created = create_document(
         client,
         information_policy=policy(scope_type="organization_unit", scope_ids=["it"]),
@@ -153,6 +159,46 @@ def test_financial_area_scope_isolates_it_from_logistics(client) -> None:
     assert logistics.status_code == 403
     assert "SCOPE_MISMATCH" in logistics.json()["error"]["details"]["reason_codes"]
     assert it.status_code == 200
+
+    version_response = client.post(
+        f"/api/v1/documents/{document_id}/versions",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document",
+            scopes="organization",
+        ),
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/it/restricted-budget.pdf",
+            "file_hash": f"sha256:{'e' * 64}",
+        },
+    )
+    assert version_response.status_code == 201, version_response.text
+    version_id = version_response.json()["document_version_id"]
+    stored_document = db_session.get(Document, document_id)
+    stored_version = db_session.get(DocumentVersion, version_id)
+    stored_document.status = "valid"
+    stored_version.status = "valid"
+    db_session.commit()
+
+    public_default = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=v2_headers(
+            subject="user-logistics-default",
+            capabilities="akb:chat",
+            scopes="public",
+        ),
+        json={
+            "subject_id": "user-logistics-default",
+            "action": "rag.query",
+            "candidate_document_ids": [document_id],
+            "candidate_policy_hashes": {document_id: [created.json()["policy_hash"]]},
+            "candidate_document_versions": {document_id: [version_id]},
+        },
+    )
+    assert public_default.status_code == 200, public_default.text
+    assert public_default.json()["allowed_document_ids"] == []
+    assert public_default.json()["denied_document_ids"] == [document_id]
 
 
 def test_central_organization_scope_with_id_allows_document_version(client) -> None:

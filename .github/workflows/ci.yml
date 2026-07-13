@@ -57,6 +57,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: gitleaks.toml
 
+  immutable-release:
+    name: Immutable docker.home.cz release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install --yes shellcheck
+
+      - name: Validate immutable release workflow
+        run: bash scripts/check_immutable_release_workflow.sh
+
   web:
     name: Web
     runs-on: ubuntu-latest
@@ -217,7 +233,7 @@ jobs:
       - name: Validate docker.home.cz compose config
         run: |
           GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
-          AKL_STRATOS_POLICY_SERVICE_TOKEN=dummy-stratos-policy-service-token \
+          AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
           docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \
@@ -226,7 +242,7 @@ jobs:
       - name: Validate docker.home.cz observability compose config
         run: |
           GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
-          AKL_STRATOS_POLICY_SERVICE_TOKEN=dummy-stratos-policy-service-token \
+          AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
           docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \

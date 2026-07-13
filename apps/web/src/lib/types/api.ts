@@ -8,6 +8,7 @@ import type {
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
+  DocumentPublication,
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
@@ -158,6 +159,11 @@ export interface RegistryApiClient {
     context: ApiRequestContext
   ): Promise<DocumentAssignment[]>;
   listDocumentVersions(documentId: string, context: ApiRequestContext): Promise<DocumentVersion[]>;
+  getDocumentPublication(
+    documentId: string,
+    versionId: string,
+    context: ApiRequestContext
+  ): Promise<DocumentPublication>;
   createDocumentVersion(
     documentId: string,
     request: CreateVersionRequest,

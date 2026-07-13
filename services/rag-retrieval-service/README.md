@@ -110,6 +110,10 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_ENV` | `development` | `production` odmítá `disabled`/`mock` auth a vynucuje http klienty. |
 | `AKL_AUTH_MODE` | `disabled` | `disabled`, `mock`, `bearer`, nebo `oidc`. |
 | `AKL_SERVICE_TOKEN` | prazdne | Token pro prichozi `bearer` auth. |
+| `AKL_RAG_USER_OIDC_AUDIENCE` | podle `AKL_OIDC_AUDIENCE` | Audience pro ověřené uživatelské RAG tokeny; produkčně `akl-api`. |
+| `AKL_RAG_AIIP_OIDC_AUDIENCE` | prázdné | Oddělená audience pouze pro AIIP integration routes; produkčně `akb-api`. |
+| `AKL_TRUSTED_SERVICE_CLIENT_IDS` | prázdné | Allowlist přesných OIDC service client ids. |
+| `AKL_RAG_AIIP_SERVICE_CLIENT_IDS` | prázdné | Podmnožina trusted clients povolená výhradně na AIIP integration routes. |
 | `AKL_UPSTREAM_BEARER_TOKEN` | prazdne | Fallback token pro volani Registry API a LLM Gateway, kdyz neni caller token. |
 | `AKL_SERVICE_ACCOUNT_SUBJECT` | `svc-rag` | Fallback service subject pro dev/service-token volani. |
 | `AKL_SERVICE_ACCOUNT_ROLES` | `service_rag` | Fallback service role pro dev/service-token volani. |
@@ -174,7 +178,18 @@ docker run --rm -p 8080:8080 --env-file .env.example akl-rag-retrieval-service
 
 - Produkce nesmi pouzivat mock auth ani mock dependency klienty.
 - LLM nikdy nedostane chunky, ktere neprosly Registry authz filtrem.
-- V `AKL_AUTH_MODE=oidc` sluzba overi podpis, issuer a audience bearer JWT. Produkce pouziva samostatny `akb-rag-service` client-credentials token pro delegovane Registry authz, audit a idempotenci; caller subject zachovava jako actor, ale role, capabilities, scopes ani active flags nedeleguje v authz payloadu. LLM Gateway vzdy pouziva vlastni service credential.
+- V `AKL_AUTH_MODE=oidc` služba ověří podpis a issuer a rozlišuje audience:
+  uživatel `akl-api`, AIIP service `akb-api`. Generic RAG a ostatní user routes
+  odmítnou každou service identitu; subject v RAG payloadu se musí přesně
+  shodovat s ověřeným uživatelským bearerem. Jedinou výjimkou jsou dvě AIIP
+  integration routes, které vyžadují exact `aiip-service`, roli
+  `service_aiip`, organizaci `org_stratos` a klasifikaci `public` nebo
+  `internal`.
+- Produkce používá samostatný `akb-rag-service` client-credentials token pro
+  Registry authz, audit a idempotenci. Registry audit proto uloží jako
+  `actor_id` skutečný subject RAG služby; původní uživatel/AIIP actor je pouze
+  `reported_actor_id` metadata. LLM Gateway vždy používá vlastní service
+  credential.
 - RAG ignoruje dynamicka opravneni z JWT a `X-STRATOS-*` hlavicek; Registry API je enforcement bod a nacita projekci nebo vola centralni STRATOS policy decision.
 - Technicke logy neobsahuji plny query text, prompt, odpoved ani dokumenty.
 - Audit metadata obsahuji ID zdroju a hash odpovedi.

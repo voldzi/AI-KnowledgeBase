@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -96,6 +96,9 @@ class Document(Base, TimestampMixin):
     extractions: Mapped[list["DocumentExtraction"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+    publications: Mapped[list["DocumentPublication"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
 
     @property
     def owner(self) -> str:
@@ -156,6 +159,94 @@ class DocumentVersion(Base):
     files: Mapped[list["DocumentFile"]] = relationship(
         back_populates="document_version", cascade="all, delete-orphan"
     )
+    publication: Mapped["DocumentPublication | None"] = relationship(
+        back_populates="document_version", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class DocumentPublication(Base, TimestampMixin):
+    """Immutable public projection for one exact AKB document version.
+
+    The snapshot deliberately excludes live document metadata, extracted text,
+    chunks and storage coordinates. Source coordinates remain server-internal
+    and are released only to the web delivery boundary after a fresh central
+    public decision.
+    """
+
+    __tablename__ = "document_publications"
+    __table_args__ = (
+        UniqueConstraint("document_version_id", name="uq_document_publication_version"),
+        UniqueConstraint("public_slug", name="uq_document_publication_slug"),
+        CheckConstraint(
+            "status IN ('DRAFT', 'PUBLISHED', 'REVOKED')",
+            name="ck_document_publication_status",
+        ),
+        CheckConstraint(
+            "source_version = document_version_id",
+            name="ck_document_publication_source_version",
+        ),
+        CheckConstraint(
+            "source_size_bytes >= 0",
+            name="ck_document_publication_source_size",
+        ),
+        CheckConstraint(
+            "snapshot_schema = 'akb-public-document-1'",
+            name="ck_document_publication_snapshot_schema",
+        ),
+        CheckConstraint(
+            "status = 'DRAFT' OR (published_at IS NOT NULL AND published_by IS NOT NULL AND approved_by IS NOT NULL)",
+            name="ck_document_publication_published_actor",
+        ),
+        CheckConstraint(
+            "status <> 'REVOKED' OR (revoked_at IS NOT NULL AND revoked_by IS NOT NULL)",
+            name="ck_document_publication_revoked_actor",
+        ),
+        Index("ix_document_publications_status", "status"),
+    )
+
+    publication_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("pub")
+    )
+    document_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("documents.document_id", ondelete="CASCADE"), nullable=False
+    )
+    document_version_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("document_versions.document_version_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    public_slug: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="DRAFT")
+    snapshot_schema: Mapped[str] = mapped_column(String(80), nullable=False)
+    public_snapshot: Mapped[dict[str, object]] = mapped_column(
+        MutableDict.as_mutable(json_type()), nullable=False
+    )
+    public_snapshot_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    source_file_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source_file_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_filename: Mapped[str] = mapped_column(String(300), nullable=False)
+    source_mime_type: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    governed_resource_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_version: Mapped[str] = mapped_column(String(160), nullable=False)
+    policy_binding_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    policy_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    central_publication_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, unique=True
+    )
+
+    approved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    published_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reason: Mapped[str] = mapped_column(String(1000), nullable=False)
+
+    document: Mapped[Document] = relationship(back_populates="publications")
+    document_version: Mapped[DocumentVersion] = relationship(back_populates="publication")
 
 
 class DocumentFile(Base):
@@ -602,6 +693,10 @@ class AuditEvent(Base):
     __table_args__ = (
         Index("ix_audit_events_actor_created", "actor_id", "created_at"),
         Index("ix_audit_events_resource", "resource_type", "resource_id"),
+        CheckConstraint(
+            "occurrence_count >= 1",
+            name="audit_event_occurrence_count_positive",
+        ),
     )
 
     audit_event_id: Mapped[str] = mapped_column(
@@ -613,6 +708,13 @@ class AuditEvent(Base):
     resource_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String(32), nullable=False, default="info")
     correlation_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    aggregate_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
     event_metadata: Mapped[dict[str, object]] = mapped_column(
         "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
     )

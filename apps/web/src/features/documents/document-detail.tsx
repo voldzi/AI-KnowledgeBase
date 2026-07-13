@@ -4,7 +4,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AccessAuditList, GovernanceIssueList, type AccessAuditListItem, type GovernanceIssueListItem, type GovernanceIssueTone } from "@voldzi/stratos-ui";
+import {
+  AccessAuditList,
+  GovernanceIssueList,
+  InformationPolicyPanel,
+  type AccessAuditListItem,
+  type GovernanceIssueListItem,
+  type GovernanceIssueTone,
+} from "@voldzi/stratos-ui";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -53,6 +60,7 @@ import type {
   DocumentAssignmentRole,
   DocumentSourceOpenDecision,
   DocumentGovernanceRunResponse,
+  DocumentPublication,
   DocumentVersion,
   GovernanceActionKind,
   GovernanceCitation,
@@ -63,6 +71,10 @@ import type {
 } from "@/lib/types";
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
 import { accessAuditToneForSeverity } from "@/features/audit/access-audit-items";
+import {
+  documentInformationPolicyDetails,
+  versionInformationPolicyDetails,
+} from "@/lib/information-policy-display";
 
 interface DocumentDetailProps {
   document: Document;
@@ -72,6 +84,7 @@ interface DocumentDetailProps {
   assignments?: DocumentAssignment[];
   workflowTasks?: RegistryWorkflowTask[];
   auditEvents?: AuditEvent[];
+  publication?: DocumentPublication | null;
 }
 
 interface AssignmentFormRow {
@@ -663,7 +676,8 @@ export function DocumentDetail({
   authorization,
   assignments = [],
   workflowTasks = [],
-  auditEvents = []
+  auditEvents = [],
+  publication,
 }: DocumentDetailProps) {
   const { language } = useLanguage();
   const router = useRouter();
@@ -699,6 +713,8 @@ export function DocumentDetail({
     assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
   );
   const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
+  const versionPolicy = versionInformationPolicyDetails(currentVersion, publication);
+  const documentPolicy = documentInformationPolicyDetails(document);
   const [activeTab, setActiveTab] = useState<DetailTab>(() => tabFromSearchParams(searchParams.get("tab")) ?? "overview");
   const loadedRequestedChunkRef = useRef<string | null>(null);
   const [workflowAction, setWorkflowAction] = useState<"publish" | "archive" | null>(null);
@@ -1040,7 +1056,8 @@ export function DocumentDetail({
       />
 
       {activeTab === "overview" ? (
-        <section className="grid grid--two">
+        <div className="stack">
+          <section className="grid grid--two">
           <div className="panel">
             <div className="panel__header">
               <h2>{copy.overview}</h2>
@@ -1083,7 +1100,47 @@ export function DocumentDetail({
               )}
             </div>
           </div>
-        </section>
+          </section>
+          <section className="grid grid--two">
+            {versionPolicy ? (
+              <InformationPolicyPanel
+                value={versionPolicy}
+                title={language === "cs" ? "Policy aktuální verze" : "Current version policy"}
+                accessExplanation={
+                  language === "cs"
+                    ? "Toto jsou autoritativní pravidla konkrétní neměnné verze. Zobrazení vyžaduje platnou identitu, capability, scope a policy; anonymní čtení je možné jen přes aktivní veřejnou publikaci této verze."
+                    : "These are the authoritative rules of this immutable version. Viewing requires a valid identity, capability, scope and policy; anonymous reading is possible only through this version's active public publication."
+                }
+              />
+            ) : currentVersion ? (
+              <section className="panel">
+                <div className="panel__header">
+                  <h2>{language === "cs" ? "Policy aktuální verze" : "Current version policy"}</h2>
+                  <ShieldAlert size={18} aria-hidden="true" />
+                </div>
+                <div className="panel__body">
+                  <p className="notice">
+                    {language === "cs"
+                      ? "Souřadnice registrovaného bindingu této verze nejsou úplné nebo konzistentní. AKB je nesmí odvozovat z klasifikace dokumentu."
+                      : "This version's registered binding coordinates are incomplete or inconsistent. AKB must not infer them from the document classification."}
+                  </p>
+                </div>
+              </section>
+            ) : null}
+            {documentPolicy ? (
+              <InformationPolicyPanel
+                value={documentPolicy}
+                compact
+                title={language === "cs" ? "Kontext policy dokumentu" : "Document policy context"}
+                accessExplanation={
+                  language === "cs"
+                    ? "Policy dokumentu je nadřazený kontext. Pro otevření, citace, export a veřejnou publikaci konkrétního souboru je vždy rozhodující binding a hash jeho verze."
+                    : "The document policy is parent context. The concrete version binding and hash remain authoritative for opening, citations, export and public publication."
+                }
+              />
+            ) : null}
+          </section>
+        </div>
       ) : null}
 
       {activeTab === "viewer" ? (

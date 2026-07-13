@@ -30,6 +30,12 @@ def _settings(**overrides) -> Settings:
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
         "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v1/auth/me",
         "AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS": 0,
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-service",
+        "AKL_SERVICE_CLIENT_ROUTE_GRANTS": (
+            "akb-rag-service=authz|audit|idempotency,"
+            "aiip-service=audit|idempotency"
+        ),
+        "AKL_SERVICE_CLIENT_DELEGATIONS": "akb-rag-service=aiip-service",
     }
     values.update(overrides)
     return Settings(**values)
@@ -142,7 +148,117 @@ def test_oidc_principal_ignores_static_access_claims_and_forged_headers(monkeypa
     assert "akb:manage_access" not in principal.capabilities
 
 
-def test_service_decision_uses_central_runtime_client_and_delegated_actor(monkeypatch) -> None:
+def test_oidc_rejects_service_looking_token_from_untrusted_azp(monkeypatch) -> None:
+    class JwkClient:
+        def __init__(self, _url):
+            pass
+
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key="test-key")
+
+    monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
+    monkeypatch.setattr(
+        auth_module.jwt,
+        "decode",
+        lambda *_args, **_kwargs: {
+            "sub": "service-account-foreign-service",
+            "preferred_username": "service-account-foreign-service",
+            "azp": "foreign-service",
+        },
+    )
+    request = Request({
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer signed-token")],
+    })
+
+    with pytest.raises(HTTPException) as exc_info:
+        _oidc_principal(request, _settings())
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail["error"]["code"] == "untrusted_service_identity"
+
+
+def test_oidc_accepts_only_exact_trusted_service_account_binding(monkeypatch) -> None:
+    class JwkClient:
+        def __init__(self, _url):
+            pass
+
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key="test-key")
+
+    claims = {
+        # Keycloak commonly uses an opaque subject and the exact service
+        # account name in preferred_username.
+        "sub": "8128b756-7fd8-4b20-bdf9-7fb754a2af19",
+        "preferred_username": "service-account-akb-rag-service",
+        "azp": "akb-rag-service",
+        "realm_access": {"roles": ["service_rag"]},
+    }
+    monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
+    monkeypatch.setattr(auth_module.jwt, "decode", lambda *_args, **_kwargs: claims)
+    request = Request({
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer signed-token")],
+    })
+
+    principal = _oidc_principal(request, _settings())
+
+    assert principal.service_identity is True
+    assert principal.service_client_id == "akb-rag-service"
+    assert principal.subject_id == claims["sub"]
+
+    claims["preferred_username"] = "service-account-aiip-service"
+    with pytest.raises(HTTPException) as mismatch:
+        _oidc_principal(request, _settings())
+    assert mismatch.value.status_code == 403
+    assert mismatch.value.detail["error"]["code"] == "untrusted_service_identity"
+
+
+def test_oidc_user_flow_on_trusted_client_is_not_promoted_to_service(monkeypatch) -> None:
+    class JwkClient:
+        def __init__(self, _url):
+            pass
+
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key="test-key")
+
+    projection = AccessProjection(
+        capabilities=frozenset({"akb:chat"}),
+        scopes=frozenset({"public"}),
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+    )
+    monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
+    monkeypatch.setattr(
+        auth_module.jwt,
+        "decode",
+        lambda *_args, **_kwargs: {
+            "sub": "user-123",
+            "preferred_username": "user-123",
+            "azp": "akb-rag-service",
+            "exp": 2_000_000_000,
+        },
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "governance_client",
+        lambda _settings: SimpleNamespace(user_projection=lambda *_args, **_kwargs: projection),
+    )
+    request = Request({
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer signed-token")],
+    })
+
+    principal = _oidc_principal(request, _settings())
+
+    assert principal.service_identity is False
+    assert principal.service_client_id is None
+    assert principal.scopes == {"public"}
+
+
+def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
     calls = []
 
     class Client:
@@ -156,6 +272,7 @@ def test_service_decision_uses_central_runtime_client_and_delegated_actor(monkey
         roles={"service_rag"},
         groups=set(),
         service_identity=True,
+        service_client_id="akb-rag-service",
         application_access_active=False,
     )
 
@@ -168,7 +285,6 @@ def test_service_decision_uses_central_runtime_client_and_delegated_actor(monkey
 
     assert decision.allowed is True
     assert calls == [{
-        "actor_subject_id": "service-account-aiip-service",
         "capability_id": "akb:chat",
         "operation": "access",
         "scope": {"type": "organization", "id": "org_stratos"},
@@ -177,6 +293,32 @@ def test_service_decision_uses_central_runtime_client_and_delegated_actor(monkey
     }]
     assert _audit_service_decision_coordinates("aiip.harmonize.completed") == ("akb:chat", "ai")
     assert _audit_service_decision_coordinates("ingestion.job.completed") == ("akb:manage_document", "upload")
+
+
+def test_rag_service_client_is_default_denied_on_document_registry_routes(client) -> None:
+    headers = {
+        "X-AKL-Subject": "service-account-akb-rag-service",
+        "X-AKL-Roles": "service_rag",
+        "X-AKL-Service-Client-ID": "akb-rag-service",
+    }
+
+    listing = client.get("/api/v1/documents", headers=headers)
+    deletion = client.delete("/api/v1/documents/doc-any", headers=headers)
+
+    assert listing.status_code == 403
+    assert listing.json()["error"]["code"] == "service_route_forbidden"
+    assert deletion.status_code == 403
+    assert deletion.json()["error"]["code"] == "service_route_forbidden"
+
+    forged_subject = client.get(
+        "/api/v1/documents",
+        headers={
+            "X-AKL-Subject": "user-attacker",
+            "X-AKL-Service-Client-ID": "akb-rag-service",
+        },
+    )
+    assert forged_subject.status_code == 403
+    assert forged_subject.json()["error"]["code"] == "untrusted_service_identity"
 
 
 def _policy(scope_id: str = "it") -> InformationPolicyBinding:
@@ -297,7 +439,7 @@ def test_governed_resource_registration_uses_verified_obo_contract(monkeypatch) 
     )
     registration = StratosGovernanceClient(settings).register_information_resource(
         credential_token="runtime-token",
-        actor_subject_id="user-owner",
+        audit_actor_subject_id="user-owner",
         resource_type="document",
         resource_id="doc_1",
         source_version="ver_policy_1",
@@ -310,16 +452,17 @@ def test_governed_resource_registration_uses_verified_obo_contract(monkeypatch) 
 
     assert registration.resource_id == "gir_akb_doc_1"
     assert captured["headers"]["Authorization"] == "Bearer runtime-token"
-    assert captured["json"]["actorSubjectId"] == "user-owner"
+    assert "actorSubjectId" not in captured["json"]
+    assert captured["json"]["metadata"]["auditActorSubjectId"] == "user-owner"
     assert captured["json"]["parentId"] == "gir_source_parent"
     assert captured["json"]["scope"] == {"type": "organization_unit", "id": "it"}
 
 
-def test_service_registration_without_delegated_actor_fails_closed(monkeypatch) -> None:
+def test_service_registration_without_delegated_actor_uses_fixed_akb_identity(monkeypatch) -> None:
     binding = _policy()
     settings = _settings(
         AKL_STRATOS_INFORMATION_RESOURCES_URL="https://stratos.example/api/v1/information/resources",
-        AKL_STRATOS_POLICY_SERVICE_TOKEN="runtime-token",
+        AKB_POLICY_SERVICE_TOKEN="runtime-token",
     )
     monkeypatch.setattr(api_module, "get_settings", lambda: settings)
     principal = Principal(
@@ -329,18 +472,202 @@ def test_service_registration_without_delegated_actor_fails_closed(monkeypatch) 
         service_identity=True,
     )
 
-    with pytest.raises(HTTPException) as raised:
-        _register_governed_resource(
-            principal=principal,
-            resource_type="document",
-            resource_id="doc_1",
-            source_version="gresver_1",
-            title="Document",
-            policy=binding,
-            requested_scope=None,
-            parent_resource_id=None,
-            reason="test service registration",
-        )
+    captured = {}
 
-    assert raised.value.status_code == 422
-    assert raised.value.detail["error"]["code"] == "delegated_actor_required"
+    class Client:
+        def register_information_resource(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                resource_id="gir_fixed_service",
+                source_version="gresver_1",
+                policy_binding_id=binding.policy_binding_id,
+                policy_hash=canonical_policy_hash(binding),
+            )
+
+    monkeypatch.setattr(api_module, "governance_client", lambda _settings: Client())
+    result = _register_governed_resource(
+        principal=principal,
+        resource_type="document",
+        resource_id="doc_1",
+        source_version="gresver_1",
+        title="Document",
+        policy=binding,
+        requested_scope=None,
+        parent_resource_id=None,
+        reason="test service registration",
+    )
+
+    assert result["governance_registration_status"] == "REGISTERED"
+    assert captured["credential_token"] == "runtime-token"
+    assert captured["audit_actor_subject_id"] is None
+
+
+def test_publication_write_forwards_interactive_bearer_and_public_decision_is_anonymous(
+    monkeypatch,
+) -> None:
+    binding = _policy()
+    calls = []
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def request(self, method, url, **kwargs):
+            calls.append({"method": method, "url": url, **kwargs})
+            if url.endswith("/policy/public-decisions"):
+                return SimpleNamespace(
+                    status_code=200,
+                    json=lambda: {
+                        "decision": "DENY",
+                        "decisionId": "pdec-test",
+                        "reasonCodes": ["PUBLICATION_INACTIVE"],
+                        "obligations": ["AUDIT_ACCESS"],
+                        "policyVersion": binding.policy_version,
+                        "publication": None,
+                    },
+                )
+            response_status = kwargs["json"]["status"]
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "id": "ipub-akb-test",
+                    "application": "AKB",
+                    "resourceType": "document_version",
+                    "resourceId": "ver-public-1",
+                    "sourceVersion": "ver-public-1",
+                    "governedResourceId": "gir-public-1",
+                    "policyBindingId": binding.policy_binding_id,
+                    "policyHash": canonical_policy_hash(binding),
+                    "publicSlug": "public-guide",
+                    "status": response_status,
+                    "publishedAt": (
+                        "2026-07-13T12:00:00Z" if response_status == "PUBLISHED" else None
+                    ),
+                    "revokedAt": (
+                        "2026-07-13T13:00:00Z" if response_status == "REVOKED" else None
+                    ),
+                },
+            )
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    client = StratosGovernanceClient(
+        _settings(
+            AKL_STRATOS_INFORMATION_PUBLICATIONS_URL="https://stratos.example/api/v1/information/publications",
+            AKL_STRATOS_PUBLIC_DECISIONS_URL="https://stratos.example/api/v1/policy/public-decisions",
+        )
+    )
+    publication = client.upsert_information_publication(
+        credential_token="interactive-user-token",
+        resource_type="document_version",
+        resource_id="ver-public-1",
+        source_version="ver-public-1",
+        scope={"type": "organization", "id": "org_stratos"},
+        policy_binding_id=binding.policy_binding_id,
+        policy_hash=canonical_policy_hash(binding),
+        public_slug="public-guide",
+        status="PUBLISHED",
+        reason="Approved public source",
+    )
+    decision = client.public_decide(public_slug="public-guide", operation="public_download")
+    revoked = client.upsert_information_publication(
+        credential_token="interactive-user-token",
+        resource_type="document_version",
+        resource_id="ver-public-1",
+        source_version="ver-public-1",
+        scope={"type": "organization", "id": "client-must-not-send-this"},
+        policy_binding_id=binding.policy_binding_id,
+        policy_hash=canonical_policy_hash(binding),
+        public_slug="public-guide",
+        status="REVOKED",
+        reason="Public approval withdrawn",
+    )
+
+    assert publication.publication_id == "ipub-akb-test"
+    assert publication.policy_hash == canonical_policy_hash(binding)
+    assert calls[0]["headers"]["Authorization"] == "Bearer interactive-user-token"
+    assert calls[0]["json"]["sourceVersion"] == "ver-public-1"
+    assert calls[0]["json"]["status"] == "PUBLISHED"
+    assert calls[1]["url"].endswith("/policy/public-decisions")
+    assert "Authorization" not in calls[1]["headers"]
+    assert calls[1]["json"] == {
+        "publicSlug": "public-guide",
+        "operation": "public_download",
+    }
+    assert decision["decision"] == "DENY"
+    assert calls[2]["json"] == {
+        "sourceVersion": "ver-public-1",
+        "status": "REVOKED",
+        "reason": "Public approval withdrawn",
+    }
+    assert revoked.revoked_at == "2026-07-13T13:00:00Z"
+
+
+@pytest.mark.parametrize(
+    "response_override",
+    [
+        {"revokedAt": None},
+        {"policyHash": f"sha256:{'f' * 64}"},
+    ],
+)
+def test_revoke_rejects_missing_timestamp_or_foreign_policy_hash(
+    monkeypatch,
+    response_override,
+) -> None:
+    binding = _policy()
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def request(self, _method, _url, **_kwargs):
+            body = {
+                "id": "ipub-akb-test",
+                "application": "AKB",
+                "resourceType": "document_version",
+                "resourceId": "ver-public-1",
+                "sourceVersion": "ver-public-1",
+                "governedResourceId": "gir-public-1",
+                "policyBindingId": binding.policy_binding_id,
+                "policyHash": canonical_policy_hash(binding),
+                "publicSlug": "public-guide",
+                "status": "REVOKED",
+                "publishedAt": "2026-07-13T12:00:00Z",
+                "revokedAt": "2026-07-13T13:00:00Z",
+                **response_override,
+            }
+            return SimpleNamespace(status_code=200, json=lambda: body)
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    client = StratosGovernanceClient(
+        _settings(
+            AKL_STRATOS_INFORMATION_PUBLICATIONS_URL=(
+                "https://stratos.example/api/v1/information/publications"
+            ),
+        )
+    )
+
+    with pytest.raises(GovernanceUnavailable):
+        client.upsert_information_publication(
+            credential_token="interactive-user-token",
+            resource_type="document_version",
+            resource_id="ver-public-1",
+            source_version="ver-public-1",
+            scope={"type": "organization", "id": "org_stratos"},
+            policy_binding_id=binding.policy_binding_id,
+            policy_hash=canonical_policy_hash(binding),
+            public_slug="public-guide",
+            status="REVOKED",
+            reason="Public approval withdrawn",
+        )

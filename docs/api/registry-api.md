@@ -49,7 +49,12 @@ GET    /documents/{document_id}/versions
 GET    /documents/{document_id}/versions/{version_id}
 POST   /documents/{document_id}/versions/{version_id}/publish
 POST   /documents/{document_id}/versions/{version_id}/archive
+GET    /documents/{document_id}/versions/{version_id}/publication
+PUT    /documents/{document_id}/versions/{version_id}/publication
 PATCH  /documents/{document_id}/external-references/current
+
+GET    /public/documents/{public_slug}
+GET    /internal/public/documents/{public_slug}/source
 
 POST   /authz/check
 POST   /authz/filter-documents
@@ -126,12 +131,63 @@ Služby nesmí importovat interní Python kód registry API; komunikace je přes
 `POST /documents/{id}/versions` registrují odpovídající immutable resource přes
 STRATOS `PUT /api/v1/information/resources/akb/{resourceType}/{resourceId}`.
 Request nese `sourceVersion`, již registrovaný `scope`, binding id/hash, důvod a
-volitelný parent. U service-to-service volání navíc nese `actorSubjectId` z
-validovaného integration envelope; role, capability ani scope se nepřebírají z
-payloadu. Odpověď AKB přijme jen tehdy, pokud vrátí stejný resource, verzi,
-binding a hash. Chybějící delegovaný aktér nebo zamítnuté
-`akb:assign_policy` ukončí celý zápis; Registry nevytváří čitelný
+volitelný parent. Service-to-service volání autorizuje STRATOS výhradně jako
+pevnou identitu `service:akb`; původní aktér z validovaného integration
+envelope se ukládá pouze jako `metadata.auditActorSubjectId` a nikdy nenahrazuje
+autorizační identitu. Odpověď AKB přijme jen tehdy, pokud vrátí stejný resource,
+verzi, binding a hash. Zamítnuté `akb:assign_policy` ukončí celý zápis; Registry nevytváří čitelný
 `POLICY_PENDING` dokument.
+
+## True Public Document Delivery
+
+`PUT /documents/{document_id}/versions/{version_id}/publication` creates a
+draft, publishes, or revokes one exact immutable version. It accepts only an
+interactive bearer. Draft requires `akb:assign_policy`; `PUBLISHED` requires
+both `akb:assign_policy` and `akb:publish_public`, while
+terminal `REVOKED` requires `akb:publish_public` without resubmitting a
+client-controlled scope. The version must be
+centrally registered and carry the same public-eligible binding/hash that
+STRATOS records in its `InformationPublication`. Publication and revocation
+write local audit events; the published coordinates are immutable and a
+revoked row is terminal. `POST .../archive` and logical `DELETE
+/documents/{id}` return `409 publication_lifecycle_active` while the affected
+document has a `DRAFT` or `PUBLISHED` publication; callers must first complete
+the governed `REVOKED` transition.
+
+`GET /public/documents/{public_slug}` is anonymous and returns only the
+approved metadata snapshot. `GET /internal/public/documents/{public_slug}/source`
+requires `X-AKB-Public-Delivery-Token` and returns an internal source
+descriptor only to the AKB web boundary. Each request calls
+`POST /api/v1/policy/public-decisions` afresh and validates central publication
+id, application, resource type/id, source version, slug, binding, hash, and
+publish time, plus the exact policy version. Unknown fields in the decision or
+publication object are rejected. Deny/revoke, outage, mismatch, malformed
+response, snapshot tamper, or source-descriptor tamper fails closed.
+
+The public web paths `/api/public/documents/{publicSlug}` and
+`/api/public/documents/{publicSlug}/source` re-allowlist metadata and verify
+actual source size/SHA-256 with bounded-memory I/O before returning a streaming
+`200` or single-range `206` response with `Accept-Ranges`, a strong SHA-256
+`ETag`, and `no-store`. `If-None-Match` may return `304`; invalid or multiple
+ranges return `416` with `Content-Range: bytes */size`. Per-client/public-slug
+and global rate limits plus per-client/global concurrency limits return `429`
+with `Retry-After`; a source slot is held for the complete stream. Storage
+URI, body/extracted text, chunks, embeddings, prompts, answers, and RAG output
+are never part of an anonymous JSON response.
+
+Repeated anonymous `public_read`/`public_download` audit outcomes are upserted
+into a deterministic fixed-window row. Audit readers receive
+`occurrence_count` and `last_seen_at`; the configured retention pruner targets
+only expired `anonymous:public` delivery rows and never authenticated audit.
+The Registry endpoints themselves also apply independent
+`AKL_REGISTRY_PUBLIC_*` per-client/slug and global rate/concurrency limits;
+capacity exhaustion returns `429` before another central decision is made.
+
+`GET /public/documents/{publicSlug}` is the corresponding anonymous human
+page. It has no internal AppShell or session dependency, uses the same fresh
+metadata decision, displays only the approved snapshot, and links exclusively
+to the verified public source route. Missing, revoked, invalid, or temporarily
+unverifiable publications render the same fail-closed unavailable state.
 
 ## Document Extraction Persistence
 
