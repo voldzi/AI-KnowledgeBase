@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
+
 from app.config import load_settings
+from app.errors import RetrievalError
 from app.schemas import RagQueryFilters
 from retrievers.qdrant import (
+    OpenSearchFullTextClient,
     QdrantHybridRetriever,
     _fuse_ranked_chunks,
     _opensearch_filter,
@@ -14,6 +18,117 @@ from retrievers.qdrant import (
     _points_to_lexical_chunks,
     _qdrant_filter,
 )
+
+
+def test_missing_qdrant_collection_is_an_empty_retrieval_result(monkeypatch) -> None:
+    settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "http"})
+    retriever = QdrantHybridRetriever(settings)
+
+    async def fake_request(**kwargs):
+        raise RetrievalError(
+            "UPSTREAM_ERROR",
+            "qdrant returned an error",
+            status_code=502,
+            details={"dependency": "qdrant", "status_code": 404},
+        )
+
+    import retrievers.qdrant as qdrant_module
+
+    monkeypatch.setattr(qdrant_module, "request_json_with_retry", fake_request)
+
+    chunks = asyncio.run(
+        retriever.retrieve(
+            query="old document",
+            filters=RagQueryFilters(document_ids=["doc_removed"]),
+            limit=5,
+        )
+    )
+
+    assert chunks == []
+    assert asyncio.run(retriever.readiness()) == "ready"
+
+
+def test_missing_opensearch_index_is_an_empty_retrieval_result(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_DEPENDENCY_MODE": "http",
+            "AKL_RAG_FULLTEXT_MODE": "opensearch",
+            "AKL_OPENSEARCH_BASE_URL": "http://opensearch.test:9200",
+        }
+    )
+    client = OpenSearchFullTextClient(settings)
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            pass
+
+        async def get(self, *args, **kwargs) -> httpx.Response:
+            return httpx.Response(404, json={})
+
+        async def post(self, *args, **kwargs) -> httpx.Response:
+            return httpx.Response(404, json={})
+
+    import retrievers.qdrant as qdrant_module
+
+    monkeypatch.setattr(qdrant_module.httpx, "AsyncClient", FakeAsyncClient)
+
+    chunks = asyncio.run(
+        client.retrieve(
+            query="old document",
+            filters=RagQueryFilters(document_ids=["doc_removed"]),
+            limit=5,
+        )
+    )
+
+    assert chunks == []
+    assert asyncio.run(client.readiness()) == "ready"
+
+
+def test_opensearch_server_error_is_not_treated_as_empty(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_DEPENDENCY_MODE": "http",
+            "AKL_RAG_FULLTEXT_MODE": "opensearch",
+            "AKL_OPENSEARCH_BASE_URL": "http://opensearch.test:9200",
+        }
+    )
+    client = OpenSearchFullTextClient(settings)
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            pass
+
+        async def post(self, *args, **kwargs) -> httpx.Response:
+            return httpx.Response(500, json={})
+
+    import retrievers.qdrant as qdrant_module
+
+    monkeypatch.setattr(qdrant_module.httpx, "AsyncClient", FakeAsyncClient)
+
+    try:
+        asyncio.run(
+            client.retrieve(
+                query="old document",
+                filters=RagQueryFilters(document_ids=["doc_removed"]),
+                limit=5,
+            )
+        )
+    except RetrievalError as exc:
+        assert exc.details == {"dependency": "opensearch", "status_code": 500}
+    else:
+        raise AssertionError("OpenSearch 500 must remain an upstream error")
 
 
 def test_qdrant_payload_metadata_fallback_builds_citation() -> None:
