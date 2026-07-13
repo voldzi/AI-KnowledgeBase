@@ -37,6 +37,8 @@ class RegistryClient(Protocol):
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
         candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
+        action: str = "rag.query",
     ) -> AuthzFilterResult:
         ...
 
@@ -137,6 +139,8 @@ class MockRegistryClient:
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
         candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
+        action: str = "rag.query",
     ) -> AuthzFilterResult:
         denied = {
             document_id
@@ -384,15 +388,18 @@ class HttpRegistryClient:
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
         candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
+        action: str = "rag.query",
     ) -> AuthzFilterResult:
         if not candidate_document_ids:
             return AuthzFilterResult(allowed_document_ids=set(), denied_document_ids=set())
 
         body = {
             "subject_id": subject_id,
-            "action": "rag.query",
+            "action": action,
             "candidate_document_ids": candidate_document_ids,
             "candidate_policy_hashes": candidate_policy_hashes or {},
+            "candidate_document_versions": candidate_document_versions or {},
         }
         if self._settings.auth_mode in {"disabled", "mock"}:
             body.update(
@@ -637,6 +644,8 @@ class DevAuthzRegistryClient:
         candidate_document_ids: list[str],
         auth_context: AuthContext | None = None,
         candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
+        action: str = "rag.query",
     ) -> AuthzFilterResult:
         return AuthzFilterResult(
             allowed_document_ids=set(candidate_document_ids),

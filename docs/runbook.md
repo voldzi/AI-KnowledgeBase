@@ -110,16 +110,29 @@ synchronizuje auditovaně ve stavech `INGESTING`, `INDEXED` a `FAILED`.
 
 ## Rollback After Failed Release
 
-1. Record failing git HEAD, image tag, and error/correlation ids.
-2. Restore previous known-good git revision or image tag.
-3. Re-run health/readiness checks.
-4. Run a narrow smoke for assistant chat and document source opening.
-5. If database migrations were applied, follow the migration-specific rollback
-   notes. Do not manually edit production data without a reviewed recovery plan.
+On `docker.home.cz`, recovery is forward-fix only:
+
+1. Record the failed full Git SHA, full-SHA image tags, deployment record, and
+   error/correlation ids. Inspect `/srv/akl/state/applied-runtime.env` without
+   editing it. `/srv/akl/current` remains the last fully verified release, but
+   running containers may already contain the failed release.
+2. Do not start older code against a possibly migrated schema. Do not run an
+   Alembic downgrade, in-place restore, reset, or Docker volume deletion.
+3. Prepare and review a fix commit descending from the exact `applied_sha` in
+   the runtime marker. Ordinary deployment and a non-descendant SHA are
+   intentionally rejected while it differs from `/srv/akl/current`.
+4. Run `scripts/rollback_docker_home_release.sh --failed-sha <failed-full-sha>
+   --forward-fix-sha <fix-full-sha>` from `/srv/akl/current`.
+5. The normal backup, migration, health/readiness, public fail-closed smoke, and
+   atomic activation gates must all pass again.
+
+Local development rollback remains environment-specific and must not be used
+as a production recovery instruction.
 
 Detailed references:
 
 - `docs/deployment/docker-home-cz.md`
 - `docs/deployment/local-production.md`
 - `docs/OPERATIONS/backup-restore.md`
+- `docs/OPERATIONS/immutable-docker-home-release.md`
 - `docs/maintenance/release-process.md`

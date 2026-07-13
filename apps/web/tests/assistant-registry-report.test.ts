@@ -75,8 +75,7 @@ describe("assistant registry report", () => {
     assert.ok(response);
     assert.equal(response.conversation_id, "conv_test");
     assert.equal(response.report_artifacts.length, 1);
-    assert.equal(response.report_artifacts[0]?.export_formats.includes("xlsx"), true);
-    assert.equal(response.report_artifacts[0]?.export_formats.includes("pdf"), true);
+    assert.deepEqual(response.report_artifacts[0]?.export_formats, []);
 
     const rows = response.report_artifacts[0]?.rows ?? [];
     const digitalization = rows.find((row) => row.cells.topic === "digitalizace");
@@ -152,7 +151,7 @@ describe("assistant registry report", () => {
     assert.equal(response.report_artifacts[0]?.rows[0]?.cells.title, "Smlouva o podpoře aplikace");
     assert.equal(response.report_artifacts[0]?.rows[0]?.cells.external_system, "STRATOS_BUDGET");
     assert.equal(response.report_artifacts[0]?.rows[0]?.cells.entity, "contract: contract-1");
-    assert.deepEqual(response.report_artifacts[0]?.export_formats, ["xlsx", "pdf"]);
+    assert.deepEqual(response.report_artifacts[0]?.export_formats, []);
   });
 
   it("builds follow-up contract lists from document type metadata, not topic text", () => {

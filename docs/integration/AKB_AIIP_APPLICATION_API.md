@@ -19,6 +19,9 @@ directly.
 RAG uses a separate internal `akb-rag-service` client with role `service_rag`
 and audience `akl-api` for Registry authorization, audit, and idempotency. The
 AIIP token is never repurposed as a Registry or LLM Gateway credential.
+Generic RAG, assistant, citation, extraction, and governance routes reject all
+service identities; only the two versioned AIIP integration routes accept the
+exact AIIP client.
 
 ## Identity And Headers
 
@@ -38,6 +41,8 @@ derives trusted internal identity headers only after token introspection.
 ## Policy And Limits
 
 - Allowed classifications: `public`, `internal`.
+- The compatibility `tenant_id` field must be exactly `org_stratos`; it is an
+  organization boundary and cannot select an arbitrary tenant namespace.
 - `restricted` and `confidential` return `403 CLASSIFICATION_NOT_ALLOWED`
   before any model or retrieval call.
 - Maximum JSON body size: 64 kB.
@@ -53,6 +58,11 @@ derives trusted internal identity headers only after token introspection.
 
 Registry stores `(client_id, operation, Idempotency-Key)` with a canonical
 SHA-256 request-body hash for 24 hours.
+
+The public request namespace is `aiip-service`. The Registry caller is the
+separate `akb-rag-service`, which may reserve and complete that namespace only
+through the explicit deployment delegation
+`akb-rag-service=aiip-service`. Neither client can access any other namespace.
 
 Production creates this storage through Alembic revision
 `0010_integration_idempotency`. Revision `0011_aiip_service_access` adds the
@@ -86,7 +96,7 @@ returns `422 STRUCTURED_OUTPUT_INVALID` without a partial result.
 `ai_intake` and `ai_requirement_card` documents, including drafts because AIIP
 ideas are compared before publication. Retrieval is constrained by:
 
-- request `tenant_id`,
+- exact organization boundary `tenant_id=org_stratos`,
 - `external_system=STRATOS_AIIP`,
 - requested classification ceiling,
 - Registry document authorization.
@@ -102,7 +112,10 @@ external identity fields are present in both Qdrant and OpenSearch payloads.
 ## Audit And Retention
 
 Each successful operation writes one Registry audit event and returns its
-`audit_event_id`. Audit metadata includes identifiers, classification,
+`audit_event_id`. Registry stores the verified RAG service-account subject as
+the actual `actor_id`; the AIIP identity declared by the integration layer is
+stored only as `reported_actor_id`, together with the server-derived
+`service_client_id`. Audit metadata also includes identifiers, classification,
 processing purpose, canonical input hash, model/index version, usage counts,
 latency, result counts, and correlation id. It excludes prompts, record bodies,
 answers, cited text, credentials, and vectors. Application audit metadata is

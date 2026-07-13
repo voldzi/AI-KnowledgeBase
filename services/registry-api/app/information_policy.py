@@ -75,7 +75,7 @@ class InformationPolicyBinding(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, use_enum_values=True)
 
     schema_version: Literal["stratos-information-policy-2"] = Field(alias="schemaVersion")
-    policy_binding_id: str = Field(alias="policyBindingId", pattern=r"^pol_[A-Za-z0-9_-]{8,}$")
+    policy_binding_id: str = Field(alias="policyBindingId", pattern=r"^(?:pol|pb)_[A-Za-z0-9_-]{8,}$")
     policy_version: Literal["information-policy-2.0.0"] = Field(alias="policyVersion")
     handling_class: HandlingClass = Field(alias="handlingClass")
     legal_classification: Literal["NONE"] = Field(alias="legalClassification")
@@ -199,3 +199,30 @@ def legacy_classification(binding: InformationPolicyBinding) -> str:
         HandlingClass.internal.value: "internal",
         HandlingClass.restricted.value: "restricted",
     }[str(binding.handling_class)]
+
+
+def anonymous_public_eligible(binding: InformationPolicyBinding) -> bool:
+    """Return true only for a policy that may enter STRATOS public-publication approval.
+
+    This does not publish content and never substitutes for an active central
+    InformationPublication plus a fresh public decision.
+    """
+
+    categories = set(binding.content_categories)
+    obligations = set(binding.obligations)
+    return bool(
+        binding.handling_class == HandlingClass.public.value
+        and binding.legal_classification == "NONE"
+        and binding.audience.scope_type == "public"
+        and not binding.audience.scope_ids
+        and not binding.audience.recipient_subject_ids
+        and binding.tlp in {None, TlpLabel.clear.value}
+        and binding.pap in {None, PapLabel.clear.value}
+        and ContentCategory.public_information.value in categories
+        and not {ContentCategory.personal_data.value, ContentCategory.authentication.value}.intersection(categories)
+        and PolicyObligation.audit_access.value in obligations
+        and not {
+            PolicyObligation.no_export.value,
+            PolicyObligation.no_public_export.value,
+        }.intersection(obligations)
+    )

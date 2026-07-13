@@ -103,6 +103,29 @@ class SourceLocation(BaseModel):
         return value
 
 
+class GovernanceScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[
+        "organization",
+        "organization_unit",
+        "budget_scope",
+        "portfolio",
+        "project",
+        "document",
+        "recipient_set",
+    ]
+    id: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def require_scope_id(self) -> "GovernanceScope":
+        if self.type != "organization" and not self.id:
+            raise ValueError("A non-organization governance scope requires id")
+        if self.type == "organization" and self.id not in {None, "org_stratos"}:
+            raise ValueError("AKB organization scope must identify org_stratos")
+        return self
+
+
 def _is_aiip_secret_sensitivity(value: str) -> bool:
     normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     return normalized.strip().casefold() == "tajne"
@@ -121,6 +144,7 @@ class Action(str, Enum):
     rag_query = "rag.query"
     rag_compare = "rag.compare"
     rag_check_compliance = "rag.check_compliance"
+    rag_export = "rag.export"
     workflow_task_read = "workflow.task.read"
     workflow_task_write = "workflow.task.write"
     audit_read = "audit.read"
@@ -263,6 +287,8 @@ class DocumentCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     access_policies: list[AccessPolicyCreate] | None = None
     assignments: list[DocumentAssignmentCreate] | None = None
+    governance_scope: GovernanceScope | None = None
+    parent_governed_resource_id: str | None = Field(default=None, max_length=128)
 
 
 class DocumentPatch(BaseModel):
@@ -277,6 +303,8 @@ class DocumentPatch(BaseModel):
     metadata: dict[str, Any] | None = None
     access_policies: list[AccessPolicyCreate] | None = None
     assignments: list[DocumentAssignmentCreate] | None = None
+    governance_scope: GovernanceScope | None = None
+    parent_governed_resource_id: str | None = Field(default=None, max_length=128)
 
 
 class DocumentResponse(BaseModel):
@@ -292,6 +320,13 @@ class DocumentResponse(BaseModel):
     policy_version: str | None
     policy_hash: str | None
     policy_summary: dict[str, Any] = Field(default_factory=dict)
+    governed_resource_id: str | None = None
+    governed_source_version: str | None = None
+    governed_parent_resource_id: str | None = None
+    governance_scope_type: str = "organization"
+    governance_scope_id: str | None = "org_stratos"
+    governance_registration_status: str = "LEGACY_UNREGISTERED"
+    governance_registered_at: datetime | None = None
     owner_id: str
     owner: str
     gestor_unit: str | None
@@ -394,6 +429,8 @@ class ExternalDocumentUpsertRequest(BaseModel):
     preview_url: str | None = Field(default=None, max_length=2048)
     access_policies: list[AccessPolicyCreate] | None = None
     assignments: list[DocumentAssignmentCreate] | None = None
+    governance_scope: GovernanceScope | None = None
+    parent_governed_resource_id: str | None = Field(default=None, max_length=128)
 
     @model_validator(mode="after")
     def reject_aiip_classified_sensitivity(self) -> "ExternalDocumentUpsertRequest":
@@ -583,6 +620,7 @@ class DocumentVersionCreate(BaseModel):
     change_summary: str | None = None
     information_policy: InformationPolicyBinding | None = None
     file: DocumentFileCreate | None = None
+    governance_scope: GovernanceScope | None = None
 
     @field_validator("file_hash")
     @classmethod
@@ -605,6 +643,13 @@ class DocumentVersionResponse(BaseModel):
     policy_version: str | None
     policy_hash: str | None
     policy_summary: dict[str, Any] = Field(default_factory=dict)
+    governed_resource_id: str | None = None
+    governed_source_version: str | None = None
+    governed_parent_resource_id: str | None = None
+    governance_scope_type: str = "organization"
+    governance_scope_id: str | None = "org_stratos"
+    governance_registration_status: str = "LEGACY_UNREGISTERED"
+    governance_registered_at: datetime | None = None
     valid_from: date | None
     valid_to: date | None
     source_file_uri: str
@@ -619,6 +664,98 @@ class DocumentVersionListResponse(BaseModel):
     items: list[DocumentVersionResponse]
     limit: int
     offset: int
+
+
+class DocumentPublicationStatus(str, Enum):
+    draft = "DRAFT"
+    published = "PUBLISHED"
+    revoked = "REVOKED"
+
+
+class DocumentPublicationPutRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    status: DocumentPublicationStatus
+    public_slug: str | None = Field(default=None, alias="publicSlug", min_length=3, max_length=120)
+    public_description: str | None = Field(
+        default=None,
+        alias="publicDescription",
+        max_length=2000,
+    )
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class DocumentPublicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    publication_id: str
+    document_id: str
+    document_version_id: str
+    public_slug: str
+    status: DocumentPublicationStatus
+    snapshot_schema: str
+    public_snapshot_hash: str
+    governed_resource_id: str
+    source_version: str
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    central_publication_id: str
+    approved_by: str | None
+    published_by: str | None
+    published_at: datetime | None
+    revoked_by: str | None
+    revoked_at: datetime | None
+    reason: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PublicDocumentSnapshotFile(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    filename: str
+    mime_type: str = Field(alias="mimeType")
+    size_bytes: int = Field(alias="sizeBytes", ge=0)
+    sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class PublicDocumentSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    schema_version: Literal["akb-public-document-1"] = Field(alias="schemaVersion")
+    document_id: str = Field(alias="documentId")
+    document_version_id: str = Field(alias="documentVersionId")
+    title: str
+    document_type: str = Field(alias="documentType")
+    version_label: str = Field(alias="versionLabel")
+    valid_from: str | None = Field(alias="validFrom")
+    valid_to: str | None = Field(alias="validTo")
+    published_at: str = Field(alias="publishedAt")
+    description: str | None
+    file: PublicDocumentSnapshotFile
+
+
+class PublicDocumentMetadataResponse(BaseModel):
+    snapshot: PublicDocumentSnapshot
+    decision_id: str
+
+
+class PublicDocumentSourceResolutionResponse(BaseModel):
+    publication_id: str
+    public_slug: str
+    document_id: str
+    document_version_id: str
+    source_version: str
+    source_file_uri: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    decision_id: str
 
 
 class AuthzResource(BaseModel):
@@ -653,6 +790,7 @@ class AuthzFilterDocumentsRequest(BaseModel):
     action: Action
     candidate_document_ids: list[str] = Field(min_length=1, max_length=1000)
     candidate_policy_hashes: dict[str, list[str]] = Field(default_factory=dict)
+    candidate_document_versions: dict[str, list[str]] = Field(default_factory=dict)
     roles: list[str] = Field(default_factory=list)
     groups: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
@@ -688,6 +826,8 @@ class AuditEventResponse(BaseModel):
     resource_id: str
     severity: AuditSeverity
     correlation_id: str | None
+    occurrence_count: int = Field(default=1, ge=1)
+    last_seen_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="event_metadata")
     created_at: datetime
 

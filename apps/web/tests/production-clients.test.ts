@@ -927,6 +927,49 @@ describe("production API clients", () => {
     assert.equal(calls[0][1]?.method, "POST");
   });
 
+  it("loads the exact immutable version publication from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        publication_id: "pub_1",
+        document_id: "doc_1",
+        document_version_id: "ver_1",
+        public_slug: "public-document",
+        status: "PUBLISHED",
+        snapshot_schema: "akb-public-document-snapshot-1",
+        public_snapshot_hash: `sha256:${"b".repeat(64)}`,
+        governed_resource_id: "gir_1",
+        source_version: "ver_1",
+        policy_binding_id: "pb_public_12345678",
+        policy_version: "information-policy-2.0.0",
+        policy_hash: `sha256:${"a".repeat(64)}`,
+        central_publication_id: "ipub_1",
+        approved_by: "user_1",
+        published_by: "user_1",
+        published_at: "2026-07-13T10:00:00Z",
+        revoked_by: null,
+        revoked_at: null,
+        reason: "approved",
+        created_at: "2026-07-13T09:00:00Z",
+        updated_at: "2026-07-13T10:00:00Z",
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const publication = await clients.registry.getDocumentPublication(
+      "doc_1",
+      "ver_1",
+      createMockContext(),
+    );
+
+    assert.equal(publication.status, "PUBLISHED");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents/doc_1/versions/ver_1/publication",
+    );
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
   it("runs governance version comparison through the Governance API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

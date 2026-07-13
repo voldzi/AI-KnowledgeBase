@@ -31,6 +31,15 @@ function policy() {
 }
 
 describe("STRATOS Information Policy V2", () => {
+  it("accepts both Registry-generated pol_ and central pb_ binding ids", () => {
+    assert.equal(parseInformationPolicy(policy()).policyBindingId, "pol_crosslang01");
+    assert.equal(
+      parseInformationPolicy({ ...policy(), policyBindingId: "pb_budget_projectflow_12345678" }).policyBindingId,
+      "pb_budget_projectflow_12345678"
+    );
+    assert.throws(() => parseInformationPolicy({ ...policy(), policyBindingId: "binding_unregistered" }));
+  });
+
   it("uses the same canonical SHA-256 as the Registry implementation", () => {
     const parsed = parseInformationPolicy(policy());
     assert.equal(policyHash(parsed), "sha256:001a7b09fc623cd5ddd2e477d8809ed8628a5c8659b92f8ff5e10cc7343bc930");

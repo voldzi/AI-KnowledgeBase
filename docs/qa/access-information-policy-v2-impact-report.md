@@ -1,5 +1,15 @@
 # AKB G2/G3 Impact Report
 
+> **HISTORICAL / SUPERSEDED — NOT CURRENT OPERATING GUIDANCE**
+>
+> This report preserves evidence from the 2026-07-12 G2/G3 checkpoint. Its
+> implementation counts, migration baseline, remaining gates, and absence of
+> anonymous public delivery no longer describe the current system. Current
+> behavior is defined by `docs/security/access-information-policy-v2.md`,
+> `docs/operations.md`, and
+> `docs/adr/0007-immutable-public-document-delivery.md`, including migration
+> `0015_document_publications` and immutable anonymous publication.
+
 Date: 2026-07-12
 
 ## Status
@@ -35,6 +45,10 @@ gates.
   policy hashes and post-filter returned evidence.
 - Source-open, citation-open, and report export fail closed on stale or
   unsupported policy state.
+- Authenticated document detail displays the shared STRATOS policy panel for
+  the immutable current version plus its document-level parent context. Stale
+  coordinates are not rendered, and publication status remains explicitly
+  unknown when the caller cannot read the publication record.
 - External AI rejects unbound, restricted, classified, unknown, or explicitly
   prohibited processing.
 - `tools/reset_akb_epoch.py` provides dry-run inventory and a guarded apply path

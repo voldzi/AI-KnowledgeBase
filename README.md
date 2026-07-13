@@ -2,6 +2,12 @@
 
 AKB is a local AI KnowledgeBase for controlled documents, ingestion, embeddings, Qdrant-backed RAG retrieval, citations, and audit events.
 
+In production, policy-bearing documents and immutable versions are linked to
+the central STRATOS governed-information lineage. Capabilities, registered
+scopes, Information Policy bindings, current versions, RAG citations, and
+exports are rechecked server-side; browser claims and posted policy metadata
+are not authorization sources.
+
 The runtime still uses `AKL_*` environment variables and selected internal ids as technical compatibility prefixes. Do not rename them during ordinary feature work.
 
 ## Local Quickstart

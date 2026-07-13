@@ -82,7 +82,8 @@ by topic, document type, classification, owner/steward, and status. They use
 the same assistant response and `report_artifacts` shape, but carry
 `answer_source: "registry_metadata_summary"` when backed by `GET
 /api/v1/documents/metadata-summary`, use `artifact_kind:
-"registry_metadata_table"`, and carry no chunk citations.
+"registry_metadata_table"`, carry no chunk citations, and remain view-only
+until an immutable metadata-snapshot export contract exists.
 
 ## STRATOS Contract Extractions
 

@@ -919,6 +919,138 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/versions/{version_id}/publication:
+    get:
+      summary: Get Document Publication
+      operationId: get_document_publication_api_v1_documents__document_id__versions__version_id__publication_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPublicationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      summary: Put Document Publication
+      operationId: put_document_publication_api_v1_documents__document_id__versions__version_id__publication_put
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentPublicationPutRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPublicationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/public/documents/{public_slug}:
+    get:
+      summary: Get Public Document Metadata
+      operationId: get_public_document_metadata_api_v1_public_documents__public_slug__get
+      parameters:
+      - name: public_slug
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Public Slug
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicDocumentMetadataResponse'
+        '429':
+          description: Public delivery capacity limit reached
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1.0
+              description: Seconds before retrying public delivery
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security: []
+  /api/v1/internal/public/documents/{public_slug}/source:
+    get:
+      summary: Resolve Public Document Source
+      operationId: resolve_public_document_source_api_v1_internal_public_documents__public_slug__source_get
+      security:
+      - akbPublicDeliveryToken: []
+      parameters:
+      - name: public_slug
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Public Slug
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicDocumentSourceResolutionResponse'
+        '429':
+          description: Public delivery capacity limit reached
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1.0
+              description: Seconds before retrying public delivery
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/authz/check:
     post:
       summary: Check Authorization
@@ -1859,6 +1991,7 @@ components:
       - rag.query
       - rag.compare
       - rag.check_compliance
+      - rag.export
       - workflow.task.read
       - workflow.task.write
       - audit.read
@@ -2723,6 +2856,15 @@ components:
           - type: string
           - type: 'null'
           title: Correlation Id
+        occurrence_count:
+          type: integer
+          minimum: 1.0
+          default: 1
+          title: Occurrence Count
+        last_seen_at:
+          type: string
+          format: date-time
+          title: Last Seen At
         metadata:
           additionalProperties: true
           type: object
@@ -2740,6 +2882,7 @@ components:
       - resource_id
       - severity
       - correlation_id
+      - last_seen_at
       - created_at
       title: AuditEventResponse
     AuditSeverity:
@@ -2848,6 +2991,13 @@ components:
             type: array
           type: object
           title: Candidate Policy Hashes
+        candidate_document_versions:
+          additionalProperties:
+            items:
+              type: string
+            type: array
+          type: object
+          title: Candidate Document Versions
         roles:
           items:
             type: string
@@ -3236,6 +3386,16 @@ components:
             type: array
           - type: 'null'
           title: Assignments
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
+        parent_governed_resource_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Parent Governed Resource Id
       type: object
       required:
       - title
@@ -3812,8 +3972,155 @@ components:
             type: array
           - type: 'null'
           title: Assignments
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
+        parent_governed_resource_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Parent Governed Resource Id
       type: object
       title: DocumentPatch
+    DocumentPublicationPutRequest:
+      properties:
+        status:
+          $ref: '#/components/schemas/DocumentPublicationStatus'
+        publicSlug:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 3
+          - type: 'null'
+          title: Publicslug
+        publicDescription:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Publicdescription
+        reason:
+          type: string
+          maxLength: 1000
+          minLength: 3
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - reason
+      title: DocumentPublicationPutRequest
+    DocumentPublicationResponse:
+      properties:
+        publication_id:
+          type: string
+          title: Publication Id
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        public_slug:
+          type: string
+          title: Public Slug
+        status:
+          $ref: '#/components/schemas/DocumentPublicationStatus'
+        snapshot_schema:
+          type: string
+          title: Snapshot Schema
+        public_snapshot_hash:
+          type: string
+          title: Public Snapshot Hash
+        governed_resource_id:
+          type: string
+          title: Governed Resource Id
+        source_version:
+          type: string
+          title: Source Version
+        policy_binding_id:
+          type: string
+          title: Policy Binding Id
+        policy_version:
+          type: string
+          title: Policy Version
+        policy_hash:
+          type: string
+          title: Policy Hash
+        central_publication_id:
+          type: string
+          title: Central Publication Id
+        approved_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Approved By
+        published_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Published By
+        published_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Published At
+        revoked_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Revoked By
+        revoked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Revoked At
+        reason:
+          type: string
+          title: Reason
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - publication_id
+      - document_id
+      - document_version_id
+      - public_slug
+      - status
+      - snapshot_schema
+      - public_snapshot_hash
+      - governed_resource_id
+      - source_version
+      - policy_binding_id
+      - policy_version
+      - policy_hash
+      - central_publication_id
+      - approved_by
+      - published_by
+      - published_at
+      - revoked_by
+      - revoked_at
+      - reason
+      - created_at
+      - updated_at
+      title: DocumentPublicationResponse
+    DocumentPublicationStatus:
+      type: string
+      enum:
+      - DRAFT
+      - PUBLISHED
+      - REVOKED
+      title: DocumentPublicationStatus
     DocumentReadinessIssue:
       properties:
         code:
@@ -3952,6 +4259,41 @@ components:
           additionalProperties: true
           type: object
           title: Policy Summary
+        governed_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Resource Id
+        governed_source_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Source Version
+        governed_parent_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Parent Resource Id
+        governance_scope_type:
+          type: string
+          title: Governance Scope Type
+          default: organization
+        governance_scope_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governance Scope Id
+          default: org_stratos
+        governance_registration_status:
+          type: string
+          title: Governance Registration Status
+          default: LEGACY_UNREGISTERED
+        governance_registered_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Governance Registered At
         owner_id:
           type: string
           title: Owner Id
@@ -4086,6 +4428,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/DocumentFileCreate'
           - type: 'null'
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
       type: object
       required:
       - version_label
@@ -4150,6 +4496,41 @@ components:
           additionalProperties: true
           type: object
           title: Policy Summary
+        governed_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Resource Id
+        governed_source_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Source Version
+        governed_parent_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Parent Resource Id
+        governance_scope_type:
+          type: string
+          title: Governance Scope Type
+          default: organization
+        governance_scope_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governance Scope Id
+          default: org_stratos
+        governance_registration_status:
+          type: string
+          title: Governance Registration Status
+          default: LEGACY_UNREGISTERED
+        governance_registered_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Governance Registered At
         valid_from:
           anyOf:
           - type: string
@@ -4486,6 +4867,16 @@ components:
             type: array
           - type: 'null'
           title: Assignments
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
+        parent_governed_resource_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Parent Governed Resource Id
       type: object
       required:
       - external_system
@@ -4507,6 +4898,31 @@ components:
       - STRATOS_EXECUTIVE
       - STRATOS_PLATFORM
       title: ExternalSourceSystem
+    GovernanceScope:
+      properties:
+        type:
+          type: string
+          enum:
+          - organization
+          - organization_unit
+          - budget_scope
+          - portfolio
+          - project
+          - document
+          - recipient_set
+          title: Type
+        id:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+          - type: 'null'
+          title: Id
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      title: GovernanceScope
     HTTPValidationError:
       properties:
         detail:
@@ -4549,7 +4965,7 @@ components:
           title: Schemaversion
         policyBindingId:
           type: string
-          pattern: ^pol_[A-Za-z0-9_-]{8,}$
+          pattern: ^(?:pol|pb)_[A-Za-z0-9_-]{8,}$
           title: Policybindingid
         policyVersion:
           type: string
@@ -4937,6 +5353,159 @@ components:
       - subject_id
       - settings
       title: ProfileSettingsResponse
+    PublicDocumentMetadataResponse:
+      properties:
+        snapshot:
+          $ref: '#/components/schemas/PublicDocumentSnapshot'
+        decision_id:
+          type: string
+          title: Decision Id
+      type: object
+      required:
+      - snapshot
+      - decision_id
+      title: PublicDocumentMetadataResponse
+    PublicDocumentSnapshot:
+      properties:
+        schemaVersion:
+          type: string
+          const: akb-public-document-1
+          title: Schemaversion
+        documentId:
+          type: string
+          title: Documentid
+        documentVersionId:
+          type: string
+          title: Documentversionid
+        title:
+          type: string
+          title: Title
+        documentType:
+          type: string
+          title: Documenttype
+        versionLabel:
+          type: string
+          title: Versionlabel
+        validFrom:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Validfrom
+        validTo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Validto
+        publishedAt:
+          type: string
+          title: Publishedat
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        file:
+          $ref: '#/components/schemas/PublicDocumentSnapshotFile'
+      additionalProperties: false
+      type: object
+      required:
+      - schemaVersion
+      - documentId
+      - documentVersionId
+      - title
+      - documentType
+      - versionLabel
+      - validFrom
+      - validTo
+      - publishedAt
+      - description
+      - file
+      title: PublicDocumentSnapshot
+    PublicDocumentSnapshotFile:
+      properties:
+        filename:
+          type: string
+          title: Filename
+        mimeType:
+          type: string
+          title: Mimetype
+        sizeBytes:
+          type: integer
+          minimum: 0.0
+          title: Sizebytes
+        sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - filename
+      - mimeType
+      - sizeBytes
+      - sha256
+      title: PublicDocumentSnapshotFile
+    PublicDocumentSourceResolutionResponse:
+      properties:
+        publication_id:
+          type: string
+          title: Publication Id
+        public_slug:
+          type: string
+          title: Public Slug
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        source_version:
+          type: string
+          title: Source Version
+        source_file_uri:
+          type: string
+          title: Source File Uri
+        filename:
+          type: string
+          title: Filename
+        mime_type:
+          type: string
+          title: Mime Type
+        size_bytes:
+          type: integer
+          title: Size Bytes
+        sha256:
+          type: string
+          title: Sha256
+        policy_binding_id:
+          type: string
+          title: Policy Binding Id
+        policy_version:
+          type: string
+          title: Policy Version
+        policy_hash:
+          type: string
+          title: Policy Hash
+        decision_id:
+          type: string
+          title: Decision Id
+      type: object
+      required:
+      - publication_id
+      - public_slug
+      - document_id
+      - document_version_id
+      - source_version
+      - source_file_uri
+      - filename
+      - mime_type
+      - size_bytes
+      - sha256
+      - policy_binding_id
+      - policy_version
+      - policy_hash
+      - decision_id
+      title: PublicDocumentSourceResolutionResponse
     RoleMappingListResponse:
       properties:
         members:
@@ -5322,3 +5891,8 @@ components:
       - resolved
       - cancelled
       title: WorkflowTaskStatus
+  securitySchemes:
+    akbPublicDeliveryToken:
+      type: apiKey
+      in: header
+      name: X-AKB-Public-Delivery-Token

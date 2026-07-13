@@ -26,6 +26,17 @@ host applications do not make authorization decisions for AKB documents.
 - RAG uses the separate internal client `akb-rag-service`, role `service_rag`,
   and audience `akl-api` for Registry calls. Its secret is mounted read-only
   only into RAG; the AIIP credential is not shared with RAG or Registry.
+- A service role is not sufficient to establish machine identity. Registry and
+  RAG require an allowlisted `azp`/`client_id` bound to the exact Keycloak
+  `service-account-<client_id>` identity. Conflicting claims and untrusted
+  service-looking tokens fail with 403. Registry then applies a per-client,
+  default-deny route allowlist; `akb-rag-service` receives only `authz`,
+  `audit`, and `idempotency`.
+- RAG separates user audience `akl-api` from AIIP service audience `akb-api`.
+  Generic RAG and all other end-user routes reject service identities and bind
+  the request subject to the verified user bearer. Only the two AIIP
+  integration routes accept exact `aiip-service` with `service_aiip`,
+  organization `org_stratos`, and classification `public` or `internal`.
 
 ## Authorization
 
@@ -36,6 +47,18 @@ not substitute for the current STRATOS access projection and an
 operation-specific `akb:*` capability. Identity, membership, application
 access, organization, capability, scope, audience, and policy binding must all
 allow the operation. Projection or policy-decision unavailability fails closed.
+Document and version records carry their immutable central governed-resource
+coordinates. Runtime decisions use that concrete active scope; an IT scope
+does not authorize Logistics and an archived version does not remain readable
+from a stale vector entry.
+The authenticated document detail renders the shared STRATOS information-policy
+panel for the authoritative current version and a compact document-level parent
+context. The UI accepts a policy only when its binding id, version and hash
+coordinates are complete and consistent. It distinguishes a confirmed missing
+publication from a publication status that the current user is not authorized
+to inspect; an unknown status is never presented as proof that a version is not
+public. This explanation is informational only and does not replace Registry or
+central policy enforcement.
 The detailed current contract is in
 `docs/security/access-information-policy-v2.md`.
 
@@ -43,6 +66,66 @@ Registry API owns document authorization. RAG retrieval filters candidate
 documents through Registry authorization before answer composition. If sources
 are unauthorized or insufficient, the assistant returns a no-answer or handoff
 state instead of inventing unsupported information.
+
+Organization-visible and legacy `classification=public` documents remain
+authenticated; they do not become anonymously readable. True public delivery
+uses a separate immutable publication of one exact document version. Its
+sanitized snapshot and exact source descriptor are frozen after `PUBLISHED`,
+and the only later transition is terminal `REVOKED`. Only a locally
+`PUBLISHED` record backed by the matching active central
+`InformationPublication` is deliverable. Document-management authority cannot
+bypass that lifecycle: a `DRAFT` or `PUBLISHED` publication blocks both version
+archival and logical document deletion with `409
+publication_lifecycle_active`. The publication must first be revoked through
+the governed publication endpoint; only the resulting local `REVOKED` state
+releases those operations.
+
+The synthetic authenticated scope `public` is also not an organization scope
+or a shortcut to `document.read`. It permits only governed `rag.query` over an
+exact active immutable public version after a fresh anonymous central
+`public_read` ALLOW. That exact public-resource decision is authoritative and
+is not reinterpreted by the unrelated generic scope PDP. Full Registry
+`/documents*` views remain unavailable to a public-only subject even if the
+subject also presents `akb:read_document`.
+
+Anonymous delivery is available through the human page
+`/public/documents/{publicSlug}`, the web metadata/source endpoints under
+`/api/public/documents/{publicSlug}`, and the Registry metadata endpoint
+`/api/v1/public/documents/{public_slug}`. Every metadata read and source
+download performs a fresh central `public_read` or `public_download` decision
+and fails closed on deny, revoke, outage, mismatch, or integrity failure. All
+public responses are `no-store`. Anonymous metadata never exposes an internal
+source URI, document body, extracted text, chunks, embeddings, prompts,
+answers, or RAG output. The source URI is available only to the token-protected
+internal resolver; the public web source endpoint returns only bytes whose
+length and SHA-256 match the immutable descriptor. Verification reads the file
+in bounded 64 KiB chunks before any response body is released; delivery then
+uses a streaming file descriptor and supports a single byte `Range`, strong
+SHA-256 `ETag`, `If-None-Match`, and `If-Range` without buffering the file.
+
+Anonymous page, metadata, and source requests share bounded in-process
+availability controls: a fixed-window rate limit per HMAC-derived
+client/public slug, a global fixed-window rate limit, and per-client plus
+global concurrency limits. The source concurrency lease remains held until
+the stream completes or is cancelled. Client attribution trusts only the
+configured right-hand proxy chain; the conservative default treats all
+requests as one client. The global limits cannot be bypassed by spoofing
+`X-Forwarded-For`, and the client map has a hard size bound. Capacity denial is
+`429` with `Retry-After`.
+The directly reachable Registry anonymous metadata boundary and the
+token-protected private source resolver have an independent, higher-capacity
+`AKL_REGISTRY_PUBLIC_*` limiter, so bypassing the web path cannot bypass the
+global central-decision work bound.
+
+Anonymous Registry decision audits are aggregated by immutable publication,
+version, policy, operation, outcome/reasons, and deterministic time window.
+Each row exposes `occurrence_count` and `last_seen_at`; an opportunistic bounded
+pruner removes only expired `anonymous:public` delivery events according to
+`AKL_PUBLIC_AUDIT_RETENTION_DAYS`. Authenticated audit events are neither
+aggregated nor removed by that pruner. See
+`docs/security/access-information-policy-v2.md`,
+`docs/api/registry-api.md`, and
+`docs/adr/0007-immutable-public-document-delivery.md`.
 
 STRATOS applications may pass business context, but AKB decides whether the
 current user can pick, upload, view, ingest, or open cited sources.
@@ -135,9 +218,21 @@ queries, answer/no-answer events, source opening, and citation opening. Audit
 events carry correlation ids and avoid storing full prompt/answer/source text
 by default.
 
+For service-written events, Registry always stores the verified caller subject
+as `actor_id`; a payload actor is only `reported_actor_id` metadata, and the
+server-derived `service_client_id` overwrites any supplied value. Idempotency
+reserve and complete are likewise caller-bound. Cross-client namespaces are
+denied except for the explicit `akb-rag-service=aiip-service` delegation used
+by the AIIP bridge.
+
 Audit CSV export is generated in the browser only from events already returned
 by the authorized Registry audit endpoint and filtered in the current view. It
 does not add document bodies, prompts, answers or hidden metadata.
+
+Assistant report export is separately enforced. The server reloads a
+`rag.export` decision for every cited document, validates current policy hashes,
+and aggregates obligations; browser-supplied policy metadata is never the
+authorization source.
 
 ## Scanning
 

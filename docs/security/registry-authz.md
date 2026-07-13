@@ -20,6 +20,14 @@ Ingestion, RAG Retrieval a LLM Gateway používají stejný slovník auth režim
 
 V `oidc` profilu downstream služby token předávají dál; dokumentová rozhodnutí vynucuje Registry API.
 
+Service identity se neurčuje podle názvu role. Registry vyžaduje současně
+allowlistovaný `azp`/`client_id` a přesnou Keycloak service-account identitu
+`service-account-<client_id>` v `preferred_username` nebo `sub`. Konfliktní
+client claims a každý service-looking token, který tuto vazbu nesplní, končí
+`403 untrusted_service_identity`. Důvěryhodný client navíc smí volat jen route
+families explicitně uvedené v `AKL_SERVICE_CLIENT_ROUTE_GRANTS`; neuvedená
+route je default-deny.
+
 ## Role a akce
 
 Služba používá akce z centrálního bezpečnostního kontraktu:
@@ -42,11 +50,18 @@ audit.write
 admin.manage
 ```
 
-Role `admin` má plný přístup. Service role mají jen minimální akce potřebné pro mezislužbovou integraci, například `service_rag` má document read/rag actions a `audit.write`, ale nemůže měnit registry dokumentů.
+Role `admin` má plný přístup v legacy RBAC větvi. Service role samy o sobě
+neotevírají Registry route. Například produkční `akb-rag-service` má pouze
+route granty `authz`, `audit` a `idempotency`; přímé čtení nebo změna
+`/documents*` je proto odmítnuta ještě před doménovým RBAC rozhodnutím.
 
 Vlastník dokumentu má implicitně povolené základní owner akce nad vlastním dokumentem: `document.read`, `document.update`, `document.version.create` a `rag.query`.
 
-Registry při rozhodování sestavuje efektivní subject context z rolí/skupin v ověřeném tokenu a z aktivních záznamů `role_mappings`. Přímé role pro `user:<subject_id>` nebo `service:<subject_id>` a skupinové role pro `group:<group>` se slučují s rolemi z tokenu. To umožňuje centrálně spravovat STRATOS aplikační role bez nutnosti čekat na změnu Keycloak tokenů.
+Registry při legacy rozhodování sestavuje efektivní subject context z
+rolí/skupin v ověřeném tokenu a z aktivních záznamů `role_mappings`. V access
+v2 je autoritativní čerstvá STRATOS access projection; statický
+`stratos_access` claim ani neověřené `X-STRATOS-*` hlavičky nejsou zdrojem
+dynamických oprávnění.
 
 ## Document-level policy
 
@@ -81,10 +96,39 @@ Klasifikační pravidlo je aplikované v policy přes `classification_max`. `val
 
 Volání authz API je chráněné:
 
-- admin, document manager a service account mohou kontrolovat libovolný subjekt,
-- běžný uživatel může kontrolovat jen vlastní `subject_id`.
+- ověřený service client může volat authz jen s explicitním route grantem
+  `authz`; jeho rozhodnutí se dále ověří centrálním STRATOS PDP,
+- běžný uživatel může kontrolovat jen vlastní `subject_id`,
+- lokální mock admin je podporován pouze v development/test režimu.
 
-Pokud běžný uživatel kontroluje vlastní `subject_id`, Registry ignoruje role a skupiny dodané v request body a použije role/skupiny z ověřeného principalu. Role/skupiny v request body jsou určené pro admin nebo service-account zprostředkované kontroly jiného subjektu.
+Pokud běžný uživatel kontroluje vlastní `subject_id`, Registry ignoruje role,
+capabilities, scopes a active flags dodané v request body a použije údaje z
+ověřeného principalu a access projection. Request body proto nemůže rozšířit
+oprávnění volajícího.
+
+### Public-only scope
+
+Syntetický scope `public` není alias pro organizaci ani pro
+`document.read`. Povoluje pouze `rag.query` nad přesnou immutable verzí, která
+má lokální aktivní `PUBLISHED` publikaci, shodný policy binding/hash a při
+každém vyhodnocení čerstvý exact `public_read` ALLOW z anonymního centrálního
+public-decision contractu. Tento exact public ALLOW se neposílá do obecného
+scope PDP, protože jde o jiný resource contract. Plné `/documents*` pohledy
+zůstávají pro public-only subjekt zakázané i tehdy, když má capability
+`akb:read_document`.
+
+### Audit a idempotency service boundaries
+
+U externě zapsaného auditu je `actor_id` vždy skutečný ověřený caller subject.
+Hodnota `actor_id` z requestu se při rozdílu ukládá pouze jako
+`reported_actor_id`; Registry také serverově přepíše `service_client_id`, takže
+obě pole nelze podvrhnout payloadem.
+
+Idempotency reserve i complete jsou vázané na ověřeného service klienta.
+Client smí pracovat ve vlastním namespace a pouze v explicitně delegovaných
+namespaces z `AKL_SERVICE_CLIENT_DELEGATIONS`. Produkční AIIP tok používá
+jedinou úzkou delegaci `akb-rag-service=aiip-service`; ostatní cross-client
+reserve/complete končí `403 idempotency_namespace_forbidden`.
 
 ## Phase 02D enforcement status
 
@@ -95,7 +139,8 @@ Hotovo:
 - Ingestion volá `/authz/check` pro `document.ingest` a `document.reindex`.
 - RAG volá `/authz/filter-documents` s akcí `rag.query` před odpovědí/LLM kontextem.
 - Ingestion, RAG a LLM Gateway přijímají `AKL_AUTH_MODE=oidc` a vyžadují bearer token.
-- Registry authz volání používají caller token; audit write může použít service-account token fallback.
+- Uživatelská Registry authz volání používají caller token. AIIP integrační tok
+  používá výhradně allowlistovaný service client a explicitní route granty.
 
 Zbývá:
 
@@ -105,7 +150,9 @@ Zbývá:
 
 ## Audit a logování
 
-Auditní tabulka obsahuje doménové události a correlation id. Technické logy nelogují dokumenty, tokeny, prompty ani odpovědi.
+Auditní tabulka obsahuje skutečného caller subject, doménové události a
+correlation id. Deklarovaný původní aktér je pouze auditní metadata. Technické
+logy nelogují dokumenty, tokeny, prompty ani odpovědi.
 
 Auditovatelná mutační místa ve službě:
 

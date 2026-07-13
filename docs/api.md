@@ -20,6 +20,13 @@ STRATOS upload preflight/confirm, Registry document/version responses,
 OpenSearch analytical hits, RAG answers, source context, and citations. The
 accepted schemas are snapshotted under `contracts/stratos/`.
 
+Policy-bearing document and version writes also register immutable central
+`GovernedInformationResource` coordinates. The request uses a verified user
+bearer or the dedicated `AKB_POLICY_SERVICE_TOKEN`, which resolves to the fixed
+`service:akb` identity and AKB namespace. An original integration actor is
+audit metadata only. An invalid credential, inactive scope, unregistered
+binding, or absent `akb:assign_policy` aborts the complete write.
+
 ## API Surfaces
 
 AKB exposes several REST surfaces:
@@ -34,6 +41,38 @@ AKB exposes several REST surfaces:
 | Evaluation Service | `/api/v1` | Owned evaluation datasets, quality runs, regression gates, history and reports. |
 | Governance Service | `/api/v1` | Version comparison, compliance, conflicts, KB drafts, validity alerts. |
 | Platform Status | root paths | `/health`, `/ready`, `/metrics`, `/openapi.json`. |
+
+True public AKB documents use a separate immutable delivery surface:
+
+```text
+PUT /api/v1/documents/{document_id}/versions/{version_id}/publication
+GET /api/v1/documents/{document_id}/versions/{version_id}/publication
+GET /api/v1/public/documents/{public_slug}
+GET /api/v1/internal/public/documents/{public_slug}/source
+
+GET /api/public/documents/{publicSlug}
+GET /api/public/documents/{publicSlug}/source
+GET /public/documents/{publicSlug}
+```
+
+Anonymous web delivery is rate- and concurrency-limited at both per-client and
+global boundaries. Metadata returns `200` or `429`; source delivery also
+supports `206` Range, `304` ETag revalidation, `416` unsatisfiable range, and
+bounded-memory streaming after full immutable size/SHA-256 verification.
+
+The first two Registry operations require an interactive bearer. Draft requires
+scoped `akb:assign_policy`; publish requires both `akb:assign_policy` and
+`akb:publish_public`; terminal revoke requires scoped `akb:publish_public` and
+does not submit client-controlled scope. The Registry public metadata operation
+and internal source resolver perform a fresh central
+`public_read`/`public_download` decision on every call. The internal resolver requires
+`X-AKB-Public-Delivery-Token` and is called only by the web boundary. The two
+anonymous web API routes return an exact sanitized metadata snapshot or
+verified source bytes. The final route is a no-store anonymous human page,
+rendered outside the internal AKB shell/session, with only the approved
+snapshot and an explicit link to the verified source route. None returns a
+storage URI, content extraction, chunk, embedding, prompt, answer, or RAG
+field.
 
 Service-level summaries remain in `docs/api/`.
 
@@ -110,7 +149,9 @@ cited-answer summary or one-column list is not a valid enterprise artifact.
 `report.v2` artifacts may additionally include `artifact_contract_version`,
 `artifact_kind`, row `source_refs`, `provenance`, and `quality`. Content tables
 must keep row-level citations; registry metadata tables are explicitly marked as
-permission-scoped metadata and may have no chunk citations.
+permission-scoped metadata and may have no chunk citations. Metadata-only
+tables remain view-only until an immutable metadata-snapshot authorization
+contract exists.
 
 The AKB web bridge accepts guided report preferences in the generic assistant
 request `context` under `assistant_report_request`. This is used by the

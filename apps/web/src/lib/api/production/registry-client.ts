@@ -18,10 +18,12 @@ import type {
   CreateVersionRequest,
   DirectoryUser,
   Document,
+  DocumentAuthorizationDecision,
   DocumentListOptions,
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
+  DocumentPublication,
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
@@ -145,6 +147,18 @@ export class ProductionRegistryClient implements RegistryApiClient {
     return response.items;
   }
 
+  getDocumentPublication(
+    documentId: string,
+    versionId: string,
+    context: ApiRequestContext
+  ): Promise<DocumentPublication> {
+    return this.get<DocumentPublication>(
+      `/documents/${documentId}/versions/${versionId}/publication`,
+      "getDocumentPublication",
+      context
+    );
+  }
+
   createDocumentVersion(
     documentId: string,
     request: CreateVersionRequest,
@@ -218,6 +232,23 @@ export class ProductionRegistryClient implements RegistryApiClient {
       can_read_audit: canReadAudit,
       can_manage_admin: canManageAdmin
     };
+  }
+
+  authorizeDocument(
+    documentId: string,
+    action: string,
+    context: ApiRequestContext
+  ): Promise<DocumentAuthorizationDecision> {
+    return this.post<DocumentAuthorizationDecision>(
+      "/authz/check",
+      {
+        subject_id: context.subjectId,
+        action,
+        resource: { document_id: documentId }
+      },
+      `authz:${action}:${documentId}`,
+      context
+    );
   }
 
   async listWorkflowTasks(

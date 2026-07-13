@@ -7,7 +7,12 @@ from app.service import (
     _employee_answer,
     _fallback_follow_up_questions,
     _parse_follow_up_questions,
+    _complete_chunk_policy_metadata,
 )
+from app.schemas import ChunkCitation, RetrievedChunk
+from answer_composer.composer import _policy_metadata
+from hashlib import sha256
+import json
 from tests.conftest import make_client
 
 
@@ -110,6 +115,104 @@ def test_query_filters_denied_documents_before_answer_composition_in_registry_au
     assert body["confidence"] == "insufficient_source"
     assert body["citations"] == []
     assert "AUTHZ_FILTERED_SOURCES" in body["warnings"]
+
+
+def test_mixed_source_rag_never_leaks_denied_chunk_or_citation() -> None:
+    with make_client({"AKL_RAG_AUTHZ_MODE": "registry", "AKL_RAG_REGISTRY_CLIENT_MODE": "mock"}) as client:
+        response = client.post(
+            "/api/v1/rag/query",
+            json=_query_payload(
+                "Kdo schvaluje vyjimky a jake je tajne pravidlo pro krizove vyjimky?",
+                classification_max="confidential",
+            ),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert all(item["document_id"] != "doc_denied" for item in body["citations"])
+    assert "tajne pravidlo" not in body["answer"].lower()
+    assert "AUTHZ_FILTERED_SOURCES" in body["warnings"]
+
+
+def _policy_chunk(
+    *,
+    chunk_id: str,
+    document_id: str,
+    binding_id: str,
+    handling_class: str,
+    obligations: list[str],
+) -> RetrievedChunk:
+    summary = {
+        "policyBindingId": binding_id,
+        "policyVersion": "information-policy-2.0.0",
+        "handlingClass": handling_class,
+        "legalClassification": "NONE",
+        "tlp": None,
+        "pap": None,
+        "obligations": obligations,
+        "contentCategories": ["CONTRACTUAL"],
+        "audience": {
+            "organizationId": "org_stratos",
+            "scopeType": "organization",
+            "scopeIds": [],
+            "recipientSubjectIds": [],
+        },
+    }
+    encoded = json.dumps(summary, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    policy_hash = f"sha256:{sha256(encoded).hexdigest()}"
+    return RetrievedChunk(
+        chunk_id=chunk_id,
+        score=0.9,
+        retrieval_method="hybrid",
+        text=f"authorized text {chunk_id}",
+        citation=ChunkCitation(
+            document_id=document_id,
+            document_version_id=f"ver_{document_id}",
+            document_title=document_id,
+            version_label="1.0",
+        ),
+        metadata={
+            "policy_binding_id": binding_id,
+            "policy_version": "information-policy-2.0.0",
+            "policy_hash": policy_hash,
+            "policy_summary": summary,
+        },
+    )
+
+
+def test_mixed_source_policy_aggregation_is_strictest_and_tamper_evident() -> None:
+    internal = _policy_chunk(
+        chunk_id="chunk_internal",
+        document_id="doc_internal",
+        binding_id="pol_internal01",
+        handling_class="INTERNAL",
+        obligations=["AUDIT_ACCESS"],
+    )
+    restricted = _policy_chunk(
+        chunk_id="chunk_restricted",
+        document_id="doc_restricted",
+        binding_id="pol_restricted01",
+        handling_class="RESTRICTED",
+        obligations=["NO_EXTERNAL_AI", "NO_EXPORT"],
+    )
+
+    aggregate = _policy_metadata([internal, restricted])
+
+    assert aggregate["handling_class"] == "RESTRICTED"
+    assert aggregate["obligations"] == ["AUDIT_ACCESS", "NO_EXPORT", "NO_EXTERNAL_AI"]
+    assert _complete_chunk_policy_metadata(internal) is True
+    tampered = restricted.model_copy(
+        update={
+            "metadata": {
+                **restricted.metadata,
+                "policy_summary": {
+                    **restricted.metadata["policy_summary"],
+                    "obligations": [],
+                },
+            }
+        }
+    )
+    assert _complete_chunk_policy_metadata(tampered) is False
 
 
 def test_retrieve_returns_authorized_reranked_chunks() -> None:

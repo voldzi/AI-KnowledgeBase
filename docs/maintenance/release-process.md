@@ -23,6 +23,7 @@ Required checks:
 - `Python / evaluation-service`
 - `Python / governance-service`
 - `Docker Compose Config`
+- `Immutable docker.home.cz release`
 
 ## Pull Request Flow
 
@@ -86,32 +87,39 @@ docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --
 
 Use detached tag checkout only for verification or emergency local recovery. Normal development continues from `main`.
 
-## docker.home.cz Checkout Refresh
+## Immutable `docker.home.cz` Release
 
-The `docker-home` checkout depends on local, untracked `.env` files generated from `/srv/akl/env/akl.prod.env`. Bootstrap the checkout once:
+Production is released by an approved full Git SHA, not by refreshing the
+mutable `/srv/akl/repo` checkout. Do not run `git pull`, `git checkout`, or
+`git switch` there as part of deployment. The release workflow fetches a bare
+mirror, verifies that the exact SHA is reachable from protected `origin/main`,
+and extracts it read-only under `/srv/akl/releases/<full-sha>`.
 
-```bash
-cd /srv/akl/repo
-./scripts/bootstrap_docker_home_checkout.sh /srv/akl/env/akl.prod.env
-```
-
-After that, every `git pull`, merge, `git switch`, or `git checkout` refreshes:
-
-- `/srv/akl/repo/.env`
-- `/srv/akl/repo/infra/docker-compose/.env`
-
-If the hook is not installed, run this manually after updating the checkout:
+After the first immutable release, deploy through the last verified release:
 
 ```bash
-cd /srv/akl/repo
-./scripts/install_git_hooks.sh
-./scripts/link_docker_home_env.sh /srv/akl/env/akl.prod.env
+RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+/srv/akl/current/scripts/deploy_docker_home_release.sh --sha "$RELEASE_SHA"
 ```
 
-For the standard server update flow on `docker.home.cz`, prefer:
+The persistent production environment remains
+`/srv/akl/env/akl.prod.env`. Every Compose operation receives that file, the
+Compose project, and the target release compose file explicitly. A Registry
+change first quiesces the Registry writer and is then backed up and verified
+before Alembic runs. Before migration or runtime start, the workflow records
+the target in `/srv/akl/state/applied-runtime.env`; readiness, exact image
+ID/tag and Compose/release labels, and smoke must pass before
+`/srv/akl/current` advances.
+
+Production rollback is forward-fix only. If an image or migration may have
+been applied, ordinary deployment is blocked; prepare a reviewed descendant
+of the exact applied-runtime SHA and use:
 
 ```bash
-cd /srv/akl/repo
-git pull --ff-only
-./scripts/deploy_docker_home.sh
+/srv/akl/current/scripts/rollback_docker_home_release.sh \
+  --failed-sha 0123456789abcdef0123456789abcdef01234567 \
+  --forward-fix-sha 89abcdef0123456789abcdef0123456789abcdef
 ```
+
+The full host preparation, backup artifact, failure, and recovery procedure is
+in `docs/OPERATIONS/immutable-docker-home-release.md`.

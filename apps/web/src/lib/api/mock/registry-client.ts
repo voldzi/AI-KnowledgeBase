@@ -17,6 +17,7 @@ import type {
   DocumentMetadataSummary,
   DocumentMetadataSummaryBucket,
   DocumentMetadataSummaryOptions,
+  DocumentPublication,
   DocumentReadinessIssue,
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
@@ -320,6 +321,19 @@ export class MockRegistryClient implements RegistryApiClient {
     );
   }
 
+  async getDocumentPublication(
+    _documentId: string,
+    _versionId: string,
+    _context: ApiRequestContext,
+  ): Promise<DocumentPublication> {
+    throw new ApiClientError(
+      "Document publication not found",
+      404,
+      "DOCUMENT_PUBLICATION_NOT_FOUND",
+      "mock-trace",
+    );
+  }
+
   async createDocumentVersion(
     documentId: string,
     request: CreateVersionRequest,
@@ -440,6 +454,30 @@ export class MockRegistryClient implements RegistryApiClient {
       can_manage_admin: canUseAdminSurface(context),
       can_publish: mockAuthorization.can_publish || canUseAdminSurface(context),
     });
+  }
+
+  async authorizeDocument(
+    documentId: string,
+    _action: string,
+    _context: ApiRequestContext,
+  ) {
+    const document = this.documents.find(
+      (candidate) => candidate.document_id === documentId,
+    );
+    return {
+      allowed: Boolean(document),
+      reason: document ? "Mock document is visible" : "Mock document was not found",
+      reason_codes: document ? ["MOCK_ALLOW"] : ["DOCUMENT_NOT_FOUND"],
+      constraints: document
+        ? {
+            policy_binding_id: document.policy_binding_id,
+            policy_hash: document.policy_hash,
+            obligations: Array.isArray(document.policy_summary?.obligations)
+              ? document.policy_summary.obligations
+              : [],
+          }
+        : {},
+    };
   }
 
   async listWorkflowTasks(

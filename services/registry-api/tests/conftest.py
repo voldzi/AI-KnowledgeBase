@@ -10,6 +10,23 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("AKL_ENV", "test")
 os.environ.setdefault("AKL_AUTH_MODE", "mock")
 os.environ.setdefault("AKL_MOCK_ROLES", '["admin"]')
+os.environ.setdefault(
+    "AKL_TRUSTED_SERVICE_CLIENT_IDS",
+    "aiip-service,akb-rag-service,svc-ingestion,svc-governance,svc-evaluation",
+)
+os.environ.setdefault(
+    "AKL_SERVICE_CLIENT_ROUTE_GRANTS",
+    "aiip-service=audit|idempotency,"
+    "akb-rag-service=authz|audit|idempotency,"
+    "svc-ingestion=authz|audit|documents-read|documents-write|"
+    "external-documents-read|external-documents-write|extractions-read|extractions-write,"
+    "svc-governance=authz|audit|workflow-read|workflow-write,"
+    "svc-evaluation=audit|idempotency",
+)
+os.environ.setdefault(
+    "AKL_SERVICE_CLIENT_DELEGATIONS",
+    "akb-rag-service=aiip-service",
+)
 
 from app.database import Base, get_db  # noqa: E402
 import app.models  # noqa: F401,E402

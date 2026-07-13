@@ -2,6 +2,14 @@
 
 Tento dokument je interní kontrakt pro STRATOS aplikace, které potřebují uložit nebo číst dokumenty přes AI KnowledgeBase / AKB. Frontendy STRATOS nevolají interní AKB služby přímo. Volání jde buď přes serverový STRATOS adapter, nebo přes schválený AKB web/API bridge používaný sdílenými komponentami.
 
+> **Poznámka k legacy kompatibilitě:** Příklady `tenant_id` v tomto dokumentu
+> popisují zachovaný wire kontrakt a idempotentní identitu externích dokumentů;
+> nejsou modelem autorizace ani scope pro STRATOS Information Policy V2. V2
+> používá výhradně organizaci `org_stratos` a aktuální centrální access
+> projection/policy decision. `tenant_id` se kvůli kompatibilitě nadále posílá
+> tam, kde jej legacy endpoint vyžaduje, ale nesmí se z něj odvozovat přístup a
+> tato poznámka nemění legacy runtime chování.
+
 ## Stav kontraktu
 
 Implementovaná část:

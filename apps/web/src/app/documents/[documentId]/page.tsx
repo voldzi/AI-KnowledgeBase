@@ -35,6 +35,20 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
       clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }).catch(() => []),
       clients.registry.listAuditEvents(context, { limit: 200 }).catch(() => [])
     ]);
+    const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
+    const publication = currentVersion
+      ? await clients.registry
+          .getDocumentPublication(documentId, currentVersion.document_version_id, context)
+          .catch((error) => {
+            if (error instanceof ApiClientError && error.status === 404) {
+              return null;
+            }
+            if (error instanceof ApiClientError && error.status === 403) {
+              return undefined;
+            }
+            throw error;
+          })
+      : undefined;
 
     return (
       <>
@@ -53,6 +67,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           assignments={assignments}
           workflowTasks={workflowTasks}
           auditEvents={auditEvents}
+          publication={publication}
         />
       </>
     );

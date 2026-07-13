@@ -47,11 +47,14 @@ Administration endpoints require `admin.manage`. In production this is granted b
 
 ## Deployment
 
-After deploying the code, run the schema migration:
+Registry schema migrations are part of the immutable exact-SHA release. Do not
+run Alembic manually from `/srv/akl/repo` or against an unverified image. The
+release workflow creates and validates a Registry PostgreSQL custom dump before
+running the one target image head:
 
 ```bash
-cd /srv/akl/repo
-docker exec akl-registry-api-1 alembic upgrade head
+RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+/srv/akl/current/scripts/deploy_docker_home_release.sh --sha "$RELEASE_SHA"
 ```
 
 To create or update the shared Keycloak directory reader and write its secret into the AKB env file:
@@ -74,9 +77,11 @@ STRATOS_KEYCLOAK_DIRECTORY_CLIENT_ID=stratos-directory-reader
 STRATOS_KEYCLOAK_DIRECTORY_CLIENT_SECRET=<secret>
 ```
 
-Then restart AKB registry and web:
+After changing the persistent Keycloak credential, publish a reviewed commit
+when code/config contracts also change and use the immutable release workflow.
+A credential-only incident restart must use a separately reviewed secret
+rotation procedure pinned to the already running image digests. Do not issue an
+ad-hoc Compose `up` from `/srv/akl/repo` or rely on mutable/default image tags.
 
-```bash
-cd /srv/akl/repo
-docker compose --env-file /srv/akl/env/akl.prod.env -f infra/docker-compose/docker-compose.docker-home.yml up -d registry-api web
-```
+The full production release and forward-fix rules are in
+`docs/OPERATIONS/immutable-docker-home-release.md`.

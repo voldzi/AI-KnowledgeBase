@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import threading
 import time
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import quote
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.config import Settings
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash, canonical_policy_payload
@@ -23,12 +25,78 @@ class AccessProjection:
     application_access_active: bool
 
 
+@dataclass(frozen=True)
+class GovernedResourceRegistration:
+    resource_id: str
+    source_version: str
+    policy_binding_id: str
+    policy_hash: str
+
+
+@dataclass(frozen=True)
+class InformationPublicationRegistration:
+    publication_id: str
+    governed_resource_id: str
+    resource_type: str
+    resource_id: str
+    source_version: str
+    public_slug: str
+    policy_binding_id: str
+    policy_hash: str
+    status: str
+    published_at: str | None
+    revoked_at: str | None
+
+
+class CentralPublicDecisionPublication(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    publication_id: str = Field(alias="id", min_length=1)
+    application: Literal["AKB"]
+    resource_type: str = Field(alias="resourceType", min_length=1)
+    resource_id: str = Field(alias="resourceId", min_length=1)
+    source_version: str = Field(alias="sourceVersion", min_length=1)
+    public_slug: str = Field(alias="publicSlug", min_length=1)
+    policy_binding_id: str = Field(alias="policyBindingId", min_length=1)
+    policy_hash: str = Field(alias="policyHash", pattern=r"^sha256:[a-f0-9]{64}$")
+    published_at: datetime = Field(alias="publishedAt")
+
+
+class CentralPublicDecisionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["ALLOW", "DENY"]
+    reason_codes: list[str] = Field(alias="reasonCodes")
+    obligations: list[str]
+    policy_version: str = Field(alias="policyVersion", min_length=1)
+    decision_id: str = Field(alias="decisionId", min_length=1)
+    publication: CentralPublicDecisionPublication | None
+
+
 class GovernanceUnavailable(RuntimeError):
+    pass
+
+
+class GovernanceInvalidResponse(GovernanceUnavailable):
     pass
 
 
 class GovernanceDenied(RuntimeError):
     pass
+
+
+def validate_public_decision_response(value: Any) -> dict[str, Any]:
+    try:
+        decision = CentralPublicDecisionResponse.model_validate(value)
+    except ValidationError as exc:
+        raise GovernanceInvalidResponse(
+            "STRATOS public access governance returned an invalid response"
+        ) from exc
+    if (decision.decision == "ALLOW") != (decision.publication is not None):
+        raise GovernanceInvalidResponse(
+            "STRATOS public access governance returned an invalid response"
+        )
+    return decision.model_dump(mode="json", by_alias=True)
 
 
 class StratosGovernanceClient:
@@ -85,7 +153,7 @@ class StratosGovernanceClient:
             "POST",
             url,
             token,
-            canonical_policy_payload(binding),
+            {"applicationId": "akb", **canonical_policy_payload(binding)},
         )
         binding_id = response.get("policyBindingId")
         policy_hash = response.get("policyHash")
@@ -101,14 +169,15 @@ class StratosGovernanceClient:
     def decide(
         self,
         *,
-        actor_subject_id: str,
         capability_id: str,
         operation: str,
+        scope: dict[str, str],
         policy_binding: dict[str, Any] | None,
         policy_hash: str | None,
+        credential_token: str | None = None,
     ) -> dict[str, Any]:
         url = self.settings.stratos_policy_decisions_url
-        token = self.settings.stratos_policy_service_token
+        token = credential_token or self.settings.stratos_policy_service_token
         if not url or not token:
             raise GovernanceUnavailable("STRATOS policy decision endpoint is not configured")
         return self._request(
@@ -116,14 +185,155 @@ class StratosGovernanceClient:
             url,
             token,
             {
-                "actorSubjectId": actor_subject_id,
                 "applicationId": "akb",
                 "capabilityId": capability_id,
                 "operation": operation,
-                "scope": {"type": "organization", "id": "org_stratos"},
+                "scope": scope,
                 "policyBinding": policy_binding,
                 "policyHash": policy_hash,
             },
+        )
+
+    def register_information_resource(
+        self,
+        *,
+        credential_token: str,
+        audit_actor_subject_id: str | None,
+        resource_type: str,
+        resource_id: str,
+        source_version: str,
+        title: str,
+        scope: dict[str, str],
+        binding: InformationPolicyBinding,
+        parent_resource_id: str | None,
+        reason: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> GovernedResourceRegistration:
+        base_url = self.settings.stratos_information_resources_url
+        if not base_url:
+            raise GovernanceUnavailable("STRATOS governed information resource endpoint is not configured")
+        body: dict[str, Any] = {
+            "sourceVersion": source_version,
+            "title": title,
+            "scope": scope,
+            "policyBindingId": binding.policy_binding_id,
+            "policyHash": canonical_policy_hash(binding),
+            "reason": reason,
+            "metadata": metadata or {},
+        }
+        if parent_resource_id:
+            body["parentId"] = parent_resource_id
+        if audit_actor_subject_id:
+            body["metadata"] = {**body["metadata"], "auditActorSubjectId": audit_actor_subject_id}
+        response = self._request(
+            "PUT",
+            (
+                f"{base_url.rstrip('/')}/akb/"
+                f"{quote(resource_type, safe='')}/{quote(resource_id, safe='')}"
+            ),
+            credential_token,
+            body,
+        )
+        effective_policy = response.get("effectivePolicy")
+        expected_hash = canonical_policy_hash(binding)
+        if (
+            response.get("application") != "AKB"
+            or response.get("resourceType") != resource_type
+            or response.get("resourceId") != resource_id
+            or response.get("sourceVersion") != source_version
+            or not isinstance(response.get("id"), str)
+            or not isinstance(effective_policy, dict)
+            or effective_policy.get("policyBindingId") != binding.policy_binding_id
+            or effective_policy.get("policyHash") != expected_hash
+        ):
+            raise GovernanceUnavailable("STRATOS returned a conflicting governed resource")
+        return GovernedResourceRegistration(
+            resource_id=response["id"],
+            source_version=source_version,
+            policy_binding_id=binding.policy_binding_id,
+            policy_hash=expected_hash,
+        )
+
+    def upsert_information_publication(
+        self,
+        *,
+        credential_token: str,
+        resource_type: str,
+        resource_id: str,
+        source_version: str,
+        scope: dict[str, str],
+        policy_binding_id: str,
+        policy_hash: str,
+        public_slug: str,
+        status: str,
+        reason: str,
+    ) -> InformationPublicationRegistration:
+        base_url = self.settings.stratos_information_publications_url
+        if not base_url:
+            raise GovernanceUnavailable("STRATOS information publication endpoint is not configured")
+        body: dict[str, Any] = {
+            "sourceVersion": source_version,
+            "status": status,
+            "reason": reason,
+        }
+        if status != "REVOKED":
+            body.update(
+                {
+                    "scope": scope,
+                    "policyBindingId": policy_binding_id,
+                    "policyHash": policy_hash,
+                    "publicSlug": public_slug,
+                }
+            )
+        response = self._request(
+            "PUT",
+            (
+                f"{base_url.rstrip('/')}/akb/"
+                f"{quote(resource_type, safe='')}/{quote(resource_id, safe='')}"
+            ),
+            credential_token,
+            body,
+        )
+        expected_status = status
+        if (
+            not isinstance(response.get("id"), str)
+            or response.get("application") != "AKB"
+            or response.get("resourceType") != resource_type
+            or response.get("resourceId") != resource_id
+            or response.get("sourceVersion") != source_version
+            or not isinstance(response.get("governedResourceId"), str)
+            or response.get("policyBindingId") != policy_binding_id
+            or response.get("policyHash") != policy_hash
+            or response.get("publicSlug") != public_slug
+            or response.get("status") != expected_status
+            or (status == "PUBLISHED" and not isinstance(response.get("publishedAt"), str))
+            or (status == "REVOKED" and not _is_timestamp(response.get("revokedAt")))
+        ):
+            raise GovernanceUnavailable("STRATOS returned a conflicting information publication")
+        return InformationPublicationRegistration(
+            publication_id=response["id"],
+            governed_resource_id=response["governedResourceId"],
+            resource_type=resource_type,
+            resource_id=resource_id,
+            source_version=source_version,
+            public_slug=public_slug,
+            policy_binding_id=policy_binding_id,
+            policy_hash=policy_hash,
+            status=expected_status,
+            published_at=response.get("publishedAt"),
+            revoked_at=response.get("revokedAt"),
+        )
+
+    def public_decide(self, *, public_slug: str, operation: str) -> dict[str, Any]:
+        url = self.settings.stratos_public_decisions_url
+        if not url:
+            raise GovernanceUnavailable("STRATOS public policy decision endpoint is not configured")
+        return validate_public_decision_response(
+            self._anonymous_request(
+                "POST",
+                url,
+                {"publicSlug": public_slug, "operation": operation},
+            )
         )
 
     def _request(self, method: str, url: str, token: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -153,6 +363,29 @@ class StratosGovernanceClient:
             raise GovernanceUnavailable("STRATOS access governance returned invalid JSON") from exc
         if not isinstance(value, dict):
             raise GovernanceUnavailable("STRATOS access governance returned an invalid response")
+        return value
+
+    def _anonymous_request(self, method: str, url: str, body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
+                response = client.request(
+                    method,
+                    url,
+                    headers={"Accept": "application/json", "Content-Type": "application/json"},
+                    json=body,
+                )
+        except httpx.HTTPError as exc:
+            raise GovernanceUnavailable("STRATOS public access governance is unavailable") from exc
+        if response.status_code >= 400:
+            raise GovernanceUnavailable(
+                f"STRATOS public access governance returned {response.status_code}"
+            )
+        try:
+            value = response.json()
+        except ValueError as exc:
+            raise GovernanceUnavailable("STRATOS public access governance returned invalid JSON") from exc
+        if not isinstance(value, dict):
+            raise GovernanceUnavailable("STRATOS public access governance returned an invalid response")
         return value
 
     @staticmethod
@@ -193,6 +426,9 @@ def governance_client(settings: Settings) -> StratosGovernanceClient:
         settings.stratos_auth_me_url,
         settings.stratos_policy_bindings_url,
         settings.stratos_policy_decisions_url,
+        settings.stratos_information_resources_url,
+        settings.stratos_information_publications_url,
+        settings.stratos_public_decisions_url,
         settings.stratos_policy_service_token,
         settings.stratos_access_timeout_seconds,
         settings.stratos_access_cache_ttl_seconds,
@@ -235,3 +471,13 @@ def _not_expired(value: Any) -> bool:
     except ValueError:
         return False
     return parsed > datetime.now(timezone.utc)
+
+
+def _is_timestamp(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None

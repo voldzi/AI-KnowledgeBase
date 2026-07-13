@@ -7,7 +7,7 @@
   "required": ["schemaVersion", "policyBindingId", "policyVersion", "handlingClass", "legalClassification", "contentCategories", "audience", "obligations"],
   "properties": {
     "schemaVersion": { "const": "stratos-information-policy-2" },
-    "policyBindingId": { "type": "string", "pattern": "^pol_[A-Za-z0-9_-]{8,}$" },
+    "policyBindingId": { "type": "string", "pattern": "^(pol|pb)_[A-Za-z0-9_-]{8,}$" },
     "policyVersion": { "type": "string", "minLength": 1 },
     "handlingClass": { "enum": ["PUBLIC", "INTERNAL", "RESTRICTED"] },
     "legalClassification": { "const": "NONE" },

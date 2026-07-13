@@ -51,14 +51,22 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `AKL_OIDC_ISSUER` | OIDC issuer pro validaci JWT. |
 | `AKL_OIDC_AUDIENCE` | Očekávané audience JWT. |
 | `AKL_OIDC_JWKS_URL` | JWKS endpoint pro validaci podpisu JWT. |
+| `AKL_TRUSTED_SERVICE_CLIENT_IDS` | Allowlist přesných OIDC service client ids; service-looking token mimo allowlist je odmítnut. |
+| `AKL_SERVICE_CLIENT_ROUTE_GRANTS` | Default-deny mapa `client=route1\|route2`; povoluje jen vyjmenované Registry route families. |
+| `AKL_SERVICE_CLIENT_DELEGATIONS` | Volitelná mapa idempotency namespaces, které smí caller spravovat vedle vlastního namespace. |
 | `AKL_STRATOS_AUTH_ME_URL` | Autoritativní STRATOS access projection (`GET /api/v1/auth/me`). |
 | `AKL_STRATOS_POLICY_BINDINGS_URL` | Centrální registr Information Policy bindingů. |
 | `AKL_STRATOS_POLICY_DECISIONS_URL` | Centrální decision endpoint pro service-to-service operace. |
-| `AKL_STRATOS_POLICY_SERVICE_TOKEN` | Dedikovaný runtime credential AKB; nesmí se logovat ani commitovat. |
+| `AKL_STRATOS_INFORMATION_RESOURCES_URL` | Základní URL pro immutable `AKB/document` a `AKB/document_version` GovernedInformationResource. |
+| `AKL_STRATOS_INFORMATION_PUBLICATIONS_URL` | Centrální lifecycle konkrétní immutable veřejné verze. |
+| `AKL_STRATOS_PUBLIC_DECISIONS_URL` | Anonymní fail-closed decision endpoint volaný při každém public read/download. |
+| `AKB_POLICY_SERVICE_TOKEN` | Dedikovaný runtime credential AKB; nesmí se logovat ani commitovat. |
+| `AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN` | Nezávislý sdílený token Registry→web pro interní source resolver; v produkci minimálně 32 znaků. |
 | `AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS` | Cache projekce; `0` uplatní suspendaci při dalším požadavku. Nikdy nepřekročí expiraci tokenu. |
 
 `AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=mock`.
-Produkční start navíc odmítne chybějící STRATOS projection/policy endpointy nebo runtime credential.
+Produkční start navíc odmítne chybějící STRATOS projection/policy endpointy,
+runtime credential, trusted service allowlist nebo route grants.
 
 ## API
 
@@ -81,6 +89,11 @@ GET    /api/v1/documents/{document_id}/versions
 GET    /api/v1/documents/{document_id}/versions/{version_id}
 POST   /api/v1/documents/{document_id}/versions/{version_id}/publish
 POST   /api/v1/documents/{document_id}/versions/{version_id}/archive
+GET    /api/v1/documents/{document_id}/versions/{version_id}/publication
+PUT    /api/v1/documents/{document_id}/versions/{version_id}/publication
+
+GET    /api/v1/public/documents/{public_slug}
+GET    /api/v1/internal/public/documents/{public_slug}/source
 
 POST   /api/v1/authz/check
 POST   /api/v1/authz/filter-documents
@@ -108,6 +121,35 @@ GET    /ready
 ```
 
 OpenAPI kontrakt je v `openapi.yaml` a runtime OpenAPI je dostupné jako `/openapi.json`.
+
+### Skutečně veřejné dokumenty
+
+Veřejná publikace je explicitní schválení jedné přesné platné a centrálně
+registrované verze. Vyžaduje interaktivní bearer; draft vyžaduje
+`akb:assign_policy`, publish obě `akb:assign_policy` a `akb:publish_public` a
+terminální revoke pouze `akb:publish_public` ve spravovaném scope. Registry
+ukládá immutable allowlist metadat a přesný descriptor zdroje, publikační
+souřadnice po `PUBLISHED` nelze
+měnit a revokace je terminální.
+
+Anonymní metadata a interní source resolver při každém požadavku volají
+centrální public decision. Veřejný web source endpoint ověří skutečné bajty,
+velikost a SHA-256 po 64KiB blocích před zahájením bounded-memory streamu a
+vrací attachment s Range/ETag bez storage URI. Per-client/publicSlug a globální
+rate limit spolu s per-client/globální concurrency vrací při vyčerpání `429` a
+slot pro source drží až do ukončení streamu. Výpadek STRATOS,
+revokace, stale/mismatched coordinates nebo tamper znamenají fail-closed
+odpověď bez obsahu.
+
+Opakované anonymní auditní výsledky se agregují v deterministickém časovém
+okně (`occurrence_count`, `last_seen_at`) a samostatná retence odstraňuje pouze
+expirované `anonymous:public` delivery události. Autentizovaný audit zůstává
+beze změny.
+
+Lidská stránka `/public/documents/{publicSlug}` běží mimo interní AKB shell a
+session, zobrazuje pouze sanitizovaný snapshot a odkazuje na ověřený source
+endpoint. Je vždy dynamická a `no-store`; všechny nedostupné stavy mají stejnou
+bezpečnou odpověď bez metadat.
 
 ### Intelligence analyst cases
 
@@ -146,7 +188,11 @@ X-Request-ID: <uuid>
 X-Correlation-ID: <uuid>
 ```
 
-V OIDC režimu služba vyžaduje `Authorization: Bearer <jwt>` a validuje podpis přes JWKS.
+V OIDC režimu služba vyžaduje `Authorization: Bearer <jwt>` a validuje podpis
+přes JWKS. Service token je uznán pouze při přesné shodě allowlistovaného
+`azp`/`client_id` s `service-account-<client_id>` v `preferred_username` nebo
+`sub`. Každý service client má samostatný explicitní route allowlist; role
+neobchází default-deny route gate.
 
 ## Access policies
 
@@ -172,7 +218,10 @@ Role `document_gestor` je určena pro běžného gestora směrnice. Globálně s
 dokument, nahrát verzi, spustit ingestion/reindex a pracovat s workflow úkoly, ale
 nemá publish, archive, delete ani admin oprávnění.
 
-Authorization API smí volat service account, admin, document manager, nebo uživatel pro vlastní `subject_id`.
+Authorization API smí volat ověřený service client s route grantem `authz`,
+lokální mock admin, nebo uživatel pro vlastní `subject_id`. Dynamická
+oprávnění uživatele pocházejí z čerstvé STRATOS access projection, ne z request
+body nebo statických JWT access claims.
 
 ## Document AI Extractions
 
@@ -195,7 +244,16 @@ Služba automaticky auditně zapisuje:
 - `document.version.archived`
 - `workflow.task.<action>`
 
-Externí služby mohou zapisovat audit přes `POST /api/v1/audit/events`, pokud mají akci `audit.write`.
+Externí služby mohou zapisovat audit přes `POST /api/v1/audit/events` pouze s
+explicitním route grantem `audit` a kladným centrálním rozhodnutím. Uložený
+`actor_id` je vždy ověřený caller subject. Odlišný payload actor se zachová jen
+jako `reported_actor_id` a Registry serverově doplní skutečný
+`service_client_id`.
+
+Idempotency reserve/complete je caller-bound. Service client může spravovat
+vlastní namespace a pouze explicitní delegace z
+`AKL_SERVICE_CLIENT_DELEGATIONS`; očekávaná integrační delegace je
+`akb-rag-service=aiip-service`.
 
 Audit list `GET /api/v1/audit/events` podporuje filtry `actor_id`, `event_type`, `resource_type`, `resource_id`, `limit` a `offset`. Web detail dokumentu je pouziva spolecne s metadaty udalosti pro filtrovany audit tab.
 

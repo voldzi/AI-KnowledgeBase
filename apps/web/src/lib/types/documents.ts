@@ -213,6 +213,30 @@ export interface DocumentVersion {
   published_at: string | null;
 }
 
+export interface DocumentPublication {
+  publication_id: string;
+  document_id: string;
+  document_version_id: string;
+  public_slug: string;
+  status: "DRAFT" | "PUBLISHED" | "REVOKED";
+  snapshot_schema: string;
+  public_snapshot_hash: string;
+  governed_resource_id: string;
+  source_version: string;
+  policy_binding_id: string;
+  policy_version: string;
+  policy_hash: string;
+  central_publication_id: string;
+  approved_by: string | null;
+  published_by: string | null;
+  published_at: string | null;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  reason: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DocumentFile {
   file_id: string;
   document_id: string;

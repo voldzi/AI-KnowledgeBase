@@ -8,6 +8,7 @@ import type {
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryOptions,
+  DocumentPublication,
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
@@ -132,6 +133,13 @@ export interface ApiErrorBody {
   };
 }
 
+export interface DocumentAuthorizationDecision {
+  allowed: boolean;
+  reason: string;
+  reason_codes: string[];
+  constraints: Record<string, unknown>;
+}
+
 export interface RegistryApiClient {
   listDocuments(context: ApiRequestContext, options?: DocumentListOptions): Promise<Document[]>;
   getDocumentMetadataSummary(
@@ -151,6 +159,11 @@ export interface RegistryApiClient {
     context: ApiRequestContext
   ): Promise<DocumentAssignment[]>;
   listDocumentVersions(documentId: string, context: ApiRequestContext): Promise<DocumentVersion[]>;
+  getDocumentPublication(
+    documentId: string,
+    versionId: string,
+    context: ApiRequestContext
+  ): Promise<DocumentPublication>;
   createDocumentVersion(
     documentId: string,
     request: CreateVersionRequest,
@@ -167,6 +180,11 @@ export interface RegistryApiClient {
     context: ApiRequestContext
   ): Promise<DocumentVersion>;
   getAuthorizationHints(context: ApiRequestContext): Promise<AuthorizationHint>;
+  authorizeDocument(
+    documentId: string,
+    action: string,
+    context: ApiRequestContext
+  ): Promise<DocumentAuthorizationDecision>;
   listWorkflowTasks(context: ApiRequestContext, options?: WorkflowTaskListOptions): Promise<RegistryWorkflowTask[]>;
   applyWorkflowTaskAction(
     taskId: string,

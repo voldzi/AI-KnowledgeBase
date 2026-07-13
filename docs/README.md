@@ -42,6 +42,7 @@ from the flat standard documents.
    - `operations.md`
    - `observability.md`
    - `runbook.md`
+   - `OPERATIONS/immutable-docker-home-release.md`
 5. STRATOS shared integration:
    - `29_STRATOS_SHARED_LIBRARIES.md`
    - `ui/stratos-ui-adapter.md`

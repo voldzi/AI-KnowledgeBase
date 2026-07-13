@@ -30,7 +30,9 @@ Pozor na preklep: pouzivat `stratos.zeleznalady.cz`, ne `startos.zeleznalady.cz`
 - pouziva PostgreSQL pres `haproxy.home.cz:5000`,
 - pouziva sdileny Keycloak realm `stratos`,
 - vystavuje interni nebo pilotni aplikační porty, napr. AKB na `3220`.
-- AKB checkout v `/srv/akl/repo` ma po bootstrapu nainstalovane git hooky, ktere po `git pull`, `git switch` a `git checkout` automaticky obnovuji lokalni `.env` kopie z `/srv/akl/env/akl.prod.env`.
+- AKB běží z ověřeného read-only `/srv/akl/releases/<full-sha>` a poslední
+  plně ověřený release označuje `/srv/akl/current`; produkční env zůstává v
+  `/srv/akl/env/akl.prod.env` mimo Git.
 
 `dmz.home.cz`:
 
@@ -499,9 +501,10 @@ role/environment availability.
 
 Aktualni pilot:
 
-- checkout: `/srv/akl/repo`,
+- release: `/srv/akl/current` -> `/srv/akl/releases/<full-sha>`,
+- release Git mirror: `/srv/akl/git/AI-KnowledgeBase.git`,
 - env: `/srv/akl/env/akl.prod.env`,
-- compose: `infra/docker-compose/docker-compose.docker-home.yml`,
+- compose: `/srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml`,
 - AKB proxy port: `3220`,
 - Docker subnets: `10.246.240.0/24` az `10.246.244.0/24`,
 - PostgreSQL: `haproxy.home.cz:5000`,
@@ -576,8 +579,7 @@ infra/keycloak/update-stratos-public-routing.sh
 `realm-stratos.json` je zdrojovy export realmu. Pro existujici produkcni realm se redirecty aktualizuji bezpecne skriptem:
 
 ```bash
-cd /srv/akl/repo
-./infra/keycloak/update-stratos-public-routing.sh
+/srv/akl/current/infra/keycloak/update-stratos-public-routing.sh
 ```
 
 Skript se pta na Keycloak admin heslo a upravuje pouze:
