@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings
+from app.errors import RetrievalError
 from app.http_utils import request_json_with_retry
 from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
 from retrievers.scoring import (
@@ -56,8 +57,7 @@ class QdrantHybridRetriever:
             "with_vector": False,
             "filter": _qdrant_filter(filters),
         }
-        payload = await request_json_with_retry(
-            dependency="qdrant",
+        payload = await _request_qdrant_json_allow_missing(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/search",
@@ -70,8 +70,7 @@ class QdrantHybridRetriever:
         )
 
     async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
-        payload = await request_json_with_retry(
-            dependency="qdrant",
+        payload = await _request_qdrant_json_allow_missing(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -108,8 +107,7 @@ class QdrantHybridRetriever:
         window = self._settings.source_context_window
         if window == 0:
             return "", ""
-        payload = await request_json_with_retry(
-            dependency="qdrant",
+        payload = await _request_qdrant_json_allow_missing(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -154,8 +152,7 @@ class QdrantHybridRetriever:
     async def list_document_titles(self, *, limit: int = 64) -> list[dict[str, str]]:
         """Return distinct documents present in the index as
         [{"document_title": ..., "document_type": ...}], newest-first by scroll order."""
-        payload = await request_json_with_retry(
-            dependency="qdrant",
+        payload = await _request_qdrant_json_allow_missing(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -189,8 +186,7 @@ class QdrantHybridRetriever:
 
     async def readiness(self) -> str:
         try:
-            await request_json_with_retry(
-                dependency="qdrant",
+            await _request_qdrant_json_allow_missing(
                 settings=self._settings,
                 method="GET",
                 url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}",
@@ -231,8 +227,7 @@ class QdrantHybridRetriever:
             "must": base_must,
             "should": text_conditions,
         }
-        payload = await request_json_with_retry(
-            dependency="qdrant",
+        payload = await _request_qdrant_json_allow_missing(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -261,7 +256,7 @@ class OpenSearchFullTextClient:
                 )
         except httpx.HTTPError:
             return "not_ready"
-        return "ready" if response.status_code == 200 else "not_ready"
+        return "ready" if response.status_code in {200, 404} else "not_ready"
 
     async def retrieve(self, *, query: str, filters: RagQueryFilters, limit: int) -> list[RetrievedChunk]:
         body = _opensearch_query(query=query, filters=filters, limit=limit)
@@ -271,8 +266,15 @@ class OpenSearchFullTextClient:
                 headers=self._headers(),
                 json=body,
             )
-        if response.status_code >= 400:
+        if response.status_code == 404:
             return []
+        if response.status_code >= 400:
+            raise RetrievalError(
+                "UPSTREAM_ERROR",
+                "opensearch returned an error",
+                status_code=502,
+                details={"dependency": "opensearch", "status_code": response.status_code},
+            )
         payload = response.json()
         return _opensearch_hits_to_chunks(query=query, payload=payload)
 
@@ -286,6 +288,28 @@ class OpenSearchFullTextClient:
             ).decode("ascii")
             headers["Authorization"] = f"Basic {token}"
         return headers
+
+
+async def _request_qdrant_json_allow_missing(
+    *,
+    settings: Settings,
+    method: str,
+    url: str,
+    json_body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Treat an absent post-reset collection as an empty retrieval index."""
+    try:
+        return await request_json_with_retry(
+            dependency="qdrant",
+            settings=settings,
+            method=method,
+            url=url,
+            json_body=json_body,
+        )
+    except RetrievalError as exc:
+        if (exc.details or {}).get("status_code") == 404:
+            return {}
+        raise
 
 
 def _points_to_hybrid_chunks(*, query: str, points: Any, dense_weight: float) -> list[RetrievedChunk]:
