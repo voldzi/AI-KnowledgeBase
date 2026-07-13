@@ -146,6 +146,10 @@
         "description": "AKB canonical ingestion service role consumed by AKB Registry API."
       },
       {
+        "name": "service_aiip",
+        "description": "AKB application service role for AI Innovation Portal."
+      },
+      {
         "name": "service_llm_gateway",
         "description": "AKB canonical LLM Gateway service role consumed by AKB Registry API."
       },

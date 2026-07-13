@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
-import { getOptionalServerOidcSession } from "@/lib/api/server";
+import { getOptionalServerOidcSession, getOptionalServerRequestContext } from "@/lib/api/server";
 import { canUseAdminSurface } from "@/lib/auth/authorization";
-import { contextFromOidcSession } from "@/lib/auth/oidc";
 import { openRolePreview, ROLE_PREVIEW_COOKIE, ROLE_PREVIEW_PROFILES } from "@/lib/auth/role-preview";
 
 export const runtime = "nodejs";
@@ -16,7 +15,10 @@ export async function GET(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
-    const actualContext = contextFromOidcSession(session);
+    const actualContext = await getOptionalServerRequestContext(request);
+    if (!actualContext) {
+      return NextResponse.json({ authenticated: false }, { status: 401 });
+    }
     const preview = openRolePreview(request.cookies.get(ROLE_PREVIEW_COOKIE)?.value, config);
     const activePreview = preview?.subjectId === session.subjectId && canUseAdminSurface(actualContext) ? preview : null;
     return NextResponse.json({
@@ -25,9 +27,10 @@ export async function GET(request: NextRequest) {
         subjectId: session.subjectId,
         name: session.name ?? session.email ?? session.subjectId,
         email: session.email,
-        roles: activePreview?.roles ?? session.roles,
+        roles: activePreview?.roles ?? actualContext.roles ?? [],
         actualRoles: session.roles,
-        groups: session.groups
+        groups: session.groups,
+        capabilities: actualContext.capabilities ?? []
       },
       rolePreview: {
         canUse: canUseAdminSurface(actualContext),
@@ -60,6 +63,10 @@ export async function GET(request: NextRequest) {
       groups: (process.env.AKL_WEB_DEV_GROUPS ?? "")
         .split(",")
         .map((group) => group.trim())
+        .filter(Boolean),
+      capabilities: (process.env.AKL_WEB_DEV_CAPABILITIES ?? "")
+        .split(",")
+        .map((capability) => capability.trim())
         .filter(Boolean)
     },
     rolePreview: {

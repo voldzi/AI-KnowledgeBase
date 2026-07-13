@@ -57,7 +57,7 @@ Routing is controlled by environment variables:
 ```text
 AKL_LLM_DEFAULT_PROVIDER=mock
 AKL_LLM_ENABLED_PROVIDERS=mock,ollama,openai
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","bge-m3":"ollama","meta-llama/Llama-3.1-8B-Instruct":"openai"}
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","meta-llama/Llama-3.1-8B-Instruct":"openai"}
 ```
 
 If a requested model is present in `AKL_LLM_MODEL_PROVIDER_MAP`, that provider is used. Otherwise the service uses `AKL_LLM_DEFAULT_PROVIDER`.
@@ -79,6 +79,9 @@ Important settings:
 | `AKL_ENV` | `development`, `test`, or `production`. |
 | `AKL_AUTH_MODE` | `disabled`, `mock`, `bearer`, or `oidc`; production rejects `disabled` and `mock`. |
 | `AKL_SERVICE_TOKEN` | Expected bearer token when `AKL_AUTH_MODE=bearer`. |
+| `AKL_LLM_REQUIRE_CALLER_IDENTITY` | Requires service subject, audience, and an allowed caller role; defaults to `true` in production. |
+| `AKL_LLM_GATEWAY_AUDIENCE` | Expected service audience; default `llm-gateway-service`. |
+| `AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES` | Comma-separated caller role allowlist; default `service_ingestion,service_rag`. |
 | `AKL_LLM_DEFAULT_PROVIDER` | Fallback provider for models without explicit route. |
 | `AKL_LLM_ENABLED_PROVIDERS` | Comma-separated provider allowlist. |
 | `AKL_LLM_MODEL_PROVIDER_MAP` | JSON object mapping model id to provider. |
@@ -106,6 +109,17 @@ Production startup is rejected unless:
 - `AKL_SERVICE_TOKEN` is set when `AKL_AUTH_MODE=bearer`
 - mock provider is not enabled
 
+Production callers authenticate with the gateway-specific bearer token and:
+
+```text
+X-AKL-Subject: svc-ingestion | svc-rag
+X-AKL-Audience: llm-gateway-service
+X-AKL-Roles: service_ingestion | service_rag
+```
+
+The token, audience, and role must all match. A user or AIIP bearer token is
+not a substitute for this downstream service identity.
+
 In `AKL_AUTH_MODE=oidc`, the gateway requires an inbound bearer token but does not validate OIDC claims locally. It relies on upstream services to perform document authorization before calling the gateway.
 
 Application logs include request id, correlation id, provider, model id, counts, status, latency, and usage metadata. Logs do not include full prompts, full responses, bearer tokens, API keys, or embedding input text.
@@ -116,6 +130,9 @@ The service propagates:
 X-Request-ID
 X-Correlation-ID
 X-Service-Name
+X-AKL-Subject
+X-AKL-Roles
+X-AKL-Audience
 ```
 
 It does not forward inbound service bearer tokens to LLM runtimes. OpenAI-compatible authentication uses only `AKL_OPENAI_COMPAT_API_KEY`.
@@ -126,6 +143,7 @@ It does not forward inbound service bearer tokens to LLM runtimes. OpenAI-compat
 - Model pull is disabled by default and is never triggered on service startup.
 - Streaming retries only happen before a stream successfully starts.
 - Ollama failover only uses the explicit `AKL_OLLAMA_BASE_URLS` allowlist. The gateway does not scan LAN ranges.
+- After a successful failover the gateway keeps the last healthy Ollama endpoint first for subsequent readiness checks and requests. If that endpoint fails, the explicit allowlist is evaluated again.
 - The gateway probes candidate Ollama endpoints with `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS` before sending a full chat, embedding, stream, or pull request to the active endpoint.
 - Ollama capability discovery is inferred from model names because Ollama `/api/tags` does not expose a stable capability contract.
 - Ollama `max_tokens` maps to `options.num_predict`; omitted request values use `AKL_LLM_DEFAULT_MAX_TOKENS`.

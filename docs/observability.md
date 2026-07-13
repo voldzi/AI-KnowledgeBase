@@ -19,6 +19,10 @@ Service logs are structured JSON where implemented and include:
 Logs must not include full prompts, full answers, full source text, secrets,
 tokens, passwords, private keys, or unnecessary personal data.
 
+Next.js incoming-request logging suppresses the signed source content and
+preview routes so their short-lived query credentials are not written to the
+development terminal log.
+
 ## Request And Correlation IDs
 
 AKB propagates:
@@ -46,6 +50,12 @@ Important platform metrics:
 - no-answer rate,
 - citation coverage,
 - authorization denied count.
+
+For the AIIP application API, operational logs and Registry audit metadata may
+include operation, request/correlation/audit ids, canonical input hash, status,
+latency, requested/actual model, fallback flag, token counts, index version,
+and candidate/suggestion counts. They must not include AIIP record bodies,
+prompts, model responses, citation text, vectors, bearer tokens, or credentials.
 
 Prometheus/Grafana/Loki are included in the local deployment stack for
 observability experiments and dashboards.
@@ -149,6 +159,22 @@ GET /ready
 GET /api/health
 GET /api/ready
 ```
+
+`GET /api/health` reports only web-process liveness. `GET /api/ready` checks
+the configured Registry, Ingestion, RAG and Governance service readiness in
+production mode with a bounded timeout and returns `503 not_ready` when any
+required dependency is unavailable. The web top-bar indicator polls this
+dependency-aware endpoint every 60 seconds. It names the affected user
+capability (for example AI answers) instead of showing an opaque HTTP status;
+dependency degradation is a warning, while an unreadable readiness response is
+critical. Root `GET /ready` remains the local web-service baseline endpoint used
+for container lifecycle checks.
+
+RAG readiness checks Registry, retrieval indexes and LLM Gateway concurrently
+with a two-second bound per dependency. Governance checks Registry and RAG
+concurrently with a three-second bound. A slow or unreachable downstream is
+reported as `not_ready` instead of holding the readiness chain open for the
+full application request timeout.
 
 ## Alerts
 

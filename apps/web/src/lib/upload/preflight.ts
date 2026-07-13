@@ -8,6 +8,9 @@ export interface UploadPreflightRequest {
   file_size: number;
   file_type?: string | null;
   sha256: string;
+  policy_binding_id?: string | null;
+  policy_version?: string | null;
+  policy_hash?: string | null;
 }
 
 export interface UploadPreflightDecision {
@@ -19,6 +22,9 @@ export interface UploadPreflightDecision {
   required_headers: Record<string, string>;
   bucket: string;
   object_key: string;
+  policy_binding_id: string | null;
+  policy_version: string | null;
+  policy_hash: string | null;
   file: {
     filename: string;
     mime_type: string;
@@ -42,6 +48,9 @@ export interface UploadTokenPayload {
   file_type: string;
   sha256: string;
   expires_at: string;
+  policy_binding_id: string | null;
+  policy_version: string | null;
+  policy_hash: string | null;
 }
 
 export interface UploadSettings {
@@ -189,7 +198,10 @@ export function createUploadPreflightDecision(
     file_size: sizeBytes,
     file_type: mimeType,
     sha256,
-    expires_at: expiresAt
+    expires_at: expiresAt,
+    policy_binding_id: request.policy_binding_id ?? null,
+    policy_version: request.policy_version ?? null,
+    policy_hash: request.policy_hash ?? null
   };
   const uploadToken = signUploadToken(payload, settings);
 
@@ -206,6 +218,9 @@ export function createUploadPreflightDecision(
     },
     bucket: settings.bucket,
     object_key: objectKey,
+    policy_binding_id: payload.policy_binding_id,
+    policy_version: payload.policy_version,
+    policy_hash: payload.policy_hash,
     file: {
       filename,
       mime_type: mimeType,
@@ -251,6 +266,9 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
   }
   if (payload.source_file_uri !== `s3://${payload.bucket}/${payload.object_key}`) {
     throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token source URI is inconsistent.");
+  }
+  if (payload.policy_hash && !SHA256_PATTERN.test(payload.policy_hash)) {
+    throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token policy hash is invalid.");
   }
 
   return payload;

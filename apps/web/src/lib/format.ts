@@ -43,6 +43,10 @@ export function documentTypeLabel(value: string, language: AklLanguage = "cs"): 
       meeting_record: "záznam jednání",
       contract: "smlouva",
       attachment: "příloha",
+      ai_intake: "AI podnět",
+      ai_requirement_card: "karta AI požadavku",
+      ai_security_appendix: "bezpečnostní příloha AI",
+      ai_governance_evidence: "AI governance evidence",
       other: "ostatní"
     },
     en: {}
@@ -51,4 +55,17 @@ export function documentTypeLabel(value: string, language: AklLanguage = "cs"): 
     return labels.cs[value];
   }
   return value.replaceAll("_", " ");
+}
+
+export function documentStatusLabel(value: string, language: AklLanguage = "cs"): string {
+  const labels: Record<string, Record<AklLanguage, string>> = {
+    draft: { cs: "Koncept", en: "Draft" },
+    review: { cs: "K revizi", en: "In review" },
+    approved: { cs: "Schváleno", en: "Approved" },
+    valid: { cs: "Platný", en: "Valid" },
+    superseded: { cs: "Nahrazeno", en: "Superseded" },
+    archived: { cs: "Archivováno", en: "Archived" },
+    cancelled: { cs: "Zrušeno", en: "Cancelled" },
+  };
+  return labels[value]?.[language] ?? value.replaceAll("_", " ");
 }

@@ -25,7 +25,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           initialUser={initialContext ? {
             subjectId: initialContext.subjectId,
             roles: initialContext.roles ?? [],
-            groups: initialContext.groups ?? []
+            groups: initialContext.groups ?? [],
+            capabilities: initialContext.capabilities ?? []
           } : null}
         >
           {children}

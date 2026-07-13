@@ -116,6 +116,13 @@ def _to_retrieved_chunk(
             "section_title": payload.get("section_title"),
             "char_start": payload.get("char_start"),
             "char_end": payload.get("char_end"),
+            "parser_name": payload.get("parser_name"),
+            "parser_engine": payload.get("parser_engine"),
+            "ocr_used": payload.get("ocr_used"),
+            "quality_score": payload.get("quality_score"),
+            "quality_tier": payload.get("quality_tier"),
+            "requires_review": payload.get("requires_review"),
+            "parser_quality": payload.get("parser_quality"),
         },
     )
 

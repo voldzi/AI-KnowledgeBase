@@ -41,8 +41,11 @@ def test_query_returns_answer_with_citation_from_authorized_chunk() -> None:
             "version_label": "1.0",
             "document_version": "1.0",
             "section_path": ["Cl. 4", "Odst. 2"],
-            "page_number": 7,
-            "chunk_id": "chunk_789",
+                "page_number": 7,
+                "chunk_id": "chunk_789",
+                "policy_binding_id": None,
+                "policy_version": None,
+                "policy_hash": None,
         }
     ]
     assert body["used_chunks"] == ["chunk_789"]

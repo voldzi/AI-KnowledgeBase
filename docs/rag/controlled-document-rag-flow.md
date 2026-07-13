@@ -142,3 +142,17 @@ RAG must not answer when:
 - LLM Gateway returns an empty answer.
 
 In those cases the response uses `confidence=insufficient_source` and returns warnings plus `missing_information`.
+
+## Source Quality Warnings
+
+RAG propagates ingestion/OCR quality metadata from retrieved chunks into answer
+warnings. The answer may include:
+
+- `SOURCE_OCR_USED` when one or more used chunks came from OCR output.
+- `SOURCE_QUALITY_REVIEW_REQUIRED` when a used chunk has `quality_tier=review`
+  or `requires_review=true`.
+- `SOURCE_LOW_EXTRACTION_QUALITY` when a used chunk has `quality_tier=poor`.
+
+These warnings are generated from chunk metadata, not from LLM prose. They are
+returned for normal and streaming answers so the UI can show that a cited answer
+depends on scanned or quality-limited source text.

@@ -62,6 +62,7 @@ class FakeLLMClient:
         *,
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
+        model: str | None = None,
         auth_context: AuthContext | None = None,
     ) -> str:
         return "Fake answer."

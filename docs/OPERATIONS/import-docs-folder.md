@@ -8,9 +8,10 @@ original PDF as the current source version with `tools/import_original_pdf_versi
 ## Prerequisites
 
 - Phase 02 real local RAG profile is running.
-- Registry API, Ingestion Service, RAG Retrieval Service, LLM Gateway, and Qdrant are healthy.
+- Registry API, Ingestion Service, RAG Retrieval Service, LLM Gateway, Qdrant, and OpenSearch are healthy for the real local profile.
 - Ingestion Service uses local object storage mode from the dev compose stack.
 - Qdrant collection `akl_document_chunks` uses `bge-m3` embeddings with vector size `1024` and distance `Cosine`.
+- OpenSearch index `akl_document_chunks` is available on `AKL_IMPORT_OPENSEARCH_URL` for host-side import verification.
 
 ## Manifest
 
@@ -85,6 +86,7 @@ The importer writes:
 - Markdown report: `reports/docs_import_report.md`
 
 The report contains found, imported, skipped, and failed document counts, total chunks, total Qdrant points, errors, and import timing.
+When OpenSearch is reachable, it also contains `opensearch_documents`; set `AKL_IMPORT_REQUIRE_OPENSEARCH=true` or pass `--require-opensearch` to fail the import when OpenSearch has fewer indexed chunks than the ingestion report created.
 
 ## Smoke Test
 
@@ -92,7 +94,17 @@ The report contains found, imported, skipped, and failed document counts, total 
 python3 scripts/phase_03_docs_import_smoke.py
 ```
 
-The smoke test imports a limited subset of `docs/`, verifies Qdrant points, and asks RAG:
+For an OIDC/STRATOS governance profile, provide the bearer token only through
+`AKL_SMOKE_BEARER_TOKEN` (or `AKL_IMPORT_BEARER_TOKEN`) and point
+`AKL_IMPORT_INFORMATION_POLICY_FILE` to a non-secret JSON file containing the
+exact Registry-issued binding. When a bearer token is present, the importer
+does not send the legacy `X-AKL-Subject` or `X-AKL-Roles` headers. The same
+binding is persisted on the document and every imported version. The smoke
+scripts complete the Registry review task before publication. Direct importer
+runs must opt into that controlled action with `--approve-for-publish` (or
+`AKL_IMPORT_APPROVE_FOR_PUBLISH=true`).
+
+The smoke test imports a limited subset of `docs/`, verifies Qdrant points and OpenSearch documents, and asks RAG:
 
 ```text
 Jak funguje RAG retrieval a citace?
@@ -109,3 +121,15 @@ python3 scripts/phase_03_document_viewer_smoke.py
 ```
 
 The test reindexes a small docs subset, asks a RAG question, opens the first citation through `GET /api/v1/citations/{chunk_id}/open`, and verifies that `source_file_uri`, `viewer_mode`, and `chunk_text` match the Qdrant payload.
+
+## OpenSearch Backfill
+
+After enabling OpenSearch on an environment that already has Qdrant chunks, backfill the fulltext index from existing Qdrant payloads before relying on hybrid retrieval:
+
+```bash
+python3 scripts/backfill_opensearch_from_qdrant.py \
+  --qdrant-url http://qdrant:6333 \
+  --opensearch-url http://opensearch:9200
+```
+
+This only writes the OpenSearch chunk index. It does not change Registry documents, source files, Qdrant vectors, or document versions.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { persistUploadedObject, verifyUploadToken } from "@/lib/upload/preflight";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 
 import { uploadErrorResponse } from "../../../errors";
 
@@ -19,6 +20,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const token = request.headers.get("X-AKL-Upload-Token") ?? "";
     const declaredSha256 = request.headers.get("X-AKL-Content-SHA256") ?? "";
     const payload = verifyUploadToken(token);
+    const requestContext = await getServerRequestContextForRequest(request);
+    const document = await getServerApiClients().registry.getDocument(payload.document_id, requestContext);
+    if (
+      document.policy_binding_id !== payload.policy_binding_id ||
+      document.policy_version !== payload.policy_version ||
+      document.policy_hash !== payload.policy_hash
+    ) {
+      return NextResponse.json(
+        { error: { code: "UPLOAD_POLICY_BINDING_STALE", message: "Document policy changed after preflight." } },
+        { status: 409 }
+      );
+    }
 
     if (payload.session_id !== sessionId) {
       return NextResponse.json(

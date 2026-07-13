@@ -19,6 +19,35 @@ def test_model_provider_map_is_parsed() -> None:
     assert settings.model_provider_map == {"bge-m3": "ollama"}
 
 
+def test_chat_model_fallbacks_are_parsed() -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_LLM_DEFAULT_PROVIDER": "ollama",
+            "AKL_LLM_ENABLED_PROVIDERS": "ollama",
+            "AKL_LLM_CHAT_MODEL_FALLBACKS": (
+                '{"gemma4:31b-mlx":["gemma4:12b-mlx","qwen2.5:14b"]}'
+            ),
+        }
+    )
+
+    assert settings.chat_model_fallbacks == {
+        "gemma4:31b-mlx": ("gemma4:12b-mlx", "qwen2.5:14b")
+    }
+
+
+def test_chat_model_fallback_rejects_self_reference() -> None:
+    with pytest.raises(ConfigError):
+        load_settings(
+            {
+                "AKL_ENV": "test",
+                "AKL_AUTH_MODE": "disabled",
+                "AKL_LLM_CHAT_MODEL_FALLBACKS": '{"gemma4:12b-mlx":"gemma4:12b-mlx"}',
+            }
+        )
+
+
 def test_ollama_non_mock_profile_can_be_enabled() -> None:
     settings = load_settings(
         {
@@ -69,6 +98,22 @@ def test_current_ollama_profile_uses_explicit_akl_env_names() -> None:
     assert settings.ollama_think is True
 
 
+def test_default_embedding_dimensions_are_optional() -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "development",
+            "AKL_AUTH_MODE": "mock",
+            "AKL_LLM_DEFAULT_PROVIDER": "ollama",
+            "AKL_LLM_ENABLED_PROVIDERS": "ollama",
+            "AKL_LLM_DEFAULT_EMBEDDING_MODEL": "qwen3-embedding:8b",
+            "AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS": "1024",
+        }
+    )
+
+    assert settings.default_embedding_model == "qwen3-embedding:8b"
+    assert settings.default_embedding_dimensions == 1024
+
+
 def test_ollama_base_urls_are_parsed_and_deduplicated() -> None:
     settings = load_settings(
         {
@@ -79,6 +124,7 @@ def test_ollama_base_urls_are_parsed_and_deduplicated() -> None:
             "AKL_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
             "AKL_OLLAMA_BASE_URLS": (
                 "http://host.docker.internal:11434,"
+                "http://192.168.200.3:11434,"
                 "http://192.168.1.176:11434,"
                 "http://192.168.1.176:11434/"
             ),
@@ -88,6 +134,7 @@ def test_ollama_base_urls_are_parsed_and_deduplicated() -> None:
     assert settings.ollama_base_url == "http://host.docker.internal:11434"
     assert settings.ollama_base_urls == (
         "http://host.docker.internal:11434",
+        "http://192.168.200.3:11434",
         "http://192.168.1.176:11434",
     )
 

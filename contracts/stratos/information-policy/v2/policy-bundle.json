@@ -1,0 +1,29 @@
+{
+  "policyVersion": "information-policy-2.0.0",
+  "bundleVersion": "2026-07-12.1",
+  "failClosedOperations": ["read_restricted", "upload", "ai", "citation", "export", "handoff", "external_operation"],
+  "handlingClasses": {
+    "PUBLIC": { "displayNameCs": "Veřejné", "color": "#6B7280" },
+    "INTERNAL": { "displayNameCs": "Interní", "color": "#2563EB" },
+    "RESTRICTED": { "displayNameCs": "Omezené", "color": "#B91C1C" }
+  },
+  "tlp": {
+    "TLP:RED": { "displayName": "TLP:RED", "foreground": "#000000", "background": "#FF2B2B" },
+    "TLP:AMBER+STRICT": { "displayName": "TLP:AMBER+STRICT", "foreground": "#000000", "background": "#FFC000" },
+    "TLP:AMBER": { "displayName": "TLP:AMBER", "foreground": "#000000", "background": "#FFC000" },
+    "TLP:GREEN": { "displayName": "TLP:GREEN", "foreground": "#000000", "background": "#33FF00" },
+    "TLP:CLEAR": { "displayName": "TLP:CLEAR", "foreground": "#000000", "background": "#FFFFFF" }
+  },
+  "pap": {
+    "PAP:RED": { "displayName": "PAP:RED", "foreground": "#FFFFFF", "background": "#CC0000" },
+    "PAP:AMBER": { "displayName": "PAP:AMBER", "foreground": "#000000", "background": "#FFC000" },
+    "PAP:GREEN": { "displayName": "PAP:GREEN", "foreground": "#000000", "background": "#33FF00" },
+    "PAP:CLEAR": { "displayName": "PAP:CLEAR", "foreground": "#000000", "background": "#FFFFFF" }
+  },
+  "relabeling": { "automaticDowngradeAllowed": false, "reasonRequired": true, "auditRequired": true, "originatorApprovalForTlpRed": true },
+  "aiProviderCompatibility": {
+    "external": { "maximumHandlingClass": "INTERNAL", "forbiddenObligations": ["NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY"] },
+    "local": { "maximumHandlingClass": "RESTRICTED", "forbiddenObligations": [] }
+  },
+  "source": "https://nukib.gov.cz/cs/infoservis/dokumenty-a-publikace/sdileni-informaci/"
+}

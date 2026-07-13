@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import uuid
 from datetime import date
+from typing import Awaitable
 
 from app.config import Settings
 from app.errors import GovernanceError
@@ -31,6 +33,18 @@ from document_diff.diff_engine import DocumentDiffEngine
 from kb_generation.generator import KbArticleGenerator
 
 logger = logging.getLogger(__name__)
+
+READINESS_CHECK_TIMEOUT_SECONDS = 3.0
+
+
+async def _bounded_readiness(
+    check: Awaitable[str],
+    timeout_seconds: float = READINESS_CHECK_TIMEOUT_SECONDS,
+) -> str:
+    try:
+        return await asyncio.wait_for(check, timeout=timeout_seconds)
+    except Exception:
+        return "not_ready"
 
 
 class GovernanceService:
@@ -250,9 +264,13 @@ class GovernanceService:
         return response
 
     async def readiness(self) -> dict[str, str]:
+        registry, rag = await asyncio.gather(
+            _bounded_readiness(self._registry_client.readiness()),
+            _bounded_readiness(self._rag_client.readiness()),
+        )
         return {
-            "registry-api": await self._registry_client.readiness(),
-            "rag-retrieval-service": await self._rag_client.readiness(),
+            "registry-api": registry,
+            "rag-retrieval-service": rag,
         }
 
     async def _require_documents_allowed(self, *, subject_id: str, document_ids: list[str]) -> None:

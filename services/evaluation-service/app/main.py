@@ -25,11 +25,13 @@ from app.schemas import (
     EvaluationDatasetCreate,
     EvaluationRun,
     EvaluationRunRequest,
+    EvaluationRunSummary,
     HealthResponse,
+    QualityOverview,
     ReadinessResponse,
     ReportFormat,
 )
-from app.security import require_service_auth
+from app.security import EvaluationPrincipal, require_service_auth
 from app.service import EvaluationService
 from app.store import DatasetStore, RunStore
 from app.telemetry import configure_telemetry
@@ -46,7 +48,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = resolved_settings
         app.state.evaluation_service = EvaluationService(
             settings=resolved_settings,
-            dataset_store=DatasetStore(resolved_settings.datasets_dir),
+            dataset_store=DatasetStore(
+                resolved_settings.datasets_dir,
+                resolved_settings.seed_datasets_dir,
+            ),
             run_store=RunStore(resolved_settings.reports_dir),
             rag_client=create_rag_client(resolved_settings),
             registry_client=create_registry_client(resolved_settings),
@@ -94,9 +99,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/evaluations/datasets", response_model=list[DatasetSummary], tags=["evaluations"])
     async def list_datasets(request: Request) -> list[DatasetSummary]:
-        _guard_request(request)
+        principal = _guard_request(request)
         logger.info("evaluation_datasets_requested")
-        return _service(request).list_datasets()
+        return _service(request).list_datasets(principal)
+
+    @app.get(
+        "/api/v1/evaluations/datasets/{dataset_id}",
+        response_model=EvaluationDataset,
+        tags=["evaluations"],
+    )
+    async def get_dataset(dataset_id: str, request: Request) -> EvaluationDataset:
+        principal = _guard_request(request)
+        logger.info("evaluation_dataset_get_requested dataset_id=%s", dataset_id)
+        return _service(request).get_dataset(dataset_id, principal)
 
     @app.post(
         "/api/v1/evaluations/datasets",
@@ -105,30 +120,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         status_code=201,
     )
     async def create_dataset(payload: EvaluationDatasetCreate, request: Request) -> EvaluationDataset:
-        _guard_request(request)
+        principal = _guard_request(request)
         logger.info(
             "evaluation_dataset_create_requested dataset_id=%s case_count=%s query_text_logged=false",
             payload.dataset_id,
             len(payload.cases),
         )
-        return _service(request).create_dataset(payload)
+        return _service(request).create_dataset(payload, principal)
+
+    @app.get(
+        "/api/v1/evaluations/runs",
+        response_model=list[EvaluationRunSummary],
+        tags=["evaluations"],
+    )
+    async def list_runs(
+        request: Request,
+        dataset_id: str | None = Query(default=None),
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> list[EvaluationRunSummary]:
+        principal = _guard_request(request)
+        logger.info("evaluation_runs_requested dataset_id=%s limit=%s", dataset_id, limit)
+        return _service(request).list_runs(
+            principal,
+            dataset_id=dataset_id,
+            limit=limit,
+        )
 
     @app.post("/api/v1/evaluations/runs", response_model=EvaluationRun, tags=["evaluations"])
     async def create_run(payload: EvaluationRunRequest, request: Request) -> EvaluationRun:
-        _guard_request(request)
+        principal = _guard_request(request)
         logger.info(
             "evaluation_run_requested dataset_id=%s inline_dataset=%s case_count=%s query_text_logged=false",
             payload.dataset_id,
             payload.dataset is not None,
             len(payload.case_ids) if payload.case_ids else None,
         )
-        return await _service(request).run_evaluation(payload)
+        return await _service(request).run_evaluation(payload, principal)
 
     @app.get("/api/v1/evaluations/runs/{run_id}", response_model=EvaluationRun, tags=["evaluations"])
     async def get_run(run_id: str, request: Request) -> EvaluationRun:
-        _guard_request(request)
+        principal = _guard_request(request)
         logger.info("evaluation_run_get_requested run_id=%s", run_id)
-        return _service(request).get_run(run_id)
+        return _service(request).get_run(run_id, principal)
+
+    @app.get(
+        "/api/v1/evaluations/quality/overview",
+        response_model=QualityOverview,
+        tags=["evaluations"],
+    )
+    async def quality_overview(
+        request: Request,
+        dataset_id: str | None = Query(default=None),
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> QualityOverview:
+        principal = _guard_request(request)
+        logger.info("evaluation_quality_overview_requested dataset_id=%s limit=%s", dataset_id, limit)
+        return _service(request).quality_overview(
+            principal,
+            dataset_id=dataset_id,
+            limit=limit,
+        )
 
     @app.get(
         "/api/v1/evaluations/runs/{run_id}/report",
@@ -150,9 +201,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         format: ReportFormat = Query(default="json"),  # noqa: A002
     ) -> Response:
-        _guard_request(request)
+        principal = _guard_request(request)
         logger.info("evaluation_report_requested run_id=%s format=%s", run_id, format)
-        run = _service(request).get_run(run_id)
+        run = _service(request).get_run(run_id, principal)
         if format == "json":
             return Response(content=render_json(run), media_type="application/json")
         if format == "csv":
@@ -174,8 +225,8 @@ def _service(request: Request) -> EvaluationService:
     return request.app.state.evaluation_service
 
 
-def _guard_request(request: Request) -> None:
-    require_service_auth(request, _settings(request))
+def _guard_request(request: Request) -> EvaluationPrincipal:
+    return require_service_auth(request, _settings(request))
 
 
 try:

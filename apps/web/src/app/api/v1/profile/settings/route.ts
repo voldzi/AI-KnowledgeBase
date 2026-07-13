@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 import { getAklConfig } from "@/lib/api/config";
-import { createMockContext } from "@/lib/api/correlation";
-import { getServerApiClients } from "@/lib/api/server";
+import {
+  getOptionalServerRequestContext,
+  getServerApiClients,
+} from "@/lib/api/server";
 import {
   canUseAdminSurface,
   canUseEmployeeChat,
   canUseKnowledgeWorkspace,
 } from "@/lib/auth/authorization";
-import { contextFromOidcSession, readSessionCookie } from "@/lib/auth/oidc";
+import { readSessionCookie } from "@/lib/auth/oidc";
 import { isAklLanguage, type AklLanguage } from "@/lib/language";
 import type {
   ApiRequestContext,
@@ -52,8 +54,8 @@ const ALLOWED_SETTINGS_MODES = new Set<SettingsSurfaceMode>([
   "fullscreen",
 ]);
 
-export async function GET() {
-  const context = await getOptionalProfileRequestContext();
+export async function GET(request: NextRequest) {
+  const context = await getOptionalProfileRequestContext(request);
   if (!context) {
     return NextResponse.json(
       {
@@ -84,7 +86,7 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
-  const context = await getOptionalProfileRequestContext();
+  const context = await getOptionalProfileRequestContext(request);
   if (!context) {
     return NextResponse.json(
       {
@@ -127,26 +129,10 @@ export async function PUT(request: NextRequest) {
   });
 }
 
-async function getOptionalProfileRequestContext(): Promise<ApiRequestContext | null> {
-  const config = getAklConfig();
-
-  if (config.authMode === "oidc") {
-    const session = readSessionCookie(await cookies(), config);
-    return session ? contextFromOidcSession(session) : null;
-  }
-
-  return createMockContext({
-    subjectId: process.env.AKL_WEB_DEV_SUBJECT ?? "user_dev",
-    roles: (process.env.AKL_WEB_DEV_ROLES ?? "admin,document_manager,reader")
-      .split(",")
-      .map((role) => role.trim())
-      .filter(Boolean),
-    groups: (process.env.AKL_WEB_DEV_GROUPS ?? "")
-      .split(",")
-      .map((group) => group.trim())
-      .filter(Boolean),
-    accessToken: config.devAccessToken,
-  });
+async function getOptionalProfileRequestContext(
+  request: NextRequest,
+): Promise<ApiRequestContext | null> {
+  return getOptionalServerRequestContext(request);
 }
 
 async function identityForRequest(

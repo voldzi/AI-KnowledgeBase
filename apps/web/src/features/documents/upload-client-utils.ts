@@ -46,6 +46,8 @@ export const SUPPORTED_UPLOAD_ACCEPT = [
   "text/xml"
 ].join(",");
 
+export const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
+
 export async function sha256File(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", buffer);

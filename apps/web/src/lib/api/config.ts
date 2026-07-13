@@ -11,6 +11,7 @@ export interface AklConfig {
     ingestion: string;
     rag: string;
     governance: string;
+    evaluation: string;
   };
   oidc?: {
     issuer: string;
@@ -19,6 +20,9 @@ export interface AklConfig {
     redirectUri: string;
     scopes: string;
     sessionSecret: string;
+    stratosAuthMeUrl: string;
+    accessProjectionTimeoutMs: number;
+    accessProjectionCacheTtlMs: number;
   };
   devAccessToken?: string;
 }
@@ -63,6 +67,26 @@ function requireEnv(value: string | undefined, name: string): string {
   return value;
 }
 
+function normalizeOidcScopes(value: string | undefined): string {
+  const raw = value ?? "openid profile email";
+  const trimmed = raw.trim();
+  const unquoted =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  const normalized = unquoted.trim().split(/\s+/).filter(Boolean).join(" ");
+  return normalized || "openid profile email";
+}
+
+function positiveNumber(value: string | undefined, fallback: number, name: string, allowZero = false): number {
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isFinite(parsed) || (allowZero ? parsed < 0 : parsed <= 0)) {
+    throw new Error(`${name} must be ${allowZero ? "zero or a positive number" : "a positive number"}`);
+  }
+  return parsed;
+}
+
 export function getAklConfig(env: EnvSource = process.env): AklConfig {
   const environment = parseEnvironment(env.AKL_ENV);
   const apiClientMode = parseClientMode(env.AKL_API_CLIENT_MODE);
@@ -82,13 +106,15 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
           registry: normalizeBaseUrl(env.AKL_REGISTRY_API_BASE_URL, "AKL_REGISTRY_API_BASE_URL"),
           ingestion: normalizeBaseUrl(env.AKL_INGESTION_API_BASE_URL, "AKL_INGESTION_API_BASE_URL"),
           rag: normalizeBaseUrl(env.AKL_RAG_API_BASE_URL, "AKL_RAG_API_BASE_URL"),
-          governance: normalizeBaseUrl(env.AKL_GOVERNANCE_API_BASE_URL, "AKL_GOVERNANCE_API_BASE_URL")
+          governance: normalizeBaseUrl(env.AKL_GOVERNANCE_API_BASE_URL, "AKL_GOVERNANCE_API_BASE_URL"),
+          evaluation: normalizeBaseUrl(env.AKL_EVALUATION_API_BASE_URL, "AKL_EVALUATION_API_BASE_URL")
         }
       : {
           registry: "mock://registry",
           ingestion: "mock://ingestion",
           rag: "mock://rag",
-          governance: "mock://governance"
+          governance: "mock://governance",
+          evaluation: "mock://evaluation"
         };
   const publicBaseUrl = env.AKL_WEB_PUBLIC_BASE_URL?.replace(/\/+$/, "");
   const oidc =
@@ -99,8 +125,26 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
           clientId: requireEnv(env.AKL_WEB_OIDC_CLIENT_ID ?? "akl-web", "AKL_WEB_OIDC_CLIENT_ID"),
           clientSecret: env.AKL_WEB_OIDC_CLIENT_SECRET || undefined,
           redirectUri: `${requireEnv(publicBaseUrl, "AKL_WEB_PUBLIC_BASE_URL")}/api/auth/callback`,
-          scopes: env.AKL_WEB_OIDC_SCOPES ?? "openid profile email",
-          sessionSecret: requireEnv(env.AKL_WEB_SESSION_SECRET, "AKL_WEB_SESSION_SECRET")
+          scopes: normalizeOidcScopes(env.AKL_WEB_OIDC_SCOPES),
+          sessionSecret: requireEnv(env.AKL_WEB_SESSION_SECRET, "AKL_WEB_SESSION_SECRET"),
+          stratosAuthMeUrl: requireEnv(
+            env.AKL_WEB_STRATOS_AUTH_ME_URL
+              ?? (env.AKL_STRATOS_API_BASE_URL
+                ? `${env.AKL_STRATOS_API_BASE_URL.replace(/\/+$/, "")}/api/v1/auth/me`
+                : undefined),
+            "AKL_WEB_STRATOS_AUTH_ME_URL"
+          ),
+          accessProjectionTimeoutMs: positiveNumber(
+            env.AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS,
+            3000,
+            "AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS"
+          ),
+          accessProjectionCacheTtlMs: positiveNumber(
+            env.AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS,
+            0,
+            "AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS",
+            true
+          )
         }
       : undefined;
 

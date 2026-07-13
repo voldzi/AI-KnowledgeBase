@@ -50,3 +50,39 @@ def test_production_rejects_mock_dependencies() -> None:
                 "AKL_INGESTION_INDEXER_MODE": "mock",
             }
         )
+
+
+def test_invalid_combined_mock_indexer_mode_is_rejected(tmp_path) -> None:
+    with pytest.raises(ConfigError, match="cannot be combined"):
+        load_settings(
+            {
+                "AKL_ENV": "test",
+                "AKL_AUTH_MODE": "disabled",
+                "AKL_INGESTION_REGISTRY_CLIENT_MODE": "mock",
+                "AKL_INGESTION_OBJECT_STORAGE_MODE": "local",
+                "AKL_OBJECT_STORAGE_ROOT": str(tmp_path),
+                "AKL_INGESTION_EMBEDDING_CLIENT_MODE": "mock",
+                "AKL_INGESTION_INDEXER_MODE": "mock,opensearch",
+            }
+        )
+
+
+def test_ocrmypdf_provider_configuration_is_supported(tmp_path) -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_INGESTION_REGISTRY_CLIENT_MODE": "mock",
+            "AKL_INGESTION_OBJECT_STORAGE_MODE": "local",
+            "AKL_OBJECT_STORAGE_ROOT": str(tmp_path),
+            "AKL_INGESTION_EMBEDDING_CLIENT_MODE": "mock",
+            "AKL_INGESTION_INDEXER_MODE": "mock",
+            "AKL_INGESTION_OCR_PROVIDER": "ocrmypdf",
+            "AKL_INGESTION_OCRMYPDF_COMMAND": "/usr/bin/ocrmypdf",
+            "AKL_INGESTION_OCR_TIMEOUT_SECONDS": "600",
+        }
+    )
+
+    assert settings.ocr_provider == "ocrmypdf"
+    assert settings.ocrmypdf_command == "/usr/bin/ocrmypdf"
+    assert settings.ocr_timeout_seconds == 600

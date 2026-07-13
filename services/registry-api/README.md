@@ -12,6 +12,7 @@ Služba neparsuje dokumenty, nevytváří embeddingy, nevolá LLM, neodpovídá 
 - Document-level access policies.
 - Authorization check API pro frontend, ingestion, RAG, evaluation a governance služby.
 - Perzistence Document AI extraction vysledku a feedbacku.
+- Perzistence Intelligence analyst cases, ulozenych dotazu a evidence setu.
 - Audit API a interní auditní body pro změny dokumentů a verzí.
 - Health/readiness endpointy a correlation id.
 
@@ -50,8 +51,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `AKL_OIDC_ISSUER` | OIDC issuer pro validaci JWT. |
 | `AKL_OIDC_AUDIENCE` | Očekávané audience JWT. |
 | `AKL_OIDC_JWKS_URL` | JWKS endpoint pro validaci podpisu JWT. |
+| `AKL_STRATOS_AUTH_ME_URL` | Autoritativní STRATOS access projection (`GET /api/v1/auth/me`). |
+| `AKL_STRATOS_POLICY_BINDINGS_URL` | Centrální registr Information Policy bindingů. |
+| `AKL_STRATOS_POLICY_DECISIONS_URL` | Centrální decision endpoint pro service-to-service operace. |
+| `AKL_STRATOS_POLICY_SERVICE_TOKEN` | Dedikovaný runtime credential AKB; nesmí se logovat ani commitovat. |
+| `AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS` | Cache projekce; `0` uplatní suspendaci při dalším požadavku. Nikdy nepřekročí expiraci tokenu. |
 
 `AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=mock`.
+Produkční start navíc odmítne chybějící STRATOS projection/policy endpointy nebo runtime credential.
 
 ## API
 
@@ -60,6 +67,8 @@ Verzované endpointy jsou pod `/api/v1`.
 ```text
 POST   /api/v1/documents
 GET    /api/v1/documents
+GET    /api/v1/documents/metadata-summary
+GET    /api/v1/documents/readiness-report
 GET    /api/v1/documents/{document_id}
 PATCH  /api/v1/documents/{document_id}
 DELETE /api/v1/documents/{document_id}
@@ -75,6 +84,13 @@ POST   /api/v1/documents/{document_id}/versions/{version_id}/archive
 
 POST   /api/v1/authz/check
 POST   /api/v1/authz/filter-documents
+
+GET    /api/v1/intelligence/cases
+POST   /api/v1/intelligence/cases
+GET    /api/v1/intelligence/cases/{case_id}
+PATCH  /api/v1/intelligence/cases/{case_id}
+POST   /api/v1/intelligence/cases/{case_id}/saved-queries
+POST   /api/v1/intelligence/cases/{case_id}/evidence
 
 GET    /api/v1/workflow/tasks
 POST   /api/v1/workflow/tasks/{task_id}/actions
@@ -92,6 +108,31 @@ GET    /ready
 ```
 
 OpenAPI kontrakt je v `openapi.yaml` a runtime OpenAPI je dostupné jako `/openapi.json`.
+
+### Intelligence analyst cases
+
+`/api/v1/intelligence/cases` uklada analyticke spisy uzivatele pro
+TOVEK-like praci v AKB. Spis muze obsahovat ulozene OpenSearch analyticke
+dotazy a evidence sety. Evidence uklada identifikatory dokumentu/verze/chunku,
+stranku, sekci, score, entity a bounded snippet pro rychlou orientaci. Registry
+pritom nemeni dokumenty, verze ani zdrojove soubory; vsechny zmeny se audituji
+udalostmi `intelligence.case.*`.
+
+### Document readiness report
+
+`GET /api/v1/documents/readiness-report` vrací permission-scoped agregaci
+připravenosti dokumentové základny pro pilotní akceptaci. Registry při tom
+nečte těla dokumentů ani nespouští RAG; skládá signály pouze z evidenčních dat:
+vlastník/gestor, access policies, status, verze, platnost, source hash,
+metadata čísla/datu/oblasti, ingestion status z external refs a kvalita
+extrakce/OCR uložená v metadatech.
+
+Report vrací počty `ready_documents`, `review_documents`, `blocked_documents`,
+`readiness_score`, agregované `issue_counts` a omezený seznam příkladů issues.
+Podporuje stejné filtry jako inventory endpointy: `status`, `classification`,
+`document_type`, `owner_id`, `tag`, opakovaný `topic`, `tenant_id`,
+`external_system`, `entity_type`, `entity_id`, `external_ref` a opakovaný
+`context_tag`.
 
 ## Auth v dev režimu
 

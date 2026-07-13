@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { ApiClientError } from "@/lib/types";
 
-export function badRequest(message: string) {
+export function badRequest(message: string, status = 400) {
   return NextResponse.json(
     {
       error: {
@@ -10,7 +10,7 @@ export function badRequest(message: string) {
         message
       }
     },
-    { status: 400 }
+    { status }
   );
 }
 

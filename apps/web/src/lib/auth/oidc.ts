@@ -5,6 +5,7 @@ import type { ApiRequestContext } from "@/lib/types";
 
 export const OIDC_STATE_COOKIE = "akl_oidc_state";
 export const OIDC_SESSION_COOKIE = "akl_session";
+export const OIDC_ACCESS_COOKIE = "akl_access";
 export const OIDC_REFRESH_COOKIE = "akl_refresh";
 
 export interface OidcSession {
@@ -56,6 +57,29 @@ export function buildPublicAppUrl(config: AklConfig, path: string): string {
   const publicBaseUrl = oidc.redirectUri.replace(/\/api\/auth\/callback$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${publicBaseUrl}${normalizedPath === "/" ? "" : normalizedPath}`;
+}
+
+export function normalizeReturnToForPublicBase(
+  config: AklConfig,
+  returnTo: string | null | undefined,
+): string {
+  const safeReturnTo =
+    returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
+      ? returnTo
+      : "/";
+  const oidc = requireOidcConfig(config);
+  const publicBaseUrl = new URL(
+    oidc.redirectUri.replace(/\/api\/auth\/callback$/, ""),
+  );
+  const publicBasePath = publicBaseUrl.pathname.replace(/\/+$/, "");
+  if (
+    publicBasePath &&
+    (safeReturnTo === publicBasePath ||
+      safeReturnTo.startsWith(`${publicBasePath}/`))
+  ) {
+    return safeReturnTo.slice(publicBasePath.length) || "/";
+  }
+  return safeReturnTo;
 }
 
 export async function exchangeAuthorizationCode(
@@ -128,6 +152,37 @@ export function contextFromOidcSession(
   };
 }
 
+export function contextFromOidcAccessToken(
+  accessToken: string,
+  nowMs = Date.now(),
+): ApiRequestContext | null {
+  try {
+    const claims = decodeJwtPayload(accessToken);
+    const subjectId =
+      stringClaim(claims.sub) ??
+      stringClaim(claims.client_id) ??
+      stringClaim(claims.azp) ??
+      stringClaim(claims.preferred_username);
+    if (!subjectId) {
+      return null;
+    }
+    const expiresAtSeconds =
+      typeof claims.exp === "number" ? claims.exp : undefined;
+    if (expiresAtSeconds !== undefined && expiresAtSeconds <= nowMs / 1000) {
+      return null;
+    }
+
+    return {
+      subjectId,
+      roles: extractRoles(claims),
+      groups: stringArrayClaim(claims.groups),
+      accessToken,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function createState(returnTo: string | null): string {
   const nonce = crypto.randomBytes(18).toString("base64url");
   return Buffer.from(
@@ -180,16 +235,36 @@ export function sealBrowserSession(
 }
 
 export function sealRefreshToken(refreshToken: string, secret: string): string {
+  return sealTokenCookie({ refreshToken }, secret);
+}
+
+export function sealAccessToken(accessToken: string, secret: string): string {
+  return sealTokenCookie({ accessToken }, secret);
+}
+
+function sealTokenCookie(payload: Record<string, string>, secret: string): string {
   const iv = crypto.randomBytes(12);
   const key = sessionKey(secret);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify({ refreshToken }), "utf8");
+  const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, ciphertext]).toString("base64url");
 }
 
 function openRefreshToken(value: string, secret: string): string | undefined {
+  return openTokenCookie(value, secret, "refreshToken");
+}
+
+function openAccessToken(value: string, secret: string): string | undefined {
+  return openTokenCookie(value, secret, "accessToken");
+}
+
+function openTokenCookie(
+  value: string,
+  secret: string,
+  keyName: "accessToken" | "refreshToken",
+): string | undefined {
   try {
     const payload = Buffer.from(value, "base64url");
     const iv = payload.subarray(0, 12);
@@ -205,11 +280,13 @@ function openRefreshToken(value: string, secret: string): string | undefined {
       decipher.update(ciphertext),
       decipher.final(),
     ]);
-    const parsed = JSON.parse(plaintext.toString("utf8")) as {
-      refreshToken?: unknown;
-    };
-    return typeof parsed.refreshToken === "string" && parsed.refreshToken
-      ? parsed.refreshToken
+    const parsed = JSON.parse(plaintext.toString("utf8")) as Record<
+      string,
+      unknown
+    >;
+    const token = parsed[keyName];
+    return typeof token === "string" && token
+      ? token
       : undefined;
   } catch {
     return undefined;
@@ -277,7 +354,15 @@ export function readSessionCookie(
   const refreshToken = refreshValue
     ? openRefreshToken(refreshValue, oidc.sessionSecret)
     : undefined;
-  return refreshToken ? { ...session, refreshToken } : session;
+  const accessValue = cookies.get(OIDC_ACCESS_COOKIE)?.value;
+  const accessToken = accessValue
+    ? openAccessToken(accessValue, oidc.sessionSecret)
+    : undefined;
+  return {
+    ...session,
+    ...(accessToken ? { accessToken } : {}),
+    ...(refreshToken ? { refreshToken } : {}),
+  };
 }
 
 export async function refreshOidcSession(
@@ -286,7 +371,7 @@ export async function refreshOidcSession(
   nowMs = Date.now(),
   fetchImpl: typeof fetch = fetch,
 ): Promise<OidcSession | null> {
-  if (session.expiresAt > nowMs) {
+  if (session.accessToken && session.expiresAt > nowMs) {
     return session;
   }
   if (!session.refreshToken) {

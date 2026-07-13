@@ -25,6 +25,38 @@ Confidence = Literal["high", "medium", "low", "insufficient_source", "conflictin
 CaseStatus = Literal["passed", "failed", "error"]
 RunStatus = Literal["completed", "completed_with_errors"]
 ReportFormat = Literal["json", "csv", "html"]
+EvaluationRole = Literal[
+    "employee",
+    "analyst",
+    "document_manager",
+    "auditor",
+    "administrator",
+    "leadership",
+    "service",
+]
+QueryCategory = Literal[
+    "exact_title",
+    "exact_identifier",
+    "semantic",
+    "procedural",
+    "comparative",
+    "entity",
+    "negative_control",
+    "authorization",
+]
+JudgmentStatus = Literal["draft", "silver", "gold"]
+DatasetVisibility = Literal["private", "shared"]
+GateStatus = Literal["passed", "failed", "not_evaluated"]
+FailureStage = Literal[
+    "none",
+    "retrieval_no_match",
+    "retrieval_relevance",
+    "authorization",
+    "citation",
+    "answer",
+    "no_answer",
+    "error",
+]
 
 
 class RagQueryFilters(BaseModel):
@@ -43,10 +75,17 @@ class ChunkCitation(BaseModel):
     document_version_id: str = Field(min_length=1)
     document_title: str = Field(min_length=1)
     version_label: str = Field(min_length=1)
+    document_version: str | None = Field(default=None, min_length=1)
     page_number: int | None = Field(default=None, ge=1)
     section_path: list[str] = Field(default_factory=list)
     article_number: str | None = None
     paragraph_number: str | None = None
+
+    @model_validator(mode="after")
+    def fill_document_version(self) -> "ChunkCitation":
+        if self.document_version is None:
+            self.document_version = self.version_label
+        return self
 
 
 class Citation(BaseModel):
@@ -56,9 +95,16 @@ class Citation(BaseModel):
     document_version_id: str = Field(min_length=1)
     document_title: str = Field(min_length=1)
     version_label: str = Field(min_length=1)
+    document_version: str | None = Field(default=None, min_length=1)
     section_path: list[str] = Field(default_factory=list)
     page_number: int | None = Field(default=None, ge=1)
     chunk_id: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def fill_document_version(self) -> "Citation":
+        if self.document_version is None:
+            self.document_version = self.version_label
+        return self
 
 
 class RetrievedChunk(BaseModel):
@@ -66,7 +112,7 @@ class RetrievedChunk(BaseModel):
 
     chunk_id: str = Field(min_length=1)
     score: float = Field(ge=0, le=1)
-    retrieval_method: Literal["dense", "sparse", "hybrid"]
+    retrieval_method: Literal["dense", "sparse", "hybrid", "qdrant", "opensearch"]
     text: str = Field(min_length=1)
     citation: ChunkCitation
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -123,6 +169,13 @@ class ExpectedCitation(BaseModel):
         return self
 
 
+class RelevanceJudgment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_id: str = Field(min_length=1)
+    relevance: int = Field(ge=0, le=3)
+
+
 class EvalCase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -136,9 +189,22 @@ class EvalCase(BaseModel):
     forbidden_answer_terms: list[str] = Field(default_factory=list)
     expected_citations: list[ExpectedCitation] = Field(default_factory=list)
     expected_relevant_chunk_ids: list[str] = Field(default_factory=list)
+    expected_relevant_document_ids: list[str] = Field(default_factory=list)
+    relevance_judgments: list[RelevanceJudgment] = Field(default_factory=list)
+    expected_forbidden_chunk_ids: list[str] = Field(default_factory=list)
     expected_no_answer: bool = False
+    role: EvaluationRole = "employee"
+    query_category: QueryCategory = "semantic"
+    judgment_status: JudgmentStatus = "draft"
     weight: float = Field(default=1.0, ge=0)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_relevance_judgments(self) -> "EvalCase":
+        judged_ids = [judgment.chunk_id for judgment in self.relevance_judgments]
+        if len(judged_ids) != len(set(judged_ids)):
+            raise ValueError("Relevance judgments must contain unique chunk ids")
+        return self
 
 
 class EvaluationDatasetCreate(BaseModel):
@@ -148,6 +214,7 @@ class EvaluationDatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=2000)
     tags: list[str] = Field(default_factory=list)
+    visibility: DatasetVisibility = "private"
     cases: list[EvalCase] = Field(min_length=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -159,6 +226,8 @@ class EvaluationDataset(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=2000)
     tags: list[str] = Field(default_factory=list)
+    visibility: DatasetVisibility = "shared"
+    owner_subject_id: str | None = None
     cases: list[EvalCase] = Field(min_length=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
@@ -171,6 +240,13 @@ class DatasetSummary(BaseModel):
     tags: list[str]
     case_count: int
     created_at: datetime
+    visibility: DatasetVisibility = "shared"
+    owner_subject_id: str | None = None
+    draft_cases: int = 0
+    silver_cases: int = 0
+    gold_cases: int = 0
+    roles: list[EvaluationRole] = Field(default_factory=list)
+    query_categories: list[QueryCategory] = Field(default_factory=list)
 
 
 class EvaluationRunRequest(BaseModel):
@@ -197,6 +273,13 @@ class RetrievalMetrics(BaseModel):
     recall: float
     hit_rate: float
     mrr: float
+    ndcg: float = 0
+    expected_relevant_document_count: int = 0
+    relevant_document_retrieved_count: int = 0
+    zero_result: bool = False
+    false_zero_result: bool = False
+    forbidden_retrieved_count: int = 0
+    authorization_leak_rate: float = 0
 
 
 class CitationMetrics(BaseModel):
@@ -238,6 +321,12 @@ class EvaluationCaseResult(BaseModel):
     answer_sha256: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    role: EvaluationRole = "employee"
+    query_category: QueryCategory = "semantic"
+    judgment_status: JudgmentStatus = "draft"
+    expected_no_answer: bool = False
+    retrieval_only: bool = False
+    failure_stage: FailureStage = "none"
 
 
 class EvaluationSummary(BaseModel):
@@ -253,6 +342,62 @@ class EvaluationSummary(BaseModel):
     answer_correctness: float
     faithfulness: float
     no_answer_correctness: float
+    retrieval_hit_rate: float = 0
+    retrieval_mrr: float = 0
+    retrieval_ndcg: float = 0
+    zero_result_rate: float = 0
+    false_zero_result_rate: float = 0
+    authorization_leak_rate: float = 0
+    citation_traceability: float = 0
+    retrieval_latency_p50_ms: float = 0
+    retrieval_latency_p95_ms: float = 0
+    total_latency_p95_ms: float = 0
+    full_answer_cases: int = 0
+    retrieval_only_cases: int = 0
+    draft_cases: int = 0
+    silver_cases: int = 0
+    gold_cases: int = 0
+    failure_counts: dict[str, int] = Field(default_factory=dict)
+    role_slices: list["EvaluationSliceSummary"] = Field(default_factory=list)
+    query_category_slices: list["EvaluationSliceSummary"] = Field(default_factory=list)
+
+
+class EvaluationSliceSummary(BaseModel):
+    key: str
+    total_cases: int
+    average_score: float
+    retrieval_recall: float
+    retrieval_ndcg: float
+    false_zero_result_rate: float
+    citation_traceability: float
+    retrieval_latency_p95_ms: float
+
+
+class QualityGateCheck(BaseModel):
+    key: str
+    actual: float
+    operator: Literal[">=", "<="]
+    threshold: float
+    passed: bool
+    eligible: bool = True
+
+
+class QualityGateResult(BaseModel):
+    status: GateStatus
+    checks: list[QualityGateCheck]
+    eligible_cases: int
+    excluded_draft_cases: int = 0
+
+
+class RunComparison(BaseModel):
+    baseline_run_id: str
+    average_score_delta: float
+    retrieval_recall_delta: float
+    retrieval_ndcg_delta: float
+    false_zero_result_rate_delta: float
+    citation_traceability_delta: float
+    retrieval_latency_p95_ms_delta: float
+    regressions: list[str] = Field(default_factory=list)
 
 
 class EvaluationRun(BaseModel):
@@ -265,6 +410,40 @@ class EvaluationRun(BaseModel):
     summary: EvaluationSummary
     cases: list[EvaluationCaseResult]
     settings: dict[str, Any] = Field(default_factory=dict)
+    actor_subject_id: str | None = None
+    actor_roles: list[str] = Field(default_factory=list)
+    quality_gate: QualityGateResult | None = None
+    comparison: RunComparison | None = None
+
+
+class EvaluationRunSummary(BaseModel):
+    run_id: str
+    dataset_id: str
+    dataset_name: str
+    status: RunStatus
+    started_at: datetime
+    finished_at: datetime
+    summary: EvaluationSummary
+    quality_gate: QualityGateResult | None = None
+    comparison: RunComparison | None = None
+    actor_subject_id: str | None = None
+
+
+class QualityThresholds(BaseModel):
+    retrieval_recall_min: float
+    retrieval_ndcg_min: float
+    false_zero_result_rate_max: float
+    authorization_leak_rate_max: float
+    citation_traceability_min: float
+    retrieval_latency_p95_ms_max: float
+
+
+class QualityOverview(BaseModel):
+    datasets: list[DatasetSummary]
+    recent_runs: list[EvaluationRunSummary]
+    latest_run: EvaluationRun | None = None
+    thresholds: QualityThresholds
+    generated_at: datetime
 
 
 class HealthResponse(BaseModel):

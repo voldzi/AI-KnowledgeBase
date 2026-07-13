@@ -4,8 +4,10 @@ import pytest
 
 from app.config import load_settings
 from app.errors import IngestionError
-from app.schemas import Classification, DocumentChunk
+from app.schemas import AnalystSearchRequest, Classification, DocumentChunk, EntityRelationshipRequest, EntitySearchRequest
 from embeddings.client import EmbeddingClient
+from indexers.factory import create_indexer
+from indexers.opensearch import CompositeIndexer, OpenSearchIndexer, _authorized_policy_filter, _index_definition
 from indexers.qdrant import QdrantIndexer
 
 
@@ -35,6 +37,16 @@ def _chunk() -> DocumentChunk:
         document_title="Directive",
         version_label="1.0",
         document_type="directive",
+        organization_id="org_stratos",
+        policy_binding_id="pol_testbinding01",
+        policy_version="information-policy-2.0.0",
+        policy_hash="sha256:" + "c" * 64,
+        policy_summary={
+            "handlingClass": "INTERNAL",
+            "legalClassification": "NONE",
+            "obligations": ["AUDIT_ACCESS"],
+            "audience": {"organizationId": "org_stratos", "scopeType": "organization"},
+        },
         text="The owner approves the exception.",
         normalized_text="the owner approves the exception.",
         page_number=1,
@@ -56,7 +68,16 @@ def _chunk() -> DocumentChunk:
         valid_to=None,
         status="valid",
         access_scope=["role:reader"],
-        metadata={},
+        metadata={
+            "intelligence": {
+                "entity_extraction_profile": "rule_based_v1",
+                "entity_count": 2,
+                "entity_types": ["document_number", "email"],
+                "entity_values": ["RMO12/2024", "ops@example.cz"],
+                "entity_pairs": ["document_number:RMO12/2024", "email:ops@example.cz"],
+                "entities": [],
+            }
+        },
     )
 
 
@@ -69,12 +90,403 @@ def test_indexer_promotes_rag_filter_and_citation_fields(tmp_path) -> None:
     assert payload["document_title"] == "Directive"
     assert payload["version_label"] == "1.0"
     assert payload["document_type"] == "directive"
+    assert payload["policy_binding_id"] == "pol_testbinding01"
+    assert payload["policy_hash"] == "sha256:" + "c" * 64
+    assert payload["policy_summary"]["obligations"] == ["AUDIT_ACCESS"]
     assert payload["status"] == "valid"
     assert payload["tags"] == ["phase02"]
     assert payload["source_file_uri"] == "s3://akl-documents/doc_test/ver_test/source.md"
     assert payload["source_file_name"] == "source.md"
     assert payload["source_mime_type"] == "text/markdown"
     assert payload["source_size_bytes"] == 1234
+    assert payload["entity_types"] == ["document_number", "email"]
+    assert payload["entity_values"] == ["RMO12/2024", "ops@example.cz"]
+    assert payload["entity_pairs"] == ["document_number:RMO12/2024", "email:ops@example.cz"]
+
+
+def test_dual_indexer_mode_builds_composite_indexer(tmp_path) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+
+    indexer = create_indexer(settings)
+
+    assert settings.indexer_targets == ("qdrant", "opensearch")
+    assert isinstance(indexer, CompositeIndexer)
+
+
+def test_opensearch_document_contains_search_text_and_citation_fields(tmp_path) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    document = OpenSearchIndexer(settings)._document(_chunk(), embedding_model="mock-embedding")
+
+    assert document["chunk_id"] == "chunk_test"
+    assert document["document_title"] == "Directive"
+    assert document["document_type"] == "directive"
+    assert document["source_file_uri"] == "s3://akl-documents/doc_test/ver_test/source.md"
+    assert document["embedding_model"] == "mock-embedding"
+    assert document["entity_types"] == ["document_number", "email"]
+    assert document["entity_values"] == ["RMO12/2024", "ops@example.cz"]
+    assert document["entity_pairs"] == ["document_number:RMO12/2024", "email:ops@example.cz"]
+    assert "Directive" in document["search_text"]
+    assert "Exception approvals" in document["search_text"]
+    assert "RMO12/2024" in document["search_text"]
+    assert "document_number:RMO12/2024" in document["search_text"]
+
+
+def test_opensearch_authorization_filter_binds_document_to_current_policy_hash() -> None:
+    policy_hash = "sha256:" + "c" * 64
+    result = _authorized_policy_filter(
+        AnalystSearchRequest(
+            query="directive",
+            allowed_document_ids=["doc_allowed", "doc_without_policy"],
+            allowed_policy_hashes={
+                "doc_allowed": [policy_hash],
+                "doc_other": ["sha256:" + "d" * 64],
+                "doc_without_policy": ["invalid"],
+            },
+        )
+    )
+
+    assert result == {
+        "bool": {
+            "should": [
+                {
+                    "bool": {
+                        "filter": [
+                            {"term": {"document_id": "doc_allowed"}},
+                            {"terms": {"policy_hash": [policy_hash]}},
+                        ]
+                    }
+                }
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+def test_opensearch_index_definition_uses_czech_analyzer() -> None:
+    definition = _index_definition()
+
+    analyzer = definition["settings"]["analysis"]["analyzer"]["akb_czech"]
+    assert "asciifolding" in analyzer["filter"]
+    assert "akb_czech_stemmer" in analyzer["filter"]
+    assert definition["mappings"]["properties"]["search_text"]["analyzer"] == "akb_czech"
+    assert definition["mappings"]["properties"]["entity_types"]["type"] == "keyword"
+    assert definition["mappings"]["properties"]["entity_values"]["type"] == "keyword"
+    assert definition["mappings"]["properties"]["entity_pairs"]["type"] == "keyword"
+
+
+@pytest.mark.asyncio
+async def test_opensearch_existing_index_ensures_entity_mapping(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient(
+        get_responses=[_FakeResponse(200)],
+        put_responses=[_FakeResponse(200)],
+    )
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    await OpenSearchIndexer(settings)._ensure_index()
+
+    assert len(fake_client.put_calls) == 1
+    call = fake_client.put_calls[0]
+    assert call["url"] == "http://localhost:9200/akl_document_chunks/_mapping"
+    properties = call["json"]["properties"]
+    assert properties["entity_types"] == {"type": "keyword"}
+    assert properties["entity_values"] == {"type": "keyword"}
+    assert properties["entity_pairs"] == {"type": "keyword"}
+    assert properties["policy_binding_id"] == {"type": "keyword"}
+    assert properties["policy_summary"]["properties"]["obligations"] == {"type": "keyword"}
+
+
+@pytest.mark.asyncio
+async def test_opensearch_entity_facets_aggregate_paired_values(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient(
+        get_responses=[_FakeResponse(200)],
+        put_responses=[_FakeResponse(200)],
+        post_responses=[
+            _FakeResponse(
+                200,
+                {
+                    "hits": {"total": {"value": 5}},
+                    "aggregations": {
+                        "chunks_with_entities": {"doc_count": 3},
+                        "entity_types": {
+                            "buckets": [
+                                {"key": "document_number", "doc_count": 2},
+                                {"key": "email", "doc_count": 1},
+                            ]
+                        },
+                        "entity_pairs": {
+                            "buckets": [
+                                {"key": "document_number:RMO12/2024", "doc_count": 2},
+                                {"key": "email:ops@example.cz", "doc_count": 1},
+                            ]
+                        },
+                    },
+                },
+            )
+        ],
+    )
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    report = await OpenSearchIndexer(settings).entity_facets(limit=8, value_limit=4)
+
+    assert report.status == "ready"
+    assert report.total_chunks == 5
+    assert report.chunks_with_entities == 3
+    assert report.entity_types[0].key == "document_number"
+    assert report.entity_groups[0].entity_type == "document_number"
+    assert report.entity_groups[0].values[0].key == "RMO12/2024"
+    assert fake_client.post_calls[0]["url"] == "http://localhost:9200/akl_document_chunks/_search"
+
+
+@pytest.mark.asyncio
+async def test_opensearch_entity_search_filters_authorized_documents_and_entity_pair(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient(
+        get_responses=[_FakeResponse(200)],
+        put_responses=[_FakeResponse(200)],
+        post_responses=[
+            _FakeResponse(
+                200,
+                {
+                    "hits": {
+                        "total": {"value": 1},
+                        "hits": [
+                            {
+                                "_score": 7.25,
+                                "_source": {
+                                    "chunk_id": "chunk_1",
+                                    "document_id": "doc_allowed",
+                                    "document_version_id": "ver_1",
+                                    "document_title": "Directive",
+                                    "version_label": "1.0",
+                                    "document_type": "directive",
+                                    "classification": "internal",
+                                    "status": "valid",
+                                    "text": "RMO 12/2024 assigns the action owner.",
+                                    "page_number": 2,
+                                    "section_title": "Article 4",
+                                    "section_path": ["Chapter 1", "Article 4"],
+                                    "source_file_name": "directive.pdf",
+                                    "entity_types": ["document_number"],
+                                    "entity_values": ["RMO12/2024"],
+                                    "entity_pairs": ["document_number:RMO12/2024"],
+                                },
+                                "highlight": {"text": ["RMO 12/2024 assigns the action owner."]},
+                            }
+                        ],
+                    }
+                },
+            )
+        ],
+    )
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    report = await OpenSearchIndexer(settings).entity_search(
+        EntitySearchRequest(
+            query="action owner",
+            entity_type="document_number",
+            entity_value="RMO12/2024",
+            allowed_document_ids=["doc_allowed", "doc_allowed"],
+        )
+    )
+
+    assert report.status == "ready"
+    assert report.total_hits == 1
+    assert report.hits[0].chunk_id == "chunk_1"
+    assert report.hits[0].document_id == "doc_allowed"
+    assert report.hits[0].snippet == "RMO 12/2024 assigns the action owner."
+    search_query = fake_client.post_calls[0]["json"]
+    filters = search_query["query"]["bool"]["filter"]
+    assert {"terms": {"document_id": ["doc_allowed"]}} in filters
+    assert {"term": {"entity_pairs": "document_number:RMO12/2024"}} in filters
+    assert search_query["size"] == 12
+
+
+@pytest.mark.asyncio
+async def test_opensearch_entity_search_without_authorized_documents_returns_empty(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient()
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    report = await OpenSearchIndexer(settings).entity_search(
+        EntitySearchRequest(query="anything", allowed_document_ids=[])
+    )
+
+    assert report.status == "ready"
+    assert report.total_hits == 0
+    assert report.hits == []
+    assert report.warnings[0].code == "NO_AUTHORIZED_DOCUMENTS"
+    assert fake_client.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_opensearch_analyst_search_rewrites_field_aliases_and_filters_authz(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient(
+        get_responses=[_FakeResponse(200)],
+        put_responses=[_FakeResponse(200)],
+        post_responses=[
+            _FakeResponse(
+                200,
+                {
+                    "hits": {
+                        "total": {"value": 1},
+                        "hits": [
+                            {
+                                "_score": 11.5,
+                                "_source": {
+                                    "chunk_id": "chunk_1",
+                                    "document_id": "doc_allowed",
+                                    "document_version_id": "ver_1",
+                                    "document_title": "Directive",
+                                    "version_label": "1.0",
+                                    "document_type": "directive",
+                                    "classification": "internal",
+                                    "status": "valid",
+                                    "text": "RMO 12/2024 assigns the action owner.",
+                                    "section_path": ["Chapter 1"],
+                                    "entity_pairs": ["document_number:RMO12/2024"],
+                                },
+                                "highlight": {"text": ["RMO 12/2024 assigns the action owner."]},
+                            }
+                        ],
+                    }
+                },
+            )
+        ],
+    )
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    report = await OpenSearchIndexer(settings).analyst_search(
+        AnalystSearchRequest(
+            query="title:Directive AND entity:RMO12/2024",
+            query_mode="fielded",
+            search_fields=["title", "entity"],
+            allowed_document_ids=["doc_allowed", "doc_allowed"],
+        )
+    )
+
+    assert report.status == "ready"
+    assert report.query_mode == "fielded"
+    assert report.total_hits == 1
+    assert report.hits[0].document_id == "doc_allowed"
+    search_query = fake_client.post_calls[0]["json"]
+    filters = search_query["query"]["bool"]["filter"]
+    assert {"terms": {"document_id": ["doc_allowed"]}} in filters
+    query_string = search_query["query"]["bool"]["must"][0]["query_string"]
+    assert query_string["query"] == "document_title:Directive AND entity_values:RMO12/2024"
+    assert query_string["fields"] == ["document_title^4", "entity_values^4", "entity_pairs^4", "entity_types"]
+
+
+@pytest.mark.asyncio
+async def test_opensearch_analyst_search_without_authorized_documents_returns_empty(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient()
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    report = await OpenSearchIndexer(settings).analyst_search(
+        AnalystSearchRequest(query="anything", allowed_document_ids=[])
+    )
+
+    assert report.status == "ready"
+    assert report.total_hits == 0
+    assert report.hits == []
+    assert report.warnings[0].code == "NO_AUTHORIZED_DOCUMENTS"
+    assert fake_client.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_opensearch_entity_relationships_builds_evidence_edges(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient(
+        get_responses=[_FakeResponse(200)],
+        put_responses=[_FakeResponse(200)],
+        post_responses=[
+            _FakeResponse(
+                200,
+                {
+                    "hits": {
+                        "total": {"value": 2},
+                        "hits": [
+                            {
+                                "_source": {
+                                    "chunk_id": "chunk_1",
+                                    "document_id": "doc_allowed",
+                                    "document_version_id": "ver_1",
+                                    "document_title": "Directive",
+                                    "version_label": "1.0",
+                                    "text": "RMO 12/2024 assigns aiip.office@example.cz as contact.",
+                                    "page_number": 2,
+                                    "section_title": "Article 4",
+                                    "source_file_name": "directive.pdf",
+                                    "entity_pairs": [
+                                        "document_number:RMO12/2024",
+                                        "email:aiip.office@example.cz",
+                                    ],
+                                }
+                            },
+                            {
+                                "_source": {
+                                    "chunk_id": "chunk_2",
+                                    "document_id": "doc_allowed",
+                                    "document_version_id": "ver_1",
+                                    "document_title": "Directive",
+                                    "version_label": "1.0",
+                                    "text": "RMO 12/2024 references aiip.office@example.cz again.",
+                                    "page_number": 3,
+                                    "section_title": "Article 5",
+                                    "source_file_name": "directive.pdf",
+                                    "entity_pairs": [
+                                        "document_number:RMO12/2024",
+                                        "email:aiip.office@example.cz",
+                                    ],
+                                }
+                            },
+                        ],
+                    }
+                },
+            )
+        ],
+    )
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    report = await OpenSearchIndexer(settings).entity_relationships(
+        EntityRelationshipRequest(
+            entity_type="document_number",
+            entity_value="RMO12/2024",
+            allowed_document_ids=["doc_allowed", "doc_allowed"],
+        )
+    )
+
+    assert report.status == "ready"
+    assert report.total_edges == 1
+    assert report.edges[0].relationship_type == "co_occurs"
+    assert report.edges[0].source.entity_value == "RMO12/2024"
+    assert report.edges[0].target.entity_value == "aiip.office@example.cz"
+    assert report.edges[0].evidence_count == 2
+    assert report.edges[0].document_count == 1
+    assert len(report.edges[0].evidence) == 2
+    search_query = fake_client.post_calls[0]["json"]
+    filters = search_query["query"]["bool"]["filter"]
+    assert {"terms": {"document_id": ["doc_allowed"]}} in filters
+    assert {"exists": {"field": "entity_pairs"}} in filters
+    assert {"term": {"entity_pairs": "document_number:RMO12/2024"}} in filters
+
+
+@pytest.mark.asyncio
+async def test_opensearch_entity_relationships_without_authorized_documents_returns_empty(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch"})
+    fake_client = _FakeAsyncClient()
+    monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
+
+    report = await OpenSearchIndexer(settings).entity_relationships(
+        EntityRelationshipRequest(allowed_document_ids=[])
+    )
+
+    assert report.status == "ready"
+    assert report.total_edges == 0
+    assert report.edges == []
+    assert report.warnings[0].code == "NO_AUTHORIZED_DOCUMENTS"
+    assert fake_client.post_calls == []
 
 
 @pytest.mark.asyncio
@@ -173,6 +585,23 @@ def test_embedding_client_accepts_llm_gateway_api_base_url(tmp_path) -> None:
     assert client._service_base_url() == "http://llm-gateway-service:8080"
 
 
+def test_embedding_profile_dimensions_map_is_parsed(tmp_path) -> None:
+    settings = _settings(
+        tmp_path,
+        {
+            "AKL_INGESTION_DEFAULT_EMBEDDING_MODEL": "qwen3-embedding:8b",
+            "AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS": "1024",
+            "AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP": '{"qwen3_enterprise":"qwen3-embedding:8b"}',
+            "AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP": '{"qwen3_enterprise":1024}',
+        },
+    )
+    client = EmbeddingClient(settings)
+
+    assert settings.default_embedding_dimensions == 1024
+    assert client._model_for_profile("qwen3_enterprise") == "qwen3-embedding:8b"
+    assert client._dimensions_for_profile("qwen3_enterprise") == 1024
+
+
 class _FakeResponse:
     def __init__(self, status_code: int, payload: dict | None = None) -> None:
         self.status_code = status_code
@@ -188,10 +617,13 @@ class _FakeAsyncClient:
         *,
         get_responses: list[_FakeResponse] | None = None,
         put_responses: list[_FakeResponse] | None = None,
+        post_responses: list[_FakeResponse] | None = None,
     ) -> None:
         self.get_responses = get_responses or []
         self.put_responses = put_responses or []
+        self.post_responses = post_responses or []
         self.put_calls: list[dict] = []
+        self.post_calls: list[dict] = []
 
     async def __aenter__(self):
         return self
@@ -205,3 +637,7 @@ class _FakeAsyncClient:
     async def put(self, url: str, *, json: dict, **_kwargs) -> _FakeResponse:
         self.put_calls.append({"url": url, "json": json})
         return self.put_responses.pop(0)
+
+    async def post(self, url: str, *, json: dict, **_kwargs) -> _FakeResponse:
+        self.post_calls.append({"url": url, "json": json})
+        return self.post_responses.pop(0)

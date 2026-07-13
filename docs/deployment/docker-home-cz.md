@@ -53,7 +53,7 @@ cd /srv/akl/repo
 git checkout main
 ```
 
-Docker Compose na `docker.home.cz` při použití `-f infra/docker-compose/docker-compose.docker-home.yml` automaticky načítá `.env` podle compose project adresáře. Produkční hodnoty proto patří mimo Git do `/srv/akl/env/akl.prod.env` a do checkoutu se zkopírují pouze jako lokální necommitované soubory `.env`.
+Produkční hodnoty patří mimo Git do `/srv/akl/env/akl.prod.env`. Standardní deploy skript tento soubor předává Docker Compose explicitně přes `--env-file`, aby build i runtime používaly stejné hodnoty. Bootstrap zároveň do checkoutu obnovuje lokální necommitované `.env` kopie pro nouzové ruční Compose příkazy.
 
 Po klonování nebo po čistém bootstrapu checkoutu spustit jeden příkaz:
 
@@ -315,23 +315,36 @@ Pokud Ollama běží mimo AKB compose stack, nastavte explicitní kandidátní
 endpointy. AKB neprohledává lokální síť; zkusí pouze uvedené URL v pořadí:
 
 ```env
-AKL_OLLAMA_BASE_URL=http://host.docker.internal:11434
-AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URL=http://192.168.200.3:11434
+AKL_OLLAMA_BASE_URLS=http://192.168.200.3:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
 AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS=3
+AKL_INGESTION_EMBEDDING_CONCURRENCY=1
 ```
 
-Stanice `192.168.200.2` a `192.168.1.176` musí mít Ollama dostupnou na
-síťovém rozhraní dosažitelném z `docker.home.cz`, nejen na `127.0.0.1`.
-Nedostupný kandidát se při výběru endpointu přeskočí po
+Stanice `192.168.200.3`, `192.168.200.2` a `192.168.1.176` musí mít Ollama
+dostupnou na síťovém rozhraní dosažitelném z `docker.home.cz`, nejen na
+`127.0.0.1`. Nedostupný kandidát se při výběru endpointu přeskočí po
 `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS`.
 
 Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`:
 
 - `AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb`
+- `AKL_WEB_BASE_PATH=/akb`
 - `AKL_WEB_SESSION_SECRET=<long random secret>`
 - `AKL_WEB_UPLOAD_SIGNING_SECRET=<long random secret>`
 - `AKL_EVAL_SERVICE_TOKEN=<long random service token>`
 - `AKL_GOVERNANCE_SERVICE_TOKEN=<long random service token>`
+
+Evaluation Service runs with `AKL_EVAL_AUTH_MODE=oidc` for the web Quality Lab,
+validates the caller token against the shared AKB issuer/audience/JWKS settings,
+and forwards that identity to RAG/Registry. The legacy evaluation service token
+remains only for explicit bearer-mode automation. Persist and back up both
+`evaluation-datasets` and `evaluation-reports` volumes.
+
+Compose profil pro `docker.home.cz` má pro web build i runtime bezpečný fallback
+`/akb`, aby se Next.js image při chybějící env hodnotě nepostavil pro root `/`.
+Produkční env má ale explicitní `AKL_WEB_BASE_PATH=/akb` dál obsahovat kvůli
+kontrole a čitelnosti provozní konfigurace.
 
 Vzor je v `infra/docker-compose/docker-home.env.example`. Ten je šablona, ne produkční soubor.
 
@@ -386,9 +399,10 @@ Skript provede:
 
 - bootstrap checkoutu,
 - preflight,
-- compose render,
+- compose render s `/srv/akl/env/akl.prod.env`,
 - image build,
-- `docker compose up -d`.
+- validaci, že web image má zabalený `/akb` base path,
+- `docker compose up -d` se stejným env souborem.
 
 8. Ověřit, že Compose bez `--env-file` najde lokální `.env` kopii:
 

@@ -124,6 +124,119 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/intelligence/entities/facets:
+    get:
+      tags:
+      - intelligence
+      summary: Get Entity Facets
+      operationId: get_entity_facets_api_v1_intelligence_entities_facets_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50
+          minimum: 1
+          default: 8
+          title: Limit
+      - name: value_limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50
+          minimum: 1
+          default: 10
+          title: Value Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityFacetReport'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/intelligence/entities/search:
+    post:
+      tags:
+      - intelligence
+      summary: Search Entities
+      operationId: search_entities_api_v1_intelligence_entities_search_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntitySearchRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntitySearchResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/intelligence/analyst/search:
+    post:
+      tags:
+      - intelligence
+      summary: Analyst Search
+      operationId: analyst_search_api_v1_intelligence_analyst_search_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalystSearchRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalystSearchResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/intelligence/entities/relationships:
+    post:
+      tags:
+      - intelligence
+      summary: Entity Relationships
+      operationId: entity_relationships_api_v1_intelligence_entities_relationships_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntityRelationshipRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityRelationshipResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/ingestion/jobs/{job_id}/cancel:
     post:
       tags:
@@ -177,6 +290,720 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
+    AnalystSearchRequest:
+      properties:
+        query:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Query
+        query_mode:
+          type: string
+          enum:
+          - smart
+          - boolean
+          - phrase
+          - proximity
+          - fielded
+          title: Query Mode
+          default: smart
+        search_fields:
+          items:
+            type: string
+            enum:
+            - all
+            - title
+            - body
+            - section
+            - entity
+            - source
+          type: array
+          maxItems: 8
+          title: Search Fields
+        proximity_slop:
+          type: integer
+          maximum: 25.0
+          minimum: 1.0
+          title: Proximity Slop
+          default: 5
+        entity_type:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Entity Type
+        entity_value:
+          anyOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+          title: Entity Value
+        document_type:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Document Type
+        classification:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Classification
+        status:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Status
+        allowed_document_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 5000
+          title: Allowed Document Ids
+        allowed_policy_hashes:
+          anyOf:
+          - additionalProperties:
+              items:
+                type: string
+              type: array
+            type: object
+          - type: 'null'
+          title: Allowed Policy Hashes
+        limit:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Limit
+          default: 12
+      additionalProperties: false
+      type: object
+      title: AnalystSearchRequest
+    AnalystSearchResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - unavailable
+          title: Status
+        index_name:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Index Name
+        query_mode:
+          type: string
+          enum:
+          - smart
+          - boolean
+          - phrase
+          - proximity
+          - fielded
+          title: Query Mode
+        total_hits:
+          type: integer
+          minimum: 0.0
+          title: Total Hits
+        returned_hits:
+          type: integer
+          minimum: 0.0
+          title: Returned Hits
+        hits:
+          items:
+            $ref: '#/components/schemas/EntitySearchHit'
+          type: array
+          title: Hits
+        generated_at:
+          type: string
+          format: date-time
+          title: Generated At
+        warnings:
+          items:
+            $ref: '#/components/schemas/ReportMessage'
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - status
+      - index_name
+      - query_mode
+      - total_hits
+      - returned_hits
+      - generated_at
+      title: AnalystSearchResponse
+    EntityFacetBucket:
+      properties:
+        key:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Key
+        label:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Label
+        count:
+          type: integer
+          minimum: 0.0
+          title: Count
+      type: object
+      required:
+      - key
+      - label
+      - count
+      title: EntityFacetBucket
+    EntityFacetGroup:
+      properties:
+        entity_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Entity Type
+        label:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Label
+        count:
+          type: integer
+          minimum: 0.0
+          title: Count
+        values:
+          items:
+            $ref: '#/components/schemas/EntityFacetBucket'
+          type: array
+          title: Values
+      type: object
+      required:
+      - entity_type
+      - label
+      - count
+      title: EntityFacetGroup
+    EntityFacetReport:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - unavailable
+          title: Status
+        index_name:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Index Name
+        total_chunks:
+          type: integer
+          minimum: 0.0
+          title: Total Chunks
+        chunks_with_entities:
+          type: integer
+          minimum: 0.0
+          title: Chunks With Entities
+        entity_types:
+          items:
+            $ref: '#/components/schemas/EntityFacetBucket'
+          type: array
+          title: Entity Types
+        entity_groups:
+          items:
+            $ref: '#/components/schemas/EntityFacetGroup'
+          type: array
+          title: Entity Groups
+        generated_at:
+          type: string
+          format: date-time
+          title: Generated At
+        warnings:
+          items:
+            $ref: '#/components/schemas/ReportMessage'
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - status
+      - index_name
+      - total_chunks
+      - chunks_with_entities
+      - generated_at
+      title: EntityFacetReport
+    EntityRelationshipEdge:
+      properties:
+        edge_id:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Edge Id
+        relationship_type:
+          type: string
+          const: co_occurs
+          title: Relationship Type
+        source:
+          $ref: '#/components/schemas/EntityRelationshipEndpoint'
+        target:
+          $ref: '#/components/schemas/EntityRelationshipEndpoint'
+        evidence_count:
+          type: integer
+          minimum: 1.0
+          title: Evidence Count
+        document_count:
+          type: integer
+          minimum: 1.0
+          title: Document Count
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+        evidence:
+          items:
+            $ref: '#/components/schemas/EntityRelationshipEvidence'
+          type: array
+          title: Evidence
+      type: object
+      required:
+      - edge_id
+      - relationship_type
+      - source
+      - target
+      - evidence_count
+      - document_count
+      - confidence
+      title: EntityRelationshipEdge
+    EntityRelationshipEndpoint:
+      properties:
+        entity_type:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Entity Type
+        entity_value:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Entity Value
+        label:
+          type: string
+          maxLength: 384
+          minLength: 1
+          title: Label
+      type: object
+      required:
+      - entity_type
+      - entity_value
+      - label
+      title: EntityRelationshipEndpoint
+    EntityRelationshipEvidence:
+      properties:
+        chunk_id:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Chunk Id
+        document_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          maxLength: 512
+          minLength: 1
+          title: Document Title
+        version_label:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Version Label
+        snippet:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Snippet
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        section_title:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Section Title
+        source_file_name:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Source File Name
+        policy_binding_id:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Policy Binding Id
+        policy_version:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Policy Version
+        policy_hash:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Policy Hash
+      type: object
+      required:
+      - chunk_id
+      - document_id
+      - document_version_id
+      - document_title
+      - snippet
+      title: EntityRelationshipEvidence
+    EntityRelationshipRequest:
+      properties:
+        entity_type:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Entity Type
+        entity_value:
+          anyOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+          title: Entity Value
+        document_type:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Document Type
+        classification:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Classification
+        status:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Status
+        allowed_document_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 5000
+          title: Allowed Document Ids
+        allowed_policy_hashes:
+          anyOf:
+          - additionalProperties:
+              items:
+                type: string
+              type: array
+            type: object
+          - type: 'null'
+          title: Allowed Policy Hashes
+        min_evidence_count:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Min Evidence Count
+          default: 1
+        limit:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Limit
+          default: 12
+      additionalProperties: false
+      type: object
+      title: EntityRelationshipRequest
+    EntityRelationshipResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - unavailable
+          title: Status
+        index_name:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Index Name
+        total_edges:
+          type: integer
+          minimum: 0.0
+          title: Total Edges
+        returned_edges:
+          type: integer
+          minimum: 0.0
+          title: Returned Edges
+        edges:
+          items:
+            $ref: '#/components/schemas/EntityRelationshipEdge'
+          type: array
+          title: Edges
+        generated_at:
+          type: string
+          format: date-time
+          title: Generated At
+        warnings:
+          items:
+            $ref: '#/components/schemas/ReportMessage'
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - status
+      - index_name
+      - total_edges
+      - returned_edges
+      - generated_at
+      title: EntityRelationshipResponse
+    EntitySearchHit:
+      properties:
+        chunk_id:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Chunk Id
+        document_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Version Id
+        document_title:
+          type: string
+          maxLength: 512
+          minLength: 1
+          title: Document Title
+        version_label:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Version Label
+        document_type:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Document Type
+        classification:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Classification
+        status:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Status
+        policy_binding_id:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Policy Binding Id
+        policy_version:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Policy Version
+        policy_hash:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Policy Hash
+        score:
+          type: number
+          minimum: 0.0
+          title: Score
+        snippet:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Snippet
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        section_title:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Section Title
+        section_path:
+          items:
+            type: string
+          type: array
+          title: Section Path
+        source_file_name:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Source File Name
+        entity_types:
+          items:
+            type: string
+          type: array
+          title: Entity Types
+        entity_values:
+          items:
+            type: string
+          type: array
+          title: Entity Values
+        entity_pairs:
+          items:
+            type: string
+          type: array
+          title: Entity Pairs
+      type: object
+      required:
+      - chunk_id
+      - document_id
+      - document_version_id
+      - document_title
+      - score
+      - snippet
+      title: EntitySearchHit
+    EntitySearchRequest:
+      properties:
+        query:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Query
+        entity_type:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Entity Type
+        entity_value:
+          anyOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+          title: Entity Value
+        document_type:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Document Type
+        classification:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Classification
+        status:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Status
+        allowed_document_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 5000
+          title: Allowed Document Ids
+        allowed_policy_hashes:
+          anyOf:
+          - additionalProperties:
+              items:
+                type: string
+              type: array
+            type: object
+          - type: 'null'
+          title: Allowed Policy Hashes
+        limit:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Limit
+          default: 12
+      additionalProperties: false
+      type: object
+      title: EntitySearchRequest
+    EntitySearchResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - unavailable
+          title: Status
+        index_name:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Index Name
+        total_hits:
+          type: integer
+          minimum: 0.0
+          title: Total Hits
+        returned_hits:
+          type: integer
+          minimum: 0.0
+          title: Returned Hits
+        hits:
+          items:
+            $ref: '#/components/schemas/EntitySearchHit'
+          type: array
+          title: Hits
+        generated_at:
+          type: string
+          format: date-time
+          title: Generated At
+        warnings:
+          items:
+            $ref: '#/components/schemas/ReportMessage'
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - status
+      - index_name
+      - total_hits
+      - returned_hits
+      - generated_at
+      title: EntitySearchResponse
     HTTPValidationError:
       properties:
         detail:
@@ -221,6 +1048,13 @@ components:
           maxLength: 2048
           minLength: 1
           title: Source File Uri
+        extraction_profile:
+          anyOf:
+          - type: string
+            maxLength: 80
+            minLength: 1
+          - type: 'null'
+          title: Extraction Profile
         parser_profile:
           type: string
           maxLength: 80
@@ -268,6 +1102,10 @@ components:
           - type: string
           - type: 'null'
           title: Source File Uri
+        extraction_profile:
+          type: string
+          title: Extraction Profile
+          default: document_text_v1
         parser_profile:
           type: string
           title: Parser Profile
@@ -308,6 +1146,81 @@ components:
       - document_version_id
       - created_at
       title: IngestionJobResponse
+    IngestionQualityReport:
+      properties:
+        extraction_profile:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Extraction Profile
+        parser_name:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Parser Name
+        parser_engine:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Parser Engine
+        pages_processed:
+          type: integer
+          minimum: 0.0
+          title: Pages Processed
+        pages_with_text:
+          type: integer
+          minimum: 0.0
+          title: Pages With Text
+          default: 0
+        empty_pages:
+          items:
+            type: integer
+          type: array
+          title: Empty Pages
+        text_chars_extracted:
+          type: integer
+          minimum: 0.0
+          title: Text Chars Extracted
+          default: 0
+        tables_detected:
+          type: integer
+          minimum: 0.0
+          title: Tables Detected
+          default: 0
+        ocr_used:
+          type: boolean
+          title: Ocr Used
+          default: false
+        quality_score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Quality Score
+          default: 0
+        quality_tier:
+          type: string
+          enum:
+          - good
+          - review
+          - poor
+          title: Quality Tier
+          default: poor
+        requires_review:
+          type: boolean
+          title: Requires Review
+          default: false
+        capabilities:
+          items:
+            type: string
+          type: array
+          title: Capabilities
+      type: object
+      required:
+      - extraction_profile
+      - parser_name
+      - pages_processed
+      title: IngestionQualityReport
     IngestionReport:
       properties:
         job_id:
@@ -334,6 +1247,10 @@ components:
         ocr_used:
           type: boolean
           title: Ocr Used
+        quality:
+          anyOf:
+          - $ref: '#/components/schemas/IngestionQualityReport'
+          - type: 'null'
         warnings:
           items:
             $ref: '#/components/schemas/ReportMessage'

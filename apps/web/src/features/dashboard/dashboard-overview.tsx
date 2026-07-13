@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Bot, ClipboardList, FileText, UploadCloud } from "lucide-react";
+import { AccessAuditList } from "@voldzi/stratos-ui";
 
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
@@ -10,6 +11,7 @@ import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuditEvent, AuthorizationHint, Document, IngestionJob, RegistryWorkflowTask } from "@/lib/types";
 import { documentTypeLabel, formatDateTime } from "@/lib/format";
 import { buildWorkflowTasks, isTaskOverdue } from "@/features/tasks/workflow-task-model";
+import { accessAuditItemFromEvent } from "@/features/audit/access-audit-items";
 
 interface DashboardOverviewProps {
   documents: Document[];
@@ -48,6 +50,9 @@ const dashboardCopy = {
     classification: "Klasifikace",
     updated: "Aktualizováno",
     ingestionAndAudit: "Zpracování a audit",
+    auditActor: "Aktér",
+    auditCreated: "Vytvořeno",
+    auditEmpty: "Bez auditních událostí v aktuálním přehledu.",
     hiddenActions: "Akce se zobrazují jen uživatelům, kteří k nim mají oprávnění.",
     publishingVisible: "Publikování je viditelné.",
     publishingHidden: "Publikování je v této relaci skryté.",
@@ -89,6 +94,9 @@ const dashboardCopy = {
     classification: "Classification",
     updated: "Updated",
     ingestionAndAudit: "Processing and audit",
+    auditActor: "Actor",
+    auditCreated: "Created",
+    auditEmpty: "No audit events in the current overview.",
     hiddenActions: "Actions are shown only to users who are allowed to use them.",
     publishingVisible: "Publishing is visible.",
     publishingHidden: "Publishing is hidden in this session.",
@@ -159,6 +167,19 @@ export function DashboardOverview({
       })
       .slice(0, 5);
   }, [documents, language, recentClassifications, recentQuery, recentStatuses]);
+  const dashboardAuditItems = useMemo(
+    () =>
+      auditEvents.slice(0, 2).map((event) =>
+        accessAuditItemFromEvent(event, {
+          language,
+          labels: {
+            actor: copy.auditActor,
+            created: copy.auditCreated
+          }
+        })
+      ),
+    [auditEvents, copy.auditActor, copy.auditCreated, language]
+  );
   const recentDocumentColumns: Array<StratosDataTableColumn<Document>> = [
     {
       id: "document",
@@ -307,14 +328,7 @@ export function DashboardOverview({
             <div className="notice">
               {copy.hiddenActions} {authorization.can_publish ? copy.publishingVisible : copy.publishingHidden}
             </div>
-            <div className="timeline">
-              {auditEvents.slice(0, 2).map((event) => (
-                <div className="timeline-item" key={event.audit_event_id}>
-                  <strong>{event.event_type}</strong>
-                  <span>{event.actor_id} - {formatDateTime(event.created_at, language)}</span>
-                </div>
-              ))}
-            </div>
+            <AccessAuditList items={dashboardAuditItems} emptyLabel={copy.auditEmpty} />
           </div>
         </div>
       </section>

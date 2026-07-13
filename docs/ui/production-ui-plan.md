@@ -65,9 +65,18 @@ Markdown sources render as formatted documents with GFM tables, a generated cont
 Phase 05 introduces the Document Workbench direction:
 
 - `/documents` now supports registry metrics, search, filters, and work views.
+- Registry create/version actions are contextual: create is available with no
+  selection, while version upload requires exactly one selected document.
 - Document detail is split into overview, viewer, workflow, insights, versions, and ingestion sections.
 - `/documents/new` guides operators through metadata plus the first source file in one process, then creates version `1.0` and queues ingestion.
+- New documents require exactly one gestor and one distinct approver selected
+  through the shared organization directory workflow component. Registry
+  persists both assignments and their audit metadata atomically with the draft.
+- `/upload` accepts an explicit `document_id`; it never asks the user to choose
+  a second document after the action was started from Registry or detail.
 - Upload has file preflight metadata, SHA-256 calculation, a signed upload session, browser PUT upload and then the workflow request.
+- Both native AKB upload flows use the shared `FileDropzone`. AKB still owns
+  preflight, object transfer, confirm, ingestion, classification, DLP and audit.
 - `/help` provides in-app help for document managers, owners/gestors, and auditors.
 
 The current upload bridge stores the source object in shared local object storage, creates a draft version and queues ingestion. Publishing is separated behind the Registry API approval state and publish gate.
@@ -76,11 +85,35 @@ Upload preflight accepts common document source types: PDF, DOC/DOCX, XLSX/XLSM,
 
 Imported external corpora should preserve original sources. The Markdown folder importer remains a Markdown importer; where Markdown files are derivatives of raw PDFs, `tools/import_original_pdf_versions.py` migrates available raw PDFs into current controlled source versions after ingestion succeeds.
 
-### STRATOS UI Adapter
+### STRATOS UI Integration
 
-AKB now uses a local STRATOS-compatible UI adapter in `apps/web/src/components/stratos`. It mirrors the shared STRATOS component direction for shell, rail, buttons, search, view tabs, field help and document PDF viewing while `@voldzi/stratos-ui` is consumed from the public npm registry.
+AKB consumes `@voldzi/stratos-ui@0.3.29` from the public npm registry. The
+application shell imports `AppShell`, `AppRail`, `GlobalTopbar`,
+`useRailSectionSidebarController`, `WorkspaceSidebar`, `WorkspaceNav`,
+`CommandCenterTrigger`, `GlobalTopbarBreadcrumb` and `TopbarStatusGroup`
+directly. Local code owns only role filtering, routing, labels and commands.
 
-The adapter keeps `stratos-*` class names and maps AKB theme values to `--stratos-*` tokens. It is now used by the app shell, narrow rail, workspace submenu, document registry, shared DataTable surfaces, document detail tabs and actions, PDF citation-page rendering, workflow inbox filters/actions, upload/chat submits, ingestion refresh and dashboard inbox link. Shared imports include `GlobalTopbar`, `CommandCenter`, `SelectField`, `SettingsSurface`, `SurfaceModeMenu`, `DataTable`, `HelpHint`, `FieldLabelWithHelp`, `StratosPdfViewer`, and `@voldzi/stratos-ui/styles.css`.
+The shared stylesheet owns shell layout, compact and mobile breakpoints,
+drawer, backdrop, focus management, topbar popovers and mobile bottom rail.
+AKB does not maintain local copies or CSS repairs for these behaviors. Small
+adapters remain only where a feature-level props API differs from the shared
+component. Other shared imports include `CommandCenter`, `SelectField`,
+`SettingsSurface`, `SurfaceModeMenu`, `DataTable`, `HelpHint`,
+`FieldLabelWithHelp`, `AccessAuditList`, `AccessEffectiveMatrix`,
+`GovernanceIssueList`, `StratosPdfViewer`, and the single root import of
+`@voldzi/stratos-ui/styles.css`.
+
+Document workflows additionally use `FileDropzone` and
+`WorkflowParticipants`. AKB supplies localized role definitions, controlled
+assignments and permission-scoped `DirectorySubjectOption` records; the shared
+library owns selection, drag/drop, validation presentation and directory UI.
+
+Governance findings are operational/admin oversight data. AKB renders them with
+`GovernanceIssueList` in document governance surfaces and keeps the executive
+dashboard focused on aggregate workflow status, not detailed findings. The
+global shell uses the shared `GlobalTopbarBreadcrumb` and
+`CommandCenterTrigger`; responsive sidebar state follows the `AppShell`
+`inert` contract so closed overlay navigation cannot receive focus.
 
 ### Workflow Inbox
 

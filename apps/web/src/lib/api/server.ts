@@ -10,10 +10,11 @@ import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
 import {
   buildPublicAppUrl,
-  contextFromOidcSession,
   readSessionCookie,
+  refreshOidcSession,
   type OidcSession,
 } from "../auth/oidc";
+import { contextFromStratosAccessProjection } from "../auth/access-projection";
 
 type RequestLike = Request & {
   cookies?: {
@@ -79,9 +80,15 @@ export async function getServerRequestContextForRequest(
 export async function getOptionalServerRequestContext(
   request?: RequestLike,
 ): Promise<ApiRequestContext | null> {
+  const bearerToken = bearerTokenFromRequest(request);
+  if (bearerToken) {
+    return contextFromStratosAccessProjection(bearerToken, getAklConfig());
+  }
+
   const session = await getOptionalServerOidcSession(request);
   if (session) {
-    return contextFromOidcSession(session);
+    if (!session.accessToken) return null;
+    return contextFromStratosAccessProjection(session.accessToken, getAklConfig());
   }
 
   const config = getAklConfig();
@@ -99,6 +106,19 @@ export async function getOptionalServerRequestContext(
       .split(",")
       .map((group) => group.trim())
       .filter(Boolean),
+    capabilities: (process.env.AKL_WEB_DEV_CAPABILITIES ?? "")
+      .split(",")
+      .map((capability) => capability.trim())
+      .filter(Boolean),
+    scopes: (process.env.AKL_WEB_DEV_SCOPES ?? "")
+      .split(",")
+      .map((scope) => scope.trim())
+      .filter(Boolean),
+    organizationId: process.env.AKL_WEB_DEV_ORGANIZATION_ID ?? "org_stratos",
+    identityActive: true,
+    membershipActive: true,
+    applicationAccessActive: true,
+    authorizationSource: "mock",
     accessToken: config.devAccessToken,
   });
 }
@@ -113,7 +133,8 @@ export async function getOptionalServerOidcSession(
   const cookieStore = request
     ? cookieReaderFromRequest(request)
     : await cookies();
-  return readSessionCookie(cookieStore, config);
+  const session = readSessionCookie(cookieStore, config);
+  return session ? refreshOidcSession(config, session) : null;
 }
 
 function cookieReaderFromRequest(request: RequestLike): CookieReader {
@@ -134,4 +155,16 @@ function cookieReaderFromRequest(request: RequestLike): CookieReader {
       return value === undefined ? undefined : { value };
     },
   };
+}
+
+function bearerTokenFromRequest(request?: RequestLike): string | null {
+  const authorization = request?.headers.get("authorization") ?? null;
+  if (!authorization) {
+    return null;
+  }
+  const [scheme, token] = authorization.trim().split(/\s+/, 2);
+  if (scheme?.toLowerCase() !== "bearer" || !token) {
+    return null;
+  }
+  return token;
 }

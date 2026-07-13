@@ -87,6 +87,35 @@ GET /api/ready
 
 Production base-path deployment publishes these under `/akb/api/...`.
 
+## AIIP Application API
+
+Provision `aiip-service` in the STRATOS Keycloak realm only after both public
+AIIP operations are deployed. Assign only `service_aiip`, add audience
+`akb-api`, keep the generated secret outside Git with mode `0600`, and do not
+print the secret or access token in deployment logs.
+
+Provision the internal RAG-to-Registry credential with the same idempotent
+helper before restarting RAG:
+
+```bash
+AIIP_CLIENT_ID=akb-rag-service \
+AIIP_ROLE=service_rag \
+AIIP_AUDIENCE=akl-api \
+AIIP_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret \
+SERVICE_CLIENT_NAME='AKB RAG to Registry' \
+./scripts/ensure_aiip_service_client.sh
+```
+
+The RAG container mounts this file read-only and exchanges it for short-lived
+Registry tokens. It does not receive the `aiip-service` secret.
+
+After deployment, verify a synthetic `internal` harmonization, an authorized
+tenant-scoped duplicate search, exact idempotent replay, a conflicting replay,
+and `restricted` rejection. Existing AIIP documents require reingestion so the
+new tenant/source identity fields reach Qdrant and OpenSearch. Detailed
+contract and acceptance behavior is in
+`docs/integration/AKB_AIIP_APPLICATION_API.md`.
+
 ## Backup And Restore
 
 Back up:
@@ -94,6 +123,7 @@ Back up:
 - PostgreSQL databases,
 - object storage document sources,
 - Qdrant collections or snapshots,
+- OpenSearch fulltext indexes,
 - Keycloak configuration,
 - evaluation datasets and reports,
 - production configuration outside Git.
@@ -107,6 +137,11 @@ RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<ba
 
 ## Document Corpus Reset
 
+The coordinated new-epoch full reset is a separate gated operation documented
+in `docs/OPERATIONS/akb-epoch-reset.md`. Its command is dry-run by default and
+requires an exact confirmation plus verified isolated-restore manifest for
+apply. Do not use it before G4, two G5 rehearsals, G6 restore, and G7 approval.
+
 For pre-pilot document reloads, prepare the public PDF corpus first and then reset/import only the document corpus:
 
 ```bash
@@ -116,6 +151,30 @@ python3 tools/reset_pdf_first_corpus.py --domain public-digitalization-corpus --
 
 The workflow keeps user profiles, roles, Keycloak, observability and STRATOS application data intact. Details:
 `docs/OPERATIONS/reset-pdf-first-corpus.md`.
+
+## Document Readiness Check
+
+Before pilot acceptance or after a corpus import, run the Registry readiness
+aggregate from an authorized context:
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://<akb-host>/registry/api/v1/documents/readiness-report?max_issues=100"
+```
+
+The report is permission-scoped and uses metadata only. Treat
+`blocked_documents > 0` as a release blocker for the reviewed corpus segment and
+use `issue_counts` to prioritize missing gestor/access policy/source version,
+validity/source-hash, duplicate-source, ingestion, and OCR quality remediation.
+
+## Retrieval Quality Gate
+
+Use the Intelligence submenu `Kvalita vyhledávání` to create a private silver
+baseline from Registry-visible documents and run the first retrieval benchmark.
+Evaluation datasets and reports are persisted in the `evaluation-datasets` and
+`evaluation-reports` volumes. Back up both volumes before destructive retrieval
+or corpus changes. Detailed thresholds, maturity rules and acceptance flow are
+in `docs/evaluation/retrieval-quality-lab.md`.
 
 ## OKF Knowledge Bundles
 
@@ -161,3 +220,4 @@ Detailed references:
 - `docs/OPERATIONS/07_DEPLOYMENT_MODEL.md`
 - `docs/OPERATIONS/backup-restore.md`
 - `docs/OPERATIONS/reset-pdf-first-corpus.md`
+- `docs/OPERATIONS/akb-epoch-reset.md`

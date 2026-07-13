@@ -83,6 +83,8 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
+      opensearch:
+        condition: service_started
       minio:
         condition: service_started
       keycloak:
@@ -135,6 +137,30 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    logging: *json-logging
+
+  opensearch:
+    image: ${OPENSEARCH_IMAGE:-opensearchproject/opensearch:2}
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}"
+    ports:
+      - "${OPENSEARCH_HTTP_PORT:-9200}:9200"
+      - "${OPENSEARCH_PERFORMANCE_ANALYZER_PORT:-9600}:9600"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - data_zone
+      - management_zone
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/9200' >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
     logging: *json-logging
 
   minio:
@@ -286,6 +312,10 @@ services:
       AKL_INGESTION_API_BASE_URL: ${AKL_WEB_INGESTION_API_BASE_URL:-http://ingestion-service:8090/api/v1}
       AKL_RAG_API_BASE_URL: ${AKL_WEB_RAG_API_BASE_URL:-http://rag-retrieval-service:8080/api/v1}
       AKL_GOVERNANCE_API_BASE_URL: ${AKL_WEB_GOVERNANCE_API_BASE_URL:-http://governance-service:8080/api/v1}
+      AKL_EVALUATION_API_BASE_URL: ${AKL_WEB_EVALUATION_API_BASE_URL:-http://evaluation-service:8080/api/v1}
+      AKL_WEB_STRATOS_AUTH_ME_URL: ${AKL_WEB_STRATOS_AUTH_ME_URL:-http://host.docker.internal:4000/api/v1/auth/me}
+      AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS: ${AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS:-3000}
+      AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS: ${AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS:-0}
       AKL_DEV_ACCESS_TOKEN: ${AKL_DEV_ACCESS_TOKEN:-}
       AKL_WEB_OBJECT_STORAGE_ROOT: /data/object-storage
       AKL_WEB_UPLOAD_BUCKET: ${AKL_WEB_UPLOAD_BUCKET:-akl-documents}
@@ -294,6 +324,9 @@ services:
       AKL_WEB_DEV_SUBJECT: ${AKL_WEB_DEV_SUBJECT:-user_dev}
       AKL_WEB_DEV_ROLES: ${AKL_WEB_DEV_ROLES:-admin,document_manager,reader}
       AKL_WEB_DEV_GROUPS: ${AKL_WEB_DEV_GROUPS:-}
+      AKL_WEB_DEV_CAPABILITIES: ${AKL_WEB_DEV_CAPABILITIES:-}
+      AKL_WEB_DEV_SCOPES: ${AKL_WEB_DEV_SCOPES:-}
+      AKL_WEB_DEV_ORGANIZATION_ID: ${AKL_WEB_DEV_ORGANIZATION_ID:-org_stratos}
       PORT: 3000
     ports:
       - "${WEB_PORT:-3002}:3000"
@@ -337,6 +370,12 @@ services:
       AKL_AUTO_CREATE_SCHEMA: ${AKL_REGISTRY_AUTO_CREATE_SCHEMA:-true}
       AKL_MOCK_SUBJECT: ${AKL_MOCK_SUBJECT:-user_dev}
       AKL_MOCK_ROLES: ${AKL_MOCK_ROLES:-["admin"]}
+      AKL_STRATOS_AUTH_ME_URL: ${AKL_STRATOS_AUTH_ME_URL:-http://host.docker.internal:4000/api/v1/auth/me}
+      AKL_STRATOS_POLICY_BINDINGS_URL: ${AKL_STRATOS_POLICY_BINDINGS_URL:-http://host.docker.internal:4000/api/v1/policy/bindings}
+      AKL_STRATOS_POLICY_DECISIONS_URL: ${AKL_STRATOS_POLICY_DECISIONS_URL:-http://host.docker.internal:4000/api/v1/policy/decisions}
+      AKL_STRATOS_POLICY_SERVICE_TOKEN: ${AKL_STRATOS_POLICY_SERVICE_TOKEN:-}
+      AKL_STRATOS_ACCESS_TIMEOUT_SECONDS: ${AKL_STRATOS_ACCESS_TIMEOUT_SECONDS:-3}
+      AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS: ${AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS:-0}
     ports:
       - "${REGISTRY_API_PORT:-8001}:8000"
     depends_on:
@@ -368,20 +407,37 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_INGESTION_AUTH_MODE:-mock}
+      AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:-http://keycloak:8080/realms/stratos}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:-http://keycloak:8080/realms/stratos/protocol/openid-connect/certs}
       AKL_SERVICE_ACCOUNT_SUBJECT: ${AKL_INGESTION_SERVICE_ACCOUNT_SUBJECT:-svc-ingestion}
       AKL_SERVICE_ACCOUNT_ROLES: ${AKL_INGESTION_SERVICE_ACCOUNT_ROLES:-service_ingestion,document_manager}
       AKL_INGESTION_REGISTRY_CLIENT_MODE: ${AKL_INGESTION_REGISTRY_CLIENT_MODE:-http}
       AKL_REGISTRY_API_BASE_URL: ${AKL_INGESTION_REGISTRY_API_BASE_URL:-http://registry-api:8000}
       AKL_INGESTION_OBJECT_STORAGE_MODE: ${AKL_INGESTION_OBJECT_STORAGE_MODE:-local}
       AKL_OBJECT_STORAGE_ROOT: /data/object-storage
+      AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE: ${AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE:-document_text_v1}
+      AKL_INGESTION_PDF_ENGINE: ${AKL_INGESTION_PDF_ENGINE:-auto}
+      AKL_INGESTION_OCR_PROVIDER: ${AKL_INGESTION_OCR_PROVIDER:-ocrmypdf}
+      AKL_INGESTION_OCR_LANGUAGE: ${AKL_INGESTION_OCR_LANGUAGE:-ces+eng}
+      AKL_INGESTION_OCRMYPDF_COMMAND: ${AKL_INGESTION_OCRMYPDF_COMMAND:-ocrmypdf}
+      AKL_INGESTION_OCR_TIMEOUT_SECONDS: ${AKL_INGESTION_OCR_TIMEOUT_SECONDS:-300}
+      AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR: ${AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR:-20}
       AKL_INGESTION_EMBEDDING_CLIENT_MODE: ${AKL_INGESTION_EMBEDDING_CLIENT_MODE:-http}
       AKL_LLM_GATEWAY_BASE_URL: ${AKL_INGESTION_LLM_GATEWAY_BASE_URL:-http://llm-gateway-service:8080/api/v1}
+      AKL_LLM_GATEWAY_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:-}
+      AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
       AKL_INGESTION_DEFAULT_EMBEDDING_MODEL: ${AKL_INGESTION_DEFAULT_EMBEDDING_MODEL:-bge-m3}
-      AKL_INGESTION_INDEXER_MODE: ${AKL_INGESTION_INDEXER_MODE:-qdrant}
+      AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS: ${AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS:-}
+      AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP: ${AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP:-{}}
+      AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP: ${AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP:-{}}
+      AKL_INGESTION_INDEXER_MODE: ${AKL_INGESTION_INDEXER_MODE:-qdrant,opensearch}
       AKL_QDRANT_BASE_URL: ${AKL_QDRANT_BASE_URL:-http://qdrant:6333}
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
       AKL_QDRANT_VECTOR_SIZE: ${AKL_QDRANT_VECTOR_SIZE:-1024}
       AKL_QDRANT_DISTANCE: ${AKL_QDRANT_DISTANCE:-Cosine}
+      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-http://opensearch:9200}
+      AKL_OPENSEARCH_INDEX: ${AKL_OPENSEARCH_INDEX:-akl_document_chunks}
       AKL_INGESTION_JOB_STORE_PATH: /data/ingestion-jobs
       AKL_INGESTION_PROCESS_JOBS_INLINE: ${AKL_INGESTION_PROCESS_JOBS_INLINE:-true}
     ports:
@@ -393,6 +449,8 @@ services:
       registry-api:
         condition: service_healthy
       qdrant:
+        condition: service_started
+      opensearch:
         condition: service_started
       minio:
         condition: service_started
@@ -414,20 +472,31 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_RAG_AUTH_MODE:-mock}
+      AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:-http://keycloak:8080/realms/stratos}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:-http://keycloak:8080/realms/stratos/protocol/openid-connect/certs}
       AKL_SERVICE_ACCOUNT_SUBJECT: ${AKL_RAG_SERVICE_ACCOUNT_SUBJECT:-svc-rag}
       AKL_SERVICE_ACCOUNT_ROLES: ${AKL_RAG_SERVICE_ACCOUNT_ROLES:-service_rag}
       AKL_RAG_DEPENDENCY_MODE: ${AKL_RAG_DEPENDENCY_MODE:-http}
       AKL_RAG_REGISTRY_CLIENT_MODE: ${AKL_RAG_REGISTRY_CLIENT_MODE:-http}
       AKL_RAG_RETRIEVER_MODE: ${AKL_RAG_RETRIEVER_MODE:-qdrant}
+      AKL_RAG_FULLTEXT_MODE: ${AKL_RAG_FULLTEXT_MODE:-opensearch}
       AKL_RAG_LLM_CLIENT_MODE: ${AKL_RAG_LLM_CLIENT_MODE:-http}
       AKL_RAG_AUTHZ_MODE: ${AKL_RAG_AUTHZ_MODE:-dev}
       AKL_REGISTRY_BASE_URL: ${AKL_RAG_REGISTRY_BASE_URL:-http://registry-api:8000/api/v1}
       AKL_QDRANT_BASE_URL: ${AKL_QDRANT_BASE_URL:-http://qdrant:6333}
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
+      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-http://opensearch:9200}
+      AKL_OPENSEARCH_INDEX: ${AKL_OPENSEARCH_INDEX:-akl_document_chunks}
       AKL_LLM_GATEWAY_BASE_URL: ${AKL_RAG_LLM_GATEWAY_BASE_URL:-http://llm-gateway-service:8080/api/v1}
+      AKL_LLM_GATEWAY_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:-}
+      AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
       AKL_GOVERNANCE_BASE_URL: ${AKL_RAG_GOVERNANCE_BASE_URL:-http://governance-service:8080/api/v1}
       AKL_RAG_CHAT_MODEL: ${AKL_RAG_CHAT_MODEL:-gemma4:12b-mlx}
+      AKL_RAG_HIGH_QUALITY_CHAT_MODEL: ${AKL_RAG_HIGH_QUALITY_CHAT_MODEL:-}
+      AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS: ${AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS:-6}
       AKL_RAG_EMBEDDING_MODEL: ${AKL_RAG_EMBEDDING_MODEL:-bge-m3}
+      AKL_RAG_EMBEDDING_DIMENSIONS: ${AKL_RAG_EMBEDDING_DIMENSIONS:-}
       AKL_RAG_ANSWER_MAX_TOKENS: ${AKL_RAG_ANSWER_MAX_TOKENS:-512}
       AKL_RAG_SOURCE_CONTEXT_WINDOW: ${AKL_RAG_SOURCE_CONTEXT_WINDOW:-1}
       AKL_RAG_REQUIRE_CITATIONS: ${AKL_RAG_REQUIRE_CITATIONS:-true}
@@ -438,6 +507,8 @@ services:
       registry-api:
         condition: service_healthy
       qdrant:
+        condition: service_started
+      opensearch:
         condition: service_started
       llm-gateway-service:
         condition: service_healthy
@@ -457,11 +528,17 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_LLM_AUTH_MODE:-mock}
+      AKL_SERVICE_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:-}
+      AKL_LLM_REQUIRE_CALLER_IDENTITY: ${AKL_LLM_REQUIRE_CALLER_IDENTITY:-false}
+      AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
+      AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES: ${AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES:-service_ingestion,service_rag}
       AKL_LLM_DEFAULT_PROVIDER: ${AKL_LLM_DEFAULT_PROVIDER:-ollama}
       AKL_LLM_ENABLED_PROVIDERS: ${AKL_LLM_ENABLED_PROVIDERS:-mock,ollama}
-      AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{"gemma4:12b-mlx":"ollama","bge-m3":"ollama","mock-chat":"mock","mock-embedding":"mock"}}
+      AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama","mock-chat":"mock","mock-embedding":"mock"}}
       AKL_LLM_DEFAULT_CHAT_MODEL: ${AKL_LLM_DEFAULT_CHAT_MODEL:-gemma4:12b-mlx}
+      AKL_LLM_CHAT_MODEL_FALLBACKS: ${AKL_LLM_CHAT_MODEL_FALLBACKS:-{"gemma4:31b-mlx":["gemma4:12b-mlx"]}}
       AKL_LLM_DEFAULT_EMBEDDING_MODEL: ${AKL_LLM_DEFAULT_EMBEDDING_MODEL:-bge-m3}
+      AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS: ${AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS:-}
       AKL_LLM_DEFAULT_MAX_TOKENS: ${AKL_LLM_DEFAULT_MAX_TOKENS:-512}
       AKL_LLM_ALLOW_MODEL_PULL: ${AKL_LLM_ALLOW_MODEL_PULL:-false}
       AKL_LLM_ALLOW_MODEL_DELETE: ${AKL_LLM_ALLOW_MODEL_DELETE:-false}
@@ -508,15 +585,24 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-dev}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_EVAL_AUTH_MODE:-mock}
+      AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:-http://keycloak:8080/realms/stratos}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:-http://keycloak:8080/realms/stratos/protocol/openid-connect/certs}
+      AKL_STRATOS_AUTH_ME_URL: ${AKL_STRATOS_AUTH_ME_URL:-http://host.docker.internal:4000/api/v1/auth/me}
+      AKL_STRATOS_ACCESS_TIMEOUT_SECONDS: ${AKL_STRATOS_ACCESS_TIMEOUT_SECONDS:-3}
       AKL_EVAL_DEPENDENCY_MODE: ${AKL_EVAL_DEPENDENCY_MODE:-mock}
       AKL_EVAL_RAG_CLIENT_MODE: ${AKL_EVAL_RAG_CLIENT_MODE:-mock}
       AKL_EVAL_REGISTRY_CLIENT_MODE: ${AKL_EVAL_REGISTRY_CLIENT_MODE:-mock}
       AKL_RAG_BASE_URL: ${AKL_EVAL_RAG_BASE_URL:-http://rag-retrieval-service:8080/api/v1}
       AKL_REGISTRY_BASE_URL: ${AKL_EVAL_REGISTRY_BASE_URL:-http://registry-api:8000/api/v1}
+      AKL_EVAL_DATASETS_DIR: /data/evaluation-datasets
+      AKL_EVAL_SEED_DATASETS_DIR: /app/datasets
       AKL_EVAL_REPORTS_DIR: /data/evaluation-reports
+      AKL_EVAL_CONCURRENCY: ${AKL_EVAL_CONCURRENCY:-4}
     ports:
       - "${EVALUATION_SERVICE_PORT:-8084}:8080"
     volumes:
+      - evaluation-datasets:/data/evaluation-datasets
       - evaluation-reports:/data/evaluation-reports
     depends_on:
       registry-api:
@@ -573,6 +659,7 @@ volumes:
   caddy-config:
   postgres-data:
   qdrant-data:
+  opensearch-data:
   minio-data:
   prometheus-data:
   grafana-data:
@@ -581,3 +668,4 @@ volumes:
   ingestion-object-storage:
   ingestion-jobs:
   evaluation-reports:
+  evaluation-datasets:

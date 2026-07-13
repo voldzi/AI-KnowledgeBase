@@ -15,6 +15,7 @@ import {
   LifeBuoy,
   MessageSquare,
   MessageSquarePlus,
+  PanelLeftOpen,
   PanelRightOpen,
   Pin,
   Search,
@@ -156,7 +157,6 @@ const assistantAppCopy = {
     noSources: "Zdroje se zobrazí po první odpovědi s citacemi.",
     sourceOpened: "Citace otevřena",
     sourceTitle: "Zdroj odpovědi",
-    sourceOpenFailedStatus: "Zdroj se nepodařilo otevřít. Kód odpovědi:",
     sourceOpenFailed: "Zdroj se nepodařilo otevřít.",
     noPreciseSource: "Nenašel jsem dostatečně přesný zdroj.",
     version: "Verze",
@@ -175,9 +175,8 @@ const assistantAppCopy = {
     ask: "Odeslat",
     asking: "Odesílám",
     emptyQuestion: "Napište dotaz.",
-    requestFailedStatus: "Asistent teď neodpověděl. Kód odpovědi:",
-    requestFailed: "Dotaz se nepodařilo odeslat.",
-    assistantServiceUnavailable: "AI služba teď není dostupná. AKB nemá spojení na LLM/Ollama službu.",
+    requestFailed: "Dotaz se nepodařilo odeslat. Zkuste to prosím znovu.",
+    assistantServiceUnavailable: "AI služba teď není dostupná. Zkuste to prosím za chvíli znovu.",
     sessionExpired: "Relace vypršela. Přesměrovávám na přihlášení.",
     suggestionsLabel: "Doporučené dotazy",
     emptyThreadTitle: "Nové vlákno",
@@ -211,7 +210,6 @@ const assistantAppCopy = {
     exportPdf: "Exportovat PDF",
     exportingReport: "Připravuji Excel",
     exportingPdf: "Připravuji PDF",
-    exportReportFailedStatus: "Sestavu se nepodařilo exportovat. Kód odpovědi:",
     exportReportFailed: "Sestavu se nepodařilo exportovat.",
     reportRows: "řádků",
     reportSources: "citovaných zdrojů",
@@ -254,7 +252,6 @@ const assistantAppCopy = {
     noSources: "Sources appear after the first cited answer.",
     sourceOpened: "Citation opened",
     sourceTitle: "Answer source",
-    sourceOpenFailedStatus: "The source could not be opened. Response code:",
     sourceOpenFailed: "The source could not be opened.",
     noPreciseSource: "I could not find a sufficiently precise source.",
     version: "Version",
@@ -273,9 +270,8 @@ const assistantAppCopy = {
     ask: "Send",
     asking: "Sending",
     emptyQuestion: "Enter a question.",
-    requestFailedStatus: "The assistant did not respond. Response code:",
-    requestFailed: "The question could not be sent.",
-    assistantServiceUnavailable: "The AI service is unavailable. AKB cannot reach the LLM/Ollama service.",
+    requestFailed: "The question could not be sent. Please try again.",
+    assistantServiceUnavailable: "The AI service is unavailable. Please try again shortly.",
     sessionExpired: "The session expired. Redirecting to sign in.",
     suggestionsLabel: "Suggested questions",
     emptyThreadTitle: "New thread",
@@ -309,7 +305,6 @@ const assistantAppCopy = {
     exportPdf: "Export PDF",
     exportingReport: "Preparing Excel",
     exportingPdf: "Preparing PDF",
-    exportReportFailedStatus: "The report could not be exported. Response code:",
     exportReportFailed: "The report could not be exported.",
     reportRows: "rows",
     reportSources: "cited sources",
@@ -340,6 +335,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso, initialConversations));
   const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations));
   const [threadSearch, setThreadSearch] = useState("");
+  const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
@@ -415,6 +411,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     setSourceError(null);
     setOpeningSourceId(null);
     setCitationModalOpen(false);
+    setMobileThreadsOpen(false);
   }
 
   function createThread() {
@@ -424,6 +421,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
+    setMobileThreadsOpen(false);
   }
 
   function redirectToLoginAfterUnauthorized() {
@@ -458,7 +456,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
           redirectToLoginAfterUnauthorized();
           return;
         }
-        setStatusMessage(`${copy.requestFailedStatus} ${response.status}.`);
+        setStatusMessage(copy.requestFailed);
         return;
       }
       const remaining = threads.filter((thread) => thread.id !== activeThread.id);
@@ -471,7 +469,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         setActiveThreadId(replacement.id);
       }
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : copy.requestFailed);
+      setStatusMessage(copy.requestFailed);
     }
   }
 
@@ -567,7 +565,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         updatedAt: new Date().toISOString()
       }));
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : copy.requestFailed);
+      setStatusMessage(copy.requestFailed);
       updateThread(threadId, (thread) => ({
         ...thread,
         messages: thread.messages.filter((message) => message.id !== pendingMessage.id)
@@ -661,13 +659,13 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
           redirectToLoginAfterUnauthorized();
           return;
         }
-        setSourceError(`${copy.sourceOpenFailedStatus} ${httpResponse.status}.`);
+        setSourceError(copy.sourceOpenFailed);
         return;
       }
       const payload = (await httpResponse.json()) as { source_context: SourceContext };
       setSourceContext(payload.source_context);
     } catch (error) {
-      setSourceError(error instanceof Error ? error.message : copy.sourceOpenFailed);
+      setSourceError(copy.sourceOpenFailed);
     } finally {
       setOpeningSourceId(null);
     }
@@ -700,7 +698,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
           redirectToLoginAfterUnauthorized();
           return Promise.reject(new Error(copy.sessionExpired));
         }
-        return Promise.reject(new Error(`${copy.requestFailedStatus} ${response.status}.`));
+        return Promise.reject(new Error(copy.requestFailed));
       })
       .then((payload) => {
         const conversation = payload.conversation as AssistantConversationDetail;
@@ -725,7 +723,11 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   return (
     <>
       <section className="akb-chat-app" aria-label="AKB Assistant">
-        <aside className="akb-chat-sidebar" aria-label={copy.threadList}>
+        <aside
+          id="akb-chat-thread-panel"
+          className={`akb-chat-sidebar${mobileThreadsOpen ? " is-mobile-open" : ""}`}
+          aria-label={copy.threadList}
+        >
           <div className="akb-chat-sidebar__brand">
             <div className="akb-chat-mark" aria-hidden="true">
               <Bot size={18} />
@@ -734,6 +736,15 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               <strong>AKB Assistant</strong>
               <span>{copy.ready}</span>
             </div>
+            <button
+              className="akb-chat-icon-button akb-chat-sidebar__close"
+              type="button"
+              onClick={() => setMobileThreadsOpen(false)}
+              title={copy.close}
+              aria-label={copy.close}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
           </div>
           <StratosButton tone="primary" type="button" onClick={createThread}>
             <MessageSquarePlus size={16} aria-hidden="true" />
@@ -772,6 +783,17 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               <p>{copy.appSubtitle}</p>
             </div>
             <div className="akb-chat-header__actions">
+              <button
+                className="akb-chat-icon-button akb-chat-mobile-threads"
+                type="button"
+                onClick={() => setMobileThreadsOpen((open) => !open)}
+                title={copy.threadList}
+                aria-label={copy.threadList}
+                aria-controls="akb-chat-thread-panel"
+                aria-expanded={mobileThreadsOpen}
+              >
+                <PanelLeftOpen size={16} aria-hidden="true" />
+              </button>
               <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                 <Archive size={16} aria-hidden="true" />
               </button>
@@ -1045,18 +1067,13 @@ function contextWithReportRequest(
 }
 
 async function assistantHttpErrorMessage(response: Response, copy: AssistantAppLabels): Promise<string> {
-  const statusPrefix = `${copy.requestFailedStatus} ${response.status}.`;
   const payload = await response.json().catch(() => null) as { error?: { code?: unknown; message?: unknown } } | null;
   const code = typeof payload?.error?.code === "string" ? payload.error.code : "";
-  const message = typeof payload?.error?.message === "string" ? payload.error.message : "";
 
   if (code === "UPSTREAM_UNAVAILABLE" || code === "UPSTREAM_ERROR") {
-    return `${statusPrefix} ${copy.assistantServiceUnavailable}`;
+    return copy.assistantServiceUnavailable;
   }
-  if (message) {
-    return `${statusPrefix} ${message}`;
-  }
-  return statusPrefix;
+  return response.status === 401 ? copy.sessionExpired : copy.requestFailed;
 }
 
 function slashCommandOptions(composer: string, language: AklLanguage): SlashCommandOption[] {
@@ -1375,7 +1392,7 @@ function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifac
         body: JSON.stringify({ report, format })
       });
       if (!response.ok) {
-        setExportError(`${copy.exportReportFailedStatus} ${response.status}.`);
+        setExportError(copy.exportReportFailed);
         return;
       }
       const blob = await response.blob();

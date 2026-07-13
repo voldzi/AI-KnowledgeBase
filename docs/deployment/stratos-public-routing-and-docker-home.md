@@ -47,6 +47,7 @@ Minimalni routovani:
 
 ```text
 /          -> Budget & Contract upstream, docker.home.cz:3230
+/akb       -> AKB upstream, docker.home.cz:3220
 /akb/      -> AKB upstream, docker.home.cz:3220
 /project/  -> ProjectFlow upstream, docker.home.cz:3231
 /arch/     -> ArchFlow upstream, docker.home.cz:3232
@@ -446,6 +447,19 @@ AKL_WEB_OIDC_ISSUER=https://login.zeleznalady.cz/realms/stratos
 AKL_WEB_OIDC_CLIENT_ID=akl-web
 ```
 
+AKB web is built with the Next.js `basePath=/akb`. The AKB-owned Caddy
+reverse proxy therefore removes an incoming `X-Forwarded-Prefix` header at the
+request level and again on the upstream proxy request before forwarding
+`/akb/*` requests to the web container. Public nginx may still set
+`X-Forwarded-Prefix` for other STRATOS routing concerns, but AKB must not pass
+that header through to Next.js because it can make protected routes resolve as
+a static 404 instead of the expected OIDC redirect.
+
+The docker-home compose profile defaults `AKL_WEB_BASE_PATH` to `/akb` for the
+web build and runtime environment. Keep the explicit value in
+`/srv/akl/env/akl.prod.env` for operational clarity, but a missing env value
+must not rebuild the Next.js image without the `/akb` base path.
+
 ProjectFlow:
 
 ```env
@@ -472,38 +486,14 @@ BUDGET_OIDC_CLIENT_ID=budget-web
 
 ## Topbar App Switcher
 
-Vsechny aplikace musi v levem hornim app switcheru pouzivat stejne polozky a stejne adresy:
+Vsechny aplikace pouzivaji centralni katalog z `@voldzi/stratos-ui`. AKB
+predava `GlobalTopbar` pouze `currentAppId="akb"` a URL overrides pro dane
+prostredi. Nazvy, ikony, poradi a stav ProcessForge se neskladaji lokalne.
 
-```json
-[
-  {
-    "id": "budget-contract",
-    "label": "Budget & Contract",
-    "shortLabel": "BC",
-    "href": "https://stratos.zeleznalady.cz/"
-  },
-  {
-    "id": "akb",
-    "label": "AKB",
-    "shortLabel": "AK",
-    "href": "https://stratos.zeleznalady.cz/akb"
-  },
-  {
-    "id": "projectflow",
-    "label": "ProjectFlow",
-    "shortLabel": "PF",
-    "href": "https://stratos.zeleznalady.cz/project"
-  },
-  {
-    "id": "archflow",
-    "label": "ArchFlow",
-    "shortLabel": "AF",
-    "href": "https://stratos.zeleznalady.cz/arch"
-  }
-]
-```
-
-Aktivni aplikace oznaci svuj zaznam `active: true`. Ostatni aplikace musi byt klikatelne, ne disabled, pokud uz maji cilovy verejny route kontrakt.
+Aktualni aplikace AI KnowledgeBase zustava v triggeru switcheru a z rozbalene
+nabidky cilu se automaticky vynecha. Ostatni nakonfigurovane aplikace jsou
+klikatelne; dostupnost a disabled duvody ridi sdileny katalog a volitelna
+role/environment availability.
 
 ## AKB Stav Na docker.home.cz
 
@@ -515,13 +505,19 @@ Aktualni pilot:
 - AKB proxy port: `3220`,
 - Docker subnets: `10.246.240.0/24` az `10.246.244.0/24`,
 - PostgreSQL: `haproxy.home.cz:5000`,
-- Ollama pilot: `http://192.168.200.2:11434` pres VPN notebook,
+- Ollama: preferovany endpoint `http://192.168.200.3:11434`, rizeny failover
+  na `192.168.200.2` a `192.168.1.176`,
 - object storage bridge: `/srv/seaweedfs/akl`.
 
 AKB web derives signed source-download URLs from `NEXT_PUBLIC_AKL_BASE_PATH`
 by default. For `/akb` deployments the generated source endpoint is
 `/akb/api/documents/source/content`; `AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH` is
 only an explicit override.
+
+The exact `/akb` path redirects to `/akb/dashboard`, not `/akb/chat`; the web
+shell owns the initial route and starts on the first AKB menu item for users
+with workspace access. The edge redirect is marked `Cache-Control: no-store` so
+clients do not retain stale route bootstrap responses.
 
 ## Povinné Porty Na docker.home.cz
 

@@ -20,6 +20,7 @@ from app.errors import (
 from app.logging import configure_logging
 from app.middleware import CorrelationIdMiddleware
 from app.model_manager import effective_config, recommended_models
+from app.information_policy import enforce_provider_policy
 from app.rate_limit import InMemoryRateLimiter
 from app.schemas import (
     ChatCompletionChunk,
@@ -184,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             EmbeddingsRequest(
                 model=model,
                 input=[payload.input],
+                dimensions=payload.dimensions or settings.default_embedding_dimensions,
                 metadata={"purpose": "model_manager_test_embedding"},
             )
         )
@@ -200,13 +202,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> ChatCompletionResponse | StreamingResponse:
         _guard_request(request)
         provider = _router(request).provider_for_model(payload.model)
+        metadata = payload.metadata.model_dump(mode="json", exclude_none=True)
+        enforce_provider_policy(provider=provider.name, metadata=metadata)
         logger.info(
             "llm_chat_requested provider=%s model=%s stream=%s message_count=%s metadata_keys=%s",
             provider.name,
             payload.model,
             payload.stream,
             len(payload.messages),
-            sorted(payload.metadata.keys()),
+            sorted(metadata.keys()),
         )
 
         if payload.stream:
@@ -233,12 +237,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> EmbeddingsResponse:
         _guard_request(request)
         provider = _router(request).provider_for_model(payload.model)
+        metadata = payload.metadata.model_dump(mode="json", exclude_none=True)
+        enforce_provider_policy(provider=provider.name, metadata=metadata)
         logger.info(
             "llm_embeddings_requested provider=%s model=%s input_count=%s metadata_keys=%s",
             provider.name,
             payload.model,
             len(payload.input),
-            sorted(payload.metadata.keys()),
+            sorted(metadata.keys()),
         )
         response = await provider.embeddings(payload)
         logger.info(

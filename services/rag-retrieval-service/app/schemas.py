@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DocumentType = Literal[
     "directive",
@@ -16,6 +16,10 @@ DocumentType = Literal[
     "meeting_record",
     "contract",
     "attachment",
+    "ai_intake",
+    "ai_requirement_card",
+    "ai_security_appendix",
+    "ai_governance_evidence",
     "other",
 ]
 Classification = Literal["public", "internal", "restricted", "confidential"]
@@ -85,6 +89,10 @@ class RagQueryFilters(BaseModel):
     only_valid: bool = True
     classification_max: Classification = "internal"
     tags: list[str] = Field(default_factory=list)
+    document_ids: list[str] = Field(default_factory=list)
+    document_version_ids: list[str] = Field(default_factory=list)
+    tenant_id: str | None = Field(default=None, min_length=1, max_length=128)
+    external_system: str | None = Field(default=None, min_length=1, max_length=80)
 
 
 class ChunkCitation(BaseModel):
@@ -118,6 +126,9 @@ class Citation(BaseModel):
     section_path: list[str] = Field(default_factory=list)
     page_number: int | None = Field(default=None, ge=1)
     chunk_id: str = Field(min_length=1)
+    policy_binding_id: str | None = None
+    policy_version: str | None = None
+    policy_hash: str | None = None
 
     @model_validator(mode="after")
     def fill_document_version(self) -> "Citation":
@@ -131,7 +142,7 @@ class RetrievedChunk(BaseModel):
 
     chunk_id: str = Field(min_length=1)
     score: float = Field(ge=0, le=1)
-    retrieval_method: Literal["dense", "sparse", "hybrid", "qdrant"]
+    retrieval_method: Literal["dense", "sparse", "hybrid", "qdrant", "opensearch"]
     text: str = Field(min_length=1)
     citation: ChunkCitation
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -182,6 +193,8 @@ class RagAnswer(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     used_chunks: list[str] = Field(default_factory=list)
     missing_information: str | None = None
+    policy_bindings: list[dict[str, str]] = Field(default_factory=list)
+    obligations: list[str] = Field(default_factory=list)
 
 
 class SourceLocation(BaseModel):
@@ -203,6 +216,9 @@ class SourceContextResponse(BaseModel):
     document_id: str
     document_version_id: str
     document_title: str
+    policy_binding_id: str | None = None
+    policy_version: str | None = None
+    policy_hash: str | None = None
     source_file_uri: str | None = None
     source_mime_type: str | None = None
     source_file_name: str | None = None
@@ -652,6 +668,157 @@ class StratosExtractionFeedbackResponse(BaseModel):
 
 class ContractExtractionFeedbackResponse(StratosExtractionFeedbackResponse):
     pass
+
+
+AiipClassification = Literal["public", "internal"]
+AiipModelPreference = Literal["standard", "high_quality"]
+
+
+class AiipRecordInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str = Field(min_length=1, max_length=128)
+    record_version: str | None = Field(default=None, max_length=64)
+    title: str = Field(min_length=1, max_length=240)
+    summary: str = Field(min_length=1, max_length=12000)
+    problem_statement: str | None = Field(default=None, max_length=4000)
+    proposed_solution: str | None = Field(default=None, max_length=4000)
+    expected_benefits: list[str] = Field(default_factory=list, max_length=20)
+    strategic_domains: list[str] = Field(default_factory=list, max_length=20)
+    keywords: list[str] = Field(default_factory=list, max_length=30)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("expected_benefits", "strategic_domains", "keywords")
+    @classmethod
+    def normalize_aiip_strings(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            item = value.strip() if isinstance(value, str) else ""
+            if not item or item in seen:
+                continue
+            if len(item) > 500:
+                raise ValueError("AIIP list values must not exceed 500 characters")
+            seen.add(item)
+            normalized.append(item)
+        return normalized
+
+
+class AiipHarmonizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    classification: Classification
+    processing_purpose: Literal["idea_harmonization"]
+    model_preference: AiipModelPreference = "standard"
+    locale: Literal["cs", "en"] = "cs"
+    record: AiipRecordInput
+
+
+class AiipDuplicateSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    classification: Classification
+    processing_purpose: Literal["duplicate_detection"]
+    model_preference: AiipModelPreference = "standard"
+    record: AiipRecordInput
+    limit: int = Field(default=10, ge=1, le=20)
+    offset: int = Field(default=0, ge=0, le=200)
+    min_score: float = Field(default=0.35, ge=0, le=1)
+
+
+class AiipFieldProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["aiip_record", "model_inference"]
+    input_fields: list[str] = Field(default_factory=list)
+    prompt_template_version: str
+
+
+class AiipFieldSuggestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(min_length=1, max_length=120)
+    proposed_value: Any
+    confidence: float = Field(ge=0, le=1)
+    provenance: AiipFieldProvenance
+
+
+class AiipHarmonizeResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    suggestions: list[AiipFieldSuggestion] = Field(default_factory=list, max_length=30)
+    review_required: Literal[True] = True
+
+
+class AiipDuplicateCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str
+    document_version_id: str
+    chunk_id: str
+    document_title: str
+    version_label: str
+    section_path: list[str] = Field(default_factory=list)
+    page_number: int | None = Field(default=None, ge=1)
+
+
+class AiipDuplicateCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str
+    source_system: str
+    source_record_id: str | None = None
+    akb_document_id: str
+    score: float = Field(ge=0, le=1)
+    matched_areas: list[str] = Field(default_factory=list)
+    citations: list[AiipDuplicateCitation] = Field(default_factory=list)
+
+
+class AiipDuplicateSearchResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidates: list[AiipDuplicateCandidate] = Field(default_factory=list)
+    limit: int
+    offset: int
+    returned: int
+    has_more: bool = False
+
+
+class AiipModelMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requested_preference: AiipModelPreference
+    requested_model: str
+    actual_model: str
+    fallback_applied: bool
+    model_digest: str | None = None
+
+
+class AiipUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+
+
+class AiipApplicationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["1.0"] = "1.0"
+    request_id: str
+    correlation_id: str
+    audit_event_id: str
+    status: Literal["completed"] = "completed"
+    result: AiipHarmonizeResult | AiipDuplicateSearchResult
+    warnings: list[str] = Field(default_factory=list)
+    model: AiipModelMetadata
+    prompt_template_version: str
+    retrieval_index_version: str | None = None
+    usage: AiipUsage
+    latency_ms: int = Field(ge=0)
 
 
 class HealthResponse(BaseModel):

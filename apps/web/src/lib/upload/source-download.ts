@@ -8,6 +8,9 @@ export interface SourceOpenRequest {
   source_file_uri: string;
   file_hash?: string | null;
   viewer_mode: string;
+  policy_binding_id?: string | null;
+  policy_version?: string | null;
+  policy_hash?: string | null;
 }
 
 export interface SourceOpenDecision {
@@ -27,6 +30,9 @@ export interface SourceOpenDecision {
     sha256: string | null;
   };
   viewer_mode: string;
+  policy_binding_id: string | null;
+  policy_version: string | null;
+  policy_hash: string | null;
 }
 
 export interface SourceDownloadTokenPayload {
@@ -40,6 +46,9 @@ export interface SourceDownloadTokenPayload {
   file_type: string;
   sha256: string | null;
   expires_at: string;
+  policy_binding_id: string | null;
+  policy_version: string | null;
+  policy_hash: string | null;
 }
 
 export interface SourceDownloadSettings {
@@ -152,7 +161,10 @@ export async function createSourceOpenDecision(
     file_name: filename,
     file_type: mimeType,
     sha256: expectedHash,
-    expires_at: expiresAt
+    expires_at: expiresAt,
+    policy_binding_id: request.policy_binding_id ?? null,
+    policy_version: request.policy_version ?? null,
+    policy_hash: request.policy_hash ?? null
   };
   const objectStat = await stat(targetPath).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") {
@@ -179,7 +191,10 @@ export async function createSourceOpenDecision(
       size_bytes: objectStat?.size ?? null,
       sha256: expectedHash
     },
-    viewer_mode: request.viewer_mode
+    viewer_mode: request.viewer_mode,
+    policy_binding_id: payload.policy_binding_id,
+    policy_version: payload.policy_version,
+    policy_hash: payload.policy_hash
   };
 }
 
@@ -209,6 +224,9 @@ export function verifySourceDownloadToken(
   const sourceOpenId = normalizeId(payload.source_open_id, "source_open_id");
   normalizeFilename(payload.file_name);
   normalizeOptionalSha256(payload.sha256);
+  if (payload.policy_hash && normalizeOptionalSha256(payload.policy_hash) !== payload.policy_hash.toLowerCase()) {
+    throw new SourceDownloadError(401, "INVALID_SOURCE_DOWNLOAD_TOKEN", "Source policy hash is invalid.");
+  }
   if (payload.bucket !== settings.bucket) {
     throw new SourceDownloadError(401, "INVALID_SOURCE_DOWNLOAD_TOKEN", "Source download bucket is not valid.");
   }

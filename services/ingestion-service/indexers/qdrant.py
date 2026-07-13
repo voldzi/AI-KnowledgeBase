@@ -10,6 +10,7 @@ import httpx
 from app.config import Settings
 from app.errors import IngestionError
 from app.schemas import DocumentChunk
+from intelligence.entities import intelligence_payload_fields
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,29 @@ class QdrantIndexer:
                 index_response.status_code,
                 index_response.text,
             )
+        for field_name in (
+            "organization_id",
+            "policy_binding_id",
+            "policy_version",
+            "policy_hash",
+            "policy_summary.handlingClass",
+            "policy_summary.audience.scopeType",
+            "policy_summary.audience.scopeIds",
+            "policy_summary.audience.recipientSubjectIds",
+            "policy_summary.obligations",
+        ):
+            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+                policy_response = await client.put(
+                    f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/index",
+                    headers=self._headers(),
+                    json={"field_name": field_name, "field_schema": "keyword"},
+                )
+            if policy_response.status_code >= 400:
+                logger.warning(
+                    "Failed to create Qdrant policy payload index field=%s status=%d",
+                    field_name,
+                    policy_response.status_code,
+                )
 
     async def _delete_existing_version(self, document_version_id: str) -> None:
         payload = {
@@ -231,10 +255,14 @@ class QdrantIndexer:
 
     def _point(self, chunk: DocumentChunk, vector: list[float], *, embedding_model: str) -> dict[str, Any]:
         payload = chunk.model_dump(mode="json")
+        for key in ("tenant_id", "external_system", "external_ref"):
+            if payload.get(key) is None:
+                payload.pop(key, None)
         chunk_metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
         for key in ("document_title", "version_label", "document_type", "status", "tags"):
             if key in chunk_metadata and key not in payload:
                 payload[key] = chunk_metadata[key]
+        payload.update(intelligence_payload_fields(chunk_metadata))
         payload["embedding_model"] = embedding_model
         return {
             "id": str(uuid.uuid5(uuid.NAMESPACE_URL, chunk.chunk_id)),

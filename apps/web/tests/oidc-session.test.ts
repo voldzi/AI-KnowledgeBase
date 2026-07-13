@@ -3,14 +3,18 @@ import { describe, it } from "node:test";
 
 import {
   buildPublicAppUrl,
+  contextFromOidcAccessToken,
   contextFromOidcSession,
   createState,
+  normalizeReturnToForPublicBase,
+  OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
   openSession,
   readSessionCookie,
   refreshOidcSession,
   safeReturnToFromState,
+  sealAccessToken,
   sealBrowserSession,
   sealRefreshToken,
   sealSession,
@@ -36,6 +40,26 @@ describe("OIDC web session", () => {
     assert.equal(context.accessToken, accessToken);
   });
 
+  it("extracts service identity from an OIDC bearer access token", () => {
+    const accessToken = jwt({
+      sub: "service-account-stratos-akb-service",
+      client_id: "stratos-akb-service",
+      exp: 3_600,
+      realm_access: { roles: ["stratos_service"] },
+      resource_access: { "akl-api": { roles: ["document_manager"] } },
+      groups: ["STRATOS Services"]
+    });
+
+    const context = contextFromOidcAccessToken(accessToken, 1_000);
+
+    assert.equal(context?.subjectId, "service-account-stratos-akb-service");
+    assert.deepEqual(context?.roles?.sort(), ["document_manager", "stratos_service"]);
+    assert.deepEqual(context?.groups, ["STRATOS Services"]);
+    assert.equal(context?.accessToken, accessToken);
+    assert.equal(contextFromOidcAccessToken("not-a-jwt", 1_000), null);
+    assert.equal(contextFromOidcAccessToken(jwt({ sub: "expired", exp: 1 }), 2_000), null);
+  });
+
   it("seals and opens a session cookie payload", () => {
     const session = sessionFromTokens(
       { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
@@ -55,13 +79,15 @@ describe("OIDC web session", () => {
     assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1, { allowExpired: true })?.subjectId, "user-123");
   });
 
-  it("keeps access and refresh tokens out of the browser session cookie", () => {
+  it("keeps tokens out of the metadata session cookie and restores encrypted token cookies", () => {
     const config = testOidcConfig();
+    const accessToken = jwt({ sub: "user-123" });
     const session = sessionFromTokens(
-      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
+      { access_token: accessToken, refresh_token: "refresh-token", expires_in: 600 },
       1_000
     );
     const browserSession = sealBrowserSession(session, "test-secret");
+    const accessCookie = sealAccessToken(accessToken, "test-secret");
     const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
     const opened = openSession(browserSession, "test-secret", 2_000);
     const read = readSessionCookie(
@@ -69,6 +95,7 @@ describe("OIDC web session", () => {
         get: (name: string) =>
           ({
             [OIDC_SESSION_COOKIE]: { value: browserSession },
+            [OIDC_ACCESS_COOKIE]: { value: accessCookie },
             [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
           })[name]
       },
@@ -78,8 +105,38 @@ describe("OIDC web session", () => {
 
     assert.equal(opened?.accessToken, undefined);
     assert.equal(opened?.refreshToken, undefined);
-    assert.equal(read?.accessToken, undefined);
+    assert.equal(read?.accessToken, accessToken);
     assert.equal(read?.refreshToken, "refresh-token");
+  });
+
+  it("refreshes a non-expired metadata session when the access token is absent", async () => {
+    const config = testOidcConfig();
+    const refreshedAccessToken = jwt({
+      sub: "user-123",
+      realm_access: { roles: ["reader"] }
+    });
+    const session = {
+      ...sessionFromTokens(
+        { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-old", expires_in: 600 },
+        1_000
+      ),
+      accessToken: undefined
+    };
+
+    const refreshed = await refreshOidcSession(config, session, 60_000, async () =>
+      new Response(
+        JSON.stringify({
+          access_token: refreshedAccessToken,
+          refresh_token: "refresh-new",
+          expires_in: 600
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    assert.equal(refreshed?.accessToken, refreshedAccessToken);
+    assert.equal(refreshed?.refreshToken, "refresh-new");
+    assert.deepEqual(refreshed?.roles, ["reader"]);
   });
 
   it("refreshes an expired web session with the OIDC refresh token", async () => {
@@ -136,8 +193,17 @@ describe("OIDC web session", () => {
     const state = createState("/chat");
 
     assert.equal(safeReturnToFromState(state, "/"), "/chat");
-    assert.equal(safeReturnToFromState("not-base64-json", "/chat"), "/chat");
-    assert.equal(safeReturnToFromState(null, "/chat"), "/chat");
+    assert.equal(safeReturnToFromState("not-base64-json", "/"), "/");
+    assert.equal(safeReturnToFromState(null, "/"), "/");
+  });
+
+  it("normalizes return paths against the configured public base path", () => {
+    const config = testOidcConfig();
+
+    assert.equal(normalizeReturnToForPublicBase(config, "/akb/dashboard"), "/dashboard");
+    assert.equal(normalizeReturnToForPublicBase(config, "/akb"), "/");
+    assert.equal(normalizeReturnToForPublicBase(config, "/dashboard"), "/dashboard");
+    assert.equal(normalizeReturnToForPublicBase(config, "https://example.invalid"), "/");
   });
 });
 
@@ -150,14 +216,18 @@ function testOidcConfig() {
       registry: "http://registry/api/v1",
       ingestion: "http://ingestion/api/v1",
       rag: "http://rag/api/v1",
-      governance: "http://governance/api/v1"
+      governance: "http://governance/api/v1",
+      evaluation: "http://evaluation/api/v1"
     },
     oidc: {
       issuer: "https://login.example/realms/stratos",
       clientId: "akl-web",
       redirectUri: "https://stratos.example/akb/api/auth/callback",
       scopes: "openid profile email",
-      sessionSecret: "test-secret"
+      sessionSecret: "test-secret",
+      stratosAuthMeUrl: "https://stratos.example/api/v1/auth/me",
+      accessProjectionTimeoutMs: 3_000,
+      accessProjectionCacheTtlMs: 0
     }
   } as const;
 }

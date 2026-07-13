@@ -19,6 +19,16 @@ def error_payload(code: str, message: str, details: dict[str, Any] | None = None
     }
 
 
+def json_safe(value: Any) -> Any:
+    if isinstance(value, BaseException):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): json_safe(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(inner) for inner in value]
+    return value
+
+
 def problem(status_code: int, code: str, message: str, details: dict[str, Any] | None = None) -> HTTPException:
     return HTTPException(status_code=status_code, detail=error_payload(code, message, details))
 
@@ -36,7 +46,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error_payload("validation_error", "Request validation failed", {"errors": exc.errors()}),
+            content=error_payload("validation_error", "Request validation failed", {"errors": json_safe(exc.errors())}),
         )
 
     @app.exception_handler(Exception)

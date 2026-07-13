@@ -5,7 +5,8 @@ Samostatne nasaditelna FastAPI sluzba pro RAG retrieval tok v AKB Platform.
 Implementovany rozsah teto iterace:
 
 - permission-aware retrieval,
-- hybrid score kombinujici dense a sparse signal,
+- hybrid score kombinujici dense Qdrant signal a sparse/fulltext signal,
+- OpenSearch BM25 fulltext jako volitelny lexical backend,
 - metadata filtering podle RAG kontraktu,
 - reranking,
 - answer composition pres LLM Gateway klienta,
@@ -33,6 +34,10 @@ Health:
 - `GET /health`
 - `GET /ready`
 
+Readiness checks Registry, retrieval indexes and LLM Gateway concurrently and
+marks a dependency `not_ready` after a two-second bound instead of waiting for
+the full request timeout.
+
 RAG:
 
 - `POST /api/v1/rag/query`
@@ -56,6 +61,11 @@ STRATOS extractions:
 - `GET /api/v1/stratos/extractions/{extraction_id}`
 - `POST /api/v1/stratos/extractions/{extraction_id}/feedback`
 
+AIIP application integration (internal behind the AKB web bridge):
+
+- `POST /api/v1/integrations/aiip/harmonize`
+- `POST /api/v1/integrations/aiip/duplicates/search`
+
 OpenAPI specifikace je v `openapi.yaml`.
 
 ## Hlavni tok
@@ -64,15 +74,17 @@ OpenAPI specifikace je v `openapi.yaml`.
 
 1. Vytvori `query_id`.
 2. Ziska query embedding z LLM Gateway klienta.
-3. Spusti retriever nad Qdrant nebo mock indexem.
+3. Spusti dense retriever nad Qdrant nebo mock indexem; pri `AKL_RAG_FULLTEXT_MODE=opensearch` spusti lexical cast nad OpenSearch.
 4. Aplikuje metadata filtry.
 5. Posle kandidatni `document_id` do Registry API `/authz/filter-documents`.
 6. Zahodi neautorizovane chunky pred rerankingem a pred LLM.
 7. Provede reranking.
 8. Vyhodnoti no-answer policy.
 9. Pokud jsou zdroje dostatečné, sestaví prompt a zavolá LLM Gateway chat completion.
-10. Vrati odpoved, confidence, citace, `used_chunks`, warnings a `missing_information`.
-11. Zapise audit event pres Registry API. Do auditu jde hash odpovedi, ID chunku a ID dokumentu, ne plny text odpovedi.
+10. Promitne metadata kvality zdroju do warnings (`SOURCE_OCR_USED`,
+    `SOURCE_QUALITY_REVIEW_REQUIRED`, `SOURCE_LOW_EXTRACTION_QUALITY`).
+11. Vrati odpoved, confidence, citace, `used_chunks`, warnings a `missing_information`.
+12. Zapise audit event pres Registry API. Do auditu jde hash odpovedi, ID chunku a ID dokumentu, ne plny text odpovedi.
 
 Volitelne pole `response_language` podporuje `cs` a `en`. Vychozi hodnota je `cs`. Hodnota se pouziva pro RAG odpoved, no-answer texty, Employee Assistant clarifikace a navrhy dotazu; citovane zdrojove vyryvky zustavaji v puvodnim jazyce dokumentu.
 
@@ -104,11 +116,19 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_RAG_DEPENDENCY_MODE` | `mock` | Vychozi mod pro vsechny zavislosti: `mock` nebo `http`. |
 | `AKL_RAG_REGISTRY_CLIENT_MODE` | podle dependency mode | Registry klient. |
 | `AKL_RAG_RETRIEVER_MODE` | podle dependency mode | `mock`, `http`, nebo explicitni `qdrant`. |
+| `AKL_RAG_FULLTEXT_MODE` | `qdrant` | `qdrant` pro dosavadni payload fulltext fallback, `opensearch` pro BM25 fulltext. |
 | `AKL_RAG_LLM_CLIENT_MODE` | podle dependency mode | LLM Gateway klient. |
 | `AKL_REGISTRY_BASE_URL` | `http://localhost:8001/api/v1` | Registry API base URL. |
+| `AKL_REGISTRY_SERVICE_TOKEN_URL` | prazdne | Keycloak token endpoint pro kratkodobou RAG service identitu vuci Registry. |
+| `AKL_REGISTRY_SERVICE_CLIENT_ID` | prazdne | Interni klient, v produkci `akb-rag-service`. |
+| `AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE` | prazdne | Read-only soubor s client secretem; preferovano pred hodnotou v env. |
 | `AKL_QDRANT_BASE_URL` | `http://localhost:6333` | Qdrant base URL. |
 | `AKL_QDRANT_COLLECTION` | `akl_document_chunks` | Qdrant collection s payloadem chunku. |
+| `AKL_OPENSEARCH_BASE_URL` | `http://localhost:9200` | OpenSearch base URL. |
+| `AKL_OPENSEARCH_INDEX` | `akl_document_chunks` | OpenSearch index se stejnymi chunk payloady. |
 | `AKL_LLM_GATEWAY_BASE_URL` | `http://localhost:8080/api/v1` | LLM Gateway API base URL. |
+| `AKL_LLM_GATEWAY_TOKEN` | prázdné | Samostatný bearer token pouze pro LLM Gateway. |
+| `AKL_LLM_GATEWAY_AUDIENCE` | `llm-gateway-service` | Audience posílaná se service identitou `svc-rag`. |
 | `AKL_RAG_NO_ANSWER_MIN_SCORE` | `0.35` | Minimalni rerank score pro odpoved. |
 | `AKL_RAG_MAX_CONTEXT_CHARS` | `12000` | Maximalni velikost kontextu pro LLM. |
 | `AKL_RAG_ANSWER_MAX_TOKENS` | `512` | Maximalni delka generovane odpovedi posilana do LLM Gateway. |
@@ -154,8 +174,8 @@ docker run --rm -p 8080:8080 --env-file .env.example akl-rag-retrieval-service
 
 - Produkce nesmi pouzivat mock auth ani mock dependency klienty.
 - LLM nikdy nedostane chunky, ktere neprosly Registry authz filtrem.
-- V `AKL_AUTH_MODE=oidc` sluzba vyzaduje `Authorization: Bearer <jwt>` a caller token predava do Registry API `/authz/filter-documents` a LLM Gateway volani. Audit write preferuje `AKL_UPSTREAM_BEARER_TOKEN`, pokud je nastaveny, jinak pouzije caller token.
-- RAG lokalne neduplikuje validaci podpisu JWT; Registry API je enforcement bod pro dokumentova rozhodnuti.
+- V `AKL_AUTH_MODE=oidc` sluzba overi podpis, issuer a audience bearer JWT. Produkce pouziva samostatny `akb-rag-service` client-credentials token pro delegovane Registry authz, audit a idempotenci; caller subject zachovava jako actor, ale role, capabilities, scopes ani active flags nedeleguje v authz payloadu. LLM Gateway vzdy pouziva vlastni service credential.
+- RAG ignoruje dynamicka opravneni z JWT a `X-STRATOS-*` hlavicek; Registry API je enforcement bod a nacita projekci nebo vola centralni STRATOS policy decision.
 - Technicke logy neobsahuji plny query text, prompt, odpoved ani dokumenty.
 - Audit metadata obsahuji ID zdroju a hash odpovedi.
 - Chybove odpovedi pouzivaji centralni tvar `{"error": ...}` s `trace_id`.
@@ -163,6 +183,6 @@ docker run --rm -p 8080:8080 --env-file .env.example akl-rag-retrieval-service
 ## Limity
 
 - Qdrant HTTP retriever ocekava payload kompatibilni s `DocumentChunk` kontraktem.
-- Sparse/fulltext cast je v teto iteraci kompatibilni rozhrani a lokalni lexical score nad vracenymi kandidaty.
+- Sparse/fulltext cast muze bezet pres OpenSearch BM25 (`AKL_RAG_FULLTEXT_MODE=opensearch`) nebo pres dosavadni Qdrant payload lexical fallback.
 - Konflikty mezi dokumenty nejsou detekovany; confidence `conflicting_sources` je rezervovana pro dalsi iteraci.
 - `compare-documents` a `check-compliance` jsou jen kontraktni stuby s `501`.

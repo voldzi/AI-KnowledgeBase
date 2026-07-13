@@ -10,6 +10,12 @@ from app.schemas import Classification, RagQueryFilters
 
 CLASSIFICATION_ORDER: tuple[Classification, ...] = ("public", "internal", "restricted", "confidential")
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
+IDENTIFIER_PATTERNS = (
+    re.compile(r"\b[a-z]{2,8}\s*(?:c\.?\s*)?\d{1,4}\s*/\s*\d{2,4}\b"),
+    re.compile(r"\b(?:cl|clanek|article)\.?\s*\d+[a-z]?\b"),
+    re.compile(r"\b(?:odst|odstavec|paragraph)\.?\s*\d+[a-z]?\b"),
+    re.compile(r"\b(?:pril|priloha|annex)\.?\s*\d+[a-z]?\b"),
+)
 RISK_QUERY_TERMS = {"riziko", "rizika", "rizik", "risk", "risks"}
 RISK_TEXT_TERMS = {
     "chybove",
@@ -30,6 +36,18 @@ RISK_TEXT_TERMS = {
     "rizika",
     "rizikove",
 }
+
+QUERY_EXPANSION_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("rmo", "rozkaz ministra obrany", "rozkaz", "ministr obrany"),
+    ("gestor", "vlastnik", "odpovedny", "spravce", "owner"),
+    ("ucinnost", "platnost", "validita", "valid from", "valid_from"),
+    ("predpis", "smernice", "narizeni", "rozkaz", "opatreni", "directive", "policy"),
+    ("cl", "clanek", "article"),
+    ("odst", "odstavec", "paragraph"),
+    ("pril", "priloha", "annex"),
+    ("vyjimka", "odchylka", "exception"),
+    ("schvaleni", "schvalit", "odsouhlaseni", "approve", "approval"),
+)
 
 CONCEPT_BONUSES: tuple[tuple[set[str], set[str], float], ...] = (
     (
@@ -52,6 +70,62 @@ def normalize_text(value: str) -> str:
 
 def tokenize(value: str) -> list[str]:
     return TOKEN_RE.findall(normalize_text(value))
+
+
+_EXPANSION_TOKEN_GROUPS: tuple[set[str], ...] = tuple(
+    {token for term in group for token in tokenize(term)} for group in QUERY_EXPANSION_GROUPS
+)
+
+
+def expand_query_text(query: str) -> str:
+    """Append conservative domain synonyms for controlled-document search."""
+    stripped = query.strip()
+    if not stripped:
+        return ""
+    normalized_query = normalize_text(stripped)
+    additions: list[str] = []
+    seen = {normalize_text(stripped)}
+    for group in QUERY_EXPANSION_GROUPS:
+        if not any(_contains_normalized_term(normalized_query, term) for term in group):
+            continue
+        for term in group:
+            normalized_term = normalize_text(term)
+            if normalized_term in seen or _contains_normalized_term(normalized_query, term):
+                continue
+            additions.append(term)
+            seen.add(normalized_term)
+    if not additions:
+        return stripped
+    return " ".join([stripped, *additions])
+
+
+def extract_query_identifiers(query: str) -> list[str]:
+    normalized = normalize_text(query)
+    identifiers: list[str] = []
+    seen: set[str] = set()
+    for pattern in IDENTIFIER_PATTERNS:
+        for match in pattern.finditer(normalized):
+            identifier = _normalize_identifier(match.group(0))
+            if identifier and identifier not in seen:
+                identifiers.append(identifier)
+                seen.add(identifier)
+    return identifiers
+
+
+def _contains_normalized_term(normalized_text: str, term: str) -> bool:
+    normalized_term = normalize_text(term).strip()
+    if not normalized_term:
+        return False
+    pattern = rf"(?<![a-z0-9]){re.escape(normalized_term)}(?![a-z0-9])"
+    return re.search(pattern, normalized_text) is not None
+
+
+def _normalize_identifier(value: str) -> str:
+    collapsed = re.sub(r"\s*/\s*", "/", value.strip())
+    collapsed = re.sub(r"^([a-z]{2,8})\s+c\.?\s+(\d)", r"\1 \2", collapsed)
+    collapsed = re.sub(r"\.", "", collapsed)
+    collapsed = re.sub(r"\s+", " ", collapsed)
+    return collapsed.strip()
 
 
 STEM_MATCH_WEIGHT = 0.85
@@ -112,6 +186,7 @@ def _concept_bonus(query_tokens: set[str], text_tokens: set[str]) -> float:
         if query_tokens.intersection(query_terms) and text_tokens.intersection(text_terms):
             bonus += value
     bonus += _risk_signal_bonus(query_tokens, text_tokens)
+    bonus += _expansion_group_bonus(query_tokens, text_tokens)
     return min(0.5, bonus)
 
 
@@ -122,6 +197,14 @@ def _risk_signal_bonus(query_tokens: set[str], text_tokens: set[str]) -> float:
     if risk_signal_count < 2:
         return 0.0
     return min(0.25, risk_signal_count * 0.05)
+
+
+def _expansion_group_bonus(query_tokens: set[str], text_tokens: set[str]) -> float:
+    bonus = 0.0
+    for group in _EXPANSION_TOKEN_GROUPS:
+        if query_tokens.intersection(group) and text_tokens.intersection(group):
+            bonus += 0.12
+    return min(0.3, bonus)
 
 
 def deterministic_embedding(text: str, dimensions: int = 32) -> list[float]:
@@ -167,6 +250,14 @@ def classification_allowed(classification: str | None, max_classification: Class
 def payload_matches_filters(payload: dict[str, object], filters: RagQueryFilters) -> bool:
     document_type = payload.get("document_type")
     if filters.document_types and document_type not in filters.document_types:
+        return False
+
+    document_id = payload.get("document_id")
+    if filters.document_ids and document_id not in filters.document_ids:
+        return False
+
+    document_version_id = payload.get("document_version_id")
+    if filters.document_version_ids and document_version_id not in filters.document_version_ids:
         return False
 
     classification = payload.get("classification")

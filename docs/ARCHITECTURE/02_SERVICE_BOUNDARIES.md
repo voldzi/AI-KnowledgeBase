@@ -40,6 +40,9 @@ Tento dokument definuje hranice služeb AKB Platform.
 - workflow stavů,
 - oprávnění,
 - audit,
+- analytické spisy Intelligence Workbench,
+- uložené analytické dotazy,
+- evidence odkazy na autorizované dokumenty a chunky,
 - API pro frontend a ostatní služby.
 
 ### Vlastní data
@@ -50,7 +53,10 @@ Tento dokument definuje hranice služeb AKB Platform.
 - DocumentAccessPolicy,
 - AuditEvent,
 - UserProfile,
-- RoleMapping.
+- RoleMapping,
+- AnalystCase,
+- AnalystSavedQuery,
+- AnalystEvidenceItem.
 
 ### Nesmí dělat
 

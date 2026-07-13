@@ -1,8 +1,11 @@
 from datetime import date, datetime
 from enum import Enum
+import unicodedata
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.information_policy import InformationPolicyBinding, IntegrationEnvelope, canonical_policy_hash
 
 
 class DocumentType(str, Enum):
@@ -17,6 +20,10 @@ class DocumentType(str, Enum):
     meeting_record = "meeting_record"
     contract = "contract"
     attachment = "attachment"
+    ai_intake = "ai_intake"
+    ai_requirement_card = "ai_requirement_card"
+    ai_security_appendix = "ai_security_appendix"
+    ai_governance_evidence = "ai_governance_evidence"
     other = "other"
 
 
@@ -41,6 +48,7 @@ class ExternalSourceSystem(str, Enum):
     stratos_budget = "STRATOS_BUDGET"
     stratos_projectflow = "STRATOS_PROJECTFLOW"
     stratos_archflow = "STRATOS_ARCHFLOW"
+    stratos_aiip = "STRATOS_AIIP"
     stratos_processforge = "STRATOS_PROCESSFORGE"
     stratos_executive = "STRATOS_EXECUTIVE"
     stratos_platform = "STRATOS_PLATFORM"
@@ -93,6 +101,11 @@ class SourceLocation(BaseModel):
         if len(normalized) != 64 or any(char not in "0123456789abcdefABCDEF" for char in normalized):
             raise ValueError("sha256 must be a 64-character hex digest, optionally prefixed with sha256:")
         return value
+
+
+def _is_aiip_secret_sensitivity(value: str) -> bool:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return normalized.strip().casefold() == "tajne"
 
 
 class Action(str, Enum):
@@ -245,6 +258,7 @@ class DocumentCreate(BaseModel):
     owner_id: str = Field(min_length=1, max_length=128)
     gestor_unit: str | None = Field(default=None, max_length=128)
     classification: Classification = Classification.internal
+    information_policy: InformationPolicyBinding | None = None
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     access_policies: list[AccessPolicyCreate] | None = None
@@ -258,6 +272,7 @@ class DocumentPatch(BaseModel):
     owner_id: str | None = Field(default=None, min_length=1, max_length=128)
     gestor_unit: str | None = Field(default=None, max_length=128)
     classification: Classification | None = None
+    information_policy: InformationPolicyBinding | None = None
     tags: list[str] | None = None
     metadata: dict[str, Any] | None = None
     access_policies: list[AccessPolicyCreate] | None = None
@@ -272,6 +287,11 @@ class DocumentResponse(BaseModel):
     document_type: DocumentType
     status: DocumentStatus
     classification: Classification
+    organization_id: str
+    policy_binding_id: str | None
+    policy_version: str | None
+    policy_hash: str | None
+    policy_summary: dict[str, Any] = Field(default_factory=dict)
     owner_id: str
     owner: str
     gestor_unit: str | None
@@ -317,6 +337,37 @@ class DocumentMetadataSummaryResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class DocumentReadinessSeverity(str, Enum):
+    critical = "critical"
+    warning = "warning"
+    info = "info"
+
+
+class DocumentReadinessIssue(BaseModel):
+    code: str
+    severity: DocumentReadinessSeverity
+    document_id: str
+    title: str
+    recommendation: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentReadinessResponse(BaseModel):
+    generated_at: datetime
+    total_visible_documents: int
+    ready_documents: int
+    review_documents: int
+    blocked_documents: int
+    readiness_score: float = Field(ge=0.0, le=1.0)
+    issue_counts: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    by_severity: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    by_document_type: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    by_classification: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    by_status: list[DocumentMetadataSummaryBucket] = Field(default_factory=list)
+    issues: list[DocumentReadinessIssue] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ExternalDocumentOwner(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
     display_name: str | None = Field(default=None, max_length=200)
@@ -330,6 +381,8 @@ class ExternalDocumentUpsertRequest(BaseModel):
     document_type: DocumentType
     title: str = Field(min_length=1, max_length=300)
     classification: Classification = Classification.internal
+    information_policy: InformationPolicyBinding | None = None
+    integration_envelope: IntegrationEnvelope | None = None
     owner: ExternalDocumentOwner
     tenant_id: str = Field(default="default", min_length=1, max_length=128)
     gestor_unit: str | None = Field(default=None, max_length=128)
@@ -341,6 +394,37 @@ class ExternalDocumentUpsertRequest(BaseModel):
     preview_url: str | None = Field(default=None, max_length=2048)
     access_policies: list[AccessPolicyCreate] | None = None
     assignments: list[DocumentAssignmentCreate] | None = None
+
+    @model_validator(mode="after")
+    def reject_aiip_classified_sensitivity(self) -> "ExternalDocumentUpsertRequest":
+        if self.external_system != ExternalSourceSystem.stratos_aiip:
+            return self
+        aiip_metadata = self.metadata.get("aiip")
+        if not isinstance(aiip_metadata, dict):
+            return self
+        for key in ("sensitivity", "input_data_sensitivity", "output_data_sensitivity"):
+            value = aiip_metadata.get(key)
+            if isinstance(value, str) and _is_aiip_secret_sensitivity(value):
+                raise ValueError("AIIP documents marked as Tajne require a classified boundary and cannot be ingested")
+        return self
+
+    @model_validator(mode="after")
+    def validate_information_envelope(self) -> "ExternalDocumentUpsertRequest":
+        if self.integration_envelope is None:
+            return self
+        if self.information_policy is None:
+            raise ValueError("integration_envelope requires information_policy")
+        envelope = self.integration_envelope
+        policy = self.information_policy
+        if envelope.policy_binding_id != policy.policy_binding_id:
+            raise ValueError("integration envelope policyBindingId does not match information_policy")
+        if envelope.policy_hash != canonical_policy_hash(policy):
+            raise ValueError("integration envelope policyHash does not match information_policy")
+        if envelope.classification.handling_class != policy.handling_class:
+            raise ValueError("integration envelope handlingClass does not match information_policy")
+        if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
+            raise ValueError("integration envelope TLP/PAP does not match information_policy")
+        return self
 
 
 class ExternalDocumentCurrentUpdateRequest(BaseModel):
@@ -373,6 +457,12 @@ class ExternalDocumentRefResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="ref_metadata")
     created_at: datetime
     updated_at: datetime
+
+
+class ExternalDocumentCurrentListResponse(BaseModel):
+    document_id: str
+    updated: int
+    items: list[ExternalDocumentRefResponse] = Field(default_factory=list)
 
 
 class ExternalDocumentResponse(BaseModel):
@@ -491,6 +581,7 @@ class DocumentVersionCreate(BaseModel):
     source_location: SourceLocation | None = None
     file_hash: str | None = Field(default=None, max_length=128)
     change_summary: str | None = None
+    information_policy: InformationPolicyBinding | None = None
     file: DocumentFileCreate | None = None
 
     @field_validator("file_hash")
@@ -509,6 +600,11 @@ class DocumentVersionResponse(BaseModel):
     file_id: str | None = None
     version_label: str
     status: DocumentStatus
+    organization_id: str
+    policy_binding_id: str | None
+    policy_version: str | None
+    policy_hash: str | None
+    policy_summary: dict[str, Any] = Field(default_factory=dict)
     valid_from: date | None
     valid_to: date | None
     source_file_uri: str
@@ -537,11 +633,18 @@ class AuthzCheckRequest(BaseModel):
     resource: AuthzResource = Field(default_factory=AuthzResource)
     roles: list[str] = Field(default_factory=list)
     groups: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
+    organization_id: str = "org_stratos"
+    identity_active: bool = True
+    membership_active: bool = True
+    application_access_active: bool = True
 
 
 class AuthzCheckResponse(BaseModel):
     allowed: bool
     reason: str
+    reason_codes: list[str] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -549,8 +652,15 @@ class AuthzFilterDocumentsRequest(BaseModel):
     subject_id: str = Field(min_length=1, max_length=128)
     action: Action
     candidate_document_ids: list[str] = Field(min_length=1, max_length=1000)
+    candidate_policy_hashes: dict[str, list[str]] = Field(default_factory=dict)
     roles: list[str] = Field(default_factory=list)
     groups: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
+    organization_id: str = "org_stratos"
+    identity_active: bool = True
+    membership_active: bool = True
+    application_access_active: bool = True
 
 
 class AuthzFilterDocumentsResponse(BaseModel):
@@ -586,6 +696,39 @@ class AuditEventListResponse(BaseModel):
     items: list[AuditEventResponse]
     limit: int
     offset: int
+
+
+class IntegrationIdempotencyReserveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str = Field(min_length=1, max_length=128)
+    operation: str = Field(min_length=1, max_length=120)
+    idempotency_key: str = Field(min_length=8, max_length=128)
+    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    retention_seconds: int = Field(default=86400, ge=60, le=86400)
+
+
+class IntegrationIdempotencyReserveResponse(BaseModel):
+    state: Literal["reserved", "replay", "conflict", "processing"]
+    record_id: str
+    response_status: int | None = None
+    response_body: dict[str, Any] | None = None
+    audit_event_id: str | None = None
+    expires_at: datetime
+
+
+class IntegrationIdempotencyCompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    response_status: int = Field(ge=200, le=599)
+    response_body: dict[str, Any]
+    audit_event_id: str | None = Field(default=None, max_length=64)
+
+
+class IntegrationIdempotencyCompleteResponse(BaseModel):
+    record_id: str
+    status: Literal["completed"]
+    expires_at: datetime
 
 
 class WorkflowTaskResponse(BaseModel):
@@ -625,6 +768,158 @@ class WorkflowTaskActionRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
     assignee_id: str | None = Field(default=None, max_length=128)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AnalystCaseCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    description: str | None = Field(default=None, max_length=4000)
+    classification: Classification = Classification.internal
+    tags: list[str] = Field(default_factory=list, max_length=50)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        normalized_values: list[str] = []
+        for value in values:
+            normalized = value.strip() if isinstance(value, str) else ""
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            normalized_values.append(normalized[:80])
+        return normalized_values
+
+
+class AnalystCasePatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=240)
+    description: str | None = Field(default=None, max_length=4000)
+    status: Literal["open", "archived"] | None = None
+    classification: Classification | None = None
+    tags: list[str] | None = Field(default=None, max_length=50)
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        return AnalystCaseCreate.normalize_tags(values)
+
+
+class AnalystSavedQueryCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    query_text: str = Field(min_length=1, max_length=1000)
+    query_mode: Literal["smart", "boolean", "phrase", "proximity", "fielded"] = "smart"
+    search_fields: list[Literal["all", "title", "body", "section", "entity", "source"]] = Field(
+        default_factory=lambda: ["all"],
+        max_length=8,
+    )
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("search_fields")
+    @classmethod
+    def normalize_search_fields(cls, values: list[str]) -> list[str]:
+        if not values:
+            return ["all"]
+        seen: set[str] = set()
+        normalized_values: list[str] = []
+        for value in values:
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized_values.append(value)
+        return ["all"] if "all" in normalized_values else normalized_values
+
+
+class AnalystEvidenceCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    note: str | None = Field(default=None, max_length=4000)
+    document_id: str | None = Field(default=None, max_length=64)
+    document_version_id: str | None = Field(default=None, max_length=64)
+    document_title: str | None = Field(default=None, max_length=300)
+    chunk_id: str | None = Field(default=None, max_length=128)
+    page_number: int | None = Field(default=None, ge=1)
+    section_title: str | None = Field(default=None, max_length=300)
+    source_file_name: str | None = Field(default=None, max_length=300)
+    score: float | None = None
+    snippet: str | None = Field(default=None, max_length=2000)
+    entity_types: list[str] = Field(default_factory=list, max_length=50)
+    entity_values: list[str] = Field(default_factory=list, max_length=100)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("entity_types", "entity_values")
+    @classmethod
+    def normalize_string_list(cls, values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        normalized_values: list[str] = []
+        for value in values:
+            normalized = value.strip() if isinstance(value, str) else ""
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            normalized_values.append(normalized[:256])
+        return normalized_values
+
+
+class AnalystSavedQueryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    saved_query_id: str
+    case_id: str
+    title: str
+    query_text: str
+    query_mode: Literal["smart", "boolean", "phrase", "proximity", "fielded"]
+    search_fields: list[str] = Field(default_factory=list)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    created_by: str
+    created_at: datetime
+
+
+class AnalystEvidenceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    evidence_id: str
+    case_id: str
+    title: str
+    note: str | None = None
+    document_id: str | None = None
+    document_version_id: str | None = None
+    document_title: str | None = None
+    chunk_id: str | None = None
+    page_number: int | None = None
+    section_title: str | None = None
+    source_file_name: str | None = None
+    score: float | None = None
+    snippet: str | None = None
+    entity_types: list[str] = Field(default_factory=list)
+    entity_values: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="evidence_metadata")
+    created_by: str
+    created_at: datetime
+
+
+class AnalystCaseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    case_id: str
+    title: str
+    description: str | None = None
+    status: Literal["open", "archived"]
+    owner_id: str
+    classification: Classification
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="case_metadata")
+    saved_queries: list[AnalystSavedQueryResponse] = Field(default_factory=list)
+    evidence_items: list[AnalystEvidenceResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnalystCaseListResponse(BaseModel):
+    items: list[AnalystCaseResponse]
+    limit: int
+    offset: int
 
 
 class DirectoryUserResponse(BaseModel):

@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { CheckCircle2, FileClock, FileUp, Fingerprint, Play, ShieldCheck, UploadCloud } from "lucide-react";
-import { FieldLabelWithHelp, HelpHint } from "@voldzi/stratos-ui";
+import { ArrowLeft, CheckCircle2, FileClock, FileUp, Fingerprint, Play, ShieldCheck } from "lucide-react";
+import { FieldLabelWithHelp, FileDropzone, HelpHint } from "@voldzi/stratos-ui";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosSelect } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
-import { readErrorMessage, sha256File, SUPPORTED_UPLOAD_ACCEPT } from "./upload-client-utils";
+import { MAX_UPLOAD_SIZE_BYTES, readErrorMessage, sha256File, SUPPORTED_UPLOAD_ACCEPT } from "./upload-client-utils";
 import type {
   AuthorizationHint,
   Document,
@@ -20,10 +20,9 @@ import type {
 } from "@/lib/types";
 
 interface UploadWizardProps {
-  documents: Document[];
+  document: Document;
   authorization: AuthorizationHint;
-  initialDocumentId?: string | null;
-  versionsByDocumentId: Record<string, DocumentVersion[]>;
+  versions: DocumentVersion[];
 }
 
 const uploadCopy = {
@@ -256,13 +255,10 @@ type ChangeImpact = "none" | "roles" | "dates" | "review";
 type NextStep = "owner" | "governance" | "publish";
 type VersionIncrement = "fix" | "revision" | "major";
 
-export function UploadWizard({ documents, authorization, initialDocumentId, versionsByDocumentId }: UploadWizardProps) {
+export function UploadWizard({ document, authorization, versions }: UploadWizardProps) {
   const { language } = useLanguage();
   const copy = uploadCopy[language];
-  const initialSelectedDocumentId = documents.some((document) => document.document_id === initialDocumentId)
-    ? initialDocumentId ?? ""
-    : documents[0]?.document_id ?? "";
-  const [selectedDocumentId, setSelectedDocumentId] = useState(initialSelectedDocumentId);
+  const selectedDocumentId = document.document_id;
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreflight, setFilePreflight] = useState<FilePreflight | null>(null);
   const [uploadPreflight, setUploadPreflight] = useState<UploadPreflightDecision | null>(null);
@@ -274,14 +270,9 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
   const [changeImpact, setChangeImpact] = useState<ChangeImpact>("review");
   const [nextStep, setNextStep] = useState<NextStep>("owner");
   const [versionIncrement, setVersionIncrement] = useState<VersionIncrement>("revision");
-  const selectedDocument = useMemo(
-    () => documents.find((document) => document.document_id === selectedDocumentId),
-    [documents, selectedDocumentId]
-  );
-  const selectedVersions = useMemo(
-    () => versionsByDocumentId[selectedDocumentId] ?? [],
-    [selectedDocumentId, versionsByDocumentId]
-  );
+  const [dirty, setDirty] = useState(false);
+  const selectedDocument = document;
+  const selectedVersions = versions;
   const currentVersionLabel = useMemo(() => latestVersionLabel(selectedVersions), [selectedVersions]);
   const computedVersionLabel = useMemo(
     () => nextVersionLabelFor(selectedVersions, versionIncrement),
@@ -401,10 +392,54 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
     }
   ];
 
+  async function selectSourceFile(file: File | null) {
+    setSubmitted(null);
+    setUploadPreflight(null);
+    setUploadPhase("idle");
+    setError(null);
+    setDirty(true);
+    if (!file) {
+      setSelectedFile(null);
+      setFilePreflight(null);
+      return;
+    }
+    setSelectedFile(file);
+    setFilePreflight({
+      name: file.name,
+      size: file.size,
+      type: file.type || "application/octet-stream",
+      hash: null,
+      hashing: true,
+      error: null,
+    });
+    try {
+      const hash = await sha256File(file);
+      setFilePreflight({
+        name: file.name,
+        size: file.size,
+        type: file.type || "application/octet-stream",
+        hash,
+        hashing: false,
+        error: null,
+      });
+      await prepareUploadSession(selectedDocumentId, file, hash);
+    } catch {
+      setFilePreflight({
+        name: file.name,
+        size: file.size,
+        type: file.type || "application/octet-stream",
+        hash: null,
+        hashing: false,
+        error: copy.hashFailed,
+      });
+    }
+  }
+
   return (
     <section className="grid grid--two">
       <form
         className="panel"
+        onChange={() => setDirty(true)}
         onSubmit={async (event) => {
           event.preventDefault();
           if (!selectedFile || !filePreflight?.hash || !uploadPreflight) {
@@ -456,6 +491,7 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
             }
 
             setSubmitted((await workflowResponse.json()) as { version: DocumentVersion; job: IngestionJob });
+            setDirty(false);
           } catch (reason: unknown) {
             setError(reason instanceof Error ? reason.message : copy.requestFailed);
           } finally {
@@ -465,61 +501,58 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
       >
         <div className="panel__header">
           <h2>{copy.title}</h2>
-          <FileUp size={18} aria-hidden="true" />
+          <div className="inline-actions">
+            <StratosButton
+              type="button"
+              onClick={() => {
+                const confirmed = !dirty || window.confirm(
+                  language === "cs"
+                    ? "Opustit rozpracovanou verzi? Neuložené změny budou ztraceny."
+                    : "Leave this version draft? Unsaved changes will be lost."
+                );
+                if (confirmed) {
+                  window.location.assign(withAppBasePath(`/documents/${selectedDocumentId}`));
+                }
+              }}
+            >
+              <ArrowLeft size={16} aria-hidden="true" />
+              {language === "cs" ? "Zpět" : "Back"}
+            </StratosButton>
+            <FileUp size={18} aria-hidden="true" />
+          </div>
         </div>
         <div className="panel__body form-grid">
           <div className="field">
-            <FieldLabelWithHelp htmlFor="source-file" label={copy.file} helpLabel={copy.fileHelpLabel} helpText={copy.fileHelp} />
-            <div className="file-drop">
-              <UploadCloud size={20} aria-hidden="true" />
-              <input
-                id="source-file"
-                type="file"
-                accept={SUPPORTED_UPLOAD_ACCEPT}
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  setSubmitted(null);
-                  setUploadPreflight(null);
-                  setUploadPhase("idle");
-                  if (!file) {
-                    setSelectedFile(null);
-                    setFilePreflight(null);
-                    return;
-                  }
-                  setSelectedFile(file);
-                  setFilePreflight({
-                    name: file.name,
-                    size: file.size,
-                    type: file.type || "application/octet-stream",
-                    hash: null,
-                    hashing: true,
-                    error: null
-                  });
-                  try {
-                    const hash = await sha256File(file);
-                    setFilePreflight({
-                      name: file.name,
-                      size: file.size,
-                      type: file.type || "application/octet-stream",
-                      hash,
-                      hashing: false,
-                      error: null
-                    });
-                    await prepareUploadSession(selectedDocumentId, file, hash);
-                  } catch {
-                    setFilePreflight({
-                      name: file.name,
-                      size: file.size,
-                      type: file.type || "application/octet-stream",
-                      hash: null,
-                      hashing: false,
-                      error: copy.hashFailed
-                    });
-                  }
-                }}
-              />
-              <span>{copy.chooseFile}</span>
+            <div className="stratos-field-label-row">
+              <strong>{copy.file}</strong>
+              <HelpHint label={copy.fileHelpLabel} text={copy.fileHelp} />
             </div>
+            <FileDropzone
+              accept={SUPPORTED_UPLOAD_ACCEPT}
+              files={selectedFile ? [selectedFile] : []}
+              maxFiles={1}
+              maxSize={MAX_UPLOAD_SIZE_BYTES}
+              multiple={false}
+              state={
+                submitted ? "success"
+                  : filePreflight?.error ? "error"
+                    : uploadPhase === "uploading" || filePreflight?.hashing || uploadPhase === "preflight" ? "uploading"
+                      : selectedFile ? "selected"
+                        : "idle"
+              }
+              labels={{
+                browse: language === "cs" ? "Vybrat soubor" : "Browse file",
+                drop: language === "cs" ? "Přetáhněte soubor sem" : "Drop file here",
+                hint: copy.chooseFile,
+                replace: language === "cs" ? "Nahradit" : "Replace",
+                selected: copy.fileReady,
+                uploading: uploadStatusLabel,
+                success: copy.uploadStored,
+              }}
+              onFilesSelected={(files) => void selectSourceFile(files[0] ?? null)}
+              onRemoveFile={() => void selectSourceFile(null)}
+              onValidationError={(validationErrors) => setError(validationErrors[0]?.message ?? copy.missingFile)}
+            />
           </div>
           {filePreflight ? (
             <div className="preflight-card">
@@ -539,25 +572,14 @@ export function UploadWizard({ documents, authorization, initialDocumentId, vers
               </div>
             </div>
           ) : null}
-
-          <StratosSelect
-            id="document"
-            label={copy.document}
-            labelAccessory={<HelpHint label={copy.documentHelpLabel} text={copy.documentHelp} />}
-            value={selectedDocumentId}
-            onChange={(event) => {
-              const documentId = event.target.value;
-              setSelectedDocumentId(documentId);
-              setSubmitted(null);
-              if (selectedFile && filePreflight?.hash) {
-                void prepareUploadSession(documentId, selectedFile, filePreflight.hash);
-              }
-            }}
-          >
-            {documents.map((document) => (
-              <option key={document.document_id} value={document.document_id}>{document.title}</option>
-            ))}
-          </StratosSelect>
+          <div className="selected-document-context" aria-label={copy.selectedDocument}>
+            <FileUp size={18} aria-hidden="true" />
+            <div>
+              <span>{copy.selectedDocument}</span>
+              <strong>{selectedDocument.title}</strong>
+              <small>{selectedDocument.document_type.replaceAll("_", " ")} · {selectedDocument.classification}</small>
+            </div>
+          </div>
           <div className="form-grid form-grid--three">
             <StratosSelect
               id="version-increment"

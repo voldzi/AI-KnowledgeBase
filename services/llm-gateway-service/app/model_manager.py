@@ -40,6 +40,12 @@ def recommended_models() -> RecommendedModelsResponse:
                 minimum_memory_gb=4,
             ),
             RecommendedModel(
+                name="qwen3-embedding:8b",
+                provider="ollama",
+                recommended_for="enterprise multilingual retrieval, use dimensions=1024 for the AKB baseline collection size",
+                minimum_memory_gb=16,
+            ),
+            RecommendedModel(
                 name="nomic-embed-text",
                 provider="ollama",
                 recommended_for="lightweight local embedding smoke tests",
@@ -58,6 +64,7 @@ def effective_config(settings: Settings) -> EffectiveConfigResponse:
         enabled_providers=list(settings.enabled_providers),
         default_chat_model=settings.default_chat_model,
         default_embedding_model=settings.default_embedding_model,
+        default_embedding_dimensions=settings.default_embedding_dimensions,
         default_max_tokens=settings.default_max_tokens,
         model_provider_map=settings.model_provider_map,
         allow_model_pull=settings.allow_model_pull,

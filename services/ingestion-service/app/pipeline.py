@@ -6,7 +6,7 @@ from app.errors import IngestionError
 from app.ids import utcnow
 from app.object_storage import ObjectStorageClient
 from app.registry_client import RegistryClient
-from app.schemas import IngestionReport, JobStatus, ReportMessage, StoredJob
+from app.schemas import IngestionQualityReport, IngestionReport, JobStatus, ReportMessage, StoredJob
 from app.security import AuthContext
 from app.store import JobStore
 from chunkers.logical import LogicalStructureChunker
@@ -47,6 +47,7 @@ class IngestionPipeline:
     ) -> StoredJob:
         job_id = stored_job.job.job_id
         request = stored_job.request
+        extraction_profile = stored_job.job.extraction_profile
         documents_processed = 0
         pages_processed = 0
         chunks_created = 0
@@ -65,6 +66,7 @@ class IngestionPipeline:
             metadata={
                 "document_id": request.document_id,
                 "document_version_id": request.document_version_id,
+                "extraction_profile": extraction_profile,
                 "parser_profile": request.parser_profile,
                 "chunking_strategy": request.chunking_strategy,
                 "embedding_profile": request.embedding_profile,
@@ -85,6 +87,11 @@ class IngestionPipeline:
                 request.document_version_id,
                 auth_context=auth_context,
             )
+            await self._sync_external_status(
+                stored_job,
+                status="INGESTING",
+                auth_context=auth_context,
+            )
             source = await self.object_storage.read(request.source_file_uri)
             parser_result = self.parser_router.parse(
                 source,
@@ -95,10 +102,20 @@ class IngestionPipeline:
             tables_detected = parser_result.tables_detected
             ocr_used = parser_result.ocr_used
             warnings.extend(_messages(parser_result.warnings))
+            quality = _quality_report(parser_result, extraction_profile=extraction_profile)
+            parser_result.metadata.update(
+                {
+                    "quality_score": quality.quality_score,
+                    "quality_tier": quality.quality_tier,
+                    "requires_review": quality.requires_review,
+                }
+            )
+            warnings.extend(_quality_warnings(quality, source_mime_type=source.mime_type))
 
             chunking_result = self.chunker.chunk(
                 parser_result,
                 document_metadata=document_metadata,
+                extraction_profile=extraction_profile,
                 parser_profile=request.parser_profile,
                 chunking_strategy=request.chunking_strategy,
                 source=source,
@@ -125,6 +142,14 @@ class IngestionPipeline:
                 [chunk.normalized_text for chunk in chunks],
                 embedding_profile=request.embedding_profile,
                 auth_context=auth_context,
+                policy_metadata={
+                    "policy_binding_id": document_metadata.policy_binding_id,
+                    "policy_version": document_metadata.policy_version,
+                    "policy_hash": document_metadata.policy_hash,
+                    "handling_class": document_metadata.policy_summary.get("handlingClass"),
+                    "legal_classification": document_metadata.policy_summary.get("legalClassification"),
+                    "obligations": document_metadata.policy_summary.get("obligations", []),
+                },
             )
             indexing_result = await self.indexer.index(
                 chunks=chunks,
@@ -141,11 +166,17 @@ class IngestionPipeline:
                 chunks_created=chunks_created,
                 tables_detected=tables_detected,
                 ocr_used=ocr_used,
+                quality=quality,
                 warnings=warnings,
                 errors=[],
             )
             self.store.update_status(job_id, final_status, finished_at=utcnow())
             updated = self.store.update_report(job_id, report)
+            await self._sync_external_status(
+                stored_job,
+                status="INDEXED",
+                auth_context=auth_context,
+            )
             await self._audit(
                 actor_id=subject_id,
                 event_type="ingestion.job.completed",
@@ -153,9 +184,14 @@ class IngestionPipeline:
                 metadata={
                     "document_id": request.document_id,
                     "document_version_id": request.document_version_id,
+                    "extraction_profile": extraction_profile,
                     "chunks_created": chunks_created,
                     "indexed_chunks": indexing_result.indexed_chunks,
                     "ocr_used": ocr_used,
+                    "quality_score": quality.quality_score,
+                    "quality_tier": quality.quality_tier,
+                    "requires_review": quality.requires_review,
+                    "parser_engine": quality.parser_engine,
                     "status": final_status.value,
                 },
                 auth_context=auth_context,
@@ -245,6 +281,11 @@ class IngestionPipeline:
         )
         self.store.update_status(job_id, JobStatus.failed, finished_at=utcnow())
         updated = self.store.update_report(job_id, report)
+        await self._sync_external_status(
+            stored_job,
+            status="FAILED",
+            auth_context=auth_context,
+        )
         await self._audit(
             actor_id=subject_id,
             event_type="ingestion.job.failed",
@@ -265,6 +306,30 @@ class IngestionPipeline:
             code,
         )
         return updated
+
+    async def _sync_external_status(
+        self,
+        stored_job: StoredJob,
+        *,
+        status: str,
+        auth_context: AuthContext | None,
+    ) -> None:
+        request = stored_job.request
+        try:
+            await self.registry.update_external_document_current(
+                document_id=request.document_id,
+                document_version_id=request.document_version_id,
+                ingestion_job_id=stored_job.job.job_id,
+                ingestion_status=status,
+                auth_context=auth_context,
+            )
+        except IngestionError as exc:
+            logger.warning(
+                "external_document_status_sync_failed job_id=%s status=%s error_code=%s",
+                stored_job.job.job_id,
+                status,
+                exc.code,
+            )
 
     async def _audit(
         self,
@@ -291,3 +356,86 @@ class IngestionPipeline:
 
 def _messages(messages: list[tuple[str, str]]) -> list[ReportMessage]:
     return [ReportMessage(code=code, message=message) for code, message in messages]
+
+
+def _quality_report(parser_result, *, extraction_profile: str) -> IngestionQualityReport:
+    metadata = parser_result.metadata
+    pages_processed = max(0, parser_result.pages_processed)
+    pages_with_text = int(metadata.get("pages_with_text") or _pages_with_text(parser_result))
+    empty_pages = [int(page) for page in metadata.get("empty_pages", []) if isinstance(page, int)]
+    text_chars = int(metadata.get("text_chars_extracted") or parser_result.text_length)
+    coverage = (pages_with_text / pages_processed) if pages_processed else 0.0
+    expected_chars = max(1, pages_processed * 250)
+    density = min(1.0, text_chars / expected_chars)
+    quality_score = round(max(0.0, min(1.0, (coverage * 0.7) + (density * 0.3))), 2)
+    quality_tier = _quality_tier(
+        quality_score=quality_score,
+        pages_processed=pages_processed,
+        empty_pages=empty_pages,
+    )
+    requires_review = quality_tier == "poor" or (
+        parser_result.ocr_used and (quality_score < 0.75 or bool(empty_pages))
+    )
+
+    return IngestionQualityReport(
+        extraction_profile=extraction_profile,
+        parser_name=parser_result.parser_name,
+        parser_engine=metadata.get("parser_engine"),
+        pages_processed=pages_processed,
+        pages_with_text=pages_with_text,
+        empty_pages=empty_pages[:100],
+        text_chars_extracted=text_chars,
+        tables_detected=parser_result.tables_detected,
+        ocr_used=parser_result.ocr_used,
+        quality_score=quality_score,
+        quality_tier=quality_tier,
+        requires_review=requires_review,
+        capabilities=[str(item) for item in metadata.get("capabilities", [])],
+    )
+
+
+def _quality_warnings(quality: IngestionQualityReport, *, source_mime_type: str) -> list[ReportMessage]:
+    warnings: list[ReportMessage] = []
+    if source_mime_type == "application/pdf" and quality.pages_processed > 0:
+        coverage = quality.pages_with_text / quality.pages_processed
+        if coverage < 0.6 and not quality.ocr_used:
+            warnings.append(
+                ReportMessage(
+                    code="LOW_TEXT_COVERAGE",
+                    message=(
+                        "PDF text extraction covered fewer than 60% of pages. "
+                        "Verify OCR sidecar or a layout/OCR extraction profile before relying on this document."
+                    ),
+                )
+            )
+
+    if quality.ocr_used and quality.empty_pages:
+        warnings.append(
+            ReportMessage(
+                code="OCR_EMPTY_PAGES",
+                message="OCR output contains pages without recognized text. Review the source scan quality.",
+            )
+        )
+    if quality.ocr_used and quality.quality_tier == "poor":
+        warnings.append(
+            ReportMessage(
+                code="LOW_OCR_QUALITY",
+                message=(
+                    "OCR output quality is below the trusted threshold. "
+                    "Review or reprocess the document before relying on it as a primary answer source."
+                ),
+            )
+        )
+    return warnings
+
+
+def _pages_with_text(parser_result) -> int:
+    return len({block.page_number for block in parser_result.blocks if block.page_number and block.text.strip()})
+
+
+def _quality_tier(*, quality_score: float, pages_processed: int, empty_pages: list[int]) -> str:
+    if pages_processed <= 0 or quality_score < 0.45:
+        return "poor"
+    if quality_score >= 0.75 and not empty_pages:
+        return "good"
+    return "review"

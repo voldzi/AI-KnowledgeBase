@@ -26,11 +26,14 @@ AKL_OLLAMA_BASE_URLS=http://host.docker.internal:11434
 
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
-AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
 
 AKL_RAG_RETRIEVER_MODE=qdrant
+AKL_RAG_FULLTEXT_MODE=opensearch
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
+AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_ANSWER_MAX_TOKENS=512
 AKL_RAG_SOURCE_CONTEXT_WINDOW=1
@@ -41,6 +44,7 @@ AKL_RAG_ENABLE_RERANKING=true
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine
+AKL_OPENSEARCH_INDEX=akl_document_chunks
 ```
 
 ## Start
@@ -107,10 +111,11 @@ Restore:
 RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<backup-directory>
 ```
 
-The backup includes PostgreSQL dump, MinIO bucket data, Qdrant snapshots for `akl_document_chunks`, import reports/config metadata where available, and infrastructure configuration. Ollama models are not backed up; pull them again through AKL Model Manager.
+The backup includes PostgreSQL dump, MinIO bucket data, Qdrant snapshots for `akl_document_chunks`, OpenSearch index data through the persistent Docker volume, import reports/config metadata where available, and infrastructure configuration. Ollama models are not backed up; pull them again through AKL Model Manager.
 
 ## Common Issues
 
 - `QDRANT_COLLECTION_VECTOR_SIZE_MISMATCH`: the collection was created for a different embedding dimension. Recreate it or use the matching embedding profile.
+- OpenSearch has no results after enabling it: re-run the document import or reindex flow so ingestion writes existing chunks into `AKL_OPENSEARCH_INDEX`.
 - `SOURCE_FILE_URI_MISSING` in viewer: the chunk was indexed before source metadata support. Reindex the document.
 - Slow local answers: keep `AKL_RAG_ANSWER_MAX_TOKENS=512` and reduce `max_chunks` for very small local models.

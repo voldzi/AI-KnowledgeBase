@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +22,20 @@ class ChatMessage(BaseModel):
     content: str = Field(min_length=1)
 
 
+class InformationPolicyMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    purpose: str | None = None
+    policy_binding_id: str | None = None
+    policy_binding_ids: list[str] = Field(default_factory=list)
+    policy_version: str | None = None
+    policy_hash: str | None = None
+    policy_hashes: list[str] = Field(default_factory=list)
+    handling_class: str | None = None
+    legal_classification: str | None = None
+    obligations: list[str] = Field(default_factory=list)
+
+
 class ChatCompletionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -32,7 +46,7 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int | None = Field(default=None, gt=0)
     think: bool | None = None
     stream: bool = False
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: InformationPolicyMetadata = Field(default_factory=InformationPolicyMetadata)
 
 
 class ChatCompletionResponse(BaseModel):
@@ -57,7 +71,8 @@ class EmbeddingsRequest(BaseModel):
 
     model: str = Field(min_length=1)
     input: list[str] = Field(min_length=1)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    dimensions: int | None = Field(default=None, ge=1, le=4096)
+    metadata: InformationPolicyMetadata = Field(default_factory=InformationPolicyMetadata)
 
 
 class EmbeddingItem(BaseModel):
@@ -141,6 +156,7 @@ class ModelTestEmbeddingRequest(BaseModel):
 
     model: str | None = Field(default=None, min_length=1)
     input: str = Field(min_length=1)
+    dimensions: int | None = Field(default=None, ge=1, le=4096)
 
 
 class EffectiveConfigResponse(BaseModel):
@@ -151,6 +167,7 @@ class EffectiveConfigResponse(BaseModel):
     enabled_providers: list[ProviderName]
     default_chat_model: str
     default_embedding_model: str
+    default_embedding_dimensions: int | None = None
     default_max_tokens: int
     model_provider_map: dict[str, ProviderName]
     allow_model_pull: bool

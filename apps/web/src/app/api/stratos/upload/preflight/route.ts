@@ -8,6 +8,11 @@ import {
   upsertExternalDocument
 } from "@/lib/stratos/document-ai";
 import { createUploadPreflightDecision } from "@/lib/upload/preflight";
+import {
+  parseInformationPolicy,
+  parseIntegrationEnvelope,
+  policyHash
+} from "@/lib/stratos/information-policy";
 
 import { stratosBridgeError } from "../../errors";
 
@@ -17,6 +22,8 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>;
+    const informationPolicy = parseInformationPolicy(body.information_policy);
+    parseIntegrationEnvelope(body.integration_envelope, informationPolicy);
     const context = await getServerRequestContextForRequest(request);
     const external = await upsertExternalDocument(body, context);
     const preflight = createUploadPreflightDecision(
@@ -25,7 +32,10 @@ export async function POST(request: NextRequest) {
         file_name: requiredString(body, "file_name"),
         file_size: Number(body.file_size),
         file_type: body.file_type ? String(body.file_type) : null,
-        sha256: requiredString(body, "sha256")
+        sha256: requiredString(body, "sha256"),
+        policy_binding_id: informationPolicy.policyBindingId,
+        policy_version: informationPolicy.policyVersion,
+        policy_hash: policyHash(informationPolicy)
       },
       getStratosUploadSettings()
     );
@@ -36,6 +46,9 @@ export async function POST(request: NextRequest) {
         document_id: external.document.document_id,
         external_document_id: external.external_document.external_document_id,
         external_ref: external.external_document.external_ref,
+        policy_binding_id: informationPolicy.policyBindingId,
+        policy_version: informationPolicy.policyVersion,
+        policy_hash: policyHash(informationPolicy),
         canonical_open_url: canonicalDocumentUrl({ documentId: external.document.document_id })
       },
       { status: 201 }

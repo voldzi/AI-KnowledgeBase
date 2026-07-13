@@ -33,6 +33,9 @@ from app.schemas import (
     ArchflowArchitectureExtractionResponse,
     ArchflowGoalExtractionProposeRequest,
     ArchflowGoalExtractionResponse,
+    AiipApplicationResponse,
+    AiipDuplicateSearchRequest,
+    AiipHarmonizeRequest,
     ContractExtractionProfilesResponse,
     ContractExtractionProposeRequest,
     ContractExtractionResponse,
@@ -178,6 +181,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             len(payload.chunks),
         )
         return await _service(request).answer(payload, auth_context=auth_context)
+
+    @app.post(
+        "/api/v1/integrations/aiip/harmonize",
+        response_model=AiipApplicationResponse,
+        tags=["aiip-integration"],
+    )
+    async def aiip_harmonize(
+        payload: AiipHarmonizeRequest,
+        request: Request,
+        response: Response,
+    ) -> AiipApplicationResponse:
+        auth_context = _guard_aiip_request(request, payload.classification)
+        idempotency_key = _aiip_idempotency_key(request)
+        execution = await _service(request).aiip_harmonize(
+            payload,
+            idempotency_key=idempotency_key,
+            auth_context=auth_context,
+        )
+        if execution.replayed:
+            response.headers["Idempotency-Replayed"] = "true"
+        return execution.response
+
+    @app.post(
+        "/api/v1/integrations/aiip/duplicates/search",
+        response_model=AiipApplicationResponse,
+        tags=["aiip-integration"],
+    )
+    async def aiip_duplicate_search(
+        payload: AiipDuplicateSearchRequest,
+        request: Request,
+        response: Response,
+    ) -> AiipApplicationResponse:
+        auth_context = _guard_aiip_request(request, payload.classification)
+        idempotency_key = _aiip_idempotency_key(request)
+        execution = await _service(request).aiip_duplicate_search(
+            payload,
+            idempotency_key=idempotency_key,
+            auth_context=auth_context,
+        )
+        if execution.replayed:
+            response.headers["Idempotency-Replayed"] = "true"
+        return execution.response
 
     @app.get("/api/v1/chunks/{chunk_id}/source-context", response_model=SourceContextResponse, tags=["viewer"])
     async def chunk_source_context(chunk_id: str, request: Request, subject_id: str = "user_dev") -> SourceContextResponse:
@@ -468,6 +513,35 @@ def _service(request: Request) -> RagRetrievalService:
 def _guard_request(request: Request) -> AuthContext:
     require_service_auth(request, _settings(request))
     return auth_context_for_request(request, _settings(request))
+
+
+def _guard_aiip_request(request: Request, classification: str) -> AuthContext:
+    context = _guard_request(request)
+    if "service_aiip" not in context.roles:
+        raise RetrievalError(
+            "AUTH_FORBIDDEN",
+            "The service_aiip role is required for this endpoint.",
+            status_code=403,
+        )
+    if classification not in {"public", "internal"}:
+        raise RetrievalError(
+            "CLASSIFICATION_NOT_ALLOWED",
+            "AIIP processing is allowed only for public and internal data.",
+            status_code=403,
+            details={"classification": classification},
+        )
+    return context
+
+
+def _aiip_idempotency_key(request: Request) -> str:
+    value = request.headers.get("Idempotency-Key", "").strip()
+    if len(value) < 8 or len(value) > 128:
+        raise RetrievalError(
+            "IDEMPOTENCY_KEY_REQUIRED",
+            "Idempotency-Key must contain between 8 and 128 characters.",
+            status_code=400,
+        )
+    return value
 
 
 try:

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AccessAuditList, GovernanceIssueList, type AccessAuditListItem, type GovernanceIssueListItem, type GovernanceIssueTone } from "@voldzi/stratos-ui";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -22,6 +23,7 @@ import {
   LockKeyhole,
   Network,
   Plus,
+  RotateCcw,
   Save,
   ShieldAlert,
   ShieldCheck,
@@ -37,7 +39,6 @@ import {
   StratosPdfViewer,
   StratosSelect,
   StratosViewTabs,
-  type StratosDataTableColumn,
   type StratosViewTab
 } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
@@ -61,6 +62,7 @@ import type {
   SourceContext
 } from "@/lib/types";
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
+import { accessAuditToneForSeverity } from "@/features/audit/access-audit-items";
 
 interface DocumentDetailProps {
   document: Document;
@@ -337,6 +339,13 @@ const detailCopy = {
     governanceWarnings: "Varování",
     governanceCounts: "Souhrn metrik",
     governanceFindings: "Nálezy",
+    governanceSeverity: "Závažnost",
+    governanceApplication: "Aplikace",
+    governanceProblemType: "Typ problému",
+    governanceEntity: "Entita",
+    governanceRecommendedAction: "Doporučená akce",
+    governanceOpenReference: "Otevřít podklad",
+    governanceReviewVersionChange: "Posoudit změnu v revizi dokumentu.",
     governanceCitations: "Citace",
     governanceMissing: "Chybějící informace",
     governanceNoItems: "Výsledek neobsahuje detailní položky.",
@@ -358,6 +367,11 @@ const detailCopy = {
     validity: "Platnost",
     changeSummary: "Souhrn změny",
     ingestionStatus: "Stav zpracování",
+    retryIngestion: "Spustit znovu",
+    retryingIngestion: "Spouštím zpracování",
+    retryIngestionStarted: "Nové zpracování bylo spuštěno.",
+    retryIngestionIndexed: "Dokument byl znovu zpracován a zařazen do indexu.",
+    retryIngestionFailed: "Opakované zpracování selhalo.",
     created: "vytvořeno",
     noJob: "K tomuto dokumentu není aktuálně připojené žádné zpracování.",
     auditTitle: "Auditní stopa dokumentu",
@@ -557,6 +571,13 @@ const detailCopy = {
     governanceWarnings: "Warnings",
     governanceCounts: "Metric summary",
     governanceFindings: "Findings",
+    governanceSeverity: "Severity",
+    governanceApplication: "Application",
+    governanceProblemType: "Problem type",
+    governanceEntity: "Entity",
+    governanceRecommendedAction: "Recommended action",
+    governanceOpenReference: "Open evidence",
+    governanceReviewVersionChange: "Review the change in document approval.",
     governanceCitations: "Citations",
     governanceMissing: "Missing information",
     governanceNoItems: "The result has no detailed items.",
@@ -578,6 +599,11 @@ const detailCopy = {
     validity: "Validity",
     changeSummary: "Change summary",
     ingestionStatus: "Ingestion status",
+    retryIngestion: "Run again",
+    retryingIngestion: "Starting ingestion",
+    retryIngestionStarted: "A new ingestion job was started.",
+    retryIngestionIndexed: "The document was reprocessed and added to the index.",
+    retryIngestionFailed: "The ingestion retry failed.",
     created: "created",
     noJob: "No processing job is currently linked to this document.",
     auditTitle: "Document audit trail",
@@ -661,6 +687,10 @@ export function DocumentDetail({
       }),
     [assignments, auditEvents, copy, document, relatedJobs, versions, workflowTasks]
   );
+  const documentAuditItems = useMemo(
+    () => accessAuditItemsFromTraces(documentAuditTraces, copy, language),
+    [copy, documentAuditTraces, language]
+  );
   const sourceContextSignals = useMemo(
     () => sourceContextSignalsForDocument({ document, versions, auditEvents, copy }),
     [auditEvents, copy, document, versions]
@@ -673,6 +703,8 @@ export function DocumentDetail({
   const loadedRequestedChunkRef = useRef<string | null>(null);
   const [workflowAction, setWorkflowAction] = useState<"publish" | "archive" | null>(null);
   const [workflowFeedback, setWorkflowFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [retryingIngestion, setRetryingIngestion] = useState(false);
+  const [ingestionFeedback, setIngestionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [savingAssignments, setSavingAssignments] = useState(false);
   const [assignmentFeedback, setAssignmentFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [governanceAction, setGovernanceAction] = useState<GovernanceActionKind | null>(null);
@@ -740,6 +772,47 @@ export function DocumentDetail({
       setWorkflowFeedback({ tone: "error", message: `${copy.workflowActionFailed}${suffix}` });
     } finally {
       setWorkflowAction(null);
+    }
+  }
+
+  async function retryDocumentIngestion() {
+    if (!authorization.can_ingest || !currentVersion || retryingIngestion) {
+      return;
+    }
+    setRetryingIngestion(true);
+    setIngestionFeedback(null);
+    try {
+      const response = await fetch(
+        withAppBasePath(`/api/stratos/documents/${encodeURIComponent(document.document_id)}/retry-ingestion`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      const payload = (await response.json()) as {
+        ingestion_job_id: string;
+        ingestion_status: string;
+      };
+      const failed = ["FAILED", "PERMISSION_DENIED"].includes(payload.ingestion_status);
+      const message = failed
+        ? copy.retryIngestionFailed
+        : payload.ingestion_status === "INDEXED"
+          ? copy.retryIngestionIndexed
+          : copy.retryIngestionStarted;
+      setIngestionFeedback({
+        tone: failed ? "error" : "success",
+        message: `${message} ${payload.ingestion_job_id} · ${payload.ingestion_status}`
+      });
+      router.refresh();
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setIngestionFeedback({ tone: "error", message: `${copy.retryIngestionFailed}${suffix}` });
+    } finally {
+      setRetryingIngestion(false);
     }
   }
 
@@ -1619,9 +1692,28 @@ export function DocumentDetail({
         <section className="panel">
           <div className="panel__header">
             <h2>{copy.ingestionStatus}</h2>
-            <FileClock size={18} aria-hidden="true" />
+            {authorization.can_ingest && currentVersion ? (
+              <StratosButton
+                type="button"
+                onClick={() => void retryDocumentIngestion()}
+                disabled={retryingIngestion}
+              >
+                <RotateCcw size={16} aria-hidden="true" />
+                {retryingIngestion ? copy.retryingIngestion : copy.retryIngestion}
+              </StratosButton>
+            ) : (
+              <FileClock size={18} aria-hidden="true" />
+            )}
           </div>
           <div className="panel__body timeline">
+            {ingestionFeedback ? (
+              <div
+                className={`notice ${ingestionFeedback.tone === "error" ? "notice--danger" : ""}`}
+                role={ingestionFeedback.tone === "error" ? "alert" : "status"}
+              >
+                {ingestionFeedback.message}
+              </div>
+            ) : null}
             {relatedJobs.length > 0 ? (
               relatedJobs.map((job) => (
                 <div className="timeline-item" key={job.job_id}>
@@ -1657,7 +1749,7 @@ export function DocumentDetail({
                 {copy.auditHidden}
               </div>
             </div>
-          ) : documentAuditTraces.length === 0 ? (
+          ) : documentAuditItems.length === 0 ? (
             <div className="panel__body">
               <div className="empty-state">
                 <CircleCheck size={22} aria-hidden="true" />
@@ -1665,12 +1757,9 @@ export function DocumentDetail({
               </div>
             </div>
           ) : (
-            <StratosDataTable
-              aria-label={copy.auditTitle}
-              rows={documentAuditTraces}
-              getRowId={(trace) => trace.event.audit_event_id}
-              columns={auditTraceColumns(copy, language)}
-            />
+            <div className="panel__body">
+              <AccessAuditList items={documentAuditItems} emptyLabel={copy.auditEmpty} />
+            </div>
           )}
         </section>
       ) : null}
@@ -1815,74 +1904,25 @@ function auditMetadataSummary(metadata: AuditEvent["metadata"]): string {
   return entries.length > 0 ? entries.join(", ") : "n/a";
 }
 
-function auditTraceColumns(
+function accessAuditItemsFromTraces(
+  traces: AuditTrace[],
   copy: (typeof detailCopy)[AklLanguage],
   language: AklLanguage
-): Array<StratosDataTableColumn<AuditTrace>> {
-  return [
-    {
-      id: "event",
-      label: copy.auditEvent,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.event_type,
-      render: (trace) => (
-        <span className="cell-title">
-          <strong>{trace.event.event_type}</strong>
-          <span>{trace.event.audit_event_id}</span>
-          <span>{copy.auditMetadata}: {auditMetadataSummary(trace.event.metadata)}</span>
-        </span>
-      )
-    },
-    {
-      id: "severity",
-      label: copy.auditSeverity,
-      width: 120,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.severity,
-      render: (trace) => <StatusBadge value={trace.event.severity} />
-    },
-    {
-      id: "actor",
-      label: copy.auditActor,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.actor_id,
-      render: (trace) => trace.event.actor_id
-    },
-    {
-      id: "resource",
-      label: copy.auditResource,
-      render: (trace) => (
-        <span className="cell-title">
-          <strong>{trace.event.resource_type}</strong>
-          <span>{trace.event.resource_id}</span>
-        </span>
-      )
-    },
-    {
-      id: "scope",
-      label: copy.auditScope,
-      render: (trace) => (
-        <div className="tag-list">
-          {trace.scopes.map((scope) => (
-            <span className="tag" key={`${trace.event.audit_event_id}-${scope}`}>{scope}</span>
-          ))}
-        </div>
-      )
-    },
-    {
-      id: "correlation",
-      label: copy.auditCorrelation,
-      render: (trace) => trace.event.correlation_id
-    },
-    {
-      id: "created",
-      label: copy.auditCreated,
-      width: 170,
-      sortable: true,
-      sortAccessor: (trace) => trace.event.created_at,
-      render: (trace) => formatDateTime(trace.event.created_at, language)
-    }
-  ];
+): AccessAuditListItem[] {
+  return traces.map((trace) => ({
+    id: trace.event.audit_event_id,
+    title: trace.event.event_type,
+    tone: accessAuditToneForSeverity(trace.event.severity),
+    detail: [
+      `${copy.auditSeverity}: ${trace.event.severity}`,
+      `${copy.auditActor}: ${trace.event.actor_id}`,
+      `${copy.auditResource}: ${trace.event.resource_type} / ${trace.event.resource_id}`,
+      `${copy.auditScope}: ${trace.scopes.join(", ")}`,
+      `${copy.auditMetadata}: ${auditMetadataSummary(trace.event.metadata)}`,
+      `${copy.auditCorrelation}: ${trace.event.correlation_id}`,
+      `${copy.auditCreated}: ${formatDateTime(trace.event.created_at, language)}`
+    ].join(" · ")
+  }));
 }
 
 function assignmentRowsFrom(assignments: DocumentAssignment[], documentId: string): AssignmentFormRow[] {
@@ -2071,7 +2111,7 @@ function GovernanceResultPanel({
 }) {
   const result = run.result;
   const metrics = governanceMetrics(result);
-  const items = governanceResultItems(result);
+  const issues = governanceIssueItems(result, copy);
   const citations = governanceCitations(result);
 
   return (
@@ -2097,14 +2137,10 @@ function GovernanceResultPanel({
           </div>
         </div>
       ) : null}
-      {items.length > 0 ? (
-        <div className="timeline">
+      {issues.length > 0 ? (
+        <div className="stack">
           <strong>{copy.governanceFindings}</strong>
-          {items.map((item) => (
-            <div className="timeline-item" key={item}>
-              <span>{item}</span>
-            </div>
-          ))}
+          <GovernanceIssueList items={issues} emptyLabel={copy.governanceNoItems} />
         </div>
       ) : (
         <div className="empty-state">
@@ -3118,17 +3154,138 @@ function governanceMetrics(result: GovernanceServiceResponse): string[] {
   return [];
 }
 
-function governanceResultItems(result: GovernanceServiceResponse): string[] {
+function governanceIssueItems(
+  result: GovernanceServiceResponse,
+  copy: Record<string, string>
+): GovernanceIssueListItem[] {
   if ("changes" in result) {
-    return result.changes.map((change) => `${change.impact} ${change.change_type}: ${change.rationale}`);
+    return result.changes.map((change) =>
+      governanceIssueItem({
+        id: change.change_id,
+        severity: change.impact,
+        tone: governanceChangeTone(change.impact),
+        problemType: change.change_type,
+        entity: `${result.document_id} / ${result.left_version_id} -> ${result.right_version_id}`,
+        title: `${change.change_type}: ${change.impact}`,
+        description: change.rationale,
+        recommendedAction: copy.governanceReviewVersionChange,
+        citation: change.after_citation ?? change.before_citation ?? change.citations[0] ?? null,
+        copy
+      })
+    );
   }
   if ("findings" in result) {
-    return result.findings.map((finding) => `${finding.severity} ${finding.rule_id}: ${finding.message}`);
+    return result.findings.map((finding) =>
+      governanceIssueItem({
+        id: finding.finding_id,
+        severity: finding.severity,
+        tone: governanceSeverityTone(finding.severity),
+        problemType: finding.rule_id,
+        entity: finding.sources[0]?.title ?? finding.evidence_citations[0]?.document_title ?? result.result_id,
+        title: finding.rule_name,
+        description: finding.message,
+        recommendedAction: finding.recommendation,
+        citation: finding.evidence_citations[0] ?? finding.sources.find((source) => source.citation)?.citation ?? null,
+        copy
+      })
+    );
   }
   if ("conflicts" in result) {
-    return result.conflicts.map((conflict) => `${conflict.severity} ${conflict.conflict_type}: ${conflict.summary}`);
+    return result.conflicts.map((conflict) =>
+      governanceIssueItem({
+        id: conflict.conflict_id,
+        severity: conflict.severity,
+        tone: governanceSeverityTone(conflict.severity),
+        problemType: conflict.conflict_type,
+        entity: conflict.claims.map((claim) => claim.source.title).join(" / ") || result.result_id,
+        title: conflict.conflict_type,
+        description: conflict.summary,
+        recommendedAction: conflict.recommendation,
+        citation: conflict.claims[0]?.citation ?? null,
+        copy
+      })
+    );
   }
   return [];
+}
+
+function governanceIssueItem({
+  id,
+  severity,
+  tone,
+  problemType,
+  entity,
+  title,
+  description,
+  recommendedAction,
+  citation,
+  copy
+}: {
+  id: string;
+  severity: string;
+  tone: GovernanceIssueTone;
+  problemType: string;
+  entity: string;
+  title: ReactNode;
+  description: ReactNode;
+  recommendedAction: string;
+  citation: GovernanceCitation | null;
+  copy: Record<string, string>;
+}): GovernanceIssueListItem {
+  return {
+    id,
+    title,
+    detail: description,
+    badge: severity,
+    tone,
+    metadata: [
+      `${copy.governanceSeverity}: ${severity}`,
+      `${copy.governanceApplication}: AKB`,
+      `${copy.governanceProblemType}: ${problemType}`,
+      `${copy.governanceEntity}: ${entity}`,
+      `${copy.governanceRecommendedAction}: ${recommendedAction}`
+    ],
+    action: citation ? (
+      <StratosButtonLink href={governanceCitationHref(citation)}>
+        <ExternalLink size={15} aria-hidden="true" />
+        {copy.governanceOpenReference}
+      </StratosButtonLink>
+    ) : undefined
+  };
+}
+
+function governanceSeverityTone(severity: string): GovernanceIssueTone {
+  if (severity === "critical" || severity === "error") {
+    return "danger";
+  }
+  if (severity === "warning") {
+    return "warning";
+  }
+  if (severity === "info") {
+    return "info";
+  }
+  return "neutral";
+}
+
+function governanceChangeTone(impact: string): GovernanceIssueTone {
+  if (impact === "critical") {
+    return "danger";
+  }
+  if (impact === "material") {
+    return "warning";
+  }
+  if (impact === "minor") {
+    return "info";
+  }
+  if (impact === "none") {
+    return "good";
+  }
+  return "neutral";
+}
+
+function governanceCitationHref(citation: GovernanceCitation): string {
+  const params = new URLSearchParams({ tab: "viewer", chunk_id: citation.chunk_id });
+  return `/documents/${encodeURIComponent(citation.document_id)}?${params.toString()}`;
 }
 
 function governanceCitations(result: GovernanceServiceResponse): GovernanceCitation[] {

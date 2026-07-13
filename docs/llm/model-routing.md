@@ -43,20 +43,26 @@ AKL_LLM_ENABLED_PROVIDERS=ollama
 AKL_OLLAMA_BASE_URL=http://ollama:11434
 AKL_OLLAMA_BASE_URLS=http://ollama:11434
 AKL_LLM_DEFAULT_CHAT_MODEL=gemma4:12b-mlx
+AKL_LLM_CHAT_MODEL_FALLBACKS={"gemma4:31b-mlx":["gemma4:12b-mlx"]}
 AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
 AKL_LLM_DEFAULT_MAX_TOKENS=512
 AKL_LLM_ALLOW_MODEL_PULL=true
 AKL_OLLAMA_THINK=false
 AKL_LLM_MODEL_PROVIDER_MAP={
   "gemma4:12b-mlx": "ollama",
-  "bge-m3": "ollama"
+  "gemma4:31b-mlx": "ollama",
+  "bge-m3": "ollama",
+  "qwen3-embedding:8b": "ollama"
 }
 AKL_INGESTION_EMBEDDING_CLIENT_MODE=http
 AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
-AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
 AKL_RAG_RETRIEVER_MODE=qdrant
+AKL_RAG_FULLTEXT_MODE=opensearch
 AKL_RAG_LLM_CLIENT_MODE=http
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
+AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
 AKL_RAG_EMBEDDING_MODEL=bge-m3
 AKL_RAG_AUTHZ_MODE=dev
 AKL_RAG_REQUIRE_CITATIONS=true
@@ -64,6 +70,62 @@ AKL_RAG_ENABLE_RERANKING=true
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 AKL_QDRANT_DISTANCE=Cosine
+AKL_OPENSEARCH_INDEX=akl_document_chunks
+```
+
+## High-Quality Chat Routing
+
+`AKL_RAG_CHAT_MODEL` zustava rychly standardni chat model pro bezne
+zamestnanecke dotazy. `AKL_RAG_HIGH_QUALITY_CHAT_MODEL` je volitelny profil
+pro slozitejsi citovane odpovedi nad dokumentaci. Answer composer ho pouzije
+pro extrakce, checklisty, FAQ, manažerské/auditní odpovědi, porovnání,
+konflikty, velky kontext nebo kontext zkraceny limitem.
+
+```text
+AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
+AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
+```
+
+Model uvedeny v `AKL_RAG_HIGH_QUALITY_CHAT_MODEL` musi byt zaroven v
+`AKL_LLM_MODEL_PROVIDER_MAP`, jinak LLM Gateway request odmítne.
+
+## Qwen3 Enterprise Embedding Profile
+
+`qwen3-embedding:8b` is supported as an enterprise retrieval candidate. It
+must be enabled as a controlled profile, not by mixing vectors into the
+existing `bge-m3` collection.
+
+Recommended 1024-dimensional pilot profile:
+
+```text
+AKL_LLM_MODEL_PROVIDER_MAP={
+  "gemma4:12b-mlx": "ollama",
+  "gemma4:31b-mlx": "ollama",
+  "bge-m3": "ollama",
+  "qwen3-embedding:8b": "ollama"
+}
+AKL_LLM_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS=1024
+AKL_RAG_EMBEDDING_MODEL=qwen3-embedding:8b
+AKL_RAG_EMBEDDING_DIMENSIONS=1024
+AKL_QDRANT_COLLECTION=akl_document_chunks_qwen3_8b_1024
+AKL_QDRANT_VECTOR_SIZE=1024
+AKL_QDRANT_DISTANCE=Cosine
+```
+
+Before switching RAG traffic to this profile, reindex the current document
+versions into the target Qdrant collection and run retrieval/citation quality
+checks. The current production baseline remains:
+
+```text
+AKL_LLM_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_INGESTION_DEFAULT_EMBEDDING_MODEL=bge-m3
+AKL_RAG_EMBEDDING_MODEL=bge-m3
+AKL_QDRANT_COLLECTION=akl_document_chunks
+AKL_QDRANT_VECTOR_SIZE=1024
 ```
 
 Použité endpointy:
@@ -99,7 +161,7 @@ AKL_LLM_DEFAULT_PROVIDER=openai
 AKL_LLM_ENABLED_PROVIDERS=ollama,openai
 AKL_OPENAI_COMPAT_BASE_URL=http://vllm:8000
 AKL_OLLAMA_BASE_URL=http://ollama:11434
-AKL_OLLAMA_BASE_URLS=http://ollama:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
+AKL_OLLAMA_BASE_URLS=http://ollama:11434,http://192.168.200.3:11434,http://192.168.200.2:11434,http://192.168.1.176:11434
 AKL_LLM_MODEL_PROVIDER_MAP={
   "bge-m3": "ollama",
   "nomic-embed-text": "ollama",

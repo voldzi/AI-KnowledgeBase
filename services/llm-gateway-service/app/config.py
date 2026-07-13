@@ -27,6 +27,13 @@ def _parse_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
+def _parse_optional_int(value: str) -> int | None:
+    stripped = value.strip()
+    if stripped == "":
+        return None
+    return int(stripped)
+
+
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
     seen: set[str] = set()
     deduped: list[str] = []
@@ -57,6 +64,36 @@ def _parse_model_map(value: str) -> dict[str, str]:
     return parsed
 
 
+def _parse_chat_model_fallbacks(value: str) -> dict[str, tuple[str, ...]]:
+    try:
+        raw = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS must be a JSON object") from exc
+
+    if not isinstance(raw, dict):
+        raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS must be a JSON object")
+
+    parsed: dict[str, tuple[str, ...]] = {}
+    for model, fallbacks in raw.items():
+        if not isinstance(model, str) or not model.strip():
+            raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS keys must be non-empty strings")
+        values = [fallbacks] if isinstance(fallbacks, str) else fallbacks
+        if not isinstance(values, list) or not values:
+            raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS values must be strings or non-empty arrays")
+        normalized = tuple(
+            fallback.strip()
+            for fallback in values
+            if isinstance(fallback, str) and fallback.strip()
+        )
+        if len(normalized) != len(values):
+            raise ConfigError("AKL_LLM_CHAT_MODEL_FALLBACKS entries must be non-empty strings")
+        requested = model.strip()
+        if requested in normalized:
+            raise ConfigError("A chat model cannot fall back to itself")
+        parsed[requested] = _dedupe(normalized)
+    return parsed
+
+
 @dataclass(frozen=True)
 class Settings:
     service_name: str
@@ -66,12 +103,17 @@ class Settings:
 
     auth_mode: str
     service_token: str | None
+    require_caller_identity: bool
+    gateway_audience: str
+    allowed_caller_roles: tuple[str, ...]
 
     default_provider: str
     enabled_providers: tuple[str, ...]
     model_provider_map: dict[str, str]
+    chat_model_fallbacks: dict[str, tuple[str, ...]]
     default_chat_model: str
     default_embedding_model: str
+    default_embedding_dimensions: int | None
     default_max_tokens: int
     allow_model_pull: bool
     allow_model_delete: bool
@@ -101,11 +143,29 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     default_provider = _get(source, "AKL_LLM_DEFAULT_PROVIDER", "mock").strip().lower()
     enabled_providers = _parse_csv(_get(source, "AKL_LLM_ENABLED_PROVIDERS", default_provider))
     model_provider_map = _parse_model_map(_get(source, "AKL_LLM_MODEL_PROVIDER_MAP", "{}"))
+    chat_model_fallbacks = _parse_chat_model_fallbacks(
+        _get(source, "AKL_LLM_CHAT_MODEL_FALLBACKS", "{}")
+    )
     default_chat_model = _get(source, "AKL_LLM_DEFAULT_CHAT_MODEL", "gemma4:12b-mlx")
     default_embedding_model = _get(source, "AKL_LLM_DEFAULT_EMBEDDING_MODEL", "bge-m3")
     env_name = _get(source, "AKL_ENV", "development").strip().lower()
     auth_mode = _get(source, "AKL_AUTH_MODE", "disabled").strip().lower()
     service_token = source.get("AKL_SERVICE_TOKEN") or None
+    require_caller_identity = _parse_bool(
+        _get(
+            source,
+            "AKL_LLM_REQUIRE_CALLER_IDENTITY",
+            "true" if env_name == "production" else "false",
+        )
+    )
+    gateway_audience = _get(source, "AKL_LLM_GATEWAY_AUDIENCE", "llm-gateway-service")
+    allowed_caller_roles = _parse_csv(
+        _get(
+            source,
+            "AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES",
+            "service_ingestion,service_rag",
+        )
+    )
 
     if default_provider not in KNOWN_PROVIDERS:
         raise ConfigError(f"Unknown AKL_LLM_DEFAULT_PROVIDER '{default_provider}'")
@@ -144,6 +204,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         rate_limit_per_minute = int(_get(source, "AKL_RATE_LIMIT_PER_MINUTE", "120"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
         default_max_tokens = int(_get(source, "AKL_LLM_DEFAULT_MAX_TOKENS", "512"))
+        default_embedding_dimensions = _parse_optional_int(
+            _get(source, "AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS", "")
+        )
     except ValueError as exc:
         raise ConfigError("Numeric AKL_* configuration value is invalid") from exc
 
@@ -163,6 +226,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
     if default_max_tokens <= 0:
         raise ConfigError("AKL_LLM_DEFAULT_MAX_TOKENS must be greater than zero")
+    if default_embedding_dimensions is not None and not 1 <= default_embedding_dimensions <= 4096:
+        raise ConfigError("AKL_LLM_DEFAULT_EMBEDDING_DIMENSIONS must be between 1 and 4096")
 
     ollama_base_url = _get(source, "AKL_OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
     configured_ollama_base_urls = _parse_csv(_get(source, "AKL_OLLAMA_BASE_URLS", ollama_base_url))
@@ -177,11 +242,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         log_level=_get(source, "AKL_LOG_LEVEL", "INFO").upper(),
         auth_mode=auth_mode,
         service_token=service_token,
+        require_caller_identity=require_caller_identity,
+        gateway_audience=gateway_audience,
+        allowed_caller_roles=allowed_caller_roles,
         default_provider=default_provider,
         enabled_providers=enabled_providers,
         model_provider_map=model_provider_map,
+        chat_model_fallbacks=chat_model_fallbacks,
         default_chat_model=default_chat_model,
         default_embedding_model=default_embedding_model,
+        default_embedding_dimensions=default_embedding_dimensions,
         default_max_tokens=default_max_tokens,
         allow_model_pull=_parse_bool(_get(source, "AKL_LLM_ALLOW_MODEL_PULL", "false")),
         allow_model_delete=_parse_bool(_get(source, "AKL_LLM_ALLOW_MODEL_DELETE", "false")),

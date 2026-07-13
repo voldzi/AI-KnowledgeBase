@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { createSourceOpenDecision, SourceDownloadError } from "@/lib/upload/source-download";
 
 import { documentWorkflowBadRequest, documentWorkflowBridgeError } from "../../../../../errors";
@@ -39,10 +39,10 @@ function sourceDownloadErrorResponse(error: SourceDownloadError) {
   );
 }
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   try {
     const { documentId, versionId } = await context.params;
-    const requestContext = await getServerRequestContext();
+    const requestContext = await getServerRequestContextForRequest(request);
     const clients = getServerApiClients();
     const [document, versions, authorization] = await Promise.all([
       clients.registry.getDocument(documentId, requestContext),
@@ -63,7 +63,10 @@ export async function POST(_request: Request, context: RouteContext) {
       document_version_id: version.document_version_id,
       source_file_uri: version.source_file_uri,
       file_hash: version.file_hash,
-      viewer_mode: viewerModeForUri(version.source_file_uri)
+      viewer_mode: viewerModeForUri(version.source_file_uri),
+      policy_binding_id: version.policy_binding_id,
+      policy_version: version.policy_version,
+      policy_hash: version.policy_hash
     });
 
     void clients.registry.createAuditEvent(

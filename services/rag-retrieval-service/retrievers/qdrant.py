@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+from base64 import b64encode
 from datetime import UTC, datetime
 from typing import Any
+
+import httpx
 
 from app.config import Settings
 from app.http_utils import request_json_with_retry
 from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
-from retrievers.scoring import CLASSIFICATION_ORDER, deterministic_embedding, hybrid_score, normalize_text, sparse_score
+from retrievers.scoring import (
+    CLASSIFICATION_ORDER,
+    deterministic_embedding,
+    expand_query_text,
+    extract_query_identifiers,
+    hybrid_score,
+    normalize_text,
+    sparse_score,
+)
 
 
 class QdrantHybridRetriever:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._opensearch = OpenSearchFullTextClient(settings) if settings.fulltext_mode == "opensearch" else None
 
     async def retrieve(
         self,
@@ -183,6 +195,8 @@ class QdrantHybridRetriever:
                 method="GET",
                 url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}",
             )
+            if self._opensearch is not None and await self._opensearch.readiness() != "ready":
+                return "not_ready"
         except Exception:
             return "not_ready"
         return "ready"
@@ -194,15 +208,22 @@ class QdrantHybridRetriever:
         filters: RagQueryFilters,
         limit: int,
     ) -> list[RetrievedChunk]:
+        if self._opensearch is not None:
+            return await self._opensearch.retrieve(query=query, filters=filters, limit=limit)
+
         # The indexed normalized_text field may contain diacritics (documents
         # ingested before normalization was unified) or have them stripped
         # (current ingestion).  Match both variants via a should clause so
         # lexical recall works across both index generations.
+        expanded_query = expand_query_text(query)
         normalized_query = normalize_text(query)
+        normalized_expanded_query = normalize_text(expanded_query)
         lowercase_query = query.strip().lower()
         text_conditions: list[dict[str, Any]] = [
             {"key": "normalized_text", "match": {"text": normalized_query}},
         ]
+        if normalized_expanded_query and normalized_expanded_query != normalized_query:
+            text_conditions.append({"key": "normalized_text", "match": {"text": normalized_expanded_query}})
         if lowercase_query and lowercase_query != normalized_query:
             text_conditions.append({"key": "normalized_text", "match": {"text": lowercase_query}})
         base_must = _qdrant_filter(filters).get("must", [])
@@ -225,6 +246,46 @@ class QdrantHybridRetriever:
         result = payload.get("result", {})
         points = result.get("points", []) if isinstance(result, dict) else []
         return _points_to_lexical_chunks(query=query, points=points)
+
+
+class OpenSearchFullTextClient:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    async def readiness(self) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=self._settings.request_timeout_seconds) as client:
+                response = await client.get(
+                    f"{self._settings.opensearch_base_url}/{self._settings.opensearch_index}",
+                    headers=self._headers(),
+                )
+        except httpx.HTTPError:
+            return "not_ready"
+        return "ready" if response.status_code == 200 else "not_ready"
+
+    async def retrieve(self, *, query: str, filters: RagQueryFilters, limit: int) -> list[RetrievedChunk]:
+        body = _opensearch_query(query=query, filters=filters, limit=limit)
+        async with httpx.AsyncClient(timeout=self._settings.request_timeout_seconds) as client:
+            response = await client.post(
+                f"{self._settings.opensearch_base_url}/{self._settings.opensearch_index}/_search",
+                headers=self._headers(),
+                json=body,
+            )
+        if response.status_code >= 400:
+            return []
+        payload = response.json()
+        return _opensearch_hits_to_chunks(query=query, payload=payload)
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self._settings.opensearch_api_key:
+            headers["Authorization"] = f"ApiKey {self._settings.opensearch_api_key}"
+        elif self._settings.opensearch_username and self._settings.opensearch_password:
+            token = b64encode(
+                f"{self._settings.opensearch_username}:{self._settings.opensearch_password}".encode("utf-8")
+            ).decode("ascii")
+            headers["Authorization"] = f"Basic {token}"
+        return headers
 
 
 def _points_to_hybrid_chunks(*, query: str, points: Any, dense_weight: float) -> list[RetrievedChunk]:
@@ -280,6 +341,46 @@ def _points_to_lexical_chunks(*, query: str, points: Any) -> list[RetrievedChunk
             )
         )
 
+    return chunks
+
+
+def _opensearch_hits_to_chunks(*, query: str, payload: dict[str, Any]) -> list[RetrievedChunk]:
+    hits_block = payload.get("hits")
+    if not isinstance(hits_block, dict):
+        return []
+    hits = hits_block.get("hits")
+    if not isinstance(hits, list):
+        return []
+    max_score = float(hits_block.get("max_score") or 0.0)
+    chunks: list[RetrievedChunk] = []
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        source = hit.get("_source")
+        if not isinstance(source, dict):
+            continue
+        text = str(source.get("text") or source.get("normalized_text") or "").strip()
+        if not text:
+            continue
+        bm25_score = float(hit.get("_score") or 0.0)
+        bm25_normalized = bm25_score / max_score if max_score > 0 else 0.0
+        sparse = max(sparse_score(query, text), min(1.0, bm25_normalized * 0.85))
+        if sparse <= 0:
+            continue
+        chunk = _point_to_chunk(source, score=sparse, dense_score=0.0, sparse_score=sparse)
+        chunks.append(
+            chunk.model_copy(
+                update={
+                    "retrieval_method": "opensearch",
+                    "metadata": {
+                        **chunk.metadata,
+                        "opensearch_score": round(bm25_score, 6),
+                        "opensearch_score_normalized": round(bm25_normalized, 6),
+                        "lexical_fallback": True,
+                    },
+                }
+            )
+        )
     return chunks
 
 
@@ -359,7 +460,15 @@ def _point_to_chunk(
             "dense_score": round(dense_score, 6),
             "sparse_score": round(sparse_score, 6),
             "classification": payload.get("classification"),
+            "organization_id": payload.get("organization_id"),
+            "policy_binding_id": payload.get("policy_binding_id"),
+            "policy_version": payload.get("policy_version"),
+            "policy_hash": payload.get("policy_hash"),
+            "policy_summary": payload.get("policy_summary") if isinstance(payload.get("policy_summary"), dict) else {},
             "document_type": payload.get("document_type") or chunk_metadata.get("document_type"),
+            "tenant_id": payload.get("tenant_id") or chunk_metadata.get("tenant_id"),
+            "external_system": payload.get("external_system") or chunk_metadata.get("external_system"),
+            "external_ref": payload.get("external_ref") or chunk_metadata.get("external_ref"),
             "tags": payload.get("tags", chunk_metadata.get("tags", [])),
             "status": payload.get("status") or chunk_metadata.get("status"),
             "source_file_uri": payload.get("source_file_uri") or chunk_metadata.get("source_file_uri"),
@@ -371,6 +480,13 @@ def _point_to_chunk(
             "char_start": payload.get("char_start"),
             "char_end": payload.get("char_end"),
             "chunk_index": chunk_metadata.get("chunk_index"),
+            "parser_name": payload.get("parser_name") or chunk_metadata.get("parser_name"),
+            "parser_engine": payload.get("parser_engine") or chunk_metadata.get("parser_engine"),
+            "ocr_used": payload.get("ocr_used", chunk_metadata.get("ocr_used")),
+            "quality_score": payload.get("quality_score", chunk_metadata.get("quality_score")),
+            "quality_tier": payload.get("quality_tier", chunk_metadata.get("quality_tier")),
+            "requires_review": payload.get("requires_review", chunk_metadata.get("requires_review")),
+            "parser_quality": chunk_metadata.get("parser_quality"),
         },
     )
 
@@ -386,8 +502,20 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
     if filters.document_types:
         must.append({"key": "document_type", "match": {"any": filters.document_types}})
 
+    if filters.document_ids:
+        must.append({"key": "document_id", "match": {"any": filters.document_ids}})
+
+    if filters.document_version_ids:
+        must.append({"key": "document_version_id", "match": {"any": filters.document_version_ids}})
+
     if filters.tags:
         must.append({"key": "tags", "match": {"any": filters.tags}})
+
+    if filters.tenant_id:
+        must.append({"key": "tenant_id", "match": {"value": filters.tenant_id}})
+
+    if filters.external_system:
+        must.append({"key": "external_system", "match": {"value": filters.external_system}})
 
     if filters.only_valid:
         today = datetime.now(UTC).date().isoformat()
@@ -405,6 +533,138 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
         )
 
     return {"must": must}
+
+
+def _opensearch_query(*, query: str, filters: RagQueryFilters, limit: int) -> dict[str, Any]:
+    expanded_query = expand_query_text(query)
+    should = [
+        {
+            "multi_match": {
+                "query": query,
+                "fields": [
+                    "document_title^6",
+                    "section_title^4",
+                    "section_path^3",
+                    "article_number^4",
+                    "paragraph_number^3",
+                    "search_text^2",
+                    "text",
+                    "normalized_text",
+                ],
+                "type": "best_fields",
+                "operator": "or",
+            }
+        },
+        {
+            "multi_match": {
+                "query": expanded_query,
+                "fields": [
+                    "document_title^4",
+                    "section_title^3",
+                    "section_path^2",
+                    "article_number^3",
+                    "paragraph_number^2",
+                    "search_text^3",
+                    "text^2",
+                    "normalized_text",
+                ],
+                "type": "best_fields",
+                "operator": "or",
+                "boost": 1.4,
+            }
+        },
+        {
+            "multi_match": {
+                "query": query,
+                "fields": ["document_title^8", "section_title^5", "search_text^4", "text^3"],
+                "type": "phrase",
+                "boost": 3,
+            }
+        },
+        *_opensearch_identifier_clauses(query),
+    ]
+    return {
+        "size": limit,
+        "track_total_hits": False,
+        "_source": True,
+        "query": {
+            "bool": {
+                "filter": _opensearch_filter(filters),
+                "should": should,
+                "minimum_should_match": 1,
+            }
+        },
+    }
+
+
+def _opensearch_filter(filters: RagQueryFilters) -> list[dict[str, Any]]:
+    filter_clauses: list[dict[str, Any]] = []
+    allowed_classifications = CLASSIFICATION_ORDER[
+        : CLASSIFICATION_ORDER.index(filters.classification_max) + 1
+    ]
+    filter_clauses.append({"terms": {"classification": list(allowed_classifications)}})
+    if filters.document_types:
+        filter_clauses.append({"terms": {"document_type": filters.document_types}})
+    if filters.document_ids:
+        filter_clauses.append({"terms": {"document_id": filters.document_ids}})
+    if filters.document_version_ids:
+        filter_clauses.append({"terms": {"document_version_id": filters.document_version_ids}})
+    if filters.tags:
+        filter_clauses.append({"terms": {"tags": filters.tags}})
+    if filters.tenant_id:
+        filter_clauses.append({"term": {"tenant_id": filters.tenant_id}})
+    if filters.external_system:
+        filter_clauses.append({"term": {"external_system": filters.external_system}})
+    if filters.only_valid:
+        today = datetime.now(UTC).date().isoformat()
+        filter_clauses.append({"term": {"status": "valid"}})
+        filter_clauses.append(
+            {
+                "bool": {
+                    "should": [
+                        {"range": {"valid_from": {"lte": today}}},
+                        {"bool": {"must_not": {"exists": {"field": "valid_from"}}}},
+                    ],
+                    "minimum_should_match": 1,
+                }
+            }
+        )
+    return filter_clauses
+
+
+def _opensearch_identifier_clauses(query: str) -> list[dict[str, Any]]:
+    clauses: list[dict[str, Any]] = []
+    for identifier in extract_query_identifiers(query):
+        clauses.append(
+            {
+                "multi_match": {
+                    "query": identifier,
+                    "fields": [
+                        "document_title^12",
+                        "section_title^6",
+                        "section_path^5",
+                        "article_number^10",
+                        "paragraph_number^8",
+                        "search_text^6",
+                        "text^4",
+                    ],
+                    "type": "phrase",
+                    "boost": 5,
+                }
+            }
+        )
+        clauses.append(
+            {
+                "wildcard": {
+                    "document_title.keyword": {
+                        "value": f"*{identifier}*",
+                        "case_insensitive": True,
+                        "boost": 8,
+                    }
+                }
+            }
+        )
+    return clauses
 
 
 def create_retriever(settings: Settings):

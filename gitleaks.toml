@@ -1,0 +1,40 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "STRATOS integration idempotency fixture"
+condition = "AND"
+regexTarget = "line"
+paths = ['''apps/web/tests/information-policy\.test\.ts$''']
+regexes = ['''idempotencyKey:\s*"idem-[0-9-]+"''']
+
+[[rules.allowlists]]
+description = "Explicitly empty smoke bearer example"
+condition = "AND"
+regexTarget = "line"
+paths = ['''\.env\.example$''']
+regexes = ['''AKL_SMOKE_LLM_BEARER_TOKEN=""''']
+
+[[rules.allowlists]]
+description = "Evaluation metric key, not a credential"
+condition = "AND"
+regexTarget = "line"
+paths = ['''apps/web/src/lib/api/mock/evaluation-client\.ts$''']
+regexes = ['''key:\s*"retrieval_latency_p95_ms"''']
+
+[[rules.allowlists]]
+description = "Pinned SHA-256 contract snapshot digests"
+condition = "AND"
+regexTarget = "line"
+paths = ['''scripts/verify_stratos_contract_snapshot\.py$''']
+regexes = ['''"[^"]+":\s*"[a-f0-9]{64}"''']
+
+[[rules.allowlists]]
+description = "AIIP duplicate-search idempotency fixture"
+condition = "AND"
+regexTarget = "line"
+paths = ['''services/rag-retrieval-service/tests/test_aiip_application_api\.py$''']
+regexes = ['''idempotency_key="idem-duplicates-[0-9]+"''']

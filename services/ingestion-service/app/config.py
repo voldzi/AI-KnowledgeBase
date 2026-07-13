@@ -10,8 +10,9 @@ KNOWN_AUTH_MODES = {"disabled", "bearer", "mock", "oidc"}
 KNOWN_REGISTRY_MODES = {"http", "mock"}
 KNOWN_OBJECT_STORAGE_MODES = {"local", "http", "mock"}
 KNOWN_EMBEDDING_MODES = {"http", "mock"}
-KNOWN_INDEXER_MODES = {"qdrant", "mock"}
-KNOWN_OCR_PROVIDERS = {"disabled", "sidecar", "tesseract"}
+KNOWN_INDEXER_TARGETS = {"qdrant", "opensearch", "mock"}
+KNOWN_OCR_PROVIDERS = {"disabled", "sidecar", "tesseract", "ocrmypdf"}
+KNOWN_PDF_ENGINES = {"auto", "pymupdf", "pypdf"}
 
 
 class ConfigError(ValueError):
@@ -33,6 +34,18 @@ def _parse_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
+def _parse_indexer_targets(value: str) -> tuple[str, ...]:
+    targets = tuple(dict.fromkeys(item.strip().lower() for item in value.split(",") if item.strip()))
+    if not targets:
+        raise ConfigError("AKL_INGESTION_INDEXER_MODE must not be empty")
+    unknown = sorted(set(targets) - KNOWN_INDEXER_TARGETS)
+    if unknown:
+        raise ConfigError("AKL_INGESTION_INDEXER_MODE must contain only: qdrant, opensearch, mock")
+    if "mock" in targets and len(targets) > 1:
+        raise ConfigError("AKL_INGESTION_INDEXER_MODE=mock cannot be combined with other indexers")
+    return targets
+
+
 def _parse_json_object(value: str, variable_name: str) -> dict[str, str]:
     try:
         parsed = json.loads(value)
@@ -49,6 +62,31 @@ def _parse_json_object(value: str, variable_name: str) -> dict[str, str]:
     return result
 
 
+def _parse_json_int_object(value: str, variable_name: str) -> dict[str, int]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"{variable_name} must be a JSON object") from exc
+    if not isinstance(parsed, dict):
+        raise ConfigError(f"{variable_name} must be a JSON object")
+
+    result: dict[str, int] = {}
+    for key, item in parsed.items():
+        if not isinstance(key, str) or not isinstance(item, int):
+            raise ConfigError(f"{variable_name} keys must be strings and values must be integers")
+        if item <= 0:
+            raise ConfigError(f"{variable_name} values must be greater than zero")
+        result[key] = item
+    return result
+
+
+def _parse_optional_int(value: str) -> int | None:
+    stripped = value.strip()
+    if stripped == "":
+        return None
+    return int(stripped)
+
+
 @dataclass(frozen=True)
 class Settings:
     service_name: str
@@ -61,6 +99,9 @@ class Settings:
     service_account_subject: str
     service_account_roles: tuple[str, ...]
     service_account_token: str | None
+    oidc_issuer: str | None
+    oidc_audience: str | None
+    oidc_jwks_url: str | None
 
     registry_client_mode: str
     registry_base_url: str
@@ -75,8 +116,12 @@ class Settings:
     ocr_provider: str
     ocr_language: str
     tesseract_command: str
+    ocrmypdf_command: str
+    ocr_timeout_seconds: float
     min_extracted_chars_before_ocr: int
 
+    default_extraction_profile: str
+    pdf_engine: str
     default_parser_profile: str
     default_chunking_strategy: str
     chunk_target_chars: int
@@ -87,19 +132,29 @@ class Settings:
     embedding_client_mode: str
     llm_gateway_base_url: str
     llm_gateway_token: str | None
+    llm_gateway_audience: str
     default_embedding_model: str
+    default_embedding_dimensions: int | None
     embedding_profile_model_map: dict[str, str]
+    embedding_profile_dimensions_map: dict[str, int]
     embedding_batch_size: int
     embedding_concurrency: int
     mock_embedding_dimensions: int
 
     indexer_mode: str
+    indexer_targets: tuple[str, ...]
     qdrant_base_url: str
     qdrant_api_key: str | None
     qdrant_collection: str
     qdrant_vector_size: int
     qdrant_distance: str
     qdrant_delete_existing_version: bool
+    opensearch_base_url: str
+    opensearch_index: str
+    opensearch_username: str | None
+    opensearch_password: str | None
+    opensearch_api_key: str | None
+    opensearch_delete_existing_version: bool
 
     job_store_path: Path
     process_jobs_inline: bool
@@ -115,7 +170,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     object_storage_mode = _get(source, "AKL_INGESTION_OBJECT_STORAGE_MODE", "local").strip().lower()
     embedding_mode = _get(source, "AKL_INGESTION_EMBEDDING_CLIENT_MODE", "mock").strip().lower()
     indexer_mode = _get(source, "AKL_INGESTION_INDEXER_MODE", "mock").strip().lower()
+    indexer_targets = _parse_indexer_targets(indexer_mode)
     ocr_provider = _get(source, "AKL_INGESTION_OCR_PROVIDER", "sidecar").strip().lower()
+    pdf_engine = _get(source, "AKL_INGESTION_PDF_ENGINE", "auto").strip().lower()
 
     if auth_mode not in KNOWN_AUTH_MODES:
         raise ConfigError("AKL_AUTH_MODE must be one of: disabled, bearer, mock, oidc")
@@ -125,10 +182,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_OBJECT_STORAGE_MODE must be one of: local, http, mock")
     if embedding_mode not in KNOWN_EMBEDDING_MODES:
         raise ConfigError("AKL_INGESTION_EMBEDDING_CLIENT_MODE must be one of: http, mock")
-    if indexer_mode not in KNOWN_INDEXER_MODES:
-        raise ConfigError("AKL_INGESTION_INDEXER_MODE must be one of: qdrant, mock")
     if ocr_provider not in KNOWN_OCR_PROVIDERS:
-        raise ConfigError("AKL_INGESTION_OCR_PROVIDER must be one of: disabled, sidecar, tesseract")
+        raise ConfigError("AKL_INGESTION_OCR_PROVIDER must be one of: disabled, sidecar, tesseract, ocrmypdf")
+    if pdf_engine not in KNOWN_PDF_ENGINES:
+        raise ConfigError("AKL_INGESTION_PDF_ENGINE must be one of: auto, pymupdf, pypdf")
 
     try:
         max_file_bytes = int(_get(source, "AKL_INGESTION_MAX_FILE_BYTES", str(50 * 1024 * 1024)))
@@ -140,8 +197,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         embedding_batch_size = int(_get(source, "AKL_INGESTION_EMBEDDING_BATCH_SIZE", "32"))
         embedding_concurrency = int(_get(source, "AKL_INGESTION_EMBEDDING_CONCURRENCY", "2"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
+        default_embedding_dimensions = _parse_optional_int(
+            _get(source, "AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS", "")
+        )
         qdrant_vector_size = int(_get(source, "AKL_QDRANT_VECTOR_SIZE", "1024"))
         request_timeout_seconds = float(_get(source, "AKL_INGESTION_REQUEST_TIMEOUT_SECONDS", "30"))
+        ocr_timeout_seconds = float(_get(source, "AKL_INGESTION_OCR_TIMEOUT_SECONDS", "300"))
     except ValueError as exc:
         raise ConfigError("Numeric AKL_INGESTION_* or AKL_QDRANT_* configuration value is invalid") from exc
 
@@ -165,10 +226,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_EMBEDDING_CONCURRENCY must be between 1 and 16")
     if mock_embedding_dimensions <= 0:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
+    if default_embedding_dimensions is not None and default_embedding_dimensions <= 0:
+        raise ConfigError("AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS must be greater than zero")
     if qdrant_vector_size <= 0:
         raise ConfigError("AKL_QDRANT_VECTOR_SIZE must be greater than zero")
     if request_timeout_seconds <= 0:
         raise ConfigError("AKL_INGESTION_REQUEST_TIMEOUT_SECONDS must be greater than zero")
+    if ocr_timeout_seconds <= 0:
+        raise ConfigError("AKL_INGESTION_OCR_TIMEOUT_SECONDS must be greater than zero")
 
     service_token = source.get("AKL_SERVICE_TOKEN") or None
     service_account_token = source.get("AKL_SERVICE_ACCOUNT_TOKEN") or service_token
@@ -180,11 +245,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Production requires AKL_SERVICE_TOKEN")
         if registry_mode == "mock":
             raise ConfigError("Production must not use mock Registry API client")
+        if auth_mode == "oidc" and not all(
+            source.get(name)
+            for name in ("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE", "AKL_OIDC_JWKS_URL")
+        ):
+            raise ConfigError("Production OIDC requires issuer, audience, and JWKS URL")
         if object_storage_mode == "mock":
             raise ConfigError("Production must not use mock object storage")
         if embedding_mode == "mock":
             raise ConfigError("Production must not use mock embedding client")
-        if indexer_mode == "mock":
+        if "mock" in indexer_targets:
             raise ConfigError("Production must not use mock indexer")
 
     return Settings(
@@ -199,6 +269,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             _get(source, "AKL_SERVICE_ACCOUNT_ROLES", "service_ingestion,document_manager")
         ),
         service_account_token=service_account_token,
+        oidc_issuer=source.get("AKL_OIDC_ISSUER") or None,
+        oidc_audience=source.get("AKL_OIDC_AUDIENCE") or None,
+        oidc_jwks_url=source.get("AKL_OIDC_JWKS_URL") or None,
         registry_client_mode=registry_mode,
         registry_base_url=_get(source, "AKL_REGISTRY_API_BASE_URL", "http://localhost:8000").rstrip("/"),
         registry_mock_allow=_parse_bool(_get(source, "AKL_INGESTION_REGISTRY_MOCK_ALLOW", "true")),
@@ -216,7 +289,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ocr_provider=ocr_provider,
         ocr_language=_get(source, "AKL_INGESTION_OCR_LANGUAGE", "ces+eng"),
         tesseract_command=_get(source, "AKL_INGESTION_TESSERACT_COMMAND", "tesseract"),
+        ocrmypdf_command=_get(source, "AKL_INGESTION_OCRMYPDF_COMMAND", "ocrmypdf"),
+        ocr_timeout_seconds=ocr_timeout_seconds,
         min_extracted_chars_before_ocr=min_extracted_chars_before_ocr,
+        default_extraction_profile=_get(source, "AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE", "document_text_v1"),
+        pdf_engine=pdf_engine,
         default_parser_profile=_get(source, "AKL_INGESTION_DEFAULT_PARSER_PROFILE", "controlled_document"),
         default_chunking_strategy=_get(source, "AKL_INGESTION_DEFAULT_CHUNKING_STRATEGY", "legal_structured"),
         chunk_target_chars=chunk_target_chars,
@@ -226,15 +303,22 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         embedding_client_mode=embedding_mode,
         llm_gateway_base_url=_get(source, "AKL_LLM_GATEWAY_BASE_URL", "http://localhost:8080").rstrip("/"),
         llm_gateway_token=source.get("AKL_LLM_GATEWAY_TOKEN") or service_account_token,
+        llm_gateway_audience=_get(source, "AKL_LLM_GATEWAY_AUDIENCE", "llm-gateway-service"),
         default_embedding_model=_get(source, "AKL_INGESTION_DEFAULT_EMBEDDING_MODEL", "mock-embedding"),
+        default_embedding_dimensions=default_embedding_dimensions,
         embedding_profile_model_map=_parse_json_object(
             _get(source, "AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP", "{}"),
             "AKL_INGESTION_EMBEDDING_PROFILE_MODEL_MAP",
+        ),
+        embedding_profile_dimensions_map=_parse_json_int_object(
+            _get(source, "AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP", "{}"),
+            "AKL_INGESTION_EMBEDDING_PROFILE_DIMENSIONS_MAP",
         ),
         embedding_batch_size=embedding_batch_size,
         embedding_concurrency=embedding_concurrency,
         mock_embedding_dimensions=mock_embedding_dimensions,
         indexer_mode=indexer_mode,
+        indexer_targets=indexer_targets,
         qdrant_base_url=_get(source, "AKL_QDRANT_BASE_URL", "http://localhost:6333").rstrip("/"),
         qdrant_api_key=source.get("AKL_QDRANT_API_KEY") or None,
         qdrant_collection=_get(source, "AKL_QDRANT_COLLECTION", "akl_document_chunks"),
@@ -242,6 +326,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         qdrant_distance=_get(source, "AKL_QDRANT_DISTANCE", "Cosine"),
         qdrant_delete_existing_version=_parse_bool(
             _get(source, "AKL_QDRANT_DELETE_EXISTING_VERSION", "true")
+        ),
+        opensearch_base_url=_get(source, "AKL_OPENSEARCH_BASE_URL", "http://localhost:9200").rstrip("/"),
+        opensearch_index=_get(source, "AKL_OPENSEARCH_INDEX", "akl_document_chunks"),
+        opensearch_username=source.get("AKL_OPENSEARCH_USERNAME") or None,
+        opensearch_password=source.get("AKL_OPENSEARCH_PASSWORD") or None,
+        opensearch_api_key=source.get("AKL_OPENSEARCH_API_KEY") or None,
+        opensearch_delete_existing_version=_parse_bool(
+            _get(source, "AKL_OPENSEARCH_DELETE_EXISTING_VERSION", "true")
         ),
         job_store_path=Path(_get(source, "AKL_INGESTION_JOB_STORE_PATH", "./ingestion-jobs")),
         process_jobs_inline=_parse_bool(_get(source, "AKL_INGESTION_PROCESS_JOBS_INLINE", "true")),

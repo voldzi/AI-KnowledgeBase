@@ -3,7 +3,7 @@ info:
   title: AKL Evaluation Service
   description: Evaluation runs, datasets, and reports for AKL RAG answer, citation,
     and retrieval quality.
-  version: 0.1.0
+  version: 0.2.0
 paths:
   /health:
     get:
@@ -73,18 +73,83 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/evaluations/datasets/{dataset_id}:
+    get:
+      tags:
+      - evaluations
+      summary: Get Dataset
+      operationId: get_dataset_api_v1_evaluations_datasets__dataset_id__get
+      parameters:
+      - name: dataset_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Dataset Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDataset'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/evaluations/runs:
+    get:
+      tags:
+      - evaluations
+      summary: List Runs
+      operationId: list_runs_api_v1_evaluations_runs_get
+      parameters:
+      - name: dataset_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dataset Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvaluationRunSummary'
+                title: Response List Runs Api V1 Evaluations Runs Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     post:
       tags:
       - evaluations
       summary: Create Run
       operationId: create_run_api_v1_evaluations_runs_post
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/EvaluationRunRequest'
-        required: true
       responses:
         '200':
           description: Successful Response
@@ -118,6 +183,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvaluationRun'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/evaluations/quality/overview:
+    get:
+      tags:
+      - evaluations
+      summary: Quality Overview
+      operationId: quality_overview_api_v1_evaluations_quality_overview_get
+      parameters:
+      - name: dataset_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dataset Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityOverview'
         '422':
           description: Validation Error
           content:
@@ -222,6 +324,12 @@ components:
           type: string
           minLength: 1
           title: Version Label
+        document_version:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Document Version
         section_path:
           items:
             type: string
@@ -298,6 +406,57 @@ components:
           type: string
           format: date-time
           title: Created At
+        visibility:
+          type: string
+          enum:
+          - private
+          - shared
+          title: Visibility
+          default: shared
+        owner_subject_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner Subject Id
+        draft_cases:
+          type: integer
+          title: Draft Cases
+          default: 0
+        silver_cases:
+          type: integer
+          title: Silver Cases
+          default: 0
+        gold_cases:
+          type: integer
+          title: Gold Cases
+          default: 0
+        roles:
+          items:
+            type: string
+            enum:
+            - employee
+            - analyst
+            - document_manager
+            - auditor
+            - administrator
+            - leadership
+            - service
+          type: array
+          title: Roles
+        query_categories:
+          items:
+            type: string
+            enum:
+            - exact_title
+            - exact_identifier
+            - semantic
+            - procedural
+            - comparative
+            - entity
+            - negative_control
+            - authorization
+          type: array
+          title: Query Categories
       type: object
       required:
       - dataset_id
@@ -360,10 +519,58 @@ components:
             type: string
           type: array
           title: Expected Relevant Chunk Ids
+        expected_relevant_document_ids:
+          items:
+            type: string
+          type: array
+          title: Expected Relevant Document Ids
+        relevance_judgments:
+          items:
+            $ref: '#/components/schemas/RelevanceJudgment'
+          type: array
+          title: Relevance Judgments
+        expected_forbidden_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Expected Forbidden Chunk Ids
         expected_no_answer:
           type: boolean
           title: Expected No Answer
           default: false
+        role:
+          type: string
+          enum:
+          - employee
+          - analyst
+          - document_manager
+          - auditor
+          - administrator
+          - leadership
+          - service
+          title: Role
+          default: employee
+        query_category:
+          type: string
+          enum:
+          - exact_title
+          - exact_identifier
+          - semantic
+          - procedural
+          - comparative
+          - entity
+          - negative_control
+          - authorization
+          title: Query Category
+          default: semantic
+        judgment_status:
+          type: string
+          enum:
+          - draft
+          - silver
+          - gold
+          title: Judgment Status
+          default: draft
         weight:
           type: number
           minimum: 0.0
@@ -464,6 +671,60 @@ components:
           - type: string
           - type: 'null'
           title: Error Message
+        role:
+          type: string
+          enum:
+          - employee
+          - analyst
+          - document_manager
+          - auditor
+          - administrator
+          - leadership
+          - service
+          title: Role
+          default: employee
+        query_category:
+          type: string
+          enum:
+          - exact_title
+          - exact_identifier
+          - semantic
+          - procedural
+          - comparative
+          - entity
+          - negative_control
+          - authorization
+          title: Query Category
+          default: semantic
+        judgment_status:
+          type: string
+          enum:
+          - draft
+          - silver
+          - gold
+          title: Judgment Status
+          default: draft
+        expected_no_answer:
+          type: boolean
+          title: Expected No Answer
+          default: false
+        retrieval_only:
+          type: boolean
+          title: Retrieval Only
+          default: false
+        failure_stage:
+          type: string
+          enum:
+          - none
+          - retrieval_no_match
+          - retrieval_relevance
+          - authorization
+          - citation
+          - answer
+          - no_answer
+          - error
+          title: Failure Stage
+          default: none
       type: object
       required:
       - case_id
@@ -499,6 +760,18 @@ components:
             type: string
           type: array
           title: Tags
+        visibility:
+          type: string
+          enum:
+          - private
+          - shared
+          title: Visibility
+          default: shared
+        owner_subject_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner Subject Id
         cases:
           items:
             $ref: '#/components/schemas/EvalCase'
@@ -545,6 +818,13 @@ components:
             type: string
           type: array
           title: Tags
+        visibility:
+          type: string
+          enum:
+          - private
+          - shared
+          title: Visibility
+          default: private
         cases:
           items:
             $ref: '#/components/schemas/EvalCase'
@@ -597,6 +877,24 @@ components:
           additionalProperties: true
           type: object
           title: Settings
+        actor_subject_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Subject Id
+        actor_roles:
+          items:
+            type: string
+          type: array
+          title: Actor Roles
+        quality_gate:
+          anyOf:
+          - $ref: '#/components/schemas/QualityGateResult'
+          - type: 'null'
+        comparison:
+          anyOf:
+          - $ref: '#/components/schemas/RunComparison'
+          - type: 'null'
       type: object
       required:
       - run_id
@@ -641,6 +939,93 @@ components:
       additionalProperties: false
       type: object
       title: EvaluationRunRequest
+    EvaluationRunSummary:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+        dataset_id:
+          type: string
+          title: Dataset Id
+        dataset_name:
+          type: string
+          title: Dataset Name
+        status:
+          type: string
+          enum:
+          - completed
+          - completed_with_errors
+          title: Status
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        finished_at:
+          type: string
+          format: date-time
+          title: Finished At
+        summary:
+          $ref: '#/components/schemas/EvaluationSummary'
+        quality_gate:
+          anyOf:
+          - $ref: '#/components/schemas/QualityGateResult'
+          - type: 'null'
+        comparison:
+          anyOf:
+          - $ref: '#/components/schemas/RunComparison'
+          - type: 'null'
+        actor_subject_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Subject Id
+      type: object
+      required:
+      - run_id
+      - dataset_id
+      - dataset_name
+      - status
+      - started_at
+      - finished_at
+      - summary
+      title: EvaluationRunSummary
+    EvaluationSliceSummary:
+      properties:
+        key:
+          type: string
+          title: Key
+        total_cases:
+          type: integer
+          title: Total Cases
+        average_score:
+          type: number
+          title: Average Score
+        retrieval_recall:
+          type: number
+          title: Retrieval Recall
+        retrieval_ndcg:
+          type: number
+          title: Retrieval Ndcg
+        false_zero_result_rate:
+          type: number
+          title: False Zero Result Rate
+        citation_traceability:
+          type: number
+          title: Citation Traceability
+        retrieval_latency_p95_ms:
+          type: number
+          title: Retrieval Latency P95 Ms
+      type: object
+      required:
+      - key
+      - total_cases
+      - average_score
+      - retrieval_recall
+      - retrieval_ndcg
+      - false_zero_result_rate
+      - citation_traceability
+      - retrieval_latency_p95_ms
+      title: EvaluationSliceSummary
     EvaluationSummary:
       properties:
         total_cases:
@@ -679,6 +1064,81 @@ components:
         no_answer_correctness:
           type: number
           title: No Answer Correctness
+        retrieval_hit_rate:
+          type: number
+          title: Retrieval Hit Rate
+          default: 0
+        retrieval_mrr:
+          type: number
+          title: Retrieval Mrr
+          default: 0
+        retrieval_ndcg:
+          type: number
+          title: Retrieval Ndcg
+          default: 0
+        zero_result_rate:
+          type: number
+          title: Zero Result Rate
+          default: 0
+        false_zero_result_rate:
+          type: number
+          title: False Zero Result Rate
+          default: 0
+        authorization_leak_rate:
+          type: number
+          title: Authorization Leak Rate
+          default: 0
+        citation_traceability:
+          type: number
+          title: Citation Traceability
+          default: 0
+        retrieval_latency_p50_ms:
+          type: number
+          title: Retrieval Latency P50 Ms
+          default: 0
+        retrieval_latency_p95_ms:
+          type: number
+          title: Retrieval Latency P95 Ms
+          default: 0
+        total_latency_p95_ms:
+          type: number
+          title: Total Latency P95 Ms
+          default: 0
+        full_answer_cases:
+          type: integer
+          title: Full Answer Cases
+          default: 0
+        retrieval_only_cases:
+          type: integer
+          title: Retrieval Only Cases
+          default: 0
+        draft_cases:
+          type: integer
+          title: Draft Cases
+          default: 0
+        silver_cases:
+          type: integer
+          title: Silver Cases
+          default: 0
+        gold_cases:
+          type: integer
+          title: Gold Cases
+          default: 0
+        failure_counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Failure Counts
+        role_slices:
+          items:
+            $ref: '#/components/schemas/EvaluationSliceSummary'
+          type: array
+          title: Role Slices
+        query_category_slices:
+          items:
+            $ref: '#/components/schemas/EvaluationSliceSummary'
+          type: array
+          title: Query Category Slices
       type: object
       required:
       - total_cases
@@ -755,6 +1215,123 @@ components:
       - service
       - version
       title: HealthResponse
+    QualityGateCheck:
+      properties:
+        key:
+          type: string
+          title: Key
+        actual:
+          type: number
+          title: Actual
+        operator:
+          type: string
+          enum:
+          - '>='
+          - <=
+          title: Operator
+        threshold:
+          type: number
+          title: Threshold
+        passed:
+          type: boolean
+          title: Passed
+        eligible:
+          type: boolean
+          title: Eligible
+          default: true
+      type: object
+      required:
+      - key
+      - actual
+      - operator
+      - threshold
+      - passed
+      title: QualityGateCheck
+    QualityGateResult:
+      properties:
+        status:
+          type: string
+          enum:
+          - passed
+          - failed
+          - not_evaluated
+          title: Status
+        checks:
+          items:
+            $ref: '#/components/schemas/QualityGateCheck'
+          type: array
+          title: Checks
+        eligible_cases:
+          type: integer
+          title: Eligible Cases
+        excluded_draft_cases:
+          type: integer
+          title: Excluded Draft Cases
+          default: 0
+      type: object
+      required:
+      - status
+      - checks
+      - eligible_cases
+      title: QualityGateResult
+    QualityOverview:
+      properties:
+        datasets:
+          items:
+            $ref: '#/components/schemas/DatasetSummary'
+          type: array
+          title: Datasets
+        recent_runs:
+          items:
+            $ref: '#/components/schemas/EvaluationRunSummary'
+          type: array
+          title: Recent Runs
+        latest_run:
+          anyOf:
+          - $ref: '#/components/schemas/EvaluationRun'
+          - type: 'null'
+        thresholds:
+          $ref: '#/components/schemas/QualityThresholds'
+        generated_at:
+          type: string
+          format: date-time
+          title: Generated At
+      type: object
+      required:
+      - datasets
+      - recent_runs
+      - thresholds
+      - generated_at
+      title: QualityOverview
+    QualityThresholds:
+      properties:
+        retrieval_recall_min:
+          type: number
+          title: Retrieval Recall Min
+        retrieval_ndcg_min:
+          type: number
+          title: Retrieval Ndcg Min
+        false_zero_result_rate_max:
+          type: number
+          title: False Zero Result Rate Max
+        authorization_leak_rate_max:
+          type: number
+          title: Authorization Leak Rate Max
+        citation_traceability_min:
+          type: number
+          title: Citation Traceability Min
+        retrieval_latency_p95_ms_max:
+          type: number
+          title: Retrieval Latency P95 Ms Max
+      type: object
+      required:
+      - retrieval_recall_min
+      - retrieval_ndcg_min
+      - false_zero_result_rate_max
+      - authorization_leak_rate_max
+      - citation_traceability_min
+      - retrieval_latency_p95_ms_max
+      title: QualityThresholds
     RagQueryFilters:
       properties:
         document_types:
@@ -818,6 +1395,23 @@ components:
       - service
       - dependencies
       title: ReadinessResponse
+    RelevanceJudgment:
+      properties:
+        chunk_id:
+          type: string
+          minLength: 1
+          title: Chunk Id
+        relevance:
+          type: integer
+          maximum: 3.0
+          minimum: 0.0
+          title: Relevance
+      additionalProperties: false
+      type: object
+      required:
+      - chunk_id
+      - relevance
+      title: RelevanceJudgment
     RetrievalMetrics:
       properties:
         expected_relevant_count:
@@ -841,6 +1435,34 @@ components:
         mrr:
           type: number
           title: Mrr
+        ndcg:
+          type: number
+          title: Ndcg
+          default: 0
+        expected_relevant_document_count:
+          type: integer
+          title: Expected Relevant Document Count
+          default: 0
+        relevant_document_retrieved_count:
+          type: integer
+          title: Relevant Document Retrieved Count
+          default: 0
+        zero_result:
+          type: boolean
+          title: Zero Result
+          default: false
+        false_zero_result:
+          type: boolean
+          title: False Zero Result
+          default: false
+        forbidden_retrieved_count:
+          type: integer
+          title: Forbidden Retrieved Count
+          default: 0
+        authorization_leak_rate:
+          type: number
+          title: Authorization Leak Rate
+          default: 0
       type: object
       required:
       - expected_relevant_count
@@ -851,6 +1473,44 @@ components:
       - hit_rate
       - mrr
       title: RetrievalMetrics
+    RunComparison:
+      properties:
+        baseline_run_id:
+          type: string
+          title: Baseline Run Id
+        average_score_delta:
+          type: number
+          title: Average Score Delta
+        retrieval_recall_delta:
+          type: number
+          title: Retrieval Recall Delta
+        retrieval_ndcg_delta:
+          type: number
+          title: Retrieval Ndcg Delta
+        false_zero_result_rate_delta:
+          type: number
+          title: False Zero Result Rate Delta
+        citation_traceability_delta:
+          type: number
+          title: Citation Traceability Delta
+        retrieval_latency_p95_ms_delta:
+          type: number
+          title: Retrieval Latency P95 Ms Delta
+        regressions:
+          items:
+            type: string
+          type: array
+          title: Regressions
+      type: object
+      required:
+      - baseline_run_id
+      - average_score_delta
+      - retrieval_recall_delta
+      - retrieval_ndcg_delta
+      - false_zero_result_rate_delta
+      - citation_traceability_delta
+      - retrieval_latency_p95_ms_delta
+      title: RunComparison
     ValidationError:
       properties:
         loc:

@@ -1,6 +1,27 @@
 from __future__ import annotations
 
-from retrievers.scoring import sparse_score
+from app.schemas import RagQueryFilters
+from retrievers.scoring import expand_query_text, extract_query_identifiers, payload_matches_filters, sparse_score
+
+
+def test_expand_query_text_adds_controlled_document_synonyms() -> None:
+    expanded = expand_query_text("RMO 12/2024 gestor")
+
+    assert "rozkaz ministra obrany" in expanded
+    assert "odpovedny" in expanded
+    assert "owner" in expanded
+
+
+def test_extract_query_identifiers_normalizes_document_and_citation_references() -> None:
+    identifiers = extract_query_identifiers("Najdi RMO č. 12/2024, čl. 4 odst. 2.")
+
+    assert identifiers == ["rmo 12/2024", "cl 4", "odst 2"]
+
+
+def test_sparse_score_links_acronyms_to_controlled_document_language() -> None:
+    text = "Rozkaz ministra obrany popisuje odpovědný útvar a vlastníka dokumentu."
+
+    assert sparse_score("RMO gestor", text) >= 0.2
 
 
 def test_sparse_score_maps_project_risk_query_to_failure_scenarios() -> None:
@@ -35,3 +56,20 @@ def test_sparse_score_prefers_specific_failure_scenarios_over_generic_limits() -
         "Jaká jsou největší rizika projektu?",
         generic,
     )
+
+
+def test_payload_filters_exact_document_version() -> None:
+    filters = RagQueryFilters(
+        document_ids=["doc_contract"],
+        document_version_ids=["ver_contract_1"],
+        only_valid=False,
+    )
+    matching = {
+        "document_id": "doc_contract",
+        "document_version_id": "ver_contract_1",
+        "classification": "internal",
+    }
+
+    assert payload_matches_filters(matching, filters) is True
+    assert payload_matches_filters({**matching, "document_version_id": "ver_contract_2"}, filters) is False
+    assert payload_matches_filters({**matching, "document_id": "doc_other"}, filters) is False

@@ -6,6 +6,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ghostscript \
+        ocrmypdf \
+        poppler-utils \
+        qpdf \
+        tesseract-ocr \
+        tesseract-ocr-ces \
+        tesseract-ocr-eng \
+        tesseract-ocr-osd \
+        unpaper \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -14,6 +27,7 @@ COPY parsers ./parsers
 COPY chunkers ./chunkers
 COPY embeddings ./embeddings
 COPY indexers ./indexers
+COPY intelligence ./intelligence
 COPY openapi.yaml README.md ./
 
 EXPOSE 8090

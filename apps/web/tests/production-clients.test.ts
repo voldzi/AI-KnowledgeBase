@@ -13,9 +13,11 @@ const env = {
   AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1/",
   AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/",
   AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/",
+  AKL_EVALUATION_API_BASE_URL: "https://evaluation.local/api/v1/",
   AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
   AKL_WEB_PUBLIC_BASE_URL: "https://akl.local",
-  AKL_WEB_SESSION_SECRET: "test-session-secret"
+  AKL_WEB_SESSION_SECRET: "test-session-secret",
+  AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me"
 };
 
 function documentFixture(documentId: string) {
@@ -163,6 +165,243 @@ describe("production API clients", () => {
       calls[0][0],
       "https://registry.local/api/v1/documents/metadata-summary?topic=digitalizace&topic=%C5%99%C3%ADzen%C3%AD+projekt%C5%AF&classification=internal&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&external_ref=contract%3A1&context_tag=budget-contract%3Acontract-1"
     );
+  });
+
+  it("loads document readiness reports from the Registry API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        generated_at: "2026-07-09T12:00:00Z",
+        total_visible_documents: 222,
+        ready_documents: 12,
+        review_documents: 210,
+        blocked_documents: 0,
+        readiness_score: 0.0541,
+        issue_counts: [{ key: "document_number_missing", label: "document_number_missing", count: 222 }],
+        by_severity: [{ key: "warning", label: "warning", count: 222 }],
+        by_document_type: [],
+        by_classification: [],
+        by_status: [],
+        issues: [],
+        warnings: ["REGISTRY_DOCUMENT_READINESS_REPORT"]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const report = await clients.registry.getDocumentReadinessReport(createMockContext(), {
+      classification: "internal",
+      documentType: "directive",
+      maxIssues: 24
+    });
+
+    assert.equal(report.total_visible_documents, 222);
+    assert.equal(report.issue_counts[0]?.key, "document_number_missing");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents/readiness-report?classification=internal&document_type=directive&max_issues=24"
+    );
+  });
+
+  it("loads entity facets from the Ingestion API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        status: "ready",
+        index_name: "akl_document_chunks",
+        total_chunks: 5,
+        chunks_with_entities: 3,
+        generated_at: "2026-07-09T12:00:00Z",
+        warnings: [],
+        entity_types: [{ key: "document_number", label: "Document number", count: 2 }],
+        entity_groups: [
+          {
+            entity_type: "document_number",
+            label: "Document number",
+            count: 2,
+            values: [{ key: "RMO12/2024", label: "RMO12/2024", count: 2 }]
+          }
+        ]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const report = await clients.ingestion.getEntityFacets(createMockContext(), {
+      limit: 8,
+      valueLimit: 4
+    });
+
+    assert.equal(report.status, "ready");
+    assert.equal(report.entity_groups[0]?.values[0]?.key, "RMO12/2024");
+    assert.equal(
+      calls[0][0],
+      "https://ingestion.local/api/v1/intelligence/entities/facets?limit=8&value_limit=4"
+    );
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
+  it("posts analyst search requests to the Ingestion API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        status: "ready",
+        index_name: "akl_document_chunks",
+        query_mode: "fielded",
+        total_hits: 1,
+        returned_hits: 1,
+        generated_at: "2026-07-09T12:00:00Z",
+        warnings: [],
+        hits: [
+          {
+            chunk_id: "chunk_1",
+            document_id: "doc_109",
+            document_version_id: "ver_109_1",
+            document_title: "Směrnice RMO 12/2024 pro řízení AI",
+            version_label: "1.0",
+            document_type: "directive",
+            classification: "internal",
+            status: "valid",
+            score: 10.4,
+            snippet: "RMO 12/2024",
+            page_number: 3,
+            section_title: "Odpovědnosti",
+            section_path: [],
+            source_file_name: "rmo-ai.pdf",
+            entity_types: ["document_number"],
+            entity_values: ["RMO12/2024"],
+            entity_pairs: ["document_number:RMO12/2024"]
+          }
+        ]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const report = await clients.ingestion.analystSearch(
+      {
+        query: "title:RMO AND entity:RMO12/2024",
+        query_mode: "fielded",
+        search_fields: ["title", "entity"],
+        allowed_document_ids: ["doc_109"],
+        limit: 3
+      },
+      createMockContext()
+    );
+
+    assert.equal(report.status, "ready");
+    assert.equal(report.hits[0]?.document_id, "doc_109");
+    assert.equal(calls[0][0], "https://ingestion.local/api/v1/intelligence/analyst/search");
+    assert.equal(calls[0][1]?.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[0][1]?.body)), {
+      query: "title:RMO AND entity:RMO12/2024",
+      query_mode: "fielded",
+      search_fields: ["title", "entity"],
+      allowed_document_ids: ["doc_109"],
+      limit: 3
+    });
+  });
+
+  it("uses Registry API analyst case endpoints", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const now = "2026-07-09T12:00:00Z";
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      const url = String(input);
+      if (url.endsWith("/intelligence/cases") && init?.method === "POST") {
+        return Response.json(
+          {
+            case_id: "case_1",
+            title: "RMO evidence",
+            description: null,
+            status: "open",
+            owner_id: "analyst_1",
+            classification: "internal",
+            tags: ["rmo"],
+            metadata: {},
+            saved_queries: [],
+            evidence_items: [],
+            created_at: now,
+            updated_at: now
+          },
+          { status: 201 }
+        );
+      }
+      if (url.endsWith("/intelligence/cases/case_1/saved-queries")) {
+        return Response.json(
+          {
+            saved_query_id: "qry_1",
+            case_id: "case_1",
+            title: "RMO fielded",
+            query_text: "title:RMO",
+            query_mode: "fielded",
+            search_fields: ["title"],
+            filters: {},
+            created_by: "analyst_1",
+            created_at: now
+          },
+          { status: 201 }
+        );
+      }
+      if (url.endsWith("/intelligence/cases/case_1/evidence")) {
+        return Response.json(
+          {
+            evidence_id: "evd_1",
+            case_id: "case_1",
+            title: "RMO chunk",
+            note: null,
+            document_id: "doc_109",
+            document_version_id: "ver_109_1",
+            document_title: "Směrnice RMO",
+            chunk_id: "chunk_1",
+            page_number: 3,
+            section_title: null,
+            source_file_name: null,
+            score: 10.4,
+            snippet: "RMO 12/2024",
+            entity_types: ["document_number"],
+            entity_values: ["RMO12/2024"],
+            metadata: {},
+            created_by: "analyst_1",
+            created_at: now
+          },
+          { status: 201 }
+        );
+      }
+      return Response.json({ items: [], limit: 50, offset: 0 });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({ subjectId: "analyst_1", roles: ["reader"] });
+    const analystCase = await clients.registry.createAnalystCase({ title: "RMO evidence", tags: ["rmo"] }, context);
+    const savedQuery = await clients.registry.createAnalystSavedQuery(
+      analystCase.case_id,
+      {
+        title: "RMO fielded",
+        query_text: "title:RMO",
+        query_mode: "fielded",
+        search_fields: ["title"],
+        filters: {}
+      },
+      context
+    );
+    const evidence = await clients.registry.createAnalystEvidence(
+      analystCase.case_id,
+      {
+        title: "RMO chunk",
+        document_id: "doc_109",
+        chunk_id: "chunk_1",
+        snippet: "RMO 12/2024"
+      },
+      context
+    );
+
+    assert.equal(analystCase.case_id, "case_1");
+    assert.equal(savedQuery.saved_query_id, "qry_1");
+    assert.equal(evidence.evidence_id, "evd_1");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/intelligence/cases");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/intelligence/cases/case_1/saved-queries");
+    assert.equal(calls[2][0], "https://registry.local/api/v1/intelligence/cases/case_1/evidence");
   });
 
   it("uses Registry API profile settings endpoints", async () => {
@@ -746,5 +985,39 @@ describe("production API clients", () => {
     assert.equal(calls[0][0], "https://governance.local/api/v1/governance/compare-versions");
     assert.equal(calls[0][1]?.method, "POST");
     assert.equal(JSON.parse(String(calls[0][1]?.body)).subject_id, "user_1");
+  });
+
+  it("loads retrieval quality overview through the Evaluation API", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        datasets: [],
+        recent_runs: [],
+        latest_run: null,
+        thresholds: {
+          retrieval_recall_min: 0.95,
+          retrieval_ndcg_min: 0.85,
+          false_zero_result_rate_max: 0.02,
+          authorization_leak_rate_max: 0,
+          citation_traceability_min: 1,
+          retrieval_latency_p95_ms_max: 3000
+        },
+        generated_at: "2026-07-10T10:00:00Z"
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({ accessToken: "test-token" });
+    const overview = await clients.evaluation.getQualityOverview(context, {
+      datasetId: "quality_1",
+      limit: 5
+    });
+
+    assert.equal(overview.latest_run, null);
+    assert.equal(
+      calls[0][0],
+      "https://evaluation.local/api/v1/evaluations/quality/overview?dataset_id=quality_1&limit=5"
+    );
+    assert.equal((calls[0][1]?.headers as Headers).get("Authorization"), "Bearer test-token");
   });
 });

@@ -47,7 +47,7 @@ Use `external_system`, never `source_system`, for STRATOS integration payloads.
 ## Package Model
 
 General STRATOS UI primitives for AKB, Budget, ProjectFlow and ArchFlow use
-`@voldzi/stratos-ui@0.3.17` or newer compatible versions from the public npm
+`@voldzi/stratos-ui@0.3.29` or newer compatible versions from the public npm
 registry. Applications must not add a scoped `.npmrc` that redirects
 `@voldzi/stratos-ui` to GitHub Packages.
 
@@ -74,8 +74,11 @@ package:
 
 ```ts
 import {
+  AccessAuditList,
+  AccessEffectiveMatrix,
   DirectoryPersonPicker,
   FieldLabelWithHelp,
+  GovernanceIssueList,
   GlobalTopbar,
   HelpHint,
   SelectField,
@@ -90,10 +93,24 @@ import "@voldzi/stratos-ui/styles.css";
 
 Applications use `HelpHint`, `FieldLabelWithHelp`, `SelectField.description`
 and `SelectField.labelAccessory` instead of app-local help tooltip components.
+Applications use `AccessAuditList` and `AccessEffectiveMatrix` for access audit
+timelines and read-only effective access summaries instead of app-local audit
+timeline or permission matrix implementations.
+Applications use `GovernanceIssueList` for normalized administrative findings
+with severity, application, issue type, entity, description, recommended action
+and optional resolution/evidence link. These findings belong to administrative
+or operational oversight surfaces, not executive dashboards.
 Applications use the shared profile/settings helpers for `settings.core` and
 store application-specific values under `settings.apps.<appId>`. Profile values
 such as avatar, language, theme, accent, display name and e-mail are not local
 component state and are not sourced from browser localStorage.
+
+Version `0.3.24` is the responsive shell baseline: submenu/sidebar panels use
+the shared overlay behavior for compact widths, `GlobalTopbar` consumes native
+`href` app-switcher items and `mobileBehavior`, topbar status elements collapse
+to compact indicators in narrow layouts, picker/popover layering comes from the
+shared tokens, and `ErrorState` must present user-safe messages instead of raw
+JWT, OIDC, 401 or JSON payload details.
 
 ## Component Contracts
 

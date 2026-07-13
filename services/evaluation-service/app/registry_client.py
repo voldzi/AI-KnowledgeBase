@@ -14,6 +14,7 @@ class RegistryClient(Protocol):
         event_type: str,
         resource_id: str,
         metadata: dict[str, Any],
+        bearer_token: str | None = None,
     ) -> None:
         ...
 
@@ -28,6 +29,7 @@ class MockRegistryClient:
         event_type: str,
         resource_id: str,
         metadata: dict[str, Any],
+        bearer_token: str | None = None,
     ) -> None:
         return None
 
@@ -45,6 +47,7 @@ class HttpRegistryClient:
         event_type: str,
         resource_id: str,
         metadata: dict[str, Any],
+        bearer_token: str | None = None,
     ) -> None:
         body = {
             "actor_id": self._settings.service_actor_id,
@@ -61,6 +64,7 @@ class HttpRegistryClient:
             method="POST",
             url=f"{self._settings.registry_base_url}/audit/events",
             json_body=body,
+            bearer_token=bearer_token,
         )
 
     async def readiness(self) -> str:

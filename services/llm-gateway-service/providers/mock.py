@@ -103,8 +103,9 @@ class MockProvider(LLMProvider):
         )
 
     async def embeddings(self, request: EmbeddingsRequest) -> EmbeddingsResponse:
+        dimensions = request.dimensions or self.settings.mock_embedding_dimensions
         items = [
-            EmbeddingItem(index=index, embedding=_deterministic_embedding(text, request.model, self.settings))
+            EmbeddingItem(index=index, embedding=_deterministic_embedding(text, request.model, dimensions))
             for index, text in enumerate(request.input)
         ]
         return EmbeddingsResponse(model=request.model, data=items, provider="mock")
@@ -117,9 +118,9 @@ def _estimate_prompt_tokens(request: ChatCompletionRequest) -> int:
     return sum(len(message.content.split()) for message in request.messages)
 
 
-def _deterministic_embedding(text: str, model: str, settings: Settings) -> list[float]:
+def _deterministic_embedding(text: str, model: str, dimensions: int) -> list[float]:
     values: list[float] = []
-    for index in range(settings.mock_embedding_dimensions):
+    for index in range(dimensions):
         digest = hashlib.sha256(f"{model}:{index}:{text}".encode("utf-8")).digest()
         integer = int.from_bytes(digest[:4], byteorder="big", signed=False)
         values.append(round((integer / 2**32) * 2 - 1, 6))

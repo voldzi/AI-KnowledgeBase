@@ -28,7 +28,8 @@ import {
 } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuthorizationHint, Classification, Document, DocumentStatus, DocumentType } from "@/lib/types";
-import { documentTypeLabel, formatDateTime } from "@/lib/format";
+import { documentStatusLabel, documentTypeLabel, formatDateTime } from "@/lib/format";
+import { DOCUMENT_TYPE_CATALOG } from "@/lib/documents/document-workflow";
 
 interface DocumentRegistryProps {
   documents: Document[];
@@ -41,6 +42,11 @@ const registryCopy = {
     summaryTitle: "Stav řízené dokumentace",
     newDraft: "Nový koncept",
     uploadVersion: "Nahrát verzi",
+    newDraftDisabled: "Pro založení nového dokumentu nejprve zrušte výběr.",
+    uploadVersionDisabled: "Pro nahrání verze vyberte právě jeden dokument.",
+    selectedDocument: "Vybraný dokument",
+    selectedDocuments: "Vybrané dokumenty",
+    clearSelection: "Zrušit výběr",
     searchLabel: "Hledat",
     searchPlaceholder: "Název, ID, gestor, vlastník nebo štítek",
     view: "Pohled",
@@ -86,6 +92,11 @@ const registryCopy = {
     summaryTitle: "Controlled-document state",
     newDraft: "New draft",
     uploadVersion: "Upload version",
+    newDraftDisabled: "Clear the selection before creating a new document.",
+    uploadVersionDisabled: "Select exactly one document to upload a version.",
+    selectedDocument: "Selected document",
+    selectedDocuments: "Selected documents",
+    clearSelection: "Clear selection",
     searchLabel: "Search",
     searchPlaceholder: "Title, ID, owner unit, owner or tag",
     view: "View",
@@ -132,20 +143,7 @@ type RegistryView = "all" | "review" | "valid" | "restricted" | "archive";
 
 const documentStatuses: DocumentStatus[] = ["draft", "review", "approved", "valid", "superseded", "archived", "cancelled"];
 const classificationOptions: Classification[] = ["public", "internal", "restricted", "confidential"];
-const documentTypes: DocumentType[] = [
-  "directive",
-  "regulation",
-  "methodology",
-  "policy",
-  "procedure",
-  "manual",
-  "knowledge_base_article",
-  "project_documentation",
-  "meeting_record",
-  "contract",
-  "attachment",
-  "other"
-];
+const documentTypes: DocumentType[] = DOCUMENT_TYPE_CATALOG.filter((item) => item.active).map((item) => item.code);
 
 export function DocumentRegistry({ documents, authorization }: DocumentRegistryProps) {
   const { language } = useLanguage();
@@ -156,6 +154,9 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
   const [types, setTypes] = useState<DocumentType[]>([]);
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const selectedDocument = selectedDocumentIds.length === 1
+    ? documents.find((document) => document.document_id === selectedDocumentIds[0]) ?? null
+    : null;
 
   const metrics = useMemo(() => {
     const reviewCount = documents.filter((document) => ["draft", "review", "approved"].includes(document.status)).length;
@@ -292,6 +293,7 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
       id: "open",
       label: copy.open,
       width: 100,
+      resizable: false,
       align: "center",
       render: (document) => (
         <span className="inline-actions">
@@ -346,20 +348,50 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
           <h2>{copy.title}</h2>
           <div className="inline-actions">
             {authorization.can_update ? (
-              <StratosButtonLink href="/documents/new">
-                <FilePlus2 size={16} aria-hidden="true" />
-                {copy.newDraft}
-              </StratosButtonLink>
+              selectedDocumentIds.length === 0 ? (
+                <StratosButtonLink href="/documents/new">
+                  <FilePlus2 size={16} aria-hidden="true" />
+                  {copy.newDraft}
+                </StratosButtonLink>
+              ) : (
+                <StratosButton type="button" disabled title={copy.newDraftDisabled}>
+                  <FilePlus2 size={16} aria-hidden="true" />
+                  {copy.newDraft}
+                </StratosButton>
+              )
             ) : null}
             {authorization.can_ingest ? (
-              <StratosButtonLink tone="primary" href="/upload">
-                <UploadCloud size={16} aria-hidden="true" />
-                {copy.uploadVersion}
-              </StratosButtonLink>
+              selectedDocument ? (
+                <StratosButtonLink tone="primary" href={`/upload?document_id=${encodeURIComponent(selectedDocument.document_id)}`}>
+                  <UploadCloud size={16} aria-hidden="true" />
+                  {copy.uploadVersion}
+                </StratosButtonLink>
+              ) : (
+                <StratosButton type="button" disabled title={copy.uploadVersionDisabled}>
+                  <UploadCloud size={16} aria-hidden="true" />
+                  {copy.uploadVersion}
+                </StratosButton>
+              )
             ) : null}
           </div>
         </div>
         <div className="panel__body stack">
+          {selectedDocumentIds.length > 0 ? (
+            <div className="selected-document-context" aria-live="polite">
+              <FileSearch size={18} aria-hidden="true" />
+              <div>
+                <span>{selectedDocument ? copy.selectedDocument : copy.selectedDocuments}</span>
+                <strong>{selectedDocument?.title ?? `${selectedDocumentIds.length} ${copy.selected}`}</strong>
+                {selectedDocument ? (
+                  <small>{documentTypeLabel(selectedDocument.document_type, language)} · {selectedDocument.classification}</small>
+                ) : null}
+              </div>
+              <StratosButton type="button" onClick={() => setSelectedDocumentIds([])}>
+                <X size={15} aria-hidden="true" />
+                {copy.clearSelection}
+              </StratosButton>
+            </div>
+          ) : null}
           <div className="registry-toolbar">
             <StratosSearchBox
               id="document-registry-search"
@@ -397,7 +429,7 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
                 onValuesChange={(values) => setStatuses(values as DocumentStatus[])}
               >
                 {documentStatuses.map((item) => (
-                  <option key={item} value={item}>{item.replaceAll("_", " ")}</option>
+                  <option key={item} value={item}>{documentStatusLabel(item, language)}</option>
                 ))}
               </FieldSelect>
               <FieldSelect

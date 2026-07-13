@@ -52,9 +52,20 @@ class RegistryClient:
                 "document_version_id": document_version_id,
                 "classification": classification,
             },
-            "roles": list(auth_context.roles) if auth_context else [],
-            "groups": list(auth_context.groups) if auth_context else [],
         }
+        if self.settings.auth_mode in {"disabled", "mock"}:
+            payload.update(
+                {
+                    "roles": list(auth_context.roles) if auth_context else [],
+                    "groups": list(auth_context.groups) if auth_context else [],
+                    "capabilities": list(auth_context.capabilities) if auth_context else [],
+                    "scopes": list(auth_context.scopes) if auth_context else [],
+                    "organization_id": auth_context.organization_id if auth_context else "org_stratos",
+                    "identity_active": auth_context.identity_active if auth_context else True,
+                    "membership_active": auth_context.membership_active if auth_context else True,
+                    "application_access_active": auth_context.application_access_active if auth_context else True,
+                }
+            )
         response = await self._post("/api/v1/authz/check", payload, auth_context=auth_context)
         if not response.get("allowed"):
             raise IngestionError(
@@ -89,6 +100,7 @@ class RegistryClient:
             f"/api/v1/documents/{document_id}/versions/{document_version_id}",
             auth_context=auth_context,
         )
+        external = _external_metadata(document)
         return DocumentMetadata(
             document_id=document_id,
             document_version_id=document_version_id,
@@ -101,6 +113,18 @@ class RegistryClient:
             valid_from=_optional_date(version.get("valid_from")),
             valid_to=_optional_date(version.get("valid_to")),
             access_scope=_access_scope_from_document(document),
+            tenant_id=_optional_str(external.get("tenant_id")),
+            external_system=_optional_str(external.get("external_system")),
+            external_ref=_optional_str(external.get("external_ref")),
+            organization_id=_optional_str(version.get("organization_id")) or "org_stratos",
+            policy_binding_id=_optional_str(version.get("policy_binding_id")),
+            policy_version=_optional_str(version.get("policy_version")),
+            policy_hash=_optional_str(version.get("policy_hash")),
+            policy_summary=(
+                version.get("policy_summary")
+                if isinstance(version.get("policy_summary"), dict)
+                else {}
+            ),
         )
 
     async def write_audit_event(
@@ -130,6 +154,27 @@ class RegistryClient:
             payload,
             auth_context=auth_context,
             prefer_service_account=True,
+        )
+
+    async def update_external_document_current(
+        self,
+        *,
+        document_id: str,
+        document_version_id: str,
+        ingestion_job_id: str,
+        ingestion_status: str,
+        auth_context: AuthContext | None = None,
+    ) -> None:
+        if self.settings.registry_client_mode == "mock":
+            return
+        await self._patch(
+            f"/api/v1/documents/{document_id}/external-references/current",
+            {
+                "current_document_version_id": document_version_id,
+                "current_ingestion_job_id": ingestion_job_id,
+                "current_ingestion_status": ingestion_status,
+            },
+            auth_context=auth_context,
         )
 
     async def _get(self, path: str, *, auth_context: AuthContext | None = None) -> dict[str, Any]:
@@ -186,6 +231,36 @@ class RegistryClient:
                 status_code=502,
             ) from exc
 
+    async def _patch(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+                response = await client.patch(
+                    f"{self.settings.registry_base_url}{path}",
+                    headers=self._headers(auth_context),
+                    json=payload,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise IngestionError(
+                "REGISTRY_REQUEST_FAILED",
+                "Registry API rejected ingestion-service request",
+                status_code=502,
+                details={"status_code": exc.response.status_code},
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise IngestionError(
+                "REGISTRY_UNAVAILABLE",
+                "Registry API is unavailable",
+                status_code=502,
+            ) from exc
+
     def _headers(
         self,
         auth_context: AuthContext | None = None,
@@ -208,11 +283,12 @@ class RegistryClient:
             "X-Request-ID": get_request_id(),
             "X-Correlation-ID": get_correlation_id(),
             "X-Service-Name": self.settings.service_name,
-            "X-AKL-Subject": subject_id,
-            "X-AKL-Roles": ",".join(roles),
         }
-        if groups:
-            headers["X-AKL-Groups"] = ",".join(groups)
+        if self.settings.auth_mode in {"disabled", "mock"}:
+            headers["X-AKL-Subject"] = subject_id
+            headers["X-AKL-Roles"] = ",".join(roles)
+            if groups:
+                headers["X-AKL-Groups"] = ",".join(groups)
         bearer_token = None if use_service_account else auth_context.bearer_token if auth_context else None
         if bearer_token:
             headers["Authorization"] = f"Bearer {bearer_token}"
@@ -233,6 +309,14 @@ def _access_scope_from_document(document: dict[str, Any]) -> list[str]:
 
 def _optional_str(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _external_metadata(document: dict[str, Any]) -> dict[str, Any]:
+    metadata = document.get("metadata")
+    if not isinstance(metadata, dict):
+        return {}
+    external = metadata.get("external")
+    return external if isinstance(external, dict) else {}
 
 
 def _optional_date(value: Any) -> date | None:
