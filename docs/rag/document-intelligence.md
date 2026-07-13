@@ -178,7 +178,9 @@ is a bounded, server-validated table specification:
 - `columns` defines stable keys, labels, and simple scalar types.
 - `rows` contains scalar cell values only.
 - each row may carry AKB citations back to document versions and chunks.
-- `export_formats` currently contains `xlsx` and `pdf`.
+- `export_formats` contains `xlsx` and/or `pdf` only while every cited source
+  passes a fresh `rag.export` decision and its aggregate obligations permit the
+  requested export; otherwise it is empty and no export action is offered.
 - `artifact_contract_version: "report.v2"` marks the enriched artifact contract.
 - `artifact_kind` distinguishes `content_table` from
   `registry_metadata_table`.
@@ -202,10 +204,17 @@ with the same content. It returns the file as a private download. It does not
 call internal storage directly from the browser and does not create macros,
 formulas, scripts, or external links.
 
+Before generating a file, the web BFF extracts cited document ids and policy
+hashes from the normalized artifact and reauthorizes each source through
+Registry. Registry in turn invokes the current STRATOS capability/scope/policy
+decision. Browser-posted `policy_bindings` and `obligations` are not trusted.
+
 Content artifacts must keep row-level citations. Registry metadata artifacts
 are the only exception: they are permission-scoped metadata aggregations from
 Registry API, not an interpretation of document content, and therefore may have
-zero chunk citations.
+zero chunk citations. They are view-only: without an immutable cited metadata
+snapshot the export bridge cannot safely reauthorize the exact output, so their
+`export_formats` is empty.
 
 AKB now applies the Assistant Structured Artifact Protocol before a report is
 shown or exported:
@@ -216,7 +225,7 @@ shown or exported:
 - generic cited-answer summaries are rejected as report artifacts,
 - content reports must remain citation-bound,
 - Registry metadata reports are allowed without chunk citations because they
-  are permission-scoped metadata aggregations.
+  are permission-scoped metadata aggregations, but remain view-only.
 
 Markdown table extraction is a compatibility bridge only. It can replace a bad
 generic report when the answer contains a useful table, but it is not the target

@@ -1,9 +1,19 @@
 from __future__ import annotations
 
-from app.information_policy import InformationPolicyBinding, canonical_policy_hash
+from app.information_policy import (
+    InformationPolicyBinding,
+    anonymous_public_eligible,
+    canonical_policy_hash,
+)
+from app.models import Document, DocumentVersion
 
 
-def policy(*, binding_id: str = "pol_testbinding01", scope_type: str = "organization") -> dict:
+def policy(
+    *,
+    binding_id: str = "pol_testbinding01",
+    scope_type: str = "organization",
+    scope_ids: list[str] | None = None,
+) -> dict:
     return {
         "schemaVersion": "stratos-information-policy-2",
         "policyBindingId": binding_id,
@@ -16,7 +26,7 @@ def policy(*, binding_id: str = "pol_testbinding01", scope_type: str = "organiza
         "audience": {
             "organizationId": "org_stratos",
             "scopeType": scope_type,
-            "scopeIds": [],
+            "scopeIds": scope_ids or [],
             "recipientSubjectIds": [],
         },
         "obligations": ["AUDIT_ACCESS", "NO_EXTERNAL_AI"],
@@ -115,6 +125,36 @@ def test_capability_and_scope_are_both_required(client) -> None:
     assert "SCOPE_MISMATCH" in wrong_scope.json()["error"]["details"]["reason_codes"]
 
 
+def test_financial_area_scope_isolates_it_from_logistics(client) -> None:
+    created = create_document(
+        client,
+        information_policy=policy(scope_type="organization_unit", scope_ids=["it"]),
+    )
+    assert created.status_code == 201, created.text
+    document_id = created.json()["document_id"]
+
+    logistics = client.get(
+        f"/api/v1/documents/{document_id}",
+        headers=v2_headers(
+            subject="user-logistics",
+            capabilities="akb:read_document",
+            scopes="organization_unit:logistics",
+        ),
+    )
+    it = client.get(
+        f"/api/v1/documents/{document_id}",
+        headers=v2_headers(
+            subject="user-it",
+            capabilities="akb:read_document",
+            scopes="organization_unit:it",
+        ),
+    )
+
+    assert logistics.status_code == 403
+    assert "SCOPE_MISMATCH" in logistics.json()["error"]["details"]["reason_codes"]
+    assert it.status_code == 200
+
+
 def test_central_organization_scope_with_id_allows_document_version(client) -> None:
     document = create_document(client, information_policy=policy()).json()
 
@@ -156,8 +196,27 @@ def test_tlp_red_requires_explicit_recipient(client) -> None:
     assert allowed.status_code == 200
 
 
-def test_stale_vector_policy_hash_is_filtered(client) -> None:
+def test_stale_or_revoked_vector_version_is_filtered(client, db_session) -> None:
     document = create_document(client, information_policy=policy()).json()
+    version_response = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document",
+        ),
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/policy-v2/vector.pdf",
+            "file_hash": f"sha256:{'d' * 64}",
+        },
+    )
+    assert version_response.status_code == 201, version_response.text
+    version_id = version_response.json()["document_version_id"]
+    stored_document = db_session.get(Document, document["document_id"])
+    stored_version = db_session.get(DocumentVersion, version_id)
+    stored_document.status = "valid"
+    stored_version.status = "valid"
+    db_session.commit()
     headers = v2_headers(subject="user_reader", capabilities="akb:chat")
     stale = client.post(
         "/api/v1/authz/filter-documents",
@@ -167,6 +226,7 @@ def test_stale_vector_policy_hash_is_filtered(client) -> None:
             "action": "rag.query",
             "candidate_document_ids": [document["document_id"]],
             "candidate_policy_hashes": {document["document_id"]: [f"sha256:{'b' * 64}"]},
+            "candidate_document_versions": {document["document_id"]: [version_id]},
         },
     )
     assert stale.status_code == 200
@@ -181,9 +241,26 @@ def test_stale_vector_policy_hash_is_filtered(client) -> None:
             "action": "rag.query",
             "candidate_document_ids": [document["document_id"]],
             "candidate_policy_hashes": {document["document_id"]: [document["policy_hash"]]},
+            "candidate_document_versions": {document["document_id"]: [version_id]},
         },
     )
     assert allowed.json()["allowed_document_ids"] == [document["document_id"]]
+
+    stored_version.status = "archived"
+    db_session.commit()
+    revoked = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=headers,
+        json={
+            "subject_id": "user_reader",
+            "action": "rag.query",
+            "candidate_document_ids": [document["document_id"]],
+            "candidate_policy_hashes": {document["document_id"]: [document["policy_hash"]]},
+            "candidate_document_versions": {document["document_id"]: [version_id]},
+        },
+    )
+    assert revoked.json()["allowed_document_ids"] == []
+    assert revoked.json()["denied_document_ids"] == [document["document_id"]]
 
 
 def test_stratos_admin_without_akb_capability_cannot_read_content(client) -> None:
@@ -198,3 +275,21 @@ def test_stratos_admin_without_akb_capability_cannot_read_content(client) -> Non
     )
     assert response.status_code == 403
     assert "CAPABILITY_MISSING" in response.json()["error"]["details"]["reason_codes"]
+
+
+def test_organization_audience_is_never_anonymous_true_public() -> None:
+    organization_policy = policy()
+    organization_policy["handlingClass"] = "PUBLIC"
+    organization_policy["contentCategories"] = ["PUBLIC_INFORMATION"]
+    organization_binding = InformationPolicyBinding.model_validate(organization_policy)
+
+    public_policy = policy(scope_type="public")
+    public_policy["handlingClass"] = "PUBLIC"
+    public_policy["contentCategories"] = ["PUBLIC_INFORMATION"]
+    public_policy["tlp"] = "TLP:CLEAR"
+    public_policy["pap"] = "PAP:CLEAR"
+    public_policy["obligations"] = ["AUDIT_ACCESS"]
+    public_binding = InformationPolicyBinding.model_validate(public_policy)
+
+    assert anonymous_public_eligible(organization_binding) is False
+    assert anonymous_public_eligible(public_binding) is True

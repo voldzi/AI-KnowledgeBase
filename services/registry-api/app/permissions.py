@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from starlette import status
 
 from app.auth import Principal
+from app.access_governance import GovernanceDenied, GovernanceUnavailable, governance_client
+from app.config import get_settings
 from app.errors import problem
 from app.information_policy import InformationPolicyBinding, POLICY_VERSION
 from app.models import Document, RoleMapping
@@ -148,6 +150,7 @@ ACTION_CAPABILITIES: dict[str, set[str]] = {
     Action.rag_query.value: {"akb:chat"},
     Action.rag_compare.value: {"akb:chat"},
     Action.rag_check_compliance.value: {"akb:chat", "akb:manage_document"},
+    Action.rag_export.value: {"akb:export"},
     Action.workflow_task_read.value: {"akb:read_document", "akb:manage_document"},
     Action.workflow_task_write.value: {"akb:manage_document"},
     Action.audit_read.value: {"akb:read_audit"},
@@ -424,6 +427,112 @@ def evaluate_document_access(context: SubjectContext, action: str, document: Doc
     return Decision(False, "no document access policy matched", constraints)
 
 
+def document_governance_scope(document: Document) -> dict[str, str]:
+    scope = {"type": document.governance_scope_type or "organization"}
+    if document.governance_scope_id:
+        scope["id"] = document.governance_scope_id
+    elif scope["type"] == "organization":
+        scope["id"] = "org_stratos"
+    return scope
+
+
+def evaluate_runtime_document_access(
+    principal: Principal,
+    action: str,
+    document: Document,
+    local_decision: Decision | None = None,
+) -> Decision:
+    decision = local_decision or evaluate_document_access(
+        context_for_principal(principal), action, document
+    )
+    if not decision.allowed:
+        return decision
+    settings = get_settings()
+    if settings.auth_mode == "mock":
+        return decision
+    if not (principal.dynamic_access_loaded or principal.service_identity):
+        return decision
+    credential_token = principal.bearer_token if principal.dynamic_access_loaded else None
+    capability = _primary_capability(action)
+    try:
+        response = governance_client(settings).decide(
+            actor_subject_id=principal.subject_id,
+            capability_id=capability,
+            operation=_central_operation(action),
+            scope=document_governance_scope(document),
+            policy_binding=dict(document.policy_summary) if document.policy_summary else None,
+            policy_hash=document.policy_hash,
+            credential_token=credential_token,
+        )
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_decision_credential_rejected",
+            "STRATOS rejected the AKB policy decision credential",
+        ) from exc
+    except GovernanceUnavailable as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_decision_unavailable",
+            "STRATOS policy decision endpoint is unavailable",
+        ) from exc
+    reason_codes = tuple(
+        str(item) for item in response.get("reasonCodes", []) if isinstance(item, str)
+    )
+    if response.get("decision") != "ALLOW":
+        return Decision(
+            False,
+            "STRATOS denied the current capability, active scope, audience, or policy",
+            {
+                **decision.constraints,
+                "scope": document_governance_scope(document),
+                "obligations": response.get("obligations", []),
+            },
+            reason_codes or ("POLICY_DENY",),
+        )
+    return Decision(
+        True,
+        "Local and STRATOS runtime policy decisions allow access",
+        {
+            **decision.constraints,
+            "scope": document_governance_scope(document),
+            "obligations": response.get("obligations", []),
+        },
+        reason_codes or decision.reason_codes,
+    )
+
+
+def _primary_capability(action: str) -> str:
+    preferred = {
+        Action.document_read.value: "akb:read_document",
+        Action.rag_query.value: "akb:chat",
+        Action.rag_compare.value: "akb:chat",
+        Action.rag_check_compliance.value: "akb:chat",
+        Action.rag_export.value: "akb:export",
+        Action.audit_write.value: "akb:read_audit",
+    }
+    if action in preferred:
+        return preferred[action]
+    required = ACTION_CAPABILITIES.get(action, set())
+    if not required:
+        return "akb:access"
+    return sorted(required)[0]
+
+
+def _central_operation(action: str) -> str:
+    if action == Action.rag_export.value:
+        return "export"
+    if action in {
+        Action.rag_query.value,
+        Action.rag_compare.value,
+        Action.rag_check_compliance.value,
+    }:
+        return "ai"
+    if action in {Action.document_create.value, Action.document_version_create.value}:
+        return "upload"
+    return "read"
+
+
 def evaluate_global_action(context: SubjectContext, action: str, classification: str | None = None) -> Decision:
     if context.access_v2:
         denied = _v2_base_decision(context, action)
@@ -467,6 +576,7 @@ def require_document_action(
 ) -> SubjectContext:
     context = context_for_principal(principal, db)
     decision = evaluate_document_access(context, action.value, document)
+    decision = evaluate_runtime_document_access(principal, action.value, document, decision)
     if not decision.allowed:
         details = {**decision.constraints, "reason_codes": list(decision.reason_codes)}
         raise problem(status.HTTP_403_FORBIDDEN, "forbidden", decision.reason, details)

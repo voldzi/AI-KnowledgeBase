@@ -16,7 +16,12 @@ from app.auth import Principal, get_current_principal
 from app.config import get_settings
 from app.database import get_db
 from app.errors import problem
-from app.information_policy import legacy_classification, policy_columns
+from app.information_policy import (
+    InformationPolicyBinding,
+    canonical_policy_hash,
+    legacy_classification,
+    policy_columns,
+)
 from app.middleware import get_correlation_id
 from app.models import (
     AnalystCase,
@@ -45,8 +50,10 @@ from app.permissions import (
     SubjectContext,
     context_for_principal,
     context_for_subject,
+    document_governance_scope,
     evaluate_document_access,
     evaluate_global_action,
+    evaluate_runtime_document_access,
     require_document_action,
     require_global_action,
 )
@@ -88,6 +95,7 @@ from app.schemas import (
     DocumentReadinessIssue,
     DocumentReadinessResponse,
     DocumentReadinessSeverity,
+    GovernanceScope,
     DocumentResponse,
     DocumentStatus,
     DocumentType,
@@ -727,6 +735,11 @@ def _service_action_decision(
             actor_subject_id=subject_id,
             capability_id=capability,
             operation=operation_override or _central_operation(action, document is None),
+            scope=(
+                document_governance_scope(document)
+                if document is not None
+                else {"type": "organization", "id": "org_stratos"}
+            ),
             policy_binding=policy_summary,
             policy_hash=policy_hash,
         )
@@ -747,12 +760,18 @@ def _service_action_decision(
         return Decision(False, "STRATOS denied the delegated operation", {}, reason_codes or ("POLICY_DENY",))
     if document is None:
         return Decision(True, "STRATOS allowed the delegated operation", {}, reason_codes)
+    requested_scope = document_governance_scope(document)
+    scope_value = (
+        f"{requested_scope['type']}:{requested_scope['id']}"
+        if requested_scope.get("id")
+        else requested_scope["type"]
+    )
     derived = SubjectContext(
         subject_id=subject_id,
         roles=set(),
         groups=set(),
         capabilities={capability},
-        scopes={"organization"},
+        scopes={scope_value},
         organization_id="org_stratos",
         identity_active=True,
         membership_active=True,
@@ -783,6 +802,8 @@ def _central_operation(action: str, global_action: bool) -> str:
         return "access"
     if action in {Action.rag_query.value, Action.rag_compare.value, Action.rag_check_compliance.value}:
         return "ai"
+    if action == Action.rag_export.value:
+        return "export"
     if action in {Action.document_create.value, Action.document_version_create.value}:
         return "upload"
     return "read"
@@ -825,6 +846,140 @@ def _ensure_policy_binding_registered(policy) -> None:
             "policy_registry_unavailable",
             "STRATOS Policy Registry is unavailable",
         ) from exc
+
+
+def _governance_scope(
+    policy: InformationPolicyBinding,
+    requested: GovernanceScope | None,
+    *,
+    fallback_type: str | None = None,
+    fallback_id: str | None = None,
+) -> dict[str, str]:
+    if requested is not None:
+        scope = requested.model_dump(mode="json", exclude_none=True)
+    elif fallback_type:
+        scope = {"type": fallback_type}
+        if fallback_id:
+            scope["id"] = fallback_id
+    else:
+        audience = policy.audience
+        if audience.scope_type in {"organization", "public", "recipient_set"}:
+            scope = {"type": "organization", "id": "org_stratos"}
+        elif len(audience.scope_ids) == 1:
+            scope = {"type": audience.scope_type, "id": audience.scope_ids[0]}
+        else:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "governance_scope_required",
+                "A policy with multiple or unspecified resource scopes requires one explicit registered governance_scope",
+            )
+
+    scope_type = scope.get("type")
+    scope_id = scope.get("id")
+    audience = policy.audience
+    if scope_type == "organization":
+        if scope_id not in {None, "org_stratos"}:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "organization_mismatch",
+                "AKB organization scope must identify org_stratos",
+            )
+    elif audience.scope_type not in {"public", "recipient_set"} and (
+        scope_type != audience.scope_type or scope_id not in audience.scope_ids
+    ):
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "governance_scope_mismatch",
+            "governance_scope must be one concrete scope covered by the information policy audience",
+        )
+    return {key: value for key, value in scope.items() if isinstance(value, str) and value}
+
+
+def _register_governed_resource(
+    *,
+    principal: Principal,
+    resource_type: str,
+    resource_id: str,
+    source_version: str,
+    title: str,
+    policy: InformationPolicyBinding,
+    requested_scope: GovernanceScope | None,
+    parent_resource_id: str | None,
+    reason: str,
+    delegated_actor_subject_id: str | None = None,
+    fallback_scope_type: str | None = None,
+    fallback_scope_id: str | None = None,
+) -> dict[str, object]:
+    scope = _governance_scope(
+        policy,
+        requested_scope,
+        fallback_type=fallback_scope_type,
+        fallback_id=fallback_scope_id,
+    )
+    settings = get_settings()
+    if settings.auth_mode == "mock":
+        return {
+            "governed_resource_id": None,
+            "governed_source_version": source_version,
+            "governed_parent_resource_id": parent_resource_id,
+            "governance_scope_type": scope["type"],
+            "governance_scope_id": scope.get("id"),
+            "governance_registration_status": "MOCK_BYPASSED",
+            "governance_registered_at": None,
+        }
+
+    actor_subject_id: str | None = None
+    credential_token = principal.bearer_token
+    if principal.service_identity:
+        credential_token = settings.stratos_policy_service_token
+        actor_subject_id = delegated_actor_subject_id
+        if not actor_subject_id:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "delegated_actor_required",
+                "A verified delegated actor is required for service-initiated governed resource registration",
+            )
+    if not credential_token:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "governed_resource_registration_unavailable",
+            "A verified on-behalf-of credential is required to register the governed resource",
+        )
+    try:
+        registration = governance_client(settings).register_information_resource(
+            credential_token=credential_token,
+            actor_subject_id=actor_subject_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            source_version=source_version,
+            title=title,
+            scope=scope,
+            binding=policy,
+            parent_resource_id=parent_resource_id,
+            reason=reason,
+            metadata={"repository": "AKB", "correlationId": get_correlation_id()},
+        )
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "governed_resource_registration_denied",
+            "STRATOS denied governed resource registration for the delegated actor",
+        ) from exc
+    except GovernanceUnavailable as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "governed_resource_registration_unavailable",
+            "STRATOS governed resource registration is unavailable",
+        ) from exc
+    return {
+        "governed_resource_id": registration.resource_id,
+        "governed_source_version": registration.source_version,
+        "governed_parent_resource_id": parent_resource_id,
+        "governance_scope_type": scope["type"],
+        "governance_scope_id": scope.get("id"),
+        "governance_registration_status": "REGISTERED",
+        "governance_registered_at": utcnow(),
+    }
 
 
 def _add_days(value, days: int):
@@ -1300,8 +1455,29 @@ def upsert_external_document(
             "tenant_id must identify org_stratos for Information Policy V2 documents",
         )
     binding_columns = policy_columns(payload.information_policy)
+    document_id = make_id("doc")
+    governance_columns = (
+        _register_governed_resource(
+            principal=principal,
+            resource_type="document",
+            resource_id=document_id,
+            source_version=make_id("gresver"),
+            title=payload.title,
+            policy=payload.information_policy,
+            requested_scope=payload.governance_scope,
+            parent_resource_id=payload.parent_governed_resource_id,
+            reason="Register external AKB document policy root",
+            delegated_actor_subject_id=(
+                payload.integration_envelope.actor.subject_id
+                if payload.integration_envelope is not None
+                else None
+            ),
+        )
+        if payload.information_policy is not None
+        else {}
+    )
     document = Document(
-        document_id=make_id("doc"),
+        document_id=document_id,
         title=payload.title,
         document_type=payload.document_type.value,
         status=DocumentStatus.draft.value,
@@ -1315,6 +1491,7 @@ def upsert_external_document(
         tags=sorted({*payload.tags, "external", payload.external_system.value.lower()}),
         document_metadata=_external_document_metadata(payload),
         **binding_columns,
+        **governance_columns,
     )
     document.access_policies = _external_document_policies(payload)
     assignment_payloads = _validated_assignment_payloads(
@@ -1709,8 +1886,24 @@ def create_document(
     require_global_action(principal, Action.document_create, db)
     _ensure_policy_binding_registered(payload.information_policy)
     binding_columns = policy_columns(payload.information_policy)
+    document_id = make_id("doc")
+    governance_columns = (
+        _register_governed_resource(
+            principal=principal,
+            resource_type="document",
+            resource_id=document_id,
+            source_version=make_id("gresver"),
+            title=payload.title,
+            policy=payload.information_policy,
+            requested_scope=payload.governance_scope,
+            parent_resource_id=payload.parent_governed_resource_id,
+            reason="Register AKB document policy root",
+        )
+        if payload.information_policy is not None
+        else {}
+    )
     document = Document(
-        document_id=make_id("doc"),
+        document_id=document_id,
         title=payload.title,
         document_type=payload.document_type.value,
         status=DocumentStatus.draft.value,
@@ -1724,6 +1917,7 @@ def create_document(
         tags=payload.tags,
         document_metadata=payload.metadata,
         **binding_columns,
+        **governance_columns,
     )
     document.access_policies = _policy_models(document, payload)
     assignment_payloads = _validated_assignment_payloads(
@@ -2562,6 +2756,41 @@ def patch_document(
         document.gestor_unit = payload.gestor_unit
     if payload.classification is not None:
         document.classification = payload.classification.value
+    governance_update_requested = any(
+        key in changes
+        for key in ("information_policy", "governance_scope", "parent_governed_resource_id")
+    )
+    if governance_update_requested:
+        effective_policy = payload.information_policy
+        if effective_policy is None:
+            try:
+                effective_policy = InformationPolicyBinding.model_validate(document.policy_summary)
+            except ValueError as exc:
+                raise problem(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "policy_unavailable",
+                    "A valid Information Policy V2 binding is required to change governance coordinates",
+                ) from exc
+        _ensure_policy_binding_registered(effective_policy)
+        governance_columns = _register_governed_resource(
+            principal=principal,
+            resource_type="document",
+            resource_id=document.document_id,
+            source_version=make_id("gresver"),
+            title=payload.title or document.title,
+            policy=effective_policy,
+            requested_scope=payload.governance_scope,
+            parent_resource_id=(
+                payload.parent_governed_resource_id
+                if "parent_governed_resource_id" in changes
+                else document.governed_parent_resource_id
+            ),
+            reason="Register a new immutable AKB document policy version",
+            fallback_scope_type=document.governance_scope_type,
+            fallback_scope_id=document.governance_scope_id,
+        )
+        for field, value in governance_columns.items():
+            setattr(document, field, value)
     if payload.information_policy is not None:
         _ensure_policy_binding_registered(payload.information_policy)
         for field, value in policy_columns(payload.information_policy).items():
@@ -2669,6 +2898,28 @@ def create_document_version(
         change_summary=payload.change_summary,
         **binding_columns,
     )
+    effective_policy = payload.information_policy
+    if effective_policy is None and document.policy_summary:
+        effective_policy = InformationPolicyBinding.model_validate(document.policy_summary)
+    governance_columns = (
+        _register_governed_resource(
+            principal=principal,
+            resource_type="document_version",
+            resource_id=version.document_version_id,
+            source_version=version.document_version_id,
+            title=f"{document.title} — {payload.version_label}",
+            policy=effective_policy,
+            requested_scope=payload.governance_scope,
+            parent_resource_id=document.governed_resource_id,
+            reason="Register immutable AKB document version",
+            fallback_scope_type=document.governance_scope_type,
+            fallback_scope_id=document.governance_scope_id,
+        )
+        if effective_policy is not None
+        else {}
+    )
+    for field, value in governance_columns.items():
+        setattr(version, field, value)
     db.add(version)
     file: DocumentFile | None = None
     if payload.file is not None:
@@ -2802,8 +3053,12 @@ def check_authorization(
                 document=document,
             )
             if principal.service_identity
-            else evaluate_document_access(
-                _authz_subject_context(
+            else evaluate_runtime_document_access(
+                principal,
+                payload.action.value,
+                document,
+                evaluate_document_access(
+                    _authz_subject_context(
                     db,
                     principal,
                     subject_id=payload.subject_id,
@@ -2815,9 +3070,10 @@ def check_authorization(
                     identity_active=payload.identity_active,
                     membership_active=payload.membership_active,
                     application_access_active=payload.application_access_active,
+                    ),
+                    payload.action.value,
+                    document,
                 ),
-                payload.action.value,
-                document,
             )
         )
     else:
@@ -2880,6 +3136,17 @@ def filter_authorized_documents(
         .options(selectinload(Document.access_policies))
     ).scalars()
     documents_by_id = {document.document_id: document for document in rows}
+    candidate_version_ids = {
+        version_id
+        for values in payload.candidate_document_versions.values()
+        for version_id in values
+    }
+    version_rows = db.execute(
+        select(DocumentVersion).where(
+            DocumentVersion.document_version_id.in_(candidate_version_ids)
+        )
+    ).scalars() if candidate_version_ids else []
+    versions_by_id = {version.document_version_id: version for version in version_rows}
 
     allowed_document_ids = []
     denied_document_ids = []
@@ -2896,14 +3163,33 @@ def filter_authorized_documents(
                 document=document,
             )
             if principal.service_identity
-            else evaluate_document_access(context, payload.action.value, document)
+            else evaluate_runtime_document_access(
+                principal,
+                payload.action.value,
+                document,
+                evaluate_document_access(context, payload.action.value, document),
+            )
         )
         candidate_hashes = set(payload.candidate_policy_hashes.get(document_id, []))
         policy_hash_matches = (
             (context is not None and not context.access_v2)
             or (bool(document.policy_hash) and candidate_hashes == {document.policy_hash})
         )
-        if decision.allowed and policy_hash_matches:
+        candidate_versions = set(payload.candidate_document_versions.get(document_id, []))
+        versions_match = (
+            (context is not None and not context.access_v2)
+            or (
+                bool(candidate_versions)
+                and all(
+                    (version := versions_by_id.get(version_id)) is not None
+                    and version.document_id == document_id
+                    and version.status == DocumentStatus.valid.value
+                    and version.policy_hash == document.policy_hash
+                    for version_id in candidate_versions
+                )
+            )
+        )
+        if decision.allowed and policy_hash_matches and versions_match:
             allowed_document_ids.append(document_id)
         else:
             denied_document_ids.append(document_id)

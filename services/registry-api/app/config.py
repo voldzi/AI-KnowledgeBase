@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     stratos_policy_decisions_url: str | None = Field(
         default=None, alias="AKL_STRATOS_POLICY_DECISIONS_URL"
     )
+    stratos_information_resources_url: str | None = Field(
+        default=None, alias="AKL_STRATOS_INFORMATION_RESOURCES_URL"
+    )
     stratos_policy_service_token: str | None = Field(
         default=None, alias="AKL_STRATOS_POLICY_SERVICE_TOKEN"
     )
@@ -80,6 +83,7 @@ class Settings(BaseSettings):
                     "AKL_STRATOS_AUTH_ME_URL": self.stratos_auth_me_url,
                     "AKL_STRATOS_POLICY_BINDINGS_URL": self.stratos_policy_bindings_url,
                     "AKL_STRATOS_POLICY_DECISIONS_URL": self.stratos_policy_decisions_url,
+                    "AKL_STRATOS_INFORMATION_RESOURCES_URL": self.stratos_information_resources_url,
                     "AKL_STRATOS_POLICY_SERVICE_TOKEN": self.stratos_policy_service_token,
                 }.items()
                 if not value

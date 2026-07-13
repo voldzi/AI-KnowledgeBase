@@ -442,6 +442,30 @@ export class MockRegistryClient implements RegistryApiClient {
     });
   }
 
+  async authorizeDocument(
+    documentId: string,
+    _action: string,
+    _context: ApiRequestContext,
+  ) {
+    const document = this.documents.find(
+      (candidate) => candidate.document_id === documentId,
+    );
+    return {
+      allowed: Boolean(document),
+      reason: document ? "Mock document is visible" : "Mock document was not found",
+      reason_codes: document ? ["MOCK_ALLOW"] : ["DOCUMENT_NOT_FOUND"],
+      constraints: document
+        ? {
+            policy_binding_id: document.policy_binding_id,
+            policy_hash: document.policy_hash,
+            obligations: Array.isArray(document.policy_summary?.obligations)
+              ? document.policy_summary.obligations
+              : [],
+          }
+        : {},
+    };
+  }
+
   async listWorkflowTasks(
     _context: ApiRequestContext,
     options: WorkflowTaskListOptions = {},

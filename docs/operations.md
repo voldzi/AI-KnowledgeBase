@@ -69,6 +69,14 @@ for compatibility. Production values belong outside Git, for example in
 When configuration changes, update `.env.example`, this document, and the
 specific deployment document.
 
+Production Registry governance requires all four STRATOS endpoints for current
+access projection, registered bindings, runtime decisions, and governed
+information resources. Configure the last one with
+`AKL_STRATOS_INFORMATION_RESOURCES_URL`; keep
+`AKL_STRATOS_POLICY_SERVICE_TOKEN` only in the external production environment.
+Do not log either the token or delegated user credentials. A missing endpoint,
+service credential, or delegated actor fails governed writes closed.
+
 ## Health And Readiness
 
 Backend services expose:

@@ -36,6 +36,10 @@ not substitute for the current STRATOS access projection and an
 operation-specific `akb:*` capability. Identity, membership, application
 access, organization, capability, scope, audience, and policy binding must all
 allow the operation. Projection or policy-decision unavailability fails closed.
+Document and version records carry their immutable central governed-resource
+coordinates. Runtime decisions use that concrete active scope; an IT scope
+does not authorize Logistics and an archived version does not remain readable
+from a stale vector entry.
 The detailed current contract is in
 `docs/security/access-information-policy-v2.md`.
 
@@ -43,6 +47,12 @@ Registry API owns document authorization. RAG retrieval filters candidate
 documents through Registry authorization before answer composition. If sources
 are unauthorized or insufficient, the assistant returns a no-answer or handoff
 state instead of inventing unsupported information.
+
+AKB has no anonymous public-document endpoint. Organization-visible and
+legacy `classification=public` documents remain authenticated. True public
+delivery requires a separate immutable representation plus an active central
+`InformationPublication` and per-request public decision; until implemented,
+the absence of that route is the fail-closed control.
 
 STRATOS applications may pass business context, but AKB decides whether the
 current user can pick, upload, view, ingest, or open cited sources.
@@ -138,6 +148,11 @@ by default.
 Audit CSV export is generated in the browser only from events already returned
 by the authorized Registry audit endpoint and filtered in the current view. It
 does not add document bodies, prompts, answers or hidden metadata.
+
+Assistant report export is separately enforced. The server reloads a
+`rag.export` decision for every cited document, validates current policy hashes,
+and aggregates obligations; browser-supplied policy metadata is never the
+authorization source.
 
 ## Scanning
 

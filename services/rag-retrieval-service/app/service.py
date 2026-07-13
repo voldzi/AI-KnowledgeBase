@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from hashlib import sha256
+import json
 import hashlib
 import json
 import logging
@@ -1242,6 +1244,36 @@ class RagRetrievalService:
                 confidence=rag_answer.confidence,
                 response_language=payload.response_language,
             )
+            export_allowed = False
+            if report_artifacts:
+                used_chunk_ids = set(rag_answer.used_chunks)
+                export_chunks = [
+                    chunk
+                    for chunk in run.response.chunks
+                    if chunk.chunk_id in used_chunk_ids
+                ]
+                export_authorized, export_denied = await self._filter_authorized_chunks(
+                    subject_id=payload.user_id,
+                    chunks=export_chunks,
+                    auth_context=auth_context,
+                    action="rag.export",
+                )
+                cited_document_ids = {
+                    citation.document_id for citation in rag_answer.citations
+                }
+                export_allowed = (
+                    not export_denied
+                    and cited_document_ids
+                    == {chunk.citation.document_id for chunk in export_authorized}
+                    and not {"NO_EXPORT", "WATERMARK"}.intersection(
+                        rag_answer.obligations
+                    )
+                )
+                if not export_allowed:
+                    report_artifacts = [
+                        artifact.model_copy(update={"export_formats": []})
+                        for artifact in report_artifacts
+                    ]
             suggested_actions = [
                 AssistantSuggestedAction(
                     label=_localized(payload.response_language, "open_source"),
@@ -1252,7 +1284,7 @@ class RagRetrievalService:
                     action_type="ask_followup",
                 ),
             ]
-            if report_artifacts:
+            if report_artifacts and export_allowed:
                 suggested_actions.insert(
                     0,
                     AssistantSuggestedAction(
@@ -1584,24 +1616,53 @@ class RagRetrievalService:
         subject_id: str,
         chunks: list[RetrievedChunk],
         auth_context: AuthContext | None = None,
+        action: str = "rag.query",
     ) -> tuple[list[RetrievedChunk], set[str]]:
-        candidate_document_ids = sorted({chunk.citation.document_id for chunk in chunks})
+        strict_policy = (
+            self._settings.authz_mode == "registry"
+            and self._settings.registry_client_mode == "http"
+        )
+        invalid_policy_document_ids = {
+            chunk.citation.document_id
+            for chunk in chunks
+            if strict_policy and not _complete_chunk_policy_metadata(chunk)
+        }
+        eligible_chunks = [
+            chunk
+            for chunk in chunks
+            if chunk.citation.document_id not in invalid_policy_document_ids
+        ]
+        candidate_document_ids = sorted(
+            {chunk.citation.document_id for chunk in eligible_chunks}
+        )
         candidate_policy_hashes: dict[str, list[str]] = {}
-        for chunk in chunks:
+        candidate_document_versions: dict[str, list[str]] = {}
+        for chunk in eligible_chunks:
             policy_hash = chunk.metadata.get("policy_hash")
             if not isinstance(policy_hash, str) or not policy_hash:
                 continue
             values = candidate_policy_hashes.setdefault(chunk.citation.document_id, [])
             if policy_hash not in values:
                 values.append(policy_hash)
+            version_values = candidate_document_versions.setdefault(
+                chunk.citation.document_id, []
+            )
+            if chunk.citation.document_version_id not in version_values:
+                version_values.append(chunk.citation.document_version_id)
         authz = await self._registry_client.filter_allowed_documents(
             subject_id=subject_id,
             candidate_document_ids=candidate_document_ids,
             auth_context=auth_context,
             candidate_policy_hashes=candidate_policy_hashes,
+            candidate_document_versions=candidate_document_versions,
+            action=action,
         )
-        allowed = [chunk for chunk in chunks if chunk.citation.document_id in authz.allowed_document_ids]
-        return allowed, authz.denied_document_ids
+        allowed = [
+            chunk
+            for chunk in eligible_chunks
+            if chunk.citation.document_id in authz.allowed_document_ids
+        ]
+        return allowed, authz.denied_document_ids | invalid_policy_document_ids
 
     async def _audit_retrieval(
         self,
@@ -2173,6 +2234,70 @@ def _source_context_from_chunk(chunk: RetrievedChunk) -> SourceContextResponse:
         after_text="",
         warnings=warnings,
     )
+
+
+_KNOWN_POLICY_OBLIGATIONS = {
+    "AUDIT_ACCESS",
+    "NO_EXTERNAL_AI",
+    "LOCAL_PROCESSING_ONLY",
+    "NO_PUBLIC_EXPORT",
+    "NO_EXPORT",
+    "WATERMARK",
+    "ENCRYPT_AT_REST",
+    "RECIPIENT_CONFIRMATION",
+    "ORIGINATOR_APPROVAL",
+    "PAP_ENFORCEMENT",
+}
+
+
+def _complete_chunk_policy_metadata(chunk: RetrievedChunk) -> bool:
+    metadata = chunk.metadata
+    binding_id = metadata.get("policy_binding_id")
+    version = metadata.get("policy_version")
+    policy_hash = metadata.get("policy_hash")
+    summary = metadata.get("policy_summary")
+    if (
+        not isinstance(binding_id, str)
+        or not binding_id
+        or version != "information-policy-2.0.0"
+        or not isinstance(policy_hash, str)
+        or not policy_hash.startswith("sha256:")
+        or len(policy_hash) != 71
+        or not isinstance(summary, dict)
+    ):
+        return False
+    if (
+        summary.get("policyBindingId") != binding_id
+        or summary.get("policyVersion") != version
+        or summary.get("handlingClass") not in {"PUBLIC", "INTERNAL", "RESTRICTED"}
+        or summary.get("legalClassification") != "NONE"
+        or not isinstance(summary.get("audience"), dict)
+        or not isinstance(summary.get("contentCategories"), list)
+        or not isinstance(summary.get("obligations"), list)
+        or any(
+            not isinstance(item, str) or item not in _KNOWN_POLICY_OBLIGATIONS
+            for item in summary.get("obligations", [])
+        )
+    ):
+        return False
+    canonical = {
+        "policyBindingId": summary.get("policyBindingId"),
+        "policyVersion": summary.get("policyVersion"),
+        "handlingClass": summary.get("handlingClass"),
+        "legalClassification": summary.get("legalClassification"),
+        "tlp": summary.get("tlp"),
+        "pap": summary.get("pap"),
+        "obligations": summary.get("obligations"),
+        "contentCategories": summary.get("contentCategories"),
+        "audience": summary.get("audience"),
+    }
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return policy_hash == f"sha256:{sha256(encoded).hexdigest()}"
 
 
 def _viewer_mode(mime_type: str | None, file_name: str | None) -> ViewerMode:

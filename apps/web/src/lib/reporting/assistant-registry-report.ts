@@ -516,7 +516,7 @@ function buildArtifact(input: {
       { key: "example_documents", label: input.language === "en" ? "Examples" : "Příklady dokumentů", type: "text" }
     ],
     rows,
-    export_formats: ["xlsx", "pdf"],
+    export_formats: [],
     source_citation_count: 0,
     warnings
   };
@@ -548,7 +548,7 @@ function buildDocumentListArtifact(input: {
       : "Seznam dokumentů podle oprávnění aktuálního uživatele z metadat registru AKB. Nejde o citovaný výklad obsahu dokumentů.",
     columns: documentListColumns(input.language, input.layout),
     rows,
-    export_formats: ["xlsx", "pdf"],
+    export_formats: [],
     source_citation_count: 0,
     warnings
   };
@@ -574,7 +574,7 @@ function buildDocumentTypeCountArtifactFromSummary(input: {
       : "Počet dokumentů podle typu z registru AKB v rozsahu oprávnění aktuálního uživatele.",
     columns: documentTypeCountColumns(input.language),
     rows,
-    export_formats: ["xlsx", "pdf"],
+    export_formats: [],
     source_citation_count: 0,
     warnings: ["REGISTRY_METADATA_REPORT", "REGISTRY_DOCUMENT_TYPE_COUNT", ...input.summary.warnings]
   };
@@ -598,7 +598,7 @@ function buildDocumentTypeCountArtifact(input: {
       language: input.language,
       total: input.documents.length
     }),
-    export_formats: ["xlsx", "pdf"],
+    export_formats: [],
     source_citation_count: 0,
     warnings: input.documents.length >= REGISTRY_DOCUMENT_SCAN_WARNING_THRESHOLD
       ? ["REGISTRY_METADATA_REPORT", "REGISTRY_DOCUMENT_TYPE_COUNT", "REGISTRY_SCAN_LIMIT_REACHED"]
@@ -622,7 +622,7 @@ function buildArtifactFromSummary(input: {
       : "Metadatová sestava podle oprávnění aktuálního uživatele ze summary endpointu registru dokumentů AKB. Výklad obsahu dokumentů dál vyžaduje RAG odpověď s citacemi.",
     columns: reportColumns(input.language),
     rows,
-    export_formats: ["xlsx", "pdf"],
+    export_formats: [],
     source_citation_count: 0,
     warnings
   };

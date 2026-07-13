@@ -286,6 +286,7 @@ describe("assistant answer report normalization", () => {
     assert.equal(normalized.report_artifacts[0]?.artifact_kind, "registry_metadata_table");
     assert.equal(normalized.report_artifacts[0]?.provenance?.generated_from, "registry_metadata");
     assert.equal(normalized.report_artifacts[0]?.quality?.issues.length, 0);
+    assert.deepEqual(normalized.report_artifacts[0]?.export_formats, []);
   });
 
   it("keeps a non-generic report artifact from the retrieval service", () => {

@@ -23,6 +23,7 @@ class Principal:
     application_access_active: bool = True
     dynamic_access_loaded: bool = False
     service_identity: bool = False
+    bearer_token: str | None = None
 
     @property
     def access_v2(self) -> bool:
@@ -97,6 +98,7 @@ def _oidc_principal(request: Request, settings: Settings) -> Principal:
             application_access_active=False,
             dynamic_access_loaded=False,
             service_identity=True,
+            bearer_token=token,
         )
     try:
         projection = governance_client(settings).user_projection(
@@ -123,6 +125,7 @@ def _oidc_principal(request: Request, settings: Settings) -> Principal:
         application_access_active=projection.application_access_active,
         dynamic_access_loaded=True,
         service_identity=False,
+        bearer_token=token,
     )
 
 

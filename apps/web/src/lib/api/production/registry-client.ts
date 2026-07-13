@@ -18,6 +18,7 @@ import type {
   CreateVersionRequest,
   DirectoryUser,
   Document,
+  DocumentAuthorizationDecision,
   DocumentListOptions,
   DocumentAssignment,
   DocumentMetadataSummary,
@@ -218,6 +219,23 @@ export class ProductionRegistryClient implements RegistryApiClient {
       can_read_audit: canReadAudit,
       can_manage_admin: canManageAdmin
     };
+  }
+
+  authorizeDocument(
+    documentId: string,
+    action: string,
+    context: ApiRequestContext
+  ): Promise<DocumentAuthorizationDecision> {
+    return this.post<DocumentAuthorizationDecision>(
+      "/authz/check",
+      {
+        subject_id: context.subjectId,
+        action,
+        resource: { document_id: documentId }
+      },
+      `authz:${action}:${documentId}`,
+      context
+    );
   }
 
   async listWorkflowTasks(

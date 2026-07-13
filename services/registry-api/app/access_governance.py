@@ -6,6 +6,7 @@ from hashlib import sha256
 import threading
 import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -21,6 +22,14 @@ class AccessProjection:
     identity_active: bool
     membership_active: bool
     application_access_active: bool
+
+
+@dataclass(frozen=True)
+class GovernedResourceRegistration:
+    resource_id: str
+    source_version: str
+    policy_binding_id: str
+    policy_hash: str
 
 
 class GovernanceUnavailable(RuntimeError):
@@ -104,11 +113,13 @@ class StratosGovernanceClient:
         actor_subject_id: str,
         capability_id: str,
         operation: str,
+        scope: dict[str, str],
         policy_binding: dict[str, Any] | None,
         policy_hash: str | None,
+        credential_token: str | None = None,
     ) -> dict[str, Any]:
         url = self.settings.stratos_policy_decisions_url
-        token = self.settings.stratos_policy_service_token
+        token = credential_token or self.settings.stratos_policy_service_token
         if not url or not token:
             raise GovernanceUnavailable("STRATOS policy decision endpoint is not configured")
         return self._request(
@@ -120,10 +131,70 @@ class StratosGovernanceClient:
                 "applicationId": "akb",
                 "capabilityId": capability_id,
                 "operation": operation,
-                "scope": {"type": "organization", "id": "org_stratos"},
+                "scope": scope,
                 "policyBinding": policy_binding,
                 "policyHash": policy_hash,
             },
+        )
+
+    def register_information_resource(
+        self,
+        *,
+        credential_token: str,
+        actor_subject_id: str | None,
+        resource_type: str,
+        resource_id: str,
+        source_version: str,
+        title: str,
+        scope: dict[str, str],
+        binding: InformationPolicyBinding,
+        parent_resource_id: str | None,
+        reason: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> GovernedResourceRegistration:
+        base_url = self.settings.stratos_information_resources_url
+        if not base_url:
+            raise GovernanceUnavailable("STRATOS governed information resource endpoint is not configured")
+        body: dict[str, Any] = {
+            "sourceVersion": source_version,
+            "title": title,
+            "scope": scope,
+            "policyBindingId": binding.policy_binding_id,
+            "policyHash": canonical_policy_hash(binding),
+            "reason": reason,
+            "metadata": metadata or {},
+        }
+        if parent_resource_id:
+            body["parentId"] = parent_resource_id
+        if actor_subject_id:
+            body["actorSubjectId"] = actor_subject_id
+        response = self._request(
+            "PUT",
+            (
+                f"{base_url.rstrip('/')}/akb/"
+                f"{quote(resource_type, safe='')}/{quote(resource_id, safe='')}"
+            ),
+            credential_token,
+            body,
+        )
+        effective_policy = response.get("effectivePolicy")
+        expected_hash = canonical_policy_hash(binding)
+        if (
+            response.get("application") != "AKB"
+            or response.get("resourceType") != resource_type
+            or response.get("resourceId") != resource_id
+            or response.get("sourceVersion") != source_version
+            or not isinstance(response.get("id"), str)
+            or not isinstance(effective_policy, dict)
+            or effective_policy.get("policyBindingId") != binding.policy_binding_id
+            or effective_policy.get("policyHash") != expected_hash
+        ):
+            raise GovernanceUnavailable("STRATOS returned a conflicting governed resource")
+        return GovernedResourceRegistration(
+            resource_id=response["id"],
+            source_version=source_version,
+            policy_binding_id=binding.policy_binding_id,
+            policy_hash=expected_hash,
         )
 
     def _request(self, method: str, url: str, token: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -193,6 +264,7 @@ def governance_client(settings: Settings) -> StratosGovernanceClient:
         settings.stratos_auth_me_url,
         settings.stratos_policy_bindings_url,
         settings.stratos_policy_decisions_url,
+        settings.stratos_information_resources_url,
         settings.stratos_policy_service_token,
         settings.stratos_access_timeout_seconds,
         settings.stratos_access_cache_ttl_seconds,

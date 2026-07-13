@@ -51,6 +51,21 @@ class Document(Base, TimestampMixin):
     policy_summary: Mapped[dict[str, object]] = mapped_column(
         MutableDict.as_mutable(json_type()), nullable=False, default=dict
     )
+    governed_resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    governed_source_version: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    governed_parent_resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    governance_scope_type: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="organization"
+    )
+    governance_scope_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, default="org_stratos"
+    )
+    governance_registration_status: Mapped[str] = mapped_column(
+        String(48), nullable=False, default="LEGACY_UNREGISTERED", index=True
+    )
+    governance_registered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     owner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     gestor_unit: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     tags: Mapped[list[str]] = mapped_column(
@@ -110,6 +125,21 @@ class DocumentVersion(Base):
     policy_hash: Mapped[str | None] = mapped_column(String(80), nullable=True)
     policy_summary: Mapped[dict[str, object]] = mapped_column(
         MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+    governed_resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    governed_source_version: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    governed_parent_resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    governance_scope_type: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="organization"
+    )
+    governance_scope_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, default="org_stratos"
+    )
+    governance_registration_status: Mapped[str] = mapped_column(
+        String(48), nullable=False, default="LEGACY_UNREGISTERED", index=True
+    )
+    governance_registered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)

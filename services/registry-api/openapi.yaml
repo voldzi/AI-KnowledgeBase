@@ -1859,6 +1859,7 @@ components:
       - rag.query
       - rag.compare
       - rag.check_compliance
+      - rag.export
       - workflow.task.read
       - workflow.task.write
       - audit.read
@@ -2848,6 +2849,13 @@ components:
             type: array
           type: object
           title: Candidate Policy Hashes
+        candidate_document_versions:
+          additionalProperties:
+            items:
+              type: string
+            type: array
+          type: object
+          title: Candidate Document Versions
         roles:
           items:
             type: string
@@ -3236,6 +3244,16 @@ components:
             type: array
           - type: 'null'
           title: Assignments
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
+        parent_governed_resource_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Parent Governed Resource Id
       type: object
       required:
       - title
@@ -3812,6 +3830,16 @@ components:
             type: array
           - type: 'null'
           title: Assignments
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
+        parent_governed_resource_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Parent Governed Resource Id
       type: object
       title: DocumentPatch
     DocumentReadinessIssue:
@@ -3952,6 +3980,41 @@ components:
           additionalProperties: true
           type: object
           title: Policy Summary
+        governed_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Resource Id
+        governed_source_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Source Version
+        governed_parent_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Parent Resource Id
+        governance_scope_type:
+          type: string
+          title: Governance Scope Type
+          default: organization
+        governance_scope_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governance Scope Id
+          default: org_stratos
+        governance_registration_status:
+          type: string
+          title: Governance Registration Status
+          default: LEGACY_UNREGISTERED
+        governance_registered_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Governance Registered At
         owner_id:
           type: string
           title: Owner Id
@@ -4086,6 +4149,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/DocumentFileCreate'
           - type: 'null'
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
       type: object
       required:
       - version_label
@@ -4150,6 +4217,41 @@ components:
           additionalProperties: true
           type: object
           title: Policy Summary
+        governed_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Resource Id
+        governed_source_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Source Version
+        governed_parent_resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governed Parent Resource Id
+        governance_scope_type:
+          type: string
+          title: Governance Scope Type
+          default: organization
+        governance_scope_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governance Scope Id
+          default: org_stratos
+        governance_registration_status:
+          type: string
+          title: Governance Registration Status
+          default: LEGACY_UNREGISTERED
+        governance_registered_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Governance Registered At
         valid_from:
           anyOf:
           - type: string
@@ -4486,6 +4588,16 @@ components:
             type: array
           - type: 'null'
           title: Assignments
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
+        parent_governed_resource_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Parent Governed Resource Id
       type: object
       required:
       - external_system
@@ -4507,6 +4619,31 @@ components:
       - STRATOS_EXECUTIVE
       - STRATOS_PLATFORM
       title: ExternalSourceSystem
+    GovernanceScope:
+      properties:
+        type:
+          type: string
+          enum:
+          - organization
+          - organization_unit
+          - budget_scope
+          - portfolio
+          - project
+          - document
+          - recipient_set
+          title: Type
+        id:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+          - type: 'null'
+          title: Id
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      title: GovernanceScope
     HTTPValidationError:
       properties:
         detail:

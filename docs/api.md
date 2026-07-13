@@ -20,6 +20,12 @@ STRATOS upload preflight/confirm, Registry document/version responses,
 OpenSearch analytical hits, RAG answers, source context, and citations. The
 accepted schemas are snapshotted under `contracts/stratos/`.
 
+Policy-bearing document and version writes also register immutable central
+`GovernedInformationResource` coordinates. The request uses a verified user
+bearer or a runtime service credential plus validated `actorSubjectId`; a
+missing actor, inactive scope, unregistered binding, or absent
+`akb:assign_policy` aborts the complete write.
+
 ## API Surfaces
 
 AKB exposes several REST surfaces:
@@ -110,7 +116,9 @@ cited-answer summary or one-column list is not a valid enterprise artifact.
 `report.v2` artifacts may additionally include `artifact_contract_version`,
 `artifact_kind`, row `source_refs`, `provenance`, and `quality`. Content tables
 must keep row-level citations; registry metadata tables are explicitly marked as
-permission-scoped metadata and may have no chunk citations.
+permission-scoped metadata and may have no chunk citations. Metadata-only
+tables remain view-only until an immutable metadata-snapshot authorization
+contract exists.
 
 The AKB web bridge accepts guided report preferences in the generic assistant
 request `context` under `assistant_report_request`. This is used by the

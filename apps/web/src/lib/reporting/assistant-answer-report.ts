@@ -372,7 +372,12 @@ function finalizeAssistantReportArtifact(
     ...artifact,
     artifact_contract_version: artifact.artifact_contract_version ?? ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION,
     artifact_kind: artifact.artifact_kind ?? (registryMetadata ? "registry_metadata_table" : "content_table"),
-    export_formats: exportFormatsForQueryPlan(options.queryPlan, artifact.export_formats),
+    // Metadata-only reports have no immutable cited source snapshot that can be
+    // reauthorized at download time. Keep them view-only until such a contract
+    // exists instead of presenting an export action that must fail closed.
+    export_formats: registryMetadata
+      ? []
+      : exportFormatsForQueryPlan(options.queryPlan, artifact.export_formats),
     rows,
     provenance: artifact.provenance ?? {
       generated_from: options.generatedFrom,

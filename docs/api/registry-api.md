@@ -12,6 +12,7 @@ Implementováno:
 - DocumentAccessPolicy datový model a vyhodnocení.
 - DocumentAssignment datový model pro owner/gestor/reviewer/approver/auditor/steward role, SLA a eskalace.
 - Authorization check a bulk filter API.
+- Centrální GovernedInformationResource souřadnice dokumentu a každé immutable verze.
 - Perzistentní Intelligence analyst cases, saved queries a evidence sety.
 - AuditEvent API a interní auditní body.
 - Health/readiness, jednotný error envelope a correlation id.
@@ -99,6 +100,10 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
   job i stavy `INGESTING`, `INDEXED` a `FAILED` do všech odpovídajících
   externích referencí stejné verze.
 - RAG Retrieval Service volá `/authz/filter-documents` a zapisuje auditní události.
+- `/authz/filter-documents` vyžaduje pro Access V2 přesný current policy hash a
+  množinu `candidate_document_versions`; pouze verze se stavem `valid`, správným
+  dokumentem a aktuálním hashem projde. Akce `rag.export` používá samostatnou
+  capability `akb:export`.
 - Evaluation a Governance služby používají registry metadata, authorization check a audit.
 - Workflow inbox bere odpovednost, SLA a eskalacni metadata z `document_assignments`, pokud jsou pro dokument nastavena.
 - Intelligence Workbench ukládá analytické spisy, uložené dotazy a evidence
@@ -114,6 +119,19 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
   nejsou autoritou ulozenych nastaveni.
 
 Služby nesmí importovat interní Python kód registry API; komunikace je přes REST/OpenAPI.
+
+## Central Governed Resources
+
+`POST /documents`, external upsert, změna policy/scope a
+`POST /documents/{id}/versions` registrují odpovídající immutable resource přes
+STRATOS `PUT /api/v1/information/resources/akb/{resourceType}/{resourceId}`.
+Request nese `sourceVersion`, již registrovaný `scope`, binding id/hash, důvod a
+volitelný parent. U service-to-service volání navíc nese `actorSubjectId` z
+validovaného integration envelope; role, capability ani scope se nepřebírají z
+payloadu. Odpověď AKB přijme jen tehdy, pokud vrátí stejný resource, verzi,
+binding a hash. Chybějící delegovaný aktér nebo zamítnuté
+`akb:assign_policy` ukončí celý zápis; Registry nevytváří čitelný
+`POLICY_PENDING` dokument.
 
 ## Document Extraction Persistence
 

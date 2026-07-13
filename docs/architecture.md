@@ -45,10 +45,12 @@ technical compatibility prefixes unless an explicit migration changes them.
 ```text
 browser -> AKB web bridge -> Registry API
 browser -> AKB web bridge -> upload session -> AKB object storage
+Registry document/version write -> STRATOS GovernedInformationResource registration
 Registry document/version -> Ingestion Service -> parser/OCR/chunker
 Ingestion Service -> LLM Gateway embeddings -> Qdrant
 Ingestion Service -> OpenSearch fulltext index
 question -> RAG Retrieval Service -> Registry authz -> Qdrant/OpenSearch -> LLM Gateway
+citation/export -> Registry fresh version/scope/policy decision -> STRATOS policy decision
 citation/source open -> AKB web bridge/viewer -> signed AKB source endpoint
 intelligence workbench -> AKB web route -> Registry metadata/readiness/case APIs
 intelligence workbench -> AKB web bridge -> Ingestion OpenSearch intelligence endpoints
@@ -93,6 +95,12 @@ the current STRATOS access projection and delegated service operations use the
 central STRATOS policy decision endpoint. Authorization is enforced by AKB
 backend services, not by static token claims, client headers, STRATOS host
 applications, or browser-only checks.
+
+Every new policy-bearing document and immutable version is registered in the
+central governed-resource lineage before the local write completes. The scope
+must already exist. A service caller must supply a validated delegated actor;
+`akb:upload` does not imply `akb:assign_policy`, and failed registration aborts
+the write rather than creating readable pending content.
 
 Detailed security model: `docs/security.md` and
 `docs/security/enterprise-security-model.md`.
