@@ -189,7 +189,7 @@ for attempt in 1 2 3; do
           --no-align \
           --field-separator='|' \
           --set=ON_ERROR_STOP=1 \
-          --command="SELECT current_setting('transaction_read_only'), pg_is_in_recovery(), current_database(), current_user, COALESCE(inet_server_addr()::text, ''), COALESCE(inet_server_port()::text, '')"
+          --command="SELECT current_setting('transaction_read_only'), pg_is_in_recovery(), current_database(), current_user, COALESCE(host(inet_server_addr()), ''), COALESCE(inet_server_port()::text, '')"
   )" || akl_fail "Writable-primary PostgreSQL check ${attempt}/3 failed during ${PHASE}"
   primary_state="$(printf '%s' "$primary_state" | tr -d '\r\n')"
   [[ "$(awk -F'|' '{print NF}' <<<"$primary_state")" -eq 6 ]] \

@@ -226,7 +226,7 @@ inventory_file="${stage_dir}/inventory.txt"
 backend_identity="$(
   run_postgres_tool akl-release-backend-identity true none psql \
     --no-psqlrc --tuples-only --no-align --field-separator='|' \
-    --command="SELECT current_database(), current_user, COALESCE(inet_server_addr()::text, ''), COALESCE(inet_server_port()::text, '')"
+    --command="SELECT current_database(), current_user, COALESCE(host(inet_server_addr()), ''), COALESCE(inet_server_port()::text, '')"
 )"
 backend_identity="$(printf '%s' "$backend_identity" | tr -d '\r\n')"
 [[ "$(awk -F'|' '{print NF}' <<<"$backend_identity")" -eq 4 ]] \
