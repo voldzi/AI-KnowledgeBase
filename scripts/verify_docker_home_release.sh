@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set +x
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,28 +24,38 @@ RETRY_ATTEMPTS="${AKL_RELEASE_VERIFY_ATTEMPTS:-12}"
 RETRY_DELAY="${AKL_RELEASE_VERIFY_DELAY_SECONDS:-5}"
 
 akl_require_private_env_file "$ENV_FILE"
+akl_assert_expected_env_snapshot "$ENV_FILE"
 [[ "$RELEASE_DIR" == "${RELEASE_ROOT}/releases/${TARGET_SHA}" ]] \
   || akl_fail "Verification release directory does not match the target SHA"
 [[ -d "$RELEASE_DIR" && ! -L "$RELEASE_DIR" ]] \
   || akl_fail "Verification release must be a real directory"
-PROJECT_NAME="${AKL_RELEASE_COMPOSE_PROJECT:-$(akl_env_value "$ENV_FILE" AKL_RELEASE_COMPOSE_PROJECT akl)}"
-PUBLIC_BASE_URL="${AKL_RELEASE_PUBLIC_BASE_URL:-$(akl_env_value "$ENV_FILE" AKL_WEB_PUBLIC_BASE_URL)}"
+PROJECT_NAME="$(akl_env_value "$ENV_FILE" AKL_RELEASE_COMPOSE_PROJECT akl)"
+PUBLIC_BASE_URL="$(akl_env_value "$ENV_FILE" AKL_WEB_PUBLIC_BASE_URL)"
 PROXY_PORT="$(akl_env_value "$ENV_FILE" AKL_PROXY_HTTP_PORT 8080)"
 akl_validate_project_name "$PROJECT_NAME"
 akl_require_file "$COMPOSE_FILE"
 akl_require_command curl
 akl_require_command docker
 akl_require_command python3
-[[ "$PUBLIC_BASE_URL" == https://* || "${AKL_RELEASE_ALLOW_HTTP_PUBLIC_URL:-false}" == "true" ]] \
+akl_assert_no_ambient_env_file_overrides "$ENV_FILE"
+akl_assert_local_docker_daemon_environment
+akl_assert_no_ambient_compose_overrides \
+  "$COMPOSE_FILE" \
+  AKL_SERVICE_VERSION \
+  AKL_RELEASE_COMPOSE_PROJECT \
+  REGISTRY_API_IMAGE \
+  RAG_RETRIEVAL_SERVICE_IMAGE \
+  WEB_IMAGE
+[[ "$PUBLIC_BASE_URL" == https://* ]] \
   || akl_fail "Public verification URL must use HTTPS"
 [[ "$RETRY_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || akl_fail "Invalid verification attempt count"
 [[ "$RETRY_DELAY" =~ ^[0-9]+$ ]] || akl_fail "Invalid verification retry delay"
 
 export AKL_SERVICE_VERSION="$TARGET_SHA"
 export AKL_RELEASE_COMPOSE_PROJECT="$PROJECT_NAME"
-export REGISTRY_API_IMAGE="${AKL_REGISTRY_RELEASE_IMAGE_REPOSITORY:-akl/registry-api}:${TARGET_SHA}"
-export RAG_RETRIEVAL_SERVICE_IMAGE="${AKL_RAG_RELEASE_IMAGE_REPOSITORY:-akl/rag-retrieval-service}:${TARGET_SHA}"
-export WEB_IMAGE="${AKL_WEB_RELEASE_IMAGE_REPOSITORY:-akl/web}:${TARGET_SHA}"
+export REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
+export RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
+export WEB_IMAGE="akl/web:${TARGET_SHA}"
 COMPOSE=(
   docker compose
   --project-name "$PROJECT_NAME"
@@ -72,6 +83,15 @@ expected_image_for_service() {
   esac
 }
 
+expected_image_id_for_service() {
+  case "$1" in
+    registry-api) printf '%s\n' "${AKL_RELEASE_EXPECTED_REGISTRY_IMAGE_ID:-}" ;;
+    rag-retrieval-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_RAG_IMAGE_ID:-}" ;;
+    web) printf '%s\n' "${AKL_RELEASE_EXPECTED_WEB_IMAGE_ID:-}" ;;
+    *) akl_fail "Unsupported durable image identity service: $1" ;;
+  esac
+}
+
 inspect_label() {
   local object_id="$1"
   local label_name="$2"
@@ -80,16 +100,21 @@ inspect_label() {
 
 verify_runtime_identity() {
   local service="$1"
-  local target_image expected_image_id image_revision image_project repo_tags_json
+  local target_image expected_image_id tag_image_id image_revision image_project image_service repo_tags_json
   local container_id container_running container_image_ref container_image_id
   local compose_project compose_service compose_oneoff compose_config_files compose_config_hash
-  local container_revision container_project container_ps_output
+  local container_revision container_project container_service_label container_ps_output
   local -a container_ids=()
 
+  akl_assert_expected_env_snapshot "$ENV_FILE"
+
   target_image="$(expected_image_for_service "$service")"
-  expected_image_id="$(docker image inspect --format '{{.Id}}' "$target_image")"
+  expected_image_id="$(expected_image_id_for_service "$service")"
   [[ "$expected_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
-    || akl_fail "Target image has an invalid content ID: $target_image"
+    || akl_fail "Durable expected image ID is missing or invalid: $service"
+  tag_image_id="$(docker image inspect --format '{{.Id}}' "$target_image")"
+  [[ "$tag_image_id" == "$expected_image_id" ]] \
+    || akl_fail "Target image tag no longer resolves to the durable image ID: $service"
   repo_tags_json="$(docker image inspect --format '{{json .RepoTags}}' "$target_image")"
   python3 - "$repo_tags_json" "$target_image" <<'PY'
 import json
@@ -101,10 +126,13 @@ if not isinstance(tags, list) or sys.argv[2] not in tags:
 PY
   image_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$target_image")"
   image_project="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$target_image")"
+  image_service="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$target_image")"
   [[ "$image_revision" == "$TARGET_SHA" ]] \
     || akl_fail "Target image revision label does not match the release SHA: $target_image"
   [[ "$image_project" == "$PROJECT_NAME" ]] \
     || akl_fail "Target image project label does not match the Compose project: $target_image"
+  [[ "$image_service" == "$service" ]] \
+    || akl_fail "Target image service label does not match the release service: $target_image"
 
   container_ps_output="$("${COMPOSE[@]}" ps -q "$service")" \
     || akl_fail "Could not enumerate the release service container: $service"
@@ -119,8 +147,8 @@ PY
   container_image_id="$(docker inspect --format '{{.Image}}' "$container_id")"
   [[ "$container_running" == "true" ]] \
     || akl_fail "Release container is not running: $service"
-  [[ "$container_image_ref" == "$target_image" ]] \
-    || akl_fail "Release container does not use the exact immutable image tag: $service"
+  [[ "$container_image_ref" == "$expected_image_id" ]] \
+    || akl_fail "Release container was not started through the durable image ID: $service"
   [[ "$container_image_id" == "$expected_image_id" ]] \
     || akl_fail "Release container image ID does not match the target image: $service"
 
@@ -131,6 +159,7 @@ PY
   compose_config_hash="$(inspect_label "$container_id" com.docker.compose.config-hash)"
   container_revision="$(inspect_label "$container_id" org.opencontainers.image.revision)"
   container_project="$(inspect_label "$container_id" cz.zeleznalady.akl.compose-project)"
+  container_service_label="$(inspect_label "$container_id" cz.zeleznalady.akl.service)"
   [[ "$compose_project" == "$PROJECT_NAME" ]] \
     || akl_fail "Container Compose project label mismatch: $service"
   [[ "$compose_service" == "$service" ]] \
@@ -143,16 +172,24 @@ PY
     || akl_fail "Container revision label does not match the release SHA: $service"
   [[ "$container_project" == "$PROJECT_NAME" ]] \
     || akl_fail "Container immutable-release project label mismatch: $service"
+  [[ "$container_service_label" == "$service" ]] \
+    || akl_fail "Container immutable-release service label mismatch: $service"
   [[ "$compose_config_hash" =~ ^[0-9a-f]{64}$ ]] \
     || akl_fail "Container lacks a valid Compose config hash: $service"
 }
 
-running_services="$("${COMPOSE[@]}" ps --status running --services)"
-for service in "${services[@]}"; do
-  grep -Fxq "$service" <<<"$running_services" \
-    || akl_fail "Release service is not running: $service"
-  verify_runtime_identity "$service"
-done
+verify_all_runtime_identities() {
+  local running_services service
+  akl_assert_expected_env_snapshot "$ENV_FILE"
+  running_services="$("${COMPOSE[@]}" ps --status running --services)"
+  for service in "${services[@]}"; do
+    grep -Fxq "$service" <<<"$running_services" \
+      || akl_fail "Release service is not running: $service"
+    verify_runtime_identity "$service"
+  done
+}
+
+verify_all_runtime_identities
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/akl-release-verify.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -160,7 +197,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 curl_json() {
   local url="$1"
   local output_file="$2"
-  curl --fail --silent --show-error \
+  curl --disable --noproxy '*' --fail --silent --show-error \
     --retry "$RETRY_ATTEMPTS" \
     --retry-delay "$RETRY_DELAY" \
     --retry-all-errors \
@@ -240,7 +277,7 @@ validate_ready "${tmp_dir}/public-ready.json"
 
 smoke_slug="akl-release-smoke-${TARGET_SHA:0:12}"
 smoke_status="$(
-  curl --silent --show-error \
+  curl --disable --noproxy '*' --silent --show-error \
     --retry "$RETRY_ATTEMPTS" \
     --retry-delay "$RETRY_DELAY" \
     --retry-all-errors \
@@ -271,4 +308,5 @@ if body != {
     raise SystemExit("public fail-closed smoke returned an unexpected problem body")
 PY
 
+verify_all_runtime_identities
 printf 'Release verification passed for %s (%s).\n' "$TARGET_SHA" "$SERVICE_CSV"

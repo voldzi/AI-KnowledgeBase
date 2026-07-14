@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   packages: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -58,7 +59,7 @@ jobs:
           GITLEAKS_CONFIG: gitleaks.toml
 
   immutable-release:
-    name: Immutable docker.home.cz release
+    name: Immutable release and containerized PostgreSQL toolchain
     runs-on: ubuntu-latest
 
     steps:
