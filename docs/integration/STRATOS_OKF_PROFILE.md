@@ -94,16 +94,20 @@ python3 tools/okf_profile.py plan-import \
   --report reports/okf_import_plan.json
 ```
 
-Import OKF Markdown concepts into AKB using the existing docs importer:
+Create a dry-run inventory for OKF Markdown concepts:
 
 ```bash
 python3 tools/import_docs_folder.py \
   --source ./okf \
   --manifest docs/import-manifest.yaml \
-  --mode reindex \
+  --mode skip-existing \
   --okf-profile \
+  --dry-run \
   --report reports/okf_import_report.json
 ```
+
+Host importer mutation is retired in every profile. Actual OKF imports use the
+governed AKB application UI/API.
 
 Export an OKF bundle from an existing docs import report:
 

@@ -24,6 +24,12 @@ export interface AklConfig {
     accessProjectionTimeoutMs: number;
     accessProjectionCacheTtlMs: number;
   };
+  ingestionTransport?: {
+    tokenUrl: string;
+    clientId: string;
+    clientSecret?: string;
+    clientSecretFile?: string;
+  };
   devAccessToken?: string;
 }
 
@@ -147,6 +153,46 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
           )
         }
       : undefined;
+  const ingestionTransportConfigured = authMode === "oidc" && Boolean(
+    env.AKL_WEB_INGESTION_TOKEN_URL
+      || env.AKL_WEB_INGESTION_CLIENT_ID
+      || env.AKL_WEB_INGESTION_CLIENT_SECRET
+      || env.AKL_WEB_INGESTION_CLIENT_SECRET_FILE,
+  );
+  const ingestionTransport = ingestionTransportConfigured
+    ? {
+        tokenUrl: requireEnv(
+          env.AKL_WEB_INGESTION_TOKEN_URL,
+          "AKL_WEB_INGESTION_TOKEN_URL",
+        ).replace(/\/+$/, ""),
+        clientId: requireEnv(
+          env.AKL_WEB_INGESTION_CLIENT_ID,
+          "AKL_WEB_INGESTION_CLIENT_ID",
+        ),
+        clientSecret: env.AKL_WEB_INGESTION_CLIENT_SECRET || undefined,
+        clientSecretFile: env.AKL_WEB_INGESTION_CLIENT_SECRET_FILE || undefined,
+      }
+    : undefined;
+
+  if (ingestionTransport?.clientSecret && ingestionTransport.clientSecretFile) {
+    throw new Error(
+      "Configure only one of AKL_WEB_INGESTION_CLIENT_SECRET or AKL_WEB_INGESTION_CLIENT_SECRET_FILE",
+    );
+  }
+  if (environment === "production") {
+    if (!ingestionTransport) {
+      throw new Error("Production requires the dedicated web-to-ingestion service identity");
+    }
+    if (ingestionTransport.clientId !== "svc-akb-web-ingestion") {
+      throw new Error("AKL_WEB_INGESTION_CLIENT_ID must be svc-akb-web-ingestion in production");
+    }
+    if (!ingestionTransport.tokenUrl.startsWith("https://")) {
+      throw new Error("AKL_WEB_INGESTION_TOKEN_URL must use HTTPS in production");
+    }
+    if (!ingestionTransport.clientSecret && !ingestionTransport.clientSecretFile) {
+      throw new Error("Production web-to-ingestion service identity requires a client secret");
+    }
+  }
 
   return {
     environment,
@@ -154,6 +200,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     authMode,
     serviceBaseUrls,
     oidc,
+    ingestionTransport,
     devAccessToken: env.AKL_DEV_ACCESS_TOKEN || undefined
   };
 }

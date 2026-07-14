@@ -24,6 +24,7 @@ class AuthContext:
     application_access_active: bool = True
     bearer_token: str | None = None
     service_identity: bool = False
+    service_client_id: str | None = None
 
 
 def require_service_auth(request: Request, settings: Settings) -> None:
@@ -45,6 +46,7 @@ def require_service_auth(request: Request, settings: Settings) -> None:
             groups=(),
             bearer_token=token,
             service_identity=True,
+            service_client_id=settings.web_ingestion_client_id,
             identity_active=True,
             membership_active=False,
             application_access_active=False,
@@ -52,7 +54,7 @@ def require_service_auth(request: Request, settings: Settings) -> None:
         return
 
     claims = _verified_oidc_claims(token, settings)
-    request.state.auth_context = _oidc_context(claims, token)
+    request.state.auth_context = _oidc_context(claims, token, settings)
 
 
 def subject_for_request(request: Request, settings: Settings) -> str:
@@ -79,6 +81,11 @@ def _auth_context(
             groups=(),
             bearer_token=bearer_token,
             service_identity=settings.auth_mode == "bearer",
+            service_client_id=(
+                settings.web_ingestion_client_id
+                if settings.auth_mode == "bearer"
+                else None
+            ),
             identity_active=False,
             membership_active=False,
             application_access_active=False,
@@ -95,6 +102,23 @@ def _auth_context(
     scopes = _csv_header(request.headers.get("X-STRATOS-Scopes"))
     if not roles and settings.auth_mode in {"disabled", "mock", "bearer"}:
         roles = settings.service_account_roles
+    service_client_id = request.headers.get("X-AKL-Service-Client-ID") or None
+    service_identity = bool(service_client_id)
+    if service_identity:
+        required_role = {
+            settings.web_ingestion_client_id: settings.web_ingestion_role,
+            "svc-ingestion": "service_ingestion",
+        }.get(service_client_id or "")
+        if (
+            required_role is None
+            or subject_id != f"service-account-{service_client_id}"
+            or required_role not in roles
+        ):
+            raise IngestionError(
+                "UNTRUSTED_SERVICE_IDENTITY",
+                "The service client is not trusted by ingestion-service",
+                status_code=403,
+            )
 
     return AuthContext(
         subject_id=subject_id,
@@ -107,6 +131,8 @@ def _auth_context(
         membership_active=_header_bool(request, "X-STRATOS-Membership-Active", True),
         application_access_active=_header_bool(request, "X-STRATOS-Application-Access-Active", True),
         bearer_token=bearer_token,
+        service_identity=service_identity,
+        service_client_id=service_client_id,
     )
 
 
@@ -133,12 +159,35 @@ def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
     return claims
 
 
-def _oidc_context(claims: dict[str, Any], token: str) -> AuthContext:
+def _oidc_context(claims: dict[str, Any], token: str, settings: Settings) -> AuthContext:
     roles = _claim_roles(claims)
     subject = _claim_str(claims, "sub")
     if not subject:
         raise IngestionError("UNAUTHORIZED", "Bearer token subject is missing", status_code=401)
     service_identity = _is_service_identity(claims)
+    service_client_id: str | None = None
+    if service_identity:
+        authorized_party = _claim_str(claims, "azp")
+        client_id = _claim_str(claims, "client_id")
+        expected_role_by_client = {
+            settings.web_ingestion_client_id: settings.web_ingestion_role,
+            "svc-ingestion": "service_ingestion",
+        }
+        expected_client_id = authorized_party or ""
+        expected_role = expected_role_by_client.get(expected_client_id)
+        if (
+            expected_role is None
+            or (client_id is not None and client_id != expected_client_id)
+            or _claim_str(claims, "preferred_username")
+            != f"service-account-{expected_client_id}"
+            or expected_role not in roles
+        ):
+            raise IngestionError(
+                "UNTRUSTED_SERVICE_IDENTITY",
+                "The bearer token does not identify the exact web ingestion transport",
+                status_code=403,
+            )
+        service_client_id = expected_client_id
     return AuthContext(
         subject_id=subject,
         roles=roles,
@@ -151,6 +200,7 @@ def _oidc_context(claims: dict[str, Any], token: str) -> AuthContext:
         application_access_active=False,
         bearer_token=token,
         service_identity=service_identity,
+        service_client_id=service_client_id,
     )
 
 

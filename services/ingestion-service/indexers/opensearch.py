@@ -138,7 +138,13 @@ class OpenSearchIndexer:
                 response.text,
             )
 
-    async def entity_facets(self, *, limit: int = 8, value_limit: int = 10) -> EntityFacetReport:
+    async def entity_facets(
+        self,
+        *,
+        limit: int = 8,
+        value_limit: int = 10,
+        authorized_documents: list[dict[str, str]] | None = None,
+    ) -> EntityFacetReport:
         await self._ensure_index()
         pair_limit = max(limit * value_limit, value_limit)
         query = {
@@ -150,6 +156,8 @@ class OpenSearchIndexer:
                 "entity_pairs": {"terms": {"field": "entity_pairs", "size": pair_limit}},
             },
         }
+        if authorized_documents:
+            query["query"] = _authorized_coordinate_filter(authorized_documents)
         async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
             response = await client.post(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}/_search",
@@ -476,10 +484,20 @@ class CompositeIndexer:
             await indexer.index(chunks=chunks, vectors=vectors, embedding_model=embedding_model)
         return IndexingResult(indexed_chunks=len(chunks))
 
-    async def entity_facets(self, *, limit: int = 8, value_limit: int = 10) -> EntityFacetReport:
+    async def entity_facets(
+        self,
+        *,
+        limit: int = 8,
+        value_limit: int = 10,
+        authorized_documents: list[dict[str, str]] | None = None,
+    ) -> EntityFacetReport:
         for indexer in self.indexers:
             if hasattr(indexer, "entity_facets"):
-                return await indexer.entity_facets(limit=limit, value_limit=value_limit)
+                return await indexer.entity_facets(
+                    limit=limit,
+                    value_limit=value_limit,
+                    authorized_documents=authorized_documents,
+                )
         return EntityFacetReport(
             status="unavailable",
             index_name="none",
@@ -982,27 +1000,36 @@ def _intelligence_filters(
 def _authorized_policy_filter(
     request: EntitySearchRequest | EntityRelationshipRequest | AnalystSearchRequest,
 ) -> dict[str, Any]:
-    if request.allowed_policy_hashes is None:
-        return {"terms": {"document_id": request.allowed_document_ids}}
+    return _authorized_coordinate_filter(
+        [item.model_dump() for item in request.authorized_documents]
+    )
 
-    allowed_ids = set(request.allowed_document_ids)
+
+def _authorized_coordinate_filter(
+    authorized_documents: list[dict[str, str]],
+) -> dict[str, Any]:
     pairs: list[dict[str, Any]] = []
-    for document_id, hashes in sorted(request.allowed_policy_hashes.items()):
-        valid_hashes = sorted(
-            {
-                value
-                for value in hashes
-                if isinstance(value, str) and re.fullmatch(r"sha256:[a-f0-9]{64}", value)
-            }
-        )
-        if document_id not in allowed_ids or not valid_hashes:
+    for item in sorted(
+        authorized_documents,
+        key=lambda candidate: candidate.get("document_id", ""),
+    ):
+        document_id = item.get("document_id")
+        document_version_id = item.get("document_version_id")
+        policy_hash = item.get("policy_hash")
+        if (
+            not document_id
+            or not document_version_id
+            or not isinstance(policy_hash, str)
+            or not re.fullmatch(r"sha256:[a-f0-9]{64}", policy_hash)
+        ):
             continue
         pairs.append(
             {
                 "bool": {
                     "filter": [
                         {"term": {"document_id": document_id}},
-                        {"terms": {"policy_hash": valid_hashes}},
+                        {"term": {"document_version_id": document_version_id}},
+                        {"term": {"policy_hash": policy_hash}},
                     ]
                 }
             }

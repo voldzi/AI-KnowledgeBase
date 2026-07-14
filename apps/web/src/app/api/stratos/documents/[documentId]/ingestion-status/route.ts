@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 
 import { authenticateAiipServiceRequest } from "@/lib/aiip/application-api";
 import { getAiipActorRequestContext, getServerApiClients } from "@/lib/api/server";
-import { latestVersion, mapIngestionStatus } from "@/lib/stratos/document-ai";
-import { ApiClientError, type ApiRequestContext } from "@/lib/types";
+import { getGovernedIngestionJob } from "@/lib/ingestion/governed-operations";
+import {
+  getDocumentExternalReferencesCurrent,
+  getExactDocumentVersion,
+  mapIngestionStatus,
+} from "@/lib/stratos/document-ai";
+import { ApiClientError } from "@/lib/types";
 
 import { stratosBridgeError } from "../../../errors";
 
@@ -19,18 +24,9 @@ interface RouteContext {
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const service = await authenticateAiipServiceRequest(request);
+    await authenticateAiipServiceRequest(request);
     const actorContext = await getAiipActorRequestContext(request);
     const correlationId = request.headers.get("X-Correlation-ID")?.trim() || crypto.randomUUID();
-    const serviceContext: ApiRequestContext = {
-      subjectId: service.subjectId,
-      roles: service.roles,
-      organizationId: "org_stratos",
-      authorizationSource: "stratos_projection",
-      accessToken: service.accessToken,
-      requestId: correlationId,
-      correlationId,
-    };
     const clients = getServerApiClients();
     const authorization = await clients.registry.authorizeDocument(
       documentId,
@@ -45,21 +41,37 @@ export async function GET(request: Request, context: RouteContext) {
         "web-stratos-bridge",
       );
     }
-    const [document, versions, jobs] = await Promise.all([
+    const [document, externalReferences] = await Promise.all([
       clients.registry.getDocument(documentId, actorContext),
-      clients.registry.listDocumentVersions(documentId, actorContext),
-      clients.ingestion.listJobs(serviceContext).catch(() => [])
+      getDocumentExternalReferencesCurrent(documentId, actorContext),
     ]);
-    const version = latestVersion(versions);
-    const job = version
-      ? jobs.find((candidate) => candidate.document_version_id === version.document_version_id) ?? null
+    const externalReference = externalReferences.find((item) => item.external_system === "STRATOS_AIIP") ?? null;
+    const version = externalReference?.current_document_version_id
+      ? await getExactDocumentVersion(documentId, externalReference.current_document_version_id, actorContext)
       : null;
+    let job = null;
+    if (externalReference?.current_ingestion_job_id && version) {
+      job = await getGovernedIngestionJob(
+        clients,
+        actorContext,
+        {
+          documentId,
+          documentVersionId: version.document_version_id,
+          jobId: externalReference.current_ingestion_job_id,
+          correlationId,
+        },
+      );
+    }
 
     return NextResponse.json({
       document_id: document.document_id,
       document_version_id: version?.document_version_id ?? null,
       ingestion_job_id: job?.job_id ?? null,
-      ingestion_status: mapIngestionStatus({ version, job }),
+      ingestion_status: mapIngestionStatus({
+        version,
+        job,
+        externalStatus: externalReference?.current_ingestion_status,
+      }),
       updated_at: job?.finished_at ?? job?.started_at ?? job?.created_at ?? version?.created_at ?? document.updated_at,
       error_code: job?.status === "failed" ? "INGESTION_FAILED" : null,
       error_message: null

@@ -80,8 +80,9 @@ remain in `docs/deployment/` and `docs/OPERATIONS/`.
    ```
 
 4. Confirm ingestion uses its gateway service token, not the caller OIDC token.
-   `X-AKL-On-Behalf-Of` may contain the caller id, but `X-AKL-Subject` must
-   remain `svc-ingestion`.
+   `X-AKL-On-Behalf-Of` may contain only the caller identity already confirmed
+   from the Registry-issued proof and is audit context, never delegated
+   authority. `X-AKL-Subject` must remain `svc-ingestion`.
 5. After a token or identity configuration change, recreate both ingestion and
    LLM Gateway containers so neither keeps stale environment values.
 6. Verify both `/ready` endpoints, run one authenticated embedding smoke, then
@@ -92,7 +93,8 @@ Repeated upload confirmation is not a retry mechanism. An exact replay returns
 the existing version/job with HTTP 200; use `retry-ingestion` after fixing a
 terminal `FAILED` job. Po retry ověřte nejen webový status, ale také Registry
 `current_ingestion_job_id` a `current_ingestion_status`; ingestion je nyní
-synchronizuje auditovaně ve stavech `INGESTING`, `INDEXED` a `FAILED`.
+synchronizuje auditovaně přes autoritativní Registry attempt/CAS ve stavech
+`QUEUED`, `INGESTING`, `INDEXED` a `FAILED`.
 
 ### `REGISTRY_SERVICE_AUTH_UNAVAILABLE` Or Ingestion Registry `not_ready`
 

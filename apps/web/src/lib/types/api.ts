@@ -23,8 +23,16 @@ import type {
   EntityRelationshipResponse,
   EntitySearchRequest,
   EntitySearchResponse,
+  IngestionCreateOptions,
+  IngestionAuthorizationRequest,
+  IngestionAuthorizationResponse,
+  IntelligenceScopeAuthorizationRequest,
+  IntelligenceScopeAuthorizationResponse,
+  IntelligenceScopeAuthorizationOptions,
   IngestionJob,
-  IngestionReport
+  IngestionAuthorizationOptions,
+  IngestionReport,
+  RegistryIngestionAttempt
 } from "./ingestion";
 import type {
   AnalystCase,
@@ -119,6 +127,7 @@ export interface ApiRequestContext {
   membershipActive?: boolean;
   applicationAccessActive?: boolean;
   authorizationSource?: "mock" | "stratos_projection";
+  serviceClientId?: string;
   accessToken?: string;
   requestId?: string;
   correlationId?: string;
@@ -185,6 +194,20 @@ export interface RegistryApiClient {
     action: string,
     context: ApiRequestContext
   ): Promise<DocumentAuthorizationDecision>;
+  createIngestionAuthorization(
+    documentId: string,
+    versionId: string,
+    request: IngestionAuthorizationRequest,
+    context: ApiRequestContext
+  ): Promise<IngestionAuthorizationResponse>;
+  getDocumentIngestionAttempt(
+    documentId: string,
+    context: ApiRequestContext
+  ): Promise<RegistryIngestionAttempt | null>;
+  createIntelligenceScopeAuthorization(
+    request: IntelligenceScopeAuthorizationRequest,
+    context: ApiRequestContext
+  ): Promise<IntelligenceScopeAuthorizationResponse>;
   listWorkflowTasks(context: ApiRequestContext, options?: WorkflowTaskListOptions): Promise<RegistryWorkflowTask[]>;
   applyWorkflowTaskAction(
     taskId: string,
@@ -239,16 +262,44 @@ export interface RegistryApiClient {
 
 export interface IngestionApiClient {
   listJobs(context: ApiRequestContext): Promise<IngestionJob[]>;
-  getJob(jobId: string, context: ApiRequestContext): Promise<IngestionJob>;
-  createJob(request: CreateIngestionJobRequest, context: ApiRequestContext): Promise<IngestionJob>;
-  getReport(jobId: string, context: ApiRequestContext): Promise<IngestionReport>;
-  cancelJob(jobId: string, context: ApiRequestContext): Promise<IngestionJob>;
-  getEntityFacets(context: ApiRequestContext, options?: { limit?: number; valueLimit?: number }): Promise<EntityFacetReport>;
-  searchEntities(request: EntitySearchRequest, context: ApiRequestContext): Promise<EntitySearchResponse>;
-  analystSearch(request: AnalystSearchRequest, context: ApiRequestContext): Promise<AnalystSearchResponse>;
+  getJob(
+    jobId: string,
+    context: ApiRequestContext,
+    options: IngestionAuthorizationOptions,
+  ): Promise<IngestionJob>;
+  createJob(
+    request: CreateIngestionJobRequest,
+    context: ApiRequestContext,
+    options: IngestionCreateOptions,
+  ): Promise<IngestionJob>;
+  getReport(
+    jobId: string,
+    context: ApiRequestContext,
+    options: IngestionAuthorizationOptions,
+  ): Promise<IngestionReport>;
+  cancelJob(
+    jobId: string,
+    context: ApiRequestContext,
+    options: IngestionAuthorizationOptions,
+  ): Promise<IngestionJob>;
+  getEntityFacets(
+    context: ApiRequestContext,
+    options: IntelligenceScopeAuthorizationOptions & { limit?: number; valueLimit?: number }
+  ): Promise<EntityFacetReport>;
+  searchEntities(
+    request: EntitySearchRequest,
+    context: ApiRequestContext,
+    options: IntelligenceScopeAuthorizationOptions
+  ): Promise<EntitySearchResponse>;
+  analystSearch(
+    request: AnalystSearchRequest,
+    context: ApiRequestContext,
+    options: IntelligenceScopeAuthorizationOptions
+  ): Promise<AnalystSearchResponse>;
   getEntityRelationships(
     request: EntityRelationshipRequest,
-    context: ApiRequestContext
+    context: ApiRequestContext,
+    options: IntelligenceScopeAuthorizationOptions
   ): Promise<EntityRelationshipResponse>;
 }
 

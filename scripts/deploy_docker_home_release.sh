@@ -71,11 +71,14 @@ WRITABLE_PRIMARY_PRE_MIGRATION_CHECKED="false"
 TARGET_BUILD_MAY_HAVE_STARTED="false"
 RETRY_REQUIRES_DESCENDANT_SHA="false"
 TARGET_REGISTRY_IMAGE_ID="not-affected"
+TARGET_INGESTION_IMAGE_ID="not-affected"
 TARGET_RAG_IMAGE_ID="not-affected"
 TARGET_WEB_IMAGE_ID="not-affected"
 TARGET_SERVICES_START_MAY_HAVE_STARTED="false"
 TARGET_REGISTRY_QUARANTINED="false"
 TARGET_REGISTRY_QUARANTINE_FAILED="false"
+TARGET_INGESTION_QUARANTINED="false"
+TARGET_INGESTION_QUARANTINE_FAILED="false"
 TARGET_RAG_QUARANTINED="false"
 TARGET_RAG_QUARANTINE_FAILED="false"
 TARGET_WEB_QUARANTINED="false"
@@ -193,6 +196,30 @@ akl_assert_no_ambient_env_file_overrides "$ENV_FILE"
 PROJECT_NAME="$(akl_env_value "$ENV_FILE" AKL_RELEASE_COMPOSE_PROJECT akl)"
 TRUSTED_REF="$(akl_env_value "$ENV_FILE" AKL_RELEASE_TRUSTED_REF refs/remotes/origin/main)"
 REGISTRY_STOP_TIMEOUT="$(akl_env_value "$ENV_FILE" AKL_RELEASE_REGISTRY_STOP_TIMEOUT_SECONDS 30)"
+INGESTION_AUTHORIZATION_SECRET_FILE="$(
+  akl_env_value \
+    "$ENV_FILE" \
+    AKL_INGESTION_AUTHORIZATION_SECRET_FILE \
+    "${RELEASE_ROOT}/env/ingestion-authorization.secret"
+)"
+INGESTION_REGISTRY_CLIENT_SECRET_FILE="$(
+  akl_env_value \
+    "$ENV_FILE" \
+    AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE \
+    "${RELEASE_ROOT}/env/svc-ingestion.client-secret"
+)"
+RAG_REGISTRY_CLIENT_SECRET_FILE="$(
+  akl_env_value \
+    "$ENV_FILE" \
+    AKL_RAG_REGISTRY_CLIENT_SECRET_FILE \
+    "${RELEASE_ROOT}/env/akb-rag-service.client-secret"
+)"
+WEB_INGESTION_CLIENT_SECRET_FILE="$(
+  akl_env_value \
+    "$ENV_FILE" \
+    AKL_WEB_INGESTION_CLIENT_SECRET_FILE \
+    "${RELEASE_ROOT}/env/svc-akb-web-ingestion.client-secret"
+)"
 akl_validate_project_name "$PROJECT_NAME"
 [[ "$TRUSTED_REF" == refs/remotes/origin/* ]] \
   || akl_fail "Trusted release ref must be an origin remote-tracking ref"
@@ -255,11 +282,14 @@ write_deployment_record() {
     printf 'writable_primary_pre_migration_checked=%s\n' "$WRITABLE_PRIMARY_PRE_MIGRATION_CHECKED"
     printf 'target_build_may_have_started=%s\n' "$TARGET_BUILD_MAY_HAVE_STARTED"
     printf 'target_registry_image_id=%s\n' "$TARGET_REGISTRY_IMAGE_ID"
+    printf 'target_ingestion_image_id=%s\n' "$TARGET_INGESTION_IMAGE_ID"
     printf 'target_rag_image_id=%s\n' "$TARGET_RAG_IMAGE_ID"
     printf 'target_web_image_id=%s\n' "$TARGET_WEB_IMAGE_ID"
     printf 'target_services_start_may_have_started=%s\n' "$TARGET_SERVICES_START_MAY_HAVE_STARTED"
     printf 'target_registry_quarantined=%s\n' "$TARGET_REGISTRY_QUARANTINED"
     printf 'target_registry_quarantine_failed=%s\n' "$TARGET_REGISTRY_QUARANTINE_FAILED"
+    printf 'target_ingestion_quarantined=%s\n' "$TARGET_INGESTION_QUARANTINED"
+    printf 'target_ingestion_quarantine_failed=%s\n' "$TARGET_INGESTION_QUARANTINE_FAILED"
     printf 'target_rag_quarantined=%s\n' "$TARGET_RAG_QUARANTINED"
     printf 'target_rag_quarantine_failed=%s\n' "$TARGET_RAG_QUARANTINE_FAILED"
     printf 'target_web_quarantined=%s\n' "$TARGET_WEB_QUARANTINED"
@@ -346,11 +376,14 @@ expected_keys = [
     "writable_primary_pre_migration_checked",
     "target_build_may_have_started",
     "target_registry_image_id",
+    "target_ingestion_image_id",
     "target_rag_image_id",
     "target_web_image_id",
     "target_services_start_may_have_started",
     "target_registry_quarantined",
     "target_registry_quarantine_failed",
+    "target_ingestion_quarantined",
+    "target_ingestion_quarantine_failed",
     "target_rag_quarantined",
     "target_rag_quarantine_failed",
     "target_web_quarantined",
@@ -385,6 +418,7 @@ if not selected_services or len(selected_services) != len(set(selected_services)
     raise SystemExit("verified deployment record service set is invalid")
 image_fields = {
     "registry-api": "target_registry_image_id",
+    "ingestion-service": "target_ingestion_image_id",
     "rag-retrieval-service": "target_rag_image_id",
     "web": "target_web_image_id",
 }
@@ -401,6 +435,8 @@ for field in {
     "target_services_start_may_have_started",
     "target_registry_quarantined",
     "target_registry_quarantine_failed",
+    "target_ingestion_quarantined",
+    "target_ingestion_quarantine_failed",
     "target_rag_quarantined",
     "target_rag_quarantine_failed",
     "target_web_quarantined",
@@ -413,6 +449,7 @@ print(
     "|".join(
         [
             values["target_registry_image_id"],
+            values["target_ingestion_image_id"],
             values["target_rag_image_id"],
             values["target_web_image_id"],
         ]
@@ -424,6 +461,7 @@ PY
 expected_image_for_service() {
   case "$1" in
     registry-api) printf '%s\n' "$REGISTRY_API_IMAGE" ;;
+    ingestion-service) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) printf '%s\n' "$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
     *) akl_fail "Unsupported immutable image service: $1" ;;
@@ -441,6 +479,7 @@ verify_target_image_identity() {
       "AKL_RELEASE_IMAGE_VERIFY_PHASE=${phase}" \
       "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
+      "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       docker image inspect --format '{{.Id}}' "$target_image"
@@ -452,6 +491,7 @@ verify_target_image_identity() {
       "AKL_RELEASE_IMAGE_VERIFY_PHASE=${phase}" \
       "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
+      "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       docker image inspect --format '{{json .RepoTags}}' "$target_image"
@@ -470,6 +510,7 @@ PY
       "AKL_RELEASE_IMAGE_VERIFY_PHASE=${phase}" \
       "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
+      "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$target_image"
@@ -479,6 +520,7 @@ PY
       "AKL_RELEASE_IMAGE_VERIFY_PHASE=${phase}" \
       "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
+      "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$target_image"
@@ -488,6 +530,7 @@ PY
       "AKL_RELEASE_IMAGE_VERIFY_PHASE=${phase}" \
       "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
+      "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$target_image"
@@ -642,6 +685,7 @@ quarantine_unverified_target_services() {
   for service in "${services[@]}"; do
     case "$service" in
       registry-api) target_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
+      ingestion-service) target_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
       rag-retrieval-service) target_image_id="$TARGET_RAG_IMAGE_ID" ;;
       web) target_image_id="$TARGET_WEB_IMAGE_ID" ;;
       *) akl_fail "Unsupported target service during quarantine" ;;
@@ -656,6 +700,7 @@ quarantine_unverified_target_services() {
     ); then
       case "$service" in
         registry-api) TARGET_REGISTRY_QUARANTINED="true" ;;
+        ingestion-service) TARGET_INGESTION_QUARANTINED="true" ;;
         rag-retrieval-service) TARGET_RAG_QUARANTINED="true" ;;
         web) TARGET_WEB_QUARANTINED="true" ;;
       esac
@@ -664,6 +709,7 @@ quarantine_unverified_target_services() {
     else
       case "$service" in
         registry-api) TARGET_REGISTRY_QUARANTINE_FAILED="true" ;;
+        ingestion-service) TARGET_INGESTION_QUARANTINE_FAILED="true" ;;
         rag-retrieval-service) TARGET_RAG_QUARANTINE_FAILED="true" ;;
         web) TARGET_WEB_QUARANTINE_FAILED="true" ;;
       esac
@@ -782,16 +828,19 @@ akl_assert_no_ambient_compose_overrides \
   AKL_SERVICE_VERSION \
   AKL_RELEASE_COMPOSE_PROJECT \
   REGISTRY_API_IMAGE \
+  INGESTION_SERVICE_IMAGE \
   RAG_RETRIEVAL_SERVICE_IMAGE \
   WEB_IMAGE
 AKL_SERVICE_VERSION="$TARGET_SHA"
 REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
+INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
 RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
 WEB_IMAGE="akl/web:${TARGET_SHA}"
 COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
   "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}"
+  "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}"
   "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}"
   "WEB_IMAGE=${WEB_IMAGE}"
   "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}"
@@ -862,11 +911,12 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   && "$RUNTIME_MARKER_PHASE" == "verified" ]]; then
   [[ -z "${AKL_FORWARD_FIX_FROM_SHA:-}" ]] \
     || akl_fail "Forward-fix context is invalid for verified-release reconciliation"
-  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|rag-retrieval-service|web)(,(registry-api|rag-retrieval-service|web))*$ ]] \
+  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web)(,(registry-api|ingestion-service|rag-retrieval-service|web))*$ ]] \
     || akl_fail "Verified runtime marker has an invalid service set"
   SERVICE_CSV="$RUNTIME_MARKER_SERVICES"
   IFS='|' read -r \
     TARGET_REGISTRY_IMAGE_ID \
+    TARGET_INGESTION_IMAGE_ID \
     TARGET_RAG_IMAGE_ID \
     TARGET_WEB_IMAGE_ID \
     <<<"$(load_reconciliation_image_ids \
@@ -876,6 +926,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   for reconciled_service in "${reconciled_services[@]}"; do
     case "$reconciled_service" in
       registry-api) reconciled_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
+      ingestion-service) reconciled_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
       rag-retrieval-service) reconciled_image_id="$TARGET_RAG_IMAGE_ID" ;;
       web) reconciled_image_id="$TARGET_WEB_IMAGE_ID" ;;
       *) akl_fail "Verified reconciliation contains an unsupported service" ;;
@@ -893,6 +944,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   AKL_RELEASE_ROOT="$RELEASE_ROOT" \
   AKL_PROD_ENV_FILE="$ENV_FILE" \
   AKL_RELEASE_EXPECTED_REGISTRY_IMAGE_ID="$TARGET_REGISTRY_IMAGE_ID" \
+  AKL_RELEASE_EXPECTED_INGESTION_IMAGE_ID="$TARGET_INGESTION_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_RAG_IMAGE_ID="$TARGET_RAG_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_WEB_IMAGE_ID="$TARGET_WEB_IMAGE_ID" \
     "${release_dir}/scripts/verify_docker_home_release.sh" \
@@ -900,6 +952,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   for reconciled_service in "${reconciled_services[@]}"; do
     case "$reconciled_service" in
       registry-api) reconciled_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
+      ingestion-service) reconciled_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
       rag-retrieval-service) reconciled_image_id="$TARGET_RAG_IMAGE_ID" ;;
       web) reconciled_image_id="$TARGET_WEB_IMAGE_ID" ;;
       *) akl_fail "Verified reconciliation contains an unsupported service" ;;
@@ -954,22 +1007,47 @@ add_service() {
 }
 
 if [[ -z "$current_sha" ]]; then
-  services=(registry-api rag-retrieval-service web)
+  services=(registry-api ingestion-service rag-retrieval-service web)
 else
+  current_compose_file="${current_release_dir}/infra/docker-compose/docker-compose.docker-home.yml"
+  current_compose_sha256="$(sha256sum "$current_compose_file" | awk '{print $1}')"
+  target_compose_sha256="$(sha256sum "$COMPOSE_FILE" | awk '{print $1}')"
+  [[ "$current_compose_sha256" =~ ^[0-9a-f]{64}$ \
+    && "$target_compose_sha256" =~ ^[0-9a-f]{64}$ ]] \
+    || akl_fail "Could not establish exact current/target production Compose identity"
+  compose_change_detected="false"
+  if [[ "$current_compose_sha256" != "$target_compose_sha256" ]]; then
+    compose_change_detected="true"
+    compose_changed_services="$(
+      akl_changed_supported_compose_services \
+        "$current_compose_file" \
+        "$COMPOSE_FILE"
+    )"
+    while IFS= read -r compose_service; do
+      [[ -n "$compose_service" ]] || continue
+      add_service "$compose_service"
+    done <<<"$compose_changed_services"
+  fi
+
   changed_paths="$(git --no-replace-objects --git-dir="$GIT_DIR" diff --name-only "$current_sha" "$TARGET_SHA" --)"
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
     case "$path" in
       scripts/*|infra/docker-compose/docker-home.env.example)
         add_service registry-api
+        add_service ingestion-service
         add_service rag-retrieval-service
         add_service web
         ;;
       infra/docker-compose/docker-compose.docker-home.yml)
-        akl_fail "Shared production Compose changes require a coordinated full-platform release workflow"
+        [[ "$compose_change_detected" == "true" ]] \
+          || akl_fail "Production Compose changed without exact structural preflight evidence"
         ;;
       services/registry-api/*|contracts/stratos/information-policy/*)
         add_service registry-api
+        ;;
+      services/ingestion-service/*)
+        add_service ingestion-service
         ;;
       services/rag-retrieval-service/*)
         add_service rag-retrieval-service
@@ -978,13 +1056,33 @@ else
         add_service web
         ;;
       services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*|infra/docker-compose/docker-compose.docker-home-observability.yml)
-        akl_fail "Release changes unsupported runtime path outside registry/rag/web: $path"
+        akl_fail "Release changes unsupported runtime path outside registry/ingestion/rag/web: $path"
         ;;
     esac
   done <<<"$changed_paths"
 fi
-[[ ${#services[@]} -gt 0 ]] || akl_fail "Release has no deployable registry/rag/web changes"
+[[ ${#services[@]} -gt 0 ]] || akl_fail "Release has no deployable registry/ingestion/rag/web changes"
 SERVICE_CSV="$(IFS=,; printf '%s' "${services[*]}")"
+if [[ " ${services[*]} " == *" registry-api "* ]]; then
+  [[ "$INGESTION_AUTHORIZATION_SECRET_FILE" == /* ]] \
+    || akl_fail "AKL_INGESTION_AUTHORIZATION_SECRET_FILE must be an absolute path"
+  akl_require_private_secret_file "$INGESTION_AUTHORIZATION_SECRET_FILE" 32
+fi
+if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+  [[ "$INGESTION_REGISTRY_CLIENT_SECRET_FILE" == /* ]] \
+    || akl_fail "AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE must be an absolute path"
+  akl_require_private_secret_file "$INGESTION_REGISTRY_CLIENT_SECRET_FILE"
+fi
+if [[ " ${services[*]} " == *" rag-retrieval-service "* ]]; then
+  [[ "$RAG_REGISTRY_CLIENT_SECRET_FILE" == /* ]] \
+    || akl_fail "AKL_RAG_REGISTRY_CLIENT_SECRET_FILE must be an absolute path"
+  akl_require_private_secret_file "$RAG_REGISTRY_CLIENT_SECRET_FILE"
+fi
+if [[ " ${services[*]} " == *" web "* ]]; then
+  [[ "$WEB_INGESTION_CLIENT_SECRET_FILE" == /* ]] \
+    || akl_fail "AKL_WEB_INGESTION_CLIENT_SECRET_FILE must be an absolute path"
+  akl_require_private_secret_file "$WEB_INGESTION_CLIENT_SECRET_FILE"
+fi
 if ! akl_assert_release_sha_not_burned "$RELEASE_ROOT" "$TARGET_SHA"; then
   TARGET_BUILD_MAY_HAVE_STARTED="true"
   RETRY_REQUIRES_DESCENDANT_SHA="true"
@@ -1012,6 +1110,7 @@ write_deployment_record preparing
 for service in "${services[@]}"; do
   case "$service" in
     registry-api) target_image="$REGISTRY_API_IMAGE" ;;
+    ingestion-service) target_image="$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) target_image="$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
     web) target_image="$WEB_IMAGE" ;;
   esac
@@ -1033,11 +1132,32 @@ RETRY_REQUIRES_DESCENDANT_SHA="true"
 akl_burn_release_sha "$RELEASE_ROOT" "$TARGET_SHA" build_may_have_started
 write_deployment_record target_build_may_have_started
 akl_assert_expected_env_snapshot "$ENV_FILE"
-DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build "${services[@]}"
+compose_build_services=()
+for service in "${services[@]}"; do
+  [[ "$service" == "ingestion-service" ]] || compose_build_services+=("$service")
+done
+if [[ ${#compose_build_services[@]} -gt 0 ]]; then
+  DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build "${compose_build_services[@]}"
+fi
+if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+  env \
+    "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
+    "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}" \
+    "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
+    'DOCKER_BUILDKIT=1' \
+    docker build --pull=false \
+    --label "org.opencontainers.image.revision=${TARGET_SHA}" \
+    --label "cz.zeleznalady.akl.compose-project=${PROJECT_NAME}" \
+    --label 'cz.zeleznalady.akl.service=ingestion-service' \
+    --tag "$INGESTION_SERVICE_IMAGE" \
+    --file "${release_dir}/services/ingestion-service/Dockerfile" \
+    "${release_dir}/services/ingestion-service"
+fi
 for service in "${services[@]}"; do
   verified_image_id="$(verify_target_image_identity "$service" post-build)"
   case "$service" in
     registry-api) TARGET_REGISTRY_IMAGE_ID="$verified_image_id" ;;
+    ingestion-service) TARGET_INGESTION_IMAGE_ID="$verified_image_id" ;;
     rag-retrieval-service) TARGET_RAG_IMAGE_ID="$verified_image_id" ;;
     web) TARGET_WEB_IMAGE_ID="$verified_image_id" ;;
   esac
@@ -1045,10 +1165,13 @@ done
 write_deployment_record target_images_verified
 
 PINNED_REGISTRY_API_IMAGE="$REGISTRY_API_IMAGE"
+PINNED_INGESTION_SERVICE_IMAGE="$INGESTION_SERVICE_IMAGE"
 PINNED_RAG_RETRIEVAL_SERVICE_IMAGE="$RAG_RETRIEVAL_SERVICE_IMAGE"
 PINNED_WEB_IMAGE="$WEB_IMAGE"
 [[ "$TARGET_REGISTRY_IMAGE_ID" == "not-affected" ]] \
   || PINNED_REGISTRY_API_IMAGE="$TARGET_REGISTRY_IMAGE_ID"
+[[ "$TARGET_INGESTION_IMAGE_ID" == "not-affected" ]] \
+  || PINNED_INGESTION_SERVICE_IMAGE="$TARGET_INGESTION_IMAGE_ID"
 [[ "$TARGET_RAG_IMAGE_ID" == "not-affected" ]] \
   || PINNED_RAG_RETRIEVAL_SERVICE_IMAGE="$TARGET_RAG_IMAGE_ID"
 [[ "$TARGET_WEB_IMAGE_ID" == "not-affected" ]] \
@@ -1057,6 +1180,7 @@ PINNED_COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
   "REGISTRY_API_IMAGE=${PINNED_REGISTRY_API_IMAGE}"
+  "INGESTION_SERVICE_IMAGE=${PINNED_INGESTION_SERVICE_IMAGE}"
   "RAG_RETRIEVAL_SERVICE_IMAGE=${PINNED_RAG_RETRIEVAL_SERVICE_IMAGE}"
   "WEB_IMAGE=${PINNED_WEB_IMAGE}"
   "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}"
@@ -1222,6 +1346,7 @@ fi
 for service in "${services[@]}"; do
   case "$service" in
     registry-api) expected_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
+    ingestion-service) expected_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
     rag-retrieval-service) expected_image_id="$TARGET_RAG_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
   esac
@@ -1241,6 +1366,7 @@ fi
 for service in "${services[@]}"; do
   case "$service" in
     registry-api) expected_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
+    ingestion-service) expected_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
     rag-retrieval-service) expected_image_id="$TARGET_RAG_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
   esac
@@ -1252,6 +1378,7 @@ akl_assert_expected_env_snapshot "$ENV_FILE"
 AKL_RELEASE_ROOT="$RELEASE_ROOT" \
 AKL_PROD_ENV_FILE="$ENV_FILE" \
 AKL_RELEASE_EXPECTED_REGISTRY_IMAGE_ID="$TARGET_REGISTRY_IMAGE_ID" \
+AKL_RELEASE_EXPECTED_INGESTION_IMAGE_ID="$TARGET_INGESTION_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_RAG_IMAGE_ID="$TARGET_RAG_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_WEB_IMAGE_ID="$TARGET_WEB_IMAGE_ID" \
   "${release_dir}/scripts/verify_docker_home_release.sh" \
@@ -1260,6 +1387,7 @@ AKL_RELEASE_EXPECTED_WEB_IMAGE_ID="$TARGET_WEB_IMAGE_ID" \
 for service in "${services[@]}"; do
   case "$service" in
     registry-api) expected_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
+    ingestion-service) expected_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
     rag-retrieval-service) expected_image_id="$TARGET_RAG_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
   esac

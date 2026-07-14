@@ -115,6 +115,10 @@ FAKE_POSTGRES_TOOL_REPO_DIGEST="postgres@sha256:$(printf 'a%.0s' {1..64})"
 AKL_RELEASE_ROOT="${TMP_ROOT}/srv/akl"
 AKL_PROD_ENV_FILE="${AKL_RELEASE_ROOT}/env/akl.prod.env"
 FAKE_PERSISTENT_ENV_FILE="$AKL_PROD_ENV_FILE"
+INGESTION_AUTHORIZATION_SECRET_FILE="${AKL_RELEASE_ROOT}/env/ingestion-authorization.secret"
+INGESTION_REGISTRY_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/svc-ingestion.client-secret"
+RAG_REGISTRY_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/akb-rag-service.client-secret"
+WEB_INGESTION_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/svc-akb-web-ingestion.client-secret"
 export CALL_LOG FAKE_ALEMBIC_STATE FAKE_WEB_STATE FAKE_RUNTIME_DIR
 export FAKE_POSTGRES_TOOL_IMAGE FAKE_POSTGRES_TOOL_IMAGE_ID FAKE_POSTGRES_TOOL_REPO_DIGEST REAL_PYTHON3
 export AKL_RELEASE_ROOT AKL_PROD_ENV_FILE FAKE_PERSISTENT_ENV_FILE
@@ -125,6 +129,7 @@ mkdir -p \
   "$WORK_REPO/scripts/lib" \
   "$WORK_REPO/infra/docker-compose" \
   "$WORK_REPO/services/registry-api" \
+  "$WORK_REPO/services/ingestion-service" \
   "$WORK_REPO/services/rag-retrieval-service" \
   "$WORK_REPO/apps/web" \
   "$FAKE_BIN" \
@@ -162,12 +167,16 @@ services:
     image: ${REGISTRY_API_IMAGE}
     environment:
       AKL_REGISTRY_AUTH_MODE: ${AKL_REGISTRY_AUTH_MODE:-keycloak}
+  ingestion-service:
+    image: ${INGESTION_SERVICE_IMAGE}
   rag-retrieval-service:
     image: ${RAG_RETRIEVAL_SERVICE_IMAGE}
   web:
     image: ${WEB_IMAGE}
 YAML
 printf 'registry-v1\n' >"$WORK_REPO/services/registry-api/release.txt"
+printf 'FROM scratch\n' >"$WORK_REPO/services/ingestion-service/Dockerfile"
+printf 'ingestion-v1\n' >"$WORK_REPO/services/ingestion-service/release.txt"
 printf 'rag-v1\n' >"$WORK_REPO/services/rag-retrieval-service/release.txt"
 printf 'web-v1\n' >"$WORK_REPO/apps/web/release.txt"
 
@@ -192,10 +201,27 @@ AKL_RELEASE_EXPECTED_REGISTRY_DB_NAME=registry
 AKL_RELEASE_EXPECTED_REGISTRY_DB_USER=release_user
 AKL_RELEASE_POSTGRES_TOOL_IMAGE=${FAKE_POSTGRES_TOOL_IMAGE}
 AKL_REGISTRY_DATABASE_URL=postgresql+psycopg://release_user:test_secret@db.internal:5432/registry
+AKL_INGESTION_AUTHORIZATION_SECRET_FILE=${INGESTION_AUTHORIZATION_SECRET_FILE}
+AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE=${INGESTION_REGISTRY_CLIENT_SECRET_FILE}
+AKL_RAG_REGISTRY_CLIENT_SECRET_FILE=${RAG_REGISTRY_CLIENT_SECRET_FILE}
+AKL_WEB_INGESTION_CLIENT_SECRET_FILE=${WEB_INGESTION_CLIENT_SECRET_FILE}
 AKL_WEB_PUBLIC_BASE_URL=https://stratos.example.invalid/akb
 AKL_PROXY_HTTP_PORT=18080
 ENV
 chmod 0600 "$AKL_PROD_ENV_FILE"
+printf 'fixture-ingestion-authorization-secret-0001\n' \
+  >"$INGESTION_AUTHORIZATION_SECRET_FILE"
+printf 'fixture-svc-ingestion-client-secret\n' \
+  >"$INGESTION_REGISTRY_CLIENT_SECRET_FILE"
+printf 'fixture-akb-rag-registry-client-secret\n' \
+  >"$RAG_REGISTRY_CLIENT_SECRET_FILE"
+printf 'fixture-akb-web-ingestion-client-secret\n' \
+  >"$WEB_INGESTION_CLIENT_SECRET_FILE"
+chmod 0600 \
+  "$INGESTION_AUTHORIZATION_SECRET_FILE" \
+  "$INGESTION_REGISTRY_CLIENT_SECRET_FILE" \
+  "$RAG_REGISTRY_CLIENT_SECRET_FILE" \
+  "$WEB_INGESTION_CLIENT_SECRET_FILE"
 printf 'must remain untouched\n' >"${AKL_RELEASE_ROOT}/repo/sentinel"
 
 set_env_value() {
@@ -229,6 +255,7 @@ set -euo pipefail
 image_ref_for_service() {
   case "$1" in
     registry-api) printf '%s\n' "$REGISTRY_API_IMAGE" ;;
+    ingestion-service) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) printf '%s\n' "$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
     *) return 1 ;;
@@ -238,7 +265,7 @@ image_ref_for_service() {
 service_for_image_ref() {
   local ref="$1"
   local service
-  for service in registry-api rag-retrieval-service web; do
+  for service in registry-api ingestion-service rag-retrieval-service web; do
     if [[ "$(image_ref_for_service "$service")" == "$ref" ]]; then
       printf '%s\n' "$service"
       return 0
@@ -269,7 +296,7 @@ write_image_state() {
 container_service_for_id() {
   local requested_id="$1"
   local service state_dir
-  for service in registry-api rag-retrieval-service web; do
+  for service in registry-api ingestion-service rag-retrieval-service web; do
     state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
     if [[ -f "${state_dir}/id" && "$(<"${state_dir}/id")" == "$requested_id" ]]; then
       printf '%s\n' "$service"
@@ -615,7 +642,7 @@ if [[ "${1-}" == "ps" ]]; then
   shift 2
   [[ "${1-}" == "--format" && "${2-}" == '{{.ID}}' && $# -eq 2 ]]
   case "$service" in
-    registry-api|rag-retrieval-service|web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|web) ;;
     *) exit 98 ;;
   esac
   if [[ "$service" == "registry-api" \
@@ -631,6 +658,90 @@ if [[ "${1-}" == "ps" ]]; then
   elif [[ -f "${state_dir}/running" && "$(<"${state_dir}/running")" == "true" ]]; then
     cat "${state_dir}/id"
   fi
+  exit 0
+fi
+
+if [[ "${1-}" == "exec" ]]; then
+  if [[ $# -eq 5 ]]; then
+    requested_id="${2-}"
+    service="$(container_service_for_id "$requested_id")" || exit 1
+    [[ "$service" == "ingestion-service" \
+      && "${3-}" == "python" \
+      && "${4-}" == "-m" \
+      && "${5-}" == "app.readiness_probe" ]] || exit 98
+    printf 'docker_exec_readiness:ingestion-service\n' >>"$CALL_LOG"
+    [[ "${FAKE_INGESTION_READINESS_FAIL:-false}" != "true" ]] || exit 1
+    exit 0
+  fi
+  if [[ $# -eq 7 \
+    && "${2-}" == "--user" \
+    && "${3-}" == "nextjs" \
+    && "${4-}" == "-i" \
+    && "${6-}" == "node" \
+    && "${7-}" == "-" ]]; then
+    requested_id="${5-}"
+    service="$(container_service_for_id "$requested_id")" || exit 1
+    [[ "$service" == "web" ]] || exit 98
+    printf 'docker_exec_readiness:web-ingestion-transport:nextjs\n' >>"$CALL_LOG"
+    [[ "${FAKE_WEB_INGESTION_TRANSPORT_READINESS_FAIL:-false}" != "true" ]] || exit 1
+    exit 0
+  fi
+  exit 98
+fi
+
+if [[ "${1-}" == "build" ]]; then
+  shift
+  pull_seen="false"
+  revision_label=""
+  project_label=""
+  service_label=""
+  target_ref=""
+  dockerfile=""
+  context=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pull=false)
+        pull_seen="true"
+        shift
+        ;;
+      --label)
+        case "${2-}" in
+          org.opencontainers.image.revision=*) revision_label="${2#*=}" ;;
+          cz.zeleznalady.akl.compose-project=*) project_label="${2#*=}" ;;
+          cz.zeleznalady.akl.service=*) service_label="${2#*=}" ;;
+          *) exit 98 ;;
+        esac
+        shift 2
+        ;;
+      --tag)
+        target_ref="${2-}"
+        shift 2
+        ;;
+      --file)
+        dockerfile="${2-}"
+        shift 2
+        ;;
+      *)
+        [[ -z "$context" && $# -eq 1 ]] || exit 98
+        context="$1"
+        shift
+        ;;
+    esac
+  done
+  [[ "$pull_seen" == "true" \
+    && "$revision_label" == "$AKL_SERVICE_VERSION" \
+    && "$project_label" == "akl-test" \
+    && "$service_label" == "ingestion-service" \
+    && "$target_ref" == "$INGESTION_SERVICE_IMAGE" \
+    && "$dockerfile" == "${context}/Dockerfile" \
+    && "$context" == "${AKL_RELEASE_ROOT}/releases/${AKL_SERVICE_VERSION}/services/ingestion-service" \
+    && -f "$dockerfile" ]] || exit 98
+  printf 'build:ingestion-service\n' >>"$CALL_LOG"
+  if [[ "${FAKE_BUILD_FAIL_BEFORE_TAG:-false}" == "true" ]]; then
+    printf 'fault:build-before-tag\n' >>"$CALL_LOG"
+    exit 84
+  fi
+  write_image_state ingestion-service
   exit 0
 fi
 
@@ -726,7 +837,7 @@ case "$command_name" in
     printf 'up:%s\n' "$*" >>"$CALL_LOG"
     for argument in "$@"; do
       case "$argument" in
-        registry-api|rag-retrieval-service|web)
+        registry-api|ingestion-service|rag-retrieval-service|web)
           if [[ "${FAKE_IMAGE_RETARGET_DURING_UP_SERVICE:-}" == "$argument" \
             && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up" ]]; then
             : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up"
@@ -756,14 +867,14 @@ case "$command_name" in
   ps)
     case "$*" in
       '--status running --services')
-        for service in registry-api rag-retrieval-service web; do
+        for service in registry-api ingestion-service rag-retrieval-service web; do
           state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
           if [[ -f "${state_dir}/running" && "$(<"${state_dir}/running")" == "true" ]]; then
             printf '%s\n' "$service"
           fi
         done
         ;;
-      '-q registry-api'|'-q rag-retrieval-service'|'-q web')
+      '-q registry-api'|'-q ingestion-service'|'-q rag-retrieval-service'|'-q web')
         service="${2-}"
         state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
         [[ ! -f "${state_dir}/id" ]] || cat "${state_dir}/id"
@@ -937,7 +1048,7 @@ if [[ -n "${FAKE_IMAGE_RETARGET_DURING_SMOKE_SERVICE:-}" \
   && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-smoke" ]]; then
   service="$FAKE_IMAGE_RETARGET_DURING_SMOKE_SERVICE"
   case "$service" in
-    registry-api|rag-retrieval-service|web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|web) ;;
     *) exit 98 ;;
   esac
   : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-smoke"
@@ -1458,7 +1569,11 @@ assert_runtime_marker "$SHA_ONE" verified
 first_success_record="$(find "${AKL_RELEASE_ROOT}/deployments" -type f -name '*.txt' -print | sort | tail -n 1)"
 grep -q '^retry_requires_descendant_sha=false$' "$first_success_record" \
   || fail 'successful immutable rollout retained a descendant-only retry requirement'
-for image_field in target_registry_image_id target_rag_image_id target_web_image_id; do
+for image_field in \
+  target_registry_image_id \
+  target_ingestion_image_id \
+  target_rag_image_id \
+  target_web_image_id; do
   grep -Eq "^${image_field}=sha256:[0-9a-f]{64}$" "$first_success_record" \
     || fail "successful immutable rollout did not durably record ${image_field}"
 done
@@ -1547,6 +1662,12 @@ migration_line="$(grep -n '^alembic_upgrade$' "$CALL_LOG" | head -n 1 | cut -d: 
 first_success_log="$(awk '/^MARK first-immutable-success$/ {capture=1; next} capture' "$CALL_LOG")"
 grep -Fxq "bootstrap_target_deploy:${AKL_RELEASE_ROOT}/releases/${SHA_ONE}" <<<"$first_success_log" \
   || fail 'first rollout did not execute the orchestrator from the exact target release'
+grep -Fxq 'build:registry-api rag-retrieval-service web' <<<"$first_success_log" \
+  || fail 'first rollout did not Compose-build the immutable Registry, RAG, and web images'
+grep -Fxq 'build:ingestion-service' <<<"$first_success_log" \
+  || fail 'first rollout did not directly build the immutable ingestion image'
+grep -Fxq 'docker_exec_readiness:web-ingestion-transport:nextjs' <<<"$first_success_log" \
+  || fail 'first rollout did not prove the exact web ingestion transport as the runtime user'
 release_fsync_line="$(grep -n "^fsync_tree:${AKL_RELEASE_ROOT}/releases/.${SHA_ONE}.tmp" <<<"$first_success_log" | head -n 1 | cut -d: -f1)"
 first_build_line="$(grep -n '^build:' <<<"$first_success_log" | head -n 1 | cut -d: -f1)"
 backup_parent_fsync_line="$(grep -n "^fsync_directory:${AKL_RELEASE_ROOT}/backups$" <<<"$first_success_log" | head -n 1 | cut -d: -f1)"
@@ -1597,7 +1718,7 @@ akl_write_runtime_marker \
   "$TRANSITION_LEGACY_SHA" \
   verified \
   migrated \
-  registry-api,rag-retrieval-service,web \
+  registry-api,ingestion-service,rag-retrieval-service,web \
   false \
   transition-marker-mismatch
 printf 'MARK transition-marker-mismatch\n' >>"$CALL_LOG"
@@ -1618,7 +1739,7 @@ akl_write_runtime_marker \
   "$TRANSITION_LEGACY_SHA" \
   verified \
   verified \
-  registry-api,rag-retrieval-service,web \
+  registry-api,ingestion-service,rag-retrieval-service,web \
   false \
   transition-clean-predecessor
 
@@ -1810,16 +1931,16 @@ TRANSITION_FAILED_RELEASE="$(
   "$SOURCE_ROOT/scripts/prepare_docker_home_release.sh" "$TRANSITION_FAILED_SHA"
 )"
 printf 'MARK transition-post-apply-failure\n' >>"$CALL_LOG"
-if FAKE_CURL_FAIL_READY=true \
+if FAKE_WEB_INGESTION_TRANSPORT_READINESS_FAIL=true \
   "${TRANSITION_FAILED_RELEASE}/scripts/bootstrap_docker_home_target.sh" \
     --sha "$TRANSITION_FAILED_SHA" \
     --transition-existing-current; then
-  fail 'transition post-apply readiness fault unexpectedly succeeded'
+  fail 'transition web-ingestion-transport readiness fault unexpectedly succeeded'
 fi
 assert_current_sha "$TRANSITION_FAILED_LEGACY_SHA"
 assert_runtime_marker "$TRANSITION_FAILED_SHA" failed
 transition_failed_record="$(deployment_record_for_sha "$TRANSITION_FAILED_SHA")"
-for service in registry-api rag-retrieval-service web; do
+for service in registry-api ingestion-service rag-retrieval-service web; do
   [[ ! -e "${FAKE_RUNTIME_DIR}/containers/${service}" ]] \
     || fail "transition verification failure left the unverified ${service} container present"
 done
@@ -1827,12 +1948,19 @@ grep -Fxq 'target_services_start_may_have_started=true' "$transition_failed_reco
   || fail 'transition failure record omitted the target start boundary'
 grep -Fxq 'target_registry_quarantined=true' "$transition_failed_record" \
   || fail 'transition failure record omitted Registry quarantine'
+grep -Fxq 'target_ingestion_quarantined=true' "$transition_failed_record" \
+  || fail 'transition failure record omitted ingestion quarantine'
 grep -Fxq 'target_rag_quarantined=true' "$transition_failed_record" \
   || fail 'transition failure record omitted RAG quarantine'
 grep -Fxq 'target_web_quarantined=true' "$transition_failed_record" \
   || fail 'transition failure record omitted web quarantine'
 grep -Fxq 'deploy_lock_preserved=false' "$transition_failed_record" \
   || fail 'successful transition quarantine unexpectedly preserved the deployment lock'
+transition_failed_log="$(
+  awk '/^MARK transition-post-apply-failure$/ {capture=1; next} capture' "$CALL_LOG"
+)"
+grep -Fxq 'docker_exec_readiness:web-ingestion-transport:nextjs' <<<"$transition_failed_log" \
+  || fail 'transition fault did not reach the exact web ingestion transport probe'
 [[ ! -e "${AKL_RELEASE_ROOT}/.immutable-deploy.lock" ]] \
   || fail 'successful transition quarantine left a deployment lock'
 
@@ -2007,8 +2135,10 @@ printf 'MARK scripts-only-release\n' >>"$CALL_LOG"
 assert_current_sha "$SCRIPTS_ONLY_SHA"
 assert_runtime_marker "$SCRIPTS_ONLY_SHA" verified
 scripts_only_log="$(awk '/^MARK scripts-only-release$/ {capture=1; next} capture' "$CALL_LOG")"
-grep -q '^build:registry-api rag-retrieval-service web$' <<<"$scripts_only_log" \
-  || fail 'scripts-only release did not redeploy all supported runtime services'
+grep -Fxq 'build:registry-api rag-retrieval-service web' <<<"$scripts_only_log" \
+  || fail 'scripts-only release did not Compose-build every supported non-ingestion service'
+grep -Fxq 'build:ingestion-service' <<<"$scripts_only_log" \
+  || fail 'scripts-only release did not build ingestion-service'
 SHA_ONE="$SCRIPTS_ONLY_SHA"
 
 printf 'build-before-tag-fault\n' >"$WORK_REPO/apps/web/build-before-tag.txt"
@@ -2475,7 +2605,7 @@ assert_current_sha "$SHA_ONE"
 assert_runtime_marker "$SHA_TWO" failed
 second_log="$(awk '/^MARK second-release$/ {capture=1; next} capture' "$CALL_LOG")"
 grep -q '^build:web$' <<<"$second_log" || fail 'web-only release did not build web'
-if grep -q '^build:.*registry-api\|^build:.*rag-retrieval-service' <<<"$second_log"; then
+if grep -q '^build:.*registry-api\|^build:ingestion-service\|^build:.*rag-retrieval-service' <<<"$second_log"; then
   fail 'web-only release built an unaffected service'
 fi
 [[ ! -e "${FAKE_RUNTIME_DIR}/containers/web" ]] \
@@ -2544,7 +2674,7 @@ assert_current_sha "$SHA_THREE"
 assert_runtime_marker "$SHA_THREE" verified
 forward_log="$(awk '/^MARK forward-fix$/ {capture=1; next} capture' "$CALL_LOG")"
 grep -q '^build:web$' <<<"$forward_log" || fail 'forward fix did not build web'
-if grep -q '^build:.*registry-api\|^build:.*rag-retrieval-service' <<<"$forward_log"; then
+if grep -q '^build:.*registry-api\|^build:ingestion-service\|^build:.*rag-retrieval-service' <<<"$forward_log"; then
   fail 'forward fix built an unaffected service'
 fi
 [[ "$(cat "${AKL_RELEASE_ROOT}/repo/sentinel")" == "must remain untouched" ]] \
@@ -2690,7 +2820,7 @@ assert_runtime_marker "$SHA_SIX" verified
 registry_log="$(awk '/^MARK registry-forward-fix$/ {capture=1; next} capture' "$CALL_LOG")"
 grep -q '^build:registry-api$' <<<"$registry_log" \
   || fail 'Registry forward-fix did not build Registry'
-if grep -q '^build:.*web\|^build:.*rag-retrieval-service' <<<"$registry_log"; then
+if grep -q '^build:ingestion-service\|^build:.*web\|^build:.*rag-retrieval-service' <<<"$registry_log"; then
   fail 'Registry forward-fix built an unaffected service'
 fi
 [[ "$(tr -d '[:space:]' <"$FAKE_WEB_STATE")" == "$SHA_THREE" ]] \
@@ -2809,12 +2939,14 @@ fi
 assert_current_sha "$SHA_SIX"
 assert_runtime_marker "$PARTIAL_UP_FAILED_SHA" failed
 partial_up_record="$(deployment_record_for_sha "$PARTIAL_UP_FAILED_SHA")"
-grep -Fxq 'services=registry-api,rag-retrieval-service,web' "$partial_up_record" \
+grep -Fxq 'services=registry-api,ingestion-service,rag-retrieval-service,web' "$partial_up_record" \
   || fail 'partial-up fixture did not select every release service'
 grep -Fxq 'migration_started=true' "$partial_up_record" \
   || fail 'partial-up fixture did not cross the forward-only migration boundary'
 grep -Fxq 'target_registry_quarantined=true' "$partial_up_record" \
   || fail 'partial-up failure did not quarantine the created Registry target'
+grep -Fxq 'target_ingestion_quarantine_failed=true' "$partial_up_record" \
+  || fail 'partial-up failure did not preserve the unmatched ingestion predecessor'
 grep -Fxq 'target_rag_quarantine_failed=true' "$partial_up_record" \
   || fail 'partial-up failure did not preserve the unmatched RAG predecessor'
 grep -Fxq 'target_web_quarantine_failed=true' "$partial_up_record" \
@@ -2830,12 +2962,13 @@ grep -Fxq "container_execution:registry-api:${partial_up_registry_image_id}:${pa
   || fail 'partial Compose up did not create Registry from its durable image ID'
 grep -q '^docker_rm:registry-api:' <<<"$partial_up_log" \
   || fail 'partial Compose up did not remove the proven Registry target'
-if grep -q '^docker_rm:rag-retrieval-service:\|^docker_rm:web:' <<<"$partial_up_log"; then
+if grep -q '^docker_rm:ingestion-service:\|^docker_rm:rag-retrieval-service:\|^docker_rm:web:' <<<"$partial_up_log"; then
   fail 'partial Compose up removed unmatched predecessor containers'
 fi
 [[ ! -e "${FAKE_RUNTIME_DIR}/containers/registry-api" ]] \
   || fail 'partial Compose-up quarantine retained the Registry target'
-[[ -d "${FAKE_RUNTIME_DIR}/containers/rag-retrieval-service" \
+[[ -d "${FAKE_RUNTIME_DIR}/containers/ingestion-service" \
+  && -d "${FAKE_RUNTIME_DIR}/containers/rag-retrieval-service" \
   && -d "${FAKE_RUNTIME_DIR}/containers/web" ]] \
   || fail 'partial Compose-up recovery lost an unmatched predecessor container'
 [[ -d "${AKL_RELEASE_ROOT}/.immutable-deploy.lock" ]] \
@@ -3140,9 +3273,137 @@ grep -Fxq 'fault:lock-rmdir-fail-after-current-fsync' <<<"$lock_rmdir_log" \
   || fail 'lock rmdir failure did not preserve truthful remaining lock state'
 rm -f "${AKL_RELEASE_ROOT}/.immutable-deploy.lock/fault-blocker"
 rmdir "${AKL_RELEASE_ROOT}/.immutable-deploy.lock"
-POWER_LOSS_SHA="$LOCK_RMDIR_FAIL_SHA"
+  POWER_LOSS_SHA="$LOCK_RMDIR_FAIL_SHA"
 
-printf 'web-v6-existing-tag\n' >"$WORK_REPO/apps/web/release.txt"
+printf 'web-secret-preflight\n' >"$WORK_REPO/apps/web/release.txt"
+git -C "$WORK_REPO" add apps/web/release.txt
+git -C "$WORK_REPO" commit --quiet -m 'web secret preflight fixture'
+WEB_SECRET_PREFLIGHT_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+chmod 0640 "$WEB_INGESTION_CLIENT_SECRET_FILE"
+printf 'MARK web-secret-preflight\n' >>"$CALL_LOG"
+if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$WEB_SECRET_PREFLIGHT_SHA"; then
+  fail 'web release accepted a non-private web-to-ingestion client secret'
+fi
+chmod 0600 "$WEB_INGESTION_CLIENT_SECRET_FILE"
+assert_current_sha "$POWER_LOSS_SHA"
+assert_runtime_marker "$POWER_LOSS_SHA" verified
+web_secret_preflight_log="$(awk '/^MARK web-secret-preflight$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$web_secret_preflight_log"; then
+  fail 'web secret preflight failure crossed the build or migration boundary'
+fi
+[[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${WEB_SECRET_PREFLIGHT_SHA}" ]] \
+  || fail 'web secret preflight failure burned the target SHA'
+
+printf 'ingestion-secret-preflight\n' >"$WORK_REPO/services/ingestion-service/release.txt"
+git -C "$WORK_REPO" add services/ingestion-service/release.txt
+git -C "$WORK_REPO" commit --quiet -m 'ingestion secret preflight fixture'
+INGESTION_SECRET_PREFLIGHT_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+chmod 0640 "$INGESTION_REGISTRY_CLIENT_SECRET_FILE"
+printf 'MARK ingestion-secret-preflight\n' >>"$CALL_LOG"
+if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$INGESTION_SECRET_PREFLIGHT_SHA"; then
+  fail 'ingestion release accepted a non-private Registry client secret'
+fi
+chmod 0600 "$INGESTION_REGISTRY_CLIENT_SECRET_FILE"
+assert_current_sha "$POWER_LOSS_SHA"
+assert_runtime_marker "$POWER_LOSS_SHA" verified
+ingestion_secret_preflight_log="$(awk '/^MARK ingestion-secret-preflight$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$ingestion_secret_preflight_log"; then
+  fail 'ingestion secret preflight failure crossed the build or migration boundary'
+fi
+[[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${INGESTION_SECRET_PREFLIGHT_SHA}" ]] \
+  || fail 'ingestion secret preflight failure burned the target SHA'
+
+printf 'rag-secret-preflight\n' >"$WORK_REPO/services/rag-retrieval-service/release.txt"
+git -C "$WORK_REPO" add services/rag-retrieval-service/release.txt
+git -C "$WORK_REPO" commit --quiet -m 'RAG secret preflight fixture'
+RAG_SECRET_PREFLIGHT_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+chmod 0640 "$RAG_REGISTRY_CLIENT_SECRET_FILE"
+printf 'MARK rag-secret-preflight\n' >>"$CALL_LOG"
+if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$RAG_SECRET_PREFLIGHT_SHA"; then
+  fail 'RAG release accepted a non-private Registry client secret'
+fi
+chmod 0600 "$RAG_REGISTRY_CLIENT_SECRET_FILE"
+assert_current_sha "$POWER_LOSS_SHA"
+assert_runtime_marker "$POWER_LOSS_SHA" verified
+rag_secret_preflight_log="$(awk '/^MARK rag-secret-preflight$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$rag_secret_preflight_log"; then
+  fail 'RAG secret preflight failure crossed the build or migration boundary'
+fi
+[[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${RAG_SECRET_PREFLIGHT_SHA}" ]] \
+  || fail 'RAG secret preflight failure burned the target SHA'
+
+printf 'registry-secret-preflight\n' >"$WORK_REPO/services/registry-api/release.txt"
+git -C "$WORK_REPO" add services/registry-api/release.txt
+git -C "$WORK_REPO" commit --quiet -m 'Registry secret preflight fixture'
+REGISTRY_SECRET_PREFLIGHT_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+chmod 0640 "$INGESTION_AUTHORIZATION_SECRET_FILE"
+printf 'MARK registry-secret-preflight\n' >>"$CALL_LOG"
+if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$REGISTRY_SECRET_PREFLIGHT_SHA"; then
+  fail 'Registry release accepted a non-private ingestion authorization secret'
+fi
+chmod 0600 "$INGESTION_AUTHORIZATION_SECRET_FILE"
+assert_current_sha "$POWER_LOSS_SHA"
+assert_runtime_marker "$POWER_LOSS_SHA" verified
+registry_secret_preflight_log="$(awk '/^MARK registry-secret-preflight$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$registry_secret_preflight_log"; then
+  fail 'Registry secret preflight failure crossed the build or migration boundary'
+fi
+[[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${REGISTRY_SECRET_PREFLIGHT_SHA}" ]] \
+  || fail 'Registry secret preflight failure burned the target SHA'
+
+git -C "$WORK_REPO" show "${POWER_LOSS_SHA}:apps/web/release.txt" \
+  >"$WORK_REPO/apps/web/release.txt"
+git -C "$WORK_REPO" show "${POWER_LOSS_SHA}:services/ingestion-service/release.txt" \
+  >"$WORK_REPO/services/ingestion-service/release.txt"
+git -C "$WORK_REPO" show "${POWER_LOSS_SHA}:services/rag-retrieval-service/release.txt" \
+  >"$WORK_REPO/services/rag-retrieval-service/release.txt"
+git -C "$WORK_REPO" show "${POWER_LOSS_SHA}:services/registry-api/release.txt" \
+  >"$WORK_REPO/services/registry-api/release.txt"
+git -C "$WORK_REPO" add \
+  apps/web/release.txt \
+  services/ingestion-service/release.txt \
+  services/rag-retrieval-service/release.txt \
+  services/registry-api/release.txt
+git -C "$WORK_REPO" commit --quiet -m 'restore release fixture after secret preflights'
+
+"$REAL_PYTHON3" - "$WORK_REPO/infra/docker-compose/docker-compose.docker-home.yml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+content = path.read_text(encoding="utf-8")
+needle = "  web:\n    image: ${WEB_IMAGE}\n"
+replacement = (
+    "  web:\n"
+    "    image: ${WEB_IMAGE}\n"
+    "    labels:\n"
+    "      akl.test.coordinated-compose: managed-web\n"
+)
+if content.count(needle) != 1:
+    raise SystemExit("coordinated Compose fixture could not select the web service")
+path.write_text(content.replace(needle, replacement), encoding="utf-8")
+PY
+git -C "$WORK_REPO" add infra/docker-compose/docker-compose.docker-home.yml
+git -C "$WORK_REPO" commit --quiet -m 'coordinated managed web Compose change'
+MANAGED_COMPOSE_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+printf 'MARK managed-shared-compose\n' >>"$CALL_LOG"
+"$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$MANAGED_COMPOSE_SHA"
+assert_current_sha "$MANAGED_COMPOSE_SHA"
+assert_runtime_marker "$MANAGED_COMPOSE_SHA" verified
+managed_compose_log="$(awk '/^MARK managed-shared-compose$/ {capture=1; next} capture' "$CALL_LOG")"
+grep -Fxq 'build:web' <<<"$managed_compose_log" \
+  || fail 'managed web Compose change did not rebuild web'
+if grep -q '^build:registry-api\|^build:ingestion-service\|^build:rag-retrieval-service' <<<"$managed_compose_log"; then
+  fail 'managed web Compose change rebuilt an unaffected service'
+fi
+POWER_LOSS_SHA="$MANAGED_COMPOSE_SHA"
+
+  printf 'web-v6-existing-tag\n' >"$WORK_REPO/apps/web/release.txt"
 git -C "$WORK_REPO" add apps/web/release.txt
 git -C "$WORK_REPO" commit --quiet -m 'web release with pre-existing image tag'
 SHA_ELEVEN="$(git -C "$WORK_REPO" rev-parse HEAD)"
@@ -3171,10 +3432,10 @@ git -C "$WORK_REPO" add infra/docker-compose/docker-compose.docker-home.yml
 git -C "$WORK_REPO" commit --quiet -m 'unsupported shared production Compose change'
 SHARED_COMPOSE_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
 git -C "$WORK_REPO" push --quiet origin main
-printf 'MARK unsupported-shared-compose\n' >>"$CALL_LOG"
-if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHARED_COMPOSE_SHA"; then
-  fail 'three-service workflow accepted a shared production Compose change'
-fi
+  printf 'MARK unsupported-shared-compose\n' >>"$CALL_LOG"
+  if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHARED_COMPOSE_SHA"; then
+    fail 'four-service workflow accepted a production Compose change outside managed service blocks'
+  fi
 assert_current_sha "$POWER_LOSS_SHA"
 assert_runtime_marker "$POWER_LOSS_SHA" verified
 unsupported_compose_log="$(awk '/^MARK unsupported-shared-compose$/ {capture=1; next} capture' "$CALL_LOG")"
@@ -3183,22 +3444,45 @@ if grep -q '^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$unsupported_compos
 fi
 git -C "$WORK_REPO" revert --quiet --no-edit "$SHARED_COMPOSE_SHA"
 
-mkdir -p "$WORK_REPO/services/ingestion-service"
-printf 'unsupported-runtime-change\n' >"$WORK_REPO/services/ingestion-service/release.txt"
-git -C "$WORK_REPO" add services/ingestion-service/release.txt
-git -C "$WORK_REPO" commit --quiet -m 'unsupported runtime release'
+git -C "$WORK_REPO" show "${POWER_LOSS_SHA}:apps/web/release.txt" \
+  >"$WORK_REPO/apps/web/release.txt"
+printf 'ingestion-v2-immutable-release\n' >"$WORK_REPO/services/ingestion-service/release.txt"
+git -C "$WORK_REPO" add apps/web/release.txt services/ingestion-service/release.txt
+git -C "$WORK_REPO" commit --quiet -m 'ingestion-only immutable release'
 SHA_TWELVE="$(git -C "$WORK_REPO" rev-parse HEAD)"
 git -C "$WORK_REPO" push --quiet origin main
-printf 'MARK unsupported-runtime\n' >>"$CALL_LOG"
-if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHA_TWELVE"; then
-  fail 'release touching an unsupported runtime service was accepted'
+printf 'MARK ingestion-only-release\n' >>"$CALL_LOG"
+"$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHA_TWELVE"
+assert_current_sha "$SHA_TWELVE"
+assert_runtime_marker "$SHA_TWELVE" verified
+ingestion_only_log="$(awk '/^MARK ingestion-only-release$/ {capture=1; next} capture' "$CALL_LOG")"
+grep -Fxq 'build:ingestion-service' <<<"$ingestion_only_log" \
+  || fail 'ingestion-only release did not build ingestion-service'
+if grep -q '^build:registry-api\|^build:rag-retrieval-service\|^build:web' <<<"$ingestion_only_log"; then
+  fail 'ingestion-only release rebuilt an unaffected service'
 fi
-assert_current_sha "$POWER_LOSS_SHA"
-assert_runtime_marker "$POWER_LOSS_SHA" verified
-unsupported_log="$(awk '/^MARK unsupported-runtime$/ {capture=1; next} capture' "$CALL_LOG")"
-if grep -q '^build:' <<<"$unsupported_log"; then
-  fail 'unsupported runtime release reached the build phase'
+grep -q '^up:.*ingestion-service$' <<<"$ingestion_only_log" \
+  || fail 'ingestion-only release did not restart ingestion-service'
+grep -Fq $'curl\thttp://127.0.0.1:18080/ingestion/health' <<<"$ingestion_only_log" \
+  || fail 'ingestion-only release did not verify the ingestion health route'
+grep -Fxq 'docker_exec_readiness:ingestion-service' <<<"$ingestion_only_log" \
+  || fail 'ingestion-only release did not run authenticated in-container readiness'
+grep -Fxq 'docker_exec_readiness:web-ingestion-transport:nextjs' <<<"$ingestion_only_log" \
+  || fail 'ingestion-only release did not prove the existing web transport against the new ingestion runtime'
+if grep -Fq $'curl\thttp://127.0.0.1:18080/ingestion/ready' <<<"$ingestion_only_log"; then
+  fail 'ingestion-only release probed protected readiness anonymously'
 fi
+ingestion_only_record="$(deployment_record_for_sha "$SHA_TWELVE")"
+grep -Fxq 'services=ingestion-service' "$ingestion_only_record" \
+  || fail 'ingestion-only deployment record selected the wrong service set'
+grep -Eq '^target_ingestion_image_id=sha256:[0-9a-f]{64}$' "$ingestion_only_record" \
+  || fail 'ingestion-only deployment record lacks the durable ingestion image ID'
+grep -Fxq 'target_registry_image_id=not-affected' "$ingestion_only_record" \
+  || fail 'ingestion-only deployment record assigned a Registry image ID'
+grep -Fxq 'target_rag_image_id=not-affected' "$ingestion_only_record" \
+  || fail 'ingestion-only deployment record assigned a RAG image ID'
+grep -Fxq 'target_web_image_id=not-affected' "$ingestion_only_record" \
+  || fail 'ingestion-only deployment record assigned a web image ID'
 akl_assert_no_stale_private_env_snapshots "${AKL_RELEASE_ROOT}/env" \
   || fail 'successful and trapped releases left a private env snapshot behind'
 

@@ -8,7 +8,7 @@ export const INFORMATION_POLICY_VERSION = "information-policy-2.0.0";
 export const INFORMATION_POLICY_SCHEMA = "stratos-information-policy-2";
 export const STRATOS_ORGANIZATION_ID = "org_stratos";
 
-const HANDLING_CLASSES = new Set(["PUBLIC", "INTERNAL", "RESTRICTED"]);
+const HANDLING_CLASSES = new Set(["PUBLIC", "INTERNAL", "PROJECT_MANAGEMENT", "RESTRICTED"]);
 const TLP_VALUES = new Set(["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"]);
 const PAP_VALUES = new Set(["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"]);
 const CONTENT_CATEGORIES = new Set([
@@ -26,7 +26,7 @@ export interface InformationPolicyBinding {
   schemaVersion: typeof INFORMATION_POLICY_SCHEMA;
   policyBindingId: string;
   policyVersion: typeof INFORMATION_POLICY_VERSION;
-  handlingClass: "PUBLIC" | "INTERNAL" | "RESTRICTED";
+  handlingClass: "PUBLIC" | "INTERNAL" | "PROJECT_MANAGEMENT" | "RESTRICTED";
   legalClassification: "NONE";
   tlp?: "TLP:RED" | "TLP:AMBER+STRICT" | "TLP:AMBER" | "TLP:GREEN" | "TLP:CLEAR" | null;
   pap?: "PAP:RED" | "PAP:AMBER" | "PAP:GREEN" | "PAP:CLEAR" | null;
@@ -39,7 +39,7 @@ export interface InformationPolicyBinding {
   };
   obligations: string[];
   originatorId?: string | null;
-  issuedAt?: string | null;
+  issuedAt: string;
   reviewAt?: string | null;
 }
 
@@ -125,8 +125,8 @@ export function parseInformationPolicy(value: unknown): InformationPolicyBinding
     },
     obligations,
     originatorId,
-    issuedAt: optionalText(policy.issuedAt),
-    reviewAt: optionalText(policy.reviewAt)
+    issuedAt: requiredTimestamp(policy.issuedAt, "issuedAt"),
+    reviewAt: optionalTimestamp(policy.reviewAt, "reviewAt")
   };
 }
 
@@ -293,6 +293,21 @@ function assertKeys(value: Record<string, unknown>, keys: string[], field: strin
 function requiredText(value: unknown, field: string): string { if (typeof value !== "string" || !value.trim()) fail("POLICY_BINDING_INVALID", `${field} must be a non-empty string.`); return value.trim(); }
 function minText(value: unknown, field: string, length: number): string { const text = requiredText(value, field); if (text.length < length) fail("POLICY_BINDING_INVALID", `${field} is too short.`); return text; }
 function optionalText(value: unknown): string | null { if (value === null || value === undefined) return null; if (typeof value !== "string" || !value.trim()) fail("POLICY_BINDING_INVALID", "Optional policy text must be a non-empty string or null."); return value.trim(); }
+function optionalTimestamp(value: unknown, field: string): string | null {
+  const normalized = optionalText(value);
+  if (normalized === null) return null;
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized)) {
+    fail("POLICY_BINDING_INVALID", `${field} must include an explicit timezone.`);
+  }
+  const milliseconds = Date.parse(normalized);
+  if (!Number.isFinite(milliseconds)) fail("POLICY_BINDING_INVALID", `${field} must be an ISO-8601 timestamp.`);
+  return new Date(milliseconds).toISOString();
+}
+function requiredTimestamp(value: unknown, field: string): string {
+  const normalized = optionalTimestamp(value, field);
+  if (normalized === null) fail("POLICY_BINDING_INVALID", `${field} is required.`);
+  return normalized;
+}
 function requiredEqual(value: unknown, expected: unknown, field: string, code = "POLICY_BINDING_INVALID") { if (value !== expected) fail(code, `${field} is not supported.`); }
 function enumText(value: unknown, allowed: Set<string>, field: string): string { const text = requiredText(value, field); if (!allowed.has(text)) fail("POLICY_BINDING_INVALID", `${field} is unknown.`); return text; }
 function nullableEnum(value: unknown, allowed: Set<string>, field: string): string | null { if (value === null || value === undefined) return null; return enumText(value, allowed, field); }

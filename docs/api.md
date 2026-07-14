@@ -134,19 +134,58 @@ extractable text, empty pages, table count, OCR usage, and a bounded
 identify documents that need OCR/layout reprocessing before they are trusted for
 citation-heavy answers.
 
+Production ingestion is a dual-boundary backend flow. Registry exposes the
+user-authority and worker-confirmation operations:
+
+```text
+GET  /api/v1/integrations/ingestion/readiness
+POST /api/v1/documents/{document_id}/versions/{version_id}/ingestion-authorization
+POST /api/v1/integrations/ingestion/authorizations/confirm
+POST /api/v1/intelligence/authorization
+POST /api/v1/integrations/ingestion/intelligence-authorizations/confirm
+```
+
+The issue operations require the current interactive person; the confirmation
+operations accept only `svc-ingestion`. Ingestion proof issuance requires both
+the registered document root and the exact registered immutable version to pass
+central authorization. The proof is short-lived and bound to the exact actor,
+action, organization, document/version, version governed-resource/source,
+governed parent, policy binding id/version/hash, canonical governance-scope
+hash, correlation id and idempotency key. Registry re-resolves those version
+coordinates on confirmation, so governance drift or a root-only decision fails
+closed. Intelligence proofs remain bound to their exact sorted coordinate set.
+Ingestion job calls require the independent
+`svc-akb-web-ingestion` transport plus `X-AKL-On-Behalf-Of` and
+`X-AKL-Ingestion-Authorization`; the person bearer is not forwarded.
+`GET /api/v1/integrations/web-ingestion/readiness` is the non-mutating probe for
+that exact transport.
+
+Registry returns authoritative ingestion attempt state with the current
+external-reference response. One row per document binds the immutable version,
+job id and `QUEUED|INGESTING|INDEXED|FAILED` state. Compare-and-swap fields
+`expected_current_ingestion_job_id`, `current_ingestion_job_id`,
+`current_document_version_id`, and `current_ingestion_status` prevent stale
+retry takeover. Ingestion may report a terminal state through its durable
+outbox; it cannot change source lineage or execute before the Registry claim.
+
 Ingestion Service also exposes read-only Intelligence endpoints over the
 OpenSearch chunk index:
 
 ```text
 GET  /api/v1/intelligence/entities/facets
+POST /api/v1/intelligence/entities/facets/query
 POST /api/v1/intelligence/analyst/search
 POST /api/v1/intelligence/entities/search
 POST /api/v1/intelligence/entities/relationships
 ```
 
-The web bridge derives `allowed_document_ids` from Registry-visible documents
-before calling search/relationship endpoints and filters returned evidence again
-before it reaches the browser.
+Production uses the scoped POST contracts. The web bridge asks Registry to
+derive the exact current indexed document/version/policy-hash coordinates and
+passes the resulting proof in `X-AKL-Intelligence-Authorization` with its bound
+idempotency key. Ingestion confirms the proof before querying OpenSearch and
+then binds `allowed_document_ids` and policy hashes to the confirmed
+coordinates. The unscoped facet GET is available only to local mock/disabled
+operations; static OIDC roles cannot enable it in production.
 
 Registry API persists the Intelligence analyst work layer:
 

@@ -54,15 +54,28 @@ OpenSearch:
 
 - bulk index chunk dokumentů do `AKL_OPENSEARCH_INDEX`, pokud je zapnutý v `AKL_INGESTION_INDEXER_MODE`.
 - idempotentní mapping pro `entity_types`, `entity_values` a `entity_pairs` nad existujícím indexem.
-- servisní read-only endpoint `GET /api/v1/intelligence/entities/facets` pro Intelligence Workbench facety nad OpenSearch indexem.
+- servisní read-only endpoint `POST /api/v1/intelligence/entities/facets/query`
+  pro Intelligence Workbench facety nad přesně autorizovaným OpenSearch
+  korpusem. Legacy `GET /api/v1/intelligence/entities/facets` je dostupný pouze
+  v lokálním mock/disabled režimu a v produkci fail-closed.
 - servisní read-only endpoint `POST /api/v1/intelligence/analyst/search` pro
   pokročilé analytické hledání nad autorizovanými chunk payloady. Podporuje
   režimy `smart`, `boolean`, `phrase`, `proximity` a `fielded`; fielded dotazy
   používají auditovatelné aliasy `title:`, `body:`, `section:`, `entity:`,
-  `source:`, `type:` a `class:`. Endpoint vždy vyžaduje
-  `allowed_document_ids`, které server-side web bridge odvozuje z Registry API.
-- servisní read-only endpoint `POST /api/v1/intelligence/entities/search` pro citované entity/fulltext nálezy nad chunk payloady. Endpoint vždy vyžaduje `allowed_document_ids`; server-side web bridge je odvozuje z Registry API dokumentů dostupných aktuálnímu uživateli a výsledky ještě jednou ořeže podle stejného seznamu.
-- servisní read-only endpoint `POST /api/v1/intelligence/entities/relationships` pro evidence-backed vztahy mezi entitami. První profil vytváří nedirekcionální `co_occurs` hrany z entit ve stejném chunku, počítá počet důkazů/dokumentů a vrací citované evidence chucky. Endpoint stejně jako search vyžaduje `allowed_document_ids`.
+  `source:`, `type:` a `class:`.
+- servisní read-only endpoint `POST /api/v1/intelligence/entities/search` pro
+  citované entity/fulltext nálezy nad chunk payloady.
+- servisní read-only endpoint `POST /api/v1/intelligence/entities/relationships`
+  pro evidence-backed vztahy mezi entitami. První profil vytváří
+  nedirekcionální `co_occurs` hrany z entit ve stejném chunku, počítá počet
+  důkazů/dokumentů a vrací citované evidence chucky.
+- všechny produkční Intelligence POST dotazy nesou Registry-issued proof a
+  přesně seřazené souřadnice `document_id`, `document_version_id` a
+  `policy_hash`. Ingestion proof potvrdí přes Registry a teprve potom z
+  potvrzených souřadnic odvodí OpenSearch filtry. Klientské
+  `allowed_document_ids` ani statická role samy o sobě nejsou oprávnění;
+  server-side web bridge navíc výsledky znovu ořeže podle stejné potvrzené
+  množiny před odesláním do browseru.
 - provozní backfill existujících chunků přes `scripts/backfill_opensearch_entities.py`, který dopočítá `metadata.intelligence`, top-level entity pole a `search_text` přímo v OpenSearch bez změny Registry, Qdrantu, OCR výstupů nebo embeddingů.
 
 Object storage:

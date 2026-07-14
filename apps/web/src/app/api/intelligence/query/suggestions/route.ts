@@ -3,9 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import {
-  authorizedIndexSelection,
+  candidateIndexSelection,
+  exactAuthorizedIndexSelection,
   type AuthorizedIndexSelection,
 } from "@/lib/intelligence/policy-filter";
+import { authorizeIntelligenceScope } from "@/lib/intelligence/scope-authorization";
 import {
   buildQueryIntelligenceResponse,
   buildQueryRecoveryCandidates,
@@ -16,6 +18,7 @@ import {
   type AnalystSearchMode,
   type ApiRequestContext,
   type EntityFacetReport,
+  type IntelligenceScopeAuthorizationOptions,
   type QueryComposerRecoveryAction,
   type QueryComposerTokenInput,
   type QueryComposerTokenType,
@@ -66,7 +69,13 @@ export async function POST(request: NextRequest) {
 
     if (queryState.plan.can_run) {
       try {
-        const selection = await authorizedDocumentSelection(clients, requestContext);
+        const candidates = await authorizedDocumentSelection(clients, requestContext);
+        const scope = await authorizeIntelligenceScope(
+          clients,
+          requestContext,
+          candidates.documentIds,
+        );
+        const selection = exactAuthorizedIndexSelection(scope.authorizedDocuments);
         const searchResult = await clients.ingestion.analystSearch(
           {
             query: queryState.plan.query_text,
@@ -78,11 +87,13 @@ export async function POST(request: NextRequest) {
             limit: 1,
           },
           requestContext,
+          scope,
         );
         const recoveryActions = searchResult.total_hits === 0
           ? await previewRecoveryActions(
               buildQueryRecoveryCandidates(queryState.plan, payload.language ?? "cs"),
               selection,
+              scope,
               clients,
               requestContext,
             )
@@ -117,6 +128,7 @@ export async function POST(request: NextRequest) {
 async function previewRecoveryActions(
   actions: QueryComposerRecoveryAction[],
   selection: AuthorizedIndexSelection,
+  scope: IntelligenceScopeAuthorizationOptions,
   clients: ReturnType<typeof getServerApiClients>,
   requestContext: ApiRequestContext,
 ): Promise<QueryComposerRecoveryAction[]> {
@@ -133,6 +145,7 @@ async function previewRecoveryActions(
             limit: 1,
           },
           requestContext,
+          scope,
         );
         return { ...action, total_hits: result.total_hits };
       } catch {
@@ -154,7 +167,7 @@ async function authorizedDocumentSelection(
   }
 
   const documents = await clients.registry.listDocuments(context);
-  const selection = authorizedIndexSelection(documents, context);
+  const selection = candidateIndexSelection(documents);
   if (authorizedIdsCache.size >= AUTHORIZED_IDS_CACHE_LIMIT) {
     pruneAuthorizedIdsCache(now);
   }

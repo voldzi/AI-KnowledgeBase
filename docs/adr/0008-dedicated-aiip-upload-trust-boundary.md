@@ -76,11 +76,11 @@ lock and compare-and-swap. Concurrent or stale preflights receive a conflict;
 an exact already-applied replay is accepted without downgrading the pointer.
 
 After dedicated confirm creates the ingestion job, the pipeline does not reuse
-the `aiip-service` bearer on generic Registry paths. Ingestion obtains a
-short-lived client-credentials bearer for its own `svc-ingestion` identity and
-uses it for readiness, delegated `authz/check`, document/version metadata reads,
-status sync, and audit. The AIIP/person subject remains only in the authorization
-or audit payload; it is never a Registry transport credential.
+the `aiip-service` bearer on generic Registry paths. The narrower proof,
+transport, authoritative-attempt, and recovery contract is now defined by ADR
+0009. Ingestion obtains a short-lived client-credentials bearer for its own
+`svc-ingestion` identity; the AIIP/person bearer is never an Ingestion or generic
+Registry transport credential.
 
 Registry trusts `svc-ingestion` only for `authz`, `audit`, `documents-read`, and
 the exact `ingestion-status` route family. That last family covers only

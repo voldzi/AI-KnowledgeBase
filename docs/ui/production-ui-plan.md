@@ -83,7 +83,11 @@ The current upload bridge stores the source object in shared local object storag
 
 Upload preflight accepts common document source types: PDF, DOC/DOCX, XLSX/XLSM, PPTX, Markdown/text/CSV/JSON/XML/HTML/XHTML, RTF and main web image formats. Full ingestion extraction is implemented for PDF, DOCX, XLSX/XLSM, PPTX, HTML, Markdown/text/CSV/JSON/XML and image/OCR fallback. Legacy binary `.doc/.xls/.ppt` files still need a conversion layer before they can be treated as first-class indexed sources.
 
-Imported external corpora should preserve original sources. The Markdown folder importer remains a Markdown importer; where Markdown files are derivatives of raw PDFs, `tools/import_original_pdf_versions.py` migrates available raw PDFs into current controlled source versions after ingestion succeeds.
+Imported external corpora should preserve original sources. The Markdown folder
+importer remains a Markdown importer. Where Markdown files are derivatives of
+raw PDFs, `tools/import_original_pdf_versions.py` currently provides dry-run
+inventory only; mutation uses the governed application UI/API. Host mutation
+mode is retired in every environment and fails before writes.
 
 ### STRATOS UI Integration
 

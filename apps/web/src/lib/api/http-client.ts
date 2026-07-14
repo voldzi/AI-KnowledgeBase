@@ -51,6 +51,9 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
     if (context.applicationAccessActive !== undefined) {
       headers.set("X-STRATOS-Application-Access-Active", String(context.applicationAccessActive));
     }
+    if (context.serviceClientId) {
+      headers.set("X-AKL-Service-Client-ID", context.serviceClientId);
+    }
   }
 
   if (context.accessToken) {

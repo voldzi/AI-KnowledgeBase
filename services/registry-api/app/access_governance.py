@@ -50,6 +50,9 @@ class AiipAkbGovernedResourceRegistration:
     policy_binding_id: str
     policy_version: str
     policy_hash: str
+    originator_id: str | None
+    issued_at: str | None
+    review_at: str | None
     registered_by_subject_id: str
     confirmed_by_subject_id: str
     correlation_id: str
@@ -187,6 +190,10 @@ class StratosGovernanceClient:
         }
         if any(response.get(key) != value for key, value in expected.items()):
             raise GovernanceUnavailable("STRATOS Policy Registry returned a conflicting binding")
+        if not _authoritative_policy_metadata_matches(response, binding):
+            raise GovernanceUnavailable(
+                "STRATOS Policy Registry returned conflicting authoritative policy metadata"
+            )
         return local_hash
 
     def decide(
@@ -274,6 +281,7 @@ class StratosGovernanceClient:
             or not isinstance(effective_policy, dict)
             or effective_policy.get("policyBindingId") != binding.policy_binding_id
             or effective_policy.get("policyHash") != expected_hash
+            or not _authoritative_policy_metadata_matches(effective_policy, binding)
         ):
             raise GovernanceUnavailable("STRATOS returned a conflicting governed resource")
         return GovernedResourceRegistration(
@@ -347,6 +355,7 @@ class StratosGovernanceClient:
             or effective_policy.get("policyBindingId") != binding.policy_binding_id
             or effective_policy.get("policyVersion") != binding.policy_version
             or effective_policy.get("policyHash") != expected_hash
+            or not _authoritative_policy_metadata_matches(effective_policy, binding)
             or not isinstance(registered_by, str)
             or not registered_by
             or confirmed_by != envelope.actor.subject_id
@@ -367,6 +376,9 @@ class StratosGovernanceClient:
             policy_binding_id=binding.policy_binding_id,
             policy_version=binding.policy_version,
             policy_hash=expected_hash,
+            originator_id=effective_policy.get("originatorId"),
+            issued_at=effective_policy.get("issuedAt"),
+            review_at=effective_policy.get("reviewAt"),
             registered_by_subject_id=registered_by,
             confirmed_by_subject_id=confirmed_by,
             correlation_id=envelope.correlation_id,
@@ -615,3 +627,29 @@ def _is_timestamp(value: Any) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None
+
+
+def _same_timestamp(value: Any, expected: datetime | None) -> bool:
+    if expected is None:
+        return value is None
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed == expected
+
+
+def _authoritative_policy_metadata_matches(
+    value: dict[str, Any],
+    binding: InformationPolicyBinding,
+) -> bool:
+    required = {"originatorId", "originator", "issuedAt", "reviewAt"}
+    return bool(
+        required.issubset(value)
+        and value.get("originatorId") == value.get("originator")
+        and value.get("originatorId") == binding.originator_id
+        and _same_timestamp(value.get("issuedAt"), binding.issued_at)
+        and _same_timestamp(value.get("reviewAt"), binding.review_at)
+    )

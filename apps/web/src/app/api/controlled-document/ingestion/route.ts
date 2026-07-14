@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
 import type { CreateIngestionJobRequest } from "@/lib/types";
 import { assertUploadMatchesIngestionPayload, UploadPreflightError } from "@/lib/upload/preflight";
 
@@ -40,7 +41,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const document = await clients.registry.getDocument(documentId, context);
+    const [document, currentAttempt] = await Promise.all([
+      clients.registry.getDocument(documentId, context),
+      clients.registry.getDocumentIngestionAttempt(documentId, context),
+    ]);
     if (
       uploadPayload &&
       (document.policy_binding_id !== uploadPayload.policy_binding_id ||
@@ -71,16 +75,47 @@ export async function POST(request: NextRequest) {
       },
       context
     );
+    const idempotencyKey = `controlled:${version.document_version_id}`;
     const jobRequest: CreateIngestionJobRequest = {
+      idempotency_key: idempotencyKey,
       document_id: documentId,
       document_version_id: version.document_version_id,
       source_file_uri: sourceFileUri,
       parser_profile: body.parser_profile ?? "controlled_document",
       ocr_enabled: body.ocr_enabled !== false,
       chunking_strategy: body.chunking_strategy ?? "legal_structured",
-      embedding_profile: String(body.embedding_profile ?? "default")
+      embedding_profile: String(body.embedding_profile ?? "default"),
+      expected_current_ingestion_job_id: currentAttempt?.ingestion_job_id ?? null,
     };
-    const job = await clients.ingestion.createJob(jobRequest, context);
+    const correlationId = context.correlationId ?? context.requestId ?? crypto.randomUUID();
+    const authorization = await clients.registry.createIngestionAuthorization(
+      documentId,
+      version.document_version_id,
+      {
+        action: "document.ingest",
+        correlation_id: correlationId,
+        idempotency_key: idempotencyKey,
+      },
+      { ...context, requestId: correlationId, correlationId },
+    );
+    if (
+      authorization.confirmed_subject_id !== context.subjectId ||
+      authorization.document_id !== documentId ||
+      authorization.document_version_id !== version.document_version_id ||
+      authorization.correlation_id !== correlationId ||
+      authorization.idempotency_key !== idempotencyKey
+    ) {
+      throw new Error("Registry returned a conflicting ingestion authorization.");
+    }
+    const ingestionContext = await ingestionServiceRequestContext(correlationId);
+    const job = await clients.ingestion.createJob(
+      jobRequest,
+      ingestionContext,
+      {
+        delegatedActorSubjectId: authorization.confirmed_subject_id,
+        authorizationToken: authorization.authorization_token,
+      },
+    );
 
     return NextResponse.json({ version, job }, { status: 201 });
   } catch (error) {

@@ -269,6 +269,40 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
     assert ref["current_document_version_id"] == version["document_version_id"]
     assert ref["current_ingestion_job_id"] == "job-aiip-123"
 
+    premature_indexed = client.patch(
+        f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",
+        json={
+            "document_id": body["document"]["document_id"],
+            "expected_current_document_version_id": None,
+            "document_version_id": version["document_version_id"],
+            "file_id": version["file_id"],
+            "ingestion_job_id": "job-aiip-123",
+            "ingestion_status": "INDEXED",
+            "information_policy": _policy(),
+            "integration_envelope": _envelope(FILE_HASH),
+            "governance_scope": {"type": "own", "ownerSubjectId": ACTOR},
+        },
+        headers=_service_headers(),
+    )
+    assert premature_indexed.status_code == 409
+    assert (
+        premature_indexed.json()["error"]["code"]
+        == "aiip_ingestion_status_authority_conflict"
+    )
+
+    for authoritative_status in ("INGESTING", "INDEXED"):
+        transitioned = client.patch(
+            f"/api/v1/documents/{body['document']['document_id']}/external-references/current",
+            json={
+                "current_document_version_id": version["document_version_id"],
+                "expected_current_ingestion_job_id": "job-aiip-123",
+                "current_ingestion_job_id": "job-aiip-123",
+                "current_ingestion_status": authoritative_status,
+            },
+            headers=_ingestion_service_headers(),
+        )
+        assert transitioned.status_code == 200, transitioned.text
+
     current_replay = client.patch(
         f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",
         json={
@@ -318,14 +352,16 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
         f"/api/v1/documents/{body['document']['document_id']}/external-references/current",
         json={
             "current_document_version_id": version["document_version_id"],
+            "expected_current_ingestion_job_id": "job-aiip-123",
             "current_ingestion_job_id": "job-aiip-status-only",
-            "current_ingestion_status": "INDEXED",
+            "current_ingestion_status": "QUEUED",
         },
         headers=_ingestion_service_headers(),
     )
     assert status_only.status_code == 200, status_only.text
     assert status_only.json()["items"][0]["current_document_version_id"] == version["document_version_id"]
     assert status_only.json()["items"][0]["current_ingestion_job_id"] == "job-aiip-status-only"
+    assert status_only.json()["items"][0]["current_ingestion_status"] == "QUEUED"
 
     forbidden_status_lineage = client.patch(
         f"/api/v1/documents/{body['document']['document_id']}/external-references/current",
@@ -502,6 +538,10 @@ def test_central_aiip_akb_client_uses_separate_credentials_and_exact_echo(monkey
             "policyBindingId": binding.policy_binding_id,
             "policyVersion": binding.policy_version,
             "policyHash": canonical_policy_hash(binding),
+            "originatorId": binding.originator_id,
+            "originator": binding.originator_id,
+            "issuedAt": "2026-07-14T00:00:00Z",
+            "reviewAt": None,
         },
         "registeredBySubjectId": ACTOR,
         "confirmedBySubjectId": ACTOR,

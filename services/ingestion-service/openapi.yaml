@@ -38,6 +38,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReadinessResponse'
+  /api/v1/integrations/web-ingestion/readiness:
+    get:
+      tags:
+      - health
+      summary: Web Ingestion Transport Readiness
+      description: Non-mutating deployment proof for the exact web ingestion client.
+      operationId: web_ingestion_transport_readiness_api_v1_integrations_web_ingestion_readiness_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Web Ingestion Transport Readiness Api V1 Integrations
+                  Web Ingestion Readiness Get
   /api/v1/ingestion/jobs:
     get:
       tags:
@@ -155,6 +173,31 @@ paths:
           minimum: 1
           default: 10
           title: Value Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityFacetReport'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/intelligence/entities/facets/query:
+    post:
+      tags:
+      - intelligence
+      summary: Query Entity Facets
+      operationId: query_entity_facets_api_v1_intelligence_entities_facets_query_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntityFacetRequest'
+        required: true
       responses:
         '200':
           description: Successful Response
@@ -378,6 +421,12 @@ components:
             type: object
           - type: 'null'
           title: Allowed Policy Hashes
+        authorized_documents:
+          items:
+            $ref: '#/components/schemas/IntelligenceDocumentCoordinate'
+          type: array
+          maxItems: 500
+          title: Authorized Documents
         limit:
           type: integer
           maximum: 50.0
@@ -537,6 +586,32 @@ components:
       - chunks_with_entities
       - generated_at
       title: EntityFacetReport
+    EntityFacetRequest:
+      properties:
+        authorized_documents:
+          items:
+            $ref: '#/components/schemas/IntelligenceDocumentCoordinate'
+          type: array
+          maxItems: 500
+          minItems: 1
+          title: Authorized Documents
+        limit:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Limit
+          default: 8
+        value_limit:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Value Limit
+          default: 10
+      additionalProperties: false
+      type: object
+      required:
+      - authorized_documents
+      title: EntityFacetRequest
     EntityRelationshipEdge:
       properties:
         edge_id:
@@ -727,6 +802,12 @@ components:
             type: object
           - type: 'null'
           title: Allowed Policy Hashes
+        authorized_documents:
+          items:
+            $ref: '#/components/schemas/IntelligenceDocumentCoordinate'
+          type: array
+          maxItems: 500
+          title: Authorized Documents
         min_evidence_count:
           type: integer
           maximum: 20.0
@@ -958,6 +1039,12 @@ components:
             type: object
           - type: 'null'
           title: Allowed Policy Hashes
+        authorized_documents:
+          items:
+            $ref: '#/components/schemas/IntelligenceDocumentCoordinate'
+          type: array
+          maxItems: 500
+          title: Authorized Documents
         limit:
           type: integer
           maximum: 50.0
@@ -1039,6 +1126,12 @@ components:
       title: HealthResponse
     IngestionJobCreate:
       properties:
+        idempotency_key:
+          type: string
+          maxLength: 200
+          minLength: 8
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]+$
+          title: Idempotency Key
         document_id:
           type: string
           maxLength: 128
@@ -1083,9 +1176,17 @@ components:
           minLength: 1
           title: Embedding Profile
           default: default
+        expected_current_ingestion_job_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Expected Current Ingestion Job Id
       additionalProperties: false
       type: object
       required:
+      - idempotency_key
       - document_id
       - document_version_id
       - source_file_uri
@@ -1277,10 +1378,36 @@ components:
       - tables_detected
       - ocr_used
       title: IngestionReport
+    IntelligenceDocumentCoordinate:
+      properties:
+        document_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Version Id
+        policy_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Policy Hash
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - policy_hash
+      title: IntelligenceDocumentCoordinate
     JobStatus:
       type: string
       enum:
+      - pending_authorization
+      - claiming
       - queued
+      - starting
       - running
       - completed
       - failed

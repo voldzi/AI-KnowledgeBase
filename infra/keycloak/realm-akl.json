@@ -37,6 +37,10 @@
         "description": "Service role for ingestion workers."
       },
       {
+        "name": "service_akb_web_ingestion",
+        "description": "Dedicated AKB web-to-ingestion transport role."
+      },
+      {
         "name": "service_aiip",
         "description": "Application service role for AI Innovation Portal."
       },
@@ -86,6 +90,29 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "svc-akb-web-ingestion",
+      "name": "AKB Web Ingestion Transport",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "akl-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "akl-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "svc-rag",

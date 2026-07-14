@@ -21,6 +21,7 @@ from tools.import_docs_folder import (  # noqa: E402
     run_import,
     write_reports,
 )
+from tools.legacy_mutation_guard import retire_legacy_mutation  # noqa: E402
 
 
 REGISTRY_URL = os.getenv("AKL_SMOKE_REGISTRY_URL", "http://localhost:8001").rstrip("/")
@@ -43,6 +44,7 @@ INFORMATION_POLICY_FILE = os.getenv("AKL_IMPORT_INFORMATION_POLICY_FILE")
 
 
 def main() -> int:
+    retire_legacy_mutation("scripts/phase_03_document_viewer_smoke.py")
     print("Phase 03 document viewer smoke test")
     check_health()
     report = import_docs_subset()
@@ -72,6 +74,7 @@ def check_health() -> None:
 
 
 def import_docs_subset() -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_03_document_viewer_smoke.py import_docs_subset")
     options = ImportOptions(
         source=ROOT / "docs",
         manifest_path=ROOT / "docs" / "import-manifest.yaml",
@@ -211,6 +214,11 @@ def request_json(
     expected_status: int = 200,
     headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    normalized_method = method.upper()
+    if normalized_method != "GET":
+        retire_legacy_mutation(
+            f"scripts/phase_03_document_viewer_smoke.py request_json {normalized_method}"
+        )
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request_headers = {
         "Accept": "application/json",
@@ -225,7 +233,7 @@ def request_json(
         request_headers["X-AKL-Roles"] = ROLES
     if headers:
         request_headers.update(headers)
-    request = urllib.request.Request(url, data=data, method=method, headers=request_headers)
+    request = urllib.request.Request(url, data=data, method=normalized_method, headers=request_headers)
     try:
         with urllib.request.urlopen(request, timeout=90) as response:
             raw = response.read().decode("utf-8")

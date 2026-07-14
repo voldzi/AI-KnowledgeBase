@@ -230,6 +230,143 @@
         }
       }
     },
+    "/api/v1/integrations/ingestion/readiness": {
+      "get": {
+        "summary": "Ingestion Service Readiness",
+        "operationId": "registry_api_ingestion_service_readiness_api_v1_integrations_ingestion_readiness_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Ingestion Service Readiness Api V1 Integrations Ingestion Readiness Get"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/integrations/ingestion/authorizations/confirm": {
+      "post": {
+        "summary": "Confirm Ingestion Authorization Proof",
+        "operationId": "registry_api_confirm_ingestion_authorization_proof_api_v1_integrations_ingestion_authorizations_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiIngestionAuthorizationConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiIngestionAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/integrations/ingestion/intelligence-authorizations/confirm": {
+      "post": {
+        "summary": "Confirm Intelligence Scope Authorization Proof",
+        "operationId": "registry_api_confirm_intelligence_scope_authorization_proof_api_v1_integrations_ingestion_intelligence_authorizations_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiIntelligenceScopeAuthorizationConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiIntelligenceScopeAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/integrations/aiip-upload/external-documents/upsert": {
       "post": {
         "summary": "Upsert Aiip External Document",
@@ -595,6 +732,46 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiExternalDocumentCurrentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "get": {
+        "summary": "Get Document External References Current",
+        "operationId": "registry_api_get_document_external_references_current_api_v1_documents__document_id__external_references_current_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2020,6 +2197,128 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegistryApiDocumentVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/intelligence/authorization": {
+      "post": {
+        "summary": "Create Intelligence Scope Authorization Proof",
+        "operationId": "registry_api_create_intelligence_scope_authorization_proof_api_v1_intelligence_authorization_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiIntelligenceScopeAuthorizationIssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiIntelligenceScopeAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/documents/{document_id}/versions/{version_id}/ingestion-authorization": {
+      "post": {
+        "summary": "Create Ingestion Authorization Proof",
+        "operationId": "registry_api_create_ingestion_authorization_proof_api_v1_documents__document_id__versions__version_id__ingestion_authorization_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiIngestionAuthorizationIssueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiIngestionAuthorizationResponse"
                 }
               }
             }
@@ -4134,6 +4433,43 @@
         }
       ]
     },
+    "/api/v1/integrations/web-ingestion/readiness": {
+      "get": {
+        "tags": [
+          "Ingestion Service",
+          "health"
+        ],
+        "summary": "Web Ingestion Transport Readiness",
+        "description": "Non-mutating deployment proof for the exact web ingestion client.",
+        "operationId": "ingestion_service_web_ingestion_transport_readiness_api_v1_integrations_web_ingestion_readiness_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Web Ingestion Transport Readiness Api V1 Integrations Web Ingestion Readiness Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8090",
+          "description": "Local direct Ingestion Service"
+        },
+        {
+          "url": "http://localhost:8080/ingestion",
+          "description": "Local reverse proxy Ingestion Service"
+        }
+      ]
+    },
     "/api/v1/ingestion/jobs": {
       "get": {
         "tags": [
@@ -4350,6 +4686,58 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionServiceEntityFacetReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8090",
+          "description": "Local direct Ingestion Service"
+        },
+        {
+          "url": "http://localhost:8080/ingestion",
+          "description": "Local reverse proxy Ingestion Service"
+        }
+      ]
+    },
+    "/api/v1/intelligence/entities/facets/query": {
+      "post": {
+        "tags": [
+          "Ingestion Service",
+          "intelligence"
+        ],
+        "summary": "Query Entity Facets",
+        "operationId": "ingestion_service_query_entity_facets_api_v1_intelligence_entities_facets_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionServiceEntityFacetRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8324,6 +8712,66 @@
         ],
         "summary": "POST /api/documents/{documentId}/governance",
         "operationId": "web_post_api_documents_documentId_governance",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{documentId}/ingestion/retry": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "post": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "POST /api/documents/{documentId}/ingestion/retry",
+        "operationId": "web_post_api_documents_documentId_ingestion_retry",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -13241,6 +13689,41 @@
             "type": "string",
             "pattern": "^sha256:[a-f0-9]{64}$",
             "title": "Policy Hash"
+          },
+          "originator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originator Id"
+          },
+          "issued_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issued At"
+          },
+          "review_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review At"
           }
         },
         "additionalProperties": false,
@@ -13248,7 +13731,10 @@
         "required": [
           "policy_binding_id",
           "policy_version",
-          "policy_hash"
+          "policy_hash",
+          "originator_id",
+          "issued_at",
+          "review_at"
         ],
         "title": "AiipGovernanceEffectivePolicy"
       },
@@ -17661,6 +18147,16 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "ingestion_attempt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistryApiIngestionAttemptResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -17695,6 +18191,18 @@
               }
             ],
             "title": "Current File Id"
+          },
+          "expected_current_ingestion_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Current Ingestion Job Id"
           },
           "current_ingestion_job_id": {
             "anyOf": [
@@ -17743,6 +18251,7 @@
             ]
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "ExternalDocumentCurrentUpdateRequest"
       },
@@ -18229,6 +18738,7 @@
         "enum": [
           "PUBLIC",
           "INTERNAL",
+          "PROJECT_MANAGEMENT",
           "RESTRICTED"
         ],
         "title": "HandlingClass"
@@ -18331,15 +18841,8 @@
             "title": "Originatorid"
           },
           "issuedAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "date-time",
             "title": "Issuedat"
           },
           "reviewAt": {
@@ -18365,9 +18868,220 @@
           "legalClassification",
           "contentCategories",
           "audience",
-          "obligations"
+          "obligations",
+          "issuedAt"
         ],
         "title": "InformationPolicyBinding"
+      },
+      "RegistryApiIngestionAttemptResponse": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "ingestion_job_id": {
+            "type": "string",
+            "title": "Ingestion Job Id"
+          },
+          "ingestion_status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "INGESTING",
+              "INDEXED",
+              "FAILED"
+            ],
+            "title": "Ingestion Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_version_id",
+          "ingestion_job_id",
+          "ingestion_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IngestionAttemptResponse"
+      },
+      "RegistryApiIngestionAuthorizationConfirmRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "document.ingest",
+              "document.read",
+              "document.reindex"
+            ],
+            "title": "Action"
+          },
+          "correlation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+            "title": "Correlation Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+            "title": "Idempotency Key"
+          },
+          "authorization_token": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 32,
+            "title": "Authorization Token"
+          },
+          "expected_subject_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 2,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]+$",
+            "title": "Expected Subject Id"
+          },
+          "document_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Version Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action",
+          "correlation_id",
+          "idempotency_key",
+          "authorization_token",
+          "expected_subject_id",
+          "document_id",
+          "document_version_id"
+        ],
+        "title": "IngestionAuthorizationConfirmRequest"
+      },
+      "RegistryApiIngestionAuthorizationIssueRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "document.ingest",
+              "document.read",
+              "document.reindex"
+            ],
+            "title": "Action"
+          },
+          "correlation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+            "title": "Correlation Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action",
+          "correlation_id",
+          "idempotency_key"
+        ],
+        "title": "IngestionAuthorizationIssueRequest"
+      },
+      "RegistryApiIngestionAuthorizationResponse": {
+        "properties": {
+          "authorization_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Token"
+          },
+          "authorization_id": {
+            "type": "string",
+            "title": "Authorization Id"
+          },
+          "confirmed_subject_id": {
+            "type": "string",
+            "title": "Confirmed Subject Id"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "document.ingest",
+              "document.read",
+              "document.reindex"
+            ],
+            "title": "Action"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "correlation_id": {
+            "type": "string",
+            "title": "Correlation Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorization_id",
+          "confirmed_subject_id",
+          "action",
+          "document_id",
+          "document_version_id",
+          "correlation_id",
+          "idempotency_key",
+          "expires_at"
+        ],
+        "title": "IngestionAuthorizationResponse"
       },
       "RegistryApiIntegrationActor": {
         "properties": {
@@ -18792,6 +19506,191 @@
           "scope"
         ],
         "title": "IntegrationSourceResource"
+      },
+      "RegistryApiIntelligenceDocumentCoordinate": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "policy_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Policy Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_version_id",
+          "policy_hash"
+        ],
+        "title": "IntelligenceDocumentCoordinate"
+      },
+      "RegistryApiIntelligenceScopeAuthorizationConfirmRequest": {
+        "properties": {
+          "authorization_token": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 32,
+            "title": "Authorization Token"
+          },
+          "expected_subject_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 2,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]+$",
+            "title": "Expected Subject Id"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiIntelligenceDocumentCoordinate"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Documents"
+          },
+          "correlation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+            "title": "Correlation Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "authorization_token",
+          "expected_subject_id",
+          "documents",
+          "correlation_id",
+          "idempotency_key"
+        ],
+        "title": "IntelligenceScopeAuthorizationConfirmRequest"
+      },
+      "RegistryApiIntelligenceScopeAuthorizationIssueRequest": {
+        "properties": {
+          "document_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Document Ids"
+          },
+          "correlation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+            "title": "Correlation Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_ids",
+          "correlation_id",
+          "idempotency_key"
+        ],
+        "title": "IntelligenceScopeAuthorizationIssueRequest"
+      },
+      "RegistryApiIntelligenceScopeAuthorizationResponse": {
+        "properties": {
+          "authorization_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Token"
+          },
+          "authorization_id": {
+            "type": "string",
+            "title": "Authorization Id"
+          },
+          "confirmed_subject_id": {
+            "type": "string",
+            "title": "Confirmed Subject Id"
+          },
+          "action": {
+            "type": "string",
+            "const": "intelligence.query",
+            "title": "Action",
+            "default": "intelligence.query"
+          },
+          "document_scope_hash": {
+            "type": "string",
+            "title": "Document Scope Hash"
+          },
+          "document_count": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Document Count"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiIntelligenceDocumentCoordinate"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "correlation_id": {
+            "type": "string",
+            "title": "Correlation Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorization_id",
+          "confirmed_subject_id",
+          "document_scope_hash",
+          "document_count",
+          "documents",
+          "correlation_id",
+          "idempotency_key",
+          "expires_at"
+        ],
+        "title": "IntelligenceScopeAuthorizationResponse"
       },
       "RegistryApiPapLabel": {
         "type": "string",
@@ -19863,6 +20762,14 @@
             ],
             "title": "Allowed Policy Hashes"
           },
+          "authorized_documents": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionServiceIntelligenceDocumentCoordinate"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Authorized Documents"
+          },
           "limit": {
             "type": "integer",
             "maximum": 50.0,
@@ -20068,6 +20975,39 @@
           "generated_at"
         ],
         "title": "EntityFacetReport"
+      },
+      "IngestionServiceEntityFacetRequest": {
+        "properties": {
+          "authorized_documents": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionServiceIntelligenceDocumentCoordinate"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Authorized Documents"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 8
+          },
+          "value_limit": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Value Limit",
+            "default": 10
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "authorized_documents"
+        ],
+        "title": "EntityFacetRequest"
       },
       "IngestionServiceEntityRelationshipEdge": {
         "properties": {
@@ -20366,6 +21306,14 @@
               }
             ],
             "title": "Allowed Policy Hashes"
+          },
+          "authorized_documents": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionServiceIntelligenceDocumentCoordinate"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Authorized Documents"
           },
           "min_evidence_count": {
             "type": "integer",
@@ -20738,6 +21686,14 @@
             ],
             "title": "Allowed Policy Hashes"
           },
+          "authorized_documents": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionServiceIntelligenceDocumentCoordinate"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Authorized Documents"
+          },
           "limit": {
             "type": "integer",
             "maximum": 50.0,
@@ -20845,6 +21801,13 @@
       },
       "IngestionServiceIngestionJobCreate": {
         "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+            "title": "Idempotency Key"
+          },
           "document_id": {
             "type": "string",
             "maxLength": 128,
@@ -20901,11 +21864,25 @@
             "minLength": 1,
             "title": "Embedding Profile",
             "default": "default"
+          },
+          "expected_current_ingestion_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Current Ingestion Job Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "idempotency_key",
           "document_id",
           "document_version_id",
           "source_file_uri"
@@ -21174,10 +22151,42 @@
         ],
         "title": "IngestionReport"
       },
+      "IngestionServiceIntelligenceDocumentCoordinate": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "policy_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Policy Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_version_id",
+          "policy_hash"
+        ],
+        "title": "IntelligenceDocumentCoordinate"
+      },
       "IngestionServiceJobStatus": {
         "type": "string",
         "enum": [
+          "pending_authorization",
+          "claiming",
           "queued",
+          "starting",
           "running",
           "completed",
           "failed",

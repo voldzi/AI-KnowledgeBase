@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { authenticateAiipServiceJsonRequest } from "@/lib/aiip/application-api";
-import { getServerApiClients } from "@/lib/api/server";
+import { getAiipActorRequestContext, getServerApiClients } from "@/lib/api/server";
 import { ApiClientError, type ApiRequestContext, type IngestionJob } from "@/lib/types";
+import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
 import {
   assertExactFields,
   assertRequiredStringFields,
@@ -18,7 +19,6 @@ import {
   type StratosUploadConfirmResult
 } from "@/lib/stratos/document-ai";
 import { equalAiipGovernanceConfirmation, equalCanonicalJson } from "@/lib/stratos/aiip-governance";
-import { latestIngestionJobForVersion } from "@/lib/stratos/upload-idempotency";
 import {
   assertUploadMatchesIngestionPayload,
   verifyPersistedUploadedObject,
@@ -250,6 +250,9 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       confirmation.governed_resource.effective_policy.policy_binding_id !== informationPolicy.policyBindingId ||
       confirmation.governed_resource.effective_policy.policy_version !== informationPolicy.policyVersion ||
       confirmation.governed_resource.effective_policy.policy_hash !== policyHash(informationPolicy) ||
+      confirmation.governed_resource.effective_policy.originator_id !== (informationPolicy.originatorId ?? null) ||
+      confirmation.governed_resource.effective_policy.issued_at !== (informationPolicy.issuedAt ?? null) ||
+      confirmation.governed_resource.effective_policy.review_at !== (informationPolicy.reviewAt ?? null) ||
       !confirmation.governed_resource.registered_by_subject_id ||
       confirmation.governed_resource.confirmed_by_subject_id !== integrationEnvelope.actor.subjectId ||
       confirmation.parent_source_resource.governed_resource_id !== integrationEnvelope.sourceResource.governedResourceId ||
@@ -273,30 +276,60 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       );
     }
     const idempotentReplay = !versionUpsert.created;
-
-    let job: IngestionJob | null = null;
-    if (idempotentReplay) {
-      const jobs = await clients.ingestion.listJobs(context);
-      job = latestIngestionJobForVersion(jobs, version.document_version_id);
+    const actorContext = await getAiipActorRequestContext(request);
+    if (actorContext.subjectId !== confirmation.actor_subject_id) {
+      throw new ApiClientError(
+        "Registry confirmation and the current AIIP actor identity differ.",
+        403,
+        "AIIP_ACTOR_CONFIRMATION_CONFLICT",
+        integrationEnvelope.correlationId,
+      );
     }
-    if (!job) {
-      try {
-        job = await clients.ingestion.createJob(
-          createIngestionRequest({
-            documentId,
-            versionId: version.document_version_id,
-            sourceFileUri: version.source_file_uri,
-            body: normalizedBody
-          }),
-          context
-        );
-      } catch (error) {
-        if (!(error instanceof ApiClientError) || error.status !== 409) throw error;
-        const jobs = await clients.ingestion.listJobs(context);
-        job = latestIngestionJobForVersion(jobs, version.document_version_id);
-        if (!job) throw error;
-      }
+    const idempotencyKey = `confirm:${externalDocumentId}:${version.document_version_id}`;
+    const ingestionAuthorization = await clients.registry.createIngestionAuthorization(
+      documentId,
+      version.document_version_id,
+      {
+        action: "document.ingest",
+        correlation_id: integrationEnvelope.correlationId,
+        idempotency_key: idempotencyKey,
+      },
+      {
+        ...actorContext,
+        requestId: integrationEnvelope.correlationId,
+        correlationId: integrationEnvelope.correlationId,
+      },
+    );
+    if (
+      ingestionAuthorization.confirmed_subject_id !== confirmation.actor_subject_id ||
+      ingestionAuthorization.document_id !== documentId ||
+      ingestionAuthorization.document_version_id !== version.document_version_id ||
+      ingestionAuthorization.correlation_id !== integrationEnvelope.correlationId ||
+      ingestionAuthorization.idempotency_key !== idempotencyKey
+    ) {
+      throw new ApiClientError(
+        "Registry returned a conflicting ingestion authorization.",
+        502,
+        "INGESTION_AUTHORIZATION_CONFLICT",
+        integrationEnvelope.correlationId,
+      );
     }
+    const ingestionContext = await ingestionServiceRequestContext(integrationEnvelope.correlationId);
+    const ingestionRequest = createIngestionRequest({
+        idempotencyKey,
+        documentId,
+        versionId: version.document_version_id,
+        sourceFileUri: version.source_file_uri,
+        body: normalizedBody,
+      });
+    let job: IngestionJob = await clients.ingestion.createJob(
+      ingestionRequest,
+      ingestionContext,
+      {
+        delegatedActorSubjectId: ingestionAuthorization.confirmed_subject_id,
+        authorizationToken: ingestionAuthorization.authorization_token,
+      },
+    );
     const ingestionStatus = mapIngestionStatus({ version, job });
     const fileId = version.file_id;
     if (!fileId) {
@@ -340,13 +373,32 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
         "web-stratos-bridge",
       );
     }
+    if (["pending_authorization", "claiming"].includes(job.status)) {
+      job = await clients.ingestion.createJob(
+        ingestionRequest,
+        ingestionContext,
+        {
+          delegatedActorSubjectId: ingestionAuthorization.confirmed_subject_id,
+          authorizationToken: ingestionAuthorization.authorization_token,
+        },
+      );
+      if (["pending_authorization", "claiming"].includes(job.status)) {
+        throw new ApiClientError(
+          "The authoritative ingestion attempt was selected but did not activate.",
+          503,
+          "INGESTION_ACTIVATION_PENDING",
+          integrationEnvelope.correlationId,
+        );
+      }
+    }
+    const reconciledIngestionStatus = mapIngestionStatus({ version, job });
     const result: StratosUploadConfirmResult = {
       document_id: documentId,
       document_version_id: version.document_version_id,
       external_document_id: current.external_document.external_document.external_document_id,
       file_id: fileId,
       ingestion_job_id: job.job_id,
-      ingestion_status: ingestionStatus,
+      ingestion_status: reconciledIngestionStatus,
       idempotent_replay: idempotentReplay,
       canonical_open_url: canonicalDocumentUrl({
         documentId,

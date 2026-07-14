@@ -17,6 +17,11 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.legacy_mutation_guard import retire_legacy_mutation  # noqa: E402
+
 FIXTURE_PATH = ROOT / "tests" / "fixtures" / "documents" / "controlled-document-sample.md"
 
 REGISTRY_URL = os.getenv("AKL_SMOKE_REGISTRY_URL", "http://localhost:8001").rstrip("/")
@@ -36,6 +41,7 @@ RUN_TAG = os.getenv("AKL_SMOKE_RUN_TAG", f"phase02-smoke-{uuid.uuid4().hex[:8]}"
 
 
 def main() -> int:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py")
     print("Phase 02 controlled document smoke test")
     fixture_text = FIXTURE_PATH.read_text(encoding="utf-8")
     seed_ingestion_object(fixture_text)
@@ -63,6 +69,7 @@ def main() -> int:
 
 
 def seed_ingestion_object(content: str) -> None:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py seed_ingestion_object")
     if os.getenv("AKL_SMOKE_SKIP_DOCKER_SEED") == "1":
         print("SKIP object-storage seed")
         return
@@ -100,6 +107,7 @@ def check_health() -> None:
 
 
 def create_document() -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py create_document")
     return request_json(
         "POST",
         f"{REGISTRY_URL}/api/v1/documents",
@@ -136,6 +144,7 @@ def create_document() -> dict[str, Any]:
 
 
 def create_version(document_id: str, fixture_text: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py create_version")
     sha256 = "sha256:" + hashlib.sha256(fixture_text.encode("utf-8")).hexdigest()
     return request_json(
         "POST",
@@ -160,6 +169,7 @@ def create_version(document_id: str, fixture_text: str) -> dict[str, Any]:
 
 
 def publish_version(document_id: str, version_id: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py publish_version")
     version = request_json(
         "POST",
         f"{REGISTRY_URL}/api/v1/documents/{document_id}/versions/{version_id}/publish",
@@ -170,6 +180,7 @@ def publish_version(document_id: str, version_id: str) -> dict[str, Any]:
 
 
 def run_ingestion(document_id: str, document_version_id: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py run_ingestion")
     return request_json(
         "POST",
         f"{INGESTION_URL}/api/v1/ingestion/jobs",
@@ -209,6 +220,7 @@ def verify_qdrant_index(
     version: dict[str, Any],
     report: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py verify_qdrant_index")
     filter_body = {
         "must": [
             {"key": "document_version_id", "match": {"value": version["document_version_id"]}},
@@ -258,6 +270,7 @@ def verify_qdrant_index(
 
 
 def query_rag(document_id: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py query_rag")
     answer = request_json(
         "POST",
         f"{RAG_URL}/api/v1/rag/query",
@@ -294,6 +307,7 @@ def find_audit_event(event_type: str, resource_id: str) -> dict[str, Any]:
 
 
 def write_smoke_audit(document_id: str, job_id: str, query_id: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py write_smoke_audit")
     return request_json(
         "POST",
         f"{REGISTRY_URL}/api/v1/audit/events",
@@ -327,6 +341,8 @@ def request_json(
     expected_status: int = 200,
     headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    if method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+        retire_legacy_mutation("scripts/phase_02_controlled_document_smoke.py request_json mutation")
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request_headers = {
         "Accept": "application/json",

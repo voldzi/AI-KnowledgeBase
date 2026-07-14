@@ -141,6 +141,23 @@ fallback. `/ready` must return HTTP `503` with Registry `not_ready` when this
 identity cannot be obtained; rotate the secret and recreate only the ingestion
 container before a bounded ingestion smoke.
 
+Interactive web-to-ingestion traffic has a fourth independent boundary.
+Provision `svc-akb-web-ingestion` with role
+`service_akb_web_ingestion`, audience `akl-api`, and store its secret at
+`/srv/akl/env/svc-akb-web-ingestion.client-secret` mode `0600`. It receives no
+Registry route grant. Web mounts the host file read-only and copies it into a
+private tmpfs for the unprivileged runtime user. Registry separately requires
+`/srv/akl/env/ingestion-authorization.secret`, owned by the release operator,
+mode `0600`, with at least 32 random bytes. Never reuse either client secret as
+the signing secret.
+
+The immutable release preflights those two files, the existing
+`svc-ingestion.client-secret`, and
+`akb-rag-service.client-secret` before burning the SHA or building images.
+First rollout selects Registry, Ingestion, RAG and web, so all four files and
+their corresponding environment keys must exist before the maintenance
+window.
+
 Set the same independent, random value of at least 32 characters as
 `AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN` in the Registry and web containers. It is
 only a private resolver credential; it is never accepted as a STRATOS policy
@@ -149,7 +166,7 @@ value disables public source delivery. Public metadata and source responses
 must remain `no-store`; operators verify revoke by observing an immediate 404
 after the next fresh central decision.
 
-### Forward-only governance migrations (`0015`–`0017`)
+### Forward-only governance migrations (`0015`–`0018`)
 
 Treat `0015_document_publications` and `0016_public_audit_aggregation` as
 forward-only production migrations. The second migration adds nullable
@@ -160,6 +177,12 @@ version governance scopes. It backfills every existing `own` row from the
 persisted document owner, clears its former generic scope id, and only then
 enables the database shape constraint. This prevents an existing private row
 from being reinterpreted as organization-wide content.
+`0018_ingestion_attempts` creates one authoritative ingestion-attempt CAS row
+per document, protected by a same-document composite version foreign key,
+unique job id, and bounded status constraint. It backfills only unambiguous
+current job/version/status values from external references. Partial, conflicting
+or invalid legacy state aborts the migration for explicit reconciliation; the
+migration never guesses a winner.
 Use the environment-specific Compose command and backup procedure from the
 deployment runbook; the sequence is mandatory:
 
@@ -180,10 +203,12 @@ deployment runbook; the sequence is mandatory:
    establish checksum integrity and syntactic custom-dump/TOC readability, not
    a proven restore point; only the documented isolated restore rehearsal does
    that.
-2. Deploy full-Git-SHA image tags for only the affected Registry, RAG, and web
-   services, then run `alembic upgrade head` in the target `registry-api`
-   image. A shared production Compose change is not supported by this narrow
-   workflow. Durably record each post-build image ID and verify exact
+2. Deploy full-Git-SHA image tags for only the affected Registry, Ingestion,
+   RAG, and web services, then run `alembic upgrade head` in the target
+   `registry-api` image. A shared production Compose change is accepted only
+   when a structural comparison proves that it changes complete blocks of
+   those four services and leaves every unmanaged block and the top-level
+   envelope byte-identical. Durably record each post-build image ID and verify exact
    SHA/project/service labels again before Alembic/restart, after recreation,
    and after all smoke tests immediately before activation. Reconciliation loads
    the original IDs from the deployment record named by the verified runtime
@@ -191,12 +216,16 @@ deployment runbook; the sequence is mandatory:
    recreation execute from the recorded image IDs directly, so a concurrent tag
    retarget cannot select different bytes. Require the target image to declare
    exactly one head and `alembic current` to return exactly one canonical
-   revision equal to it (currently `0017_canonical_own_scope` or a later
+   revision equal to it (currently `0018_ingestion_attempts` or a later
    approved single head). Multi-head or malformed state fails closed.
-3. Require the Registry and web readiness endpoints to pass before public
-   traffic is tested. The release must also prove exact image tag/ID and
+3. Require Registry, Ingestion, RAG, and web health/readiness for every selected
+   service before public traffic is tested. Ingestion `/ready` is authenticated;
+   the release runs its exact in-container `svc-ingestion` probe and never
+   treats an anonymous 401/403 as readiness. It also verifies the non-mutating
+   exact web-transport route. The release must prove exact image tag/ID and
    release/Compose labels. A failed readiness or identity check stops the
-   rollout and leaves the applied-runtime SHA marked for forward-fix recovery.
+   rollout, quarantines provable unverified target containers, and leaves the
+   applied-runtime SHA marked for forward-fix recovery.
 4. Use a deliberately disposable, already approved public document version to
    smoke the anonymous metadata endpoint and source endpoint. Require HTTP
    `200`, `Cache-Control: no-store`, only the sanitized metadata allowlist, and
@@ -366,17 +395,20 @@ python3 tools/okf_profile.py validate --source ./okf --report reports/okf_valida
 python3 tools/okf_profile.py plan-import --source ./okf --report reports/okf_import_plan.json
 ```
 
-Import OKF concepts through the existing Markdown importer with the STRATOS OKF
-metadata profile enabled:
+Create a dry-run OKF import inventory with the STRATOS OKF metadata profile:
 
 ```bash
 python3 tools/import_docs_folder.py \
   --source ./okf \
   --manifest docs/import-manifest.yaml \
-  --mode reindex \
+  --mode skip-existing \
   --okf-profile \
+  --dry-run \
   --report reports/okf_import_report.json
 ```
+
+Host importer mutation is retired in every profile and fails before writes.
+Actual OKF imports use the governed application UI/API.
 
 Profile details: `docs/integration/STRATOS_OKF_PROFILE.md`.
 

@@ -30,7 +30,7 @@ export interface InformationPolicyBindingSummary {
   schemaVersion: "stratos-information-policy-2";
   policyBindingId: string;
   policyVersion: "information-policy-2.0.0";
-  handlingClass: "PUBLIC" | "INTERNAL" | "RESTRICTED";
+  handlingClass: "PUBLIC" | "INTERNAL" | "PROJECT_MANAGEMENT" | "RESTRICTED";
   legalClassification: "NONE";
   tlp?: "TLP:RED" | "TLP:AMBER+STRICT" | "TLP:AMBER" | "TLP:GREEN" | "TLP:CLEAR" | null;
   pap?: "PAP:RED" | "PAP:AMBER" | "PAP:GREEN" | "PAP:CLEAR" | null;

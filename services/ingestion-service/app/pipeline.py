@@ -55,10 +55,44 @@ class IngestionPipeline:
         ocr_used = False
         warnings: list[ReportMessage] = []
 
-        if self.store.get(job_id).job.status == JobStatus.cancelled:
-            return self.store.get(job_id)
+        current = self.store.get(job_id)
+        if current.job.status == JobStatus.cancelled:
+            return current
+        if current.job.status == JobStatus.queued:
+            current = self.store.update_status(
+                job_id,
+                JobStatus.starting,
+                expected_statuses={JobStatus.queued},
+            )
+        if current.job.status not in {JobStatus.starting, JobStatus.running}:
+            raise IngestionError(
+                "JOB_NOT_AUTHORIZED_TO_RUN",
+                "The ingestion job has not completed its authoritative claim handshake",
+                status_code=409,
+            )
 
-        self.store.update_status(job_id, JobStatus.running, started_at=utcnow())
+        # The Registry CAS is the execution lease. It must succeed before reading
+        # source data, parsing, embedding, indexing, or emitting a started audit.
+        try:
+            await self._sync_external_status(
+                current,
+                status="INGESTING",
+                auth_context=auth_context,
+            )
+        except IngestionError as exc:
+            if exc.code == "REGISTRY_CONFLICT":
+                return self._record_unleased_failure(current, exc)
+            # A transport-unknown outcome remains STARTING. Exact replay repeats
+            # the idempotent lease transition before any processing side effect.
+            raise
+        if current.job.status == JobStatus.starting:
+            current = self.store.update_status(
+                job_id,
+                JobStatus.running,
+                started_at=utcnow(),
+                expected_statuses={JobStatus.starting},
+            )
+        stored_job = current
         await self._audit(
             actor_id=subject_id,
             event_type="ingestion.job.started",
@@ -75,24 +109,34 @@ class IngestionPipeline:
         )
 
         try:
-            await self.registry.require_authorized(
-                subject_id=subject_id,
-                action="document.ingest",
-                document_id=request.document_id,
-                document_version_id=request.document_version_id,
-                auth_context=auth_context,
-            )
             document_metadata = await self.registry.get_document_metadata(
                 request.document_id,
                 request.document_version_id,
                 auth_context=auth_context,
             )
-            await self._sync_external_status(
-                stored_job,
-                status="INGESTING",
-                auth_context=auth_context,
-            )
+            if self.registry.settings.registry_client_mode != "mock":
+                if not document_metadata.source_file_uri or not document_metadata.file_hash:
+                    raise IngestionError(
+                        "SOURCE_INTEGRITY_NOT_REGISTERED",
+                        "The immutable Registry version does not contain an authoritative source URI and hash",
+                        status_code=409,
+                    )
+                if document_metadata.source_file_uri != request.source_file_uri:
+                    raise IngestionError(
+                        "SOURCE_URI_MISMATCH",
+                        "The requested source URI does not match the immutable Registry version",
+                        status_code=409,
+                    )
             source = await self.object_storage.read(request.source_file_uri)
+            if (
+                document_metadata.file_hash is not None
+                and source.sha256 != document_metadata.file_hash
+            ):
+                raise IngestionError(
+                    "SOURCE_HASH_MISMATCH",
+                    "The source content does not match the immutable Registry version hash",
+                    status_code=409,
+                )
             parser_result = self.parser_router.parse(
                 source,
                 parser_profile=request.parser_profile,
@@ -170,13 +214,21 @@ class IngestionPipeline:
                 warnings=warnings,
                 errors=[],
             )
-            self.store.update_status(job_id, final_status, finished_at=utcnow())
-            updated = self.store.update_report(job_id, report)
-            await self._sync_external_status(
-                stored_job,
-                status="INDEXED",
-                auth_context=auth_context,
-            )
+            try:
+                updated = self.store.finalize(
+                    job_id,
+                    status=final_status,
+                    report=report,
+                    pending_external_status="INDEXED",
+                    finished_at=utcnow(),
+                    expected_statuses={JobStatus.running},
+                )
+            except IngestionError as exc:
+                current = self.store.get(job_id)
+                if exc.code == "JOB_STATE_CONFLICT" and current.job.status == JobStatus.cancelled:
+                    return current
+                raise
+            updated = await self.reconcile_terminal_status(updated, auth_context=auth_context)
             await self._audit(
                 actor_id=subject_id,
                 event_type="ingestion.job.completed",
@@ -221,6 +273,13 @@ class IngestionPipeline:
                 warnings=warnings,
             )
         except IngestionError as exc:
+            current = self.store.get(job_id)
+            if current.pending_external_status is not None and current.job.status in {
+                JobStatus.completed,
+                JobStatus.completed_with_warnings,
+                JobStatus.failed,
+            }:
+                raise
             return await self._fail_job(
                 stored_job,
                 subject_id=subject_id,
@@ -279,13 +338,21 @@ class IngestionPipeline:
             warnings=warnings,
             errors=[error],
         )
-        self.store.update_status(job_id, JobStatus.failed, finished_at=utcnow())
-        updated = self.store.update_report(job_id, report)
-        await self._sync_external_status(
-            stored_job,
-            status="FAILED",
-            auth_context=auth_context,
-        )
+        try:
+            updated = self.store.finalize(
+                job_id,
+                status=JobStatus.failed,
+                report=report,
+                pending_external_status="FAILED",
+                finished_at=utcnow(),
+                expected_statuses={JobStatus.running},
+            )
+        except IngestionError as exc:
+            current = self.store.get(job_id)
+            if exc.code == "JOB_STATE_CONFLICT" and current.job.status == JobStatus.cancelled:
+                return current
+            raise
+        updated = await self.reconcile_terminal_status(updated, auth_context=auth_context)
         await self._audit(
             actor_id=subject_id,
             event_type="ingestion.job.failed",
@@ -307,6 +374,51 @@ class IngestionPipeline:
         )
         return updated
 
+    async def reconcile_terminal_status(
+        self,
+        stored_job: StoredJob,
+        *,
+        auth_context: AuthContext | None,
+    ) -> StoredJob:
+        current = self.store.get(stored_job.job.job_id)
+        pending_status = current.pending_external_status
+        if pending_status is None:
+            return current
+        await self._sync_external_status(
+            current,
+            status=pending_status,
+            auth_context=auth_context,
+        )
+        return self.store.clear_pending_external_status(
+            current.job.job_id,
+            expected_status=pending_status,
+        )
+
+    def _record_unleased_failure(
+        self,
+        stored_job: StoredJob,
+        exc: IngestionError,
+    ) -> StoredJob:
+        report = IngestionReport(
+            job_id=stored_job.job.job_id,
+            status=JobStatus.failed,
+            documents_processed=0,
+            pages_processed=0,
+            chunks_created=0,
+            tables_detected=0,
+            ocr_used=False,
+            warnings=[],
+            errors=[ReportMessage(code=exc.code, message=exc.message)],
+        )
+        return self.store.finalize(
+            stored_job.job.job_id,
+            status=JobStatus.failed,
+            report=report,
+            pending_external_status=None,
+            finished_at=utcnow(),
+            expected_statuses={JobStatus.starting},
+        )
+
     async def _sync_external_status(
         self,
         stored_job: StoredJob,
@@ -315,21 +427,13 @@ class IngestionPipeline:
         auth_context: AuthContext | None,
     ) -> None:
         request = stored_job.request
-        try:
-            await self.registry.update_external_document_current(
-                document_id=request.document_id,
-                document_version_id=request.document_version_id,
-                ingestion_job_id=stored_job.job.job_id,
-                ingestion_status=status,
-                auth_context=auth_context,
-            )
-        except IngestionError as exc:
-            logger.warning(
-                "external_document_status_sync_failed job_id=%s status=%s error_code=%s",
-                stored_job.job.job_id,
-                status,
-                exc.code,
-            )
+        await self.registry.update_external_document_current(
+            document_id=request.document_id,
+            document_version_id=request.document_version_id,
+            ingestion_job_id=stored_job.job.job_id,
+            ingestion_status=status,
+            auth_context=auth_context,
+        )
 
     async def _audit(
         self,

@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from hashlib import sha256
+import json
 from typing import Any
 
 from sqlalchemy import select
@@ -20,9 +22,9 @@ from app.information_policy import (
     anonymous_public_eligible,
     canonical_policy_hash,
 )
-from app.models import Document, RoleMapping
+from app.models import Document, DocumentVersion, RoleMapping
 from app.public_documents import PublicDocumentIntegrityError, validate_publication_integrity
-from app.schemas import Action, Classification
+from app.schemas import Action, Classification, GovernanceScope
 
 
 CLASSIFICATION_ORDER = {
@@ -197,6 +199,20 @@ class Decision:
     reason: str
     constraints: dict[str, Any]
     reason_codes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DocumentVersionAuthority:
+    organization_id: str
+    governed_resource_id: str
+    governed_source_version: str
+    governed_parent_resource_id: str | None
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    governance_scope: dict[str, str]
+    governance_scope_hash: str
+    policy_binding: InformationPolicyBinding
 
 
 def max_classification_for_roles(roles: set[str]) -> str:
@@ -425,15 +441,18 @@ def _v2_base_decision(context: SubjectContext, action: str) -> Decision | None:
     return None
 
 
-def _governance_scope_allows(context: SubjectContext, document: Document) -> bool:
-    scope_type = document.governance_scope_type or "organization"
+def _governance_scope_allows(
+    context: SubjectContext,
+    resource: Document | DocumentVersion,
+) -> bool:
+    scope_type = resource.governance_scope_type or "organization"
     if scope_type == "own":
         return bool(
-            document.governance_scope_owner_subject_id
-            and document.governance_scope_owner_subject_id == context.subject_id
+            resource.governance_scope_owner_subject_id
+            and resource.governance_scope_owner_subject_id == context.subject_id
             and "own" in context.scopes
         )
-    scope_id = document.governance_scope_id or (
+    scope_id = resource.governance_scope_id or (
         context.organization_id if scope_type == "organization" else None
     )
     if scope_type == "organization":
@@ -471,8 +490,12 @@ def _policy_audience_allows(
     return audience.scope_type in context.scopes and not audience.scope_ids
 
 
-def _scope_allows(context: SubjectContext, document: Document, binding: InformationPolicyBinding) -> bool:
-    return _governance_scope_allows(context, document) and _policy_audience_allows(
+def _scope_allows(
+    context: SubjectContext,
+    resource: Document | DocumentVersion,
+    binding: InformationPolicyBinding,
+) -> bool:
+    return _governance_scope_allows(context, resource) and _policy_audience_allows(
         context,
         binding,
     )
@@ -564,15 +587,218 @@ def evaluate_document_access(context: SubjectContext, action: str, document: Doc
     return Decision(False, "no document access policy matched", constraints)
 
 
-def document_governance_scope(document: Document) -> dict[str, str]:
-    scope = {"type": document.governance_scope_type or "organization"}
-    if document.governance_scope_id:
-        scope["id"] = document.governance_scope_id
-    elif document.governance_scope_owner_subject_id:
-        scope["ownerSubjectId"] = document.governance_scope_owner_subject_id
+def _resource_governance_scope(
+    resource: Document | DocumentVersion,
+) -> dict[str, str]:
+    scope = {"type": resource.governance_scope_type or "organization"}
+    if resource.governance_scope_id:
+        scope["id"] = resource.governance_scope_id
+    elif resource.governance_scope_owner_subject_id:
+        scope["ownerSubjectId"] = resource.governance_scope_owner_subject_id
     elif scope["type"] == "organization":
         scope["id"] = "org_stratos"
     return scope
+
+
+def document_governance_scope(document: Document) -> dict[str, str]:
+    return _resource_governance_scope(document)
+
+
+def document_version_governance_scope(version: DocumentVersion) -> dict[str, str]:
+    return _resource_governance_scope(version)
+
+
+def resolve_document_version_authority(
+    document: Document,
+    version: DocumentVersion,
+) -> DocumentVersionAuthority:
+    settings = get_settings()
+    mock_registration = (
+        settings.auth_mode == "mock"
+        and version.governance_registration_status == "MOCK_BYPASSED"
+    )
+    if version.document_id != document.document_id:
+        raise ValueError("The document version belongs to another document")
+    if (
+        document.organization_id != "org_stratos"
+        or version.organization_id != document.organization_id
+    ):
+        raise ValueError("The document version organization lineage is invalid")
+    if not version.policy_summary:
+        raise ValueError("The document version policy binding is unavailable")
+    try:
+        binding = InformationPolicyBinding.model_validate(version.policy_summary)
+    except ValueError as exc:
+        raise ValueError("The document version policy binding is invalid") from exc
+    expected_hash = canonical_policy_hash(binding)
+    if (
+        version.policy_binding_id != binding.policy_binding_id
+        or version.policy_version != POLICY_VERSION
+        or version.policy_version != binding.policy_version
+        or version.policy_hash != expected_hash
+        or binding.audience.organization_id != version.organization_id
+    ):
+        raise ValueError("The document version policy lineage is stale or conflicting")
+
+    source_version = version.governed_source_version
+    expected_source_versions = {version.document_version_id}
+    if version.file_hash:
+        expected_source_versions.add(version.file_hash)
+    if not source_version or source_version not in expected_source_versions:
+        raise ValueError("The document version governed source lineage is invalid")
+
+    if mock_registration:
+        governed_resource_id = (
+            version.governed_resource_id
+            or f"mock:akb:document-version:{version.document_version_id}"
+        )
+        governed_parent_resource_id = (
+            version.governed_parent_resource_id
+            or document.governed_resource_id
+            or f"mock:akb:document:{document.document_id}"
+        )
+    else:
+        if (
+            document.governance_registration_status != "REGISTERED"
+            or version.governance_registration_status != "REGISTERED"
+            or not document.governed_resource_id
+            or not version.governed_resource_id
+            or version.governed_parent_resource_id != document.governed_resource_id
+        ):
+            raise ValueError("The document version governed resource lineage is unavailable")
+        governed_resource_id = version.governed_resource_id
+        governed_parent_resource_id = version.governed_parent_resource_id
+
+    try:
+        scope_model = GovernanceScope.model_validate(
+            document_version_governance_scope(version)
+        )
+    except ValueError as exc:
+        raise ValueError("The document version governance scope is invalid") from exc
+    scope = scope_model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    scope_hash = "sha256:" + sha256(
+        json.dumps(
+            scope,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    return DocumentVersionAuthority(
+        organization_id=version.organization_id,
+        governed_resource_id=governed_resource_id,
+        governed_source_version=source_version,
+        governed_parent_resource_id=governed_parent_resource_id,
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=expected_hash,
+        governance_scope=scope,
+        governance_scope_hash=scope_hash,
+        policy_binding=binding,
+    )
+
+
+def evaluate_document_version_access(
+    context: SubjectContext,
+    action: str,
+    version: DocumentVersion,
+    authority: DocumentVersionAuthority,
+) -> Decision:
+    constraints = {
+        "organization_id": authority.organization_id,
+        "governed_resource_id": authority.governed_resource_id,
+        "governed_source_version": authority.governed_source_version,
+        "policy_binding_id": authority.policy_binding_id,
+        "policy_version": authority.policy_version,
+        "policy_hash": authority.policy_hash,
+        "governance_scope": authority.governance_scope,
+    }
+    # Legacy role evaluation is still performed against the root document. The
+    # immutable version authority is nevertheless validated above and every
+    # production user projection takes the v2 path below.
+    if not context.access_v2:
+        return Decision(
+            True,
+            "Root document authorization and immutable version authority are valid",
+            constraints,
+            ("VERSION_AUTHORITY_ALLOW",),
+        )
+    base = _v2_base_decision(context, action)
+    if base is not None:
+        return base
+    if not _scope_allows(context, version, authority.policy_binding):
+        return Decision(
+            False,
+            "Document version audience or scope does not match",
+            constraints,
+            ("VERSION_SCOPE_MISMATCH",),
+        )
+    constraints["obligations"] = list(authority.policy_binding.obligations)
+    return Decision(
+        True,
+        "Capability, exact version scope and information policy allow access",
+        constraints,
+        ("VERSION_POLICY_ALLOW",),
+    )
+
+
+def evaluate_runtime_document_version_access(
+    principal: Principal,
+    action: str,
+    version: DocumentVersion,
+    authority: DocumentVersionAuthority,
+    local_decision: Decision,
+) -> Decision:
+    if not local_decision.allowed:
+        return local_decision
+    settings = get_settings()
+    if settings.auth_mode == "mock":
+        return local_decision
+    if not principal.dynamic_access_loaded:
+        return local_decision
+    try:
+        response = governance_client(settings).decide(
+            capability_id=_primary_capability(action),
+            operation=_central_operation(action),
+            scope=authority.governance_scope,
+            policy_binding=dict(version.policy_summary),
+            policy_hash=authority.policy_hash,
+            credential_token=principal.bearer_token,
+        )
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_decision_credential_rejected",
+            "STRATOS rejected the AKB exact-version policy decision credential",
+        ) from exc
+    except GovernanceUnavailable as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "policy_decision_unavailable",
+            "STRATOS exact-version policy decision is unavailable",
+        ) from exc
+    reason_codes = tuple(
+        str(item) for item in response.get("reasonCodes", []) if isinstance(item, str)
+    )
+    if response.get("decision") != "ALLOW":
+        return Decision(
+            False,
+            "STRATOS denied the exact document version policy or active scope",
+            {
+                **local_decision.constraints,
+                "obligations": response.get("obligations", []),
+            },
+            reason_codes or ("VERSION_POLICY_DENY",),
+        )
+    return Decision(
+        True,
+        "Local, root and STRATOS exact-version policy decisions allow access",
+        {
+            **local_decision.constraints,
+            "obligations": response.get("obligations", []),
+        },
+        reason_codes or local_decision.reason_codes,
+    )
 
 
 def evaluate_runtime_document_access(
@@ -746,3 +972,38 @@ def require_document_action(
         details = {**decision.constraints, "reason_codes": list(decision.reason_codes)}
         raise problem(status.HTTP_403_FORBIDDEN, "forbidden", decision.reason, details)
     return context
+
+
+def require_document_version_action(
+    principal: Principal,
+    action: Action,
+    document: Document,
+    version: DocumentVersion,
+    db: Session | None = None,
+) -> DocumentVersionAuthority:
+    try:
+        authority = resolve_document_version_authority(document, version)
+    except ValueError as exc:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "document_version_authority_invalid",
+            "The immutable document version governance authority is unavailable or conflicting",
+        ) from exc
+    context = context_for_principal(principal, db)
+    decision = evaluate_document_version_access(
+        context,
+        action.value,
+        version,
+        authority,
+    )
+    decision = evaluate_runtime_document_version_access(
+        principal,
+        action.value,
+        version,
+        authority,
+        decision,
+    )
+    if not decision.allowed:
+        details = {**decision.constraints, "reason_codes": list(decision.reason_codes)}
+        raise problem(status.HTTP_403_FORBIDDEN, "forbidden", decision.reason, details)
+    return authority

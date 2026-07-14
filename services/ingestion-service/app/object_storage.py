@@ -37,6 +37,14 @@ class ObjectStorageClient:
             return await self._http_read(uri)
         return self._local_read(uri)
 
+    def readiness(self) -> str:
+        if self.settings.object_storage_mode == "mock":
+            return "mock"
+        if self.settings.object_storage_mode == "http":
+            return "ready"
+        root = self.settings.object_storage_root
+        return "ready" if root.exists() and root.is_dir() else "not_ready"
+
     def _mock_read(self, uri: str) -> SourceObject:
         content = f"Mock object storage content for {uri}.".encode("utf-8")
         return _source_object(uri=uri, content=content, local_path=None)
@@ -75,17 +83,30 @@ class ObjectStorageClient:
     def _local_path_for_uri(self, uri: str) -> Path:
         parsed = urlparse(uri)
         if parsed.scheme == "s3":
-            return self.settings.object_storage_root / parsed.netloc / parsed.path.lstrip("/")
-        if parsed.scheme == "file":
-            return Path(parsed.path)
-        if not parsed.scheme:
-            return Path(uri)
-        raise IngestionError(
-            "UNSUPPORTED_OBJECT_STORAGE_URI",
-            "Unsupported source file URI for local object storage mode",
-            status_code=400,
-            details={"uri_scheme": parsed.scheme},
-        )
+            candidate = self.settings.object_storage_root / parsed.netloc / parsed.path.lstrip("/")
+        elif parsed.scheme == "file":
+            candidate = Path(parsed.path)
+        elif not parsed.scheme:
+            candidate = Path(uri)
+            if not candidate.is_absolute():
+                candidate = self.settings.object_storage_root / candidate
+        else:
+            raise IngestionError(
+                "UNSUPPORTED_OBJECT_STORAGE_URI",
+                "Unsupported source file URI for local object storage mode",
+                status_code=400,
+                details={"uri_scheme": parsed.scheme},
+            )
+        root = self.settings.object_storage_root.resolve()
+        resolved = candidate.resolve()
+        if resolved != root and root not in resolved.parents:
+            raise IngestionError(
+                "OBJECT_STORAGE_PATH_FORBIDDEN",
+                "Source file is outside configured object storage",
+                status_code=403,
+                details={"uri_scheme": parsed.scheme or "path"},
+            )
+        return resolved
 
     def _validate_size(self, size_bytes: int) -> None:
         if size_bytes > self.settings.max_file_bytes:

@@ -133,7 +133,12 @@ From An Existing Immutable current`.
 The persistent production environment remains
 `/srv/akl/env/akl.prod.env`; each attempt copies it once into the private linked
 snapshot described below. Every Compose operation receives that snapshot, the
-Compose project, and the target release compose file explicitly. A Registry
+Compose project, and the target release compose file explicitly. The managed
+immutable set is Registry, Ingestion, RAG, and web. Before the SHA burn/build
+boundary the workflow requires the Registry proof-signing file and each
+selected Ingestion/RAG/web confidential-client secret to be an absolute,
+operator-owned, single-link regular file with exact mode `0600`. First rollout
+selects all four services. A Registry
 change first quiesces the Registry writer and is then backed up and verified
 before Alembic runs. PostgreSQL clients come only from the already-local exact
 digest or image ID configured by `AKL_RELEASE_POSTGRES_TOOL_IMAGE`; no mutable
@@ -177,7 +182,9 @@ operations runbook is completed. PostgreSQL pgpass material follows the same
 fail-closed model below `/srv/akl/state/postgres-credentials`: it is never
 printed, and a SIGKILL remnant blocks deployment until the exact validated
 cleanup command in the runbook is used. A change to the shared
-production Compose file requires a separate coordinated full-platform release.
+production Compose file is accepted only when its top-level envelope and every
+unmanaged service block are byte-identical and changes are confined to complete
+Registry/Ingestion/RAG/web blocks. All other Compose changes fail before build.
 
 A failed pre-stop writable-primary gate occurs before build and can retry the
 same approved SHA. Immediately before build, a durable

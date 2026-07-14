@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   ApiRequestContext,
   ApplyWorkflowTaskActionRequest,
@@ -22,6 +24,8 @@ import type {
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
+  IntelligenceScopeAuthorizationRequest,
+  IntelligenceScopeAuthorizationResponse,
   ProfileSettingsBundle,
   ProfileSettingsPutRequest,
   ProfileSettingsResponse,
@@ -477,6 +481,107 @@ export class MockRegistryClient implements RegistryApiClient {
               : [],
           }
         : {},
+    };
+  }
+
+  async createIngestionAuthorization(
+    documentId: string,
+    versionId: string,
+    request: {
+      action: "document.ingest" | "document.read" | "document.reindex";
+      correlation_id: string;
+      idempotency_key: string;
+    },
+    context: ApiRequestContext,
+  ) {
+    const document = this.documents.find(
+      (candidate) => candidate.document_id === documentId,
+    );
+    const version = this.versions.find(
+      (candidate) =>
+        candidate.document_id === documentId &&
+        candidate.document_version_id === versionId,
+    );
+    if (!document || !version) {
+      throw new ApiClientError(
+        "Document version not found",
+        404,
+        "VERSION_NOT_FOUND",
+        context.correlationId ?? context.requestId ?? "mock-correlation",
+      );
+    }
+    return {
+      authorization_token: `mock-registry-ingestion-authorization-${documentId}-${versionId}`,
+      authorization_id: `iauth_mock_${versionId}`,
+      confirmed_subject_id: context.subjectId,
+      action: request.action,
+      document_id: documentId,
+      document_version_id: versionId,
+      correlation_id: request.correlation_id,
+      idempotency_key: request.idempotency_key,
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+  }
+
+  async getDocumentIngestionAttempt(
+    documentId: string,
+    context: ApiRequestContext,
+  ): Promise<null> {
+    if (!this.documents.some((candidate) => candidate.document_id === documentId)) {
+      throw new ApiClientError(
+        "Document not found",
+        404,
+        "DOCUMENT_NOT_FOUND",
+        context.correlationId ?? context.requestId ?? "mock-correlation",
+      );
+    }
+    return null;
+  }
+
+  async createIntelligenceScopeAuthorization(
+    request: IntelligenceScopeAuthorizationRequest,
+    context: ApiRequestContext,
+  ): Promise<IntelligenceScopeAuthorizationResponse> {
+    const requestedIds = [...new Set(request.document_ids)].sort();
+    const documents = requestedIds.map((documentId) => {
+      const document = this.documents.find(
+        (candidate) => candidate.document_id === documentId,
+      );
+      const version = this.versions.find(
+        (candidate) =>
+          candidate.document_id === documentId &&
+          ["approved", "valid"].includes(candidate.status),
+      ) ?? this.versions.find((candidate) => candidate.document_id === documentId);
+      if (!document || !version) {
+        throw new ApiClientError(
+          "Document version not found",
+          404,
+          "VERSION_NOT_FOUND",
+          context.correlationId ?? context.requestId ?? "mock-correlation",
+        );
+      }
+      return {
+        document_id: documentId,
+        document_version_id: version.document_version_id,
+        policy_hash:
+          version.policy_hash ??
+          document.policy_hash ??
+          `sha256:${"0".repeat(64)}`,
+      };
+    });
+    return {
+      authorization_token: "mock-registry-intelligence-authorization-proof-token-v1",
+      authorization_id: "iscope_mock_authorization",
+      confirmed_subject_id: context.subjectId,
+      action: "intelligence.query",
+      document_scope_hash: `sha256:${createHash("sha256")
+        .update(JSON.stringify(documents))
+        .digest("hex")}`,
+      document_count: documents.length,
+      documents,
+      correlation_id: request.correlation_id,
+      idempotency_key: request.idempotency_key,
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
     };
   }
 

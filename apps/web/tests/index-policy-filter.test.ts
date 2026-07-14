@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  authorizedIndexSelection,
+  candidateIndexSelection,
+  exactAuthorizedIndexSelection,
   indexHitMatchesSelection,
 } from "../src/lib/intelligence/policy-filter";
 import type { Document } from "../src/lib/types";
@@ -13,21 +14,31 @@ const documents = [
 ] as Document[];
 
 describe("intelligence index policy filtering", () => {
-  it("fails closed for missing and stale policy hashes in STRATOS access mode", () => {
-    const selection = authorizedIndexSelection(documents, {
-      roles: ["stratos_user"],
-      capabilities: ["akb:read_document"],
-    });
+  it("keeps Registry-visible DTOs as candidates without trusting roles or DTO policy hashes", () => {
+    const selection = candidateIndexSelection([
+      documents[1],
+      documents[0],
+      documents[0],
+    ]);
 
-    assert.deepEqual(selection.documentIds, ["doc_current"]);
-    assert.equal(indexHitMatchesSelection({ document_id: "doc_current", policy_hash: `sha256:${"b".repeat(64)}` }, selection), false);
-    assert.equal(indexHitMatchesSelection({ document_id: "doc_current", policy_hash: `sha256:${"a".repeat(64)}` }, selection), true);
-    assert.equal(indexHitMatchesSelection({ document_id: "doc_legacy", policy_hash: null }, selection), false);
+    assert.deepEqual(selection, {
+      documentIds: ["doc_current", "doc_legacy"],
+    });
+    assert.equal(selection.policyHashes, undefined);
+    assert.equal(selection.documentVersions, undefined);
   });
 
-  it("keeps the explicit pre-reset legacy path document-id based", () => {
-    const selection = authorizedIndexSelection(documents, { roles: ["document_manager"] });
-    assert.deepEqual(selection, { documentIds: ["doc_current", "doc_legacy"] });
-    assert.equal(indexHitMatchesSelection({ document_id: "doc_legacy", policy_hash: null }, selection), true);
+  it("fails closed for a stale version even when its document and policy hash match", () => {
+    const policyHash = `sha256:${"a".repeat(64)}`;
+    const selection = exactAuthorizedIndexSelection([
+      {
+        document_id: "doc_current",
+        document_version_id: "ver_current",
+        policy_hash: policyHash,
+      },
+    ]);
+
+    assert.equal(indexHitMatchesSelection({ document_id: "doc_current", document_version_id: "ver_stale", policy_hash: policyHash }, selection), false);
+    assert.equal(indexHitMatchesSelection({ document_id: "doc_current", document_version_id: "ver_current", policy_hash: policyHash }, selection), true);
   });
 });

@@ -17,7 +17,11 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - Web aplikace obsahuje Document Workbench, Intelligence Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Chat Portal.
 - Web shell, zakladni UI primitiva a PDF viewer jsou sladene se STRATOS portfoliem pres lokalni `apps/web/src/components/stratos` adapter.
 - Upload/source opening a native preview jsou rozsirene na bezne Office, PDF, obrazkove, textove a strukturovane typy; stare binarni Office formaty `.doc/.xls/.ppt` zustavaji pro plnohodnotnou ingestion/rendering konverzni backlog.
-- Produkcni audit 2026-06-11 potvrdil, ze stavajici importovane dokumenty maji jako aktualni zdroj Markdown derivaty; 20 dostupnych raw PDF originalu se migruje pres `tools/import_original_pdf_versions.py`, 3 dokumenty cekaji na doplneni originalniho PDF.
+- Produkcni audit 2026-06-11 potvrdil, ze stavajici importovane dokumenty maji
+  jako aktualni zdroj Markdown derivaty; 20 dostupnych raw PDF originalu lze
+  inventarizovat dry-runem `tools/import_original_pdf_versions.py`, 3 dokumenty
+  cekaji na doplneni originalniho PDF. Host-side `--apply` je ve vsech
+  prostredich retired; import prochazi governed aplikacnim UI/API.
 - GitHub je stabilizovany pres chraneny `main`, PR workflow, CI gate a release proces.
 
 Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hlubsi viewer fidelity pro komplexni Office/PDF dokumenty, persistovane AI insighty, vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu mimo web bridge.
@@ -79,9 +83,11 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
   relationship seeds.
 - OpenSearch Intelligence vrstva doplnuje chunk-level entity facety, citovane
   evidence search, pokrocile analyst search rezimy a evidence-backed
-  relationship edges. Web bridge pro vsechny search/graph dotazy nejdriv
-  odvozuje `allowed_document_ids` z Registry API a vysledky znovu orezava pred
-  browserem.
+  relationship edges. Web bridge pro vsechny produkcni search/graph/facet
+  dotazy ziska z Registry kratkodoby proof nad presnymi
+  document/version/policy-hash souradnicemi. Ingestion proof potvrdi pres
+  Registry pred OpenSearch dotazem a web vysledky znovu oreze pred browserem;
+  samotne klientské `allowed_document_ids` neni autorita.
 - Search sekce obsahuje AKB Query Composer v1: vizualni query boxy/chipy,
   navrhy poli, operatoru, pojmu z opravneného korpusu, metadat, OpenSearch
   entit a ulozenych dotazu ve spisech. Composer generuje dotaz do stavajiciho
@@ -133,7 +139,11 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 8. Object storage contract: upload session zatim vlastni web bridge; cilovy stav je backend/Object Storage service kontrakt se signed upload/download a auditem.
 9. RAG quality: hybrid retrieval, reranking evaluation, citation accuracy a no-answer metriky potrebuji produkcni eval dataset.
 10. Security/compliance hardening: OIDC a dokumentova authz musi projit negativnimi testy na urovni dokumentu, chunku a source opening.
-11. Source originality: stavajici produkcni Markdown derivaty se prevadeji na dostupne originalni PDF zdroje pres `tools/import_original_pdf_versions.py`; dokumenty bez raw PDF zustavaji Markdown-backed, dokud neni original doplnen.
+11. Source originality: dostupne originalni PDF zdroje lze inventarizovat
+    dry-runem `tools/import_original_pdf_versions.py`; produkcni prevod je
+    dostupny jen pres governed aplikacni UI/API. Host tool je ve vsech profilech
+    pouze dry-run a pred mutaci fail-closed. Dokumenty bez raw PDF zustavaji
+    Markdown-backed, dokud neni original doplnen.
 12. STRATOS package integration: lokalni UI adapter je kompatibilni mezikrok vcetne `StratosPdfViewer`; primy import `@stratos/ui` ceka na sjednoceny workspace nebo publikovany balicek dostupny pro Docker build.
 13. Intelligence depth: `/intelligence` ma corpus/readiness analytiku,
     OpenSearch entity/search vrstvu, evidence-backed relationship panel a

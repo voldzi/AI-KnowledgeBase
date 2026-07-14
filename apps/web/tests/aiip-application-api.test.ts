@@ -87,7 +87,9 @@ beforeEach(() => {
       return Response.json({
         active: state.active,
         client_id: state.clientId,
-        sub: `service-account-${token}`,
+        azp: state.clientId,
+        sub: `service-subject-${token}`,
+        preferred_username: `service-account-${state.clientId}`,
         aud: state.audience,
         realm_access: { roles: state.roles },
       });
@@ -191,8 +193,10 @@ describe("AIIP application API bridge", () => {
     const encodedHeader = Buffer.from(JSON.stringify({ alg: "RS256", kid: "test-key", typ: "JWT" })).toString("base64url");
     const encodedClaims = Buffer.from(JSON.stringify({
       iss: "https://login.example/realms/stratos",
-      sub: "service-account-aiip-jwks",
+      sub: "e9c66f56-832d-47d4-8d15-5ee74940b7a0",
+      azp: "aiip-service",
       client_id: "aiip-service",
+      preferred_username: "service-account-aiip-service",
       aud: ["akb-api"],
       exp: Math.floor(Date.now() / 1000) + 300,
       realm_access: { roles: ["service_aiip"] },

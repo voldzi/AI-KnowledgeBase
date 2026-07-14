@@ -2,7 +2,9 @@
 
 Validated: 2026-06-11.
 
-This runbook upgrades documents that were imported from Markdown derivatives to use their available original PDF files as the current controlled source versions.
+This runbook inventories documents imported from Markdown derivatives. The
+host tool is dry-run-only in every environment; all mutations use the governed
+AKB application UI/API.
 
 ## Current Production Finding
 
@@ -18,7 +20,9 @@ The 2026-06-11 production audit found:
   - `cz-digital-governance/source/archi-pokyn-ikovs.md`
   - `cz-digital-governance/source/nukib-legislativa-zkb.md`
 
-After a successful apply run, the expected current corpus is 20 current PDF source versions and 3 remaining Markdown source versions.
+The historical migration target is 20 current PDF source versions and 3
+remaining Markdown source versions; it must not be applied with this host tool
+in production.
 
 ## Tool
 
@@ -41,7 +45,7 @@ The script is dry-run by default. It:
 - resolves Qdrant from the host side and removes points for superseded Markdown versions unless `--keep-superseded-qdrant` is set,
 - writes JSON and Markdown reports.
 
-Default production inputs:
+Historical production inventory inputs used by dry-run:
 
 - imports root: `/srv/akl/imports`
 - object storage root: `/srv/seaweedfs/akl`
@@ -85,19 +89,18 @@ Review:
 ssh docker.home.cz 'cd /srv/akl/repo && sed -n "1,120p" reports/original_pdf_import_report.dry-run.md'
 ```
 
-## Apply
+## Apply Is Retired
 
-Apply only after dry-run output matches the expected documents:
+Do not run `--apply` in any environment. The host tool fails before
+object-storage, Registry, Ingestion, or Qdrant mutation regardless of
+environment, auth mode, or bearer presence. Authenticated and local development
+imports both enter through the governed AKB application UI/API, which enforces
+the Registry-issued exact-version proof, `svc-akb-web-ingestion` transport,
+bounded OBO, idempotency, and authoritative attempt/CAS contract.
 
-```bash
-ssh docker.home.cz 'cd /srv/akl/repo && python3 tools/import_original_pdf_versions.py --apply --report reports/original_pdf_import_report.json'
-```
-
-The apply run is data-changing. It may take several minutes because each PDF is parsed, chunked, embedded, and written to Qdrant.
-
-In OIDC production profiles, the Ingestion Service propagates the caller bearer token to Registry API for
-`document.ingest` authorization. Use `--ingestion-bearer-token` or export `AKL_IMPORT_BEARER_TOKEN` /
-`AKL_IMPORT_INGESTION_BEARER_TOKEN` with a Registry-valid service JWT before running `--apply`.
+The dry-run inventory remains supported because it does not mutate Registry,
+object storage, Ingestion, or Qdrant. There is intentionally no production
+`--apply` command in this runbook.
 
 On `docker.home.cz`, Registry API runs in the app network and Qdrant runs in data/management networks. The script
 therefore does not require Registry API to reach Qdrant directly; Qdrant point counts and superseded-point cleanup are
@@ -108,11 +111,11 @@ the script streams the PDF into the `web` service storage mount and sets readabl
 
 If a PDF ingestion fails, that new version is archived and the old valid Markdown version remains current. Check report errors before retrying.
 
-## Post-Apply Verification
+## Governed Import Verification
 
 Verify:
 
-- production services remain healthy,
+- services remain healthy,
 - report has zero errors,
 - 20 PDF source versions were created and ingested,
 - current valid/latest source distribution is 20 PDF and 3 Markdown,
@@ -120,7 +123,9 @@ Verify:
 - old superseded Markdown version points were removed unless explicitly retained,
 - signed source open still redirects unauthenticated users to login and does not expose internal Docker hostnames.
 
-Use Browser against production after deploy for an authenticated manual check when credentials are available:
+For a separate governed production import performed through the application,
+use Browser after deploy for an authenticated manual check when credentials are
+available:
 
 - open `/akb/chat`,
 - ask a question that cites one imported PDF-backed document,

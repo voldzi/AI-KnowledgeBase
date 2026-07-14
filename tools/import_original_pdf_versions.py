@@ -19,6 +19,11 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.legacy_mutation_guard import retire_legacy_mutation  # noqa: E402
+
 DEFAULT_DOMAINS = ("cz-digital-governance", "security-compliance-cz")
 
 
@@ -123,6 +128,8 @@ def parse_args(argv: list[str] | None) -> Options:
     parser.add_argument("--storage-container-root", default="/data/object-storage", help="Object-storage mount path inside the fallback writer service.")
     parser.add_argument("--ingestion-bearer-token", default=None, help="Bearer token used for Ingestion Service job requests. Defaults to AKL_IMPORT_INGESTION_BEARER_TOKEN or actor id.")
     args = parser.parse_args(argv)
+    if args.apply:
+        retire_legacy_mutation("tools/import_original_pdf_versions.py --apply")
 
     report_path = Path(args.report)
     if not report_path.is_absolute():
@@ -215,6 +222,7 @@ def title_for_markdown(path: Path) -> str:
 
 
 def copy_pdf_objects(plan: list[dict[str, Any]], options: Options) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_original_pdf_versions.py copy_pdf_objects")
     copied = 0
     errors: list[dict[str, str]] = []
     for item in plan:
@@ -240,6 +248,7 @@ def copy_pdf_objects(plan: list[dict[str, Any]], options: Options) -> dict[str, 
 
 
 def copy_pdf_object_via_container(source: Path, item: dict[str, Any], options: Options) -> None:
+    retire_legacy_mutation("tools/import_original_pdf_versions.py copy_pdf_object_via_container")
     target = options.storage_container_root / options.bucket / item["object_key"]
     target_parent = target.parent
     quoted_parent = shlex.quote(str(target_parent))
@@ -276,6 +285,7 @@ def copy_pdf_object_via_container(source: Path, item: dict[str, Any], options: O
 
 
 def run_registry_migration(plan: list[dict[str, Any]], options: Options) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_original_pdf_versions.py run_registry_migration")
     planned = [item for item in plan if item["status"] == "planned"]
     plan_b64 = base64.b64encode(json.dumps(planned, ensure_ascii=False).encode("utf-8")).decode("ascii")
     code = registry_migration_code(
@@ -309,8 +319,14 @@ def registry_migration_code(
     timeout_seconds: int,
     ingestion_bearer_token: str,
 ) -> str:
+    retire_legacy_mutation("tools/import_original_pdf_versions.py registry_migration_code")
     return f"""
 from __future__ import annotations
+
+raise RuntimeError(
+    "LEGACY_MUTATION_RETIRED: original PDF Registry migration is retired; "
+    "use the governed application flow"
+)
 
 import base64
 import datetime as dt
@@ -566,6 +582,7 @@ print(json.dumps(output, ensure_ascii=False, indent=2))
 
 
 def enrich_qdrant_results(migration_result: dict[str, Any], options: Options) -> None:
+    retire_legacy_mutation("tools/import_original_pdf_versions.py enrich_qdrant_results")
     documents = migration_result.get("documents", [])
     ingested = [item for item in documents if item.get("status") == "ingested"]
     if not ingested:
@@ -629,11 +646,16 @@ def qdrant_urls_from_docker() -> list[str]:
 
 
 def qdrant_request_json(base_url: str, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    normalized_method = method.upper()
+    if normalized_method != "GET":
+        retire_legacy_mutation(
+            f"tools/import_original_pdf_versions.py qdrant_request_json {normalized_method}"
+        )
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}{path}",
         data=data,
-        method=method,
+        method=normalized_method,
         headers={"Accept": "application/json", "Content-Type": "application/json"},
     )
     try:
@@ -656,6 +678,7 @@ def qdrant_count(base_url: str, collection: str, version_id: str) -> int:
 
 
 def qdrant_delete(base_url: str, collection: str, version_id: str) -> None:
+    retire_legacy_mutation("tools/import_original_pdf_versions.py qdrant_delete")
     qdrant_request_json(
         base_url,
         "POST",

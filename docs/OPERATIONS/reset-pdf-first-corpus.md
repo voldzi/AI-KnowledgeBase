@@ -9,8 +9,12 @@ It does not reset Keycloak, user profiles, role mappings, Grafana, observability
 
 ## Why This Exists
 
-`tools/import_original_pdf_versions.py` upgrades existing Markdown-backed documents to PDF-backed versions. That is not
-enough for a clean start, because after deleting documents there are no Markdown documents to upgrade.
+`tools/import_original_pdf_versions.py` was designed to upgrade existing
+Markdown-backed documents to PDF-backed versions. Its host-side `--apply` is
+retired in every environment; authenticated imports use the governed
+application UI/API. Host mutation is retired in every environment. The legacy
+design would not be enough for a clean start anyway, because after deleting
+documents there are no Markdown documents to upgrade.
 
 `tools/prepare_public_pdf_corpus.py` discovers and downloads a curated public PDF corpus into the AKB import workspace.
 `tools/reset_pdf_first_corpus.py` then creates new documents directly from those PDF sources when a matching raw PDF exists.

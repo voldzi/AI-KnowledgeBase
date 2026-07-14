@@ -92,6 +92,9 @@ export async function POST(request: NextRequest) {
       confirmation.governed_resource.effective_policy.policy_binding_id !== informationPolicy.policyBindingId ||
       confirmation.governed_resource.effective_policy.policy_version !== informationPolicy.policyVersion ||
       confirmation.governed_resource.effective_policy.policy_hash !== policyHash(informationPolicy) ||
+      confirmation.governed_resource.effective_policy.originator_id !== (informationPolicy.originatorId ?? null) ||
+      confirmation.governed_resource.effective_policy.issued_at !== (informationPolicy.issuedAt ?? null) ||
+      confirmation.governed_resource.effective_policy.review_at !== (informationPolicy.reviewAt ?? null) ||
       confirmation.governed_resource.confirmed_by_subject_id !== integrationEnvelope.actor.subjectId ||
       confirmation.parent_source_resource.governed_resource_id !== integrationEnvelope.sourceResource.governedResourceId ||
       confirmation.parent_source_resource.application !== "AIIP" ||

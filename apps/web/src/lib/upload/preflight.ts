@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, open, writeFile } from "node:fs/promises";
+import { link, mkdir, open, unlink } from "node:fs/promises";
 import path from "node:path";
 
 export interface UploadPreflightRequest {
@@ -22,6 +22,12 @@ export interface UploadPreflightRequest {
   governance_registered_by_subject_id?: string | null;
   governance_correlation_id?: string | null;
   governance_idempotency_key?: string | null;
+}
+
+export interface UploadPersistenceHooks {
+  afterFileSync?: () => void | Promise<void>;
+  afterPublish?: () => void | Promise<void>;
+  afterDirectorySync?: () => void | Promise<void>;
 }
 
 export interface UploadPreflightDecision {
@@ -379,7 +385,8 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
 export async function persistUploadedObject(
   payload: UploadTokenPayload,
   content: Uint8Array,
-  settings: UploadSettings = getUploadSettings()
+  settings: UploadSettings = getUploadSettings(),
+  hooks: UploadPersistenceHooks = {},
 ): Promise<PersistedUploadObject> {
   if (content.byteLength !== payload.file_size) {
     throw new UploadPreflightError(
@@ -401,9 +408,64 @@ export async function persistUploadedObject(
   }
 
   const targetPath = resolveObjectPath(payload, settings);
-  await mkdir(path.dirname(targetPath), { recursive: true });
-  await writeFile(targetPath, content, { mode: 0o640 });
+  const parentPath = path.dirname(targetPath);
+  await mkdir(parentPath, { recursive: true });
+  const tempPath = path.join(parentPath, `.${path.basename(targetPath)}.${randomUUID()}.tmp`);
+  let tempExists = false;
+  try {
+    const handle = await open(tempPath, "wx", 0o640);
+    tempExists = true;
+    try {
+      await handle.writeFile(content);
+      await handle.datasync();
+    } finally {
+      await handle.close();
+    }
+    await hooks.afterFileSync?.();
+
+    try {
+      await link(tempPath, targetPath);
+    } catch (error) {
+      if (!isFileExistsError(error)) throw error;
+      const existing = await verifyPersistedUploadedObject(payload, settings).catch(() => null);
+      if (!existing) {
+        throw new UploadPreflightError(
+          409,
+          "UPLOAD_SESSION_OBJECT_CONFLICT",
+          "The upload session target already contains different content.",
+        );
+      }
+      await unlink(tempPath);
+      tempExists = false;
+      await syncDirectory(parentPath);
+      await hooks.afterDirectorySync?.();
+      return existing;
+    }
+
+    await hooks.afterPublish?.();
+    await unlink(tempPath);
+    tempExists = false;
+    await syncDirectory(parentPath);
+    await hooks.afterDirectorySync?.();
+  } finally {
+    if (tempExists) {
+      await unlink(tempPath).catch(() => undefined);
+    }
+  }
   return { path: targetPath, sha256, size_bytes: content.byteLength };
+}
+
+async function syncDirectory(directoryPath: string): Promise<void> {
+  const directory = await open(directoryPath, "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}
+
+function isFileExistsError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
 
 /**

@@ -118,4 +118,20 @@ with trusted client `svc-ingestion` and exact grants
 `authz|audit|documents-read|ingestion-status`; never add those grants to
 `aiip-service`.
 
+Provision the separate AKB web-to-ingestion transport identity as well:
+
+```bash
+AIIP_CLIENT_ID=svc-akb-web-ingestion \
+AIIP_ROLE=service_akb_web_ingestion \
+AIIP_AUDIENCE=akl-api \
+AIIP_SECRET_FILE=/srv/akl/env/svc-akb-web-ingestion.client-secret \
+SERVICE_CLIENT_NAME="AKB Web Ingestion Transport" \
+./scripts/ensure_aiip_service_client.sh
+```
+
+Mount this secret read-only only into the AKB web container. The ingestion
+service validates the exact `azp`, service-account username, audience and role;
+this client receives no Registry route grants and cannot list global jobs,
+read reports, cancel jobs, reindex, or call intelligence endpoints.
+
 The target STRATOS public routing model is documented in `docs/deployment/stratos-public-routing-and-docker-home.md`. The `akl.zeleznalady.cz` standalone domain can remain as a temporary Keycloak redirect alias during migration, but the target public AKB URL is `/akb` under `https://stratos.zeleznalady.cz`.

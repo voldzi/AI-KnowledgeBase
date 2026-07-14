@@ -154,6 +154,10 @@ def test_policy_registry_response_must_match_every_immutable_dimension(monkeypat
         "contentCategories": list(binding.content_categories),
         "audience": binding.audience.model_dump(mode="json", by_alias=True),
         "obligations": list(binding.obligations),
+        "originatorId": None,
+        "originator": None,
+        "issuedAt": "2026-07-14T00:00:00Z",
+        "reviewAt": None,
     }
 
     class Client:
@@ -362,9 +366,18 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
         application_access_active=False,
     )
 
+    with pytest.raises(HTTPException) as denied:
+        _service_action_decision(
+            principal=principal,
+            subject_id="service-account-aiip-service",
+            action="rag.query",
+            document=None,
+        )
+    assert denied.value.status_code == 403
+
     decision = _service_action_decision(
         principal=principal,
-        subject_id="service-account-aiip-service",
+        subject_id=principal.subject_id,
         action="rag.query",
         document=None,
     )
@@ -456,6 +469,7 @@ def _policy(scope_id: str = "it") -> InformationPolicyBinding:
         "schemaVersion": "stratos-information-policy-2",
         "policyBindingId": "pol_scopebinding01",
         "policyVersion": "information-policy-2.0.0",
+        "issuedAt": "2026-07-14T00:00:00Z",
         "handlingClass": "INTERNAL",
         "legalClassification": "NONE",
         "tlp": None,
@@ -564,6 +578,10 @@ def test_governed_resource_registration_uses_verified_obo_contract(monkeypatch) 
                     "effectivePolicy": {
                         "policyBindingId": binding.policy_binding_id,
                         "policyHash": canonical_policy_hash(binding),
+                        "originatorId": None,
+                        "originator": None,
+                        "issuedAt": "2026-07-14T00:00:00Z",
+                        "reviewAt": None,
                     },
                 },
             )

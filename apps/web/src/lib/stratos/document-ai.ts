@@ -83,6 +83,9 @@ export interface AiipGovernanceConfirmation {
       policy_binding_id: string;
       policy_version: string;
       policy_hash: string;
+      originator_id: string | null;
+      issued_at: string | null;
+      review_at: string | null;
     };
     registered_by_subject_id: string;
     confirmed_by_subject_id: string;
@@ -606,6 +609,40 @@ export async function getExternalDocument(
   });
 }
 
+export async function getDocumentExternalReferencesCurrent(
+  documentId: string,
+  context: ApiRequestContext,
+): Promise<ExternalDocumentRef[]> {
+  const config = getAklConfig();
+  const response = await requestJson<{
+    document_id: string;
+    updated: number;
+    items: ExternalDocumentRef[];
+  }>({
+    service: "registry-api",
+    operation: "getDocumentExternalReferencesCurrent",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: `/documents/${encodeURIComponent(documentId)}/external-references/current`,
+    context,
+  });
+  return response.items;
+}
+
+export async function getExactDocumentVersion(
+  documentId: string,
+  documentVersionId: string,
+  context: ApiRequestContext,
+): Promise<DocumentVersion> {
+  const config = getAklConfig();
+  return requestJson<DocumentVersion>({
+    service: "registry-api",
+    operation: "getExactDocumentVersion",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: `/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(documentVersionId)}`,
+    context,
+  });
+}
+
 export function latestVersion(versions: DocumentVersion[]): DocumentVersion | null {
   return [...versions].sort((left, right) => {
     const leftTime = Date.parse(left.published_at ?? left.created_at);
@@ -621,7 +658,7 @@ export function mapIngestionStatus(input: {
 }): StratosIngestionStatus {
   const rawStatus = String(input.job?.status ?? input.externalStatus ?? "").toLowerCase();
   if (["failed", "cancelled"].includes(rawStatus)) return "FAILED";
-  if (["queued", "running"].includes(rawStatus)) return "INGESTING";
+  if (["pending_authorization", "claiming", "queued", "starting", "running"].includes(rawStatus)) return "INGESTING";
   if (["completed", "completed_with_warnings", "indexed"].includes(rawStatus)) return "INDEXED";
   if (["permission_denied", "forbidden"].includes(rawStatus)) return "PERMISSION_DENIED";
   if (["stale"].includes(rawStatus)) return "STALE";
@@ -708,19 +745,25 @@ export function sourceContextOpenUrls(sourceContext: SourceContext) {
 }
 
 export function createIngestionRequest(input: {
+  idempotencyKey: string;
   documentId: string;
   versionId: string;
   sourceFileUri: string;
   body: Record<string, unknown>;
+  expectedCurrentIngestionJobId?: string | null;
 }): CreateIngestionJobRequest {
   return {
+    idempotency_key: input.idempotencyKey,
     document_id: input.documentId,
     document_version_id: input.versionId,
     source_file_uri: input.sourceFileUri,
     parser_profile: (optionalString(input.body, "parser_profile") ?? "controlled_document") as CreateIngestionJobRequest["parser_profile"],
     ocr_enabled: input.body.ocr_enabled !== false,
     chunking_strategy: (optionalString(input.body, "chunking_strategy") ?? "legal_structured") as CreateIngestionJobRequest["chunking_strategy"],
-    embedding_profile: optionalString(input.body, "embedding_profile") ?? "default"
+    embedding_profile: optionalString(input.body, "embedding_profile") ?? "default",
+    ...(input.expectedCurrentIngestionJobId !== undefined
+      ? { expected_current_ingestion_job_id: input.expectedCurrentIngestionJobId }
+      : {}),
   };
 }
 

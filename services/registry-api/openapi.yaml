@@ -31,6 +31,67 @@ paths:
                   type: string
                 type: object
                 title: Response Ready Ready Get
+  /api/v1/integrations/ingestion/readiness:
+    get:
+      summary: Ingestion Service Readiness
+      operationId: ingestion_service_readiness_api_v1_integrations_ingestion_readiness_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Ingestion Service Readiness Api V1 Integrations Ingestion
+                  Readiness Get
+  /api/v1/integrations/ingestion/authorizations/confirm:
+    post:
+      summary: Confirm Ingestion Authorization Proof
+      operationId: confirm_ingestion_authorization_proof_api_v1_integrations_ingestion_authorizations_confirm_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestionAuthorizationConfirmRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionAuthorizationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/ingestion/intelligence-authorizations/confirm:
+    post:
+      summary: Confirm Intelligence Scope Authorization Proof
+      operationId: confirm_intelligence_scope_authorization_proof_api_v1_integrations_ingestion_intelligence_authorizations_confirm_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntelligenceScopeAuthorizationConfirmRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntelligenceScopeAuthorizationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/integrations/aiip-upload/external-documents/upsert:
     post:
       summary: Upsert Aiip External Document
@@ -208,6 +269,29 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ExternalDocumentCurrentUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalDocumentCurrentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: Get Document External References Current
+      operationId: get_document_external_references_current_api_v1_documents__document_id__external_references_current_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
       responses:
         '200':
           description: Successful Response
@@ -936,6 +1020,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DocumentVersionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/intelligence/authorization:
+    post:
+      summary: Create Intelligence Scope Authorization Proof
+      operationId: create_intelligence_scope_authorization_proof_api_v1_intelligence_authorization_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntelligenceScopeAuthorizationIssueRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntelligenceScopeAuthorizationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/versions/{version_id}/ingestion-authorization:
+    post:
+      summary: Create Ingestion Authorization Proof
+      operationId: create_ingestion_authorization_proof_api_v1_documents__document_id__versions__version_id__ingestion_authorization_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestionAuthorizationIssueRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionAuthorizationResponse'
         '422':
           description: Validation Error
           content:
@@ -2420,12 +2563,32 @@ components:
           type: string
           pattern: ^sha256:[a-f0-9]{64}$
           title: Policy Hash
+        originator_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Originator Id
+        issued_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Issued At
+        review_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Review At
       additionalProperties: false
       type: object
       required:
       - policy_binding_id
       - policy_version
       - policy_hash
+      - originator_id
+      - issued_at
+      - review_at
       title: AiipGovernanceEffectivePolicy
     AiipGovernanceParentSourceResource:
       properties:
@@ -5330,6 +5493,10 @@ components:
             $ref: '#/components/schemas/ExternalDocumentRefResponse'
           type: array
           title: Items
+        ingestion_attempt:
+          anyOf:
+          - $ref: '#/components/schemas/IngestionAttemptResponse'
+          - type: 'null'
       type: object
       required:
       - document_id
@@ -5349,6 +5516,12 @@ components:
             maxLength: 64
           - type: 'null'
           title: Current File Id
+        expected_current_ingestion_job_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Expected Current Ingestion Job Id
         current_ingestion_job_id:
           anyOf:
           - type: string
@@ -5371,6 +5544,7 @@ components:
           anyOf:
           - $ref: '#/components/schemas/SourceLocation'
           - type: 'null'
+      additionalProperties: false
       type: object
       title: ExternalDocumentCurrentUpdateRequest
     ExternalDocumentOwner:
@@ -5673,6 +5847,7 @@ components:
       enum:
       - PUBLIC
       - INTERNAL
+      - PROJECT_MANAGEMENT
       - RESTRICTED
       title: HandlingClass
     HealthResponse:
@@ -5739,10 +5914,8 @@ components:
           - type: 'null'
           title: Originatorid
         issuedAt:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
+          type: string
+          format: date-time
           title: Issuedat
         reviewAt:
           anyOf:
@@ -5761,7 +5934,172 @@ components:
       - contentCategories
       - audience
       - obligations
+      - issuedAt
       title: InformationPolicyBinding
+    IngestionAttemptResponse:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        ingestion_job_id:
+          type: string
+          title: Ingestion Job Id
+        ingestion_status:
+          type: string
+          enum:
+          - QUEUED
+          - INGESTING
+          - INDEXED
+          - FAILED
+          title: Ingestion Status
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - ingestion_job_id
+      - ingestion_status
+      - created_at
+      - updated_at
+      title: IngestionAttemptResponse
+    IngestionAuthorizationConfirmRequest:
+      properties:
+        action:
+          type: string
+          enum:
+          - document.ingest
+          - document.read
+          - document.reindex
+          title: Action
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:@/-]*$
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          maxLength: 200
+          minLength: 8
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]+$
+          title: Idempotency Key
+        authorization_token:
+          type: string
+          maxLength: 4096
+          minLength: 32
+          title: Authorization Token
+        expected_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 2
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:@/-]+$
+          title: Expected Subject Id
+        document_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Version Id
+      additionalProperties: false
+      type: object
+      required:
+      - action
+      - correlation_id
+      - idempotency_key
+      - authorization_token
+      - expected_subject_id
+      - document_id
+      - document_version_id
+      title: IngestionAuthorizationConfirmRequest
+    IngestionAuthorizationIssueRequest:
+      properties:
+        action:
+          type: string
+          enum:
+          - document.ingest
+          - document.read
+          - document.reindex
+          title: Action
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:@/-]*$
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          maxLength: 200
+          minLength: 8
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]+$
+          title: Idempotency Key
+      additionalProperties: false
+      type: object
+      required:
+      - action
+      - correlation_id
+      - idempotency_key
+      title: IngestionAuthorizationIssueRequest
+    IngestionAuthorizationResponse:
+      properties:
+        authorization_token:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization Token
+        authorization_id:
+          type: string
+          title: Authorization Id
+        confirmed_subject_id:
+          type: string
+          title: Confirmed Subject Id
+        action:
+          type: string
+          enum:
+          - document.ingest
+          - document.read
+          - document.reindex
+          title: Action
+        document_id:
+          type: string
+          title: Document Id
+        document_version_id:
+          type: string
+          title: Document Version Id
+        correlation_id:
+          type: string
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          title: Idempotency Key
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+      type: object
+      required:
+      - authorization_id
+      - confirmed_subject_id
+      - action
+      - document_id
+      - document_version_id
+      - correlation_id
+      - idempotency_key
+      - expires_at
+      title: IngestionAuthorizationResponse
     IntegrationActor:
       properties:
         type:
@@ -6065,6 +6403,150 @@ components:
       - sourceVersion
       - scope
       title: IntegrationSourceResource
+    IntelligenceDocumentCoordinate:
+      properties:
+        document_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Version Id
+        policy_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Policy Hash
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - policy_hash
+      title: IntelligenceDocumentCoordinate
+    IntelligenceScopeAuthorizationConfirmRequest:
+      properties:
+        authorization_token:
+          type: string
+          maxLength: 4096
+          minLength: 32
+          title: Authorization Token
+        expected_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 2
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:@/-]+$
+          title: Expected Subject Id
+        documents:
+          items:
+            $ref: '#/components/schemas/IntelligenceDocumentCoordinate'
+          type: array
+          maxItems: 500
+          minItems: 1
+          title: Documents
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:@/-]*$
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          maxLength: 200
+          minLength: 8
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]+$
+          title: Idempotency Key
+      additionalProperties: false
+      type: object
+      required:
+      - authorization_token
+      - expected_subject_id
+      - documents
+      - correlation_id
+      - idempotency_key
+      title: IntelligenceScopeAuthorizationConfirmRequest
+    IntelligenceScopeAuthorizationIssueRequest:
+      properties:
+        document_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 500
+          minItems: 1
+          title: Document Ids
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:@/-]*$
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          maxLength: 200
+          minLength: 8
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]+$
+          title: Idempotency Key
+      additionalProperties: false
+      type: object
+      required:
+      - document_ids
+      - correlation_id
+      - idempotency_key
+      title: IntelligenceScopeAuthorizationIssueRequest
+    IntelligenceScopeAuthorizationResponse:
+      properties:
+        authorization_token:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization Token
+        authorization_id:
+          type: string
+          title: Authorization Id
+        confirmed_subject_id:
+          type: string
+          title: Confirmed Subject Id
+        action:
+          type: string
+          const: intelligence.query
+          title: Action
+          default: intelligence.query
+        document_scope_hash:
+          type: string
+          title: Document Scope Hash
+        document_count:
+          type: integer
+          maximum: 500.0
+          minimum: 1.0
+          title: Document Count
+        documents:
+          items:
+            $ref: '#/components/schemas/IntelligenceDocumentCoordinate'
+          type: array
+          title: Documents
+        correlation_id:
+          type: string
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          title: Idempotency Key
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+      type: object
+      required:
+      - authorization_id
+      - confirmed_subject_id
+      - document_scope_hash
+      - document_count
+      - documents
+      - correlation_id
+      - idempotency_key
+      - expires_at
+      title: IntelligenceScopeAuthorizationResponse
     PapLabel:
       type: string
       enum:

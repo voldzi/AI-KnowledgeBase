@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -50,6 +50,78 @@ describe("upload preflight", () => {
     assert.equal(verifiedReceipt.sha256, sha256);
     assert.equal(verifiedObject.size_bytes, content.byteLength);
     assert.equal(saved, "# Test document\n\nControlled content.");
+  });
+
+  it("publishes content no-clobber only after file and parent directory sync", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akl-upload-durable-"));
+    const settings = testSettings(root);
+    const content = new TextEncoder().encode("durable upload content");
+    const sha256 = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+    const decision = createUploadPreflightDecision(
+      {
+        document_id: "doc_durable",
+        file_name: "durable.txt",
+        file_size: content.byteLength,
+        file_type: "text/plain",
+        sha256,
+      },
+      settings,
+    );
+    const payload = verifyUploadToken(decision.required_headers["X-AKL-Upload-Token"], settings);
+    const order: string[] = [];
+
+    const persisted = await persistUploadedObject(payload, content, settings, {
+      afterFileSync: () => { order.push("file"); },
+      afterPublish: () => { order.push("publish"); },
+      afterDirectorySync: () => { order.push("directory"); },
+    });
+
+    assert.deepEqual(order, ["file", "publish", "directory"]);
+    assert.equal(await readFile(persisted.path, "utf8"), "durable upload content");
+
+    const replay = await persistUploadedObject(payload, content, settings);
+    assert.equal(replay.path, persisted.path);
+    assert.equal(await readFile(replay.path, "utf8"), "durable upload content");
+  });
+
+  it("does not issue a durable result across file-sync or publish fault boundaries", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akl-upload-fault-"));
+    const settings = testSettings(root);
+    const content = new TextEncoder().encode("power loss boundary");
+    const sha256 = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+    const decision = createUploadPreflightDecision(
+      {
+        document_id: "doc_fault",
+        file_name: "fault.txt",
+        file_size: content.byteLength,
+        file_type: "text/plain",
+        sha256,
+      },
+      settings,
+    );
+    const payload = verifyUploadToken(decision.required_headers["X-AKL-Upload-Token"], settings);
+
+    await assert.rejects(
+      () => persistUploadedObject(payload, content, settings, {
+        afterFileSync: () => {
+          throw new Error("simulated power loss before publish");
+        },
+      }),
+      /simulated power loss before publish/,
+    );
+    await assert.rejects(() => access(path.join(settings.objectStorageRoot, payload.bucket, payload.object_key)));
+
+    await assert.rejects(
+      () => persistUploadedObject(payload, content, settings, {
+        afterPublish: () => {
+          throw new Error("simulated power loss before directory sync");
+        },
+      }),
+      /simulated power loss before directory sync/,
+    );
+
+    const recovered = await persistUploadedObject(payload, content, settings);
+    assert.equal(await readFile(recovered.path, "utf8"), "power loss boundary");
   });
 
   it("rejects a tampered receipt and a missing or changed persisted object", async () => {

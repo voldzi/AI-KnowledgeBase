@@ -15,7 +15,14 @@ from app.access_governance import (
     InformationPublicationRegistration,
 )
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
-from app.models import AuditEvent, Document, DocumentFile, DocumentPublication, DocumentVersion
+from app.models import (
+    AuditEvent,
+    Document,
+    DocumentFile,
+    DocumentPublication,
+    DocumentVersion,
+    IngestionAttempt,
+)
 from app.auth import Principal
 from app.public_delivery_limiter import PublicDeliveryLimiter
 from app.permissions import (
@@ -505,6 +512,89 @@ def test_public_scope_mixed_with_unrelated_scope_still_uses_exact_public_version
     assert "PUBLIC_PROJECTION_REQUIRED" in full_document.json()["error"]["details"][
         "reason_codes"
     ]
+
+
+def test_public_only_intelligence_scope_uses_only_active_published_version(
+    client,
+    db_session,
+    monkeypatch,
+) -> None:
+    document, published_version = _seed_public_version(db_session)
+    _install_governance(monkeypatch, published_version)
+    assert _publish(client).status_code == 200
+    attempt = IngestionAttempt(
+        document_id=document.document_id,
+        document_version_id=published_version.document_version_id,
+        ingestion_job_id="ing_public_scope",
+        ingestion_status="INDEXED",
+    )
+    db_session.add(attempt)
+    db_session.commit()
+    correlation_id = "corr-public-intelligence-scope"
+    issued = client.post(
+        "/api/v1/intelligence/authorization",
+        headers={
+            **_public_only_headers(),
+            "X-Request-ID": correlation_id,
+            "X-Correlation-ID": correlation_id,
+        },
+        json={
+            "document_ids": [document.document_id],
+            "correlation_id": correlation_id,
+            "idempotency_key": "intelligence:public:published",
+        },
+    )
+
+    assert issued.status_code == 200, issued.text
+    assert issued.json()["documents"] == [
+        {
+            "document_id": document.document_id,
+            "document_version_id": published_version.document_version_id,
+            "policy_hash": document.policy_hash,
+        }
+    ]
+
+    unpublished = DocumentVersion(
+        document_version_id="ver_public_guide_unpublished_scope",
+        document_id=document.document_id,
+        version_label="2.0",
+        status="valid",
+        organization_id="org_stratos",
+        policy_binding_id=document.policy_binding_id,
+        policy_version=document.policy_version,
+        policy_hash=document.policy_hash,
+        policy_summary=document.policy_summary,
+        governed_resource_id="gir_akb_document_version_public_scope_2",
+        governed_source_version="ver_public_guide_unpublished_scope",
+        governed_parent_resource_id=document.governed_resource_id,
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+        governance_registration_status="REGISTERED",
+        governance_registered_at=datetime.now(timezone.utc),
+        source_file_uri="s3://akl-documents/public/unpublished-scope.pdf",
+        file_hash=f"sha256:{'b' * 64}",
+        published_at=datetime.now(timezone.utc),
+    )
+    db_session.add(unpublished)
+    db_session.commit()
+    attempt.document_version_id = unpublished.document_version_id
+    db_session.commit()
+    rejected = client.post(
+        "/api/v1/intelligence/authorization",
+        headers={
+            **_public_only_headers(),
+            "X-Request-ID": "corr-public-intelligence-unpublished",
+            "X-Correlation-ID": "corr-public-intelligence-unpublished",
+        },
+        json={
+            "document_ids": [document.document_id],
+            "correlation_id": "corr-public-intelligence-unpublished",
+            "idempotency_key": "intelligence:public:unpublished",
+        },
+    )
+
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "intelligence_scope_empty"
 
 
 def test_active_publication_blocks_archive_and_logical_delete_until_revoke(

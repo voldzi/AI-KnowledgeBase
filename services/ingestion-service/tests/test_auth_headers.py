@@ -107,10 +107,21 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
                 return Response({"allowed": True, "reason": "allowed"})
             return Response({"audit_event_id": "audit-ingestion-1"}, status_code=201)
 
-        async def get(self, url, **kwargs):
-            registry_calls.append({"method": "GET", "url": url, **kwargs})
-            if url.endswith("/ready"):
+        async def request(self, method, url, **kwargs):
+            registry_calls.append({"method": method, "url": url, **kwargs})
+            if url.endswith("/api/v1/integrations/ingestion/readiness"):
                 return Response({"status": "ready"})
+            if url.endswith("/api/v1/integrations/ingestion/authorizations/confirm"):
+                request = kwargs["json"]
+                return Response({
+                    "authorization_id": "iauth_confirmed_1",
+                    "confirmed_subject_id": request["expected_subject_id"],
+                    "action": request["action"],
+                    "document_id": request["document_id"],
+                    "document_version_id": request["document_version_id"],
+                    "correlation_id": request["correlation_id"],
+                    "idempotency_key": request["idempotency_key"],
+                })
             if url.endswith("/versions/ver-aiip-1"):
                 return Response(
                     {
@@ -123,6 +134,21 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
                         "policy_summary": {"handlingClass": "INTERNAL"},
                     }
                 )
+            if method == "PATCH":
+                request = kwargs["json"]
+                return Response({
+                    "document_id": "doc-aiip-1",
+                    "updated": 1,
+                    "items": [],
+                    "ingestion_attempt": {
+                        "document_id": "doc-aiip-1",
+                        "document_version_id": request["current_document_version_id"],
+                        "ingestion_job_id": request["current_ingestion_job_id"],
+                        "ingestion_status": request["current_ingestion_status"],
+                    },
+                })
+            if method == "POST":
+                return Response({"audit_event_id": "audit-ingestion-1"}, status_code=201)
             return Response(
                 {
                     "title": "AIIP request",
@@ -141,9 +167,9 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
                 }
             )
 
-        async def patch(self, url, **kwargs):
-            registry_calls.append({"method": "PATCH", "url": url, **kwargs})
-            return Response({"document_id": "doc-aiip-1", "updated": 1, "items": []})
+        async def get(self, url, **kwargs):
+            return await self.request("GET", url, **kwargs)
+
 
     monkeypatch.setattr(registry_client_module.httpx, "AsyncClient", Client)
     caller = AuthContext(
@@ -157,12 +183,14 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
 
     async def exercise_pipeline_registry_calls() -> None:
         assert await client.readiness() == "ready"
-        await client.require_authorized(
-            subject_id=caller.subject_id,
+        await client.confirm_ingestion_authorization(
+            authorization_token="registry-proof-token",
+            expected_subject_id=caller.subject_id,
             action="document.ingest",
             document_id="doc-aiip-1",
             document_version_id="ver-aiip-1",
-            auth_context=caller,
+            correlation_id="corr-test",
+            idempotency_key="confirm:doc-aiip-1:ver-aiip-1",
         )
         metadata = await client.get_document_metadata(
             "doc-aiip-1",
@@ -194,14 +222,17 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
     )
     assert "aiip-caller-token" not in repr(registry_calls)
 
-    authz_call = next(call for call in registry_calls if str(call["url"]).endswith("/authz/check"))
-    assert authz_call["json"]["subject_id"] == caller.subject_id  # type: ignore[index]
-    assert "roles" not in authz_call["json"]  # type: ignore[operator]
-    assert "capabilities" not in authz_call["json"]  # type: ignore[operator]
+    proof_call = next(
+        call for call in registry_calls
+        if str(call["url"]).endswith("/integrations/ingestion/authorizations/confirm")
+    )
+    assert proof_call["json"]["expected_subject_id"] == caller.subject_id  # type: ignore[index]
+    assert not any(str(call["url"]).endswith("/authz/check") for call in registry_calls)
 
     status_call = next(call for call in registry_calls if call["method"] == "PATCH")
     assert status_call["json"] == {
         "current_document_version_id": "ver-aiip-1",
+        "expected_current_ingestion_job_id": "ing-aiip-1",
         "current_ingestion_job_id": "ing-aiip-1",
         "current_ingestion_status": "INDEXED",
     }
@@ -242,11 +273,14 @@ def test_registry_service_identity_failure_never_falls_back_to_caller(
 
     with pytest.raises(IngestionError) as exc_info:
         asyncio.run(
-            client.require_authorized(
-                subject_id=caller.subject_id,
+            client.confirm_ingestion_authorization(
+                authorization_token="registry-proof-token",
+                expected_subject_id=caller.subject_id,
                 action="document.ingest",
                 document_id="doc-aiip-1",
-                auth_context=caller,
+                document_version_id="ver-aiip-1",
+                correlation_id="corr-test",
+                idempotency_key="confirm:doc-aiip-1:ver-aiip-1",
             )
         )
 
@@ -318,7 +352,7 @@ def test_local_registry_headers_keep_caller_only_as_on_behalf_of_context(tmp_pat
     assert headers["X-AKL-Subject"] == "service-account-svc-ingestion"
     assert headers["X-AKL-Service-Client-ID"] == "svc-ingestion"
     assert headers["X-AKL-Roles"] == "service_ingestion"
-    assert headers["X-AKL-On-Behalf-Of"] == auth_context.subject_id
+    assert "X-AKL-On-Behalf-Of" not in headers
 
 
 def test_embedding_headers_use_gateway_service_identity_instead_of_caller_token(tmp_path) -> None:

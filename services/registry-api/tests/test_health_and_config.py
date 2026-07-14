@@ -45,6 +45,7 @@ def _production_settings(**overrides):
         "AKB_POLICY_SERVICE_TOKEN": "dedicated-akb-service-token",
         "AKB_AIIP_INGEST_SERVICE_TOKEN": "dedicated-aiip-ingest-service-token",
         "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN": "independent-public-delivery-token-0001",
+        "AKL_INGESTION_AUTHORIZATION_SECRET": "test-ingestion-authorization-secret-0001",
     }
     values.update(overrides)
     return Settings(**values)
@@ -70,6 +71,17 @@ def test_production_requires_explicit_service_client_and_route_allowlists():
         _production_settings(AKL_TRUSTED_SERVICE_CLIENT_IDS="")
     with pytest.raises(ValidationError, match="AKL_SERVICE_CLIENT_ROUTE_GRANTS"):
         _production_settings(AKL_SERVICE_CLIENT_ROUTE_GRANTS="")
+
+
+def test_production_requires_exactly_one_strong_ingestion_authorization_secret():
+    with pytest.raises(ValidationError, match="requires exactly one"):
+        _production_settings(AKL_INGESTION_AUTHORIZATION_SECRET="")
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        _production_settings(AKL_INGESTION_AUTHORIZATION_SECRET="too-short")
+    with pytest.raises(ValidationError, match="requires exactly one"):
+        _production_settings(
+            AKL_INGESTION_AUTHORIZATION_SECRET_FILE="/run/secrets/duplicate"
+        )
 
 
 def test_error_shape_uses_trace_id(client, reader_headers):

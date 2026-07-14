@@ -81,6 +81,19 @@ def _chunk() -> DocumentChunk:
     )
 
 
+def _authorized_document(
+    *,
+    document_id: str = "doc_allowed",
+    document_version_id: str = "ver_1",
+    policy_hash: str = "sha256:" + "c" * 64,
+) -> dict[str, str]:
+    return {
+        "document_id": document_id,
+        "document_version_id": document_version_id,
+        "policy_hash": policy_hash,
+    }
+
+
 def test_indexer_promotes_rag_filter_and_citation_fields(tmp_path) -> None:
     settings = _settings(tmp_path)
     point = QdrantIndexer(settings)._point(_chunk(), [0.1, 0.2], embedding_model="mock-embedding")
@@ -142,6 +155,7 @@ def test_opensearch_authorization_filter_binds_document_to_current_policy_hash()
                 "doc_other": ["sha256:" + "d" * 64],
                 "doc_without_policy": ["invalid"],
             },
+            authorized_documents=[_authorized_document(policy_hash=policy_hash)],
         )
     )
 
@@ -152,7 +166,8 @@ def test_opensearch_authorization_filter_binds_document_to_current_policy_hash()
                     "bool": {
                         "filter": [
                             {"term": {"document_id": "doc_allowed"}},
-                            {"terms": {"policy_hash": [policy_hash]}},
+                            {"term": {"document_version_id": "ver_1"}},
+                            {"term": {"policy_hash": policy_hash}},
                         ]
                     }
                 }
@@ -226,7 +241,11 @@ async def test_opensearch_entity_facets_aggregate_paired_values(tmp_path, monkey
     )
     monkeypatch.setattr("indexers.opensearch.httpx.AsyncClient", lambda **_: fake_client)
 
-    report = await OpenSearchIndexer(settings).entity_facets(limit=8, value_limit=4)
+    report = await OpenSearchIndexer(settings).entity_facets(
+        limit=8,
+        value_limit=4,
+        authorized_documents=[_authorized_document()],
+    )
 
     assert report.status == "ready"
     assert report.total_chunks == 5
@@ -235,6 +254,39 @@ async def test_opensearch_entity_facets_aggregate_paired_values(tmp_path, monkey
     assert report.entity_groups[0].entity_type == "document_number"
     assert report.entity_groups[0].values[0].key == "RMO12/2024"
     assert fake_client.post_calls[0]["url"] == "http://localhost:9200/akl_document_chunks/_search"
+    assert fake_client.post_calls[0]["json"]["query"] == _authorized_policy_filter(
+        EntitySearchRequest(authorized_documents=[_authorized_document()])
+    )
+
+
+def test_opensearch_authorization_filter_requires_exact_version_and_policy_coordinate() -> None:
+    policy_hash = "sha256:" + "c" * 64
+    result = _authorized_policy_filter(
+        EntitySearchRequest(
+            query="directive",
+            allowed_document_ids=["doc_allowed", "doc_stale"],
+            allowed_policy_hashes={
+                "doc_allowed": ["sha256:" + "d" * 64],
+                "doc_stale": [policy_hash],
+            },
+            authorized_documents=[
+                _authorized_document(
+                    document_id="doc_allowed",
+                    document_version_id="ver_current",
+                    policy_hash=policy_hash,
+                )
+            ],
+        )
+    )
+
+    filters = result["bool"]["should"][0]["bool"]["filter"]
+    assert filters == [
+        {"term": {"document_id": "doc_allowed"}},
+        {"term": {"document_version_id": "ver_current"}},
+        {"term": {"policy_hash": policy_hash}},
+    ]
+    assert "doc_stale" not in str(result)
+    assert ("sha256:" + "d" * 64) not in str(result)
 
 
 @pytest.mark.asyncio
@@ -286,6 +338,7 @@ async def test_opensearch_entity_search_filters_authorized_documents_and_entity_
             entity_type="document_number",
             entity_value="RMO12/2024",
             allowed_document_ids=["doc_allowed", "doc_allowed"],
+            authorized_documents=[_authorized_document()],
         )
     )
 
@@ -296,7 +349,12 @@ async def test_opensearch_entity_search_filters_authorized_documents_and_entity_
     assert report.hits[0].snippet == "RMO 12/2024 assigns the action owner."
     search_query = fake_client.post_calls[0]["json"]
     filters = search_query["query"]["bool"]["filter"]
-    assert {"terms": {"document_id": ["doc_allowed"]}} in filters
+    assert _authorized_policy_filter(
+        EntitySearchRequest(
+            query="action owner",
+            authorized_documents=[_authorized_document()],
+        )
+    ) in filters
     assert {"term": {"entity_pairs": "document_number:RMO12/2024"}} in filters
     assert search_query["size"] == 12
 
@@ -362,6 +420,7 @@ async def test_opensearch_analyst_search_rewrites_field_aliases_and_filters_auth
             query_mode="fielded",
             search_fields=["title", "entity"],
             allowed_document_ids=["doc_allowed", "doc_allowed"],
+            authorized_documents=[_authorized_document()],
         )
     )
 
@@ -371,7 +430,12 @@ async def test_opensearch_analyst_search_rewrites_field_aliases_and_filters_auth
     assert report.hits[0].document_id == "doc_allowed"
     search_query = fake_client.post_calls[0]["json"]
     filters = search_query["query"]["bool"]["filter"]
-    assert {"terms": {"document_id": ["doc_allowed"]}} in filters
+    assert _authorized_policy_filter(
+        AnalystSearchRequest(
+            query="directive",
+            authorized_documents=[_authorized_document()],
+        )
+    ) in filters
     query_string = search_query["query"]["bool"]["must"][0]["query_string"]
     assert query_string["query"] == "document_title:Directive AND entity_values:RMO12/2024"
     assert query_string["fields"] == ["document_title^4", "entity_values^4", "entity_pairs^4", "entity_types"]
@@ -454,6 +518,7 @@ async def test_opensearch_entity_relationships_builds_evidence_edges(tmp_path, m
             entity_type="document_number",
             entity_value="RMO12/2024",
             allowed_document_ids=["doc_allowed", "doc_allowed"],
+            authorized_documents=[_authorized_document()],
         )
     )
 
@@ -467,7 +532,9 @@ async def test_opensearch_entity_relationships_builds_evidence_edges(tmp_path, m
     assert len(report.edges[0].evidence) == 2
     search_query = fake_client.post_calls[0]["json"]
     filters = search_query["query"]["bool"]["filter"]
-    assert {"terms": {"document_id": ["doc_allowed"]}} in filters
+    assert _authorized_policy_filter(
+        EntityRelationshipRequest(authorized_documents=[_authorized_document()])
+    ) in filters
     assert {"exists": {"field": "entity_pairs"}} in filters
     assert {"term": {"entity_pairs": "document_number:RMO12/2024"}} in filters
 

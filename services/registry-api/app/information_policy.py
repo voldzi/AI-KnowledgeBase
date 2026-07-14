@@ -17,6 +17,7 @@ ORGANIZATION_ID = "org_stratos"
 class HandlingClass(str, Enum):
     public = "PUBLIC"
     internal = "INTERNAL"
+    project_management = "PROJECT_MANAGEMENT"
     restricted = "RESTRICTED"
 
 
@@ -85,7 +86,7 @@ class InformationPolicyBinding(BaseModel):
     audience: PolicyAudience
     obligations: list[PolicyObligation]
     originator_id: str | None = Field(default=None, alias="originatorId")
-    issued_at: datetime | None = Field(default=None, alias="issuedAt")
+    issued_at: datetime = Field(alias="issuedAt")
     review_at: datetime | None = Field(default=None, alias="reviewAt")
 
     @model_validator(mode="after")
@@ -278,6 +279,7 @@ def legacy_classification(binding: InformationPolicyBinding) -> str:
     return {
         HandlingClass.public.value: "public",
         HandlingClass.internal.value: "internal",
+        HandlingClass.project_management.value: "internal",
         HandlingClass.restricted.value: "restricted",
     }[str(binding.handling_class)]
 

@@ -8,11 +8,18 @@ import type {
   EntityRelationshipResponse,
   EntitySearchRequest,
   EntitySearchResponse,
+  IngestionAuthorizationOptions,
+  IngestionCreateOptions,
   IngestionApiClient,
   IngestionJob,
-  IngestionReport
+  IngestionReport,
+  IntelligenceScopeAuthorizationOptions,
 } from "@/lib/types";
 import { ApiClientError } from "@/lib/types";
+import {
+  bindAuthorizedDocumentScope,
+  coordinateByDocumentId,
+} from "@/lib/intelligence/authorization-contract";
 
 import { cloneMock, mockIngestionJobs, mockReports } from "./data";
 
@@ -24,7 +31,11 @@ export class MockIngestionClient implements IngestionApiClient {
     return cloneMock(this.jobs);
   }
 
-  async getJob(jobId: string, _context: ApiRequestContext): Promise<IngestionJob> {
+  async getJob(
+    jobId: string,
+    _context: ApiRequestContext,
+    _options: IngestionAuthorizationOptions,
+  ): Promise<IngestionJob> {
     const job = this.jobs.find((candidate) => candidate.job_id === jobId);
     if (!job) {
       throw new ApiClientError("Ingestion job not found", 404, "INGESTION_JOB_NOT_FOUND", "mock-trace");
@@ -32,7 +43,11 @@ export class MockIngestionClient implements IngestionApiClient {
     return cloneMock(job);
   }
 
-  async createJob(request: CreateIngestionJobRequest, _context: ApiRequestContext): Promise<IngestionJob> {
+  async createJob(
+    request: CreateIngestionJobRequest,
+    _context: ApiRequestContext,
+    _options: IngestionCreateOptions,
+  ): Promise<IngestionJob> {
     const job: IngestionJob = {
       job_id: `ing_${this.jobs.length + 400}`,
       status: "queued",
@@ -45,7 +60,11 @@ export class MockIngestionClient implements IngestionApiClient {
     return cloneMock(job);
   }
 
-  async getReport(jobId: string, _context: ApiRequestContext): Promise<IngestionReport> {
+  async getReport(
+    jobId: string,
+    _context: ApiRequestContext,
+    _options: IngestionAuthorizationOptions,
+  ): Promise<IngestionReport> {
     const report = this.reports.find((candidate) => candidate.job_id === jobId);
     if (!report) {
       return {
@@ -63,7 +82,11 @@ export class MockIngestionClient implements IngestionApiClient {
     return cloneMock(report);
   }
 
-  async cancelJob(jobId: string, _context: ApiRequestContext): Promise<IngestionJob> {
+  async cancelJob(
+    jobId: string,
+    _context: ApiRequestContext,
+    _options: IngestionAuthorizationOptions,
+  ): Promise<IngestionJob> {
     const job = this.jobs.find((candidate) => candidate.job_id === jobId);
     if (!job) {
       throw new ApiClientError("Ingestion job not found", 404, "INGESTION_JOB_NOT_FOUND", "mock-trace");
@@ -75,49 +98,77 @@ export class MockIngestionClient implements IngestionApiClient {
 
   async getEntityFacets(
     _context: ApiRequestContext,
-    _options: { limit?: number; valueLimit?: number } = {}
+    options: IntelligenceScopeAuthorizationOptions & { limit?: number; valueLimit?: number }
   ): Promise<EntityFacetReport> {
+    const coordinates = coordinateByDocumentId(options);
+    const includeRmo = coordinates.has("doc_109");
+    const includeOperations = coordinates.has("doc_105");
+    const entityTypes = [
+      ...(includeRmo
+        ? [
+            { key: "document_number", label: "Document number", count: 7 },
+            { key: "date", label: "Date", count: 4 },
+            { key: "email", label: "Email", count: 5 },
+          ]
+        : []),
+      ...(includeOperations
+        ? [
+            { key: "email", label: "Email", count: 3 },
+            { key: "url", label: "URL", count: 2 },
+          ]
+        : []),
+    ].slice(0, options.limit ?? 8);
+    const emailValues = [
+      ...(includeRmo
+        ? [{ key: "aiip.office@example.cz", label: "aiip.office@example.cz", count: 5 }]
+        : []),
+      ...(includeOperations
+        ? [{ key: "ops@example.cz", label: "ops@example.cz", count: 3 }]
+        : []),
+    ].slice(0, options.valueLimit ?? 10);
+    const entityGroups = [
+      ...(includeRmo
+        ? [
+            {
+              entity_type: "document_number",
+              label: "Document number",
+              count: 7,
+              values: [
+                { key: "RMO12/2024", label: "RMO12/2024", count: 7 },
+              ].slice(0, options.valueLimit ?? 10),
+            },
+          ]
+        : []),
+      ...(emailValues.length > 0
+        ? [
+            {
+              entity_type: "email",
+              label: "Email",
+              count: emailValues.reduce((total, item) => total + item.count, 0),
+              values: emailValues,
+            },
+          ]
+        : []),
+    ].slice(0, options.limit ?? 8);
     return {
       status: "ready",
       index_name: "akl_document_chunks",
-      total_chunks: 128,
-      chunks_with_entities: 47,
+      total_chunks: coordinates.size * 64,
+      chunks_with_entities: (includeRmo ? 24 : 0) + (includeOperations ? 23 : 0),
       generated_at: new Date().toISOString(),
       warnings: [],
-      entity_types: [
-        { key: "document_number", label: "Document number", count: 18 },
-        { key: "date", label: "Date", count: 14 },
-        { key: "email", label: "Email", count: 9 },
-        { key: "url", label: "URL", count: 6 }
-      ],
-      entity_groups: [
-        {
-          entity_type: "document_number",
-          label: "Document number",
-          count: 18,
-          values: [
-            { key: "RMO12/2024", label: "RMO12/2024", count: 7 },
-            { key: "MO3412/2025", label: "MO3412/2025", count: 4 }
-          ]
-        },
-        {
-          entity_type: "email",
-          label: "Email",
-          count: 9,
-          values: [
-            { key: "aiip.office@example.cz", label: "aiip.office@example.cz", count: 5 },
-            { key: "ops@example.cz", label: "ops@example.cz", count: 3 }
-          ]
-        }
-      ]
+      entity_types: entityTypes,
+      entity_groups: entityGroups,
     };
   }
 
   async searchEntities(
     request: EntitySearchRequest,
-    _context: ApiRequestContext
+    _context: ApiRequestContext,
+    options: IntelligenceScopeAuthorizationOptions,
   ): Promise<EntitySearchResponse> {
-    const allowedDocumentIds = new Set(request.allowed_document_ids ?? []);
+    const scopedRequest = bindAuthorizedDocumentScope(request, options);
+    const coordinates = coordinateByDocumentId(options);
     const hits = [
       {
         chunk_id: "chunk_mock_rmo_1",
@@ -157,13 +208,20 @@ export class MockIngestionClient implements IngestionApiClient {
         entity_values: ["ops@example.cz"],
         entity_pairs: ["email:ops@example.cz"]
       }
-    ].filter((hit) => allowedDocumentIds.size === 0 || allowedDocumentIds.has(hit.document_id));
-    const query = request.query?.trim().toLowerCase();
-    const entityPair = request.entity_type && request.entity_value ? `${request.entity_type}:${request.entity_value}` : null;
+    ].flatMap((hit) => {
+      const coordinate = coordinates.get(hit.document_id);
+      return coordinate?.document_version_id === hit.document_version_id
+        ? [{ ...hit, policy_hash: coordinate.policy_hash }]
+        : [];
+    });
+    const query = scopedRequest.query?.trim().toLowerCase();
+    const entityPair = scopedRequest.entity_type && scopedRequest.entity_value
+      ? `${scopedRequest.entity_type}:${scopedRequest.entity_value}`
+      : null;
     const filtered = hits.filter((hit) => {
-      if (request.entity_type && !hit.entity_types.includes(request.entity_type)) return false;
+      if (scopedRequest.entity_type && !hit.entity_types.includes(scopedRequest.entity_type)) return false;
       if (entityPair && !hit.entity_pairs.includes(entityPair)) return false;
-      if (request.entity_value && !hit.entity_values.includes(request.entity_value) && !hit.entity_pairs.some((pair) => pair.endsWith(`:${request.entity_value}`))) return false;
+      if (scopedRequest.entity_value && !hit.entity_values.includes(scopedRequest.entity_value) && !hit.entity_pairs.some((pair) => pair.endsWith(`:${scopedRequest.entity_value}`))) return false;
       if (query && !`${hit.document_title} ${hit.snippet} ${hit.entity_values.join(" ")}`.toLowerCase().includes(query)) return false;
       return true;
     });
@@ -172,8 +230,8 @@ export class MockIngestionClient implements IngestionApiClient {
       status: "ready",
       index_name: "akl_document_chunks",
       total_hits: filtered.length,
-      returned_hits: filtered.length,
-      hits: filtered.slice(0, request.limit ?? 12),
+      returned_hits: Math.min(filtered.length, scopedRequest.limit ?? 12),
+      hits: filtered.slice(0, scopedRequest.limit ?? 12),
       generated_at: new Date().toISOString(),
       warnings: []
     };
@@ -181,10 +239,12 @@ export class MockIngestionClient implements IngestionApiClient {
 
   async analystSearch(
     request: AnalystSearchRequest,
-    _context: ApiRequestContext
+    _context: ApiRequestContext,
+    options: IntelligenceScopeAuthorizationOptions,
   ): Promise<AnalystSearchResponse> {
-    const allowedDocumentIds = new Set(request.allowed_document_ids ?? []);
-    const normalizedQuery = (request.query ?? "")
+    const scopedRequest = bindAuthorizedDocumentScope(request, options);
+    const coordinates = coordinateByDocumentId(options);
+    const normalizedQuery = (scopedRequest.query ?? "")
       .replace(/\b(title|body|section|entity|source|type|class):/gi, "")
       .replace(/\b(AND|OR|NOT)\b/gi, " ")
       .replace(/[()"]/g, " ")
@@ -201,7 +261,7 @@ export class MockIngestionClient implements IngestionApiClient {
         document_type: "directive",
         classification: "internal",
         status: "valid",
-        score: request.query_mode === "fielded" ? 10.4 : 8.4,
+        score: scopedRequest.query_mode === "fielded" ? 10.4 : 8.4,
         snippet: "RMO 12/2024 stanovuje odpovědnosti vlastníka procesu a kontaktní adresu aiip.office@example.cz.",
         page_number: 3,
         section_title: "Odpovědnosti",
@@ -230,8 +290,12 @@ export class MockIngestionClient implements IngestionApiClient {
         entity_values: ["ops@example.cz"],
         entity_pairs: ["email:ops@example.cz"]
       }
-    ].filter((hit) => {
-      if (allowedDocumentIds.size > 0 && !allowedDocumentIds.has(hit.document_id)) return false;
+    ].flatMap((hit) => {
+      const coordinate = coordinates.get(hit.document_id);
+      return coordinate?.document_version_id === hit.document_version_id
+        ? [{ ...hit, policy_hash: coordinate.policy_hash }]
+        : [];
+    }).filter((hit) => {
       if (queryTokens.length === 0) return true;
       const haystack = `${hit.document_title} ${hit.snippet} ${hit.entity_values.join(" ")} ${hit.entity_pairs.join(" ")}`
         .toLowerCase();
@@ -241,10 +305,10 @@ export class MockIngestionClient implements IngestionApiClient {
     return {
       status: "ready",
       index_name: "akl_document_chunks",
-      query_mode: request.query_mode ?? "smart",
+      query_mode: scopedRequest.query_mode ?? "smart",
       total_hits: hits.length,
-      returned_hits: Math.min(hits.length, request.limit ?? 12),
-      hits: hits.slice(0, request.limit ?? 12),
+      returned_hits: Math.min(hits.length, scopedRequest.limit ?? 12),
+      hits: hits.slice(0, scopedRequest.limit ?? 12),
       generated_at: new Date().toISOString(),
       warnings: []
     };
@@ -252,9 +316,11 @@ export class MockIngestionClient implements IngestionApiClient {
 
   async getEntityRelationships(
     request: EntityRelationshipRequest,
-    _context: ApiRequestContext
+    _context: ApiRequestContext,
+    options: IntelligenceScopeAuthorizationOptions,
   ): Promise<EntityRelationshipResponse> {
-    const allowedDocumentIds = new Set(request.allowed_document_ids ?? []);
+    const scopedRequest = bindAuthorizedDocumentScope(request, options);
+    const coordinates = coordinateByDocumentId(options);
     const edges = [
       {
         edge_id: "rel_mock_rmo_aiip",
@@ -316,15 +382,21 @@ export class MockIngestionClient implements IngestionApiClient {
           }
         ]
       }
-    ].filter((edge) => {
-      if (allowedDocumentIds.size > 0 && !edge.evidence.some((item) => allowedDocumentIds.has(item.document_id))) {
-        return false;
-      }
-      if (request.entity_type || request.entity_value) {
+    ].map((edge) => ({
+      ...edge,
+      evidence: edge.evidence.flatMap((item) => {
+        const coordinate = coordinates.get(item.document_id);
+        return coordinate?.document_version_id === item.document_version_id
+          ? [{ ...item, policy_hash: coordinate.policy_hash }]
+          : [];
+      }),
+    })).filter((edge) => {
+      if (edge.evidence.length === 0) return false;
+      if (scopedRequest.entity_type || scopedRequest.entity_value) {
         const endpoints = [edge.source, edge.target];
         return endpoints.some((endpoint) => {
-          if (request.entity_type && endpoint.entity_type !== request.entity_type) return false;
-          if (request.entity_value && endpoint.entity_value !== request.entity_value) return false;
+          if (scopedRequest.entity_type && endpoint.entity_type !== scopedRequest.entity_type) return false;
+          if (scopedRequest.entity_value && endpoint.entity_value !== scopedRequest.entity_value) return false;
           return true;
         });
       }
@@ -335,8 +407,8 @@ export class MockIngestionClient implements IngestionApiClient {
       status: "ready",
       index_name: "akl_document_chunks",
       total_edges: edges.length,
-      returned_edges: Math.min(edges.length, request.limit ?? 12),
-      edges: edges.slice(0, request.limit ?? 12),
+      returned_edges: Math.min(edges.length, scopedRequest.limit ?? 12),
+      edges: edges.slice(0, scopedRequest.limit ?? 12),
       generated_at: new Date().toISOString(),
       warnings: []
     };

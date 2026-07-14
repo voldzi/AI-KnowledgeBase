@@ -491,8 +491,11 @@ class ExternalDocumentUpsertRequest(BaseModel):
 
 
 class ExternalDocumentCurrentUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     current_document_version_id: str | None = Field(default=None, max_length=64)
     current_file_id: str | None = Field(default=None, max_length=64)
+    expected_current_ingestion_job_id: str | None = Field(default=None, max_length=128)
     current_ingestion_job_id: str | None = Field(default=None, max_length=128)
     current_ingestion_status: str | None = Field(default=None, max_length=40)
     akb_source_uri: str | None = Field(default=None, max_length=1024)
@@ -522,10 +525,22 @@ class ExternalDocumentRefResponse(BaseModel):
     updated_at: datetime
 
 
+class IngestionAttemptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    document_id: str
+    document_version_id: str
+    ingestion_job_id: str
+    ingestion_status: Literal["QUEUED", "INGESTING", "INDEXED", "FAILED"]
+    created_at: datetime
+    updated_at: datetime
+
+
 class ExternalDocumentCurrentListResponse(BaseModel):
     document_id: str
     updated: int
     items: list[ExternalDocumentRefResponse] = Field(default_factory=list)
+    ingestion_attempt: IngestionAttemptResponse | None = None
 
 
 class ExternalDocumentResponse(BaseModel):
@@ -627,6 +642,9 @@ class AiipGovernanceEffectivePolicy(BaseModel):
     policy_binding_id: str = Field(min_length=1)
     policy_version: Literal["information-policy-2.0.0"]
     policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    originator_id: str | None
+    issued_at: datetime | None
+    review_at: datetime | None
 
 
 class AiipGovernedResourceConfirmation(BaseModel):
@@ -1068,6 +1086,124 @@ class AuthzCheckResponse(BaseModel):
     reason: str
     reason_codes: list[str] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
+
+
+class IngestionAuthorizationIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["document.ingest", "document.read", "document.reindex"]
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+    )
+
+
+class IngestionAuthorizationConfirmRequest(IngestionAuthorizationIssueRequest):
+    authorization_token: str = Field(min_length=32, max_length=4096)
+    expected_subject_id: str = Field(
+        min_length=2,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]+$",
+    )
+    document_id: str = Field(min_length=1, max_length=128)
+    document_version_id: str = Field(min_length=1, max_length=128)
+
+
+class IngestionAuthorizationResponse(BaseModel):
+    authorization_token: str | None = None
+    authorization_id: str
+    confirmed_subject_id: str
+    action: Literal["document.ingest", "document.read", "document.reindex"]
+    document_id: str
+    document_version_id: str
+    correlation_id: str
+    idempotency_key: str
+    expires_at: datetime
+
+
+class IntelligenceScopeAuthorizationIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_ids: list[str] = Field(min_length=1, max_length=500)
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+    )
+
+    @field_validator("document_ids")
+    @classmethod
+    def normalize_document_ids(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() if isinstance(value, str) else "" for value in values]
+        if any(not value or len(value) > 128 for value in normalized):
+            raise ValueError("Each document id must contain between 1 and 128 characters")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Intelligence document scope must not contain duplicates")
+        return sorted(normalized)
+
+
+class IntelligenceDocumentCoordinate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=128)
+    document_version_id: str = Field(min_length=1, max_length=128)
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class IntelligenceScopeAuthorizationConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authorization_token: str = Field(min_length=32, max_length=4096)
+    expected_subject_id: str = Field(
+        min_length=2,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]+$",
+    )
+    documents: list[IntelligenceDocumentCoordinate] = Field(min_length=1, max_length=500)
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+    )
+
+    @field_validator("documents")
+    @classmethod
+    def normalize_documents(
+        cls,
+        values: list[IntelligenceDocumentCoordinate],
+    ) -> list[IntelligenceDocumentCoordinate]:
+        if len({item.document_id for item in values}) != len(values):
+            raise ValueError("Intelligence coordinates must contain each document once")
+        return sorted(values, key=lambda item: item.document_id)
+
+
+class IntelligenceScopeAuthorizationResponse(BaseModel):
+    authorization_token: str | None = None
+    authorization_id: str
+    confirmed_subject_id: str
+    action: Literal["intelligence.query"] = "intelligence.query"
+    document_scope_hash: str
+    document_count: int = Field(ge=1, le=500)
+    documents: list[IntelligenceDocumentCoordinate]
+    correlation_id: str
+    idempotency_key: str
+    expires_at: datetime
 
 
 class AuthzFilterDocumentsRequest(BaseModel):

@@ -40,6 +40,9 @@ export function parseAiipGovernanceConfirmation(value: unknown): AiipGovernanceC
       "policy_binding_id",
       "policy_version",
       "policy_hash",
+      "originator_id",
+      "issued_at",
+      "review_at",
     ]);
     const parentScope = parseScope(parent.scope);
     const governedScope = parseScope(governed.scope);
@@ -81,6 +84,9 @@ export function parseAiipGovernanceConfirmation(value: unknown): AiipGovernanceC
           policy_binding_id: text(effectivePolicy.policy_binding_id),
           policy_version: text(effectivePolicy.policy_version),
           policy_hash: sha256(effectivePolicy.policy_hash),
+          originator_id: nullableText(effectivePolicy.originator_id),
+          issued_at: nullableTimestamp(effectivePolicy.issued_at),
+          review_at: nullableTimestamp(effectivePolicy.review_at),
         },
         registered_by_subject_id: text(governed.registered_by_subject_id),
         confirmed_by_subject_id: text(governed.confirmed_by_subject_id),
@@ -150,6 +156,20 @@ function exactRecord(value: unknown, allowedKeys: string[]): Record<string, unkn
 function text(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) throw new TypeError();
   return value;
+}
+
+function nullableText(value: unknown): string | null {
+  if (value === null) return null;
+  return text(value);
+}
+
+function nullableTimestamp(value: unknown): string | null {
+  if (value === null) return null;
+  const normalized = text(value);
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized)) throw new TypeError();
+  const milliseconds = Date.parse(normalized);
+  if (!Number.isFinite(milliseconds)) throw new TypeError();
+  return new Date(milliseconds).toISOString();
 }
 
 function minText(value: unknown, length: number): string {

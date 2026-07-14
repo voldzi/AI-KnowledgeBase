@@ -358,8 +358,6 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
         json={
             "current_document_version_id": version.json()["document_version_id"],
             "current_file_id": version.json()["file_id"],
-            "current_ingestion_job_id": "job_stratos_123",
-            "current_ingestion_status": "INGESTING",
             "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
             "source_location": {
                 "kind": "object_storage",
@@ -375,8 +373,8 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
     current = response.json()["external_document"]
     assert current["current_document_version_id"] == version.json()["document_version_id"]
     assert current["current_file_id"] == version.json()["file_id"]
-    assert current["current_ingestion_job_id"] == "job_stratos_123"
-    assert current["current_ingestion_status"] == "INGESTING"
+    assert current["current_ingestion_job_id"] is None
+    assert current["current_ingestion_status"] is None
     assert current["akb_source_uri"] == "s3://akl-documents/stratos/contracts/256-2022-S.pdf"
     assert current["source_location"]["kind"] == "object_storage"
 
@@ -391,11 +389,49 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
     )
     assert forbidden_by_document.status_code == 403
 
+    initial_claim = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": None,
+            "current_ingestion_job_id": "job_stratos_123",
+            "current_ingestion_status": "QUEUED",
+        },
+    )
+    assert initial_claim.status_code == 200, initial_claim.text
+    assert initial_claim.json()["ingestion_attempt"]["ingestion_job_id"] == "job_stratos_123"
+
     by_document = client.patch(
         f"/api/v1/documents/{document_id}/external-references/current",
         headers=admin_headers,
         json={
             "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": "job_stratos_123",
+            "current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_status": "QUEUED",
+        },
+    )
+    assert by_document.status_code == 200, by_document.text
+
+    by_document = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_status": "INGESTING",
+        },
+    )
+    assert by_document.status_code == 200, by_document.text
+
+    by_document = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": "job_stratos_456",
             "current_ingestion_job_id": "job_stratos_456",
             "current_ingestion_status": "INDEXED",
         },

@@ -54,7 +54,9 @@ function policyDetails(
     policyBindingId: summary.policyBindingId,
     policyVersion: summary.policyVersion,
     policyHash: resource.policy_hash,
-    handlingClass: summary.handlingClass,
+    // stratos-ui 0.3.33 predates the centrally defined PROJECT_MANAGEMENT class;
+    // retain the authoritative value until the shared type package catches up.
+    handlingClass: summary.handlingClass as InformationPolicyDetails["handlingClass"],
     legalClassification: summary.legalClassification,
     tlp: summary.tlp ?? null,
     pap: summary.pap ?? null,
@@ -108,7 +110,7 @@ function isInformationPolicySummary(
     policy.policyVersion === "information-policy-2.0.0" &&
     typeof policy.policyBindingId === "string" &&
     /^(?:pol|pb)_[A-Za-z0-9_-]{8,}$/.test(policy.policyBindingId) &&
-    ["PUBLIC", "INTERNAL", "RESTRICTED"].includes(policy.handlingClass ?? "") &&
+    ["PUBLIC", "INTERNAL", "PROJECT_MANAGEMENT", "RESTRICTED"].includes(policy.handlingClass ?? "") &&
     policy.legalClassification === "NONE" &&
     Array.isArray(policy.contentCategories) &&
     Array.isArray(policy.obligations) &&

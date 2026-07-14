@@ -182,25 +182,25 @@ def _is_service_identity(claims: dict) -> bool:
 
 
 def _service_client_id(claims: dict) -> tuple[str | None, bool]:
-    values = {
-        value
-        for key in ("azp", "client_id")
-        if isinstance((value := claims.get(key)), str) and value
-    }
-    if len(values) > 1:
-        return None, True
-    return (next(iter(values)) if values else None), False
+    service_looking = _is_service_identity(claims)
+    authorized_party = claims.get("azp")
+    client_id = claims.get("client_id")
+    if not isinstance(authorized_party, str) or not authorized_party:
+        return None, service_looking
+    if client_id is not None and (
+        not isinstance(client_id, str)
+        or not client_id
+        or client_id != authorized_party
+    ):
+        return None, service_looking
+    return authorized_party, False
 
 
 def _service_account_matches_client(claims: dict, client_id: str) -> bool:
     expected = f"service-account-{client_id}"
     subject = str(claims.get("sub") or "")
     username = str(claims.get("preferred_username") or "")
-    if username and username != expected:
-        return False
-    if subject.startswith("service-account-") and subject != expected:
-        return False
-    return expected in {subject, username}
+    return bool(subject and username == expected)
 
 
 def get_current_principal(
@@ -241,6 +241,12 @@ def _service_route_for_request(request: Request) -> str | None:
     path_segments = path.strip("/").split("/")
     if path.startswith("/integrations/aiip-upload/"):
         return "aiip-upload"
+    if path == "/integrations/ingestion/readiness":
+        return "authz"
+    if path == "/integrations/ingestion/authorizations/confirm":
+        return "ingestion-status"
+    if path == "/integrations/ingestion/intelligence-authorizations/confirm":
+        return "ingestion-status"
     if path.startswith("/authz/"):
         return "authz"
     if path.startswith("/integrations/idempotency/"):

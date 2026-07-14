@@ -427,6 +427,143 @@ if mode != 0o600:
 PY
 }
 
+akl_require_private_secret_file() {
+  local secret_file="$1"
+  local minimum_length="${2:-1}"
+  [[ "$minimum_length" =~ ^[1-9][0-9]*$ ]] \
+    || akl_fail "Private secret minimum length is invalid"
+  akl_require_file "$secret_file"
+  python3 - "$secret_file" "$minimum_length" <<'PY'
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+minimum_length = int(sys.argv[2])
+path_stat = os.lstat(path)
+if os.path.islink(path) or not stat.S_ISREG(path_stat.st_mode):
+    raise SystemExit(f"Private secret path must be a regular file, not a symlink: {path}")
+if path_stat.st_nlink != 1:
+    raise SystemExit(f"Private secret file must have exactly one link: {path}")
+if path_stat.st_uid != os.geteuid():
+    raise SystemExit(f"Private secret file must be owned by the release operator: {path}")
+mode = stat.S_IMODE(path_stat.st_mode)
+if mode != 0o600:
+    raise SystemExit(f"Private secret file must have mode 0600: {path} mode={mode:04o}")
+with open(path, "rb") as handle:
+    secret = handle.read().strip()
+if b"\0" in secret or len(secret) < minimum_length:
+    raise SystemExit(f"Private secret file content is invalid or too short: {path}")
+PY
+}
+
+akl_changed_supported_compose_services() {
+  local current_compose_file="$1"
+  local target_compose_file="$2"
+  local changed_services
+
+  akl_require_file "$current_compose_file"
+  akl_require_file "$target_compose_file"
+  changed_services="$(python3 - "$current_compose_file" "$target_compose_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+SUPPORTED = (
+    "registry-api",
+    "ingestion-service",
+    "rag-retrieval-service",
+    "web",
+)
+SERVICE_HEADER = re.compile(r"^  ([a-z0-9][a-z0-9_-]*):(?:[ \t]*#[^\r\n]*)?\r?\n?$")
+TOP_LEVEL = re.compile(r"^[A-Za-z0-9_.-]+:")
+
+
+def split_compose(path: str):
+    lines = Path(path).read_text(encoding="utf-8").splitlines(keepends=True)
+    service_markers = [index for index, line in enumerate(lines) if line.rstrip("\r\n") == "services:"]
+    if len(service_markers) != 1:
+        raise SystemExit(f"production Compose must contain exactly one top-level services map: {path}")
+    services_index = service_markers[0]
+    if lines[services_index].startswith((" ", "\t")):
+        raise SystemExit(f"production Compose services map is not top-level: {path}")
+
+    end_index = len(lines)
+    for index in range(services_index + 1, len(lines)):
+        line = lines[index]
+        if line.strip() and not line.startswith((" ", "\t", "#")):
+            if not TOP_LEVEL.match(line):
+                raise SystemExit(f"malformed top-level production Compose entry: {path}")
+            end_index = index
+            break
+
+    headers = []
+    for index in range(services_index + 1, end_index):
+        match = SERVICE_HEADER.fullmatch(lines[index])
+        if match:
+            headers.append((index, match.group(1)))
+    if not headers or headers[0][0] != services_index + 1:
+        raise SystemExit(f"production Compose services map has an unsupported layout: {path}")
+    names = [name for _, name in headers]
+    if len(names) != len(set(names)):
+        raise SystemExit(f"production Compose contains duplicate service names: {path}")
+
+    top_level_comment_indexes = {
+        index
+        for index in range(services_index + 1, end_index)
+        if lines[index].startswith("#")
+    }
+
+    blocks = {}
+    for position, (start, name) in enumerate(headers):
+        stop = headers[position + 1][0] if position + 1 < len(headers) else end_index
+        blocks[name] = "".join(
+            line
+            for index, line in enumerate(lines[start:stop], start=start)
+            if index not in top_level_comment_indexes
+        )
+    envelope = "".join(
+        lines[: services_index + 1]
+        + [lines[index] for index in sorted(top_level_comment_indexes)]
+        + lines[end_index:]
+    )
+    return envelope, blocks
+
+
+current_envelope, current_services = split_compose(sys.argv[1])
+target_envelope, target_services = split_compose(sys.argv[2])
+if current_envelope != target_envelope:
+    raise SystemExit(
+        "shared production Compose change modifies top-level configuration outside the four-service release boundary"
+    )
+if current_services.keys() != target_services.keys():
+    raise SystemExit("shared production Compose change adds or removes a service")
+
+changed = [
+    name
+    for name in target_services
+    if current_services[name] != target_services[name]
+]
+unsupported = [name for name in changed if name not in SUPPORTED]
+if unsupported:
+    raise SystemExit(
+        "shared production Compose change modifies unsupported service(s): "
+        + ",".join(sorted(unsupported))
+    )
+if not changed:
+    raise SystemExit(
+        "shared production Compose change has no service-block change inside the four-service release boundary"
+    )
+for name in SUPPORTED:
+    if name in changed:
+        print(name)
+PY
+)" || akl_fail "Shared production Compose change is outside the coordinated four-service release boundary"
+  [[ -n "$changed_services" ]] \
+    || akl_fail "Shared production Compose change selected no managed service"
+  printf '%s\n' "$changed_services"
+}
+
 akl_assert_private_env_snapshot_root() {
   local snapshot_root="$1"
   python3 - "$snapshot_root" <<'PY'
@@ -1541,7 +1678,7 @@ if values["phase"] not in {
     "verified",
 }:
     raise SystemExit("runtime marker phase is invalid")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|rag-retrieval-service|web)(?:,(?:registry-api|rag-retrieval-service|web))*)", values["services"]):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web))*)", values["services"]):
     raise SystemExit("runtime marker services are invalid")
 if values["migration_started"] not in {"true", "false"}:
     raise SystemExit("runtime marker migration flag is invalid")
@@ -1583,7 +1720,7 @@ if state not in {"applying", "failed", "verified"}:
     raise SystemExit("invalid runtime marker state")
 if phase not in {"seeded", "migrating", "migrated", "restarting", "verifying", "verified"}:
     raise SystemExit("invalid runtime marker phase")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|rag-retrieval-service|web)(?:,(?:registry-api|rag-retrieval-service|web))*)", services):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web))*)", services):
     raise SystemExit("invalid runtime marker services")
 if migration_started not in {"true", "false"}:
     raise SystemExit("invalid runtime marker migration flag")
@@ -2183,6 +2320,7 @@ akl_assert_existing_current_transition_state() {
       || akl_fail "Clean transition target has durable burned-SHA evidence; prepare a reviewed descendant"
     for target_image in \
       "akl/registry-api:${target_sha}" \
+      "akl/ingestion-service:${target_sha}" \
       "akl/rag-retrieval-service:${target_sha}" \
       "akl/web:${target_sha}"; do
       if docker image inspect "$target_image" >/dev/null 2>&1; then
@@ -2451,7 +2589,7 @@ akl_quarantine_unverified_compose_service() {
   local -a container_ids=()
 
   akl_validate_project_name "$project_name"
-  [[ "$service_name" =~ ^(registry-api|rag-retrieval-service|web)$ ]] \
+  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web)$ ]] \
     || akl_fail "Unverified Compose service name is invalid"
   [[ "$target_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || akl_fail "Unverified durable target image ID is invalid"

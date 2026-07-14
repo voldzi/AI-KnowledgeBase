@@ -68,8 +68,12 @@ Run the baseline smoke tests:
 
 ```bash
 python3 scripts/phase_02_llm_gateway_smoke.py
-python3 scripts/phase_02_controlled_document_smoke.py
 ```
+
+Legacy mutating `phase_01_smoke.py` and
+`phase_02_controlled_document_smoke.py` are retired in every environment.
+Exercise document creation and ingestion through the governed application
+UI/API.
 
 Registry API schema changes should also be verified against PostgreSQL, which is the production database runtime:
 
@@ -77,28 +81,31 @@ Registry API schema changes should also be verified against PostgreSQL, which is
 python3 scripts/registry_postgres_smoke.py
 ```
 
-Import AKB project documentation as the first local knowledge base:
+Inventory AKB project documentation without mutation:
 
 ```bash
 python3 tools/import_docs_folder.py \
   --source ./docs \
   --manifest docs/import-manifest.yaml \
-  --mode reindex \
+  --mode skip-existing \
+  --dry-run \
   --report reports/docs_import_report.json
-
-python3 scripts/phase_03_docs_import_smoke.py
-python3 scripts/phase_03_document_viewer_smoke.py
-python3 scripts/phase_03_local_production_smoke.py
-python3 scripts/phase_04_employee_assistant_smoke.py
 ```
+
+Host import mutation and importer-backed smoke flows are retired. Use the
+governed application UI/API for actual imports, then run read-only application
+and retrieval verification.
 
 Validate and import STRATOS Open Knowledge Format bundles when an application
 repository provides curated knowledge concepts:
 
 ```bash
 python3 tools/okf_profile.py validate --source ./okf
-python3 tools/import_docs_folder.py --source ./okf --manifest docs/import-manifest.yaml --mode reindex --okf-profile
+python3 tools/import_docs_folder.py --source ./okf --manifest docs/import-manifest.yaml --mode skip-existing --okf-profile --dry-run
 ```
+
+All authenticated mutations enter through the governed AKB application UI/API;
+no environment or bearer-token bypass enables the retired host importers.
 
 Profile details: `docs/integration/STRATOS_OKF_PROFILE.md`.
 IT management profile: `docs/integration/STRATOS_IT_MANAGEMENT_PROFILE.md`.

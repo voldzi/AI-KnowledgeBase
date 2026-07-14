@@ -116,6 +116,8 @@ class Settings:
     oidc_issuer: str | None
     oidc_audience: str | None
     oidc_jwks_url: str | None
+    web_ingestion_client_id: str
+    web_ingestion_role: str
 
     registry_client_mode: str
     registry_base_url: str
@@ -254,6 +256,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     service_token = source.get("AKL_SERVICE_TOKEN") or None
     service_account_subject = _get(source, "AKL_SERVICE_ACCOUNT_SUBJECT", "svc-ingestion")
+    web_ingestion_client_id = _get(
+        source,
+        "AKL_INGESTION_WEB_CLIENT_ID",
+        "svc-akb-web-ingestion",
+    )
+    web_ingestion_role = _get(
+        source,
+        "AKL_INGESTION_WEB_ROLE",
+        "service_akb_web_ingestion",
+    )
     service_account_token = source.get("AKL_SERVICE_ACCOUNT_TOKEN") or service_token
     registry_service_token_url = source.get("AKL_REGISTRY_SERVICE_TOKEN_URL") or None
     registry_service_client_id = source.get("AKL_REGISTRY_SERVICE_CLIENT_ID") or None
@@ -287,10 +299,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         )
 
     if env_name == "production":
-        if auth_mode not in {"bearer", "oidc"}:
-            raise ConfigError("Production requires AKL_AUTH_MODE=bearer or oidc")
-        if auth_mode == "bearer" and not service_token:
-            raise ConfigError("Production requires AKL_SERVICE_TOKEN")
+        if auth_mode != "oidc":
+            raise ConfigError("Production requires AKL_AUTH_MODE=oidc")
         if registry_mode == "mock":
             raise ConfigError("Production must not use mock Registry API client")
         if not all(registry_service_credentials):
@@ -313,12 +323,24 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             for name in ("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE", "AKL_OIDC_JWKS_URL")
         ):
             raise ConfigError("Production OIDC requires issuer, audience, and JWKS URL")
+        if web_ingestion_client_id != "svc-akb-web-ingestion":
+            raise ConfigError(
+                "Production AKL_INGESTION_WEB_CLIENT_ID must be svc-akb-web-ingestion"
+            )
+        if web_ingestion_role != "service_akb_web_ingestion":
+            raise ConfigError(
+                "Production AKL_INGESTION_WEB_ROLE must be service_akb_web_ingestion"
+            )
         if object_storage_mode == "mock":
             raise ConfigError("Production must not use mock object storage")
         if embedding_mode == "mock":
             raise ConfigError("Production must not use mock embedding client")
         if "mock" in indexer_targets:
             raise ConfigError("Production must not use mock indexer")
+        if not _parse_bool(_get(source, "AKL_INGESTION_PROCESS_JOBS_INLINE", "true")):
+            raise ConfigError(
+                "Production requires AKL_INGESTION_PROCESS_JOBS_INLINE=true until a durable worker is deployed"
+            )
 
     return Settings(
         service_name=_get(source, "AKL_SERVICE_NAME", "ingestion-service"),
@@ -335,6 +357,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         oidc_issuer=source.get("AKL_OIDC_ISSUER") or None,
         oidc_audience=source.get("AKL_OIDC_AUDIENCE") or None,
         oidc_jwks_url=source.get("AKL_OIDC_JWKS_URL") or None,
+        web_ingestion_client_id=web_ingestion_client_id,
+        web_ingestion_role=web_ingestion_role,
         registry_client_mode=registry_mode,
         registry_base_url=_get(source, "AKL_REGISTRY_API_BASE_URL", "http://localhost:8000").rstrip("/"),
         registry_service_token_url=registry_service_token_url,

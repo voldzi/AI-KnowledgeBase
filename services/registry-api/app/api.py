@@ -38,6 +38,12 @@ from app.information_policy import (
     legacy_classification,
     policy_columns,
 )
+from app.ingestion_authorization import (
+    confirm_ingestion_authorization,
+    confirm_intelligence_scope_authorization,
+    issue_ingestion_authorization,
+    issue_intelligence_scope_authorization,
+)
 from app.middleware import get_correlation_id
 from app.models import (
     AnalystCase,
@@ -56,6 +62,7 @@ from app.models import (
     DocumentPublication,
     DocumentVersion,
     ExternalDocumentRef,
+    IngestionAttempt,
     IntegrationIdempotencyRecord,
     WorkflowTask,
     make_id,
@@ -87,7 +94,9 @@ from app.permissions import (
     evaluate_global_action,
     evaluate_runtime_document_access,
     require_document_action,
+    require_document_version_action,
     require_global_action,
+    resolve_document_version_authority,
 )
 from app.schemas import (
     Action,
@@ -155,6 +164,12 @@ from app.schemas import (
     IntegrationIdempotencyCompleteResponse,
     IntegrationIdempotencyReserveRequest,
     IntegrationIdempotencyReserveResponse,
+    IngestionAuthorizationConfirmRequest,
+    IngestionAuthorizationIssueRequest,
+    IngestionAuthorizationResponse,
+    IntelligenceScopeAuthorizationConfirmRequest,
+    IntelligenceScopeAuthorizationIssueRequest,
+    IntelligenceScopeAuthorizationResponse,
     ProfileSettingsBundle,
     ProfileSettingsPutRequest,
     ProfileSettingsResponse,
@@ -721,7 +736,13 @@ def _commit_or_conflict(db: Session) -> None:
 def _require_authz_api_caller(principal: Principal, subject_id: str) -> None:
     if principal.service_identity:
         _require_service_route(principal, "authz")
-        return
+        if principal.subject_id == subject_id:
+            return
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "service_subject_delegation_forbidden",
+            "A service authorization check cannot claim another subject",
+        )
     if (
         principal.subject_id == subject_id
         or (not principal.dynamic_access_loaded and "admin" in principal.roles)
@@ -803,6 +824,12 @@ def _service_action_decision(
 ) -> Decision:
     if not principal.service_identity:
         raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "Service identity is required")
+    if subject_id != principal.subject_id:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "service_subject_delegation_forbidden",
+            "A service policy decision cannot synthesize another subject",
+        )
     settings = get_settings()
     if settings.auth_mode == "mock":
         return Decision(
@@ -843,28 +870,13 @@ def _service_action_decision(
         ) from exc
     reason_codes = tuple(str(item) for item in response.get("reasonCodes", []) if isinstance(item, str))
     if response.get("decision") != "ALLOW":
-        return Decision(False, "STRATOS denied the delegated operation", {}, reason_codes or ("POLICY_DENY",))
-    if document is None:
-        return Decision(True, "STRATOS allowed the delegated operation", {}, reason_codes)
-    requested_scope = document_governance_scope(document)
-    scope_value = (
-        f"{requested_scope['type']}:{requested_scope['id']}"
-        if requested_scope.get("id")
-        else requested_scope["type"]
+        return Decision(False, "STRATOS denied the exact service operation", {}, reason_codes or ("POLICY_DENY",))
+    return Decision(
+        True,
+        "STRATOS allowed the exact verified service operation",
+        {"scope": document_governance_scope(document)} if document is not None else {},
+        reason_codes,
     )
-    derived = SubjectContext(
-        subject_id=subject_id,
-        roles=set(),
-        groups=set(),
-        capabilities={capability},
-        scopes={scope_value},
-        organization_id="org_stratos",
-        identity_active=True,
-        membership_active=True,
-        application_access_active=True,
-        access_v2=True,
-    )
-    return evaluate_document_access(derived, action, document)
 
 
 def _primary_capability(action: str, required: set[str]) -> str:
@@ -1987,6 +1999,150 @@ def ready(db: Session = Depends(get_db)) -> dict[str, str]:
     return {"status": "ready", "service": "registry-api"}
 
 
+@router.get("/integrations/ingestion/readiness")
+def ingestion_service_readiness(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> dict[str, str]:
+    client_id = _require_service_route(principal, "authz")
+    decision = _service_action_decision(
+        principal=principal,
+        subject_id=principal.subject_id,
+        action=Action.document_read.value,
+        document=None,
+    )
+    if not decision.allowed:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "ingestion_service_readiness_denied",
+            "The ingestion service identity is not ready for Registry reads",
+        )
+    db.execute(text("SELECT 1"))
+    return {
+        "status": "ready",
+        "service": "registry-api",
+        "client_id": client_id,
+        "capability": "akb:read_document",
+    }
+
+
+@router.post(
+    "/integrations/ingestion/authorizations/confirm",
+    response_model=IngestionAuthorizationResponse,
+)
+def confirm_ingestion_authorization_proof(
+    payload: IngestionAuthorizationConfirmRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> IngestionAuthorizationResponse:
+    client_id = _require_service_route(principal, "ingestion-status")
+    if client_id != "svc-ingestion":
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "ingestion_authorization_client_forbidden",
+            "Only the exact ingestion service may confirm ingestion authorization proofs",
+        )
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_authorization_correlation_conflict",
+            "The authorization proof must use the current correlation id",
+        )
+    document = _get_document(db, payload.document_id)
+    version = _get_version(db, payload.document_id, payload.document_version_id)
+    try:
+        authority = resolve_document_version_authority(document, version)
+    except ValueError as exc:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "document_version_authority_invalid",
+            "The immutable document version governance authority is unavailable or conflicting",
+        ) from exc
+    try:
+        confirmation = confirm_ingestion_authorization(
+            get_settings(),
+            payload.authorization_token,
+            expected_subject_id=payload.expected_subject_id,
+            action=payload.action,
+            document_id=payload.document_id,
+            document_version_id=payload.document_version_id,
+            organization_id=authority.organization_id,
+            governed_resource_id=authority.governed_resource_id,
+            governed_source_version=authority.governed_source_version,
+            governed_parent_resource_id=authority.governed_parent_resource_id,
+            policy_binding_id=authority.policy_binding_id,
+            policy_version=authority.policy_version,
+            policy_hash=authority.policy_hash,
+            governance_scope_hash=authority.governance_scope_hash,
+            correlation_id=payload.correlation_id,
+            idempotency_key=payload.idempotency_key,
+        )
+    except ValueError as exc:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "ingestion_authorization_invalid",
+            "The ingestion authorization proof is invalid, expired, or bound to another request",
+        ) from exc
+    return IngestionAuthorizationResponse(
+        authorization_id=confirmation.authorization_id,
+        confirmed_subject_id=confirmation.subject_id,
+        action=payload.action,
+        document_id=payload.document_id,
+        document_version_id=payload.document_version_id,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+        expires_at=confirmation.expires_at,
+    )
+
+
+@router.post(
+    "/integrations/ingestion/intelligence-authorizations/confirm",
+    response_model=IntelligenceScopeAuthorizationResponse,
+)
+def confirm_intelligence_scope_authorization_proof(
+    payload: IntelligenceScopeAuthorizationConfirmRequest,
+    principal: Principal = Depends(get_current_principal),
+) -> IntelligenceScopeAuthorizationResponse:
+    client_id = _require_service_route(principal, "ingestion-status")
+    if client_id != "svc-ingestion":
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "intelligence_authorization_client_forbidden",
+            "Only the exact ingestion service may confirm intelligence scope proofs",
+        )
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "intelligence_authorization_correlation_conflict",
+            "The intelligence scope proof must use the current correlation id",
+        )
+    try:
+        confirmation = confirm_intelligence_scope_authorization(
+            get_settings(),
+            payload.authorization_token,
+            expected_subject_id=payload.expected_subject_id,
+            documents=[item.model_dump() for item in payload.documents],
+            correlation_id=payload.correlation_id,
+            idempotency_key=payload.idempotency_key,
+        )
+    except ValueError as exc:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "intelligence_authorization_invalid",
+            "The intelligence scope proof is invalid, expired, or bound to another request",
+        ) from exc
+    return IntelligenceScopeAuthorizationResponse(
+        authorization_id=confirmation.authorization_id,
+        confirmed_subject_id=confirmation.subject_id,
+        document_scope_hash=confirmation.document_scope_hash,
+        document_count=confirmation.document_count,
+        documents=payload.documents,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+        expires_at=confirmation.expires_at,
+    )
+
+
 def _require_aiip_upload_service(principal: Principal) -> None:
     if not principal.service_identity or principal.service_client_id != "aiip-service":
         raise problem(
@@ -2069,6 +2225,13 @@ def _register_aiip_akb_authoritatively(
             policy_binding_id=payload.information_policy.policy_binding_id,
             policy_version=payload.information_policy.policy_version,
             policy_hash=canonical_policy_hash(payload.information_policy),
+            originator_id=payload.information_policy.originator_id,
+            issued_at=payload.information_policy.issued_at.isoformat(),
+            review_at=(
+                payload.information_policy.review_at.isoformat()
+                if payload.information_policy.review_at is not None
+                else None
+            ),
             registered_by_subject_id=envelope.actor.subject_id,
             confirmed_by_subject_id=envelope.actor.subject_id,
             correlation_id=envelope.correlation_id,
@@ -2155,6 +2318,9 @@ def _aiip_governance_confirmation(
                 "policy_binding_id": registration.policy_binding_id,
                 "policy_version": registration.policy_version,
                 "policy_hash": registration.policy_hash,
+                "originator_id": registration.originator_id,
+                "issued_at": registration.issued_at,
+                "review_at": registration.review_at,
             },
             "registered_by_subject_id": registration.registered_by_subject_id,
             "confirmed_by_subject_id": registration.confirmed_by_subject_id,
@@ -2697,7 +2863,6 @@ def update_aiip_external_document_current(
                 "The selected AIIP-derived AKB version has conflicting current metadata",
             )
         updated = False
-        external_ref.current_ingestion_status = payload.ingestion_status
     else:
         if current_version_id != payload.expected_current_document_version_id:
             raise problem(
@@ -2706,12 +2871,31 @@ def update_aiip_external_document_current(
                 "The AIIP upload preflight was based on a stale current document version",
             )
         updated = True
+    ingestion_attempt = _select_aiip_authoritative_ingestion_attempt(
+        db,
+        document_id=payload.document_id,
+        document_version_id=payload.document_version_id,
+        ingestion_job_id=payload.ingestion_job_id,
+    )
+    authoritative_external_status = {
+        "QUEUED": "INGESTING",
+        "INGESTING": "INGESTING",
+        "INDEXED": "INDEXED",
+        "FAILED": "FAILED",
+    }[ingestion_attempt.ingestion_status]
+    if payload.ingestion_status != authoritative_external_status:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "aiip_ingestion_status_authority_conflict",
+            "AIIP current-state status does not match the authoritative ingestion attempt",
+        )
+    if updated:
         external_ref.current_document_version_id = version.document_version_id
         external_ref.current_file_id = file.file_id
         external_ref.current_ingestion_job_id = payload.ingestion_job_id
-        external_ref.current_ingestion_status = payload.ingestion_status
         external_ref.akb_source_uri = version.source_file_uri
         external_ref.source_location = version.source_location
+    external_ref.current_ingestion_status = authoritative_external_status
     add_audit_event(
         db,
         actor_id=registration.confirmed_by_subject_id,
@@ -2733,6 +2917,56 @@ def update_aiip_external_document_current(
         updated=updated,
         governance_confirmation=_aiip_governance_confirmation(payload, registration),
     )
+
+
+def _select_aiip_authoritative_ingestion_attempt(
+    db: Session,
+    *,
+    document_id: str,
+    document_version_id: str,
+    ingestion_job_id: str,
+) -> IngestionAttempt:
+    # Share the same per-document serialization boundary as ingestion-service.
+    # Locking only the attempt row is insufficient while the first row does not
+    # exist, and the AIIP advisory key is intentionally private to its bridge.
+    db.execute(
+        select(Document.document_id)
+        .where(Document.document_id == document_id)
+        .with_for_update()
+    ).scalar_one()
+    attempt = db.execute(
+        select(IngestionAttempt)
+        .where(IngestionAttempt.document_id == document_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if attempt is None:
+        attempt = IngestionAttempt(
+            document_id=document_id,
+            document_version_id=document_version_id,
+            ingestion_job_id=ingestion_job_id,
+            ingestion_status="QUEUED",
+        )
+        db.add(attempt)
+        db.flush()
+        return attempt
+    if attempt.ingestion_job_id == ingestion_job_id:
+        if attempt.document_version_id != document_version_id:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "aiip_ingestion_attempt_version_conflict",
+                "The selected AIIP ingestion job belongs to another immutable version",
+            )
+        return attempt
+    if attempt.ingestion_status == "INGESTING":
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_attempt_lease_active",
+            "The current ingestion attempt holds the execution lease",
+        )
+    attempt.document_version_id = document_version_id
+    attempt.ingestion_job_id = ingestion_job_id
+    attempt.ingestion_status = "QUEUED"
+    return attempt
 
 
 @router.post(
@@ -2917,6 +3151,16 @@ def update_external_document_current(
     external_ref = _get_external_document_ref(db, external_document_id)
     if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value:
         _reject_generic_aiip_write()
+    if {
+        "expected_current_ingestion_job_id",
+        "current_ingestion_job_id",
+        "current_ingestion_status",
+    }.intersection(payload.model_fields_set):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_attempt_service_route_required",
+            "Ingestion attempt state may change only through the authoritative service route",
+        )
     require_document_action(principal, Action.document_ingest, external_ref.document, db)
     _apply_external_document_current(db, external_ref, payload)
     _audit_external_document_current(db, external_ref, principal.subject_id, source="external-document")
@@ -2936,15 +3180,57 @@ def update_document_external_references_current(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentCurrentListResponse:
     document = _get_document(db, document_id)
+    # Serialize even the first attempt for a document. Locking only the
+    # ingestion_attempts row is insufficient while that row does not exist and
+    # would turn an exact concurrent replay into a generic unique-key conflict.
+    db.execute(
+        select(Document.document_id)
+        .where(Document.document_id == document_id)
+        .with_for_update()
+    ).scalar_one()
+    if get_settings().auth_mode not in {"disabled", "mock"}:
+        client_id = _require_service_route(principal, "ingestion-status")
+        if client_id != "svc-ingestion":
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "ingestion_attempt_client_forbidden",
+                "Only the exact ingestion service may update authoritative attempts",
+            )
     require_document_action(principal, Action.document_ingest, document, db)
     if payload.current_document_version_id is not None:
         _get_version(db, document_id, payload.current_document_version_id)
+    if {
+        "current_file_id",
+        "akb_source_uri",
+        "source_location",
+    }.intersection(payload.model_fields_set) and db.execute(
+        select(ExternalDocumentRef.external_document_id).where(
+            ExternalDocumentRef.document_id == document_id,
+            ExternalDocumentRef.external_system == ExternalSourceSystem.stratos_aiip.value,
+        )
+    ).first() is not None:
+        _reject_generic_aiip_write()
+
+    ingestion_attempt = db.execute(
+        select(IngestionAttempt)
+        .where(IngestionAttempt.document_id == document_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if ingestion_attempt is None:
+        ingestion_attempt = _create_authoritative_ingestion_attempt(
+            db,
+            document_id=document_id,
+            payload=payload,
+        )
+    else:
+        _apply_authoritative_ingestion_attempt_cas(ingestion_attempt, payload)
 
     external_refs = list(
         db.execute(
             select(ExternalDocumentRef)
             .where(ExternalDocumentRef.document_id == document_id)
             .order_by(ExternalDocumentRef.external_document_id)
+            .with_for_update()
         ).scalars()
     )
     if payload.current_document_version_id is not None:
@@ -2958,10 +3244,7 @@ def update_document_external_references_current(
             )
         ]
     for external_ref in external_refs:
-        if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value:
-            _apply_aiip_ingestion_status_only(external_ref, payload)
-        else:
-            _apply_external_document_current(db, external_ref, payload)
+        _apply_ingestion_status_cas(external_ref, payload)
         _audit_external_document_current(db, external_ref, principal.subject_id, source="ingestion-service")
 
     _commit_or_conflict(db)
@@ -2971,7 +3254,158 @@ def update_document_external_references_current(
         document_id=document_id,
         updated=len(external_refs),
         items=[ExternalDocumentRefResponse.model_validate(external_ref) for external_ref in external_refs],
+        ingestion_attempt=ingestion_attempt,
     )
+
+
+@router.get(
+    "/documents/{document_id}/external-references/current",
+    response_model=ExternalDocumentCurrentListResponse,
+)
+def get_document_external_references_current(
+    document_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentCurrentListResponse:
+    document = _get_document(db, document_id)
+    require_document_action(principal, Action.document_read, document, db)
+    external_refs = list(
+        db.execute(
+            select(ExternalDocumentRef)
+            .where(ExternalDocumentRef.document_id == document_id)
+            .order_by(ExternalDocumentRef.external_document_id)
+        ).scalars()
+    )
+    ingestion_attempt = db.execute(
+        select(IngestionAttempt).where(IngestionAttempt.document_id == document_id)
+    ).scalar_one_or_none()
+    return ExternalDocumentCurrentListResponse(
+        document_id=document_id,
+        updated=0,
+        items=[ExternalDocumentRefResponse.model_validate(item) for item in external_refs],
+        ingestion_attempt=ingestion_attempt,
+    )
+
+
+def _create_authoritative_ingestion_attempt(
+    db: Session,
+    *,
+    document_id: str,
+    payload: ExternalDocumentCurrentUpdateRequest,
+) -> IngestionAttempt:
+    external_refs = list(
+        db.execute(
+            select(ExternalDocumentRef)
+            .where(ExternalDocumentRef.document_id == document_id)
+            .with_for_update()
+        ).scalars()
+    )
+    if any(
+        external_ref.external_system == ExternalSourceSystem.stratos_aiip.value
+        and (
+            external_ref.current_document_version_id != payload.current_document_version_id
+            or external_ref.current_ingestion_job_id != payload.current_ingestion_job_id
+        )
+        for external_ref in external_refs
+    ):
+        _reject_generic_aiip_write()
+    required_fields = {
+        "current_document_version_id",
+        "expected_current_ingestion_job_id",
+        "current_ingestion_job_id",
+        "current_ingestion_status",
+    }
+    if (
+        not required_fields.issubset(payload.model_fields_set)
+        or payload.expected_current_ingestion_job_id is not None
+        or not payload.current_document_version_id
+        or not payload.current_ingestion_job_id
+        or payload.current_ingestion_status != "QUEUED"
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_attempt_initial_claim_required",
+            "A document ingestion attempt must begin with an exact QUEUED claim",
+        )
+    attempt = IngestionAttempt(
+        document_id=document_id,
+        document_version_id=payload.current_document_version_id,
+        ingestion_job_id=payload.current_ingestion_job_id,
+        ingestion_status="QUEUED",
+    )
+    db.add(attempt)
+    db.flush()
+    return attempt
+
+
+def _apply_authoritative_ingestion_attempt_cas(
+    attempt: IngestionAttempt,
+    payload: ExternalDocumentCurrentUpdateRequest,
+) -> None:
+    if (
+        "current_document_version_id" not in payload.model_fields_set
+        or "expected_current_ingestion_job_id" not in payload.model_fields_set
+        or "current_ingestion_job_id" not in payload.model_fields_set
+        or "current_ingestion_status" not in payload.model_fields_set
+        or not payload.current_document_version_id
+        or not payload.current_ingestion_job_id
+        or not payload.current_ingestion_status
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_status_cas_required",
+            "Ingestion status updates require the exact version, prior job, new job, and status",
+        )
+    requested_job_id = payload.current_ingestion_job_id
+    requested_status = payload.current_ingestion_status
+    if attempt.ingestion_job_id != requested_job_id:
+        if attempt.ingestion_status == "INGESTING":
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_attempt_lease_active",
+                "The current ingestion attempt holds the execution lease",
+            )
+        if attempt.ingestion_job_id != payload.expected_current_ingestion_job_id:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_attempt_cas_conflict",
+                "Another ingestion attempt is already current",
+            )
+        if requested_status != "QUEUED":
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_attempt_transition_invalid",
+                "A new ingestion attempt must start in QUEUED state",
+            )
+        attempt.document_version_id = payload.current_document_version_id
+        attempt.ingestion_job_id = requested_job_id
+        attempt.ingestion_status = "QUEUED"
+        return
+    if attempt.document_version_id != payload.current_document_version_id:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_attempt_version_conflict",
+            "The current ingestion attempt belongs to another immutable version",
+        )
+    if requested_status == "QUEUED" and attempt.ingestion_status in {
+        "INGESTING",
+        "INDEXED",
+        "FAILED",
+    }:
+        return
+    allowed_transitions = {
+        "QUEUED": {"QUEUED", "INGESTING", "FAILED"},
+        "INGESTING": {"INGESTING", "INDEXED", "FAILED"},
+        "INDEXED": {"INDEXED"},
+        "FAILED": {"FAILED"},
+    }
+    if requested_status not in allowed_transitions.get(attempt.ingestion_status, set()):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_status_cas_conflict",
+            "The ingestion status would regress the authoritative attempt",
+        )
+    attempt.ingestion_status = requested_status
 
 
 def _reject_generic_aiip_write() -> None:
@@ -2982,7 +3416,7 @@ def _reject_generic_aiip_write() -> None:
     )
 
 
-def _apply_aiip_ingestion_status_only(
+def _apply_ingestion_status_cas(
     external_ref: ExternalDocumentRef,
     payload: ExternalDocumentCurrentUpdateRequest,
 ) -> None:
@@ -2991,19 +3425,82 @@ def _apply_aiip_ingestion_status_only(
         "akb_source_uri",
         "source_location",
     }.intersection(payload.model_fields_set)
+    if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value and (
+        external_ref.current_ingestion_job_id is None or forbidden_fields
+    ):
+        _reject_generic_aiip_write()
+
     if (
         forbidden_fields
         or external_ref.current_document_version_id is None
         or "current_document_version_id" not in payload.model_fields_set
         or payload.current_document_version_id
         != external_ref.current_document_version_id
+        or "expected_current_ingestion_job_id" not in payload.model_fields_set
+        or "current_ingestion_job_id" not in payload.model_fields_set
+        or not payload.current_ingestion_job_id
     ):
-        _reject_generic_aiip_write()
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_status_cas_required",
+            "Ingestion status updates require the exact current version, prior job, and new job",
+        )
 
-    if "current_ingestion_job_id" in payload.model_fields_set:
-        external_ref.current_ingestion_job_id = payload.current_ingestion_job_id
+    existing_job_id = external_ref.current_ingestion_job_id
+    requested_job_id = payload.current_ingestion_job_id
+    attempt_changed = existing_job_id != requested_job_id
+    if existing_job_id != requested_job_id:
+        if external_ref.current_ingestion_status == "INGESTING":
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_attempt_lease_active",
+                "The current ingestion attempt holds the execution lease",
+            )
+        if existing_job_id != payload.expected_current_ingestion_job_id:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_attempt_cas_conflict",
+                "Another ingestion attempt is already current",
+            )
+        if payload.current_ingestion_status != "QUEUED":
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_attempt_transition_invalid",
+                "A new ingestion attempt must start in QUEUED state",
+            )
+        external_ref.current_ingestion_job_id = requested_job_id
     if "current_ingestion_status" in payload.model_fields_set:
-        external_ref.current_ingestion_status = payload.current_ingestion_status
+        if payload.current_ingestion_status not in {
+            "QUEUED",
+            "INGESTING",
+            "INDEXED",
+            "FAILED",
+        }:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_status_transition_invalid",
+                "The ingestion status transition is not supported",
+            )
+        requested_status = payload.current_ingestion_status
+        current_status = None if attempt_changed else external_ref.current_ingestion_status
+        if existing_job_id == requested_job_id and requested_status == "QUEUED":
+            # Idempotent claim replay must never regress a running or terminal attempt.
+            if current_status in {"INGESTING", "INDEXED", "FAILED"}:
+                return
+        allowed_transitions = {
+            None: {"QUEUED", "INGESTING", "INDEXED", "FAILED"},
+            "QUEUED": {"QUEUED", "INGESTING", "FAILED"},
+            "INGESTING": {"INGESTING", "INDEXED", "FAILED"},
+            "INDEXED": {"INDEXED"},
+            "FAILED": {"FAILED"},
+        }
+        if requested_status not in allowed_transitions.get(current_status, set()):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "ingestion_status_cas_conflict",
+                "The ingestion status would regress the current attempt",
+            )
+        external_ref.current_ingestion_status = requested_status
 
 
 def _apply_external_document_current(
@@ -4393,6 +4890,268 @@ def get_document_version(
 
 
 @router.post(
+    "/intelligence/authorization",
+    response_model=IntelligenceScopeAuthorizationResponse,
+)
+def create_intelligence_scope_authorization_proof(
+    payload: IntelligenceScopeAuthorizationIssueRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> IntelligenceScopeAuthorizationResponse:
+    if principal.service_identity:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "intelligence_authorization_actor_required",
+            "A current person identity is required to authorize intelligence scope",
+        )
+    if not (
+        principal.identity_active
+        and principal.membership_active
+        and principal.application_access_active
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "intelligence_authorization_actor_inactive",
+            "The current person identity, membership, and application access must be active",
+        )
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "intelligence_authorization_correlation_conflict",
+            "The intelligence scope proof must use the current correlation id",
+        )
+    documents = {
+        document.document_id: document
+        for document in db.execute(
+            select(Document)
+            .where(Document.document_id.in_(payload.document_ids))
+            .options(
+                selectinload(Document.access_policies),
+                selectinload(Document.versions),
+                selectinload(Document.publications),
+            )
+        ).scalars()
+    }
+    if len(documents) != len(payload.document_ids):
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "intelligence_scope_not_found",
+            "The exact intelligence document scope is unavailable",
+        )
+    coordinates: list[dict[str, str]] = []
+    omitted_reasons: Counter[str] = Counter()
+    actor_context = context_for_principal(principal, db)
+    for document_id in payload.document_ids:
+        document = documents[document_id]
+        decision = evaluate_runtime_document_access(
+            principal,
+            Action.rag_query.value,
+            document,
+            evaluate_document_access(
+                actor_context,
+                Action.rag_query.value,
+                document,
+            ),
+        )
+        if not decision.allowed:
+            omitted_reasons["rag_query_denied"] += 1
+            continue
+        attempt = db.execute(
+            select(IngestionAttempt).where(IngestionAttempt.document_id == document_id)
+        ).scalar_one_or_none()
+        if attempt is None or attempt.ingestion_status != "INDEXED":
+            omitted_reasons["not_indexed"] += 1
+            continue
+        version = next(
+            (
+                candidate
+                for candidate in document.versions
+                if candidate.document_version_id == attempt.document_version_id
+            ),
+            None,
+        )
+        if version is None:
+            omitted_reasons["indexed_version_missing"] += 1
+            continue
+        if not version.policy_hash or not re.fullmatch(r"sha256:[a-f0-9]{64}", version.policy_hash):
+            omitted_reasons["policy_hash_invalid"] += 1
+            continue
+        if not _candidate_document_coordinates_allowed(
+            context=actor_context,
+            decision=decision,
+            document=document,
+            candidate_hashes={version.policy_hash},
+            candidate_versions={version.document_version_id},
+            versions_by_id={version.document_version_id: version},
+        ):
+            omitted_reasons["coordinate_not_current"] += 1
+            continue
+        coordinates.append(
+            {
+                "document_id": document_id,
+                "document_version_id": version.document_version_id,
+                "policy_hash": version.policy_hash,
+            }
+        )
+    if not coordinates:
+        requested_scope_hash = "sha256:" + sha256(
+            json.dumps(
+                sorted(payload.document_ids),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        add_audit_event(
+            db,
+            actor_id=principal.subject_id,
+            event_type="intelligence.authorization.denied",
+            resource_type="document_scope",
+            resource_id=requested_scope_hash,
+            severity="warning",
+            metadata={
+                "candidate_document_count": len(payload.document_ids),
+                "omitted_document_count": sum(omitted_reasons.values()),
+                "omission_reasons": dict(sorted(omitted_reasons.items())),
+                "idempotency_key_hash": sha256(payload.idempotency_key.encode("utf-8")).hexdigest(),
+            },
+        )
+        db.commit()
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "intelligence_scope_empty",
+            "No current indexed document version is available for the intelligence scope",
+        )
+    token, confirmation = issue_intelligence_scope_authorization(
+        get_settings(),
+        subject_id=principal.subject_id,
+        documents=coordinates,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+    )
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="intelligence.authorization.issued",
+        resource_type="document_scope",
+        resource_id=confirmation.document_scope_hash,
+        metadata={
+            "authorization_id": confirmation.authorization_id,
+            "document_scope_hash": confirmation.document_scope_hash,
+            "document_count": confirmation.document_count,
+            "candidate_document_count": len(payload.document_ids),
+            "omitted_document_count": sum(omitted_reasons.values()),
+            "omission_reasons": dict(sorted(omitted_reasons.items())),
+            "idempotency_key_hash": sha256(payload.idempotency_key.encode("utf-8")).hexdigest(),
+        },
+    )
+    db.commit()
+    return IntelligenceScopeAuthorizationResponse(
+        authorization_token=token,
+        authorization_id=confirmation.authorization_id,
+        confirmed_subject_id=confirmation.subject_id,
+        document_scope_hash=confirmation.document_scope_hash,
+        document_count=confirmation.document_count,
+        documents=coordinates,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+        expires_at=confirmation.expires_at,
+    )
+
+
+@router.post(
+    "/documents/{document_id}/versions/{version_id}/ingestion-authorization",
+    response_model=IngestionAuthorizationResponse,
+)
+def create_ingestion_authorization_proof(
+    document_id: str,
+    version_id: str,
+    payload: IngestionAuthorizationIssueRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> IngestionAuthorizationResponse:
+    if principal.service_identity:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "ingestion_authorization_actor_required",
+            "A current person identity is required to authorize ingestion",
+        )
+    if not (
+        principal.identity_active
+        and principal.membership_active
+        and principal.application_access_active
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "ingestion_authorization_actor_inactive",
+            "The current person identity, membership, and application access must be active",
+        )
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_authorization_correlation_conflict",
+            "The authorization proof must use the current correlation id",
+        )
+    document = _get_document(db, document_id)
+    version = _get_version(db, document_id, version_id)
+    require_document_action(principal, Action(payload.action), document, db)
+    authority = require_document_version_action(
+        principal,
+        Action(payload.action),
+        document,
+        version,
+        db,
+    )
+    token, confirmation = issue_ingestion_authorization(
+        get_settings(),
+        subject_id=principal.subject_id,
+        action=payload.action,
+        document_id=document_id,
+        document_version_id=version_id,
+        organization_id=authority.organization_id,
+        governed_resource_id=authority.governed_resource_id,
+        governed_source_version=authority.governed_source_version,
+        governed_parent_resource_id=authority.governed_parent_resource_id,
+        policy_binding_id=authority.policy_binding_id,
+        policy_version=authority.policy_version,
+        policy_hash=authority.policy_hash,
+        governance_scope_hash=authority.governance_scope_hash,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+    )
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="ingestion.authorization.issued",
+        resource_type="document_version",
+        resource_id=version_id,
+        metadata={
+            "authorization_id": confirmation.authorization_id,
+            "document_id": document_id,
+            "action": payload.action,
+            "governed_resource_id": authority.governed_resource_id,
+            "governed_source_version": authority.governed_source_version,
+            "policy_binding_id": authority.policy_binding_id,
+            "policy_version": authority.policy_version,
+            "policy_hash": authority.policy_hash,
+            "governance_scope_hash": authority.governance_scope_hash,
+            "idempotency_key_hash": sha256(payload.idempotency_key.encode("utf-8")).hexdigest(),
+        },
+    )
+    db.commit()
+    return IngestionAuthorizationResponse(
+        authorization_token=token,
+        authorization_id=confirmation.authorization_id,
+        confirmed_subject_id=confirmation.subject_id,
+        action=payload.action,
+        document_id=document_id,
+        document_version_id=version_id,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+        expires_at=confirmation.expires_at,
+    )
+
+
+@router.post(
     "/documents/{document_id}/versions/{version_id}/publish",
     response_model=DocumentVersionResponse,
 )
@@ -5055,35 +5814,15 @@ def filter_authorized_documents(
             )
         )
         candidate_hashes = set(payload.candidate_policy_hashes.get(document_id, []))
-        policy_hash_matches = (
-            (context is not None and not context.access_v2)
-            or (bool(document.policy_hash) and candidate_hashes == {document.policy_hash})
-        )
         candidate_versions = set(payload.candidate_document_versions.get(document_id, []))
-        if decision.constraints.get("public_version_ids"):
-            active_public_versions = {
-                item
-                for item in decision.constraints.get("public_version_ids", [])
-                if isinstance(item, str)
-            }
-            versions_match = bool(candidate_versions) and candidate_versions.issubset(
-                active_public_versions
-            )
-        else:
-            versions_match = (
-                (context is not None and not context.access_v2)
-                or (
-                    bool(candidate_versions)
-                    and all(
-                        (version := versions_by_id.get(version_id)) is not None
-                        and version.document_id == document_id
-                        and version.status == DocumentStatus.valid.value
-                        and version.policy_hash == document.policy_hash
-                        for version_id in candidate_versions
-                    )
-                )
-            )
-        if decision.allowed and policy_hash_matches and versions_match:
+        if _candidate_document_coordinates_allowed(
+            context=context,
+            decision=decision,
+            document=document,
+            candidate_hashes=candidate_hashes,
+            candidate_versions=candidate_versions,
+            versions_by_id=versions_by_id,
+        ):
             allowed_document_ids.append(document_id)
         else:
             denied_document_ids.append(document_id)
@@ -5092,6 +5831,42 @@ def filter_authorized_documents(
         allowed_document_ids=allowed_document_ids,
         denied_document_ids=denied_document_ids,
     )
+
+
+def _candidate_document_coordinates_allowed(
+    *,
+    context: SubjectContext | None,
+    decision: Decision,
+    document: Document,
+    candidate_hashes: set[str],
+    candidate_versions: set[str],
+    versions_by_id: dict[str, DocumentVersion],
+) -> bool:
+    legacy_access = context is not None and not context.access_v2
+    policy_hash_matches = legacy_access or (
+        bool(document.policy_hash) and candidate_hashes == {document.policy_hash}
+    )
+    if decision.constraints.get("public_version_ids"):
+        active_public_versions = {
+            item
+            for item in decision.constraints.get("public_version_ids", [])
+            if isinstance(item, str)
+        }
+        versions_match = bool(candidate_versions) and candidate_versions.issubset(
+            active_public_versions
+        )
+    else:
+        versions_match = legacy_access or (
+            bool(candidate_versions)
+            and all(
+                (version := versions_by_id.get(version_id)) is not None
+                and version.document_id == document.document_id
+                and version.status == DocumentStatus.valid.value
+                and version.policy_hash == document.policy_hash
+                for version_id in candidate_versions
+            )
+        )
+    return decision.allowed and policy_hash_matches and versions_match
 
 
 @router.get("/workflow/tasks", response_model=WorkflowTaskListResponse)

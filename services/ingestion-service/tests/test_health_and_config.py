@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 
 from app.config import ConfigError, load_settings
-from tests.conftest import make_client
+from tests.conftest import make_client, readiness_transport_headers
 
 
 def test_health_and_ready(tmp_path) -> None:
     with make_client(tmp_path) as client:
         health = client.get("/health")
-        ready = client.get("/ready")
+        ready = client.get("/ready", headers=readiness_transport_headers())
 
     assert health.status_code == 200
     assert health.json() == {"status": "ok", "service": "ingestion-service", "version": "dev"}
@@ -33,7 +33,7 @@ def test_ready_returns_503_when_registry_service_identity_is_unavailable(
         tmp_path,
         {"AKL_INGESTION_REGISTRY_CLIENT_MODE": "http"},
     ) as client:
-        ready = client.get("/ready")
+        ready = client.get("/ready", headers=readiness_transport_headers())
 
     assert ready.status_code == 503
     assert ready.json()["status"] == "not_ready"

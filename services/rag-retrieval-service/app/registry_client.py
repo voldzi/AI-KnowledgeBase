@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
+import jwt
 
 from app.config import Settings
 from app.context import get_correlation_id
@@ -394,8 +395,14 @@ class HttpRegistryClient:
         if not candidate_document_ids:
             return AuthzFilterResult(allowed_document_ids=set(), denied_document_ids=set())
 
+        service_token = await self._service_token() if auth_context and auth_context.service_identity else None
+        authorization_subject_id = (
+            _verified_upstream_service_subject(service_token)
+            if service_token is not None
+            else subject_id
+        )
         body = {
-            "subject_id": subject_id,
+            "subject_id": authorization_subject_id,
             "action": action,
             "candidate_document_ids": candidate_document_ids,
             "candidate_policy_hashes": candidate_policy_hashes or {},
@@ -414,7 +421,6 @@ class HttpRegistryClient:
                     "application_access_active": auth_context.application_access_active if auth_context else True,
                 }
             )
-        service_token = await self._service_token() if auth_context and auth_context.service_identity else None
         payload = await request_json_with_retry(
             dependency="registry-api",
             settings=self._settings,
@@ -429,7 +435,6 @@ class HttpRegistryClient:
             allowed_document_ids=set(payload.get("allowed_document_ids", [])),
             denied_document_ids=set(payload.get("denied_document_ids", [])),
         )
-
     async def write_audit_event(
         self,
         *,
@@ -631,6 +636,38 @@ class HttpRegistryClient:
         except Exception:
             return "not_ready"
         return "ready"
+
+
+def _verified_upstream_service_subject(token: str) -> str:
+    try:
+        claims = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+            },
+        )
+    except jwt.PyJWTError as exc:
+        raise RetrievalError(
+            "REGISTRY_SERVICE_AUTH_INVALID",
+            "RAG service identity response is not a decodable JWT.",
+            status_code=503,
+        ) from exc
+    subject = claims.get("sub")
+    if (
+        not isinstance(subject, str)
+        or not subject
+        or subject != subject.strip()
+        or len(subject) > 128
+        or any(character.isspace() for character in subject)
+    ):
+        raise RetrievalError(
+            "REGISTRY_SERVICE_AUTH_INVALID",
+            "RAG service identity response has no bounded subject.",
+            status_code=503,
+        )
+    return subject
 
 
 class DevAuthzRegistryClient:

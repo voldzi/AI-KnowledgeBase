@@ -169,7 +169,13 @@ function requiredIdempotencyKey(request: NextRequest): string {
 }
 
 function rejectCallerInternalHeaders(request: Request) {
-  for (const name of ["X-AKL-Subject", "X-AKL-Roles", "X-AKL-Groups", "X-AKL-Audience"]) {
+  for (const name of [
+    "X-AKL-Subject",
+    "X-AKL-Roles",
+    "X-AKL-Groups",
+    "X-AKL-Audience",
+    "X-AKL-On-Behalf-Of",
+  ]) {
     if (request.headers.has(name)) {
       throw new AiipBridgeError(400, "INTERNAL_HEADER_FORBIDDEN", `${name} is an AKB internal header.`);
     }
@@ -253,9 +259,24 @@ async function authenticateAiipService(request: Request): Promise<AiipPrincipal>
   const claims = config.oidc.clientSecret
     ? await introspectAccessToken(config.oidc.issuer, config.oidc.clientId, config.oidc.clientSecret, accessToken)
     : await validateJwtAccessToken(config.oidc.issuer, accessToken);
-  const clientId = stringClaim(claims.client_id) ?? stringClaim(claims.azp);
-  if (clientId !== "aiip-service") {
+  const authorizedParty = stringClaim(claims.azp);
+  const clientId = stringClaim(claims.client_id);
+  if (
+    authorizedParty !== "aiip-service"
+    || (clientId !== null && clientId !== "aiip-service")
+  ) {
     throw new AiipBridgeError(403, "AUTH_FORBIDDEN", "The aiip-service client identity is required.");
+  }
+  const subjectId = stringClaim(claims.sub);
+  if (
+    !subjectId
+    || stringClaim(claims.preferred_username) !== "service-account-aiip-service"
+  ) {
+    throw new AiipBridgeError(
+      403,
+      "AUTH_FORBIDDEN",
+      "The exact aiip-service service-account identity is required.",
+    );
   }
   const audiences = stringListClaim(claims.aud);
   if (!audiences.includes("akb-api")) {
@@ -265,7 +286,6 @@ async function authenticateAiipService(request: Request): Promise<AiipPrincipal>
   if (!roles.includes("service_aiip")) {
     throw new AiipBridgeError(403, "AUTH_ROLE_REQUIRED", "The service_aiip role is required.");
   }
-  const subjectId = stringClaim(claims.sub) ?? "service-account-aiip-service";
   return { subjectId, accessToken, roles: ["service_aiip"] };
 }
 

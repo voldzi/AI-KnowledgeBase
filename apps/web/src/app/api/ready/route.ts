@@ -13,7 +13,7 @@ export async function GET() {
           await Promise.all(
             Object.entries(config.serviceBaseUrls).map(async ([name, baseUrl]) => [
               name,
-              await dependencyReadiness(baseUrl),
+              await dependencyReadiness(name, baseUrl),
             ]),
           ),
         );
@@ -37,10 +37,11 @@ export async function GET() {
   }
 }
 
-async function dependencyReadiness(baseUrl: string): Promise<"ready" | "not_ready"> {
+async function dependencyReadiness(name: string, baseUrl: string): Promise<"ready" | "not_ready"> {
   try {
     const url = new URL(baseUrl);
-    url.pathname = `${url.pathname.replace(/\/api\/v1\/?$/, "").replace(/\/$/, "")}/ready`;
+    const probePath = name === "ingestion" ? "health" : "ready";
+    url.pathname = `${url.pathname.replace(/\/api\/v1\/?$/, "").replace(/\/$/, "")}/${probePath}`;
     url.search = "";
     const response = await fetch(url, {
       cache: "no-store",

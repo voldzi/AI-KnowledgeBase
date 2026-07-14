@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tools.legacy_mutation_guard import retire_legacy_mutation  # noqa: E402
 from tools.okf_profile import akb_metadata_from_okf, parse_markdown_frontmatter  # noqa: E402
 
 DEFAULT_REGISTRY_URL = "http://localhost:8001"
@@ -138,6 +139,8 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
 
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be greater than zero")
+    if not args.dry_run:
+        retire_legacy_mutation("tools/import_docs_folder.py")
 
     return ImportOptions(
         source=(ROOT / args.source).resolve() if not Path(args.source).is_absolute() else Path(args.source).resolve(),
@@ -190,6 +193,8 @@ def bearer_subject_id(token: str) -> str:
 
 
 def run_import(options: ImportOptions) -> dict[str, Any]:
+    if not options.dry_run:
+        retire_legacy_mutation("tools/import_docs_folder.py")
     started = dt.datetime.now(dt.UTC)
     manifest = load_manifest(options.manifest_path)
     files = discover_markdown_files(options.source, manifest, options.limit)
@@ -517,6 +522,7 @@ def handle_skip_existing(existing: dict[str, Any], options: ImportOptions) -> di
 
 
 def import_existing_version(path: Path, rel_path: str, existing: dict[str, Any], options: ImportOptions) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py import_existing_version")
     latest_version = latest_document_version(existing["document_id"], options)
     if not latest_version:
         metadata = {
@@ -564,6 +570,7 @@ def import_new_version(
     options: ImportOptions,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py import_new_version")
     patch_existing_document(existing["document_id"], path, rel_path, metadata, options)
     source_uri = source_uri_for(rel_path, options)
     seed_ingestion_object(path, source_uri, options)
@@ -594,6 +601,7 @@ def import_new_version(
 
 
 def import_new_document(path: Path, rel_path: str, options: ImportOptions, metadata: dict[str, Any]) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py import_new_document")
     source_uri = source_uri_for(rel_path, options)
     seed_ingestion_object(path, source_uri, options)
     document = create_document(path, rel_path, metadata, options)
@@ -624,6 +632,7 @@ def import_new_document(path: Path, rel_path: str, options: ImportOptions, metad
 
 
 def create_document(path: Path, rel_path: str, metadata: dict[str, Any], options: ImportOptions) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py create_document")
     title = title_for_markdown(path)
     payload = {
         "title": title,
@@ -656,6 +665,7 @@ def patch_existing_document(
     metadata: dict[str, Any],
     options: ImportOptions,
 ) -> None:
+    retire_legacy_mutation("tools/import_docs_folder.py patch_existing_document")
     payload = {
         "title": title_for_markdown(path),
         "document_type": metadata["document_type"],
@@ -672,6 +682,7 @@ def patch_existing_document(
 
 
 def patch_document(document_id: str, payload: dict[str, Any], options: ImportOptions) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py patch_document")
     return request_json("PATCH", f"{options.registry_url}/api/v1/documents/{document_id}", payload, options=options)
 
 
@@ -682,6 +693,7 @@ def create_version(
     source_uri: str,
     options: ImportOptions,
 ) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py create_version")
     content = path.read_bytes()
     sha256 = f"sha256:{hashlib.sha256(content).hexdigest()}"
     payload = {
@@ -728,6 +740,7 @@ def publish_if_valid(
     metadata: dict[str, Any],
     options: ImportOptions,
 ) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py publish_if_valid")
     if metadata.get("status", "valid") != "valid":
         return version
     if options.approve_for_publish:
@@ -743,6 +756,7 @@ def publish_if_valid(
 
 
 def approve_document_for_publication(document_id: str, options: ImportOptions) -> None:
+    retire_legacy_mutation("tools/import_docs_folder.py approve_document_for_publication")
     document = request_json("GET", f"{options.registry_url}/api/v1/documents/{document_id}", options=options)
     if document.get("status") != "review":
         document = patch_document(document_id, {"status": "review"}, options)
@@ -789,6 +803,7 @@ def run_ingestion(
     source_uri: str,
     options: ImportOptions,
 ) -> dict[str, Any]:
+    retire_legacy_mutation("tools/import_docs_folder.py run_ingestion")
     return request_json(
         "POST",
         f"{options.ingestion_url}/api/v1/ingestion/jobs",
@@ -888,6 +903,7 @@ def require_opensearch_documents(
 
 
 def seed_ingestion_object(path: Path, source_uri: str, options: ImportOptions) -> None:
+    retire_legacy_mutation("tools/import_docs_folder.py seed_ingestion_object")
     parsed = urllib.parse.urlparse(source_uri)
     if parsed.scheme != "s3":
         raise ValueError(f"Only s3:// source URIs can be seeded into ingestion local storage: {source_uri}")
@@ -988,6 +1004,11 @@ def request_json(
     expected_status: int = 200,
     headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    normalized_method = method.upper()
+    if normalized_method != "GET":
+        retire_legacy_mutation(
+            f"tools/import_docs_folder.py request_json {normalized_method}"
+        )
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request_headers = {
         "Accept": "application/json",
@@ -1002,7 +1023,7 @@ def request_json(
         request_headers["X-AKL-Roles"] = options.roles
     if headers:
         request_headers.update(headers)
-    request = urllib.request.Request(url, data=data, method=method, headers=request_headers)
+    request = urllib.request.Request(url, data=data, method=normalized_method, headers=request_headers)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             raw = response.read().decode("utf-8")

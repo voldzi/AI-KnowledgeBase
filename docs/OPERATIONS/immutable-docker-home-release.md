@@ -1,8 +1,8 @@
 # Immutable Releases On `docker.home.cz`
 
-This is the production release and recovery procedure for the AKB Registry,
-RAG retrieval service, and web application. It deliberately does not deploy
-from the mutable `/srv/akl/repo` working tree.
+This is the production release and recovery procedure for the coordinated AKB
+Registry, Ingestion, RAG retrieval, and web runtime. It deliberately does not
+deploy from the mutable `/srv/akl/repo` working tree.
 
 ## Safety Invariants
 
@@ -82,12 +82,15 @@ from the mutable `/srv/akl/repo` working tree.
   hash. Verified-marker reconciliation loads the original IDs from the strict
   mode-`0600` deployment record named by the marker deployment ID and repeats
   the same final gate; it does not re-declare identity from the current tag.
-  Only changed
-  `registry-api`, `rag-retrieval-service`, and `web` services are built and
-  recreated. A release touching another runtime service fails closed. A change
-  to the shared production Compose file also fails closed because it can affect
-  services outside this three-service workflow and requires a coordinated
-  full-platform release.
+  Only changed `registry-api`, `ingestion-service`,
+  `rag-retrieval-service`, and `web` services are built and recreated. A
+  release touching another runtime service fails closed. A change to the shared
+  production Compose file is accepted only when a structural comparison proves
+  that its complete top-level envelope and every unmanaged service block are
+  byte-identical; only changed blocks belonging to those four managed services
+  are selected. Adding/removing a service or changing reverse proxy,
+  platform-status, networks, volumes, or another unmanaged block fails before
+  build.
 - Immediately before Compose may recreate an affected service, the workflow
   durably records `target_services_start_may_have_started=true`. Any handled
   failure after that boundary and before the verified marker quarantines every
@@ -127,7 +130,7 @@ from the mutable `/srv/akl/repo` working tree.
   stopped. The workflow creates a PostgreSQL custom-format dump, verifies its
   SHA-256, validates it with `pg_restore --list`, and writes a non-secret
   inventory containing exactly one full Alembic revision such as
-  `0016_public_audit_aggregation` plus row counts for `documents`,
+  `0018_ingestion_attempts` plus row counts for `documents`,
   `document_versions`, `document_files`, `document_access_policies`, and
   `audit_events` used by the isolated restore gate.
 - `psql`, `pg_dump`, and `pg_restore` are never taken from the host. The
@@ -204,6 +207,10 @@ from the mutable `/srv/akl/repo` working tree.
   releases/<full-sha>/            # verified, read-only Git archives
   current -> releases/<full-sha>  # last fully verified release
   env/akl.prod.env                # mode 0600, never committed
+  env/ingestion-authorization.secret       # Registry proof signing, mode 0600
+  env/svc-ingestion.client-secret          # Ingestion -> Registry, mode 0600
+  env/akb-rag-service.client-secret        # RAG -> Registry, mode 0600
+  env/svc-akb-web-ingestion.client-secret  # web -> Ingestion, mode 0600
   state/applied-runtime.env       # mode 0600, latest possibly applied SHA
   state/burned-shas/<full-sha>    # mode 0600, permanent post-build retry ban
   state/registry-quiescence/*.env # mode 0600, deployment/lock-bound stop proof
@@ -233,11 +240,18 @@ sudo install -d -m 0700 \
 sudo install -m 0600 \
   infra/docker-compose/docker-home.env.example \
   /srv/akl/env/akl.prod.env
+sudo install -m 0600 /dev/null /srv/akl/env/ingestion-authorization.secret
+sudo install -m 0600 /dev/null /srv/akl/env/svc-ingestion.client-secret
+sudo install -m 0600 /dev/null /srv/akl/env/akb-rag-service.client-secret
+sudo install -m 0600 /dev/null /srv/akl/env/svc-akb-web-ingestion.client-secret
 ```
 
 Replace every placeholder in the copied file through the approved secret
-handling path. Do not print the completed file. At minimum, keep these release
-controls explicit:
+handling path and populate each empty private file through the approved
+Keycloak/secret workflow. Do not print any completed file or secret. The
+Registry signing secret is an independent random value of at least 32 bytes;
+the other three files contain the corresponding exact confidential-client
+secrets. At minimum, keep these release controls explicit:
 
 ```dotenv
 AKL_RELEASE_GIT_URL=https://github.com/voldzi/AI-KnowledgeBase.git
@@ -248,6 +262,10 @@ AKL_RELEASE_EXPECTED_REGISTRY_DB_PORT=5000
 AKL_RELEASE_EXPECTED_REGISTRY_DB_NAME=akl_registry
 AKL_RELEASE_EXPECTED_REGISTRY_DB_USER=akl_platform
 AKL_RELEASE_POSTGRES_TOOL_IMAGE=postgres:17-alpine@sha256:<64-lowercase-hex>
+AKL_INGESTION_AUTHORIZATION_SECRET_FILE=/srv/akl/env/ingestion-authorization.secret
+AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE=/srv/akl/env/svc-ingestion.client-secret
+AKL_RAG_REGISTRY_CLIENT_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret
+AKL_WEB_INGESTION_CLIENT_SECRET_FILE=/srv/akl/env/svc-akb-web-ingestion.client-secret
 ```
 
 `AKL_RELEASE_POSTGRES_TOOL_IMAGE` may instead be an exact local
@@ -276,6 +294,12 @@ from a clean shell; an exported key that also exists in the env file is an
 error, even when both values happen to match. An exported key interpolated by
 the target Compose file is also an error even when it is absent from the env
 file; this applies to preparation and first-host bootstrap as well as deploy.
+Before the SHA is burned or any image is built, the deploy script also requires
+every private file needed by the selected service set to be an absolute,
+single-link, non-symlink regular file owned by the release operator with exact
+mode `0600` and non-empty content. Registry additionally requires at least 32
+bytes. First rollout selects all four services, so all four files are mandatory
+even if an older runtime did not use them.
 
 For the first transition, do not invoke an orchestrator from mutable
 `/srv/akl/repo`. Use an already prepared, reviewed, read-only immutable release
@@ -473,9 +497,10 @@ downgrade, in-place restore, reset, tag deletion, or volume removal.
    under `/srv/akl`, and the latest syntactically validated release dump.
    `applied_sha` must equal the
    current SHA and `state` must be `verified` for an ordinary deployment.
-3. Confirm the change contains only the supported Registry, RAG, or web runtime
-   scope. Shared policy contracts are treated as Registry changes. Changes to
-   another runtime service require a separately reviewed workflow extension.
+3. Confirm the change contains only the supported Registry, Ingestion, RAG, or
+   web runtime scope. Shared policy contracts are treated as Registry changes.
+   A shared Compose change may alter only complete blocks of these four services;
+   any other service or top-level change is rejected.
 4. Confirm no database reset, corpus reset, volume removal, Alembic downgrade,
    or network change is included in the change window.
 5. Confirm the configured exact PostgreSQL tool image is already present
@@ -511,8 +536,11 @@ The script, in order:
 1. obtains an exclusive host deployment lock;
 2. fetches into the bare mirror and verifies exact SHA ancestry;
 3. extracts and verifies the read-only release directory;
-4. determines the affected Registry/RAG/web services from the Git diff;
-5. when Registry is affected, verifies the configured exact local PostgreSQL
+4. determines the affected Registry/Ingestion/RAG/web services from the Git
+   diff and structurally constrains any shared Compose change to those exact
+   service blocks;
+5. preflights every selected service's private signing/client-secret file before
+   the burn/build boundary; when Registry is affected, verifies the configured exact local PostgreSQL
    tool image, records its image ID and client versions, and obtains three
    consecutive writable-primary and exact database/user identity results
    before any target image build or writer-stop boundary;
@@ -540,7 +568,9 @@ The script, in order:
    and run those same IDs;
 10. checks the exact durable image tag/ID, image and container release labels, Compose
    ownership/config labels, running state, and exact release version for every affected service,
-   plus public health/readiness and a fail-closed anonymous request for a
+   runs Ingestion readiness inside its container with the exact
+   `svc-ingestion` credential (never as anonymous HTTP), plus public
+   health/readiness and a fail-closed anonymous request for a
    guaranteed-missing public slug (an unaffected web keeps its prior image
    SHA); the missing-slug response must be the structured AKB JSON contract
    with `Cache-Control: no-store`, not a generic proxy 404; after all smokes it
@@ -862,6 +892,13 @@ races, unsupported shared Compose changes, and fail-closed post-build image
 retag/missing-tag/label verification including retarget immediately before
 Alembic execution, partial multi-service Compose-up failure, retag/recreate
 during Compose up, during smoke, and before verified reconciliation, plus
+four-service selection, per-service private-secret preflight before SHA burn,
+immutable Ingestion image identity, authenticated `svc-ingestion` readiness,
+and the invocation/failure boundary of an exact-container `nextjs` probe whose
+production implementation reads the private tmpfs credential, performs the
+`svc-akb-web-ingestion` client-credentials exchange, and validates the exact
+non-mutating Ingestion transport response without printing a token or secret,
+including fail-closed quarantine on simulated probe failure, plus
 truthful lock-preservation evidence for owner/unlink/rmdir failures, with temporary Git, Docker, Compose, and
 HTTP fixtures. Before the fake runtime, it also runs real `docker compose
 config --quiet` and `config --format json` against a linked mode-`0600` probe

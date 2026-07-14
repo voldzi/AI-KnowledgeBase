@@ -8,7 +8,15 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.legacy_mutation_guard import retire_legacy_mutation  # noqa: E402
 
 
 REGISTRY_URL = os.getenv("AKL_SMOKE_REGISTRY_URL", "http://localhost:8001").rstrip("/")
@@ -30,6 +38,7 @@ Another paragraph contains additional rules for a citable chunk.
 
 
 def main() -> int:
+    retire_legacy_mutation("scripts/phase_01_smoke.py")
     print("Phase 01 smoke test")
     seed_ingestion_object()
     check_health()
@@ -52,6 +61,7 @@ def main() -> int:
 
 
 def seed_ingestion_object() -> None:
+    retire_legacy_mutation("scripts/phase_01_smoke.py seed_ingestion_object")
     if os.getenv("AKL_SMOKE_SKIP_DOCKER_SEED") == "1":
         print("SKIP object-storage seed")
         return
@@ -86,6 +96,7 @@ def check_health() -> None:
 
 
 def create_document() -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_01_smoke.py create_document")
     return request_json(
         "POST",
         f"{REGISTRY_URL}/api/v1/documents",
@@ -102,6 +113,7 @@ def create_document() -> dict[str, Any]:
 
 
 def create_version(document_id: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_01_smoke.py create_version")
     return request_json(
         "POST",
         f"{REGISTRY_URL}/api/v1/documents/{document_id}/versions",
@@ -115,6 +127,7 @@ def create_version(document_id: str) -> dict[str, Any]:
 
 
 def run_ingestion(document_id: str, document_version_id: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_01_smoke.py run_ingestion")
     job = request_json(
         "POST",
         f"{INGESTION_URL}/api/v1/ingestion/jobs",
@@ -150,6 +163,7 @@ def wait_for_report(job_id: str) -> dict[str, Any]:
 
 
 def retrieve() -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_01_smoke.py retrieve")
     body = request_json(
         "POST",
         f"{RAG_URL}/api/v1/rag/retrieve",
@@ -171,6 +185,7 @@ def retrieve() -> dict[str, Any]:
 
 
 def call_llm() -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_01_smoke.py call_llm")
     request_json("GET", f"{LLM_URL}/api/v1/models")
     return request_json(
         "POST",
@@ -185,6 +200,7 @@ def call_llm() -> dict[str, Any]:
 
 
 def query_rag() -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_01_smoke.py query_rag")
     body = request_json(
         "POST",
         f"{RAG_URL}/api/v1/rag/query",
@@ -207,6 +223,7 @@ def query_rag() -> dict[str, Any]:
 
 
 def write_audit_event(document_id: str) -> dict[str, Any]:
+    retire_legacy_mutation("scripts/phase_01_smoke.py write_audit_event")
     return request_json(
         "POST",
         f"{REGISTRY_URL}/api/v1/audit/events",
@@ -230,6 +247,8 @@ def request_json(
     *,
     expected_status: int = 200,
 ) -> dict[str, Any]:
+    if method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+        retire_legacy_mutation("scripts/phase_01_smoke.py request_json mutation")
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,
