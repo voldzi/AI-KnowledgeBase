@@ -62,6 +62,38 @@ Do not manipulate VPN, VLAN, firewall, or network segmentation from this repo.
 Production deploys use the immutable exact-SHA workflow in
 `docs/OPERATIONS/immutable-docker-home-release.md`; `/srv/akl/repo` is not a
 release source and must not be pulled, checked out, or switched during deploy.
+If an existing immutable `current` predates
+`AKL_IMMUTABLE_ORCHESTRATOR_CONTRACT=2`, its scripts are not used to roll out
+the first hardened release. Follow the canonical runbook's target-side
+`--transition-existing-current` procedure; it prepares an exact target from a
+disposable checkout, then revalidates the old current and target before the
+target orchestrator obtains the standard lock. After contract 2 is current,
+ordinary releases resume through `/srv/akl/current/scripts/`.
+The host does not need `psql`, `pg_dump`, or `pg_restore`. Registry release
+database operations use the exact, already-local image configured by
+`AKL_RELEASE_POSTGRES_TOOL_IMAGE`; mutable tags and implicit pulls fail closed.
+The same exact image performs three writable-primary checks before build, three
+more after build immediately before any Registry writer may be stopped, and
+three more after backup immediately before migration. Every connection must
+report `transaction_read_only=off` and `pg_is_in_recovery()=false` plus the
+configured exact `current_database()`/`current_user`; read-only, recovery, or
+wrong database/user fails closed at that boundary. Backup inventory records the observed
+backend address/port when available. This is routing evidence, not a
+privileged cluster-identity assertion.
+Run the workflow from a clean shell without sourcing the production env. It
+rejects ambient env-file key collisions and any ambient variable interpolated
+by the exact target Compose file, including variables absent from the env file;
+production env values containing `$` are forbidden. Preparation and first-host
+bootstrap enforce the same rule. Release entry scripts disable xtrace before
+reading configuration. Deploy creates one linked single-link mode-`0600` env
+snapshot in a private mode-`0700` directory below `/srv/akl/env` and binds every
+Compose/database/backup/verification step to its root/directory/file
+device/inode/size/SHA-256 identity; changing the persistent env mid-attempt cannot
+retarget migration. Normal exit removes and fsyncs the snapshot. A SIGKILL copy
+blocks the next attempt until the exact stale-snapshot cleanup procedure is run.
+Git replacement refs/config injection and
+ambient Docker daemon routing are rejected; production Docker must be the
+local default Unix socket.
 
 ## Configuration
 
@@ -101,19 +133,36 @@ it does not rewrite or prune authenticated audit.
 Use the environment-specific Compose command and backup procedure from the
 deployment runbook; the sequence is mandatory:
 
-1. Create and verify a current backup/restore point before changing the
-   Registry database. On `docker.home.cz`, the immutable release workflow must
-   first stop and verify quiescence of the Compose Registry writer, then
+1. Create a current Registry dump artifact before changing the database. On
+   `docker.home.cz`, the immutable release workflow must
+   first stop and verify quiescence of the Compose Registry writer through
+   lock-bound per-deployment evidence and repeated `docker ps -a` checks, then
    produce a PostgreSQL custom dump under `/srv/akl/backups`, its SHA-256, a
    successful `pg_restore --list`, and a non-secret inventory containing the
-   full current Alembic revision before Alembic is allowed to start. The
-   general backup policy remains in
-   `docs/OPERATIONS/backup-restore.md`.
+   exactly one full current Alembic revision, critical table row counts, plus
+   exact tool image identity and client versions. The dump, list, checksum, inventory, directories, and parent are
+   fsynced before Alembic is allowed to start. PostgreSQL clients run only
+   from the pinned image with a private pgpass bind below
+   `/srv/akl/state/postgres-credentials`. A SIGKILL remnant blocks a later
+   release and is removed only by the exact validated cleanup procedure. The general
+   exact isolated Registry rehearsal is in
+   `docs/OPERATIONS/immutable-docker-home-release.md`. These checks
+   establish checksum integrity and syntactic custom-dump/TOC readability, not
+   a proven restore point; only the documented isolated restore rehearsal does
+   that.
 2. Deploy full-Git-SHA image tags for only the affected Registry, RAG, and web
    services, then run `alembic upgrade head` in the target `registry-api`
-   image. Confirm with `alembic current` that
-   revision `0016_public_audit_aggregation` (or a later approved head
-   containing it) is active.
+   image. A shared production Compose change is not supported by this narrow
+   workflow. Durably record each post-build image ID and verify exact
+   SHA/project/service labels again before Alembic/restart, after recreation,
+   and after all smoke tests immediately before activation. Reconciliation loads
+   the original IDs from the deployment record named by the verified runtime
+   marker; it never trusts a newly resolved mutable tag. Alembic and Compose
+   recreation execute from the recorded image IDs directly, so a concurrent tag
+   retarget cannot select different bytes. Require the target image to declare exactly one head and `alembic
+   current` to return exactly one canonical revision equal to it (currently
+   `0016_public_audit_aggregation` or a later approved single head). Multi-head
+   or malformed state fails closed.
 3. Require the Registry and web readiness endpoints to pass before public
    traffic is tested. The release must also prove exact image tag/ID and
    release/Compose labels. A failed readiness or identity check stops the
@@ -152,6 +201,23 @@ If deployment fails after images or a migration were applied, leave
 `/srv/akl/current` unchanged and deploy a reviewed descendant SHA through the
 forward-fix wrapper. Do not interpret the old symlink as permission to run old
 code against the new schema.
+The pre-stop writable-primary gate precedes target build and may retry the same
+approved SHA. Immediately before build, the workflow durably creates
+`/srv/akl/state/burned-shas/<full-sha>`; a pre-existing target tag also creates
+it. Once this marker exists or `target_build_may_have_started=true`, retain
+immutable tags and deploy a reviewed descendant even when no tag exists and
+`migration_started=false`. Never delete a burn marker to force a retry. A
+pre-quiesce gate failure is still before writer stop but already post-build and
+therefore requires a descendant.
+If a crash occurs while stopping the Registry writer, treat a durable
+`registry_stop_may_have_started=true` deployment record as evidence that the
+writer may be stopped even when verified quiescence was not yet recorded. If
+the marker is already fully `verified` for the target but `current` is still
+old, rerun that same SHA to re-verify and reconcile activation without a build
+or migration. If `current` already names the same fully verified target but the
+success record is missing, the same no-forward-fix retry records
+`reconciled_verified_success` without changing the link again; a rollback
+wrapper is not a reconciliation shortcut.
 
 ## Health And Readiness
 

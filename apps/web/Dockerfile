@@ -16,6 +16,7 @@ RUN npm install -g pnpm@11.7.0 && pnpm run build
 
 FROM node:26-alpine AS runner
 WORKDIR /app
+LABEL cz.zeleznalady.akl.service="web"
 ARG NEXT_PUBLIC_AKL_BASE_PATH=""
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
