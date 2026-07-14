@@ -95,7 +95,9 @@ def test_ingestion_attempt_model_rejects_cross_document_version() -> None:
 def test_postgres_0018_backfills_and_enforces_document_version_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    admin_url = make_url(os.environ["AKL_REGISTRY_MIGRATION_TEST_ADMIN_URL"])
+    admin_url = make_url(os.environ["AKL_REGISTRY_MIGRATION_TEST_ADMIN_URL"]).set(
+        drivername="postgresql+psycopg"
+    )
     database_name = f"akl_migration_{uuid4().hex}"
     database_url = admin_url.set(database=database_name)
     admin_engine = create_engine(admin_url, poolclass=NullPool)

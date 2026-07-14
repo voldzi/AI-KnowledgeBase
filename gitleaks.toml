@@ -5,6 +5,13 @@ useDefault = true
 id = "generic-api-key"
 
 [[rules.allowlists]]
+description = "Synthetic AIIP governance policy-hash fixture"
+condition = "AND"
+regexTarget = "line"
+paths = ['''apps/web/tests/aiip-governance-confirmation\.test\.ts$''']
+regexes = ['''document_policy_hash:\s*`sha256:\$\{"[a-f0-9]"\.repeat\(64\)\}`''']
+
+[[rules.allowlists]]
 description = "STRATOS integration idempotency fixture"
 condition = "AND"
 regexTarget = "line"
