@@ -84,6 +84,31 @@ the fixed `service:akb` identity; integration-envelope actors are stored only
 as audit metadata. A missing endpoint or service credential fails governed
 writes closed.
 
+AIIP governed upload additionally requires
+`AKL_STRATOS_AIIP_AKB_RESOURCES_URL` and
+`AKB_AIIP_INGEST_SERVICE_TOKEN`. The latter is a separate central-call
+credential and production start rejects it when it equals
+`AKB_POLICY_SERVICE_TOKEN`. Allow only the exact route grant
+`aiip-service=aiip-upload`; do not add `authz`, document administration, or a
+wildcard route grant to that client. The AKB web bridge forwards the
+`aiip-service` transport bearer and a separate current actor bearer; Registry
+must receive both. Rotate the two static AKB tokens independently, update the
+external secret store, restart Registry, and verify readiness plus one denied
+missing-actor probe before accepting traffic. Never print either token in
+shell output, logs, manifests, or test reports.
+
+The downstream ingestion pipeline has a third, independent Keycloak boundary.
+Provision `svc-ingestion` with role `service_ingestion`, audience `akl-api`, and
+store its secret in `/srv/akl/env/svc-ingestion.client-secret` mode `0600`.
+`ingestion-service` obtains short-lived tokens through
+`AKL_INGESTION_REGISTRY_TOKEN_URL`; the secret file is mounted read-only only
+into that container. Registry must trust the client with exactly
+`authz|audit|documents-read|ingestion-status`. Do not add generic grants to
+`aiip-service`, share either client secret, or use an inbound AIIP bearer as a
+fallback. `/ready` must return HTTP `503` with Registry `not_ready` when this
+identity cannot be obtained; rotate the secret and recreate only the ingestion
+container before a bounded ingestion smoke.
+
 Set the same independent, random value of at least 32 characters as
 `AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN` in the Registry and web containers. It is
 only a private resolver credential; it is never accepted as a STRATOS policy
@@ -92,12 +117,17 @@ value disables public source delivery. Public metadata and source responses
 must remain `no-store`; operators verify revoke by observing an immediate 404
 after the next fresh central decision.
 
-### Forward-only public delivery migrations (`0015`, `0016`)
+### Forward-only governance migrations (`0015`–`0017`)
 
 Treat `0015_document_publications` and `0016_public_audit_aggregation` as
 forward-only production migrations. The second migration adds nullable
 aggregation identity plus occurrence/last-seen fields to existing audit rows;
 it does not rewrite or prune authenticated audit.
+`0017_canonical_own_scope` adds the canonical owner coordinate to document and
+version governance scopes. It backfills every existing `own` row from the
+persisted document owner, clears its former generic scope id, and only then
+enables the database shape constraint. This prevents an existing private row
+from being reinterpreted as organization-wide content.
 Use the environment-specific Compose command and backup procedure from the
 deployment runbook; the sequence is mandatory:
 
@@ -112,7 +142,7 @@ deployment runbook; the sequence is mandatory:
 2. Deploy full-Git-SHA image tags for only the affected Registry, RAG, and web
    services, then run `alembic upgrade head` in the target `registry-api`
    image. Confirm with `alembic current` that
-   revision `0016_public_audit_aggregation` (or a later approved head
+   revision `0017_canonical_own_scope` (or a later approved head
    containing it) is active.
 3. Require the Registry and web readiness endpoints to pass before public
    traffic is tested. The release must also prove exact image tag/ID and

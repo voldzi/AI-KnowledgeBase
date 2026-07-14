@@ -6,8 +6,12 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 
 1. `POST /api/v1/ingestion/jobs` přijme `document_id`, `document_version_id`, `source_file_uri`, parser profile, OCR flag, chunking strategy a embedding profile.
 2. Služba uloží `IngestionJob` do lokálního job/report store.
-3. Pipeline zavolá Registry API authz check pro `document.ingest`.
-4. Pipeline načte metadata dokumentu a verze přes Registry API.
+3. Pipeline získá krátkodobý OIDC token vlastního Registry clientu
+   `svc-ingestion` a zavolá Registry API authz check pro `document.ingest`.
+   Inbound AIIP/user subject je pouze `subject_id` rozhodnutí; jeho bearer se
+   nepřeposílá.
+4. Pipeline pod stejnou vlastní service identity načte metadata dokumentu a
+   verze přes Registry API.
 5. Object storage klient načte zdrojový soubor.
 6. Parser router zvolí HTML/HTM/XHTML, XLSX/XLSM, PPTX, TXT/MD/CSV/JSON/XML, PDF nebo DOCX parser. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích; PPTX parser extrahuje slidy jako stránky s titulkem slidu jako sekcí, včetně tabulek a poznámek lektora; text parser bezpečně indexuje i strukturované textové zdroje CSV, JSON a XML.
 7. OCR fallback se použije při selhání parseru nebo nízkém množství extrahovaného textu. Podporované providery jsou `sidecar`, `tesseract` pro obrázky a `ocrmypdf` pro PDF. OCR výstup ukládá metadata parser enginu, jazyka, počtu stran s textem, prázdných stran a kvality.
@@ -16,7 +20,13 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 10. Pravidlová Intelligence entity vrstva `rule_based_v1` doplní do `metadata.intelligence` deterministické entity z chunk textu: `email`, `url`, `ipv4`, `phone`, `date` a `document_number`.
 11. Embedding klient pošle normalizované texty na LLM Gateway `/api/v1/embeddings` jako service identity `svc-ingestion`, s audience `llm-gateway-service`, rolí `service_ingestion` a samostatným gateway tokenem. Caller OIDC token se do gateway nepřeposílá. Dávky (`AKL_INGESTION_EMBEDDING_BATCH_SIZE`, default 32) běží paralelně s omezenou souběžností (`AKL_INGESTION_EMBEDDING_CONCURRENCY`, obecný default 2). Produkční docker-home profil používá konzervativní `AKL_INGESTION_EMBEDDING_CONCURRENCY=1`, aby re-index netlačil na jednu Ollama instanci více paralelními embedding požadavky. Pořadí vektorů je zachováno.
 12. Indexer uloží chunk payloady podle `AKL_INGESTION_INDEXER_MODE`: do Qdrantu pro vektorové vyhledávání a volitelně do OpenSearch pro fulltext. Entity typy, hodnoty a páry typ-hodnota se promítají také do top-level payload polí `entity_types`, `entity_values` a `entity_pairs`.
-13. Služba uloží `IngestionReport` a auditně zapíše start/completed/failed událost přes Registry API.
+13. Služba přes úzký `ingestion-status` route grant synchronizuje pouze job id a
+    `INGESTING`, `INDEXED` nebo `FAILED` pro přesnou verzi, kterou dedikovaný
+    AIIP confirm už nastavil jako current. Pointer, file, URI a lineage změnit
+    nesmí.
+14. Služba uloží `IngestionReport` a pod vlastní Registry service identity
+    auditně zapíše start/completed/failed; inbound actor zůstává v payloadu jako
+    neautoritativní reported actor.
 
 ## Integrační Body
 
@@ -25,6 +35,7 @@ Registry API:
 - `POST /api/v1/authz/check`
 - `GET /api/v1/documents/{document_id}`
 - `GET /api/v1/documents/{document_id}/versions/{version_id}`
+- `PATCH /api/v1/documents/{document_id}/external-references/current`
 - `POST /api/v1/audit/events`
 
 LLM Gateway:
@@ -80,7 +91,11 @@ Služba nesmí publikovat dokument jako platný. Publikace zůstává odpovědno
 
 Do logů a audit metadata nejdou celé dokumenty ani embedding input texty. Audit metadata obsahují jen ID dokumentu/verze, počet chunků, OCR flag, quality score/tier, status a error code.
 
-Produkční konfigurace odmítá mock Registry, mock object storage, mock embedding i mock indexer.
+Produkční konfigurace odmítá mock Registry, mock object storage, mock embedding i
+mock indexer. Zároveň vyžaduje úplné Registry client credentials pro
+`svc-ingestion`; žádná Registry cesta nesmí fallbackovat na inbound caller
+bearer. Readiness zahrnuje i úspěšné získání této krátkodobé identity.
+Neúspěch vrací HTTP `503` s `registry=not_ready`.
 
 ## Entity Backfill Pro Existující Indexy
 

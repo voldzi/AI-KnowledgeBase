@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     stratos_information_resources_url: str | None = Field(
         default=None, alias="AKL_STRATOS_INFORMATION_RESOURCES_URL"
     )
+    stratos_aiip_akb_resources_url: str | None = Field(
+        default=None, alias="AKL_STRATOS_AIIP_AKB_RESOURCES_URL"
+    )
     stratos_information_publications_url: str | None = Field(
         default=None, alias="AKL_STRATOS_INFORMATION_PUBLICATIONS_URL"
     )
@@ -75,6 +78,9 @@ class Settings(BaseSettings):
     )
     stratos_policy_service_token: str | None = Field(
         default=None, alias="AKB_POLICY_SERVICE_TOKEN"
+    )
+    stratos_aiip_ingest_service_token: str | None = Field(
+        default=None, alias="AKB_AIIP_INGEST_SERVICE_TOKEN"
     )
     public_delivery_internal_token: str | None = Field(
         default=None, alias="AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN"
@@ -236,6 +242,8 @@ class Settings(BaseSettings):
                 "access-admin-write",
                 "profile-read",
                 "profile-write",
+                "aiip-upload",
+                "ingestion-status",
             }
         }
         if invalid_routes:
@@ -256,9 +264,11 @@ class Settings(BaseSettings):
                     "AKL_STRATOS_POLICY_BINDINGS_URL": self.stratos_policy_bindings_url,
                     "AKL_STRATOS_POLICY_DECISIONS_URL": self.stratos_policy_decisions_url,
                     "AKL_STRATOS_INFORMATION_RESOURCES_URL": self.stratos_information_resources_url,
+                    "AKL_STRATOS_AIIP_AKB_RESOURCES_URL": self.stratos_aiip_akb_resources_url,
                     "AKL_STRATOS_INFORMATION_PUBLICATIONS_URL": self.stratos_information_publications_url,
                     "AKL_STRATOS_PUBLIC_DECISIONS_URL": self.stratos_public_decisions_url,
                     "AKB_POLICY_SERVICE_TOKEN": self.stratos_policy_service_token,
+                    "AKB_AIIP_INGEST_SERVICE_TOKEN": self.stratos_aiip_ingest_service_token,
                     "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN": self.public_delivery_internal_token,
                 }.items()
                 if not value
@@ -270,6 +280,10 @@ class Settings(BaseSettings):
             if len(self.public_delivery_internal_token or "") < 32:
                 raise ValueError(
                     "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN must contain at least 32 characters in production"
+                )
+            if self.stratos_aiip_ingest_service_token == self.stratos_policy_service_token:
+                raise ValueError(
+                    "AKB_AIIP_INGEST_SERVICE_TOKEN must be distinct from AKB_POLICY_SERVICE_TOKEN"
                 )
 
         return self

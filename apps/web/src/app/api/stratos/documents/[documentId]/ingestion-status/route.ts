@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
+import { authenticateAiipServiceRequest } from "@/lib/aiip/application-api";
+import { getAiipActorRequestContext, getServerApiClients } from "@/lib/api/server";
 import { latestVersion, mapIngestionStatus } from "@/lib/stratos/document-ai";
+import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 
 import { stratosBridgeError } from "../../../errors";
 
@@ -17,12 +19,36 @@ interface RouteContext {
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const requestContext = await getServerRequestContextForRequest(request);
+    const service = await authenticateAiipServiceRequest(request);
+    const actorContext = await getAiipActorRequestContext(request);
+    const correlationId = request.headers.get("X-Correlation-ID")?.trim() || crypto.randomUUID();
+    const serviceContext: ApiRequestContext = {
+      subjectId: service.subjectId,
+      roles: service.roles,
+      organizationId: "org_stratos",
+      authorizationSource: "stratos_projection",
+      accessToken: service.accessToken,
+      requestId: correlationId,
+      correlationId,
+    };
     const clients = getServerApiClients();
+    const authorization = await clients.registry.authorizeDocument(
+      documentId,
+      "document.read",
+      actorContext,
+    );
+    if (!authorization.allowed) {
+      throw new ApiClientError(
+        "The current AIIP actor cannot read this exact governed AKB document.",
+        403,
+        "AIIP_DOCUMENT_ACCESS_DENIED",
+        "web-stratos-bridge",
+      );
+    }
     const [document, versions, jobs] = await Promise.all([
-      clients.registry.getDocument(documentId, requestContext),
-      clients.registry.listDocumentVersions(documentId, requestContext),
-      clients.ingestion.listJobs(requestContext).catch(() => [])
+      clients.registry.getDocument(documentId, actorContext),
+      clients.registry.listDocumentVersions(documentId, actorContext),
+      clients.ingestion.listJobs(serviceContext).catch(() => [])
     ]);
     const version = latestVersion(versions);
     const job = version

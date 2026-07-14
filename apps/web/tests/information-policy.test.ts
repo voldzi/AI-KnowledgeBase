@@ -62,8 +62,16 @@ describe("STRATOS Information Policy V2", () => {
       schemaVersion: "stratos-integration-envelope-1",
       organizationId: "org_stratos",
       sourceSystem: "STRATOS_AIIP",
-      externalRef: "idea-123",
-      actor: { type: "service", subjectId: "aiip-service" },
+      externalRef: "aiip:idea:idea-123:requirement-card",
+      actor: { type: "person", subjectId: "subject-aiip-123" },
+      sourceResource: {
+        governedResourceId: "gres-aiip-idea-123",
+        application: "AIIP",
+        resourceType: "idea",
+        resourceId: "idea-123",
+        sourceVersion: "idea-123-v1",
+        scope: { type: "organization", id: "org_stratos" }
+      },
       correlationId: "corr-12345678",
       idempotencyKey: "idem-12345678",
       policyBindingId: parsed.policyBindingId,
@@ -75,9 +83,25 @@ describe("STRATOS Information Policy V2", () => {
         tlp: null,
         pap: null
       },
-      payload: { documentType: "ai_requirement_card" }
+      payload: {
+        operation: "document_upload",
+        entityType: "InnovationRequest",
+        entityId: "idea-123",
+        sourceDocumentId: "/ideas/idea-123/documents/source-1",
+        sha256: `sha256:${"a".repeat(64)}`
+      }
     };
-    assert.equal(parseIntegrationEnvelope(envelope, parsed)?.policyHash, policyHash(parsed));
+    const parsedEnvelope = parseIntegrationEnvelope(envelope, parsed);
+    assert.equal(parsedEnvelope?.policyHash, policyHash(parsed));
+    assert.equal(parsedEnvelope?.externalRef, "aiip:idea:idea-123:requirement-card");
+    assert.equal(parsedEnvelope?.sourceResource.resourceId, "idea-123");
+    assert.notEqual(parsedEnvelope?.externalRef, parsedEnvelope?.sourceResource.resourceId);
     assert.throws(() => parseIntegrationEnvelope({ ...envelope, policyHash: `sha256:${"f".repeat(64)}` }, parsed));
+    assert.throws(() => parseIntegrationEnvelope({ ...envelope, actor: { ...envelope.actor, delegated: true } }, parsed));
+    assert.throws(() => parseIntegrationEnvelope({ ...envelope, payload: { ...envelope.payload, metadata: {} } }, parsed));
+    assert.throws(() => parseIntegrationEnvelope({
+      ...envelope,
+      classification: { ...envelope.classification, legacy: "internal" }
+    }, parsed));
   });
 });

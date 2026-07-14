@@ -44,11 +44,18 @@ AKL_OIDC_AUDIENCE=akl-registry-api
 AKL_OIDC_JWKS_URL=http://keycloak:8080/realms/akl/protocol/openid-connect/certs
 ```
 
-RAG Retrieval, Ingestion, and LLM Gateway support `AKL_AUTH_MODE=oidc` as a bearer-required mode. RAG and Ingestion propagate caller tokens for document authz and LLM calls; Registry audit writes can use service-account token fallback. Registry API remains the document authorization enforcement point for `/authz/check` and `/authz/filter-documents`.
+RAG Retrieval, Ingestion, and LLM Gateway support `AKL_AUTH_MODE=oidc` as a
+bearer-required mode. Ingestion never propagates its inbound caller bearer to
+Registry or LLM Gateway. Registry calls use a dedicated short-lived
+`svc-ingestion` client-credentials bearer; caller subject survives only in
+delegated authz/audit context. Registry API remains the document authorization
+enforcement point for `/authz/check` and `/authz/filter-documents`.
 
 ## Remaining baseline gaps
 
-- RAG Retrieval, Ingestion, and LLM Gateway do not locally validate JWT signatures; they require and forward bearer tokens.
+- RAG Retrieval and LLM Gateway retain their documented token boundaries;
+  Ingestion locally validates OIDC JWT signatures and keeps inbound and
+  outbound service credentials separate.
 - Service account secrets are intentionally absent from this repository and must be injected by local shell, compose env file, or a secret manager.
 
 ## STRATOS production profile
@@ -94,5 +101,21 @@ identity for Registry calls. Provision it with the same helper using
 `AIIP_AUDIENCE=akl-api`, and
 `AIIP_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret`. This secret is
 mounted read-only only into the RAG container.
+
+Provision the independent ingestion-to-Registry identity with the same helper:
+
+```bash
+AIIP_CLIENT_ID=svc-ingestion \
+AIIP_ROLE=service_ingestion \
+AIIP_AUDIENCE=akl-api \
+AIIP_SECRET_FILE=/srv/akl/env/svc-ingestion.client-secret \
+SERVICE_CLIENT_NAME="AKB Ingestion Registry Client" \
+./scripts/ensure_aiip_service_client.sh
+```
+
+Mount that file read-only only into `ingestion-service`. Configure Registry
+with trusted client `svc-ingestion` and exact grants
+`authz|audit|documents-read|ingestion-status`; never add those grants to
+`aiip-service`.
 
 The target STRATOS public routing model is documented in `docs/deployment/stratos-public-routing-and-docker-home.md`. The `akl.zeleznalady.cz` standalone domain can remain as a temporary Keycloak redirect alias during migration, but the target public AKB URL is `/akb` under `https://stratos.zeleznalady.cz`.

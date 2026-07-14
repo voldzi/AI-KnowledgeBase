@@ -24,7 +24,7 @@ def _headers(
 def _reserve(client, *, key: str = "idem-aiip-0001", input_hash: str = "a" * 64):
     return client.post(
         "/api/v1/integrations/idempotency/reserve",
-        headers=_headers(),
+        headers=_headers("service_rag"),
         json={
             "client_id": "aiip-service",
             "operation": "harmonize",
@@ -56,6 +56,22 @@ def test_idempotency_reserve_complete_and_replay(client):
     assert replay.json()["state"] == "replay"
     assert replay.json()["response_body"]["schema_version"] == "1.0"
     assert replay.json()["audit_event_id"] == "audit_aiip_1"
+
+
+def test_aiip_service_cannot_call_generic_idempotency_route(client):
+    response = client.post(
+        "/api/v1/integrations/idempotency/reserve",
+        headers=_headers("service_aiip"),
+        json={
+            "client_id": "aiip-service",
+            "operation": "harmonize",
+            "idempotency_key": "idem-aiip-direct-denied",
+            "input_hash": "a" * 64,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "service_route_forbidden"
 
 
 def test_idempotency_key_reuse_with_another_hash_is_conflict(client):

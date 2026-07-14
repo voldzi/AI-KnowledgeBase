@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import math
+import time
 from datetime import date
 from typing import Any
 
@@ -15,18 +18,22 @@ from app.security import AuthContext
 class RegistryClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._service_token_value: str | None = None
+        self._service_token_expires_at = 0.0
+        self._service_token_lock = asyncio.Lock()
 
     async def readiness(self) -> str:
         if self.settings.registry_client_mode == "mock":
             return "mock"
         try:
+            service_token = await self._registry_service_token()
             async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
                 response = await client.get(
                     f"{self.settings.registry_base_url}/ready",
-                    headers=self._headers(),
+                    headers=self._headers(registry_service_token=service_token),
                 )
             return "ready" if response.status_code == 200 else "not_ready"
-        except httpx.HTTPError:
+        except (IngestionError, httpx.HTTPError):
             return "not_ready"
 
     async def require_authorized(
@@ -153,7 +160,6 @@ class RegistryClient:
             "/api/v1/audit/events",
             payload,
             auth_context=auth_context,
-            prefer_service_account=True,
         )
 
     async def update_external_document_current(
@@ -178,11 +184,15 @@ class RegistryClient:
         )
 
     async def _get(self, path: str, *, auth_context: AuthContext | None = None) -> dict[str, Any]:
+        service_token = await self._registry_service_token()
         try:
             async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
                 response = await client.get(
                     f"{self.settings.registry_base_url}{path}",
-                    headers=self._headers(auth_context),
+                    headers=self._headers(
+                        auth_context,
+                        registry_service_token=service_token,
+                    ),
                 )
                 response.raise_for_status()
                 return response.json()
@@ -206,13 +216,16 @@ class RegistryClient:
         payload: dict[str, Any],
         *,
         auth_context: AuthContext | None = None,
-        prefer_service_account: bool = False,
     ) -> dict[str, Any]:
+        service_token = await self._registry_service_token()
         try:
             async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
                 response = await client.post(
                     f"{self.settings.registry_base_url}{path}",
-                    headers=self._headers(auth_context, prefer_service_account=prefer_service_account),
+                    headers=self._headers(
+                        auth_context,
+                        registry_service_token=service_token,
+                    ),
                     json=payload,
                 )
                 response.raise_for_status()
@@ -238,11 +251,15 @@ class RegistryClient:
         *,
         auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
+        service_token = await self._registry_service_token()
         try:
             async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
                 response = await client.patch(
                     f"{self.settings.registry_base_url}{path}",
-                    headers=self._headers(auth_context),
+                    headers=self._headers(
+                        auth_context,
+                        registry_service_token=service_token,
+                    ),
                     json=payload,
                 )
                 response.raise_for_status()
@@ -261,39 +278,95 @@ class RegistryClient:
                 status_code=502,
             ) from exc
 
+    async def _registry_service_token(self) -> str | None:
+        settings = self.settings
+        if not (
+            settings.registry_service_token_url
+            and settings.registry_service_client_id
+            and settings.registry_service_client_secret
+        ):
+            return None
+
+        now = time.monotonic()
+        if self._service_token_value and now < self._service_token_expires_at:
+            return self._service_token_value
+
+        async with self._service_token_lock:
+            now = time.monotonic()
+            if self._service_token_value and now < self._service_token_expires_at:
+                return self._service_token_value
+            try:
+                async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+                    response = await client.post(
+                        settings.registry_service_token_url,
+                        data={
+                            "grant_type": "client_credentials",
+                            "client_id": settings.registry_service_client_id,
+                            "client_secret": settings.registry_service_client_secret,
+                        },
+                    )
+                response.raise_for_status()
+                payload = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise IngestionError(
+                    "REGISTRY_SERVICE_AUTH_UNAVAILABLE",
+                    "Ingestion service identity could not be obtained",
+                    status_code=503,
+                ) from exc
+
+            if not isinstance(payload, dict):
+                raise IngestionError(
+                    "REGISTRY_SERVICE_AUTH_INVALID",
+                    "Registry service identity response was invalid",
+                    status_code=503,
+                )
+            access_token = payload.get("access_token")
+            if not isinstance(access_token, str) or not access_token:
+                raise IngestionError(
+                    "REGISTRY_SERVICE_AUTH_INVALID",
+                    "Registry service identity response did not contain an access token",
+                    status_code=503,
+                )
+            expires_in = payload.get("expires_in")
+            lifetime = (
+                float(expires_in)
+                if isinstance(expires_in, int | float) and not isinstance(expires_in, bool)
+                else 60.0
+            )
+            if not math.isfinite(lifetime) or lifetime <= 0:
+                raise IngestionError(
+                    "REGISTRY_SERVICE_AUTH_INVALID",
+                    "Registry service identity response contained an invalid token lifetime",
+                    status_code=503,
+                )
+            refresh_margin = min(30.0, max(1.0, lifetime * 0.1))
+            self._service_token_value = access_token
+            self._service_token_expires_at = now + max(0.0, lifetime - refresh_margin)
+            return access_token
+
     def _headers(
         self,
         auth_context: AuthContext | None = None,
         *,
-        prefer_service_account: bool = False,
+        registry_service_token: str | None = None,
     ) -> dict[str, str]:
-        use_service_account = prefer_service_account and self.settings.service_account_token
-        subject_id = (
-            self.settings.service_account_subject
-            if use_service_account or auth_context is None
-            else auth_context.subject_id
-        )
-        roles = (
-            self.settings.service_account_roles
-            if use_service_account or auth_context is None
-            else auth_context.roles
-        )
-        groups = () if use_service_account or auth_context is None else auth_context.groups
         headers = {
             "X-Request-ID": get_request_id(),
             "X-Correlation-ID": get_correlation_id(),
             "X-Service-Name": self.settings.service_name,
         }
         if self.settings.auth_mode in {"disabled", "mock"}:
-            headers["X-AKL-Subject"] = subject_id
-            headers["X-AKL-Roles"] = ",".join(roles)
-            if groups:
-                headers["X-AKL-Groups"] = ",".join(groups)
-        bearer_token = None if use_service_account else auth_context.bearer_token if auth_context else None
-        if bearer_token:
-            headers["Authorization"] = f"Bearer {bearer_token}"
-        elif self.settings.service_account_token:
-            headers["Authorization"] = f"Bearer {self.settings.service_account_token}"
+            service_client_id = (
+                self.settings.registry_service_client_id
+                or self.settings.service_account_subject
+            )
+            headers["X-AKL-Subject"] = f"service-account-{service_client_id}"
+            headers["X-AKL-Service-Client-ID"] = service_client_id
+            headers["X-AKL-Roles"] = ",".join(self.settings.service_account_roles)
+            if auth_context and auth_context.subject_id != headers["X-AKL-Subject"]:
+                headers["X-AKL-On-Behalf-Of"] = auth_context.subject_id
+        if registry_service_token:
+            headers["Authorization"] = f"Bearer {registry_service_token}"
         return headers
 
 

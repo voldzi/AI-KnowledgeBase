@@ -137,59 +137,15 @@ def test_external_document_upsert_is_idempotent(client, admin_headers):
     assert len(listing.json()["items"]) == 1
 
 
-def test_aiip_external_document_upsert_is_idempotent_and_filterable(client, admin_headers):
-    first = client.post("/api/v1/external-documents/upsert", headers=admin_headers, json=_aiip_payload())
-    assert first.status_code == 200, first.text
-    first_body = first.json()
-    assert first_body["created"] is True
-    assert first_body["external_document"]["tenant_id"] == "tenant_aiip_default"
-    assert first_body["external_document"]["external_system"] == "STRATOS_AIIP"
-    assert first_body["external_document"]["external_ref"] == "aiip:idea:idea_123:requirement-card"
-    assert first_body["external_document"]["entity_type"] == "InnovationRequest"
-    assert first_body["document"]["document_type"] == "ai_requirement_card"
-    assert first_body["document"]["classification"] == "internal"
-    assert "stratos_aiip" in first_body["document"]["tags"]
-    assert "aiip-idea:idea_123" in first_body["document"]["tags"]
-    assert any(
-        "role:service_aiip" in policy["subjects"]
-        and "rag.query" in policy["actions"]
-        for policy in first_body["document"]["access_policies"]
-    )
-
-    second = client.post(
+def test_generic_aiip_external_document_upsert_requires_dedicated_route(client, admin_headers):
+    response = client.post(
         "/api/v1/external-documents/upsert",
         headers=admin_headers,
-        json=_aiip_payload(title="Updated AIIP title must not create duplicate"),
+        json=_aiip_payload(),
     )
-    assert second.status_code == 200, second.text
-    second_body = second.json()
-    assert second_body["created"] is False
-    assert second_body["external_document"]["external_document_id"] == first_body["external_document"]["external_document_id"]
-    assert second_body["document"]["document_id"] == first_body["document"]["document_id"]
 
-    listing = client.get(
-        "/api/v1/documents"
-        "?tenant_id=tenant_aiip_default"
-        "&external_system=STRATOS_AIIP"
-        "&entity_type=InnovationRequest"
-        "&entity_id=idea_123"
-        "&external_ref=aiip%3Aidea%3Aidea_123%3Arequirement-card"
-        "&context_tag=aiip-idea%3Aidea_123",
-        headers=admin_headers,
-    )
-    assert listing.status_code == 200, listing.text
-    body = listing.json()
-    assert len(body["items"]) == 1
-    assert body["items"][0]["document_id"] == first_body["document"]["document_id"]
-    assert body["items"][0]["document_type"] == "ai_requirement_card"
-
-    audit = client.get("/api/v1/audit/events?event_type=external_document.upserted", headers=admin_headers)
-    assert audit.status_code == 200
-    assert any(
-        event["metadata"].get("external_system") == "STRATOS_AIIP"
-        and event["metadata"].get("external_ref") == "aiip:idea:idea_123:requirement-card"
-        for event in audit.json()["items"]
-    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "aiip_upload_dedicated_route_required"
 
 
 def test_aiip_document_with_secret_sensitivity_is_rejected(client, admin_headers):

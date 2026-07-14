@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-07-13
 
+The generic service-registration part of this decision does not apply to AIIP
+ingestion; ADR 0008 defines its narrower dual-identity trust boundary.
+
 ## Context
 
 AKB already stored immutable Information Policy V2 snapshots and enforced

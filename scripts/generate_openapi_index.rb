@@ -12,6 +12,9 @@ AIIP_PUBLIC_PATHS = [
   "/api/integrations/aiip/v1/harmonize",
   "/api/integrations/aiip/v1/duplicates/search"
 ].freeze
+STRATOS_AIIP_UPLOAD_PREFLIGHT_PATH = "/api/stratos/upload/preflight"
+STRATOS_AIIP_UPLOAD_CONTENT_PATH = "/api/stratos/upload/sessions/{sessionId}/content"
+STRATOS_AIIP_UPLOAD_CONFIRM_PATH = "/api/stratos/upload/sessions/{sessionId}/confirm"
 
 SERVICES = [
   {
@@ -357,11 +360,164 @@ def public_document_web_operation(path)
   }
 end
 
+def stratos_aiip_upload_error_responses(statuses)
+  statuses.to_h do |status, description|
+    [
+      status,
+      {
+        "description" => description,
+        "content" => {
+          "application/json" => {
+            "schema" => { "$ref" => "#/components/schemas/StratosUploadErrorResponse" }
+          }
+        }
+      }
+    ]
+  end
+end
+
+def stratos_aiip_dual_identity_security
+  [{ "bearerAuth" => [], "aiipActorAuthorization" => [] }]
+end
+
+def stratos_aiip_upload_operation(method, path)
+  if method == "POST" && path == STRATOS_AIIP_UPLOAD_PREFLIGHT_PATH
+    return {
+      "tags" => ["AKB Governed AIIP Upload"],
+      "summary" => "Create a governed AIIP upload session",
+      "description" => "Authenticates the dedicated aiip-service transport bearer and the independent current-person bearer carried by X-AIIP-Actor-Authorization, confirms the exact current AIIP source lineage centrally, and returns a policy- and lineage-bound upload session. The opaque upload token is returned only in required_headers.",
+      "operationId" => "web_create_governed_aiip_upload_preflight",
+      "security" => stratos_aiip_dual_identity_security,
+      "requestBody" => {
+        "required" => true,
+        "content" => {
+          "application/json" => {
+            "schema" => { "$ref" => "#/components/schemas/StratosUploadPreflightRequest" }
+          }
+        }
+      },
+      "responses" => {
+        "201" => {
+          "description" => "Exact centrally confirmed upload session created before binary transfer",
+          "content" => {
+            "application/json" => {
+              "schema" => { "$ref" => "#/components/schemas/StratosUploadPreflightResponse" }
+            }
+          }
+        }
+      }.merge(stratos_aiip_upload_error_responses({
+        "400" => "Malformed JSON or invalid file metadata",
+        "401" => "Missing or invalid transport or actor credential",
+        "403" => "Wrong service identity, route grant, actor, capability, or governed scope",
+        "409" => "External identity or immutable lineage conflict",
+        "413" => "JSON body or declared file size exceeds its configured bound",
+        "415" => "File extension or media type is unsupported",
+        "422" => "Strict request, Information Policy, or integration-envelope validation failed",
+        "502" => "Registry or central governance confirmation was invalid",
+        "503" => "Registry, identity, or central governance verification is unavailable"
+      }))
+    }
+  end
+
+  if method == "PUT" && path == STRATOS_AIIP_UPLOAD_CONTENT_PATH
+    return {
+      "tags" => ["AKB Governed AIIP Upload"],
+      "summary" => "Upload the exact preflight-bound binary",
+      "description" => "Accepts only the signed upload token returned in preflight required_headers, reads no more than the signed size, verifies the exact SHA-256, persists the immutable object, and returns an opaque upload receipt required by confirm.",
+      "operationId" => "web_upload_governed_aiip_content",
+      "security" => [{ "uploadTokenAuth" => [] }],
+      "parameters" => web_path_parameters(path) + [
+        {
+          "name" => "X-AKL-Content-SHA256",
+          "in" => "header",
+          "required" => true,
+          "description" => "Exact lowercase sha256: digest returned by preflight required_headers.",
+          "schema" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" }
+        }
+      ],
+      "requestBody" => {
+        "required" => true,
+        "description" => "Raw binary bytes. The wire Content-Type must equal the signed Content-Type returned by preflight required_headers.",
+        "content" => {
+          "*/*" => {
+            "schema" => { "type" => "string", "format" => "binary" }
+          }
+        }
+      },
+      "responses" => {
+        "201" => {
+          "description" => "Exact binary persisted and a confirmation-bound receipt issued",
+          "content" => {
+            "application/json" => {
+              "schema" => { "$ref" => "#/components/schemas/StratosUploadContentResponse" }
+            }
+          }
+        }
+      }.merge(stratos_aiip_upload_error_responses({
+        "400" => "Session, size, hash, or signed metadata mismatch",
+        "401" => "Missing, malformed, or invalid signed upload token",
+        "410" => "Signed upload token has expired",
+        "413" => "Binary body exceeds the signed or configured size bound",
+        "415" => "Content-Type is missing, unsupported, or does not equal the signed media type",
+        "500" => "Immutable object persistence failed"
+      }))
+    }
+  end
+
+  if method == "POST" && path == STRATOS_AIIP_UPLOAD_CONFIRM_PATH
+    success_content = {
+      "application/json" => {
+        "schema" => { "$ref" => "#/components/schemas/StratosUploadConfirmResponse" }
+      }
+    }
+    return {
+      "tags" => ["AKB Governed AIIP Upload"],
+      "summary" => "Confirm a governed AIIP upload idempotently",
+      "description" => "Requires the original signed upload token and the opaque receipt issued only after exact binary persistence. It re-authenticates both identities, re-confirms the current AIIP lineage, creates or replays the immutable version and ingestion job, then advances current only by compare-and-swap.",
+      "operationId" => "web_confirm_governed_aiip_upload",
+      "security" => stratos_aiip_dual_identity_security,
+      "parameters" => web_path_parameters(path),
+      "requestBody" => {
+        "required" => true,
+        "content" => {
+          "application/json" => {
+            "schema" => { "$ref" => "#/components/schemas/StratosUploadConfirmRequest" }
+          }
+        }
+      },
+      "responses" => {
+        "200" => {
+          "description" => "Exact immutable version and ingestion lifecycle replayed without duplication",
+          "content" => success_content
+        },
+        "201" => {
+          "description" => "Immutable document version and ingestion lifecycle created",
+          "content" => success_content
+        }
+      }.merge(stratos_aiip_upload_error_responses({
+        "400" => "Malformed JSON, invalid receipt, or upload metadata mismatch",
+        "401" => "Missing or invalid transport, actor, upload-token, or receipt credential",
+        "403" => "Wrong service identity, route grant, actor, capability, or governed scope",
+        "409" => "Stale current pointer, changed lineage, or immutable identity conflict",
+        "410" => "Signed upload token has expired",
+        "413" => "JSON body exceeds its configured bound",
+        "422" => "Strict request, Information Policy, or integration-envelope validation failed",
+        "502" => "Registry or central governance confirmation was invalid",
+        "503" => "Registry, ingestion, identity, or central governance verification is unavailable"
+      }))
+    }
+  end
+
+  nil
+end
+
 def web_operation(method, path)
   return aiip_web_operation(path) if method == "POST" && AIIP_PUBLIC_PATHS.include?(path)
   if method == "GET" && path.match?(%r{\A/api/public/documents/\{publicSlug\}(?:/source)?\z})
     return public_document_web_operation(path)
   end
+  governed_aiip_upload = stratos_aiip_upload_operation(method, path)
+  return governed_aiip_upload if governed_aiip_upload
 
   operation_id = "web_#{method.downcase}_#{path.gsub(%r{[^a-zA-Z0-9]+}, "_").gsub(/^_|_$/, "")}"
   responses = {
@@ -388,63 +544,12 @@ def web_operation(method, path)
     "operationId" => operation_id,
     "responses" => responses
   }
-  if method == "POST" && path == "/api/stratos/upload/sessions/{sessionId}/confirm"
-    operation["summary"] = "Confirm a STRATOS upload idempotently"
-    operation["responses"] = {
-      "200" => {
-        "description" => "Existing version and ingestion lifecycle returned without creating duplicates",
-        "content" => {
-          "application/json" => {
-            "schema" => { "$ref" => "#/components/schemas/StratosUploadConfirmResponse" }
-          }
-        }
-      },
-      "201" => {
-        "description" => "Document version and ingestion lifecycle created",
-        "content" => {
-          "application/json" => {
-            "schema" => { "$ref" => "#/components/schemas/StratosUploadConfirmResponse" }
-          }
-        }
-      },
-      "409" => {
-        "description" => "External identity mismatch or version label reused with a different SHA-256",
-        "content" => {
-          "application/json" => {
-            "schema" => { "$ref" => "#/components/schemas/AkbErrorResponse" }
-          }
-        }
-      },
-      "default" => responses["default"]
-    }
-  elsif method == "POST" && path == "/api/stratos/upload/preflight"
-    operation["summary"] = "Validate policy and create a STRATOS upload session"
-    operation["responses"] = {
-      "201" => {
-        "description" => "Policy-bound upload session created before binary transfer",
-        "content" => {
-          "application/json" => {
-            "schema" => { "$ref" => "#/components/schemas/StratosUploadPreflightResponse" }
-          }
-        }
-      },
-      "default" => responses["default"]
-    }
-  end
   parameters = web_path_parameters(path)
   operation["parameters"] = parameters unless parameters.empty?
-  request_schema =
-    if method == "POST" && path == "/api/stratos/upload/sessions/{sessionId}/confirm"
-      { "$ref" => "#/components/schemas/StratosUploadConfirmRequest" }
-    elsif method == "POST" && path == "/api/stratos/upload/preflight"
-      { "$ref" => "#/components/schemas/StratosUploadPreflightRequest" }
-    else
-      { "$ref" => "#/components/schemas/GenericJson" }
-    end
   operation["requestBody"] = {
     "content" => {
       "application/json" => {
-        "schema" => request_schema
+        "schema" => { "$ref" => "#/components/schemas/GenericJson" }
       }
     }
   } if %w[POST PUT PATCH].include?(method)
@@ -548,6 +653,100 @@ def aiip_fragment(spec)
   }
 end
 
+def stratos_aiip_governance_confirmation_schema(resource_type)
+  source_version_schema =
+    if resource_type == "document-version"
+      { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" }
+    else
+      { "type" => "string", "minLength" => 1, "maxLength" => 160 }
+    end
+  {
+    "type" => "object",
+    "additionalProperties" => false,
+    "required" => [
+      "parent_source_resource",
+      "governed_resource",
+      "document_policy_binding_id",
+      "document_policy_version",
+      "document_policy_hash",
+      "actor_subject_id",
+      "correlation_id",
+      "idempotency_key"
+    ],
+    "properties" => {
+      "parent_source_resource" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => [
+          "governed_resource_id",
+          "application",
+          "resource_type",
+          "resource_id",
+          "source_version",
+          "scope"
+        ],
+        "properties" => {
+          "governed_resource_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "application" => { "type" => "string", "const" => "AIIP" },
+          "resource_type" => { "type" => "string", "const" => "idea" },
+          "resource_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "source_version" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "scope" => { "$ref" => "#/components/schemas/StratosAiipGovernanceScope" }
+        }
+      },
+      "governed_resource" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => [
+          "id",
+          "application",
+          "resource_type",
+          "resource_id",
+          "source_version",
+          "parent_id",
+          "scope",
+          "policy_assignment",
+          "explicit_policy_binding_id",
+          "inherited_from_resource_id",
+          "effective_policy",
+          "registered_by_subject_id",
+          "confirmed_by_subject_id"
+        ],
+        "properties" => {
+          "id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "application" => { "type" => "string", "const" => "AKB" },
+          "resource_type" => { "type" => "string", "const" => resource_type },
+          "resource_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "source_version" => source_version_schema,
+          "parent_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "scope" => { "$ref" => "#/components/schemas/StratosAiipGovernanceScope" },
+          "policy_assignment" => { "type" => "string", "const" => "INHERITED" },
+          "explicit_policy_binding_id" => { "type" => "null" },
+          "inherited_from_resource_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "effective_policy" => {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["policy_binding_id", "policy_version", "policy_hash"],
+            "properties" => {
+              "policy_binding_id" => { "type" => "string", "pattern" => "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$" },
+              "policy_version" => { "type" => "string", "const" => "information-policy-2.0.0" },
+              "policy_hash" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" }
+            }
+          },
+          "registered_by_subject_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "confirmed_by_subject_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 }
+        }
+      },
+      "document_policy_binding_id" => { "type" => "string", "pattern" => "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$" },
+      "document_policy_version" => { "type" => "string", "const" => "information-policy-2.0.0" },
+      "document_policy_hash" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
+      "actor_subject_id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+      "correlation_id" => { "type" => "string", "minLength" => 8, "maxLength" => 200 },
+      "idempotency_key" => { "type" => "string", "minLength" => 8, "maxLength" => 200 }
+    }
+  }
+end
+
 spec = {
   "openapi" => "3.1.0",
   "info" => {
@@ -567,6 +766,10 @@ spec = {
   "tags" => [
     { "name" => "System" },
     { "name" => "AKB Web API" },
+    {
+      "name" => "AKB Governed AIIP Upload",
+      "description" => "Dedicated dual-identity, centrally governed AIIP document upload with signed binary transfer and receipt-bound confirmation."
+    },
     { "name" => "AKB Public Documents" }
   ] + SERVICES.map { |service| { "name" => service[:title] } },
   "paths" => {},
@@ -576,6 +779,18 @@ spec = {
         "type" => "http",
         "scheme" => "bearer",
         "bearerFormat" => "JWT"
+      },
+      "aiipActorAuthorization" => {
+        "type" => "apiKey",
+        "in" => "header",
+        "name" => "X-AIIP-Actor-Authorization",
+        "description" => "Independent fresh current-person bearer. It must be formatted as Bearer <token> and must not equal the aiip-service transport bearer."
+      },
+      "uploadTokenAuth" => {
+        "type" => "apiKey",
+        "in" => "header",
+        "name" => "X-AKL-Upload-Token",
+        "description" => "Opaque signed upload token returned only in preflight required_headers."
       }
     },
     "responses" => {
@@ -653,40 +868,365 @@ spec = {
           "latency_ms" => { "type" => "integer", "minimum" => 0 }
         }
       },
-      "StratosUploadConfirmRequest" => {
+      "StratosAiipGovernanceScope" => {
+        "oneOf" => [
+          {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["type", "ownerSubjectId"],
+            "properties" => {
+              "type" => { "type" => "string", "const" => "own" },
+              "ownerSubjectId" => { "type" => "string", "minLength" => 1, "maxLength" => 160 }
+            }
+          },
+          {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["type", "id"],
+            "properties" => {
+              "type" => { "type" => "string", "const" => "organization" },
+              "id" => { "type" => "string", "const" => "org_stratos" }
+            }
+          },
+          {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["type", "id"],
+            "properties" => {
+              "type" => {
+                "type" => "string",
+                "enum" => ["organization_unit", "budget_scope", "portfolio", "project", "document", "recipient_set"]
+              },
+              "id" => { "type" => "string", "minLength" => 1, "maxLength" => 160 }
+            }
+          }
+        ]
+      },
+      "StratosAiipIntegrationEnvelope" => {
         "type" => "object",
+        "additionalProperties" => false,
         "required" => [
-          "upload_token",
+          "schemaVersion",
+          "organizationId",
+          "sourceSystem",
+          "externalRef",
+          "actor",
+          "sourceResource",
+          "correlationId",
+          "idempotencyKey",
+          "policyBindingId",
+          "policyVersion",
+          "policyHash",
+          "classification",
+          "payload"
+        ],
+        "properties" => {
+          "schemaVersion" => { "type" => "string", "const" => "stratos-integration-envelope-1" },
+          "organizationId" => { "type" => "string", "const" => "org_stratos" },
+          "sourceSystem" => { "type" => "string", "const" => "STRATOS_AIIP" },
+          "externalRef" => { "type" => "string", "minLength" => 1, "maxLength" => 240 },
+          "actor" => {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["type", "subjectId"],
+            "properties" => {
+              "type" => { "type" => "string", "const" => "person" },
+              "subjectId" => { "type" => "string", "minLength" => 1, "maxLength" => 160 }
+            }
+          },
+          "sourceResource" => {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => [
+              "governedResourceId",
+              "application",
+              "resourceType",
+              "resourceId",
+              "sourceVersion",
+              "scope"
+            ],
+            "properties" => {
+              "governedResourceId" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+              "application" => { "type" => "string", "const" => "AIIP" },
+              "resourceType" => { "type" => "string", "const" => "idea" },
+              "resourceId" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+              "sourceVersion" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+              "scope" => { "$ref" => "#/components/schemas/StratosAiipGovernanceScope" }
+            }
+          },
+          "correlationId" => { "type" => "string", "minLength" => 8, "maxLength" => 200 },
+          "idempotencyKey" => { "type" => "string", "minLength" => 8, "maxLength" => 200 },
+          "policyBindingId" => { "type" => "string", "pattern" => "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$" },
+          "policyVersion" => { "type" => "string", "const" => "information-policy-2.0.0" },
+          "policyHash" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
+          "classification" => {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["handlingClass", "legalClassification", "tlp", "pap"],
+            "properties" => {
+              "handlingClass" => { "type" => "string", "enum" => ["PUBLIC", "INTERNAL", "RESTRICTED"] },
+              "legalClassification" => { "type" => "string", "const" => "NONE" },
+              "tlp" => {
+                "type" => ["string", "null"],
+                "enum" => ["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR", nil]
+              },
+              "pap" => {
+                "type" => ["string", "null"],
+                "enum" => ["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR", nil]
+              }
+            }
+          },
+          "payload" => {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["operation", "entityType", "entityId", "sourceDocumentId", "sha256"],
+            "properties" => {
+              "operation" => { "type" => "string", "const" => "document_upload" },
+              "entityType" => {
+                "type" => "string",
+                "enum" => ["InnovationRequest", "InnovationRequestImport"]
+              },
+              "entityId" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+              "sourceDocumentId" => { "type" => "string", "minLength" => 1, "maxLength" => 300 },
+              "sha256" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" }
+            }
+          }
+        }
+      },
+      "StratosAiipSourceLocation" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => ["kind", "sha256", "path"],
+        "properties" => {
+          "kind" => {
+            "type" => "string",
+            "enum" => ["url", "uploaded_file", "object_storage", "generated_text", "external_repository"]
+          },
+          "uri" => { "type" => ["string", "null"], "maxLength" => 2048 },
+          "file_name" => { "type" => ["string", "null"], "maxLength" => 300 },
+          "content_type" => { "type" => ["string", "null"], "maxLength" => 160 },
+          "sha256" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
+          "storage_ref" => { "type" => ["string", "null"], "maxLength" => 1024 },
+          "captured_at" => { "type" => ["string", "null"], "format" => "date-time" },
+          "display_url" => { "type" => ["string", "null"], "maxLength" => 2048 },
+          "repository" => { "type" => ["string", "null"], "maxLength" => 200 },
+          "path" => { "type" => "string", "minLength" => 1, "maxLength" => 1024 },
+          "version" => { "type" => ["string", "null"], "maxLength" => 160 }
+        }
+      },
+      "StratosUploadPreflightRequest" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => [
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_type",
+          "title",
+          "classification",
+          "source_location",
+          "file_name",
+          "file_type",
+          "file_size",
+          "sha256",
+          "information_policy",
+          "governance_scope",
+          "integration_envelope"
+        ],
+        "properties" => {
+          "tenant_id" => { "type" => "string", "const" => "org_stratos" },
+          "external_system" => { "type" => "string", "const" => "STRATOS_AIIP" },
+          "external_ref" => { "type" => "string", "minLength" => 1, "maxLength" => 240 },
+          "entity_type" => {
+            "type" => "string",
+            "enum" => ["InnovationRequest", "InnovationRequestImport"]
+          },
+          "entity_id" => { "type" => "string", "minLength" => 1, "maxLength" => 128 },
+          "document_type" => {
+            "type" => "string",
+            "enum" => [
+              "ai_intake",
+              "ai_requirement_card",
+              "ai_security_appendix",
+              "ai_governance_evidence",
+              "knowledge_base_article",
+              "project_documentation",
+              "attachment",
+              "other"
+            ]
+          },
+          "title" => { "type" => "string", "minLength" => 1, "maxLength" => 300 },
+          "classification" => { "type" => "string", "enum" => ["public", "internal", "restricted"] },
+          "owner_actor_id" => {
+            "type" => ["string", "null"],
+            "minLength" => 1,
+            "maxLength" => 160,
+            "description" => "Optional consistency claim only; when present it must equal integration_envelope.actor.subjectId and never grants authority."
+          },
+          "context_tags" => {
+            "type" => "array",
+            "items" => { "type" => "string", "minLength" => 1 }
+          },
+          "source_location" => { "$ref" => "#/components/schemas/StratosAiipSourceLocation" },
+          "citation_base_url" => { "type" => ["string", "null"], "maxLength" => 512 },
+          "preview_url" => { "type" => ["string", "null"], "maxLength" => 2048 },
+          "file_name" => { "type" => "string", "minLength" => 1, "maxLength" => 300 },
+          "file_type" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "file_size" => { "type" => "integer", "minimum" => 1 },
+          "sha256" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
+          "information_policy" => { "$ref" => "#/components/schemas/RegistryApiInformationPolicyBinding" },
+          "governance_scope" => { "$ref" => "#/components/schemas/StratosAiipGovernanceScope" },
+          "integration_envelope" => { "$ref" => "#/components/schemas/StratosAiipIntegrationEnvelope" }
+        }
+      },
+      "StratosUploadRequiredHeaders" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => ["Content-Type", "X-AKL-Content-SHA256", "X-AKL-Upload-Token"],
+        "properties" => {
+          "Content-Type" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "X-AKL-Content-SHA256" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
+          "X-AKL-Upload-Token" => {
+            "type" => "string",
+            "minLength" => 16,
+            "description" => "Opaque signed token; it is never exposed as a top-level response field."
+          }
+        }
+      },
+      "StratosUploadFile" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => ["filename", "mime_type", "size_bytes", "sha256"],
+        "properties" => {
+          "filename" => { "type" => "string", "minLength" => 1, "maxLength" => 300 },
+          "mime_type" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "size_bytes" => { "type" => "integer", "minimum" => 1 },
+          "sha256" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" }
+        }
+      },
+      "StratosUploadPreflightResponse" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => [
+          "upload_session_id",
+          "upload_url",
+          "upload_method",
+          "source_file_uri",
+          "expires_at",
+          "required_headers",
+          "bucket",
+          "object_key",
+          "policy_binding_id",
+          "policy_version",
+          "policy_hash",
+          "file",
+          "limits",
           "document_id",
           "external_document_id",
+          "external_ref",
+          "governance_confirmation",
+          "canonical_open_url"
+        ],
+        "properties" => {
+          "upload_session_id" => { "type" => "string", "pattern" => "^upl_[A-Za-z0-9_-]+$" },
+          "upload_url" => { "type" => "string", "minLength" => 1 },
+          "upload_method" => { "type" => "string", "const" => "PUT" },
+          "source_file_uri" => { "type" => "string", "pattern" => "^s3://[^/]+/.+$" },
+          "expires_at" => { "type" => "string", "format" => "date-time" },
+          "required_headers" => { "$ref" => "#/components/schemas/StratosUploadRequiredHeaders" },
+          "bucket" => { "type" => "string", "minLength" => 1 },
+          "object_key" => { "type" => "string", "minLength" => 1 },
+          "policy_binding_id" => { "type" => "string", "pattern" => "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$" },
+          "policy_version" => { "type" => "string", "const" => "information-policy-2.0.0" },
+          "policy_hash" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
+          "file" => { "$ref" => "#/components/schemas/StratosUploadFile" },
+          "limits" => {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["max_file_bytes", "accepted_mime_types"],
+            "properties" => {
+              "max_file_bytes" => { "type" => "integer", "minimum" => 1 },
+              "accepted_mime_types" => {
+                "type" => "array",
+                "uniqueItems" => true,
+                "items" => { "type" => "string", "minLength" => 1 }
+              }
+            }
+          },
+          "document_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "external_document_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "external_ref" => { "type" => "string", "minLength" => 1, "maxLength" => 240 },
+          "governance_confirmation" => { "$ref" => "#/components/schemas/StratosAiipDocumentGovernanceConfirmation" },
+          "canonical_open_url" => { "type" => "string", "minLength" => 1 }
+        }
+      },
+      "StratosUploadContentResponse" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => ["uploaded", "upload_session_id", "source_file_uri", "upload_receipt", "file"],
+        "properties" => {
+          "uploaded" => { "type" => "boolean", "const" => true },
+          "upload_session_id" => { "type" => "string", "pattern" => "^upl_[A-Za-z0-9_-]+$" },
+          "source_file_uri" => { "type" => "string", "pattern" => "^s3://[^/]+/.+$" },
+          "upload_receipt" => {
+            "type" => "string",
+            "minLength" => 16,
+            "description" => "Opaque confirmation credential bound to the persisted session, object key, exact size, and SHA-256."
+          },
+          "file" => { "$ref" => "#/components/schemas/StratosUploadFile" }
+        }
+      },
+      "StratosUploadConfirmRequest" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => [
+          "upload_token",
+          "upload_receipt",
+          "document_id",
+          "external_document_id",
+          "tenant_id",
+          "external_system",
+          "external_ref",
           "source_file_uri",
           "file_hash",
           "file_name",
+          "file_type",
           "file_size",
-          "information_policy"
+          "information_policy",
+          "governance_scope",
+          "integration_envelope"
         ],
         "properties" => {
-          "upload_token" => { "type" => "string" },
-          "document_id" => { "type" => "string" },
-          "external_document_id" => { "type" => "string" },
-          "tenant_id" => { "type" => "string" },
-          "external_system" => { "type" => "string" },
-          "external_ref" => { "type" => "string" },
-          "version_label" => { "type" => "string" },
-          "source_file_uri" => { "type" => "string" },
-          "file_hash" => { "type" => "string", "pattern" => "^sha256:[a-fA-F0-9]{64}$" },
-          "file_name" => { "type" => "string" },
-          "file_type" => { "type" => ["string", "null"] },
-          "file_size" => { "type" => "integer", "minimum" => 0 },
-          "valid_from" => { "type" => "string", "format" => "date" },
+          "upload_token" => { "type" => "string", "minLength" => 16 },
+          "upload_receipt" => { "type" => "string", "minLength" => 16 },
+          "document_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "external_document_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "tenant_id" => { "type" => "string", "const" => "org_stratos" },
+          "external_system" => { "type" => "string", "const" => "STRATOS_AIIP" },
+          "external_ref" => { "type" => "string", "minLength" => 1, "maxLength" => 240 },
+          "version_label" => { "type" => ["string", "null"], "minLength" => 1, "maxLength" => 80 },
+          "source_file_uri" => { "type" => "string", "pattern" => "^s3://[^/]+/.+$" },
+          "file_hash" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
+          "file_name" => { "type" => "string", "minLength" => 1, "maxLength" => 300 },
+          "file_type" => { "type" => "string", "minLength" => 1, "maxLength" => 160 },
+          "file_size" => { "type" => "integer", "minimum" => 1 },
+          "valid_from" => { "type" => ["string", "null"], "format" => "date" },
           "valid_to" => { "type" => ["string", "null"], "format" => "date" },
-          "change_summary" => { "type" => "string" },
-          "information_policy" => { "$ref" => "#/components/schemas/RegistryApiInformationPolicyBinding" }
-        },
-        "additionalProperties" => true
+          "change_summary" => { "type" => ["string", "null"], "minLength" => 1, "maxLength" => 2000 },
+          "parser_profile" => { "type" => ["string", "null"], "minLength" => 1, "maxLength" => 80 },
+          "ocr_enabled" => { "type" => "boolean" },
+          "chunking_strategy" => { "type" => ["string", "null"], "minLength" => 1, "maxLength" => 80 },
+          "embedding_profile" => { "type" => ["string", "null"], "minLength" => 1, "maxLength" => 80 },
+          "information_policy" => { "$ref" => "#/components/schemas/RegistryApiInformationPolicyBinding" },
+          "governance_scope" => { "$ref" => "#/components/schemas/StratosAiipGovernanceScope" },
+          "integration_envelope" => { "$ref" => "#/components/schemas/StratosAiipIntegrationEnvelope" }
+        }
       },
       "StratosUploadConfirmResponse" => {
         "type" => "object",
+        "additionalProperties" => false,
         "required" => [
           "document_id",
           "document_version_id",
@@ -698,14 +1238,15 @@ spec = {
           "canonical_open_url",
           "policy_binding_id",
           "policy_version",
-          "policy_hash"
+          "policy_hash",
+          "governance_confirmation"
         ],
         "properties" => {
-          "document_id" => { "type" => "string" },
-          "document_version_id" => { "type" => "string" },
-          "external_document_id" => { "type" => "string" },
-          "file_id" => { "type" => "string" },
-          "ingestion_job_id" => { "type" => "string" },
+          "document_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "document_version_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "external_document_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "file_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
+          "ingestion_job_id" => { "type" => "string", "minLength" => 1, "maxLength" => 128 },
           "ingestion_status" => {
             "type" => "string",
             "enum" => [
@@ -720,55 +1261,32 @@ spec = {
             ]
           },
           "idempotent_replay" => { "type" => "boolean" },
-          "canonical_open_url" => { "type" => "string" },
-          "policy_binding_id" => { "type" => "string" },
-          "policy_version" => { "type" => "string", "const" => "information-policy-2.0.0" },
-          "policy_hash" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" }
-        },
-        "additionalProperties" => false
-      },
-      "StratosUploadPreflightRequest" => {
-        "type" => "object",
-        "required" => [
-          "file_name",
-          "file_size",
-          "sha256",
-          "information_policy",
-          "integration_envelope"
-        ],
-        "properties" => {
-          "file_name" => { "type" => "string" },
-          "file_size" => { "type" => "integer", "minimum" => 0 },
-          "file_type" => { "type" => ["string", "null"] },
-          "sha256" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
-          "information_policy" => { "$ref" => "#/components/schemas/RegistryApiInformationPolicyBinding" },
-          "integration_envelope" => { "$ref" => "#/components/schemas/RegistryApiIntegrationEnvelope" }
-        },
-        "additionalProperties" => true
-      },
-      "StratosUploadPreflightResponse" => {
-        "type" => "object",
-        "required" => [
-          "document_id",
-          "external_document_id",
-          "upload_session_id",
-          "upload_token",
-          "policy_binding_id",
-          "policy_version",
-          "policy_hash",
-          "canonical_open_url"
-        ],
-        "properties" => {
-          "document_id" => { "type" => "string" },
-          "external_document_id" => { "type" => "string" },
-          "upload_session_id" => { "type" => "string" },
-          "upload_token" => { "type" => "string" },
-          "policy_binding_id" => { "type" => "string" },
+          "canonical_open_url" => { "type" => "string", "minLength" => 1 },
+          "policy_binding_id" => { "type" => "string", "pattern" => "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$" },
           "policy_version" => { "type" => "string", "const" => "information-policy-2.0.0" },
           "policy_hash" => { "type" => "string", "pattern" => "^sha256:[a-f0-9]{64}$" },
-          "canonical_open_url" => { "type" => "string" }
-        },
-        "additionalProperties" => true
+          "governance_confirmation" => { "$ref" => "#/components/schemas/StratosAiipDocumentVersionGovernanceConfirmation" }
+        }
+      },
+      "StratosAiipDocumentGovernanceConfirmation" => stratos_aiip_governance_confirmation_schema("document"),
+      "StratosAiipDocumentVersionGovernanceConfirmation" => stratos_aiip_governance_confirmation_schema("document-version"),
+      "StratosUploadErrorResponse" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => ["error"],
+        "properties" => {
+          "error" => {
+            "type" => "object",
+            "additionalProperties" => false,
+            "required" => ["code", "message", "trace_id"],
+            "properties" => {
+              "code" => { "type" => "string", "minLength" => 1 },
+              "message" => { "type" => "string", "minLength" => 1 },
+              "details" => { "type" => "object", "additionalProperties" => true },
+              "trace_id" => { "type" => "string", "minLength" => 1 }
+            }
+          }
+        }
       },
       "AkbErrorResponse" => {
         "type" => "object",

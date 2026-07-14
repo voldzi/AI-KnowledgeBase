@@ -238,6 +238,9 @@ def _enforce_service_route(
 def _service_route_for_request(request: Request) -> str | None:
     path = request.url.path.removeprefix("/api/v1")
     write = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
+    path_segments = path.strip("/").split("/")
+    if path.startswith("/integrations/aiip-upload/"):
+        return "aiip-upload"
     if path.startswith("/authz/"):
         return "authz"
     if path.startswith("/integrations/idempotency/"):
@@ -248,6 +251,13 @@ def _service_route_for_request(request: Request) -> str | None:
         return "external-documents-write" if write else "external-documents-read"
     if path.startswith("/document-extractions"):
         return "extractions-write" if write else "extractions-read"
+    if (
+        write
+        and len(path_segments) == 4
+        and path_segments[0] == "documents"
+        and path_segments[2:] == ["external-references", "current"]
+    ):
+        return "ingestion-status"
     if path.startswith("/documents"):
         return "documents-write" if write else "documents-read"
     if path.startswith("/workflow/"):

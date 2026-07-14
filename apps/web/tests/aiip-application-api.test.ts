@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import { NextRequest } from "next/server";
 
-import { handleAiipApplicationRequest } from "../src/lib/aiip/application-api";
+import {
+  authenticateAiipServiceJsonRequest,
+  handleAiipApplicationRequest
+} from "../src/lib/aiip/application-api";
+import { ApiClientError } from "../src/lib/types";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -115,6 +119,63 @@ afterEach(() => {
 });
 
 describe("AIIP application API bridge", () => {
+  it("authenticates before reading and bounds governed upload JSON", async () => {
+    const valid = await authenticateAiipServiceJsonRequest(request({ external_ref: "aiip:test" }));
+    assert.equal(valid.principal.roles[0], "service_aiip");
+    assert.equal(valid.body.external_ref, "aiip:test");
+
+    await assert.rejects(
+      () =>
+        authenticateAiipServiceJsonRequest(
+          request(
+            { external_ref: "aiip:test" },
+            { token: "oversized-json-token", headers: { "Content-Length": "65537" } }
+          )
+        ),
+      (error: unknown) =>
+        error instanceof ApiClientError &&
+        error.status === 413 &&
+        error.code === "PAYLOAD_TOO_LARGE"
+    );
+  });
+
+  it("cancels an oversized chunked JSON stream without buffering the complete body", async () => {
+    let producedChunks = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        producedChunks += 1;
+        controller.enqueue(new Uint8Array(16 * 1024).fill(0x20));
+        if (producedChunks >= 20) controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const streamedRequest = new Request(
+      "https://stratos.example/akb/api/stratos/upload/preflight",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer streamed-json-token",
+          "Content-Type": "application/json",
+        },
+        body,
+        duplex: "half",
+      } as RequestInit & { duplex: "half" },
+    );
+
+    await assert.rejects(
+      () => authenticateAiipServiceJsonRequest(streamedRequest),
+      (error: unknown) =>
+        error instanceof ApiClientError &&
+        error.status === 413 &&
+        error.code === "PAYLOAD_TOO_LARGE",
+    );
+    assert.equal(cancelled, true);
+    assert.ok(producedChunks < 20);
+  });
+
   it("authenticates aiip-service and forwards bearer identity without internal authorization headers", async () => {
     const response = await handleAiipApplicationRequest(request(harmonizeBody()), "harmonize");
 
@@ -230,7 +291,7 @@ describe("AIIP application API bridge", () => {
     assert.equal(state.upstreamCalls, 0);
   });
 
-  it("rejects bodies over 64 kB before authentication", async () => {
+  it("rejects bodies over 64 kB after authentication and before forwarding", async () => {
     const response = await handleAiipApplicationRequest(
       request({ ...harmonizeBody(), padding: "x".repeat(65 * 1024) }, { token: "large-body" }),
       "harmonize",

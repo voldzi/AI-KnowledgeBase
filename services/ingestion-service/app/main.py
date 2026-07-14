@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from starlette import status
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -106,8 +106,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             version=settings.service_version,
         )
 
-    @app.get("/ready", response_model=ReadinessResponse, tags=["health"])
-    async def ready(request: Request) -> ReadinessResponse:
+    @app.get(
+        "/ready",
+        response_model=ReadinessResponse,
+        responses={
+            status.HTTP_503_SERVICE_UNAVAILABLE: {
+                "model": ReadinessResponse,
+                "description": "Registry identity or another required dependency is not ready",
+            }
+        },
+        tags=["health"],
+    )
+    async def ready(request: Request, response: Response) -> ReadinessResponse:
         settings = _settings(request)
         checks = {
             "registry": await _registry(request).readiness(),
@@ -116,6 +126,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "job_store": "ready" if settings.job_store_path.exists() else "not_ready",
         }
         ready_status = "ready" if all(value in {"ready", "mock"} for value in checks.values()) else "not_ready"
+        if ready_status != "ready":
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return ReadinessResponse(status=ready_status, service=settings.service_name, checks=checks)
 
     @app.post(

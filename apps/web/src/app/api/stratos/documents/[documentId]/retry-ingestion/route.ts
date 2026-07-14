@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
+import { authenticateAiipServiceJsonRequest } from "@/lib/aiip/application-api";
+import { getAiipActorRequestContext, getServerApiClients } from "@/lib/api/server";
 import { createIngestionRequest, latestVersion, mapIngestionStatus } from "@/lib/stratos/document-ai";
-import { ApiClientError } from "@/lib/types";
+import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 
 import { stratosBridgeError } from "../../../errors";
 
@@ -18,10 +19,33 @@ interface RouteContext {
 export async function POST(request: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const requestContext = await getServerRequestContextForRequest(request);
+    const { principal: service, body } = await authenticateAiipServiceJsonRequest(request);
+    const actorContext = await getAiipActorRequestContext(request);
+    const correlationId = request.headers.get("X-Correlation-ID")?.trim() || crypto.randomUUID();
+    const serviceContext: ApiRequestContext = {
+      subjectId: service.subjectId,
+      roles: service.roles,
+      organizationId: "org_stratos",
+      authorizationSource: "stratos_projection",
+      accessToken: service.accessToken,
+      requestId: correlationId,
+      correlationId,
+    };
     const clients = getServerApiClients();
-    const versions = await clients.registry.listDocumentVersions(documentId, requestContext);
+    const authorization = await clients.registry.authorizeDocument(
+      documentId,
+      "document.ingest",
+      actorContext,
+    );
+    if (!authorization.allowed) {
+      throw new ApiClientError(
+        "The current AIIP actor cannot retry ingestion for this exact governed AKB document.",
+        403,
+        "AIIP_DOCUMENT_INGEST_DENIED",
+        "web-stratos-bridge",
+      );
+    }
+    const versions = await clients.registry.listDocumentVersions(documentId, actorContext);
     const version = latestVersion(versions);
     if (!version) {
       throw new ApiClientError("Document has no version to ingest.", 404, "DOCUMENT_VERSION_NOT_FOUND", "web-stratos-bridge");
@@ -33,7 +57,7 @@ export async function POST(request: Request, context: RouteContext) {
         sourceFileUri: version.source_file_uri,
         body
       }),
-      requestContext
+      serviceContext
     );
 
     return NextResponse.json(

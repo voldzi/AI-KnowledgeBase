@@ -31,6 +31,89 @@ paths:
                   type: string
                 type: object
                 title: Response Ready Ready Get
+  /api/v1/integrations/aiip-upload/external-documents/upsert:
+    post:
+      summary: Upsert Aiip External Document
+      operationId: upsert_aiip_external_document_api_v1_integrations_aiip_upload_external_documents_upsert_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiipExternalDocumentUpsertRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiipExternalDocumentUpsertResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/aiip-upload/documents/{document_id}/versions:
+    put:
+      summary: Upsert Aiip Document Version
+      operationId: upsert_aiip_document_version_api_v1_integrations_aiip_upload_documents__document_id__versions_put
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiipDocumentVersionCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiipDocumentVersionCreateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current:
+    patch:
+      summary: Update Aiip External Document Current
+      operationId: update_aiip_external_document_current_api_v1_integrations_aiip_upload_external_documents__external_document_id__current_patch
+      parameters:
+      - name: external_document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: External Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiipExternalDocumentCurrentUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiipExternalDocumentCurrentUpdateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/external-documents/upsert:
     post:
       summary: Upsert External Document
@@ -1008,7 +1091,7 @@ paths:
             Retry-After:
               schema:
                 type: integer
-                minimum: 1.0
+                minimum: 1
               description: Seconds before retrying public delivery
         '422':
           description: Validation Error
@@ -1043,7 +1126,7 @@ paths:
             Retry-After:
               schema:
                 type: integer
-                minimum: 1.0
+                minimum: 1
               description: Seconds before retrying public delivery
         '422':
           description: Validation Error
@@ -1998,6 +2081,641 @@ components:
       - audit.write
       - admin.manage
       title: Action
+    AiipDocumentFileCreate:
+      properties:
+        filename:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Filename
+        mime_type:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Mime Type
+        size_bytes:
+          type: integer
+          minimum: 1.0
+          title: Size Bytes
+        sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - filename
+      - mime_type
+      - size_bytes
+      - sha256
+      title: AiipDocumentFileCreate
+    AiipDocumentVersionCreate:
+      properties:
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
+        source_file_uri:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Source File Uri
+        source_location:
+          $ref: '#/components/schemas/AiipSourceLocation'
+        file_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: File Hash
+        change_summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Change Summary
+        information_policy:
+          $ref: '#/components/schemas/InformationPolicyBinding'
+        integration_envelope:
+          $ref: '#/components/schemas/AiipUploadIntegrationEnvelope'
+        governance_scope:
+          $ref: '#/components/schemas/GovernanceScope'
+        file:
+          $ref: '#/components/schemas/AiipDocumentFileCreate'
+      additionalProperties: false
+      type: object
+      required:
+      - version_label
+      - source_file_uri
+      - source_location
+      - file_hash
+      - information_policy
+      - integration_envelope
+      - governance_scope
+      - file
+      title: AiipDocumentVersionCreate
+    AiipDocumentVersionCreateResponse:
+      properties:
+        version:
+          $ref: '#/components/schemas/DocumentVersionResponse'
+        external_document:
+          $ref: '#/components/schemas/ExternalDocumentResponse'
+        created:
+          type: boolean
+          title: Created
+        governance_confirmation:
+          $ref: '#/components/schemas/AiipGovernanceConfirmation'
+      additionalProperties: false
+      type: object
+      required:
+      - version
+      - external_document
+      - created
+      - governance_confirmation
+      title: AiipDocumentVersionCreateResponse
+    AiipExternalDocumentCurrentUpdateRequest:
+      properties:
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        expected_current_document_version_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Expected Current Document Version Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+        file_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: File Id
+        ingestion_job_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Ingestion Job Id
+        ingestion_status:
+          type: string
+          enum:
+          - REGISTERED
+          - VERSION_CREATED
+          - UPLOADING
+          - INGESTING
+          - INDEXED
+          - FAILED
+          - PERMISSION_DENIED
+          - STALE
+          title: Ingestion Status
+        information_policy:
+          $ref: '#/components/schemas/InformationPolicyBinding'
+        integration_envelope:
+          $ref: '#/components/schemas/AiipUploadIntegrationEnvelope'
+        governance_scope:
+          $ref: '#/components/schemas/GovernanceScope'
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - file_id
+      - ingestion_job_id
+      - ingestion_status
+      - information_policy
+      - integration_envelope
+      - governance_scope
+      title: AiipExternalDocumentCurrentUpdateRequest
+    AiipExternalDocumentCurrentUpdateResponse:
+      properties:
+        external_document:
+          $ref: '#/components/schemas/ExternalDocumentResponse'
+        updated:
+          type: boolean
+          title: Updated
+        governance_confirmation:
+          $ref: '#/components/schemas/AiipGovernanceConfirmation'
+      additionalProperties: false
+      type: object
+      required:
+      - external_document
+      - updated
+      - governance_confirmation
+      title: AiipExternalDocumentCurrentUpdateResponse
+    AiipExternalDocumentUpsertRequest:
+      properties:
+        tenant_id:
+          type: string
+          const: org_stratos
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_AIIP
+          title: External System
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          enum:
+          - InnovationRequest
+          - InnovationRequestImport
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        document_type:
+          type: string
+          enum:
+          - ai_intake
+          - ai_requirement_card
+          - ai_security_appendix
+          - ai_governance_evidence
+          - knowledge_base_article
+          - project_documentation
+          - attachment
+          - other
+          title: Document Type
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        classification:
+          $ref: '#/components/schemas/Classification'
+        information_policy:
+          $ref: '#/components/schemas/InformationPolicyBinding'
+        integration_envelope:
+          $ref: '#/components/schemas/AiipUploadIntegrationEnvelope'
+        governance_scope:
+          $ref: '#/components/schemas/GovernanceScope'
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        source_location:
+          $ref: '#/components/schemas/AiipSourceLocation'
+        citation_base_url:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Citation Base Url
+        preview_url:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Preview Url
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_type
+      - title
+      - classification
+      - information_policy
+      - integration_envelope
+      - governance_scope
+      - source_location
+      title: AiipExternalDocumentUpsertRequest
+      description: Narrow server-to-server contract for the AIIP document upload preflight.
+    AiipExternalDocumentUpsertResponse:
+      properties:
+        external_document:
+          $ref: '#/components/schemas/ExternalDocumentRefResponse'
+        document:
+          $ref: '#/components/schemas/DocumentResponse'
+        created:
+          type: boolean
+          title: Created
+          default: false
+        governance_confirmation:
+          $ref: '#/components/schemas/AiipGovernanceConfirmation'
+      additionalProperties: false
+      type: object
+      required:
+      - external_document
+      - document
+      - governance_confirmation
+      title: AiipExternalDocumentUpsertResponse
+    AiipGovernanceConfirmation:
+      properties:
+        parent_source_resource:
+          $ref: '#/components/schemas/AiipGovernanceParentSourceResource'
+        governed_resource:
+          $ref: '#/components/schemas/AiipGovernedResourceConfirmation'
+        document_policy_binding_id:
+          type: string
+          minLength: 1
+          title: Document Policy Binding Id
+        document_policy_version:
+          type: string
+          const: information-policy-2.0.0
+          title: Document Policy Version
+        document_policy_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Document Policy Hash
+        actor_subject_id:
+          type: string
+          minLength: 1
+          title: Actor Subject Id
+        correlation_id:
+          type: string
+          minLength: 8
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          minLength: 8
+          title: Idempotency Key
+      additionalProperties: false
+      type: object
+      required:
+      - parent_source_resource
+      - governed_resource
+      - document_policy_binding_id
+      - document_policy_version
+      - document_policy_hash
+      - actor_subject_id
+      - correlation_id
+      - idempotency_key
+      title: AiipGovernanceConfirmation
+    AiipGovernanceEffectivePolicy:
+      properties:
+        policy_binding_id:
+          type: string
+          minLength: 1
+          title: Policy Binding Id
+        policy_version:
+          type: string
+          const: information-policy-2.0.0
+          title: Policy Version
+        policy_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Policy Hash
+      additionalProperties: false
+      type: object
+      required:
+      - policy_binding_id
+      - policy_version
+      - policy_hash
+      title: AiipGovernanceEffectivePolicy
+    AiipGovernanceParentSourceResource:
+      properties:
+        governed_resource_id:
+          type: string
+          minLength: 1
+          title: Governed Resource Id
+        application:
+          type: string
+          const: AIIP
+          title: Application
+        resource_type:
+          type: string
+          const: idea
+          title: Resource Type
+        resource_id:
+          type: string
+          minLength: 1
+          title: Resource Id
+        source_version:
+          type: string
+          minLength: 1
+          title: Source Version
+        scope:
+          $ref: '#/components/schemas/GovernanceScope'
+      additionalProperties: false
+      type: object
+      required:
+      - governed_resource_id
+      - application
+      - resource_type
+      - resource_id
+      - source_version
+      - scope
+      title: AiipGovernanceParentSourceResource
+    AiipGovernedResourceConfirmation:
+      properties:
+        id:
+          type: string
+          minLength: 1
+          title: Id
+        application:
+          type: string
+          const: AKB
+          title: Application
+        resource_type:
+          type: string
+          enum:
+          - document
+          - document-version
+          title: Resource Type
+        resource_id:
+          type: string
+          minLength: 1
+          title: Resource Id
+        source_version:
+          type: string
+          minLength: 1
+          title: Source Version
+        parent_id:
+          type: string
+          minLength: 1
+          title: Parent Id
+        scope:
+          $ref: '#/components/schemas/GovernanceScope'
+        policy_assignment:
+          type: string
+          const: INHERITED
+          title: Policy Assignment
+        explicit_policy_binding_id:
+          type: 'null'
+          title: Explicit Policy Binding Id
+        inherited_from_resource_id:
+          type: string
+          minLength: 1
+          title: Inherited From Resource Id
+        effective_policy:
+          $ref: '#/components/schemas/AiipGovernanceEffectivePolicy'
+        registered_by_subject_id:
+          type: string
+          minLength: 1
+          title: Registered By Subject Id
+        confirmed_by_subject_id:
+          type: string
+          minLength: 1
+          title: Confirmed By Subject Id
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - application
+      - resource_type
+      - resource_id
+      - source_version
+      - parent_id
+      - scope
+      - policy_assignment
+      - explicit_policy_binding_id
+      - inherited_from_resource_id
+      - effective_policy
+      - registered_by_subject_id
+      - confirmed_by_subject_id
+      title: AiipGovernedResourceConfirmation
+    AiipSourceLocation:
+      properties:
+        kind:
+          $ref: '#/components/schemas/SourceLocationKind'
+        uri:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Uri
+        file_name:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: File Name
+        content_type:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Content Type
+        sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Sha256
+        storage_ref:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Storage Ref
+        captured_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Captured At
+        display_url:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Display Url
+        repository:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Repository
+        path:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Path
+        version:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Version
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - sha256
+      - path
+      title: AiipSourceLocation
+    AiipUploadActor:
+      properties:
+        type:
+          type: string
+          const: person
+          title: Type
+        subjectId:
+          type: string
+          minLength: 1
+          title: Subjectid
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      - subjectId
+      title: AiipUploadActor
+    AiipUploadEnvelopePayload:
+      properties:
+        operation:
+          type: string
+          const: document_upload
+          title: Operation
+        entityType:
+          type: string
+          enum:
+          - InnovationRequest
+          - InnovationRequestImport
+          title: Entitytype
+        entityId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Entityid
+        sourceDocumentId:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Sourcedocumentid
+        sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - operation
+      - entityType
+      - entityId
+      - sourceDocumentId
+      - sha256
+      title: AiipUploadEnvelopePayload
+    AiipUploadIntegrationEnvelope:
+      properties:
+        schemaVersion:
+          type: string
+          const: stratos-integration-envelope-1
+          title: Schemaversion
+        organizationId:
+          type: string
+          const: org_stratos
+          title: Organizationid
+        sourceSystem:
+          type: string
+          const: STRATOS_AIIP
+          title: Sourcesystem
+        externalRef:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Externalref
+        actor:
+          $ref: '#/components/schemas/AiipUploadActor'
+        sourceResource:
+          $ref: '#/components/schemas/IntegrationSourceResource'
+        correlationId:
+          type: string
+          maxLength: 200
+          minLength: 8
+          title: Correlationid
+        idempotencyKey:
+          type: string
+          maxLength: 200
+          minLength: 8
+          title: Idempotencykey
+        policyBindingId:
+          type: string
+          minLength: 8
+          title: Policybindingid
+        policyVersion:
+          type: string
+          const: information-policy-2.0.0
+          title: Policyversion
+        policyHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Policyhash
+        classification:
+          $ref: '#/components/schemas/IntegrationClassification'
+        payload:
+          $ref: '#/components/schemas/AiipUploadEnvelopePayload'
+      additionalProperties: false
+      type: object
+      required:
+      - schemaVersion
+      - organizationId
+      - sourceSystem
+      - externalRef
+      - actor
+      - sourceResource
+      - correlationId
+      - idempotencyKey
+      - policyBindingId
+      - policyVersion
+      - policyHash
+      - classification
+      - payload
+      title: AiipUploadIntegrationEnvelope
+      description: Exact immutable lineage envelope accepted by the dedicated AIIP
+        route.
     AnalystCaseCreate:
       properties:
         title:
@@ -2859,8 +3577,8 @@ components:
         occurrence_count:
           type: integer
           minimum: 1.0
-          default: 1
           title: Occurrence Count
+          default: 1
         last_seen_at:
           type: string
           format: date-time
@@ -4284,6 +5002,11 @@ components:
           - type: 'null'
           title: Governance Scope Id
           default: org_stratos
+        governance_scope_owner_subject_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governance Scope Owner Subject Id
         governance_registration_status:
           type: string
           title: Governance Registration Status
@@ -4521,6 +5244,11 @@ components:
           - type: 'null'
           title: Governance Scope Id
           default: org_stratos
+        governance_scope_owner_subject_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Governance Scope Owner Subject Id
         governance_registration_status:
           type: string
           title: Governance Registration Status
@@ -4903,6 +5631,7 @@ components:
         type:
           type: string
           enum:
+          - own
           - organization
           - organization_unit
           - budget_scope
@@ -4918,6 +5647,13 @@ components:
             minLength: 1
           - type: 'null'
           title: Id
+        ownerSubjectId:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+          - type: 'null'
+          title: Ownersubjectid
       additionalProperties: false
       type: object
       required:
@@ -5095,6 +5831,10 @@ components:
           title: Externalref
         actor:
           $ref: '#/components/schemas/IntegrationActor'
+        sourceResource:
+          anyOf:
+          - $ref: '#/components/schemas/IntegrationSourceResource'
+          - type: 'null'
         correlationId:
           type: string
           maxLength: 200
@@ -5139,6 +5879,39 @@ components:
       - classification
       - payload
       title: IntegrationEnvelope
+    IntegrationGovernanceScope:
+      properties:
+        type:
+          type: string
+          enum:
+          - own
+          - organization
+          - organization_unit
+          - budget_scope
+          - portfolio
+          - project
+          - document
+          - recipient_set
+          title: Type
+        id:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+          - type: 'null'
+          title: Id
+        ownerSubjectId:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+          - type: 'null'
+          title: Ownersubjectid
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      title: IntegrationGovernanceScope
     IntegrationIdempotencyCompleteRequest:
       properties:
         response_status:
@@ -5255,6 +6028,43 @@ components:
       - record_id
       - expires_at
       title: IntegrationIdempotencyReserveResponse
+    IntegrationSourceResource:
+      properties:
+        governedResourceId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Governedresourceid
+        application:
+          type: string
+          const: AIIP
+          title: Application
+        resourceType:
+          type: string
+          const: idea
+          title: Resourcetype
+        resourceId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Resourceid
+        sourceVersion:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Sourceversion
+        scope:
+          $ref: '#/components/schemas/IntegrationGovernanceScope'
+      additionalProperties: false
+      type: object
+      required:
+      - governedResourceId
+      - application
+      - resourceType
+      - resourceId
+      - sourceVersion
+      - scope
+      title: IntegrationSourceResource
     PapLabel:
       type: string
       enum:

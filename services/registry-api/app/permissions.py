@@ -425,7 +425,29 @@ def _v2_base_decision(context: SubjectContext, action: str) -> Decision | None:
     return None
 
 
-def _scope_allows(context: SubjectContext, document: Document, binding: InformationPolicyBinding) -> bool:
+def _governance_scope_allows(context: SubjectContext, document: Document) -> bool:
+    scope_type = document.governance_scope_type or "organization"
+    if scope_type == "own":
+        return bool(
+            document.governance_scope_owner_subject_id
+            and document.governance_scope_owner_subject_id == context.subject_id
+            and "own" in context.scopes
+        )
+    scope_id = document.governance_scope_id or (
+        context.organization_id if scope_type == "organization" else None
+    )
+    if scope_type == "organization":
+        return bool(
+            "organization" in context.scopes
+            or f"organization:{scope_id}" in context.scopes
+        )
+    return bool(scope_id and f"{scope_type}:{scope_id}" in context.scopes)
+
+
+def _policy_audience_allows(
+    context: SubjectContext,
+    binding: InformationPolicyBinding,
+) -> bool:
     audience = binding.audience
     if audience.organization_id != context.organization_id:
         return False
@@ -434,23 +456,26 @@ def _scope_allows(context: SubjectContext, document: Document, binding: Informat
         return False
     if binding.tlp == "TLP:RED":
         return context.subject_id in recipients
-    if document.owner_id == context.subject_id and "own" in context.scopes:
+    if audience.scope_type in {"organization", "public"}:
         return True
-    if (
-        "organization" in context.scopes
-        or f"organization:{context.organization_id}" in context.scopes
-    ):
-        return True
-    if f"document:{document.document_id}" in context.scopes:
-        return True
+    if audience.scope_type == "recipient_set":
+        if recipients:
+            return context.subject_id in recipients
+        return any(
+            f"recipient_set:{scope_id}" in context.scopes
+            for scope_id in audience.scope_ids
+        )
     for scope_id in audience.scope_ids:
         if f"{audience.scope_type}:{scope_id}" in context.scopes:
             return True
-    # `public` is a synthetic projection, not an ordinary audience scope.  It
-    # is evaluated only by the exact-public branch below.
-    if audience.scope_type == "public":
-        return False
     return audience.scope_type in context.scopes and not audience.scope_ids
+
+
+def _scope_allows(context: SubjectContext, document: Document, binding: InformationPolicyBinding) -> bool:
+    return _governance_scope_allows(context, document) and _policy_audience_allows(
+        context,
+        binding,
+    )
 
 
 def _v2_document_decision(context: SubjectContext, action: str, document: Document) -> Decision:
@@ -462,6 +487,7 @@ def _v2_document_decision(context: SubjectContext, action: str, document: Docume
         "policy_binding_id": document.policy_binding_id,
         "policy_version": document.policy_version,
         "policy_hash": document.policy_hash,
+        "governance_scope": document_governance_scope(document),
     }
     if not document.policy_binding_id or not document.policy_summary:
         return Decision(False, "Document policy binding is unavailable", constraints, ("POLICY_UNAVAILABLE",))
@@ -542,6 +568,8 @@ def document_governance_scope(document: Document) -> dict[str, str]:
     scope = {"type": document.governance_scope_type or "organization"}
     if document.governance_scope_id:
         scope["id"] = document.governance_scope_id
+    elif document.governance_scope_owner_subject_id:
+        scope["ownerSubjectId"] = document.governance_scope_owner_subject_id
     elif scope["type"] == "organization":
         scope["id"] = "org_stratos"
     return scope
@@ -553,8 +581,17 @@ def evaluate_runtime_document_access(
     document: Document,
     local_decision: Decision | None = None,
 ) -> Decision:
-    decision = local_decision or evaluate_document_access(
-        context_for_principal(principal), action, document
+    settings = get_settings()
+    decision = (
+        Decision(
+            True,
+            "Verified service route requires a central policy decision",
+            {},
+            ("SERVICE_ROUTE_ALLOW",),
+        )
+        if principal.service_identity
+        else local_decision
+        or evaluate_document_access(context_for_principal(principal), action, document)
     )
     if not decision.allowed:
         return decision
@@ -572,7 +609,6 @@ def evaluate_runtime_document_access(
         and bool(decision.constraints.get("public_version_ids"))
     ):
         return decision
-    settings = get_settings()
     if settings.auth_mode == "mock":
         return decision
     if not (principal.dynamic_access_loaded or principal.service_identity):
@@ -652,7 +688,12 @@ def _central_operation(action: str) -> str:
         Action.rag_check_compliance.value,
     }:
         return "ai"
-    if action in {Action.document_create.value, Action.document_version_create.value}:
+    if action in {
+        Action.document_create.value,
+        Action.document_version_create.value,
+        Action.document_ingest.value,
+        Action.document_reindex.value,
+    }:
         return "upload"
     return "read"
 

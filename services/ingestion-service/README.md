@@ -71,10 +71,14 @@ curl http://localhost:8090/ready
 | `AKL_ENV` | `development`, `test`, nebo `production`. |
 | `AKL_AUTH_MODE` | `disabled`, `mock`, `bearer`, nebo `oidc`; produkce odmítá `disabled` a `mock`. |
 | `AKL_SERVICE_TOKEN` | Očekávaný inbound bearer token při `AKL_AUTH_MODE=bearer`. |
-| `AKL_SERVICE_ACCOUNT_SUBJECT` | Fallback subject pro mezislužbová volání bez caller tokenu. |
-| `AKL_SERVICE_ACCOUNT_ROLES` | Fallback role pro mezislužbová volání bez caller tokenu. |
+| `AKL_SERVICE_ACCOUNT_SUBJECT` | Vlastní service subject ingestion; v produkci se shoduje s Registry client id. |
+| `AKL_SERVICE_ACCOUNT_ROLES` | Vlastní role ingestion pro lokální service identity a LLM Gateway. |
 | `AKL_INGESTION_REGISTRY_CLIENT_MODE` | `http` nebo `mock`. |
 | `AKL_REGISTRY_API_BASE_URL` | Base URL Registry API. |
+| `AKL_REGISTRY_SERVICE_TOKEN_URL` | OIDC token endpoint pro vlastní krátkodobý Registry bearer; v produkci povinně HTTPS. |
+| `AKL_REGISTRY_SERVICE_CLIENT_ID` | Vlastní důvěryhodný Registry client id; produkční hodnota je `svc-ingestion`. |
+| `AKL_REGISTRY_SERVICE_CLIENT_SECRET` | Client secret jen pro lokální/test profil; neukládat do repozitáře. |
+| `AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE` | Preferovaný read-only secret file pro produkční Registry client credentials. |
 | `AKL_INGESTION_OBJECT_STORAGE_MODE` | `local`, `http`, nebo `mock`. |
 | `AKL_OBJECT_STORAGE_ROOT` | Root pro lokální mapování `s3://bucket/key`. |
 | `AKL_INGESTION_OCR_PROVIDER` | `disabled`, `sidecar`, `tesseract`, nebo `ocrmypdf`. |
@@ -95,20 +99,26 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_JOB_STORE_PATH` | Lokální adresář pro job/report JSON záznamy. |
 | `AKL_INGESTION_PROCESS_JOBS_INLINE` | `true` zpracuje job v requestu; `false` pouze uloží queued job pro budoucí worker. |
 
-`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem.
+`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem. Odmítne také chybějící/neúplnou Registry client-credentials trojici, client id jiné než vlastní service subject a pokus použít `aiip-service` jako ingestion transport.
 
 V `AKL_AUTH_MODE=oidc` služba ověří podpis, issuer a audience bearer JWT a
-caller token používá pro dokumentovou autorizaci vůči Registry API. Capability,
-scope a active hodnoty z tokenu nebo `X-STRATOS-*` hlaviček v OIDC režimu
-ignoruje; autoritativní projekci načítá Registry ze STRATOS. Embedding volání
-je oddělené: vždy používá `AKL_LLM_GATEWAY_TOKEN`, subject
+zachová caller subject pouze jako delegovaný subject v `authz/check` a jako
+`actor_id` auditních událostí. Caller bearer se do Registry nikdy nepřeposílá.
+Každý Registry request včetně readiness, authz, čtení dokumentu/verze,
+status-only synchronizace a auditu používá vlastní krátkodobý bearer získaný
+client-credentials flow pro `svc-ingestion`; token je procesově cachovaný do
+bezpečného okamžiku před expirací. Capability, scope a active hodnoty z caller
+tokenu nebo `X-STRATOS-*` hlaviček v OIDC režimu nejsou autoritou; centrální
+rozhodnutí provede Registry. Embedding volání je oddělené: vždy používá
+`AKL_LLM_GATEWAY_TOKEN`, subject
 `AKL_SERVICE_ACCOUNT_SUBJECT`, role `AKL_SERVICE_ACCOUNT_ROLES` a audience
 `AKL_LLM_GATEWAY_AUDIENCE`. Původní caller se předává pouze jako auditní
-`X-AKL-On-Behalf-Of`, nikdy jako gateway credential. Audit write preferuje
-`AKL_SERVICE_ACCOUNT_TOKEN`, pokud je nastavený, jinak použije caller token.
-Stejný caller kontext se používá pro synchronizaci external-document lifecycle;
-Registry tím znovu ověří `document.ingest` a zapíše `INGESTING`, `INDEXED` nebo
-`FAILED` spolu s aktuálním job id.
+`X-AKL-On-Behalf-Of`, nikdy jako gateway credential. Registry povoluje
+`svc-ingestion` jen route families `authz`, `audit`, `documents-read` a
+`ingestion-status`; poslední family odpovídá pouze přesnému status endpointu.
+Synchronizace musí uvést už dedikovaně potvrzenou immutable verzi a smí změnit
+jen job id a stav `INGESTING`, `INDEXED` nebo `FAILED`, nikoli current pointer,
+soubor, URI nebo source lineage.
 
 ## Object Storage
 
@@ -258,7 +268,13 @@ Služba přes Registry API volá:
 - `POST /api/v1/authz/check`
 - `GET /api/v1/documents/{document_id}`
 - `GET /api/v1/documents/{document_id}/versions/{version_id}`
+- `PATCH /api/v1/documents/{document_id}/external-references/current` (status-only)
 - `POST /api/v1/audit/events`
+
+Všechny uvedené cesty používají vlastní `svc-ingestion` bearer. AIIP caller
+bearer zůstává pouze inbound důkaz identity a nikdy se neobjeví v generic
+Registry transportu. `/ready` vrátí HTTP `503` a `registry=not_ready`, pokud
+nelze získat nebo použít vlastní Registry service identity.
 
 Technické logy obsahují ID jobu, dokumentu/verze, počty chunků, status a latenci. Nelogují obsah dokumentů, embedding input texty, tokeny ani secrets.
 

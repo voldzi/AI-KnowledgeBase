@@ -672,29 +672,40 @@ AKB Registry aktuálně podporuje:
 
 ## AI Innovation Portal / AIIP
 
-AI Innovation Portal je STRATOS-compatible caller. Používá stejnou Registry a
-AKB web bridge vrstvu jako Budget, ProjectFlow nebo ArchFlow; nevzniká nová
-sada AIIP-specific AKB endpointů.
+AI Innovation Portal používá browser-safe AKB web bridge, ale jeho governed
+upload je záměrně oddělený od obecných external-document endpointů. Interní
+Registry vystavuje jen úzkou route family `aiip-upload`:
+
+```text
+POST  /api/v1/integrations/aiip-upload/external-documents/upsert
+PUT   /api/v1/integrations/aiip-upload/documents/{document_id}/versions
+PATCH /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current
+```
+
+AIIP tyto Registry routy nevolá z browseru přímo. Browser/server AIIP volá AKB
+web bridge; ten oddělí service transport identitu od identity aktuálního
+autora a teprve potom volá Registry.
 
 Závazná hodnota:
 
 ```text
+tenant_id = org_stratos
 external_system = STRATOS_AIIP
 ```
+
+`tenant_id` je zde pouze kompatibilní wire pole. Není autorizační hranicí;
+izolaci určuje přesný centrálně registrovaný scope a Information Policy.
 
 AIIP zůstává source of truth pro AI požadavek, scoring, workflow a review. AKB
 je source of truth pro dokument, verzi, originální soubor, ingest, text/chunky,
 embeddings, citace, RAG audit a source-open. AIIP proto ukládá jen AKB
 reference a bezpečná metadata.
 
-Povolené první entity typy:
+Povolené entity typy zůstávají omezené na AIIP objekty:
 
 ```text
 InnovationRequest
-ImportJob
-SourceDocument
-KnowledgeArticle
-SecurityAssessment
+InnovationRequestImport
 ```
 
 Stabilní `external_ref` musí být čitelný, idempotentní a nemá se měnit při
@@ -718,6 +729,12 @@ AIIP document type mapping:
 | data security appendix | `ai_security_appendix` |
 | workflow/security evidence | `ai_governance_evidence` |
 | knowledge article | `knowledge_base_article` |
+| compatibility-mode requirement | `project_documentation` |
+| compatibility-mode appendix | `attachment` |
+| explicitly unmapped AIIP source | `other` |
+
+Jiné hodnoty z obecného AKB katalogu nejsou na dedicated AIIP uploadu
+povolené.
 
 Citlivost AIIP se mapuje před voláním AKB:
 
@@ -727,19 +744,52 @@ Citlivost AIIP se mapuje před voláním AKB:
 | `Interní` | `internal` |
 | `Citlivé` | `restricted` |
 | `Vyhrazené` | `restricted` |
-| `Důvěrné` | `confidential` |
+| `Důvěrné` | `restricted` |
 | `Neznámé` | `restricted` |
 
-AIIP payload s citlivostí `Tajné` v `metadata.aiip.sensitivity`,
-`metadata.aiip.input_data_sensitivity` nebo
-`metadata.aiip.output_data_sensitivity` je v běžném AKB profilu odmítnut
-validací `422`, dokud není provozně schválená oddělená classified boundary.
+Hodnota `confidential`, právní klasifikace jiná než `NONE` nebo classified
+obsah jsou v běžném AKB profilu odmítnuty před uploadem, dokud není provozně
+schválená oddělená classified boundary. Volný `metadata` objekt není součástí
+dedicated kontraktu.
 
-Minimální AIIP requirement card payload:
+### Dvojí identita a autoritativní lineage
+
+Každé volání vyžaduje současně:
+
+```http
+Authorization: Bearer <aiip-service transport token>
+X-AIIP-Actor-Authorization: Bearer <current person token>
+```
+
+Tokeny musí být různé. Transportní token musí reprezentovat přesný client
+`aiip-service` s jediným Registry route grantem `aiip-upload`. Registry používá
+vlastní `AKB_AIIP_INGEST_SERVICE_TOKEN` pouze pro centrální endpoint
+`AKL_STRATOS_AIIP_AKB_RESOURCES_URL`; tento credential se musí lišit od
+obecného `AKB_POLICY_SERVICE_TOKEN`.
+
+Dedicated route family je jediná zápisová cesta pro `STRATOS_AIIP`. Obecný
+external-document upsert, obecné vytvoření verze i obecná změna current pointeru
+takový source system nebo AIIP-governed lineage odmítnou bez ohledu na jiné
+platné AKB oprávnění volajícího. Document-level sync mimo tuto family smí pouze
+aktualizovat stav verze, kterou již jako current vybral dedicated
+compare-and-swap; nesmí vytvořit ani vybrat jinou AIIP verzi.
+
+Centrální STRATOS před každým zápisem a replay ověří aktuálního člověka,
+`aiip:ingest_own_document`, aktivní AIIP access, přesný aktivní source root,
+jeho immutable content revision, scope, zděděnou policy, correlation id a
+idempotency key. Odpověď musí být přesným potvrzením; jinak AKB nic nezapíše.
+Owner, assignments a `uploaded_by` se odvozují z potvrzeného aktéra. AIIP
+nesmí posílat libovolná metadata, `gestor_unit`, owner display name ani pole,
+které by mohlo vytvořit assignment. Volitelný `owner_actor_id` je pouze
+consistency claim a musí přesně odpovídat `integration_envelope.actor.subjectId`;
+nikdy není zdrojem oprávnění.
+
+Minimální governance část preflight payloadu obsahuje vedle názvu, typu a
+souborových údajů tento kontrakt:
 
 ```json
 {
-  "tenant_id": "tenant_aiip_default",
+  "tenant_id": "org_stratos",
   "external_system": "STRATOS_AIIP",
   "external_ref": "aiip:idea:idea_123:requirement-card",
   "entity_type": "InnovationRequest",
@@ -747,48 +797,155 @@ Minimální AIIP requirement card payload:
   "document_type": "ai_requirement_card",
   "title": "AI požadavek: Automatizace vyhodnocení formulářů",
   "classification": "internal",
-  "owner": {
-    "user_id": "usr_analytik",
-    "display_name": "Klára Veselá"
+  "information_policy": {
+    "schemaVersion": "stratos-information-policy-2",
+    "policyBindingId": "pb_registered_binding",
+    "policyVersion": "information-policy-2.0.0",
+    "handlingClass": "INTERNAL",
+    "legalClassification": "NONE",
+    "tlp": null,
+    "pap": null,
+    "contentCategories": [],
+    "audience": {
+      "organizationId": "org_stratos",
+      "scopeType": "recipient_set",
+      "scopeIds": ["aiip-review"],
+      "recipientSubjectIds": []
+    },
+    "obligations": ["AUDIT_ACCESS"],
+    "originatorId": "subject_123",
+    "issuedAt": "2026-07-14T10:00:00Z",
+    "reviewAt": null
   },
-  "gestor_unit": "Analytické centrum",
-  "tags": [
-    "aiip",
-    "aiip-idea:idea_123",
-    "aiip-stage:NOVY_PODNET",
-    "aiip-document-type:requirement_card"
-  ],
-  "metadata": {
-    "aiip": {
-      "idea_id": "idea_123",
-      "import_job_id": "import_456",
-      "source_document_id": "srcdoc_789",
-      "schema_version": "AIIP-DOCX-1.0",
-      "document_type": "requirement_card",
-      "lifecycle_stage": "NOVY_PODNET",
-      "category": "Administrativa",
-      "ai_capability_type": "RAG",
-      "environment_recommendation": "Hybrid",
-      "input_data_sensitivity": "Interní",
-      "output_data_sensitivity": "Interní"
+  "governance_scope": {
+    "type": "recipient_set",
+    "id": "aiip-review"
+  },
+  "integration_envelope": {
+    "schemaVersion": "stratos-integration-envelope-1",
+    "organizationId": "org_stratos",
+    "sourceSystem": "STRATOS_AIIP",
+    "externalRef": "aiip:idea:idea_123:requirement-card",
+    "actor": { "type": "person", "subjectId": "subject_123" },
+    "sourceResource": {
+      "governedResourceId": "<opaque-current-aiip-root-id>",
+      "application": "AIIP",
+      "resourceType": "idea",
+      "resourceId": "idea_123",
+      "sourceVersion": "<immutable-content-revision>",
+      "scope": { "type": "recipient_set", "id": "aiip-review" }
+    },
+    "correlationId": "<stable-correlation-id>",
+    "idempotencyKey": "<stable-idempotency-key>",
+    "policyBindingId": "pb_registered_binding",
+    "policyVersion": "information-policy-2.0.0",
+    "policyHash": "sha256:<canonical-policy-hash>",
+    "classification": {
+      "handlingClass": "INTERNAL",
+      "legalClassification": "NONE",
+      "tlp": null,
+      "pap": null
+    },
+    "payload": {
+      "operation": "document_upload",
+      "entityType": "InnovationRequest",
+      "entityId": "idea_123",
+      "sourceDocumentId": "source_document_456",
+      "sha256": "sha256:<source-file-hash>"
     }
   },
-  "source_location": {
-    "kind": "uploaded_file",
-    "file_name": "AI_pozadavek_02_Karta_pozadavku_import.docx",
-    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "sha256": "optional-64-char-hex",
-    "repository": "AIIP",
-    "path": "/ideas/idea_123/documents/srcdoc_789",
-    "version": "1"
-  },
-  "preview_url": "https://ip.zeleznalady.cz/ideas/idea_123"
+  "file_name": "requirement-card.pdf",
+  "file_type": "application/pdf",
+  "file_size": 123456,
+  "sha256": "sha256:<source-file-hash>"
 }
 ```
 
+Produkční payload musí splnit celý snapshot v `contracts/stratos/` a přesné
+closed schema v `openapi/openapi.json`. `governance_scope` musí být strukturálně
+shodný s normalizovaným `sourceResource.scope`; top-level external identity,
+policy, hash a envelope payload se porovnávají se stejnými podepsanými hodnotami.
+`sourceVersion` vyjadřuje revizi řízeného obsahu, nikoli
+čas změny workflow stavu. Jakákoli změna obsahu po předání vyžaduje nový
+centrální source revision podle workflow AIIP.
+
+Registry vrací `governance_confirmation` s přesným parent source resource,
+odvozeným `AKB/document` nebo `AKB/document-version`, zděděnou policy, aktérem,
+correlation id a idempotency key. Web bridge toto potvrzení přesně porovná a
+všechny souřadnice podepíše do upload tokenu. Úspěšný preflight nemá top-level
+`upload_token`; token je pouze opaque hodnota v přesném objektu:
+
+`governance_confirmation` je closed object. Povinně obsahuje
+`parent_source_resource`, `governed_resource`,
+`document_policy_binding_id`, `document_policy_version`,
+`document_policy_hash`, `actor_subject_id`, `correlation_id` a
+`idempotency_key`. V derived resource jsou povinné oba oddělené údaje
+`registered_by_subject_id` a `confirmed_by_subject_id`, exact inherited-policy
+souřadnice, parent, scope a source version. Chybějící i neznámé pole v tomto
+potvrzení je porušení kontraktu, nikoli dopředně kompatibilní metadata.
+
+```json
+{
+  "upload_method": "PUT",
+  "required_headers": {
+    "Content-Type": "application/pdf",
+    "X-AKL-Content-SHA256": "sha256:<source-file-hash>",
+    "X-AKL-Upload-Token": "<opaque-signed-upload-token>"
+  }
+}
+```
+
+Content operation je binary `PUT`, nikoli JSON:
+
+```http
+PUT /akb/api/stratos/upload/sessions/{upload_session_id}/content
+Content-Type: <exact value from required_headers>
+X-AKL-Content-SHA256: <exact value from required_headers>
+X-AKL-Upload-Token: <exact value from required_headers>
+
+<exact binary bytes>
+```
+
+Po bounded stream read, ověření velikosti a SHA-256 a úspěšném uložení vrátí
+HTTP `201` closed response s opaque `upload_receipt`. Receipt je podepsaný pro
+konkrétní session, object key, velikost a hash; není storage credential a nesmí
+se logovat ani ukládat dlouhodobě.
+
+```json
+{
+  "uploaded": true,
+  "upload_session_id": "upl_...",
+  "source_file_uri": "s3://<bucket>/<object-key>",
+  "upload_receipt": "<opaque-upload-receipt>",
+  "file": {
+    "filename": "requirement-card.pdf",
+    "mime_type": "application/pdf",
+    "size_bytes": 123456,
+    "sha256": "sha256:<source-file-hash>"
+  }
+}
+```
+
+Confirm musí v closed JSON těle poslat původní `upload_token`, právě vydaný
+`upload_receipt`, všechny podepsané file fields, stejnou Information Policy,
+stejný `governance_scope` a stejný integration envelope. Chybějící receipt,
+receipt z jiné session, neexistující objekt nebo jakákoli změna velikosti, hash,
+media type, actor/source lineage či policy selže před vytvořením verze a jobu.
+Podepsaný token obsahuje také očekávanou předchozí current verzi. Samotné
+vytvoření immutable verze current pointer nemění; až závěrečný reconcile jej
+posune atomickým compare-and-swap. Dva souběžné nebo stale preflighty proto
+nemohou jeden druhému přepsat aktuální dokument.
+
+`registeredBySubjectId` je historický registrátor konkrétního immutable
+resource, zatímco `confirmedBySubjectId` je čerstvě ověřený aktér aktuálního
+volání. Při oprávněném coordinator replay se mohou lišit. AKB zachová historické
+`uploaded_by` a znovu autorizuje současného confirméra; nevyžaduje, aby
+coordinator byl původním submitterem.
+
 AIIP nesmí do AKB metadata posílat celý text požadavku mimo ingestovaný
 dokument, full prompt, LLM odpověď, embeddingy, workflow poznámky s osobními
-údaji, bearer tokeny, API keys ani jiné secrets.
+údaji, bearer tokeny, API keys ani jiné secrets. Dedicated route schema navíc
+odmítá neznámá pole.
 
 ## Klasifikace
 
@@ -1037,11 +1194,24 @@ GET  /akb/embed/documents/{document_id}
 For `stratos-integration-envelope-1`, upload preflight requires both
 `information_policy` (`information-policy-2.0.0`) and `integration_envelope`.
 Their organization, binding id/version/hash, and classification must match.
-Confirm repeats the policy object and must match the policy hash signed into
-the preflight token. Unknown obligations, classified content, or stale binding
-state are rejected before binary storage or ingestion.
+The AIIP envelope is a closed schema: `sourceSystem=STRATOS_AIIP`, a person
+actor, exact Idea `sourceResource`, exact scope, and only the allowlisted
+`document_upload` payload fields are accepted. Preflight and confirm bodies and
+success responses are also closed. Confirm repeats the policy object and must
+match the policy hash signed into the preflight token. Unknown fields,
+obligations, classified content, or stale binding state are rejected before
+binary storage or ingestion.
 
-Bridge routy:
+AIIP upload navíc vyžaduje `sourceResource` s opaque governed resource id,
+immutable content revision a přesným scope. Preflight vrátí
+`governance_confirmation` a podepíše jeho lineage do upload tokenu. Confirm
+navíc přijme pouze `upload_receipt` vydaný úspěšným binary content `PUT` pro
+stejnou session, object key, velikost a SHA-256. Potom znovu centrálně ověří
+aktéra i source root před vytvořením verze a před aktualizací current pointeru.
+Replay nesmí vytvořit druhý dokument nebo verzi a nesmí přijmout změněného
+parenta, policy, scope, ownera, media type ani hash souboru.
+
+Obecné bridge routy:
 
 - používají session/OIDC uživatele,
 - přijímají bearer token z hostitelské STRATOS aplikace, pokud není dostupná
@@ -1049,6 +1219,11 @@ Bridge routy:
 - nikdy nevydávají trvalé storage credentials,
 - vrací metadata a krátkodobé AKB URL/tokeny,
 - zapisují audit source/citation open události.
+
+AIIP governed upload je jediná zde popsaná výjimka: používá service bearer pro
+transport a samostatný current-person bearer pro autorizaci aktéra. Service
+bearer se nikdy neposílá na user projection endpoint a actor bearer se nikdy
+nepoužije jako service credential.
 
 ### Source-open pro Budget & Contract
 
@@ -1070,29 +1245,30 @@ Service token je vydaný pro STRATOS service identity, například
 `stratos-akb-service`, a musí mít audience `akl-api`. AKB web předá bearer token
 do interních API klientů, kde Registry API vynucuje oprávnění a audit.
 
-AIIP má mít samostatnou service identity, pokud provozní model nerozhodne jinak:
+AIIP governed upload má závaznou samostatnou service identity:
 
 ```text
-client_id = aiip-akb-service
-audience = akl-api
-roles = stratos_service, document_manager
+client_id = aiip-service
+audience = akb-api
+role = service_aiip
+registry_route_grant = aiip-upload
 ```
 
-Doporučené proměnné na straně AIIP bez secretů:
+Základní proměnné na straně AIIP bez secretů:
 
 ```text
-AIIP_AKB_REGISTRY_BASE_URL=http://registry-api:8000/api/v1
 AIIP_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb
-AIIP_AKB_RAG_BASE_URL=http://rag-retrieval-service:8080/api/v1
 AIIP_AKB_PUBLIC_BASE_URL=https://ip.zeleznalady.cz/akb
 AIIP_AKB_SYNC_REQUIRED=true
-AIIP_AKB_OIDC_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token
-AIIP_AKB_OIDC_CLIENT_ID=aiip-akb-service
-AIIP_AKB_OIDC_AUDIENCE=akl-api
-AIIP_AKB_OIDC_SCOPE=openid profile email
+AIIP_AKB_DOCUMENT_OIDC_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token
+AIIP_AKB_DOCUMENT_OIDC_CLIENT_ID=aiip-service
+AIIP_AKB_DOCUMENT_OIDC_AUDIENCE=akb-api
+AIIP_AKB_DOCUMENT_OIDC_SCOPE=openid
 ```
 
-`AIIP_AKB_OIDC_CLIENT_SECRET` patří pouze do host secret store.
+`AIIP_AKB_DOCUMENT_OIDC_CLIENT_SECRET` nebo jeho file varianta patří pouze do
+host secret store. AIIP předává actor bearer jen za běhu konkrétního
+uživatelského požadavku; neukládá jej do databáze ani logu.
 
 Úspěšná odpověď:
 

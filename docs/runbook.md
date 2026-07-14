@@ -94,6 +94,21 @@ terminal `FAILED` job. Po retry ověřte nejen webový status, ale také Registr
 `current_ingestion_job_id` a `current_ingestion_status`; ingestion je nyní
 synchronizuje auditovaně ve stavech `INGESTING`, `INDEXED` a `FAILED`.
 
+### `REGISTRY_SERVICE_AUTH_UNAVAILABLE` Or Ingestion Registry `not_ready`
+
+1. Confirm the token URL and non-secret client id are
+   `AKL_INGESTION_REGISTRY_TOKEN_URL` and `svc-ingestion`.
+2. Verify `/srv/akl/env/svc-ingestion.client-secret` exists with mode `0600` and
+   is mounted read-only as `/run/secrets/svc-ingestion-client-secret`; never
+   print the value.
+3. Confirm Registry trusted clients include `svc-ingestion` with exactly
+   `authz|audit|documents-read|ingestion-status`, while `aiip-service` remains
+   exactly `aiip-upload`.
+4. Compare only token expiry/audience/client-id metadata or a short SHA-256
+   fingerprint. Never substitute the inbound AIIP bearer or LLM Gateway token.
+5. Recreate `ingestion-service`, wait for `/ready`, then run one disposable
+   dedicated-confirm ingestion and verify status-only transition to `INDEXED`.
+
 ## High Latency
 
 1. Split latency by web bridge, Registry, RAG, Qdrant, and LLM Gateway.

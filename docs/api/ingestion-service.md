@@ -52,6 +52,10 @@ GET  /ready
 ## Integration Notes
 
 - Reads document and version metadata from Registry API.
+- Uses a dedicated short-lived `svc-ingestion` client-credentials bearer for
+  Registry readiness, authorization, metadata reads, status sync, and audit.
+  The inbound AIIP/user bearer is never forwarded; its subject is retained only
+  in delegated authorization and audit payloads.
 - Calls LLM Gateway embeddings.
 - Writes chunk payloads and vectors into Qdrant.
 - Optionally writes chunk payloads into OpenSearch and exposes entity facets from
@@ -68,6 +72,9 @@ GET  /ready
   authorized chunks. Returned edges include source/target entity endpoints,
   confidence, evidence counts and cited chunk evidence.
 - Supplies ingestion status that the web layer surfaces in upload, document detail, and workflow contexts.
+- Synchronizes AIIP ingestion status only for the immutable version already
+  selected by the dedicated confirm route; it cannot establish/change current
+  lineage, file metadata, or source URI.
 
 ## Canonical Sources
 

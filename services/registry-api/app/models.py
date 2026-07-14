@@ -32,6 +32,16 @@ class TimestampMixin:
 
 class Document(Base, TimestampMixin):
     __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint(
+            "(governance_scope_type = 'own' AND governance_scope_id IS NULL "
+            "AND governance_scope_owner_subject_id IS NOT NULL "
+            "AND length(trim(governance_scope_owner_subject_id)) > 0) "
+            "OR (governance_scope_type <> 'own' "
+            "AND governance_scope_owner_subject_id IS NULL)",
+            name="governance_scope_owner_shape",
+        ),
+    )
 
     document_id: Mapped[str] = mapped_column(
         String(64), primary_key=True, default=lambda: make_id("doc")
@@ -58,7 +68,10 @@ class Document(Base, TimestampMixin):
         String(64), nullable=False, default="organization"
     )
     governance_scope_id: Mapped[str | None] = mapped_column(
-        String(160), nullable=True, default="org_stratos"
+        String(160).evaluates_none(), nullable=True, default="org_stratos"
+    )
+    governance_scope_owner_subject_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, index=True
     )
     governance_registration_status: Mapped[str] = mapped_column(
         String(48), nullable=False, default="LEGACY_UNREGISTERED", index=True
@@ -110,6 +123,14 @@ class DocumentVersion(Base):
     __table_args__ = (
         UniqueConstraint("document_id", "version_label", name="uq_document_version_label"),
         Index("ix_document_versions_document_status", "document_id", "status"),
+        CheckConstraint(
+            "(governance_scope_type = 'own' AND governance_scope_id IS NULL "
+            "AND governance_scope_owner_subject_id IS NOT NULL "
+            "AND length(trim(governance_scope_owner_subject_id)) > 0) "
+            "OR (governance_scope_type <> 'own' "
+            "AND governance_scope_owner_subject_id IS NULL)",
+            name="governance_scope_owner_shape",
+        ),
     )
 
     document_version_id: Mapped[str] = mapped_column(
@@ -136,7 +157,10 @@ class DocumentVersion(Base):
         String(64), nullable=False, default="organization"
     )
     governance_scope_id: Mapped[str | None] = mapped_column(
-        String(160), nullable=True, default="org_stratos"
+        String(160).evaluates_none(), nullable=True, default="org_stratos"
+    )
+    governance_scope_owner_subject_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, index=True
     )
     governance_registration_status: Mapped[str] = mapped_column(
         String(48), nullable=False, default="LEGACY_UNREGISTERED", index=True

@@ -58,15 +58,24 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `AKL_STRATOS_POLICY_BINDINGS_URL` | Centrální registr Information Policy bindingů. |
 | `AKL_STRATOS_POLICY_DECISIONS_URL` | Centrální decision endpoint pro service-to-service operace. |
 | `AKL_STRATOS_INFORMATION_RESOURCES_URL` | Základní URL pro immutable `AKB/document` a `AKB/document_version` GovernedInformationResource. |
+| `AKL_STRATOS_AIIP_AKB_RESOURCES_URL` | Dedikovaný centrální endpoint pro přesnou AIIP→AKB lineage a fresh-actor autorizaci. |
 | `AKL_STRATOS_INFORMATION_PUBLICATIONS_URL` | Centrální lifecycle konkrétní immutable veřejné verze. |
 | `AKL_STRATOS_PUBLIC_DECISIONS_URL` | Anonymní fail-closed decision endpoint volaný při každém public read/download. |
 | `AKB_POLICY_SERVICE_TOKEN` | Dedikovaný runtime credential AKB; nesmí se logovat ani commitovat. |
+| `AKB_AIIP_INGEST_SERVICE_TOKEN` | Nezávislý credential pouze pro centrální AIIP→AKB registraci; v produkci se musí lišit od `AKB_POLICY_SERVICE_TOKEN`. |
 | `AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN` | Nezávislý sdílený token Registry→web pro interní source resolver; v produkci minimálně 32 znaků. |
 | `AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS` | Cache projekce; `0` uplatní suspendaci při dalším požadavku. Nikdy nepřekročí expiraci tokenu. |
 
 `AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=mock`.
 Produkční start navíc odmítne chybějící STRATOS projection/policy endpointy,
 runtime credential, trusted service allowlist nebo route grants.
+
+Produkční minimum pro navazující AIIP ingestion je
+`svc-ingestion=authz|audit|documents-read|ingestion-status`.
+`ingestion-status` mapuje pouze přesný write endpoint
+`/documents/{document_id}/external-references/current`; AIIP reference na něm
+smí změnit jen job/status pro už potvrzenou current verzi. `aiip-service` musí
+zůstat pouze na `aiip-upload`.
 
 ## API
 
@@ -80,6 +89,10 @@ GET    /api/v1/documents/readiness-report
 GET    /api/v1/documents/{document_id}
 PATCH  /api/v1/documents/{document_id}
 DELETE /api/v1/documents/{document_id}
+
+POST   /api/v1/integrations/aiip-upload/external-documents/upsert
+PUT    /api/v1/integrations/aiip-upload/documents/{document_id}/versions
+PATCH  /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current
 
 GET    /api/v1/documents/{document_id}/assignments
 PUT    /api/v1/documents/{document_id}/assignments

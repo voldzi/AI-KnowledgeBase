@@ -18,7 +18,11 @@ Ingestion, RAG Retrieval a LLM Gateway používají stejný slovník auth režim
 - `bearer` pro explicitní service-token profil,
 - `oidc` pro Keycloak/OIDC profil s povinným bearer tokenem.
 
-V `oidc` profilu downstream služby token předávají dál; dokumentová rozhodnutí vynucuje Registry API.
+V `oidc` profilu nesmí downstream služba automaticky předat caller token jiné
+službě. RAG používá svůj dokumentovaný delegační kontrakt. Ingestion používá pro
+všechny Registry requesty vlastní `svc-ingestion` client-credentials bearer;
+caller subject zůstává jen v authz/audit payloadu. Dokumentová rozhodnutí
+vynucuje Registry API.
 
 Service identity se neurčuje podle názvu role. Registry vyžaduje současně
 allowlistovaný `azp`/`client_id` a přesnou Keycloak service-account identitu
@@ -27,6 +31,13 @@ client claims a každý service-looking token, který tuto vazbu nesplní, konč
 `403 untrusted_service_identity`. Důvěryhodný client navíc smí volat jen route
 families explicitně uvedené v `AKL_SERVICE_CLIENT_ROUTE_GRANTS`; neuvedená
 route je default-deny.
+
+Produkční `svc-ingestion` má pouze `authz`, `audit`, `documents-read` a
+`ingestion-status`. `ingestion-status` mapuje výhradně write na
+`/documents/{document_id}/external-references/current`; u AIIP záznamu smí
+změnit jen job/status pro už dedikovaně potvrzenou current verzi. Produkční
+`aiip-service` zůstává omezený pouze na `aiip-upload` a nesmí získat žádnou z
+těchto generic families.
 
 ## Role a akce
 
@@ -136,11 +147,13 @@ Hotovo:
 
 - Registry API validuje OIDC JWT v `AKL_AUTH_MODE=oidc`.
 - Registry `/authz/check` a `/authz/filter-documents` oddělují caller principal od kontrolovaného subjectu.
-- Ingestion volá `/authz/check` pro `document.ingest` a `document.reindex`.
+- Ingestion volá `/authz/check` pro `document.ingest` a `document.reindex` přes
+  vlastní `svc-ingestion` bearer; kontrolovaný caller zůstává v `subject_id`.
 - RAG volá `/authz/filter-documents` s akcí `rag.query` před odpovědí/LLM kontextem.
 - Ingestion, RAG a LLM Gateway přijímají `AKL_AUTH_MODE=oidc` a vyžadují bearer token.
-- Uživatelská Registry authz volání používají caller token. AIIP integrační tok
-  používá výhradně allowlistovaný service client a explicitní route granty.
+- Uživatelská Registry authz volání používají caller token. AIIP upload používá
+  výhradně `aiip-service=aiip-upload`; navazující ingestion používá oddělený
+  `svc-ingestion` service account a caller token dál nepředává.
 
 Zbývá:
 

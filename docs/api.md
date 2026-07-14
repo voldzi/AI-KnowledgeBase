@@ -21,11 +21,14 @@ OpenSearch analytical hits, RAG answers, source context, and citations. The
 accepted schemas are snapshotted under `contracts/stratos/`.
 
 Policy-bearing document and version writes also register immutable central
-`GovernedInformationResource` coordinates. The request uses a verified user
+`GovernedInformationResource` coordinates. Normal writes use a verified user
 bearer or the dedicated `AKB_POLICY_SERVICE_TOKEN`, which resolves to the fixed
-`service:akb` identity and AKB namespace. An original integration actor is
-audit metadata only. An invalid credential, inactive scope, unregistered
-binding, or absent `akb:assign_policy` aborts the complete write.
+`service:akb` identity and AKB namespace. AIIP does not use that broad service
+path: its dedicated upload contract requires the exact `aiip-service`
+transport, a separate current actor bearer, and an exact central confirmation
+made with the independent `AKB_AIIP_INGEST_SERVICE_TOKEN`. An invalid
+credential, inactive scope, unregistered source or binding, stale lineage, or
+missing capability aborts the complete write.
 
 ## API Surfaces
 
@@ -81,6 +84,48 @@ AIIP uses the purpose-built server-to-server bridge operations
 `POST /api/integrations/aiip/v1/duplicates/search`. The exact identity,
 idempotency, error, model fallback, tenant filtering, audit, and retention
 contract is documented in `docs/integration/AKB_AIIP_APPLICATION_API.md`.
+
+Governed AIIP document ingestion uses the browser-safe upload bridge and these
+internal Registry operations:
+
+```text
+POST  /api/v1/integrations/aiip-upload/external-documents/upsert
+PUT   /api/v1/integrations/aiip-upload/documents/{document_id}/versions
+PATCH /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current
+```
+
+They are not general integration endpoints. They accept only the
+`aiip-service=aiip-upload` route grant plus an independent
+`X-AIIP-Actor-Authorization` bearer, reject arbitrary metadata/owner fields,
+and return `governance_confirmation` containing the exact source and derived
+resource lineage. Details are in ADR 0008 and
+`docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`.
+
+The public machine contract models the corresponding web bridge as three
+operation-specific APIs rather than `GenericJson`:
+
+```text
+POST /api/stratos/upload/preflight
+PUT  /api/stratos/upload/sessions/{sessionId}/content
+POST /api/stratos/upload/sessions/{sessionId}/confirm
+```
+
+Preflight and confirm require both the `Authorization: Bearer <aiip-service>`
+transport credential and the independent
+`X-AIIP-Actor-Authorization: Bearer <current-person>` header. Their JSON bodies,
+Information Policy, AIIP-only integration envelope and successful responses
+are closed schemas; unknown fields are rejected. Preflight returns the opaque
+`X-AKL-Upload-Token` only inside its exact `required_headers` object. Content is
+a binary `PUT` authenticated by that header and accompanied by the exact
+`X-AKL-Content-SHA256`; HTTP `201` returns a required opaque
+`upload_receipt`. Confirm requires both `upload_token` and `upload_receipt`
+plus all signed file, policy, scope, and envelope fields. Both successful JSON
+operations return a closed, authoritative `governance_confirmation` schema.
+
+`STRATOS_AIIP` is rejected by the generic external-document, version, and
+current-pointer write routes. Document-level synchronization outside the
+dedicated family is status-only for a current version already selected by the
+dedicated compare-and-swap operation; it cannot create or select AIIP lineage.
 
 Ingestion jobs accept an optional `extraction_profile` and return a `quality`
 block in job reports. The quality block records the parser/engine, pages with

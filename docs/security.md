@@ -15,8 +15,10 @@ host applications do not make authorization decisions for AKB documents.
 - Caller OIDC tokens prove identity but do not contain authoritative dynamic
   document permissions. AKB loads user access from STRATOS `/api/v1/auth/me`
   and uses central policy decisions for delegated service calls. Caller tokens
-  are never reused as LLM Gateway credentials. Ingestion may preserve the
-  caller id only as `X-AKL-On-Behalf-Of` audit context.
+  are never reused as LLM Gateway or ingestion-to-Registry credentials.
+  Ingestion uses a short-lived `svc-ingestion` client-credentials bearer for
+  every Registry request and preserves the caller only as delegated
+  `subject_id`/`actor_id` or `X-AKL-On-Behalf-Of` audit context.
 - AIIP uses only the dedicated Keycloak service identity `aiip-service`, realm
   role `service_aiip`, audience `akb-api`, and the `client_credentials` grant.
   The public AKB bridge introspects this token and rejects any different client,
@@ -32,6 +34,10 @@ host applications do not make authorization decisions for AKB documents.
   service-looking tokens fail with 403. Registry then applies a per-client,
   default-deny route allowlist; `akb-rag-service` receives only `authz`,
   `audit`, and `idempotency`.
+- `svc-ingestion` receives only `authz`, `audit`, `documents-read`, and the exact
+  `ingestion-status` route. The latter can update job/status only for an already
+  selected AIIP version. `aiip-service` remains restricted to `aiip-upload` and
+  can never be reused by the pipeline on generic Registry paths.
 - RAG separates user audience `akl-api` from AIIP service audience `akb-api`.
   Generic RAG and all other end-user routes reject service identities and bind
   the request subject to the verified user bearer. Only the two AIIP
