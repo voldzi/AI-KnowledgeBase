@@ -14,9 +14,16 @@ host applications do not make authorization decisions for AKB documents.
   `svc-rag`/`service_rag`; both target audience `llm-gateway-service`.
 - Caller OIDC tokens prove identity but do not contain authoritative dynamic
   document permissions. AKB loads user access from STRATOS `/api/v1/auth/me`
-  and uses central policy decisions for delegated service calls. Caller tokens
-  are never reused as LLM Gateway credentials. Ingestion may preserve the
-  caller id only as `X-AKL-On-Behalf-Of` audit context.
+  and Registry evaluates the current document action before issuing a
+  short-lived proof bound to the exact actor, action, document/version,
+  correlation id and idempotency key. Caller tokens are never reused as
+  Ingestion, LLM Gateway, or ingestion-to-Registry credentials.
+- The web backend uses the exact confidential transport
+  `svc-akb-web-ingestion`/`service_akb_web_ingestion` for interactive Ingestion
+  calls. It sends a Registry-issued proof and the bound subject; Ingestion
+  confirms that proof through Registry with its own short-lived
+  `svc-ingestion` bearer. The subject header becomes audit context only after
+  exact proof confirmation and is never independently authoritative.
 - AIIP uses only the dedicated Keycloak service identity `aiip-service`, realm
   role `service_aiip`, audience `akb-api`, and the `client_credentials` grant.
   The public AKB bridge introspects this token and rejects any different client,
@@ -32,6 +39,13 @@ host applications do not make authorization decisions for AKB documents.
   service-looking tokens fail with 403. Registry then applies a per-client,
   default-deny route allowlist; `akb-rag-service` receives only `authz`,
   `audit`, and `idempotency`.
+- `svc-ingestion` receives only `authz`, `audit`, `documents-read`, and the exact
+  `ingestion-status` route. The latter can update job/status only for an already
+  selected AIIP version. `aiip-service` remains restricted to `aiip-upload` and
+  can never be reused by the pipeline on generic Registry paths.
+- `svc-akb-web-ingestion` receives no Registry route grant. Ingestion Service
+  accepts it only on the bounded job/read/cancel and web-transport readiness
+  surface. A valid service token without a matching Registry proof is denied.
 - RAG separates user audience `akl-api` from AIIP service audience `akb-api`.
   Generic RAG and all other end-user routes reject service identities and bind
   the request subject to the verified user bearer. Only the two AIIP
@@ -66,6 +80,15 @@ Registry API owns document authorization. RAG retrieval filters candidate
 documents through Registry authorization before answer composition. If sources
 are unauthorized or insufficient, the assistant returns a no-answer or handoff
 state instead of inventing unsupported information.
+
+The same rule applies to ingestion and Intelligence. Every production job
+create/read/retry/cancel is authorized with a short-lived Registry proof for
+one immutable document version. Production Intelligence queries use a separate
+proof over the exact current indexed document/version/policy-hash set. Static
+service roles, `allowed_document_ids`, client-supplied policy hashes, and global
+administrator-looking JWT claims do not establish that scope. The legacy global
+job list, unscoped facet GET, and bulk reindex paths fail closed in production.
+The full boundary and crash-recovery invariants are in ADR 0009.
 
 Organization-visible and legacy `classification=public` documents remain
 authenticated; they do not become anonymously readable. True public delivery
@@ -195,9 +218,10 @@ The browser uses AKB web/API bridge routes only. It must not call:
 
 Source preview and document viewer flows use AKB-authorized endpoints and
 short-lived signed source tokens where needed. Host STRATOS applications may
-propagate the current OIDC bearer token to AKB bridge routes; AKB forwards that
-token to backend services for authorization and never exposes persistent storage
-credentials to the browser.
+propagate the current OIDC bearer token to AKB bridge routes. The bridge uses it
+only at a user-authority boundary such as Registry; it does not forward it to
+Ingestion. Persistent service and storage credentials are never exposed to the
+browser.
 
 AIIP documents marked with `Tajné` in `metadata.aiip.sensitivity`,
 `metadata.aiip.input_data_sensitivity`, or

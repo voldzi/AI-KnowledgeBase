@@ -8,7 +8,7 @@ export const INFORMATION_POLICY_VERSION = "information-policy-2.0.0";
 export const INFORMATION_POLICY_SCHEMA = "stratos-information-policy-2";
 export const STRATOS_ORGANIZATION_ID = "org_stratos";
 
-const HANDLING_CLASSES = new Set(["PUBLIC", "INTERNAL", "RESTRICTED"]);
+const HANDLING_CLASSES = new Set(["PUBLIC", "INTERNAL", "PROJECT_MANAGEMENT", "RESTRICTED"]);
 const TLP_VALUES = new Set(["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"]);
 const PAP_VALUES = new Set(["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"]);
 const CONTENT_CATEGORIES = new Set([
@@ -26,7 +26,7 @@ export interface InformationPolicyBinding {
   schemaVersion: typeof INFORMATION_POLICY_SCHEMA;
   policyBindingId: string;
   policyVersion: typeof INFORMATION_POLICY_VERSION;
-  handlingClass: "PUBLIC" | "INTERNAL" | "RESTRICTED";
+  handlingClass: "PUBLIC" | "INTERNAL" | "PROJECT_MANAGEMENT" | "RESTRICTED";
   legalClassification: "NONE";
   tlp?: "TLP:RED" | "TLP:AMBER+STRICT" | "TLP:AMBER" | "TLP:GREEN" | "TLP:CLEAR" | null;
   pap?: "PAP:RED" | "PAP:AMBER" | "PAP:GREEN" | "PAP:CLEAR" | null;
@@ -39,16 +39,29 @@ export interface InformationPolicyBinding {
   };
   obligations: string[];
   originatorId?: string | null;
-  issuedAt?: string | null;
+  issuedAt: string;
   reviewAt?: string | null;
 }
 
 export interface IntegrationEnvelope {
   schemaVersion: "stratos-integration-envelope-1";
   organizationId: typeof STRATOS_ORGANIZATION_ID;
-  sourceSystem: string;
+  sourceSystem: "STRATOS_AIIP";
   externalRef: string;
-  actor: { type: "person" | "service"; subjectId: string };
+  actor: { type: "person"; subjectId: string };
+  sourceResource: {
+    governedResourceId: string;
+    application: "AIIP";
+    resourceType: "idea";
+    resourceId: string;
+    sourceVersion: string;
+    scope:
+      | { type: "own"; ownerSubjectId: string }
+      | {
+          type: "organization" | "organization_unit" | "budget_scope" | "portfolio" | "project" | "document" | "recipient_set";
+          id: string;
+        };
+  };
   correlationId: string;
   idempotencyKey: string;
   policyBindingId: string;
@@ -60,7 +73,13 @@ export interface IntegrationEnvelope {
     tlp: string | null;
     pap: string | null;
   };
-  payload: Record<string, unknown>;
+  payload: {
+    operation: "document_upload";
+    entityType: "InnovationRequest" | "InnovationRequestImport";
+    entityId: string;
+    sourceDocumentId: string;
+    sha256: string;
+  };
 }
 
 export function parseInformationPolicy(value: unknown): InformationPolicyBinding {
@@ -106,8 +125,8 @@ export function parseInformationPolicy(value: unknown): InformationPolicyBinding
     },
     obligations,
     originatorId,
-    issuedAt: optionalText(policy.issuedAt),
-    reviewAt: optionalText(policy.reviewAt)
+    issuedAt: requiredTimestamp(policy.issuedAt, "issuedAt"),
+    reviewAt: optionalTimestamp(policy.reviewAt, "reviewAt")
   };
 }
 
@@ -161,26 +180,76 @@ export function parseIntegrationEnvelope(value: unknown, policy: InformationPoli
   const envelope = strictRecord(value, "integration_envelope");
   assertKeys(envelope, [
     "schemaVersion", "organizationId", "sourceSystem", "externalRef", "actor", "correlationId",
-    "idempotencyKey", "policyBindingId", "policyVersion", "policyHash", "classification", "payload"
+    "idempotencyKey", "policyBindingId", "policyVersion", "policyHash", "classification", "payload",
+    "sourceResource"
   ], "integration_envelope");
   requiredEqual(envelope.schemaVersion, "stratos-integration-envelope-1", "schemaVersion");
   requiredEqual(envelope.organizationId, STRATOS_ORGANIZATION_ID, "organizationId");
+  requiredEqual(envelope.sourceSystem, "STRATOS_AIIP", "sourceSystem");
   requiredEqual(envelope.policyVersion, INFORMATION_POLICY_VERSION, "policyVersion");
   requiredEqual(envelope.policyBindingId, policy.policyBindingId, "policyBindingId");
   requiredEqual(envelope.policyHash, policyHash(policy), "policyHash");
   const classification = strictRecord(envelope.classification, "classification");
+  assertKeys(classification, ["handlingClass", "legalClassification", "tlp", "pap"], "classification");
   requiredEqual(classification.handlingClass, policy.handlingClass, "classification.handlingClass");
   requiredEqual(classification.legalClassification, "NONE", "classification.legalClassification");
   requiredEqual(classification.tlp ?? null, policy.tlp ?? null, "classification.tlp");
   requiredEqual(classification.pap ?? null, policy.pap ?? null, "classification.pap");
   const actor = strictRecord(envelope.actor, "actor");
-  const actorType = enumText(actor.type, new Set(["person", "service"]), "actor.type");
+  assertKeys(actor, ["type", "subjectId"], "actor");
+  requiredEqual(actor.type, "person", "actor.type");
+  const sourceResource = strictRecord(envelope.sourceResource, "sourceResource");
+  assertKeys(sourceResource, [
+    "governedResourceId", "application", "resourceType", "resourceId", "sourceVersion", "scope"
+  ], "sourceResource");
+  requiredEqual(sourceResource.application, "AIIP", "sourceResource.application");
+  requiredEqual(sourceResource.resourceType, "idea", "sourceResource.resourceType");
+  const sourceScope = strictRecord(sourceResource.scope, "sourceResource.scope");
+  assertKeys(sourceScope, ["type", "id", "ownerSubjectId"], "sourceResource.scope");
+  const sourceScopeType = enumText(
+    sourceScope.type,
+    new Set(["own", "organization", "organization_unit", "budget_scope", "portfolio", "project", "document", "recipient_set"]),
+    "sourceResource.scope.type"
+  ) as IntegrationEnvelope["sourceResource"]["scope"]["type"];
+  const normalizedSourceScope = sourceScopeType === "own"
+    ? (() => {
+        if (sourceScope.id !== undefined) fail("POLICY_BINDING_INVALID", "An own source scope forbids id.");
+        return { type: "own" as const, ownerSubjectId: requiredText(sourceScope.ownerSubjectId, "sourceResource.scope.ownerSubjectId") };
+      })()
+    : (() => {
+        if (sourceScope.ownerSubjectId !== undefined) fail("POLICY_BINDING_INVALID", "ownerSubjectId is valid only for an own source scope.");
+        const id = requiredText(sourceScope.id, "sourceResource.scope.id");
+        if (sourceScopeType === "organization" && id !== STRATOS_ORGANIZATION_ID) {
+          fail("POLICY_BINDING_INVALID", "The organization source scope must identify org_stratos.");
+        }
+        return { type: sourceScopeType, id };
+      })();
+  const payload = strictRecord(envelope.payload, "payload");
+  assertKeys(payload, ["operation", "entityType", "entityId", "sourceDocumentId", "sha256"], "payload");
+  requiredEqual(payload.operation, "document_upload", "payload.operation");
+  const entityType = enumText(
+    payload.entityType,
+    new Set(["InnovationRequest", "InnovationRequestImport"]),
+    "payload.entityType"
+  ) as IntegrationEnvelope["payload"]["entityType"];
+  const payloadSha256 = requiredText(payload.sha256, "payload.sha256").toLowerCase();
+  if (!/^sha256:[a-f0-9]{64}$/.test(payloadSha256)) {
+    fail("POLICY_BINDING_INVALID", "payload.sha256 must use sha256:<64 lowercase hex chars> format.");
+  }
   return {
     schemaVersion: "stratos-integration-envelope-1",
     organizationId: STRATOS_ORGANIZATION_ID,
-    sourceSystem: requiredText(envelope.sourceSystem, "sourceSystem"),
+    sourceSystem: "STRATOS_AIIP",
     externalRef: requiredText(envelope.externalRef, "externalRef"),
-    actor: { type: actorType as "person" | "service", subjectId: requiredText(actor.subjectId, "actor.subjectId") },
+    actor: { type: "person", subjectId: requiredText(actor.subjectId, "actor.subjectId") },
+    sourceResource: {
+      governedResourceId: requiredText(sourceResource.governedResourceId, "sourceResource.governedResourceId"),
+      application: "AIIP",
+      resourceType: "idea",
+      resourceId: requiredText(sourceResource.resourceId, "sourceResource.resourceId"),
+      sourceVersion: requiredText(sourceResource.sourceVersion, "sourceResource.sourceVersion"),
+      scope: normalizedSourceScope
+    },
     correlationId: minText(envelope.correlationId, "correlationId", 8),
     idempotencyKey: minText(envelope.idempotencyKey, "idempotencyKey", 8),
     policyBindingId: policy.policyBindingId,
@@ -192,7 +261,13 @@ export function parseIntegrationEnvelope(value: unknown, policy: InformationPoli
       tlp: policy.tlp ?? null,
       pap: policy.pap ?? null
     },
-    payload: strictRecord(envelope.payload, "payload")
+    payload: {
+      operation: "document_upload",
+      entityType,
+      entityId: requiredText(payload.entityId, "payload.entityId"),
+      sourceDocumentId: requiredText(payload.sourceDocumentId, "payload.sourceDocumentId"),
+      sha256: payloadSha256
+    }
   };
 }
 
@@ -215,9 +290,24 @@ function assertKeys(value: Record<string, unknown>, keys: string[], field: strin
   const unknown = Object.keys(value).filter((key) => !keys.includes(key));
   if (unknown.length) fail("POLICY_BINDING_INVALID", `${field} contains unknown fields: ${unknown.join(", ")}.`);
 }
-function requiredText(value: unknown, field: string): string { const text = String(value ?? "").trim(); if (!text) fail("POLICY_BINDING_INVALID", `${field} is required.`); return text; }
+function requiredText(value: unknown, field: string): string { if (typeof value !== "string" || !value.trim()) fail("POLICY_BINDING_INVALID", `${field} must be a non-empty string.`); return value.trim(); }
 function minText(value: unknown, field: string, length: number): string { const text = requiredText(value, field); if (text.length < length) fail("POLICY_BINDING_INVALID", `${field} is too short.`); return text; }
-function optionalText(value: unknown): string | null { const text = String(value ?? "").trim(); return text || null; }
+function optionalText(value: unknown): string | null { if (value === null || value === undefined) return null; if (typeof value !== "string" || !value.trim()) fail("POLICY_BINDING_INVALID", "Optional policy text must be a non-empty string or null."); return value.trim(); }
+function optionalTimestamp(value: unknown, field: string): string | null {
+  const normalized = optionalText(value);
+  if (normalized === null) return null;
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized)) {
+    fail("POLICY_BINDING_INVALID", `${field} must include an explicit timezone.`);
+  }
+  const milliseconds = Date.parse(normalized);
+  if (!Number.isFinite(milliseconds)) fail("POLICY_BINDING_INVALID", `${field} must be an ISO-8601 timestamp.`);
+  return new Date(milliseconds).toISOString();
+}
+function requiredTimestamp(value: unknown, field: string): string {
+  const normalized = optionalTimestamp(value, field);
+  if (normalized === null) fail("POLICY_BINDING_INVALID", `${field} is required.`);
+  return normalized;
+}
 function requiredEqual(value: unknown, expected: unknown, field: string, code = "POLICY_BINDING_INVALID") { if (value !== expected) fail(code, `${field} is not supported.`); }
 function enumText(value: unknown, allowed: Set<string>, field: string): string { const text = requiredText(value, field); if (!allowed.has(text)) fail("POLICY_BINDING_INVALID", `${field} is unknown.`); return text; }
 function nullableEnum(value: unknown, allowed: Set<string>, field: string): string | null { if (value === null || value === undefined) return null; return enumText(value, allowed, field); }

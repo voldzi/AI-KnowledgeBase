@@ -79,23 +79,24 @@ docker compose --env-file .env.local-prod \
 
 ## Import Docs
 
-```bash
-python3 tools/import_docs_folder.py \
-  --source ./docs \
-  --manifest docs/import-manifest.yaml \
-  --mode reindex \
-  --report reports/docs_import_report.json
-```
+Do not run host-side importer or mutating smoke scripts against this
+production/OIDC-shaped profile. Their guards fail before mutation. Import
+documents through the governed AKB application UI/API so the current person,
+Registry-issued exact-version proof, `svc-akb-web-ingestion` transport, and
+attempt CAS are all enforced. Host importer mutation is retired in every
+environment; `--dry-run` remains available for inventory only.
 
 ## Smoke Tests
 
 ```bash
 python3 scripts/phase_02_llm_gateway_smoke.py
-python3 scripts/phase_02_controlled_document_smoke.py
-python3 scripts/phase_03_docs_import_smoke.py
-python3 scripts/phase_03_document_viewer_smoke.py
 python3 scripts/phase_03_local_production_smoke.py
 ```
+
+`phase_01_smoke.py`, `phase_02_controlled_document_smoke.py`, and any smoke that
+invokes the host importer are retired mutation tools; no environment or bearer
+enables them. Use authenticated application smoke through the web surface for
+create/retry/cancel flows.
 
 ## Backup And Restore
 

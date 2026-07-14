@@ -12,7 +12,12 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.config import Settings
-from app.information_policy import InformationPolicyBinding, canonical_policy_hash, canonical_policy_payload
+from app.information_policy import (
+    InformationPolicyBinding,
+    IntegrationEnvelope,
+    canonical_policy_hash,
+    canonical_policy_payload,
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,27 @@ class GovernedResourceRegistration:
     source_version: str
     policy_binding_id: str
     policy_hash: str
+
+
+@dataclass(frozen=True)
+class AiipAkbGovernedResourceRegistration:
+    governed_resource_id: str
+    resource_type: Literal["document", "document-version"]
+    resource_id: str
+    source_version: str
+    parent_id: str
+    scope: dict[str, str]
+    inherited_from_resource_id: str
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    originator_id: str | None
+    issued_at: str | None
+    review_at: str | None
+    registered_by_subject_id: str
+    confirmed_by_subject_id: str
+    correlation_id: str
+    idempotency_key: str
 
 
 @dataclass(frozen=True)
@@ -155,15 +181,19 @@ class StratosGovernanceClient:
             token,
             {"applicationId": "akb", **canonical_policy_payload(binding)},
         )
-        binding_id = response.get("policyBindingId")
-        policy_hash = response.get("policyHash")
-        policy_version = response.get("policyVersion")
-        if (
-            binding_id != binding.policy_binding_id
-            or policy_version != binding.policy_version
-            or policy_hash != local_hash
-        ):
+        expected = {
+            "schemaVersion": "stratos-information-policy-2",
+            "organizationId": "org_stratos",
+            "applicationId": "akb",
+            **canonical_policy_payload(binding),
+            "policyHash": local_hash,
+        }
+        if any(response.get(key) != value for key, value in expected.items()):
             raise GovernanceUnavailable("STRATOS Policy Registry returned a conflicting binding")
+        if not _authoritative_policy_metadata_matches(response, binding):
+            raise GovernanceUnavailable(
+                "STRATOS Policy Registry returned conflicting authoritative policy metadata"
+            )
         return local_hash
 
     def decide(
@@ -241,10 +271,17 @@ class StratosGovernanceClient:
             or response.get("resourceType") != resource_type
             or response.get("resourceId") != resource_id
             or response.get("sourceVersion") != source_version
+            or response.get("parentId") != parent_resource_id
+            or response.get("scope") != scope
             or not isinstance(response.get("id"), str)
+            or response.get("policyAssignment") != "EXPLICIT"
+            or response.get("explicitPolicyBindingId") != binding.policy_binding_id
+            or not isinstance(response.get("confirmedBySubjectId"), str)
+            or not response.get("confirmedBySubjectId")
             or not isinstance(effective_policy, dict)
             or effective_policy.get("policyBindingId") != binding.policy_binding_id
             or effective_policy.get("policyHash") != expected_hash
+            or not _authoritative_policy_metadata_matches(effective_policy, binding)
         ):
             raise GovernanceUnavailable("STRATOS returned a conflicting governed resource")
         return GovernedResourceRegistration(
@@ -252,6 +289,100 @@ class StratosGovernanceClient:
             source_version=source_version,
             policy_binding_id=binding.policy_binding_id,
             policy_hash=expected_hash,
+        )
+
+    def register_aiip_akb_resource(
+        self,
+        *,
+        actor_token: str,
+        resource_type: Literal["document", "document-version"],
+        resource_id: str,
+        source_version: str,
+        title: str,
+        parent_id: str,
+        scope: dict[str, str],
+        envelope: IntegrationEnvelope,
+        binding: InformationPolicyBinding,
+        reason: str,
+    ) -> AiipAkbGovernedResourceRegistration:
+        base_url = self.settings.stratos_aiip_akb_resources_url
+        credential = self.settings.stratos_aiip_ingest_service_token
+        if not base_url or not credential:
+            raise GovernanceUnavailable("The dedicated AIIP to AKB governance route is not configured")
+        source = envelope.source_resource
+        expected_source_id = source.governed_resource_id
+        expected_hash = canonical_policy_hash(binding)
+        response = self._request(
+            "PUT",
+            (
+                f"{base_url.rstrip('/')}/{quote(resource_type, safe='')}/"
+                f"{quote(resource_id, safe='')}"
+            ),
+            credential,
+            {
+                "sourceVersion": source_version,
+                "title": title,
+                "parentId": parent_id,
+                "scope": scope,
+                "integrationEnvelope": envelope.model_dump(
+                    mode="json", by_alias=True, exclude_none=True
+                ),
+                "reason": reason,
+            },
+            extra_headers={
+                "X-AIIP-Actor-Authorization": f"Bearer {actor_token}",
+                "Idempotency-Key": envelope.idempotency_key,
+                "X-Correlation-ID": envelope.correlation_id,
+            },
+        )
+        effective_policy = response.get("effectivePolicy")
+        registered_by = response.get("registeredBySubjectId")
+        confirmed_by = response.get("confirmedBySubjectId")
+        if (
+            response.get("application") != "AKB"
+            or response.get("resourceType") != resource_type
+            or response.get("resourceId") != resource_id
+            or response.get("sourceVersion") != source_version
+            or response.get("parentId") != parent_id
+            or response.get("scope") != scope
+            or response.get("isActive") is not True
+            or not isinstance(response.get("id"), str)
+            or not response.get("id")
+            or response.get("policyAssignment") != "INHERITED"
+            or response.get("explicitPolicyBindingId") is not None
+            or response.get("inheritedFromResourceId") != expected_source_id
+            or not isinstance(effective_policy, dict)
+            or effective_policy.get("policyBindingId") != binding.policy_binding_id
+            or effective_policy.get("policyVersion") != binding.policy_version
+            or effective_policy.get("policyHash") != expected_hash
+            or not _authoritative_policy_metadata_matches(effective_policy, binding)
+            or not isinstance(registered_by, str)
+            or not registered_by
+            or confirmed_by != envelope.actor.subject_id
+            or response.get("correlation_id") != envelope.correlation_id
+            or response.get("idempotency_key") != envelope.idempotency_key
+        ):
+            raise GovernanceInvalidResponse(
+                "STRATOS returned a conflicting AIIP-derived AKB governed resource"
+            )
+        return AiipAkbGovernedResourceRegistration(
+            governed_resource_id=response["id"],
+            resource_type=resource_type,
+            resource_id=resource_id,
+            source_version=source_version,
+            parent_id=parent_id,
+            scope=scope,
+            inherited_from_resource_id=expected_source_id,
+            policy_binding_id=binding.policy_binding_id,
+            policy_version=binding.policy_version,
+            policy_hash=expected_hash,
+            originator_id=effective_policy.get("originatorId"),
+            issued_at=effective_policy.get("issuedAt"),
+            review_at=effective_policy.get("reviewAt"),
+            registered_by_subject_id=registered_by,
+            confirmed_by_subject_id=confirmed_by,
+            correlation_id=envelope.correlation_id,
+            idempotency_key=envelope.idempotency_key,
         )
 
     def upsert_information_publication(
@@ -336,17 +467,28 @@ class StratosGovernanceClient:
             )
         )
 
-    def _request(self, method: str, url: str, token: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _request(
+        self,
+        method: str,
+        url: str,
+        token: str,
+        body: dict[str, Any],
+        *,
+        extra_headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            **(extra_headers or {}),
+        }
+        headers["Authorization"] = f"Bearer {token}"
         try:
             with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
                 response = client.request(
                     method,
                     url,
-                    headers={
-                        "Accept": "application/json",
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=headers,
                     json=body,
                 )
         except httpx.HTTPError as exc:
@@ -406,7 +548,9 @@ class StratosGovernanceClient:
         )
         active = access is not None and _not_expired(access.get("validUntil"))
         capabilities = _strings(access.get("capabilities")) if active else frozenset()
-        scopes = _scopes(access.get("scopes")) if active else frozenset()
+        # The explicit grants are an administrative input.  Runtime access is
+        # based only on the active/connected closure calculated by STRATOS.
+        scopes = _scopes(access.get("effectiveScopes")) if active else frozenset()
         return AccessProjection(
             capabilities=capabilities,
             scopes=scopes,
@@ -427,9 +571,11 @@ def governance_client(settings: Settings) -> StratosGovernanceClient:
         settings.stratos_policy_bindings_url,
         settings.stratos_policy_decisions_url,
         settings.stratos_information_resources_url,
+        settings.stratos_aiip_akb_resources_url,
         settings.stratos_information_publications_url,
         settings.stratos_public_decisions_url,
         settings.stratos_policy_service_token,
+        settings.stratos_aiip_ingest_service_token,
         settings.stratos_access_timeout_seconds,
         settings.stratos_access_cache_ttl_seconds,
         settings.auth_mode,
@@ -481,3 +627,29 @@ def _is_timestamp(value: Any) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None
+
+
+def _same_timestamp(value: Any, expected: datetime | None) -> bool:
+    if expected is None:
+        return value is None
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed == expected
+
+
+def _authoritative_policy_metadata_matches(
+    value: dict[str, Any],
+    binding: InformationPolicyBinding,
+) -> bool:
+    required = {"originatorId", "originator", "issuedAt", "reviewAt"}
+    return bool(
+        required.issubset(value)
+        and value.get("originatorId") == value.get("originator")
+        and value.get("originatorId") == binding.originator_id
+        and _same_timestamp(value.get("issuedAt"), binding.issued_at)
+        and _same_timestamp(value.get("reviewAt"), binding.review_at)
+    )

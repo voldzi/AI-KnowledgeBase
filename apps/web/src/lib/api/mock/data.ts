@@ -428,6 +428,19 @@ export const mockVersions: DocumentVersion[] = [
     published_at: null
   },
   {
+    document_version_id: "ver_104_4",
+    document_id: "doc_104",
+    version_label: "4.0",
+    status: "archived",
+    valid_from: "2026-02-01",
+    valid_to: "2026-05-31",
+    source_file_uri: "s3://akl-documents/doc_104/ver_104_4/archive.pdf",
+    file_hash: "sha256:3e209151d60c4d4816397f377c8144a14b108de6803c4413d45be185442f0574",
+    change_summary: "Archived PDF import procedure fixture.",
+    created_at: "2026-02-01T09:00:00Z",
+    published_at: "2026-02-02T09:00:00Z"
+  },
+  {
     document_version_id: "ver_103_2",
     document_id: "doc_103",
     version_label: "0.2",

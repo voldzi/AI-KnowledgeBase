@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   packages: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -58,7 +59,7 @@ jobs:
           GITLEAKS_CONFIG: gitleaks.toml
 
   immutable-release:
-    name: Immutable docker.home.cz release
+    name: Immutable release, ingestion, and containerized PostgreSQL toolchain
     runs-on: ubuntu-latest
 
     steps:
@@ -70,7 +71,7 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install --yes shellcheck
 
-      - name: Validate immutable release workflow
+      - name: Validate immutable release workflow including ingestion
         run: bash scripts/check_immutable_release_workflow.sh
 
   web:
@@ -173,7 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_DB: akl
           POSTGRES_USER: akl_platform
@@ -207,6 +208,16 @@ jobs:
           AKL_REGISTRY_PG_DATABASE: akl_registry_smoke
         run: python scripts/registry_postgres_smoke.py
 
+      - name: Verify ingestion-attempt upgrade, backfill, integrity, and concurrency
+        working-directory: services/registry-api
+        env:
+          PYTHONPATH: .
+          AKL_REGISTRY_MIGRATION_TEST_ADMIN_URL: postgresql://akl_platform:akl_local_postgres@localhost:5432/akl
+        run: >-
+          python -m pytest
+          tests/test_ingestion_attempt_migration.py
+          -q
+
   compose:
     name: Docker Compose Config
     runs-on: ubuntu-latest
@@ -234,6 +245,7 @@ jobs:
         run: |
           GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
+          AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
           docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \
@@ -243,6 +255,7 @@ jobs:
         run: |
           GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
+          AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
           docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \

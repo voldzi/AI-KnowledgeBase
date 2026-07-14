@@ -137,59 +137,15 @@ def test_external_document_upsert_is_idempotent(client, admin_headers):
     assert len(listing.json()["items"]) == 1
 
 
-def test_aiip_external_document_upsert_is_idempotent_and_filterable(client, admin_headers):
-    first = client.post("/api/v1/external-documents/upsert", headers=admin_headers, json=_aiip_payload())
-    assert first.status_code == 200, first.text
-    first_body = first.json()
-    assert first_body["created"] is True
-    assert first_body["external_document"]["tenant_id"] == "tenant_aiip_default"
-    assert first_body["external_document"]["external_system"] == "STRATOS_AIIP"
-    assert first_body["external_document"]["external_ref"] == "aiip:idea:idea_123:requirement-card"
-    assert first_body["external_document"]["entity_type"] == "InnovationRequest"
-    assert first_body["document"]["document_type"] == "ai_requirement_card"
-    assert first_body["document"]["classification"] == "internal"
-    assert "stratos_aiip" in first_body["document"]["tags"]
-    assert "aiip-idea:idea_123" in first_body["document"]["tags"]
-    assert any(
-        "role:service_aiip" in policy["subjects"]
-        and "rag.query" in policy["actions"]
-        for policy in first_body["document"]["access_policies"]
-    )
-
-    second = client.post(
+def test_generic_aiip_external_document_upsert_requires_dedicated_route(client, admin_headers):
+    response = client.post(
         "/api/v1/external-documents/upsert",
         headers=admin_headers,
-        json=_aiip_payload(title="Updated AIIP title must not create duplicate"),
+        json=_aiip_payload(),
     )
-    assert second.status_code == 200, second.text
-    second_body = second.json()
-    assert second_body["created"] is False
-    assert second_body["external_document"]["external_document_id"] == first_body["external_document"]["external_document_id"]
-    assert second_body["document"]["document_id"] == first_body["document"]["document_id"]
 
-    listing = client.get(
-        "/api/v1/documents"
-        "?tenant_id=tenant_aiip_default"
-        "&external_system=STRATOS_AIIP"
-        "&entity_type=InnovationRequest"
-        "&entity_id=idea_123"
-        "&external_ref=aiip%3Aidea%3Aidea_123%3Arequirement-card"
-        "&context_tag=aiip-idea%3Aidea_123",
-        headers=admin_headers,
-    )
-    assert listing.status_code == 200, listing.text
-    body = listing.json()
-    assert len(body["items"]) == 1
-    assert body["items"][0]["document_id"] == first_body["document"]["document_id"]
-    assert body["items"][0]["document_type"] == "ai_requirement_card"
-
-    audit = client.get("/api/v1/audit/events?event_type=external_document.upserted", headers=admin_headers)
-    assert audit.status_code == 200
-    assert any(
-        event["metadata"].get("external_system") == "STRATOS_AIIP"
-        and event["metadata"].get("external_ref") == "aiip:idea:idea_123:requirement-card"
-        for event in audit.json()["items"]
-    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "aiip_upload_dedicated_route_required"
 
 
 def test_aiip_document_with_secret_sensitivity_is_rejected(client, admin_headers):
@@ -402,8 +358,6 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
         json={
             "current_document_version_id": version.json()["document_version_id"],
             "current_file_id": version.json()["file_id"],
-            "current_ingestion_job_id": "job_stratos_123",
-            "current_ingestion_status": "INGESTING",
             "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
             "source_location": {
                 "kind": "object_storage",
@@ -419,8 +373,8 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
     current = response.json()["external_document"]
     assert current["current_document_version_id"] == version.json()["document_version_id"]
     assert current["current_file_id"] == version.json()["file_id"]
-    assert current["current_ingestion_job_id"] == "job_stratos_123"
-    assert current["current_ingestion_status"] == "INGESTING"
+    assert current["current_ingestion_job_id"] is None
+    assert current["current_ingestion_status"] is None
     assert current["akb_source_uri"] == "s3://akl-documents/stratos/contracts/256-2022-S.pdf"
     assert current["source_location"]["kind"] == "object_storage"
 
@@ -435,11 +389,49 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
     )
     assert forbidden_by_document.status_code == 403
 
+    initial_claim = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": None,
+            "current_ingestion_job_id": "job_stratos_123",
+            "current_ingestion_status": "QUEUED",
+        },
+    )
+    assert initial_claim.status_code == 200, initial_claim.text
+    assert initial_claim.json()["ingestion_attempt"]["ingestion_job_id"] == "job_stratos_123"
+
     by_document = client.patch(
         f"/api/v1/documents/{document_id}/external-references/current",
         headers=admin_headers,
         json={
             "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": "job_stratos_123",
+            "current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_status": "QUEUED",
+        },
+    )
+    assert by_document.status_code == 200, by_document.text
+
+    by_document = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_job_id": "job_stratos_456",
+            "current_ingestion_status": "INGESTING",
+        },
+    )
+    assert by_document.status_code == 200, by_document.text
+
+    by_document = client.patch(
+        f"/api/v1/documents/{document_id}/external-references/current",
+        headers=admin_headers,
+        json={
+            "current_document_version_id": version.json()["document_version_id"],
+            "expected_current_ingestion_job_id": "job_stratos_456",
             "current_ingestion_job_id": "job_stratos_456",
             "current_ingestion_status": "INDEXED",
         },

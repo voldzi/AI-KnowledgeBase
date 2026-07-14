@@ -58,15 +58,30 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `AKL_STRATOS_POLICY_BINDINGS_URL` | Centrální registr Information Policy bindingů. |
 | `AKL_STRATOS_POLICY_DECISIONS_URL` | Centrální decision endpoint pro service-to-service operace. |
 | `AKL_STRATOS_INFORMATION_RESOURCES_URL` | Základní URL pro immutable `AKB/document` a `AKB/document_version` GovernedInformationResource. |
+| `AKL_STRATOS_AIIP_AKB_RESOURCES_URL` | Dedikovaný centrální endpoint pro přesnou AIIP→AKB lineage a fresh-actor autorizaci. |
 | `AKL_STRATOS_INFORMATION_PUBLICATIONS_URL` | Centrální lifecycle konkrétní immutable veřejné verze. |
 | `AKL_STRATOS_PUBLIC_DECISIONS_URL` | Anonymní fail-closed decision endpoint volaný při každém public read/download. |
 | `AKB_POLICY_SERVICE_TOKEN` | Dedikovaný runtime credential AKB; nesmí se logovat ani commitovat. |
+| `AKB_AIIP_INGEST_SERVICE_TOKEN` | Nezávislý credential pouze pro centrální AIIP→AKB registraci; v produkci se musí lišit od `AKB_POLICY_SERVICE_TOKEN`. |
+| `AKL_INGESTION_AUTHORIZATION_SECRET` | Lokální/test signing secret pro krátkodobé proofy; produkce používá pouze file variantu. |
+| `AKL_INGESTION_AUTHORIZATION_SECRET_FILE` | Produkční mode-`0600` signing secret file, dostupný jen Registry. |
+| `AKL_INGESTION_AUTHORIZATION_TTL_SECONDS` | Krátká platnost ingestion/Intelligence proofu; výchozí 60 sekund. |
 | `AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN` | Nezávislý sdílený token Registry→web pro interní source resolver; v produkci minimálně 32 znaků. |
 | `AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS` | Cache projekce; `0` uplatní suspendaci při dalším požadavku. Nikdy nepřekročí expiraci tokenu. |
 
 `AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=mock`.
 Produkční start navíc odmítne chybějící STRATOS projection/policy endpointy,
 runtime credential, trusted service allowlist nebo route grants.
+
+Produkční minimum pro navazující AIIP ingestion je
+`svc-ingestion=authz|audit|documents-read|ingestion-status`.
+`ingestion-status` mapuje pouze přesný write endpoint
+`/documents/{document_id}/external-references/current`; AIIP reference na něm
+smí změnit jen job/status pro už potvrzenou current verzi. `aiip-service` musí
+zůstat pouze na `aiip-upload`. Interaktivní actor získává
+document/version/action proof přímo z Registry; `svc-ingestion` smí proof pouze
+potvrdit a technicky synchronizovat autoritativní attempt, nikdy si nesmí
+zkonstruovat oprávnění za cizí subject.
 
 ## API
 
@@ -81,22 +96,35 @@ GET    /api/v1/documents/{document_id}
 PATCH  /api/v1/documents/{document_id}
 DELETE /api/v1/documents/{document_id}
 
+POST   /api/v1/integrations/aiip-upload/external-documents/upsert
+PUT    /api/v1/integrations/aiip-upload/documents/{document_id}/versions
+PATCH  /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current
+
 GET    /api/v1/documents/{document_id}/assignments
 PUT    /api/v1/documents/{document_id}/assignments
 
 POST   /api/v1/documents/{document_id}/versions
 GET    /api/v1/documents/{document_id}/versions
 GET    /api/v1/documents/{document_id}/versions/{version_id}
+POST   /api/v1/documents/{document_id}/versions/{version_id}/ingestion-authorization
 POST   /api/v1/documents/{document_id}/versions/{version_id}/publish
 POST   /api/v1/documents/{document_id}/versions/{version_id}/archive
 GET    /api/v1/documents/{document_id}/versions/{version_id}/publication
 PUT    /api/v1/documents/{document_id}/versions/{version_id}/publication
+GET    /api/v1/documents/{document_id}/external-references/current
+PATCH  /api/v1/documents/{document_id}/external-references/current
+
+GET    /api/v1/integrations/ingestion/readiness
+POST   /api/v1/integrations/ingestion/authorizations/confirm
+POST   /api/v1/integrations/ingestion/intelligence-authorizations/confirm
 
 GET    /api/v1/public/documents/{public_slug}
 GET    /api/v1/internal/public/documents/{public_slug}/source
 
 POST   /api/v1/authz/check
 POST   /api/v1/authz/filter-documents
+
+POST   /api/v1/intelligence/authorization
 
 GET    /api/v1/intelligence/cases
 POST   /api/v1/intelligence/cases
@@ -121,6 +149,26 @@ GET    /ready
 ```
 
 OpenAPI kontrakt je v `openapi.yaml` a runtime OpenAPI je dostupné jako `/openapi.json`.
+
+Ingestion authorization není odvozena pouze z oprávnění ke kořeni dokumentu.
+Registry vyhodnotí centrální rozhodnutí pro kořen i přesnou registrovanou
+immutable verzi a proof sváže s organization, version
+governed-resource/source, přesným governed parentem, policy binding
+id/version/hash a canonical governance-scope hashem. Confirmation jako
+`svc-ingestion` autoritu verze znovu načte; jakýkoli drift fail-closed.
+
+### Autoritativní ingestion attempt
+
+Alembic `0018_ingestion_attempts` vytváří jeden CAS záznam na dokument. Váže
+`document_id`, verzi téhož dokumentu, globálně unikátní job id a stav
+`QUEUED|INGESTING|INDEXED|FAILED`. První claim, retry i terminal sync se provádí
+pod row lockem; aktivní `INGESTING` lease nelze převzít. Migrace backfilluje jen
+jednoznačný stav z external references a při částečných, konfliktních nebo
+neplatných legacy hodnotách skončí chybou před spuštěním nového runtime.
+
+Migrace je forward-only. Produkce musí před `alembic upgrade head` projít
+immutable release backupem, po upgradu prokázat jediný head a readiness a při
+selhání použít reviewed descendant forward-fix; žádný downgrade/reset.
 
 ### Skutečně veřejné dokumenty
 

@@ -37,6 +37,103 @@ function documentFixture(documentId: string) {
 }
 
 describe("production API clients", () => {
+  it("issues an actor-bound ingestion authorization for an exact document version", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        authorization_token: "registry-proof-token",
+        authorization_id: "iauth_test",
+        confirmed_subject_id: "user_1",
+        action: "document.ingest",
+        document_id: "doc_1",
+        document_version_id: "ver_1",
+        correlation_id: "corr_test",
+        idempotency_key: "controlled:ver_1",
+        expires_at: "2026-07-14T12:00:00Z",
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({
+      subjectId: "user_1",
+      accessToken: "actor-token",
+      requestId: "corr_test",
+      correlationId: "corr_test",
+    });
+
+    const proof = await clients.registry.createIngestionAuthorization(
+      "doc_1",
+      "ver_1",
+      {
+        action: "document.ingest",
+        correlation_id: "corr_test",
+        idempotency_key: "controlled:ver_1",
+      },
+      context,
+    );
+
+    assert.equal(proof.confirmed_subject_id, "user_1");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents/doc_1/versions/ver_1/ingestion-authorization",
+    );
+    assert.equal((calls[0][1]?.headers as Headers).get("Authorization"), "Bearer actor-token");
+  });
+
+  it("sends the Registry proof only with the exact delegated ingestion create", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        job_id: "ing_test",
+        document_id: "doc_1",
+        document_version_id: "ver_1",
+        status: "queued",
+        parser_profile: "controlled_document",
+        ocr_enabled: true,
+        chunking_strategy: "legal_structured",
+        embedding_profile: "default",
+        created_at: "2026-07-14T10:00:00Z",
+        started_at: null,
+        finished_at: null,
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    await clients.ingestion.createJob(
+      {
+        idempotency_key: "controlled:ver_1",
+        document_id: "doc_1",
+        document_version_id: "ver_1",
+        source_file_uri: "s3://akl/doc_1/ver_1.pdf",
+        parser_profile: "controlled_document",
+        ocr_enabled: true,
+        chunking_strategy: "legal_structured",
+        embedding_profile: "default",
+      },
+      createMockContext({
+        subjectId: "service-account-svc-akb-web-ingestion",
+        roles: ["service_akb_web_ingestion"],
+        serviceClientId: "svc-akb-web-ingestion",
+        accessToken: "transport-token",
+        requestId: "corr_test",
+        correlationId: "corr_test",
+      }),
+      {
+        delegatedActorSubjectId: "user_1",
+        authorizationToken: "registry-proof-token-with-bounded-length-123",
+      },
+    );
+
+    const headers = calls[0][1]?.headers as Headers;
+    assert.equal(calls[0][0], "https://ingestion.local/api/v1/ingestion/jobs");
+    assert.equal(headers.get("Authorization"), "Bearer transport-token");
+    assert.equal(headers.get("X-AKL-On-Behalf-Of"), "user_1");
+    assert.equal(
+      headers.get("X-AKL-Ingestion-Authorization"),
+      "registry-proof-token-with-bounded-length-123",
+    );
+  });
+
   it("uses service base URLs and required request headers", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {
@@ -228,6 +325,7 @@ describe("production API clients", () => {
 
     const clients = createApiClients({ env, fetcher });
     const report = await clients.ingestion.getEntityFacets(createMockContext(), {
+      ...intelligenceScope(),
       limit: 8,
       valueLimit: 4
     });
@@ -236,9 +334,18 @@ describe("production API clients", () => {
     assert.equal(report.entity_groups[0]?.values[0]?.key, "RMO12/2024");
     assert.equal(
       calls[0][0],
-      "https://ingestion.local/api/v1/intelligence/entities/facets?limit=8&value_limit=4"
+      "https://ingestion.local/api/v1/intelligence/entities/facets/query"
     );
-    assert.equal(calls[0][1]?.method, "GET");
+    assert.equal(calls[0][1]?.method, "POST");
+    assert.equal(
+      (calls[0][1]?.headers as Headers).get("X-AKL-Intelligence-Authorization"),
+      intelligenceScope().authorizationToken,
+    );
+    assert.deepEqual(JSON.parse(String(calls[0][1]?.body)), {
+      authorized_documents: intelligenceScope().authorizedDocuments,
+      limit: 8,
+      value_limit: 4,
+    });
   });
 
   it("posts analyst search requests to the Ingestion API", async () => {
@@ -283,10 +390,14 @@ describe("production API clients", () => {
         query: "title:RMO AND entity:RMO12/2024",
         query_mode: "fielded",
         search_fields: ["title", "entity"],
-        allowed_document_ids: ["doc_109"],
+        allowed_document_ids: ["doc_untrusted_caller_filter"],
+        allowed_policy_hashes: {
+          doc_untrusted_caller_filter: [`sha256:${"f".repeat(64)}`],
+        },
         limit: 3
       },
-      createMockContext()
+      createMockContext(),
+      intelligenceScope(),
     );
 
     assert.equal(report.status, "ready");
@@ -298,6 +409,10 @@ describe("production API clients", () => {
       query_mode: "fielded",
       search_fields: ["title", "entity"],
       allowed_document_ids: ["doc_109"],
+      allowed_policy_hashes: {
+        doc_109: [intelligenceScope().authorizedDocuments[0].policy_hash],
+      },
+      authorized_documents: intelligenceScope().authorizedDocuments,
       limit: 3
     });
   });
@@ -1064,3 +1179,18 @@ describe("production API clients", () => {
     assert.equal((calls[0][1]?.headers as Headers).get("Authorization"), "Bearer test-token");
   });
 });
+
+function intelligenceScope() {
+  return {
+    authorizationToken: "registry-intelligence-proof-token-long-enough",
+    idempotencyKey: "intelligence:test-proof",
+    correlationId: "corr_intelligence_test",
+    authorizedDocuments: [
+      {
+        document_id: "doc_109",
+        document_version_id: "ver_109_1",
+        policy_hash: `sha256:${"a".repeat(64)}`,
+      },
+    ],
+  };
+}

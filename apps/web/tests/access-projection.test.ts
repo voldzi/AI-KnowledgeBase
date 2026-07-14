@@ -10,7 +10,7 @@ const NOW = 1_000_000;
 describe("STRATOS access projection", () => {
   beforeEach(() => resetAccessProjectionCacheForTests());
 
-  it("uses only AKB capabilities and scopes returned by STRATOS", async () => {
+  it("uses only AKB capabilities and effective scopes returned by STRATOS", async () => {
     const token = jwt({
       sub: "user-123",
       exp: 2_000,
@@ -25,7 +25,8 @@ describe("STRATOS access projection", () => {
         applicationAccess: [{
           application: "AKB",
           capabilities: ["akb:chat"],
-          scopes: [{ type: "organization", id: "org_stratos" }],
+          scopes: [{ type: "project", id: "inactive-or-orphaned" }],
+          effectiveScopes: [{ type: "organization", id: "org_stratos" }],
         }],
       }),
       NOW,
@@ -46,7 +47,7 @@ describe("STRATOS access projection", () => {
     const fetcher: typeof fetch = async () => Response.json({
       tenantId: "org_stratos",
       applicationAccess: active
-        ? [{ application: "akb", capabilities: ["akb:chat"], scopes: [] }]
+        ? [{ application: "akb", capabilities: ["akb:chat"], scopes: [], effectiveScopes: [] }]
         : [],
     });
 
@@ -57,6 +58,26 @@ describe("STRATOS access projection", () => {
     assert.equal(first.applicationAccessActive, true);
     assert.equal(second.applicationAccessActive, false);
     assert.deepEqual(second.capabilities, []);
+  });
+
+  it("never falls back to raw administrative scope grants", async () => {
+    const token = jwt({ sub: "user-123", exp: 2_000 });
+    const context = await contextFromStratosAccessProjection(
+      token,
+      config(),
+      async () => Response.json({
+        tenantId: "org_stratos",
+        applicationAccess: [{
+          application: "akb",
+          capabilities: ["akb:read_document"],
+          scopes: [{ type: "organization", id: "org_stratos" }],
+        }],
+      }),
+      NOW,
+    );
+
+    assert.deepEqual(context.scopes, []);
+    assert.equal(context.applicationAccessActive, true);
   });
 
   it("fails closed when projection is unavailable or malformed", async () => {

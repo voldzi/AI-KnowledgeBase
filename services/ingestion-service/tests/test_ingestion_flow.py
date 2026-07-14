@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_client
+from tests.conftest import actor_proof_headers, make_client, web_transport_headers
 
 
 BLANK_PDF = (
@@ -44,7 +44,12 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
         client.app.state.registry.update_external_document_current = track_external_status
         response = client.post(
             "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
             json={
+                "idempotency_key": "test:text-ingestion",
                 "document_id": "doc_123",
                 "document_version_id": "ver_456",
                 "source_file_uri": str(source),
@@ -52,12 +57,19 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
                 "ocr_enabled": True,
                 "chunking_strategy": "legal_structured",
                 "embedding_profile": "default",
+                "expected_current_ingestion_job_id": None,
             },
         )
 
         body = response.json()
-        report = client.get(f"/api/v1/ingestion/jobs/{body['job_id']}/report")
-        job = client.get(f"/api/v1/ingestion/jobs/{body['job_id']}")
+        report = client.get(
+            f"/api/v1/ingestion/jobs/{body['job_id']}/report",
+            headers=actor_proof_headers(),
+        )
+        job = client.get(
+            f"/api/v1/ingestion/jobs/{body['job_id']}",
+            headers=actor_proof_headers(),
+        )
         jobs = client.get("/api/v1/ingestion/jobs")
         points = client.app.state.indexer.mock_points
 
@@ -112,7 +124,12 @@ def test_ocr_sidecar_fallback_marks_warning(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         response = client.post(
             "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
             json={
+                "idempotency_key": "test:ocr-sidecar",
                 "document_id": "doc_ocr",
                 "document_version_id": "ver_ocr",
                 "source_file_uri": str(source),
@@ -120,9 +137,13 @@ def test_ocr_sidecar_fallback_marks_warning(tmp_path: Path) -> None:
                 "ocr_enabled": True,
                 "chunking_strategy": "legal_structured",
                 "embedding_profile": "default",
+                "expected_current_ingestion_job_id": None,
             },
         )
-        report = client.get(f"/api/v1/ingestion/jobs/{response.json()['job_id']}/report")
+        report = client.get(
+            f"/api/v1/ingestion/jobs/{response.json()['job_id']}/report",
+            headers=actor_proof_headers(),
+        )
 
     assert response.status_code == 201
     assert response.json()["status"] == "completed_with_warnings"
@@ -155,15 +176,24 @@ def test_ocrmypdf_pdf_fallback_records_quality_metadata(tmp_path: Path, monkeypa
     with make_client(tmp_path, {"AKL_INGESTION_OCR_PROVIDER": "ocrmypdf"}) as client:
         response = client.post(
             "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
             json={
+                "idempotency_key": "test:ocr-pdf",
                 "document_id": "doc_pdf_ocr",
                 "document_version_id": "ver_pdf_ocr",
                 "source_file_uri": str(source),
                 "parser_profile": "controlled_document",
                 "ocr_enabled": True,
+                "expected_current_ingestion_job_id": None,
             },
         )
-        report = client.get(f"/api/v1/ingestion/jobs/{response.json()['job_id']}/report")
+        report = client.get(
+            f"/api/v1/ingestion/jobs/{response.json()['job_id']}/report",
+            headers=actor_proof_headers(),
+        )
         payload = client.app.state.indexer.mock_points[0]["payload"]
 
     assert response.status_code == 201
@@ -192,15 +222,24 @@ def test_pdf_ingestion_uses_layout_parser_metadata(tmp_path: Path) -> None:
     with make_client(tmp_path, {"AKL_INGESTION_PDF_ENGINE": "pymupdf"}) as client:
         response = client.post(
             "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
             json={
+                "idempotency_key": "test:pdf-layout",
                 "document_id": "doc_pdf",
                 "document_version_id": "ver_pdf",
                 "source_file_uri": str(source),
                 "extraction_profile": "layout_text_v1",
+                "expected_current_ingestion_job_id": None,
             },
         )
         body = response.json()
-        report = client.get(f"/api/v1/ingestion/jobs/{body['job_id']}/report")
+        report = client.get(
+            f"/api/v1/ingestion/jobs/{body['job_id']}/report",
+            headers=actor_proof_headers(),
+        )
         payload = client.app.state.indexer.mock_points[0]["payload"]
 
     assert response.status_code == 201
@@ -213,25 +252,29 @@ def test_pdf_ingestion_uses_layout_parser_metadata(tmp_path: Path) -> None:
     assert payload["metadata"]["extraction_profile"] == "layout_text_v1"
 
 
-def test_authz_denial_is_stored_in_report(tmp_path: Path) -> None:
+def test_authz_denial_happens_before_durable_runnable_job(tmp_path: Path) -> None:
     source = tmp_path / "policy.txt"
     source.write_text("Document text that would otherwise be processed into a chunk.", encoding="utf-8")
 
     with make_client(tmp_path, {"AKL_INGESTION_REGISTRY_MOCK_ALLOW": "false"}) as client:
         response = client.post(
             "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
             json={
+                "idempotency_key": "test:authz-denied",
                 "document_id": "doc_denied",
                 "document_version_id": "ver_denied",
                 "source_file_uri": str(source),
             },
         )
-        report = client.get(f"/api/v1/ingestion/jobs/{response.json()['job_id']}/report")
+        stored_jobs = client.app.state.store.list()
 
-    assert response.status_code == 201
-    assert response.json()["status"] == "failed"
-    assert report.json()["status"] == "failed"
-    assert report.json()["errors"][0]["code"] == "AUTHZ_DENIED"
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "AUTHZ_DENIED"
+    assert stored_jobs == []
 
 
 def test_cancel_queued_job(tmp_path: Path) -> None:
@@ -241,17 +284,30 @@ def test_cancel_queued_job(tmp_path: Path) -> None:
     with make_client(tmp_path, {"AKL_INGESTION_PROCESS_JOBS_INLINE": "false"}) as client:
         created = client.post(
             "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
             json={
+                "idempotency_key": "test:cancel-queued",
                 "document_id": "doc_queue",
                 "document_version_id": "ver_queue",
                 "source_file_uri": str(source),
+                "expected_current_ingestion_job_id": None,
             },
         )
-        cancelled = client.post(f"/api/v1/ingestion/jobs/{created.json()['job_id']}/cancel")
-        report = client.get(f"/api/v1/ingestion/jobs/{created.json()['job_id']}/report")
+        cancelled = client.post(
+            f"/api/v1/ingestion/jobs/{created.json()['job_id']}/cancel",
+            headers=actor_proof_headers(),
+        )
+        report = client.get(
+            f"/api/v1/ingestion/jobs/{created.json()['job_id']}/report",
+            headers=actor_proof_headers(),
+        )
 
     assert created.json()["status"] == "queued"
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
-    assert report.status_code == 404
-    assert report.json()["error"]["code"] == "REPORT_NOT_READY"
+    assert report.status_code == 200
+    assert report.json()["status"] == "cancelled"
+    assert report.json()["errors"][0]["code"] == "JOB_CANCELLED"

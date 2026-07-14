@@ -33,8 +33,11 @@ Run the baseline smoke tests:
 
 ```bash
 python3 scripts/phase_02_llm_gateway_smoke.py
-python3 scripts/phase_02_controlled_document_smoke.py
 ```
+
+The mutating `phase_01_smoke.py` and
+`phase_02_controlled_document_smoke.py` flows are retired in every profile.
+Exercise document mutation through the governed application UI/API.
 
 For host-level Ollama or mock/dev-test overrides, follow `docs/deployment/llm-profiles.md`.
 

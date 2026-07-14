@@ -165,7 +165,7 @@ def test_financial_area_scope_isolates_it_from_logistics(client, db_session) -> 
         headers=v2_headers(
             subject="user_owner",
             capabilities="akb:upload,akb:manage_document",
-            scopes="organization",
+            scopes="organization,organization_unit:it",
         ),
         json={
             "version_label": "1.0",
@@ -237,9 +237,115 @@ def test_tlp_red_requires_explicit_recipient(client) -> None:
 
     allowed = client.get(
         f"/api/v1/documents/{document_id}",
-        headers=v2_headers(subject="user_recipient", capabilities="akb:read_document", scopes="recipient_set"),
+        headers=v2_headers(
+            subject="user_recipient",
+            capabilities="akb:read_document",
+            scopes="organization",
+        ),
     )
     assert allowed.status_code == 200
+
+
+def test_own_governed_scope_is_immutable_and_bound_to_canonical_owner(client) -> None:
+    binding = policy(scope_type="recipient_set")
+    binding["audience"]["recipientSubjectIds"] = ["user_owner"]
+    created = client.post(
+        "/api/v1/documents",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document,akb:read_document",
+            scopes="own",
+        ),
+        json={
+            "title": "Private owner document",
+            "document_type": "contract",
+            "owner_id": "user_owner",
+            "classification": "internal",
+            "information_policy": binding,
+            "governance_scope": {
+                "type": "own",
+                "ownerSubjectId": "user_owner",
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["governance_scope_type"] == "own"
+    assert body["governance_scope_id"] is None
+    assert body["governance_scope_owner_subject_id"] == "user_owner"
+
+    owner = client.get(
+        f"/api/v1/documents/{body['document_id']}",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:read_document",
+            scopes="own",
+        ),
+    )
+    assert owner.status_code == 200, owner.text
+
+    other_own = client.get(
+        f"/api/v1/documents/{body['document_id']}",
+        headers=v2_headers(
+            subject="user_other",
+            capabilities="akb:read_document",
+            scopes="own",
+        ),
+    )
+    organization_admin = client.get(
+        f"/api/v1/documents/{body['document_id']}",
+        headers=v2_headers(
+            subject="user_admin",
+            capabilities="akb:read_document",
+            scopes="organization",
+        ),
+    )
+    assert other_own.status_code == 403
+    assert organization_admin.status_code == 403
+
+    version = client.post(
+        f"/api/v1/documents/{body['document_id']}/versions",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document",
+            scopes="own",
+        ),
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/private/owner.pdf",
+            "file_hash": f"sha256:{'f' * 64}",
+        },
+    )
+    assert version.status_code == 201, version.text
+    assert version.json()["governance_scope_type"] == "own"
+    assert version.json()["governance_scope_owner_subject_id"] == "user_owner"
+
+
+def test_own_governed_scope_rejects_forged_owner(client) -> None:
+    binding = policy(scope_type="recipient_set")
+    binding["audience"]["recipientSubjectIds"] = ["user_victim"]
+    response = client.post(
+        "/api/v1/documents",
+        headers=v2_headers(
+            subject="user_attacker",
+            capabilities="akb:upload,akb:manage_document",
+            scopes="own",
+        ),
+        json={
+            "title": "Forged private document",
+            "document_type": "contract",
+            "owner_id": "user_attacker",
+            "classification": "internal",
+            "information_policy": binding,
+            "governance_scope": {
+                "type": "own",
+                "ownerSubjectId": "user_victim",
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "governance_scope_owner_mismatch"
 
 
 def test_stale_or_revoked_vector_version_is_filtered(client, db_session) -> None:

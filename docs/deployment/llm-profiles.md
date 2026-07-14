@@ -180,7 +180,8 @@ Then rerun ingestion.
 
 ```bash
 python3 scripts/phase_02_llm_gateway_smoke.py
-python3 scripts/phase_02_controlled_document_smoke.py
 ```
 
-The controlled document smoke test should report Qdrant points, a cited chunk, and audit events.
+The legacy controlled-document mutation smoke is retired in every profile.
+Create the test document through the governed application UI/API, then verify
+Qdrant points, a cited chunk, and audit events read-only.

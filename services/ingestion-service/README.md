@@ -36,9 +36,11 @@ GET  /api/v1/ingestion/jobs/{job_id}/report
 POST /api/v1/ingestion/jobs/{job_id}/cancel
 POST /api/v1/ingestion/reindex
 GET  /api/v1/intelligence/entities/facets
+POST /api/v1/intelligence/entities/facets/query
 POST /api/v1/intelligence/analyst/search
 POST /api/v1/intelligence/entities/search
 POST /api/v1/intelligence/entities/relationships
+GET  /api/v1/integrations/web-ingestion/readiness
 
 GET  /health
 GET  /ready
@@ -71,10 +73,16 @@ curl http://localhost:8090/ready
 | `AKL_ENV` | `development`, `test`, nebo `production`. |
 | `AKL_AUTH_MODE` | `disabled`, `mock`, `bearer`, nebo `oidc`; produkce odmítá `disabled` a `mock`. |
 | `AKL_SERVICE_TOKEN` | Očekávaný inbound bearer token při `AKL_AUTH_MODE=bearer`. |
-| `AKL_SERVICE_ACCOUNT_SUBJECT` | Fallback subject pro mezislužbová volání bez caller tokenu. |
-| `AKL_SERVICE_ACCOUNT_ROLES` | Fallback role pro mezislužbová volání bez caller tokenu. |
+| `AKL_SERVICE_ACCOUNT_SUBJECT` | Vlastní service subject ingestion; v produkci se shoduje s Registry client id. |
+| `AKL_SERVICE_ACCOUNT_ROLES` | Vlastní role ingestion pro lokální service identity a LLM Gateway. |
+| `AKL_INGESTION_WEB_CLIENT_ID` | Jediný produkční client oprávněný k interaktivnímu job transportu; `svc-akb-web-ingestion`. |
+| `AKL_INGESTION_WEB_ROLE` | Povinná přesná role web transportu; `service_akb_web_ingestion`. |
 | `AKL_INGESTION_REGISTRY_CLIENT_MODE` | `http` nebo `mock`. |
 | `AKL_REGISTRY_API_BASE_URL` | Base URL Registry API. |
+| `AKL_REGISTRY_SERVICE_TOKEN_URL` | OIDC token endpoint pro vlastní krátkodobý Registry bearer; v produkci povinně HTTPS. |
+| `AKL_REGISTRY_SERVICE_CLIENT_ID` | Vlastní důvěryhodný Registry client id; produkční hodnota je `svc-ingestion`. |
+| `AKL_REGISTRY_SERVICE_CLIENT_SECRET` | Client secret jen pro lokální/test profil; neukládat do repozitáře. |
+| `AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE` | Preferovaný read-only secret file pro produkční Registry client credentials. |
 | `AKL_INGESTION_OBJECT_STORAGE_MODE` | `local`, `http`, nebo `mock`. |
 | `AKL_OBJECT_STORAGE_ROOT` | Root pro lokální mapování `s3://bucket/key`. |
 | `AKL_INGESTION_OCR_PROVIDER` | `disabled`, `sidecar`, `tesseract`, nebo `ocrmypdf`. |
@@ -95,20 +103,53 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_JOB_STORE_PATH` | Lokální adresář pro job/report JSON záznamy. |
 | `AKL_INGESTION_PROCESS_JOBS_INLINE` | `true` zpracuje job v requestu; `false` pouze uloží queued job pro budoucí worker. |
 
-`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem.
+`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem. Odmítne také chybějící/neúplnou Registry client-credentials trojici, client id jiné než vlastní service subject a pokus použít `aiip-service` jako ingestion transport.
 
-V `AKL_AUTH_MODE=oidc` služba ověří podpis, issuer a audience bearer JWT a
-caller token používá pro dokumentovou autorizaci vůči Registry API. Capability,
-scope a active hodnoty z tokenu nebo `X-STRATOS-*` hlaviček v OIDC režimu
-ignoruje; autoritativní projekci načítá Registry ze STRATOS. Embedding volání
-je oddělené: vždy používá `AKL_LLM_GATEWAY_TOKEN`, subject
+V `AKL_AUTH_MODE=oidc` služba ověří podpis, issuer, audience a přesnou strojovou
+identitu. Interaktivní job create/read/cancel přijímá jen
+`svc-akb-web-ingestion` s rolí `service_akb_web_ingestion`; osobní bearer se do
+Ingestion ani Registry nikdy nepřeposílá. Web předává pouze subject svázaný s
+krátkodobým Registry proofem. Ingestion tento proof potvrzuje jako
+`svc-ingestion`; shodovat se musí actor, action, document/version, correlation
+id a idempotency key. Teprve potvrzený subject se smí stát auditním kontextem.
+
+Každý technický Registry request včetně readiness, proof confirmation, čtení
+dokumentu/verze, attempt CAS, terminal outbox synchronizace a auditu používá
+vlastní krátkodobý bearer z client-credentials flow pro `svc-ingestion`; token
+je procesově cachovaný nejdéle do bezpečného okamžiku před JWT expirací a po
+401 se jednou obnoví. Capability, scope a active hodnoty z caller tokenu nebo
+`X-STRATOS-*` hlaviček v OIDC režimu nejsou autoritou. Embedding volání je oddělené: vždy používá
+`AKL_LLM_GATEWAY_TOKEN`, subject
 `AKL_SERVICE_ACCOUNT_SUBJECT`, role `AKL_SERVICE_ACCOUNT_ROLES` a audience
 `AKL_LLM_GATEWAY_AUDIENCE`. Původní caller se předává pouze jako auditní
-`X-AKL-On-Behalf-Of`, nikdy jako gateway credential. Audit write preferuje
-`AKL_SERVICE_ACCOUNT_TOKEN`, pokud je nastavený, jinak použije caller token.
-Stejný caller kontext se používá pro synchronizaci external-document lifecycle;
-Registry tím znovu ověří `document.ingest` a zapíše `INGESTING`, `INDEXED` nebo
-`FAILED` spolu s aktuálním job id.
+`X-AKL-On-Behalf-Of`, nikdy jako gateway credential. Registry povoluje
+`svc-ingestion` jen route families `authz`, `audit`, `documents-read` a
+`ingestion-status`; poslední family odpovídá pouze přesnému status endpointu.
+Synchronizace musí uvést už dedikovaně potvrzenou immutable verzi a smí přes
+autoritativní compare-and-swap měnit jen job id/stav `QUEUED`, `INGESTING`,
+`INDEXED` nebo `FAILED`, nikoli soubor, URI nebo source lineage. Aktivní
+`INGESTING` lease blokuje takeover jiným jobem.
+
+## Durable Job Lifecycle
+
+Job id je deterministický z web client namespace a idempotency key. Durable
+záznam obsahuje kanonický request hash, přesný transport client, potvrzený actor
+subject a Registry authorization id. Neúplný legacy záznam se karanténuje a
+nesmí se vykonat.
+
+Lokální stav postupuje přes `pending_authorization`, `claiming`, `queued`,
+`starting`, `running` a terminal state. Zdrojový soubor, embedding ani indexer
+se nesmí dotknout dat před potvrzeným Registry claimem a následným
+`INGESTING` lease. Terminal job, report a případný pending Registry outbox se
+zapíší jedním atomickým fsyncnutým store přechodem. Recovery získá per-job run
+lock, vykonává jen záznamy s úplnou autorizační lineage a při neznámém výsledku
+transportu nejprve znovu ověří Registry stav. Neznámý claim není povolení ke
+spuštění.
+
+Cancel je povolen jen před aktivním execution lease a vyžaduje nový exact
+`document.ingest` proof. Běžící job vrací konflikt; terminální cancel se do
+Registry dorovná jako auditovatelný `FAILED` důvod, aby nezůstal věčný
+`QUEUED`/`INGESTING` lease.
 
 ## Object Storage
 
@@ -194,19 +235,22 @@ vytváří idempotentně s českým analyzérem, asciifoldingem a stemmingem. U
 existujícího indexu služba idempotentně zajišťuje mapping pro `entity_types`,
 `entity_values` a `entity_pairs`.
 
-Read-only endpoint `GET /api/v1/intelligence/entities/facets` vrací agregace
-entit z OpenSearch indexu pro Intelligence Workbench. Endpoint je servisně
-autentizovaný stejně jako ostatní ingestion API a nevrací text dokumentů ani
-embeddingy. Existující dokumenty získají nová entity metadata až po reingestu
+Read-only endpoint `GET /api/v1/intelligence/entities/facets` je pouze lokální
+mock/disabled provozní kontrakt. Produkce používá
+`POST /api/v1/intelligence/entities/facets/query` s exact Registry proofem a
+document/version/policy-hash souřadnicemi. Stejný proof contract platí pro
+search, analyst search a relationships. Ingestion jej před OpenSearch dotazem
+potvrdí přes Registry; samotné `allowed_document_ids`, policy hashe nebo JWT
+role nejsou autorita. Endpointy nevrací embeddingy a facet odpověď nevrací text
+dokumentů. Existující dokumenty získají nová entity metadata až po reingestu
 nebo backfillu chunk indexů.
 
 Read-only endpoint `POST /api/v1/intelligence/analyst/search` poskytuje
 pokročilé OpenSearch hledání nad autorizovanými chunk payloady. Podporované
 režimy jsou `smart` (BM25 s fuzziness), `boolean`, `phrase`, `proximity` a
 `fielded`. Fielded dotazy přijímají aliasy `title:`, `body:`, `section:`,
-`entity:`, `source:`, `type:` a `class:`. Volající musí předat
-`allowed_document_ids`; web bridge je získává z Registry API a výsledky ještě
-jednou filtruje před odesláním do browseru.
+`entity:`, `source:`, `type:` a `class:`. Web bridge předává pouze Registry
+potvrzenou množinu; výsledky ještě jednou filtruje před odesláním do browseru.
 
 Existující OpenSearch chunky lze doplnit bez reingestu zdrojových dokumentů:
 
@@ -255,10 +299,20 @@ X-AKL-On-Behalf-Of
 
 Služba přes Registry API volá:
 
-- `POST /api/v1/authz/check`
+- `GET /api/v1/integrations/ingestion/readiness`
+- `POST /api/v1/integrations/ingestion/authorizations/confirm`
+- `POST /api/v1/integrations/ingestion/intelligence-authorizations/confirm`
 - `GET /api/v1/documents/{document_id}`
 - `GET /api/v1/documents/{document_id}/versions/{version_id}`
+- `GET /api/v1/documents/{document_id}/external-references/current`
+- `PATCH /api/v1/documents/{document_id}/external-references/current` (attempt CAS/status-only)
 - `POST /api/v1/audit/events`
+
+Všechny uvedené cesty používají vlastní `svc-ingestion` bearer. Osobní/AIIP
+caller bearer se neobjeví v Ingestion ani generic Registry transportu. `/ready`
+je samo autentizované a vrátí HTTP `503` s `registry=not_ready`, pokud nelze
+získat nebo použít vlastní Registry service identity. Deploy používá interní
+`python -m app.readiness_probe`; anonymní `/ready` není podporovaný smoke.
 
 Technické logy obsahují ID jobu, dokumentu/verze, počty chunků, status a latenci. Nelogují obsah dokumentů, embedding input texty, tokeny ani secrets.
 

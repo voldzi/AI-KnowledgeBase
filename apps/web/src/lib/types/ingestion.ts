@@ -1,5 +1,8 @@
 export type IngestionStatus =
+  | "pending_authorization"
+  | "claiming"
   | "queued"
+  | "starting"
   | "running"
   | "completed"
   | "failed"
@@ -21,6 +24,7 @@ export interface IngestionJob {
 }
 
 export interface CreateIngestionJobRequest {
+  idempotency_key: string;
   document_id: string;
   document_version_id: string;
   source_file_uri: string;
@@ -28,6 +32,73 @@ export interface CreateIngestionJobRequest {
   ocr_enabled: boolean;
   chunking_strategy: IngestionJob["chunking_strategy"];
   embedding_profile: string;
+  expected_current_ingestion_job_id?: string | null;
+}
+
+export interface IngestionAuthorizationOptions {
+  delegatedActorSubjectId: string;
+  authorizationToken: string;
+}
+
+export type IngestionCreateOptions = IngestionAuthorizationOptions;
+
+export interface RegistryIngestionAttempt {
+  document_id: string;
+  document_version_id: string;
+  ingestion_job_id: string;
+  ingestion_status: "QUEUED" | "INGESTING" | "INDEXED" | "FAILED";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IngestionAuthorizationRequest {
+  action: "document.ingest" | "document.read" | "document.reindex";
+  correlation_id: string;
+  idempotency_key: string;
+}
+
+export interface IngestionAuthorizationResponse {
+  authorization_token: string;
+  authorization_id: string;
+  confirmed_subject_id: string;
+  action: "document.ingest" | "document.read" | "document.reindex";
+  document_id: string;
+  document_version_id: string;
+  correlation_id: string;
+  idempotency_key: string;
+  expires_at: string;
+}
+
+export interface IntelligenceScopeAuthorizationRequest {
+  document_ids: string[];
+  correlation_id: string;
+  idempotency_key: string;
+}
+
+export interface IntelligenceDocumentCoordinate {
+  document_id: string;
+  document_version_id: string;
+  policy_hash: string;
+}
+
+export interface IntelligenceScopeAuthorizationResponse {
+  authorization_token: string;
+  authorization_id: string;
+  confirmed_subject_id: string;
+  action: "intelligence.query";
+  document_scope_hash: string;
+  document_count: number;
+  documents: IntelligenceDocumentCoordinate[];
+  correlation_id: string;
+  idempotency_key: string;
+  expires_at: string;
+}
+
+export interface IntelligenceScopeAuthorizationOptions {
+  authorizationToken: string;
+  idempotencyKey: string;
+  correlationId: string;
+  authorizedDocuments: IntelligenceDocumentCoordinate[];
 }
 
 export interface IngestionReportMessage {
@@ -80,6 +151,7 @@ export interface EntitySearchRequest {
   status?: string | null;
   allowed_document_ids?: string[];
   allowed_policy_hashes?: Record<string, string[]>;
+  authorized_documents?: IntelligenceDocumentCoordinate[];
   limit?: number;
 }
 
@@ -131,6 +203,7 @@ export interface AnalystSearchRequest {
   status?: string | null;
   allowed_document_ids?: string[];
   allowed_policy_hashes?: Record<string, string[]>;
+  authorized_documents?: IntelligenceDocumentCoordinate[];
   limit?: number;
 }
 
@@ -153,6 +226,7 @@ export interface EntityRelationshipRequest {
   status?: string | null;
   allowed_document_ids?: string[];
   allowed_policy_hashes?: Record<string, string[]>;
+  authorized_documents?: IntelligenceDocumentCoordinate[];
   min_evidence_count?: number;
   limit?: number;
 }

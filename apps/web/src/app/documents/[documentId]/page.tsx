@@ -4,7 +4,12 @@ import { PageHeader } from "@/components/page-header";
 import { DocumentDetail } from "@/features/documents/document-detail";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { requirePageAccess } from "@/lib/auth/server-route-guard";
-import { ApiClientError } from "@/lib/types";
+import {
+  ApiClientError,
+  type AuditEvent,
+  type RegistryWorkflowTask,
+} from "@/lib/types";
+import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +35,12 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
         throw error;
       }),
       clients.registry.listDocumentVersions(documentId, context),
-      clients.ingestion.listJobs(context),
+      listVisibleIngestionJobs(clients, [{ document_id: documentId }], context),
       clients.registry.getAuthorizationHints(context),
-      clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }).catch(() => []),
-      clients.registry.listAuditEvents(context, { limit: 200 }).catch(() => [])
+      listVisibleWorkflowTasks(
+        clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }),
+      ),
+      listVisibleAuditEvents(clients.registry.listAuditEvents(context, { limit: 200 }))
     ]);
     const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
     const publication = currentVersion
@@ -75,6 +82,24 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
     if (error instanceof ApiClientError && error.status === 404) {
       notFound();
     }
+    throw error;
+  }
+}
+
+async function listVisibleWorkflowTasks(request: Promise<RegistryWorkflowTask[]>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 403) return [];
+    throw error;
+  }
+}
+
+async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 403) return [];
     throw error;
   }
 }

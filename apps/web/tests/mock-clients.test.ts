@@ -31,8 +31,20 @@ describe("mock API clients", () => {
       },
       context
     );
+    const idempotencyKey = `test:${createdVersion.document_version_id}`;
+    const ingestionAuthorization = await clients.registry.createIngestionAuthorization(
+      documents[0].document_id,
+      createdVersion.document_version_id,
+      {
+        action: "document.ingest",
+        correlation_id: context.correlationId ?? context.requestId ?? "mock-correlation",
+        idempotency_key: idempotencyKey,
+      },
+      context,
+    );
     const job = await clients.ingestion.createJob(
       {
+        idempotency_key: idempotencyKey,
         document_id: documents[0].document_id,
         document_version_id: createdVersion.document_version_id,
         source_file_uri: createdVersion.source_file_uri,
@@ -41,7 +53,11 @@ describe("mock API clients", () => {
         chunking_strategy: "legal_structured",
         embedding_profile: "default"
       },
-      context
+      context,
+      {
+        delegatedActorSubjectId: ingestionAuthorization.confirmed_subject_id,
+        authorizationToken: ingestionAuthorization.authorization_token,
+      },
     );
 
     assert.ok(documents.length > 0);
@@ -101,7 +117,7 @@ describe("mock API clients", () => {
     const clients = createApiClients({ env });
     const context = createMockContext();
 
-    const report = await clients.ingestion.getEntityFacets(context);
+    const report = await clients.ingestion.getEntityFacets(context, mockIntelligenceScope());
 
     assert.equal(report.status, "ready");
     assert.ok(report.chunks_with_entities > 0);
@@ -121,7 +137,8 @@ describe("mock API clients", () => {
         allowed_document_ids: ["doc_109"],
         limit: 3
       },
-      context
+      context,
+      mockIntelligenceScope(),
     );
 
     assert.equal(report.status, "ready");
@@ -518,3 +535,18 @@ describe("mock API clients", () => {
     assert.equal(approvedDocument.status, "approved");
   });
 });
+
+function mockIntelligenceScope() {
+  return {
+    authorizationToken: "mock-intelligence-authorization-token-long-enough",
+    idempotencyKey: "intelligence:mock-test",
+    correlationId: "mock-intelligence-correlation",
+    authorizedDocuments: [
+      {
+        document_id: "doc_109",
+        document_version_id: "ver_109_1",
+        policy_hash: `sha256:${"0".repeat(64)}`,
+      },
+    ],
+  };
+}

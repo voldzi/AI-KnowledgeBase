@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -32,6 +32,16 @@ class TimestampMixin:
 
 class Document(Base, TimestampMixin):
     __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint(
+            "(governance_scope_type = 'own' AND governance_scope_id IS NULL "
+            "AND governance_scope_owner_subject_id IS NOT NULL "
+            "AND length(trim(governance_scope_owner_subject_id)) > 0) "
+            "OR (governance_scope_type <> 'own' "
+            "AND governance_scope_owner_subject_id IS NULL)",
+            name="governance_scope_owner_shape",
+        ),
+    )
 
     document_id: Mapped[str] = mapped_column(
         String(64), primary_key=True, default=lambda: make_id("doc")
@@ -58,7 +68,10 @@ class Document(Base, TimestampMixin):
         String(64), nullable=False, default="organization"
     )
     governance_scope_id: Mapped[str | None] = mapped_column(
-        String(160), nullable=True, default="org_stratos"
+        String(160).evaluates_none(), nullable=True, default="org_stratos"
+    )
+    governance_scope_owner_subject_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, index=True
     )
     governance_registration_status: Mapped[str] = mapped_column(
         String(48), nullable=False, default="LEGACY_UNREGISTERED", index=True
@@ -109,7 +122,20 @@ class DocumentVersion(Base):
     __tablename__ = "document_versions"
     __table_args__ = (
         UniqueConstraint("document_id", "version_label", name="uq_document_version_label"),
+        UniqueConstraint(
+            "document_id",
+            "document_version_id",
+            name="uq_document_version_document_identity",
+        ),
         Index("ix_document_versions_document_status", "document_id", "status"),
+        CheckConstraint(
+            "(governance_scope_type = 'own' AND governance_scope_id IS NULL "
+            "AND governance_scope_owner_subject_id IS NOT NULL "
+            "AND length(trim(governance_scope_owner_subject_id)) > 0) "
+            "OR (governance_scope_type <> 'own' "
+            "AND governance_scope_owner_subject_id IS NULL)",
+            name="governance_scope_owner_shape",
+        ),
     )
 
     document_version_id: Mapped[str] = mapped_column(
@@ -136,7 +162,10 @@ class DocumentVersion(Base):
         String(64), nullable=False, default="organization"
     )
     governance_scope_id: Mapped[str | None] = mapped_column(
-        String(160), nullable=True, default="org_stratos"
+        String(160).evaluates_none(), nullable=True, default="org_stratos"
+    )
+    governance_scope_owner_subject_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, index=True
     )
     governance_registration_status: Mapped[str] = mapped_column(
         String(48), nullable=False, default="LEGACY_UNREGISTERED", index=True
@@ -315,6 +344,36 @@ class ExternalDocumentRef(Base, TimestampMixin):
     )
 
     document: Mapped[Document] = relationship(back_populates="external_refs")
+
+
+class IngestionAttempt(Base, TimestampMixin):
+    __tablename__ = "ingestion_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "ingestion_status IN ('QUEUED', 'INGESTING', 'INDEXED', 'FAILED')",
+            name="ck_ingestion_attempt_status",
+        ),
+        ForeignKeyConstraint(
+            ["document_id", "document_version_id"],
+            ["document_versions.document_id", "document_versions.document_version_id"],
+            ondelete="CASCADE",
+            name="fk_ingestion_attempt_document_version",
+        ),
+        Index("ix_ingestion_attempts_job_id", "ingestion_job_id", unique=True),
+        Index("ix_ingestion_attempts_status", "ingestion_status"),
+    )
+
+    document_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("documents.document_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    document_version_id: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    ingestion_job_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    ingestion_status: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 class DocumentExtraction(Base, TimestampMixin):

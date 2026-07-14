@@ -3,6 +3,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
+import { ApiClientError } from "@/lib/types";
 
 type AiipOperation = "harmonize" | "duplicates/search";
 
@@ -11,6 +12,37 @@ type AiipPrincipal = {
   accessToken: string;
   roles: string[];
 };
+
+export async function authenticateAiipServiceRequest(
+  request: Request,
+): Promise<AiipPrincipal> {
+  try {
+    return await authenticateAiipService(request);
+  } catch (error) {
+    if (error instanceof AiipBridgeError) {
+      throw new ApiClientError(error.message, error.status, error.code, "web-aiip-service-auth");
+    }
+    throw error;
+  }
+}
+
+export async function authenticateAiipServiceJsonRequest(
+  request: Request,
+): Promise<{ principal: AiipPrincipal; body: Record<string, unknown> }> {
+  try {
+    rejectCallerInternalHeaders(request);
+    const principal = await authenticateAiipService(request);
+    enforceRateLimit(principal.subjectId);
+    enforceContentLength(request);
+    const body = await readBoundedJson(request);
+    return { principal, body };
+  } catch (error) {
+    if (error instanceof AiipBridgeError) {
+      throw new ApiClientError(error.message, error.status, error.code, "web-aiip-service-auth");
+    }
+    throw error;
+  }
+}
 
 type OidcJsonWebKey = JsonWebKey & { kid?: string; alg?: string };
 
@@ -44,9 +76,9 @@ export async function handleAiipApplicationRequest(
     correlationId = requiredIdentifier(request, "X-Correlation-ID");
     rejectCallerInternalHeaders(request);
     const idempotencyKey = requiredIdempotencyKey(request);
-    enforceContentLength(request);
     const principal = await authenticateAiipService(request);
     enforceRateLimit(principal.subjectId);
+    enforceContentLength(request);
     const body = await readBoundedJson(request);
     enforceClassification(body);
 
@@ -136,31 +168,70 @@ function requiredIdempotencyKey(request: NextRequest): string {
   return value;
 }
 
-function rejectCallerInternalHeaders(request: NextRequest) {
-  for (const name of ["X-AKL-Subject", "X-AKL-Roles", "X-AKL-Groups", "X-AKL-Audience"]) {
+function rejectCallerInternalHeaders(request: Request) {
+  for (const name of [
+    "X-AKL-Subject",
+    "X-AKL-Roles",
+    "X-AKL-Groups",
+    "X-AKL-Audience",
+    "X-AKL-On-Behalf-Of",
+  ]) {
     if (request.headers.has(name)) {
       throw new AiipBridgeError(400, "INTERNAL_HEADER_FORBIDDEN", `${name} is an AKB internal header.`);
     }
   }
 }
 
-function enforceContentLength(request: NextRequest) {
-  const value = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(value) && value > MAX_PAYLOAD_BYTES) {
+function enforceContentLength(request: Request) {
+  const header = request.headers.get("content-length");
+  if (header === null) return;
+  const value = Number(header);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new AiipBridgeError(400, "CONTENT_LENGTH_INVALID", "Content-Length must be a non-negative integer.");
+  }
+  if (value > MAX_PAYLOAD_BYTES) {
     throw new AiipBridgeError(413, "PAYLOAD_TOO_LARGE", "The request body exceeds 64 kB.");
   }
 }
 
-async function readBoundedJson(request: NextRequest): Promise<Record<string, unknown>> {
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > MAX_PAYLOAD_BYTES) {
-    throw new AiipBridgeError(413, "PAYLOAD_TOO_LARGE", "The request body exceeds 64 kB.");
+async function readBoundedJson(request: Request): Promise<Record<string, unknown>> {
+  if (!request.body) {
+    throw new AiipBridgeError(400, "INVALID_JSON", "The request body must be a JSON object.");
+  }
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > MAX_PAYLOAD_BYTES) {
+        try {
+          await reader.cancel("payload exceeds 64 kB");
+        } catch {
+          // The size decision is authoritative even if the peer rejects cancellation.
+        }
+        throw new AiipBridgeError(413, "PAYLOAD_TOO_LARGE", "The request body exceeds 64 kB.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
   }
   try {
     const value = JSON.parse(new TextDecoder().decode(bytes));
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("object required");
     return value as Record<string, unknown>;
-  } catch {
+  } catch (error) {
+    if (error instanceof AiipBridgeError) throw error;
     throw new AiipBridgeError(400, "INVALID_JSON", "The request body must be a JSON object.");
   }
 }
@@ -175,7 +246,7 @@ function enforceClassification(body: Record<string, unknown>) {
   }
 }
 
-async function authenticateAiipService(request: NextRequest): Promise<AiipPrincipal> {
+async function authenticateAiipService(request: Request): Promise<AiipPrincipal> {
   const authorization = request.headers.get("authorization") ?? "";
   const [scheme, accessToken] = authorization.trim().split(/\s+/, 2);
   if (scheme?.toLowerCase() !== "bearer" || !accessToken) {
@@ -188,9 +259,24 @@ async function authenticateAiipService(request: NextRequest): Promise<AiipPrinci
   const claims = config.oidc.clientSecret
     ? await introspectAccessToken(config.oidc.issuer, config.oidc.clientId, config.oidc.clientSecret, accessToken)
     : await validateJwtAccessToken(config.oidc.issuer, accessToken);
-  const clientId = stringClaim(claims.client_id) ?? stringClaim(claims.azp);
-  if (clientId !== "aiip-service") {
+  const authorizedParty = stringClaim(claims.azp);
+  const clientId = stringClaim(claims.client_id);
+  if (
+    authorizedParty !== "aiip-service"
+    || (clientId !== null && clientId !== "aiip-service")
+  ) {
     throw new AiipBridgeError(403, "AUTH_FORBIDDEN", "The aiip-service client identity is required.");
+  }
+  const subjectId = stringClaim(claims.sub);
+  if (
+    !subjectId
+    || stringClaim(claims.preferred_username) !== "service-account-aiip-service"
+  ) {
+    throw new AiipBridgeError(
+      403,
+      "AUTH_FORBIDDEN",
+      "The exact aiip-service service-account identity is required.",
+    );
   }
   const audiences = stringListClaim(claims.aud);
   if (!audiences.includes("akb-api")) {
@@ -200,7 +286,6 @@ async function authenticateAiipService(request: NextRequest): Promise<AiipPrinci
   if (!roles.includes("service_aiip")) {
     throw new AiipBridgeError(403, "AUTH_ROLE_REQUIRED", "The service_aiip role is required.");
   }
-  const subjectId = stringClaim(claims.sub) ?? "service-account-aiip-service";
   return { subjectId, accessToken, roles: ["service_aiip"] };
 }
 

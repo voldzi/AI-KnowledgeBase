@@ -798,12 +798,13 @@ export function DocumentDetail({
     setRetryingIngestion(true);
     setIngestionFeedback(null);
     try {
+      const operationId = crypto.randomUUID();
       const response = await fetch(
-        withAppBasePath(`/api/stratos/documents/${encodeURIComponent(document.document_id)}/retry-ingestion`),
+        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/ingestion/retry`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: "{}"
+          body: JSON.stringify({ operation_id: operationId })
         }
       );
       if (!response.ok) {

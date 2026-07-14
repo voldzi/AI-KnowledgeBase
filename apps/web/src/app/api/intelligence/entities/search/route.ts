@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
-import { authorizedIndexSelection, indexHitMatchesSelection } from "@/lib/intelligence/policy-filter";
+import {
+  candidateIndexSelection,
+  exactAuthorizedIndexSelection,
+  indexHitMatchesSelection,
+} from "@/lib/intelligence/policy-filter";
+import { authorizeIntelligenceScope } from "@/lib/intelligence/scope-authorization";
 import { ApiClientError, type EntitySearchRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -22,7 +27,13 @@ export async function POST(request: NextRequest) {
 
     const clients = getServerApiClients();
     const documents = await clients.registry.listDocuments(requestContext);
-    const selection = authorizedIndexSelection(documents, requestContext);
+    const candidates = candidateIndexSelection(documents);
+    const scope = await authorizeIntelligenceScope(
+      clients,
+      requestContext,
+      candidates.documentIds,
+    );
+    const selection = exactAuthorizedIndexSelection(scope.authorizedDocuments);
     const response = await clients.ingestion.searchEntities(
       {
         ...payload,
@@ -30,6 +41,7 @@ export async function POST(request: NextRequest) {
         allowed_policy_hashes: selection.policyHashes,
       },
       requestContext,
+      scope,
     );
     const authorizedHits = response.hits.filter((hit) => indexHitMatchesSelection(hit, selection));
 

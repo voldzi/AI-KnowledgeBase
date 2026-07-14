@@ -9,7 +9,8 @@ Phase 04 prepares AKB for an enterprise pilot as a central knowledge platform wi
 
 - Central backend architecture documented for local development, local production, enterprise pilot, and enterprise production.
 - Knowledge domain metadata added to `docs/import-manifest.yaml`.
-- `tools/import_docs_folder.py` persists governance metadata from the manifest into Registry document metadata.
+- `tools/import_docs_folder.py --dry-run` validates and plans governance metadata
+  from the manifest; governed application import persists it into Registry.
 - RAG Retrieval Service exposes Employee Chat backend API endpoints:
   - `POST /api/v1/assistant/chat`
   - `POST /api/v1/assistant/clarify`
@@ -87,14 +88,10 @@ Full question and answer text is not stored in audit metadata by default. Messag
 
 ## Commands
 
-Run the existing Phase 02 and Phase 03 regressions:
-
-```bash
-python3 scripts/phase_02_controlled_document_smoke.py
-python3 scripts/phase_03_docs_import_smoke.py
-python3 scripts/phase_03_document_viewer_smoke.py
-python3 scripts/phase_03_local_production_smoke.py
-```
+Legacy Phase 01/02 and importer-backed Phase 03 mutation regressions are
+retired in every environment. Seed and mutate pilot documents through the
+governed application UI/API, then run read-only assistant, citation, and web
+checks. No environment/auth override or bearer enables the retired host flows.
 
 Run the Phase 04 Employee Chat smoke:
 

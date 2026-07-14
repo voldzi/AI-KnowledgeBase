@@ -257,22 +257,25 @@ storage.
   indexes.
 - Added `entity_pairs` payload field to preserve type/value pairing for
   OpenSearch facets.
-- Added ingestion endpoint `GET /api/v1/intelligence/entities/facets`.
+- Added scoped ingestion endpoint
+  `POST /api/v1/intelligence/entities/facets/query`. The legacy unscoped GET is
+  local mock/disabled only and fails closed in production.
 - Web Intelligence page now fetches entity facets through the existing
   server-side ingestion API client and renders a `Chunk entity index` panel.
 - Added ingestion endpoint `POST /api/v1/intelligence/entities/search` for
   OpenSearch-backed chunk evidence search filtered by text, entity type and
   entity value. The request requires authorized document IDs.
-- Added web bridge route `POST /api/intelligence/entities/search`, which derives
-  `allowed_document_ids` from Registry-visible documents before calling ingestion
-  and filters returned hits again before sending them to the browser.
+- Added web bridge route `POST /api/intelligence/entities/search`, which obtains
+  a short-lived Registry proof over the exact authorized
+  document/version/policy-hash coordinates before calling ingestion and filters
+  returned hits again before sending them to the browser.
 - Intelligence Workbench now includes an `Evidence search` panel and clickable
   entity values that return cited chunk snippets with document/version metadata.
 - Added ingestion endpoint `POST /api/v1/intelligence/entities/relationships`
   for deterministic evidence-backed `co_occurs` edges from entity pairs in the
   same authorized chunk.
 - Added web bridge route `POST /api/intelligence/entities/relationships`, which
-  derives `allowed_document_ids` from Registry-visible documents and filters
+  obtains and forwards the same exact Registry-issued scope proof and filters
   returned edge evidence before sending it to the browser.
 - Intelligence Workbench now includes an `Entity relationships` panel. Clicking
   an entity value loads both cited search results and relationship edges that
@@ -281,9 +284,12 @@ storage.
   OpenSearch-backed advanced analyst search with smart, boolean, phrase,
   proximity and fielded query modes. The endpoint requires authorized document
   IDs and never performs browser-direct OpenSearch access.
-- Added web bridge route `POST /api/intelligence/analyst/search`, which derives
-  `allowed_document_ids` from Registry-visible documents before calling
+- Added web bridge route `POST /api/intelligence/analyst/search`, which obtains
+  and forwards the same exact Registry-issued scope proof before calling
   ingestion and filters returned hits again before sending them to the browser.
+- Caller-supplied `allowed_document_ids` is a compatibility filter only, never
+  authority. Ingestion confirms the proof through Registry before binding any
+  OpenSearch filter.
 - Intelligence Workbench now includes an `Advanced analyst search` panel with
   mode, field and proximity controls. Results reuse the evidence hit card and
   link back to authoritative AKB document detail/source review.

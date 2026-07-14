@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import jwt
+
 import app.registry_client as registry_client_module
 from app.config import load_settings
 from app.http_utils import outgoing_headers
@@ -78,13 +80,21 @@ def test_registry_client_uses_cached_rag_service_identity(monkeypatch) -> None:
     )
     token_calls = 0
     registry_calls: list[dict[str, object]] = []
+    service_token = jwt.encode(
+        {"sub": "rag-service-keycloak-uuid"},
+        key="",
+        algorithm="none",
+    )
 
     class TokenResponse:
         def raise_for_status(self):
             return None
 
         def json(self):
-            return {"access_token": "registry-service-token", "expires_in": 300}
+            return {
+                "access_token": service_token,
+                "expires_in": 300,
+            }
 
     class TokenClient:
         def __init__(self, **kwargs):
@@ -138,7 +148,9 @@ def test_registry_client_uses_cached_rag_service_identity(monkeypatch) -> None:
 
     assert result.allowed_document_ids == {"doc-1"}
     assert token_calls == 1
-    assert all(call["bearer_token_override"] == "registry-service-token" for call in registry_calls)
+    assert all(call["bearer_token_override"] == service_token for call in registry_calls)
     assert all(call["service_identity"] is True for call in registry_calls)
     assert "roles" not in registry_calls[0]["json_body"]
     assert "capabilities" not in registry_calls[0]["json_body"]
+    assert registry_calls[0]["json_body"]["subject_id"] == "rag-service-keycloak-uuid"
+    assert registry_calls[0]["json_body"]["subject_id"] != auth_context.subject_id

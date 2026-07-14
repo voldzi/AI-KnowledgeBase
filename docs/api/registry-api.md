@@ -47,17 +47,25 @@ PUT    /documents/{document_id}/assignments
 POST   /documents/{document_id}/versions
 GET    /documents/{document_id}/versions
 GET    /documents/{document_id}/versions/{version_id}
+POST   /documents/{document_id}/versions/{version_id}/ingestion-authorization
 POST   /documents/{document_id}/versions/{version_id}/publish
 POST   /documents/{document_id}/versions/{version_id}/archive
 GET    /documents/{document_id}/versions/{version_id}/publication
 PUT    /documents/{document_id}/versions/{version_id}/publication
 PATCH  /documents/{document_id}/external-references/current
+GET    /documents/{document_id}/external-references/current
+
+GET    /integrations/ingestion/readiness
+POST   /integrations/ingestion/authorizations/confirm
+POST   /integrations/ingestion/intelligence-authorizations/confirm
 
 GET    /public/documents/{public_slug}
 GET    /internal/public/documents/{public_slug}/source
 
 POST   /authz/check
 POST   /authz/filter-documents
+
+POST   /intelligence/authorization
 
 GET    /intelligence/cases
 POST   /intelligence/cases
@@ -100,10 +108,25 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 ## Integrační body
 
 - Web Frontend používá `/documents`, `/versions`, `/workflow/tasks`, `/documents/{document_id}/assignments` a auditní list. Detail dokumentu filtruje auditní události podle resource id a metadat dokumentu/verze/tasku.
-- Ingestion Service čte metadata dokumentů, zapisuje auditní události a přes
-  `/documents/{document_id}/external-references/current` synchronizuje poslední
-  job i stavy `INGESTING`, `INDEXED` a `FAILED` do všech odpovídajících
-  externích referencí stejné verze.
+- Interaktivní web nejprve získá přesný krátkodobý proof z
+  `/documents/{document_id}/versions/{version_id}/ingestion-authorization`.
+  Registry při vydání vyžaduje centrální rozhodnutí pro registrovaný kořen
+  dokumentu i přesnou registrovanou immutable verzi. Proof váže organization,
+  version governed-resource/source, přesný governed parent, policy
+  binding id/version/hash a canonical governance-scope hash. Ingestion Service
+  jej potvrzuje výhradně jako `svc-ingestion` přes integrační confirmation
+  endpoint; Registry znovu načte aktuální autoritu verze a actor, action, všechny
+  governance souřadnice, correlation id i idempotency key se musí přesně
+  shodovat.
+- Registry drží jeden autoritativní `ingestion_attempts` CAS záznam na dokument.
+  Přes `/documents/{document_id}/external-references/current` vybírá immutable
+  verzi/job a přechody `QUEUED`, `INGESTING`, `INDEXED`, `FAILED`; synchronizace
+  do externích referencí nemůže změnit source lineage ani převzít aktivní
+  `INGESTING` lease.
+- Intelligence web získá proof přes `/intelligence/authorization`; Registry do
+  něj vloží pouze aktuální indexované document/version/policy-hash souřadnice,
+  které jsou pro osobu právě povolené. `svc-ingestion` potvrzuje stejnou přesnou
+  množinu před OpenSearch dotazem.
 - RAG Retrieval Service volá `/authz/filter-documents` a zapisuje auditní události.
 - `/authz/filter-documents` vyžaduje pro Access V2 přesný current policy hash a
   množinu `candidate_document_versions`; pouze verze se stavem `valid`, správným

@@ -42,6 +42,9 @@ Na `docker.home.cz` připravit:
     logs/
   backups/                # Registry custom dump + checksum + inventory
   deployments/            # nesekretní záznamy pokusů
+  state/
+    applied-runtime.env   # poslední potenciálně aplikované SHA
+    burned-shas/<full-sha> # trvalý zákaz opakování SHA po build boundary
   repo/                   # volitelný legacy/maintenance checkout, ne deploy source
 ```
 
@@ -57,6 +60,23 @@ Produkční hodnoty patří mimo Git do `/srv/akl/env/akl.prod.env` s oprávněn
 `/srv/akl/repo` nesmí spustit `git pull`, `git checkout` ani `git switch` a z
 tohoto pracovního stromu se nesmí buildovat. Bare mirror spravuje workflow
 samostatně.
+Produkční env se před deployem nesourcuje. Pokud okolní shell exportuje
+libovolný stejnojmenný klíč jako `/srv/akl/env/akl.prod.env`, workflow skončí
+ještě před lockem, DB gate, buildem a stopem writeru; tím se eliminuje Compose
+precedence ambient proměnných nad `--env-file`. Stejně fail-closed skončí při
+libovolné ambient proměnné interpolované přesným cílovým Compose souborem, i
+když tento klíč v env souboru není. Kontrola platí také pro přípravu release a
+první target bootstrap. Hodnoty v env souboru nesmí obsahovat `$` interpolaci.
+Všechny release entry skripty před čtením konfigurace vypnou xtrace. Deploy po
+validaci vytvoří jediný linked single-link snapshot s módem `0600` v privátním
+`0700` adresáři pod `/srv/akl/env` a všechny Compose, DB, backup a verify kroky
+váže na jeho root/directory/file device/inode/size/SHA-256. Atomická výměna
+persistentního env uprostřed pokusu proto nezmění cíl migrace. Běžný exit snapshot
+ověří, odlinkuje a fsyncne; kopie po SIGKILL zablokuje další pokus do provedení
+přesně omezeného cleanup postupu z hlavního immutable-release runbooku.
+Git běží bez replacement objects a mirror nesmí obsahovat `refs/replace/*`;
+Docker musí používat lokální `default` context na
+`unix:///var/run/docker.sock` bez ambient `DOCKER_HOST`/TLS přesměrování.
 
 Úplný one-time bootstrap a běžný postup je v
 `docs/OPERATIONS/immutable-docker-home-release.md`.
@@ -126,6 +146,10 @@ Produkční connection string šablona:
 
 ```env
 AKL_REGISTRY_DATABASE_URL=postgresql+psycopg://<user>:<password>@haproxy.home.cz:5000/akl_registry
+AKL_RELEASE_EXPECTED_REGISTRY_DB_HOST=haproxy.home.cz
+AKL_RELEASE_EXPECTED_REGISTRY_DB_PORT=5000
+AKL_RELEASE_EXPECTED_REGISTRY_DB_NAME=akl_registry
+AKL_RELEASE_EXPECTED_REGISTRY_DB_USER=<user>
 ```
 
 Stejný host a port použít i pro další AKL databáze, vždy s konkrétním názvem DB. Pokud bude HAProxy poskytovat separátní read-only port, AKL ho v první produkční verzi nepoužívá pro zápisové služby.
@@ -356,12 +380,18 @@ Veřejně vystavit jen STRATOS shell a aplikační path prefixy přes DMZ revers
    pohyblivý tag nejsou release identita.
 2. Připravit persistentní `/srv/akl/env/akl.prod.env` s mode `0600`, včetně
    `AKL_RELEASE_GIT_URL`, `AKL_RELEASE_TRUSTED_REF` a
-   `AKL_RELEASE_COMPOSE_PROJECT`.
+   `AKL_RELEASE_COMPOSE_PROJECT`. Nastavit také
+   `AKL_RELEASE_POSTGRES_TOOL_IMAGE` na již lokálně dostupný přesný
+   `name@sha256:<digest>` nebo `sha256:<image-id>`; pohyblivý tag je zakázán a
+   hostitelské balíčky `psql`/`pg_dump`/`pg_restore` nejsou potřeba.
 3. Vytvořit Keycloak STRATOS realm a theme.
 4. Vytvořit prázdné PostgreSQL databáze.
 5. Připravit SeaweedFS prostor `akl-documents`.
 6. Ověřit aktuální release, služby, health/readiness, HAProxy dostupnost,
-   volné místo a poslední zálohu pouze read-only kontrolami.
+   volné místo a poslední checksum/TOC-validovaný custom dump pouze read-only
+   kontrolami. Za ověřený restore point se považuje až artefakt prověřený
+   isolated restore rehearsal podle sekce `Required isolated Registry restore
+   rehearsal` v `docs/OPERATIONS/immutable-docker-home-release.md`.
 7. Spustit exact-SHA release z posledního ověřeného release:
 
 ```bash
@@ -369,39 +399,139 @@ RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 /srv/akl/current/scripts/deploy_docker_home_release.sh --sha "$RELEASE_SHA"
 ```
 
-Při prvním přechodu, kdy `/srv/akl/current` ještě neexistuje, lze použít
-kompatibilní vstupní bod pouze po ověření, že všechny immutable release skripty
-v maintenance checkoutu nemají lokální změny:
+Při prvním přechodu, kdy `/srv/akl/current` ještě neexistuje, se orchestrátor
+nespouští z mutable `/srv/akl/repo`. Již připravený, schválený a read-only
+immutable release slouží pouze k přípravě cílového SHA; vlastní bootstrap se
+potom spustí z přesného cílového release:
 
 ```bash
-test -z "$(git -C /srv/akl/repo status --porcelain -- scripts/)"
-/srv/akl/repo/scripts/deploy_docker_home.sh --sha "$RELEASE_SHA"
+BOOTSTRAP_SHA=0123456789abcdef0123456789abcdef01234567
+RELEASE_SHA=89abcdef0123456789abcdef0123456789abcdef
+BOOTSTRAP_RELEASE="/srv/akl/releases/${BOOTSTRAP_SHA}"
+test ! -e /srv/akl/current && test ! -L /srv/akl/current
+TARGET_RELEASE="$("${BOOTSTRAP_RELEASE}/scripts/prepare_docker_home_release.sh" "$RELEASE_SHA")"
+test "$TARGET_RELEASE" = "/srv/akl/releases/${RELEASE_SHA}"
+"${TARGET_RELEASE}/scripts/bootstrap_docker_home_target.sh" --sha "$RELEASE_SHA"
 ```
 
-Tento příkaz checkout neaktualizuje a nic z něj nebuildí. Workflow:
+Chybějící běžná cesta i symlink `current` jsou invariant pouze tohoto prvního
+přechodu; broken nebo již existující link se za nový host nepovažuje.
+Target bootstrap odmítne jinou cestu i existující `current`, znovu ověří
+`origin/main`, strict provenance metadata, ambient Compose izolaci a celý Git
+strom cílového release a teprve potom spustí cílový orchestrátor. Workflow:
+
+Pokud `/srv/akl/current` již existuje, ale jeho deploy skript ještě neobsahuje
+řádek `AKL_IMMUTABLE_ORCHESTRATOR_CONTRACT=2`, nesmí se první hardened release
+spustit starým skriptem z `current`. Přesný cílový SHA se připraví pomocí
+disposable exact-SHA checkoutu a potom se spustí výhradně target-side přechod:
+
+```bash
+TARGET_SHA=89abcdef0123456789abcdef0123456789abcdef
+TARGET_RELEASE="/srv/akl/releases/${TARGET_SHA}"
+test "$(awk -F= '$1 == "state" {print $2}' /srv/akl/state/applied-runtime.env)" = verified
+test "$(awk -F= '$1 == "phase" {print $2}' /srv/akl/state/applied-runtime.env)" = verified
+"${TARGET_RELEASE}/scripts/bootstrap_docker_home_target.sh" \
+  --sha "$TARGET_SHA" \
+  --transition-existing-current
+```
+
+Samotné vytvoření a ověření `TARGET_RELEASE`, povinný owner/no-follow trust
+model, kontrola ancestry a self-contained mirroru bez alternates/grafts/
+symlinked refs či objects, one-time omezení a recovery větve jsou
+normativně popsány v sekci `One-Time Upgrade From An Existing Immutable
+current` v `docs/OPERATIONS/immutable-docker-home-release.md`. Transition mód
+nevolá `prepare` ani deploy ze starého `current`; target orchestrátor po
+privátním env snapshotu získá standardní lock a všechny state-sensitive guardy
+zopakuje před buildem, stopem writeru a migrací. Po `verified` crashi lze stejný
+target pouze reconciliovat. Po `applying`/`failed` stavu se recovery spouští z
+přesného selhaného target release přes descendant forward-fix, nikdy ze starého
+`current`.
 
 - ověří SHA vůči bare mirroru a vytvoří read-only
-  `/srv/akl/releases/<full-sha>`,
-- při prvním přechodu zachytí přesný běžící Registry predecessor (container,
-  image ID/reference a Compose labely); dirty `/srv/akl/repo` nemění a nikdy
-  jej nepoužije jako build context nebo runtime release,
-- sestaví a restartuje jen dotčené `registry-api`,
-  `rag-retrieval-service` a `web`,
-- před Registry backupem zastaví a ověří odstavení jediného Compose Registry
-  writeru, poté vytvoří PostgreSQL custom dump, SHA-256, `pg_restore --list`
-  a inventory s plnou Alembic revizí v `/srv/akl/backups`,
+  `/srv/akl/releases/<full-sha>`; celý strom a jeho parent před publikací
+  fsyncne,
+- při prvním přechodu ani později nepřehlédne Registry predecessor v restart
+  gap: enumeruje jej přes `docker ps -a`, zachytí container, image
+  ID/reference, Compose labely a původní running/restarting state; dirty `/srv/akl/repo`
+  nemění a nikdy jej nepoužije jako build context nebo runtime release,
+- pokud je dotčen Registry, před buildem ověří exact lokální PostgreSQL tool
+  image, zaznamená jeho image ID i verze klientů a třikrát po sobě ověří
+  writable primary i přesnou shodu `current_database()`/`current_user`,
+- bezprostředně před buildem trvale vytvoří
+  `/srv/akl/state/burned-shas/<full-sha>` a nastaví descendant-only retry;
+  existující cílový tag SHA také trvale spálí,
+- sestaví jen dotčené `registry-api`, `rag-retrieval-service` a `web`; pokud je
+  dotčen sdílený produkční Compose soubor, workflow fail-closed vyžádá
+  koordinovaný full-platform release. Po buildu durable zaznamená tag→image ID
+  a ověří SHA/project/service labely; stejnou identitu znovu ověří před
+  Alembic, před restartem, po recreate a po všech smoke testech těsně před
+  verified markerem. Reconciliation načte původní ID ze strict deployment
+  recordu pojmenovaného marker deployment ID a nikdy nepovýší aktuální mutable
+  tag na nové očekávané evidence. Alembic i `compose up` dotčených služeb
+  se spouští přímo s durable `sha256:<image-id>`, ne s tagem. Pokud je
+  dotčen Registry, po buildu a zachycení predecessoru znovu třikrát ověří
+  writable primary bezprostředně před stop boundary,
+- trvale zaznamená, že stop writeru může začít, explicitně vydá Compose `stop`
+  i pro již zastavený predecessor, ověří nulový počet běžících Registry writerů
+  a zapíše privátní quiescence evidence svázané s deployment lockem a přesným
+  predecessor ID; nulový writer znovu ověří před dumpem i migrací
+  a přes stejný exact lokální
+  PostgreSQL tool image s `--pull never`, host network a minimálními bindy
+  poté vytvoří custom dump, SHA-256, `pg_restore --list` a inventory s plnou
+  jedinou Alembic revizí, kritickými row counts a identitou/verzemi nástrojů v `/srv/akl/backups`;
+  všechny artefakty a adresáře fsyncne před markerem,
+- pgpass ukládá pouze do privátního
+  `/srv/akl/state/postgres-credentials`; SIGKILL pozůstatek další release
+  zablokuje a lze jej odstranit jen přes přesný validovaný cleanup postup z
+  hlavního runbooku,
+- do inventory zapíše skutečnou backend adresu a port z PostgreSQL, pokud jsou
+  dostupné. Jde o HA routing evidence, nikoli privilegovaný cluster ID; aplikační
+  účet jej nemusí umět číst,
+- po backupu a kontrole jediného Alembic head zopakuje tři writable-primary
+  kontroly bezprostředně před markerem a migrací; read-only, recovery, chyba
+  spojení, DB URL query/fragment routing override nebo změna image ID jsou
+  fail-closed a migrace se nespustí,
+- po migraci vyžaduje právě jeden kanonický výstup `alembic current`, který se
+  přesně rovná jedinému target head; multi-head stav je fail-closed,
 - před migrací nebo startem zapíše atomický forward-only marker
   `/srv/akl/state/applied-runtime.env`,
 - vyžaduje shodu plného SHA tagu, image ID, release/Compose labelů a health
   každé dotčené služby a dále readiness a fail-closed public smoke,
-- až poté atomicky přepne `/srv/akl/current`.
+- těsně před možným `compose up` trvale zapíše start boundary. Při obsloužené
+  chybě před verified markerem ověří u každé dotčené služby přesný Compose
+  project/service, non-one-off stav, full-SHA image reference, release labely a
+  cílový Compose soubor, poté cílový container force-remove a prokáže, že žádný
+  odpovídající container nezůstal. Výsledek karantény zaznamená po službách;
+  při neprokazatelné identitě, chybě odstranění nebo chybě durable evidence
+  ponechá deployment lock pro řízené incident recovery,
+- až poté atomicky a trvale přepne `/srv/akl/current`. Pokud výpadek nastane
+  mezi verified markerem a tímto přepnutím, opakování stejného SHA pouze znovu
+  ověří runtime a dokončí aktivaci bez rebuildu či migrace. Pokud výpadek
+  nastane až po fsync `current`, ale před finálním success recordem, stejné SHA
+  bez forward-fix kontextu znovu ověří již aktivní release a zapíše
+  `reconciled_verified_success` bez opakování přepnutí.
 
 Při chybě se symlink nepřepne. Marker posledního potenciálně aplikovaného SHA
 ale zůstane ve stavu `failed`; obyčejný deploy ani nepříbuzný SHA jej nesmí
 obejít. Přesný starý Registry container se automaticky obnoví jen při chybě
-před markerem a před migrací. Pokud už byl image restartován nebo migrace
-provedena, nepouštět starý image ani Alembic downgrade. Připravit schválený
-potomek přesně označeného chybného SHA a použít forward-fix:
+před runtime markerem a migrací a jen tehdy, pokud byl před quiesce skutečně
+running nebo restarting. Predecessor zachycený jako stopped zůstane stopped. Pokud už byl image
+restartován nebo migrace provedena, nepouštět starý image ani Alembic downgrade.
+Při běžně zachycené chybě po startu musí deployment record potvrdit karanténu
+všech dotčených target služeb. Pokud některé `target_*_quarantine_failed=true`
+nebo `deploy_lock_preserved=true`, lock se nesmí smazat bez ověření mrtvého PID,
+neexistence release procesu a přesné identity zbývajících target containerů;
+container name samotný není důkaz. Starý image se po migraci neobnovuje.
+Připravit schválený potomek přesně označeného chybného SHA a použít forward-fix:
+
+Pre-stop gate selže ještě před buildem, takže po odstranění přechodné příčiny
+lze zkusit stejné schválené SHA. Jakmile ale build mohl začít, deployment record
+obsahuje `target_build_may_have_started=true` a
+`retry_requires_descendant_sha=true` a vznikne durable
+`state/burned-shas/<full-sha>`. Tento marker je autoritativní i když build selhal
+před tagem nebo tag později zmizel; nemaže se a nasazuje se schválený potomek,
+i když `migration_started=false`. Pre-quiesce DB gate je po buildu: při jeho
+selhání se writer ještě nezastaví, ale spálené SHA už vyžaduje potomka.
 
 ```bash
 /srv/akl/current/scripts/rollback_docker_home_release.sh \

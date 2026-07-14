@@ -17,6 +17,7 @@ ORGANIZATION_ID = "org_stratos"
 class HandlingClass(str, Enum):
     public = "PUBLIC"
     internal = "INTERNAL"
+    project_management = "PROJECT_MANAGEMENT"
     restricted = "RESTRICTED"
 
 
@@ -85,7 +86,7 @@ class InformationPolicyBinding(BaseModel):
     audience: PolicyAudience
     obligations: list[PolicyObligation]
     originator_id: str | None = Field(default=None, alias="originatorId")
-    issued_at: datetime | None = Field(default=None, alias="issuedAt")
+    issued_at: datetime = Field(alias="issuedAt")
     review_at: datetime | None = Field(default=None, alias="reviewAt")
 
     @model_validator(mode="after")
@@ -117,6 +118,57 @@ class IntegrationActor(BaseModel):
     subject_id: str = Field(alias="subjectId", min_length=1)
 
 
+class IntegrationGovernanceScope(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: Literal[
+        "own",
+        "organization",
+        "organization_unit",
+        "budget_scope",
+        "portfolio",
+        "project",
+        "document",
+        "recipient_set",
+    ]
+    id: str | None = Field(default=None, min_length=1, max_length=160)
+    owner_subject_id: str | None = Field(
+        default=None,
+        alias="ownerSubjectId",
+        min_length=1,
+        max_length=160,
+    )
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "IntegrationGovernanceScope":
+        if self.type == "own":
+            if self.id is not None or not self.owner_subject_id:
+                raise ValueError("An own scope requires ownerSubjectId and forbids id")
+            return self
+        if self.owner_subject_id is not None:
+            raise ValueError("ownerSubjectId is valid only for an own scope")
+        if self.type == "organization":
+            if self.id != "org_stratos":
+                raise ValueError("The organization scope must identify org_stratos")
+            return self
+        if not self.id:
+            raise ValueError("A non-organization scope requires id")
+        return self
+
+
+class IntegrationSourceResource(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    governed_resource_id: str = Field(
+        alias="governedResourceId", min_length=1, max_length=160
+    )
+    application: Literal["AIIP"]
+    resource_type: Literal["idea"] = Field(alias="resourceType")
+    resource_id: str = Field(alias="resourceId", min_length=1, max_length=160)
+    source_version: str = Field(alias="sourceVersion", min_length=1, max_length=160)
+    scope: IntegrationGovernanceScope
+
+
 class IntegrationClassification(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, use_enum_values=True)
 
@@ -141,6 +193,9 @@ class IntegrationEnvelope(BaseModel):
     ] = Field(alias="sourceSystem")
     external_ref: str = Field(alias="externalRef", min_length=1, max_length=300)
     actor: IntegrationActor
+    source_resource: IntegrationSourceResource | None = Field(
+        default=None, alias="sourceResource"
+    )
     correlation_id: str = Field(alias="correlationId", min_length=8, max_length=200)
     idempotency_key: str = Field(alias="idempotencyKey", min_length=8, max_length=200)
     policy_binding_id: str = Field(alias="policyBindingId", min_length=8)
@@ -148,6 +203,33 @@ class IntegrationEnvelope(BaseModel):
     policy_hash: str = Field(alias="policyHash", pattern=r"^sha256:[a-f0-9]{64}$")
     classification: IntegrationClassification
     payload: dict[str, Any]
+
+
+class AiipUploadActor(IntegrationActor):
+    type: Literal["person"]
+
+
+class AiipUploadEnvelopePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    operation: Literal["document_upload"]
+    entity_type: Literal["InnovationRequest", "InnovationRequestImport"] = Field(
+        alias="entityType"
+    )
+    entity_id: str = Field(alias="entityId", min_length=1, max_length=160)
+    source_document_id: str = Field(
+        alias="sourceDocumentId", min_length=1, max_length=1024
+    )
+    sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class AiipUploadIntegrationEnvelope(IntegrationEnvelope):
+    """Exact immutable lineage envelope accepted by the dedicated AIIP route."""
+
+    source_system: Literal["STRATOS_AIIP"] = Field(alias="sourceSystem")
+    actor: AiipUploadActor
+    source_resource: IntegrationSourceResource = Field(alias="sourceResource")
+    payload: AiipUploadEnvelopePayload
 
 
 def canonical_policy_payload(binding: InformationPolicyBinding) -> dict[str, Any]:
@@ -197,6 +279,7 @@ def legacy_classification(binding: InformationPolicyBinding) -> str:
     return {
         HandlingClass.public.value: "public",
         HandlingClass.internal.value: "internal",
+        HandlingClass.project_management.value: "internal",
         HandlingClass.restricted.value: "restricted",
     }[str(binding.handling_class)]
 

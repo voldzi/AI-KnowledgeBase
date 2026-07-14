@@ -96,12 +96,19 @@ Recommended imported corpus for local knowledge validation:
 python3 tools/import_docs_folder.py \
   --source ./docs \
   --manifest docs/import-manifest.yaml \
-  --mode reindex \
+  --mode skip-existing \
+  --dry-run \
   --report reports/docs_import_report.json
 ```
 
-When validating an externally sourced corpus, include at least one PDF-backed document imported through
-`tools/import_original_pdf_versions.py` so source opening proves the original PDF, not only a Markdown derivative.
+This command inventories candidates only. Seed QA documents through the
+governed application UI/API before running workbench checks.
+
+When validating an externally sourced corpus, include at least one governed
+PDF-backed document so source opening proves the original PDF, not only a
+Markdown derivative. `tools/import_original_pdf_versions.py` may inventory
+candidates in dry-run mode, but host-side `--apply` is retired in every
+environment. Actual imports use the governed application UI/API.
 
 ## 5. Role Coverage
 

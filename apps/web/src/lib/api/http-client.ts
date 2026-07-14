@@ -15,6 +15,7 @@ export interface JsonRequestOptions {
   body?: unknown;
   context: ApiRequestContext;
   fetcher?: AklFetch;
+  extraHeaders?: Record<string, string>;
 }
 
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
@@ -50,10 +51,20 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
     if (context.applicationAccessActive !== undefined) {
       headers.set("X-STRATOS-Application-Access-Active", String(context.applicationAccessActive));
     }
+    if (context.serviceClientId) {
+      headers.set("X-AKL-Service-Client-ID", context.serviceClientId);
+    }
   }
 
   if (context.accessToken) {
     headers.set("Authorization", `Bearer ${context.accessToken}`);
+  }
+  for (const [name, value] of Object.entries(options.extraHeaders ?? {})) {
+    const normalized = name.toLowerCase();
+    if (["authorization", "content-type", "accept"].includes(normalized)) {
+      throw new Error(`Protected request header cannot be overridden: ${name}`);
+    }
+    headers.set(name, value);
   }
 
   const response = await (options.fetcher ?? fetch)(url, {

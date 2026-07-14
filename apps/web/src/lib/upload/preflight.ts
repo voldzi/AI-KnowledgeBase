@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { link, mkdir, open, unlink } from "node:fs/promises";
 import path from "node:path";
 
 export interface UploadPreflightRequest {
@@ -11,6 +11,23 @@ export interface UploadPreflightRequest {
   policy_binding_id?: string | null;
   policy_version?: string | null;
   policy_hash?: string | null;
+  external_document_id?: string | null;
+  expected_current_document_version_id?: string | null;
+  governed_document_resource_id?: string | null;
+  source_governed_resource_id?: string | null;
+  source_resource_id?: string | null;
+  source_version?: string | null;
+  governance_scope?: Record<string, string> | null;
+  governance_actor_subject_id?: string | null;
+  governance_registered_by_subject_id?: string | null;
+  governance_correlation_id?: string | null;
+  governance_idempotency_key?: string | null;
+}
+
+export interface UploadPersistenceHooks {
+  afterFileSync?: () => void | Promise<void>;
+  afterPublish?: () => void | Promise<void>;
+  afterDirectorySync?: () => void | Promise<void>;
 }
 
 export interface UploadPreflightDecision {
@@ -51,6 +68,39 @@ export interface UploadTokenPayload {
   policy_binding_id: string | null;
   policy_version: string | null;
   policy_hash: string | null;
+  external_document_id: string | null;
+  expected_current_document_version_id: string | null;
+  governed_document_resource_id: string | null;
+  source_governed_resource_id: string | null;
+  source_resource_id: string | null;
+  source_version: string | null;
+  governance_scope: Record<string, string> | null;
+  governance_actor_subject_id: string | null;
+  governance_registered_by_subject_id: string | null;
+  governance_correlation_id: string | null;
+  governance_idempotency_key: string | null;
+}
+
+export interface UploadReceiptPayload {
+  schema_version: "akl-upload-receipt-1";
+  upload_token_sha256: string;
+  session_id: string;
+  document_id: string;
+  bucket: string;
+  object_key: string;
+  source_file_uri: string;
+  file_name: string;
+  file_size: number;
+  file_type: string;
+  sha256: string;
+  persisted_at: string;
+  expires_at: string;
+}
+
+export interface PersistedUploadObject {
+  path: string;
+  sha256: string;
+  size_bytes: number;
 }
 
 export interface UploadSettings {
@@ -60,6 +110,13 @@ export interface UploadSettings {
   maxFileBytes: number;
   publicUploadBasePath: string;
   expiresInSeconds: number;
+}
+
+export interface ValidatedUploadFileMetadata {
+  file_name: string;
+  file_size: number;
+  file_type: string;
+  sha256: string;
 }
 
 export class UploadPreflightError extends Error {
@@ -180,10 +237,11 @@ export function createUploadPreflightDecision(
   settings: UploadSettings = getUploadSettings()
 ): UploadPreflightDecision {
   const documentId = normalizeDocumentId(request.document_id);
-  const filename = normalizeFilename(request.file_name);
-  const sizeBytes = normalizeFileSize(request.file_size, settings.maxFileBytes);
-  const sha256 = normalizeSha256(request.sha256);
-  const mimeType = normalizeMimeType(filename, request.file_type);
+  const validatedFile = validateUploadFileMetadata(request, settings);
+  const filename = validatedFile.file_name;
+  const sizeBytes = validatedFile.file_size;
+  const sha256 = validatedFile.sha256;
+  const mimeType = validatedFile.file_type;
   const sessionId = `upl_${randomUUID().replaceAll("-", "")}`;
   const objectKey = `${documentId}/draft/${new Date().toISOString().slice(0, 10)}/${sessionId}/${filename}`;
   const sourceFileUri = `s3://${settings.bucket}/${objectKey}`;
@@ -201,7 +259,18 @@ export function createUploadPreflightDecision(
     expires_at: expiresAt,
     policy_binding_id: request.policy_binding_id ?? null,
     policy_version: request.policy_version ?? null,
-    policy_hash: request.policy_hash ?? null
+    policy_hash: request.policy_hash ?? null,
+    external_document_id: request.external_document_id ?? null,
+    expected_current_document_version_id: request.expected_current_document_version_id ?? null,
+    governed_document_resource_id: request.governed_document_resource_id ?? null,
+    source_governed_resource_id: request.source_governed_resource_id ?? null,
+    source_resource_id: request.source_resource_id ?? null,
+    source_version: request.source_version ?? null,
+    governance_scope: request.governance_scope ?? null,
+    governance_actor_subject_id: request.governance_actor_subject_id ?? null,
+    governance_registered_by_subject_id: request.governance_registered_by_subject_id ?? null,
+    governance_correlation_id: request.governance_correlation_id ?? null,
+    governance_idempotency_key: request.governance_idempotency_key ?? null,
   };
   const uploadToken = signUploadToken(payload, settings);
 
@@ -234,9 +303,22 @@ export function createUploadPreflightDecision(
   };
 }
 
+export function validateUploadFileMetadata(
+  request: Pick<UploadPreflightRequest, "file_name" | "file_size" | "file_type" | "sha256">,
+  settings: UploadSettings = getUploadSettings()
+): ValidatedUploadFileMetadata {
+  const fileName = normalizeFilename(request.file_name);
+  return {
+    file_name: fileName,
+    file_size: normalizeFileSize(request.file_size, settings.maxFileBytes),
+    file_type: normalizeMimeType(fileName, request.file_type),
+    sha256: normalizeSha256(request.sha256),
+  };
+}
+
 export function verifyUploadToken(token: string, settings: UploadSettings = getUploadSettings()): UploadTokenPayload {
-  const [encodedPayload, signature] = token.split(".");
-  if (!encodedPayload || !signature) {
+  const [encodedPayload, signature, extra] = token.split(".");
+  if (!encodedPayload || !signature || extra) {
     throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token is malformed.");
   }
 
@@ -270,6 +352,32 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
   if (payload.policy_hash && !SHA256_PATTERN.test(payload.policy_hash)) {
     throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token policy hash is invalid.");
   }
+  if (
+    payload.expected_current_document_version_id != null &&
+    (typeof payload.expected_current_document_version_id !== "string" ||
+      !payload.expected_current_document_version_id)
+  ) {
+    throw new UploadPreflightError(
+      401,
+      "INVALID_UPLOAD_TOKEN",
+      "Upload token expected current version is invalid."
+    );
+  }
+  const governedFields = [
+    payload.external_document_id,
+    payload.governed_document_resource_id,
+    payload.source_governed_resource_id,
+    payload.source_resource_id,
+    payload.source_version,
+    payload.governance_actor_subject_id,
+    payload.governance_registered_by_subject_id,
+    payload.governance_correlation_id,
+    payload.governance_idempotency_key,
+  ];
+  const governed = governedFields.some((value) => value != null) || payload.governance_scope != null;
+  if (governed && (governedFields.some((value) => typeof value !== "string" || !value) || !payload.governance_scope)) {
+    throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token governance context is incomplete.");
+  }
 
   return payload;
 }
@@ -277,8 +385,9 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
 export async function persistUploadedObject(
   payload: UploadTokenPayload,
   content: Uint8Array,
-  settings: UploadSettings = getUploadSettings()
-): Promise<{ path: string; sha256: string; size_bytes: number }> {
+  settings: UploadSettings = getUploadSettings(),
+  hooks: UploadPersistenceHooks = {},
+): Promise<PersistedUploadObject> {
   if (content.byteLength !== payload.file_size) {
     throw new UploadPreflightError(
       400,
@@ -299,9 +408,282 @@ export async function persistUploadedObject(
   }
 
   const targetPath = resolveObjectPath(payload, settings);
-  await mkdir(path.dirname(targetPath), { recursive: true });
-  await writeFile(targetPath, content, { mode: 0o640 });
+  const parentPath = path.dirname(targetPath);
+  await mkdir(parentPath, { recursive: true });
+  const tempPath = path.join(parentPath, `.${path.basename(targetPath)}.${randomUUID()}.tmp`);
+  let tempExists = false;
+  try {
+    const handle = await open(tempPath, "wx", 0o640);
+    tempExists = true;
+    try {
+      await handle.writeFile(content);
+      await handle.datasync();
+    } finally {
+      await handle.close();
+    }
+    await hooks.afterFileSync?.();
+
+    try {
+      await link(tempPath, targetPath);
+    } catch (error) {
+      if (!isFileExistsError(error)) throw error;
+      const existing = await verifyPersistedUploadedObject(payload, settings).catch(() => null);
+      if (!existing) {
+        throw new UploadPreflightError(
+          409,
+          "UPLOAD_SESSION_OBJECT_CONFLICT",
+          "The upload session target already contains different content.",
+        );
+      }
+      await unlink(tempPath);
+      tempExists = false;
+      await syncDirectory(parentPath);
+      await hooks.afterDirectorySync?.();
+      return existing;
+    }
+
+    await hooks.afterPublish?.();
+    await unlink(tempPath);
+    tempExists = false;
+    await syncDirectory(parentPath);
+    await hooks.afterDirectorySync?.();
+  } finally {
+    if (tempExists) {
+      await unlink(tempPath).catch(() => undefined);
+    }
+  }
   return { path: targetPath, sha256, size_bytes: content.byteLength };
+}
+
+async function syncDirectory(directoryPath: string): Promise<void> {
+  const directory = await open(directoryPath, "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}
+
+function isFileExistsError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
+}
+
+/**
+ * Produce an opaque, signed acknowledgement only after the exact object was
+ * durably accepted by the upload endpoint.  The confirmation endpoint must
+ * verify this receipt and the persisted object before mutating Registry state.
+ */
+export function createUploadReceipt(
+  uploadToken: string,
+  payload: UploadTokenPayload,
+  persisted: PersistedUploadObject,
+  settings: UploadSettings = getUploadSettings()
+): string {
+  if (persisted.size_bytes !== payload.file_size || persisted.sha256 !== payload.sha256) {
+    throw new UploadPreflightError(
+      500,
+      "UPLOAD_RECEIPT_OBJECT_MISMATCH",
+      "Persisted upload does not match the signed upload decision."
+    );
+  }
+  const receipt: UploadReceiptPayload = {
+    schema_version: "akl-upload-receipt-1",
+    upload_token_sha256: hashValue(uploadToken),
+    session_id: payload.session_id,
+    document_id: payload.document_id,
+    bucket: payload.bucket,
+    object_key: payload.object_key,
+    source_file_uri: payload.source_file_uri,
+    file_name: payload.file_name,
+    file_size: payload.file_size,
+    file_type: payload.file_type,
+    sha256: payload.sha256,
+    persisted_at: new Date().toISOString(),
+    expires_at: payload.expires_at
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(receipt)).toString("base64url");
+  return `${encodedPayload}.${signReceiptValue(encodedPayload, settings.signingSecret)}`;
+}
+
+export function verifyUploadReceipt(
+  receipt: string,
+  uploadToken: string,
+  uploadPayload: UploadTokenPayload,
+  settings: UploadSettings = getUploadSettings()
+): UploadReceiptPayload {
+  const [encodedPayload, signature, extra] = receipt.split(".");
+  if (!encodedPayload || !signature || extra) {
+    throw new UploadPreflightError(401, "INVALID_UPLOAD_RECEIPT", "Upload receipt is malformed.");
+  }
+  if (!safeEqual(signature, signReceiptValue(encodedPayload, settings.signingSecret))) {
+    throw new UploadPreflightError(401, "INVALID_UPLOAD_RECEIPT", "Upload receipt signature is invalid.");
+  }
+
+  let payload: UploadReceiptPayload;
+  try {
+    const parsed = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as unknown;
+    if (!isExactReceiptPayload(parsed)) throw new Error("invalid receipt payload");
+    payload = parsed;
+  } catch {
+    throw new UploadPreflightError(401, "INVALID_UPLOAD_RECEIPT", "Upload receipt payload is invalid.");
+  }
+
+  const expiresAt = Date.parse(payload.expires_at);
+  const persistedAt = Date.parse(payload.persisted_at);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    throw new UploadPreflightError(410, "UPLOAD_RECEIPT_EXPIRED", "Upload receipt has expired.");
+  }
+  if (!Number.isFinite(persistedAt) || persistedAt > Date.now() + 60_000) {
+    throw new UploadPreflightError(401, "INVALID_UPLOAD_RECEIPT", "Upload receipt persistence time is invalid.");
+  }
+
+  const expected: Omit<UploadReceiptPayload, "schema_version" | "persisted_at"> = {
+    upload_token_sha256: hashValue(uploadToken),
+    session_id: uploadPayload.session_id,
+    document_id: uploadPayload.document_id,
+    bucket: uploadPayload.bucket,
+    object_key: uploadPayload.object_key,
+    source_file_uri: uploadPayload.source_file_uri,
+    file_name: uploadPayload.file_name,
+    file_size: uploadPayload.file_size,
+    file_type: uploadPayload.file_type,
+    sha256: uploadPayload.sha256,
+    expires_at: uploadPayload.expires_at
+  };
+  const mismatches = Object.entries(expected)
+    .filter(([key, value]) => payload[key as keyof UploadReceiptPayload] !== value)
+    .map(([key]) => key);
+  if (mismatches.length > 0) {
+    throw new UploadPreflightError(
+      409,
+      "UPLOAD_RECEIPT_MISMATCH",
+      "Upload receipt does not match the signed upload decision.",
+      { fields: mismatches }
+    );
+  }
+  return payload;
+}
+
+export async function verifyPersistedUploadedObject(
+  payload: UploadTokenPayload,
+  settings: UploadSettings = getUploadSettings()
+): Promise<PersistedUploadObject> {
+  const targetPath = resolveObjectPath(payload, settings);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(targetPath, "r");
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size !== payload.file_size) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOADED_OBJECT_MISMATCH",
+        "Persisted upload object size does not match the signed upload decision.",
+        { expected_size_bytes: payload.file_size, actual_size_bytes: stat.size }
+      );
+    }
+    const hash = createHash("sha256");
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, payload.file_size));
+    let position = 0;
+    while (position < payload.file_size) {
+      const { bytesRead } = await handle.read(
+        chunk,
+        0,
+        Math.min(chunk.byteLength, payload.file_size - position),
+        position
+      );
+      if (bytesRead === 0) break;
+      hash.update(chunk.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    const sha256 = `sha256:${hash.digest("hex")}`;
+    const finalStat = await handle.stat();
+    if (
+      position !== payload.file_size ||
+      finalStat.size !== payload.file_size ||
+      sha256 !== payload.sha256
+    ) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOADED_OBJECT_MISMATCH",
+        "Persisted upload object hash does not match the signed upload decision.",
+        { expected_sha256: payload.sha256, actual_sha256: sha256 }
+      );
+    }
+    return { path: targetPath, sha256, size_bytes: position };
+  } catch (error) {
+    if (error instanceof UploadPreflightError) throw error;
+    throw new UploadPreflightError(
+      409,
+      "UPLOADED_OBJECT_MISSING",
+      "Persisted upload object is not available for confirmation."
+    );
+  } finally {
+    await handle?.close();
+  }
+}
+
+export async function readBoundedUploadContent(
+  request: Request,
+  payload: UploadTokenPayload,
+  settings: UploadSettings = getUploadSettings()
+): Promise<Uint8Array> {
+  if (payload.file_size > settings.maxFileBytes) {
+    throw new UploadPreflightError(413, "FILE_TOO_LARGE", "Signed upload exceeds the configured limit.");
+  }
+  const contentLengthValue = request.headers.get("content-length");
+  if (contentLengthValue) {
+    const contentLength = Number(contentLengthValue);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+      throw new UploadPreflightError(400, "UPLOAD_SIZE_INVALID", "Content-Length is invalid.");
+    }
+    if (contentLength > settings.maxFileBytes) {
+      throw new UploadPreflightError(413, "FILE_TOO_LARGE", "Uploaded content exceeds the configured limit.");
+    }
+    if (contentLength !== payload.file_size) {
+      throw new UploadPreflightError(
+        400,
+        "UPLOAD_SIZE_MISMATCH",
+        "Content-Length does not match the signed upload size."
+      );
+    }
+  }
+  if (!request.body) {
+    throw new UploadPreflightError(400, "UPLOAD_SIZE_MISMATCH", "Uploaded content is missing.");
+  }
+
+  const content = new Uint8Array(payload.file_size);
+  const reader = request.body.getReader();
+  let offset = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (offset + value.byteLength > payload.file_size) {
+        try {
+          await reader.cancel("uploaded content exceeds the signed size");
+        } catch {
+          // Keep the signed size decision authoritative if peer cancellation fails.
+        }
+        throw new UploadPreflightError(
+          400,
+          "UPLOAD_SIZE_MISMATCH",
+          "Uploaded content exceeds the signed upload size."
+        );
+      }
+      content.set(value, offset);
+      offset += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (offset !== payload.file_size) {
+    throw new UploadPreflightError(
+      400,
+      "UPLOAD_SIZE_MISMATCH",
+      "Uploaded content is shorter than the signed upload size."
+    );
+  }
+  return content;
 }
 
 export function assertUploadMatchesIngestionPayload(
@@ -350,6 +732,50 @@ function signUploadToken(payload: UploadTokenPayload, settings: UploadSettings):
 
 function signValue(value: string, secret: string): string {
   return createHmac("sha256", secret).update(value).digest("base64url");
+}
+
+function signReceiptValue(value: string, secret: string): string {
+  return signValue(`akl-upload-receipt-1:${value}`, secret);
+}
+
+function hashValue(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function isExactReceiptPayload(value: unknown): value is UploadReceiptPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const keys = [
+    "schema_version",
+    "upload_token_sha256",
+    "session_id",
+    "document_id",
+    "bucket",
+    "object_key",
+    "source_file_uri",
+    "file_name",
+    "file_size",
+    "file_type",
+    "sha256",
+    "persisted_at",
+    "expires_at"
+  ];
+  if (Object.keys(record).length !== keys.length || keys.some((key) => !(key in record))) return false;
+  return (
+    record.schema_version === "akl-upload-receipt-1" &&
+    typeof record.upload_token_sha256 === "string" && SHA256_PATTERN.test(record.upload_token_sha256) &&
+    typeof record.session_id === "string" && record.session_id.length > 0 &&
+    typeof record.document_id === "string" && record.document_id.length > 0 &&
+    typeof record.bucket === "string" && record.bucket.length > 0 &&
+    typeof record.object_key === "string" && record.object_key.length > 0 &&
+    typeof record.source_file_uri === "string" && record.source_file_uri.length > 0 &&
+    typeof record.file_name === "string" && record.file_name.length > 0 &&
+    Number.isSafeInteger(record.file_size) && Number(record.file_size) > 0 &&
+    typeof record.file_type === "string" && record.file_type.length > 0 &&
+    typeof record.sha256 === "string" && SHA256_PATTERN.test(record.sha256) &&
+    typeof record.persisted_at === "string" &&
+    typeof record.expires_at === "string"
+  );
 }
 
 function safeEqual(left: string, right: string): boolean {

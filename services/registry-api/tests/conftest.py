@@ -16,10 +16,9 @@ os.environ.setdefault(
 )
 os.environ.setdefault(
     "AKL_SERVICE_CLIENT_ROUTE_GRANTS",
-    "aiip-service=audit|idempotency,"
+    "aiip-service=aiip-upload,"
     "akb-rag-service=authz|audit|idempotency,"
-    "svc-ingestion=authz|audit|documents-read|documents-write|"
-    "external-documents-read|external-documents-write|extractions-read|extractions-write,"
+    "svc-ingestion=authz|audit|documents-read|ingestion-status,"
     "svc-governance=authz|audit|workflow-read|workflow-write,"
     "svc-evaluation=audit|idempotency",
 )

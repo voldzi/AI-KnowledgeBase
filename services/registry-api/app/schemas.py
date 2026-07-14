@@ -5,7 +5,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.information_policy import InformationPolicyBinding, IntegrationEnvelope, canonical_policy_hash
+from app.information_policy import (
+    AiipUploadIntegrationEnvelope,
+    InformationPolicyBinding,
+    IntegrationEnvelope,
+    canonical_policy_hash,
+)
 
 
 class DocumentType(str, Enum):
@@ -103,10 +108,18 @@ class SourceLocation(BaseModel):
         return value
 
 
-class GovernanceScope(BaseModel):
+class AiipSourceLocation(SourceLocation):
     model_config = ConfigDict(extra="forbid")
 
+    sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    path: str = Field(min_length=1, max_length=1024)
+
+
+class GovernanceScope(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     type: Literal[
+        "own",
         "organization",
         "organization_unit",
         "budget_scope",
@@ -116,9 +129,21 @@ class GovernanceScope(BaseModel):
         "recipient_set",
     ]
     id: str | None = Field(default=None, min_length=1, max_length=160)
+    owner_subject_id: str | None = Field(
+        default=None,
+        alias="ownerSubjectId",
+        min_length=1,
+        max_length=160,
+    )
 
     @model_validator(mode="after")
     def require_scope_id(self) -> "GovernanceScope":
+        if self.type == "own":
+            if self.id is not None or not self.owner_subject_id:
+                raise ValueError("An own governance scope requires ownerSubjectId and forbids id")
+            return self
+        if self.owner_subject_id is not None:
+            raise ValueError("ownerSubjectId is valid only for an own governance scope")
         if self.type != "organization" and not self.id:
             raise ValueError("A non-organization governance scope requires id")
         if self.type == "organization" and self.id not in {None, "org_stratos"}:
@@ -325,6 +350,7 @@ class DocumentResponse(BaseModel):
     governed_parent_resource_id: str | None = None
     governance_scope_type: str = "organization"
     governance_scope_id: str | None = "org_stratos"
+    governance_scope_owner_subject_id: str | None = None
     governance_registration_status: str = "LEGACY_UNREGISTERED"
     governance_registered_at: datetime | None = None
     owner_id: str
@@ -465,8 +491,11 @@ class ExternalDocumentUpsertRequest(BaseModel):
 
 
 class ExternalDocumentCurrentUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     current_document_version_id: str | None = Field(default=None, max_length=64)
     current_file_id: str | None = Field(default=None, max_length=64)
+    expected_current_ingestion_job_id: str | None = Field(default=None, max_length=128)
     current_ingestion_job_id: str | None = Field(default=None, max_length=128)
     current_ingestion_status: str | None = Field(default=None, max_length=40)
     akb_source_uri: str | None = Field(default=None, max_length=1024)
@@ -496,16 +525,163 @@ class ExternalDocumentRefResponse(BaseModel):
     updated_at: datetime
 
 
+class IngestionAttemptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    document_id: str
+    document_version_id: str
+    ingestion_job_id: str
+    ingestion_status: Literal["QUEUED", "INGESTING", "INDEXED", "FAILED"]
+    created_at: datetime
+    updated_at: datetime
+
+
 class ExternalDocumentCurrentListResponse(BaseModel):
     document_id: str
     updated: int
     items: list[ExternalDocumentRefResponse] = Field(default_factory=list)
+    ingestion_attempt: IngestionAttemptResponse | None = None
 
 
 class ExternalDocumentResponse(BaseModel):
     external_document: ExternalDocumentRefResponse
     document: DocumentResponse
     created: bool = False
+
+
+class AiipExternalDocumentUpsertRequest(BaseModel):
+    """Narrow server-to-server contract for the AIIP document upload preflight."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: Literal["org_stratos"]
+    external_system: Literal["STRATOS_AIIP"]
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: Literal["InnovationRequest", "InnovationRequestImport"]
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_type: Literal[
+        "ai_intake",
+        "ai_requirement_card",
+        "ai_security_appendix",
+        "ai_governance_evidence",
+        "knowledge_base_article",
+        "project_documentation",
+        "attachment",
+        "other",
+    ]
+    title: str = Field(min_length=1, max_length=300)
+    classification: Classification
+    information_policy: InformationPolicyBinding
+    integration_envelope: AiipUploadIntegrationEnvelope
+    governance_scope: GovernanceScope
+    tags: list[str] = Field(default_factory=list)
+    source_location: AiipSourceLocation
+    citation_base_url: str | None = Field(default=None, max_length=512)
+    preview_url: str | None = Field(default=None, max_length=2048)
+
+    @model_validator(mode="after")
+    def validate_governed_source(self) -> "AiipExternalDocumentUpsertRequest":
+        envelope = self.integration_envelope
+        policy = self.information_policy
+        if envelope.source_system != "STRATOS_AIIP" or envelope.actor.type != "person":
+            raise ValueError("AIIP upload requires a person-authored STRATOS_AIIP envelope")
+        if envelope.source_resource is None:
+            raise ValueError("AIIP upload requires sourceResource")
+        if envelope.external_ref != self.external_ref:
+            raise ValueError("integration envelope externalRef does not match external_ref")
+        if envelope.policy_binding_id != policy.policy_binding_id:
+            raise ValueError("integration envelope policyBindingId does not match information_policy")
+        if envelope.policy_hash != canonical_policy_hash(policy):
+            raise ValueError("integration envelope policyHash does not match information_policy")
+        if envelope.classification.handling_class != policy.handling_class:
+            raise ValueError("integration envelope handlingClass does not match information_policy")
+        if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
+            raise ValueError("integration envelope TLP/PAP does not match information_policy")
+        policy_handling_class = (
+            policy.handling_class.value
+            if hasattr(policy.handling_class, "value")
+            else str(policy.handling_class)
+        )
+        expected_classification = {
+            "PUBLIC": Classification.public,
+            "INTERNAL": Classification.internal,
+            "RESTRICTED": Classification.restricted,
+        }[policy_handling_class]
+        if self.classification != expected_classification:
+            raise ValueError("classification does not match information_policy")
+        envelope_payload = envelope.payload
+        if (
+            envelope_payload.entity_type != self.entity_type
+            or envelope_payload.entity_id != self.entity_id
+            or envelope.source_resource.resource_id != self.entity_id
+            or envelope_payload.source_document_id != self.source_location.path
+            or envelope_payload.sha256 != self.source_location.sha256
+        ):
+            raise ValueError("AIIP payload does not match entity/source_location lineage")
+        if envelope.source_resource.scope.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        ) != self.governance_scope.model_dump(mode="json", by_alias=True, exclude_none=True):
+            raise ValueError("governance_scope does not match sourceResource.scope")
+        return self
+
+
+class AiipGovernanceParentSourceResource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    governed_resource_id: str = Field(min_length=1)
+    application: Literal["AIIP"]
+    resource_type: Literal["idea"]
+    resource_id: str = Field(min_length=1)
+    source_version: str = Field(min_length=1)
+    scope: GovernanceScope
+
+
+class AiipGovernanceEffectivePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    policy_binding_id: str = Field(min_length=1)
+    policy_version: Literal["information-policy-2.0.0"]
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    originator_id: str | None
+    issued_at: datetime | None
+    review_at: datetime | None
+
+
+class AiipGovernedResourceConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    application: Literal["AKB"]
+    resource_type: Literal["document", "document-version"]
+    resource_id: str = Field(min_length=1)
+    source_version: str = Field(min_length=1)
+    parent_id: str = Field(min_length=1)
+    scope: GovernanceScope
+    policy_assignment: Literal["INHERITED"]
+    explicit_policy_binding_id: None
+    inherited_from_resource_id: str = Field(min_length=1)
+    effective_policy: AiipGovernanceEffectivePolicy
+    registered_by_subject_id: str = Field(min_length=1)
+    confirmed_by_subject_id: str = Field(min_length=1)
+
+
+class AiipGovernanceConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    parent_source_resource: AiipGovernanceParentSourceResource
+    governed_resource: AiipGovernedResourceConfirmation
+    document_policy_binding_id: str = Field(min_length=1)
+    document_policy_version: Literal["information-policy-2.0.0"]
+    document_policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    actor_subject_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=8)
+    idempotency_key: str = Field(min_length=8)
+
+
+class AiipExternalDocumentUpsertResponse(ExternalDocumentResponse):
+    model_config = ConfigDict(extra="forbid")
+
+    governance_confirmation: AiipGovernanceConfirmation
 
 
 class DocumentExtractionStoreRequest(BaseModel):
@@ -610,6 +786,67 @@ class DocumentFileCreate(BaseModel):
         return value
 
 
+class AiipDocumentFileCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str = Field(min_length=1, max_length=300)
+    mime_type: str = Field(min_length=1, max_length=160)
+    size_bytes: int = Field(ge=1)
+    sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class AiipDocumentVersionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version_label: str = Field(min_length=1, max_length=80)
+    valid_from: date | None = None
+    valid_to: date | None = None
+    source_file_uri: str = Field(min_length=1, max_length=1024)
+    source_location: AiipSourceLocation
+    file_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    change_summary: str | None = None
+    information_policy: InformationPolicyBinding
+    integration_envelope: AiipUploadIntegrationEnvelope
+    governance_scope: GovernanceScope
+    file: AiipDocumentFileCreate
+
+    @model_validator(mode="after")
+    def validate_governed_version(self) -> "AiipDocumentVersionCreate":
+        envelope = self.integration_envelope
+        policy = self.information_policy
+        if envelope.source_system != "STRATOS_AIIP" or envelope.actor.type != "person":
+            raise ValueError("AIIP upload requires a person-authored STRATOS_AIIP envelope")
+        if envelope.source_resource is None:
+            raise ValueError("AIIP upload requires sourceResource")
+        if (
+            envelope.source_resource.scope.type == "own"
+            and envelope.source_resource.scope.owner_subject_id
+            != envelope.actor.subject_id
+        ):
+            raise ValueError("AIIP own upload scope must belong to the envelope actor")
+        if envelope.policy_binding_id != policy.policy_binding_id:
+            raise ValueError("integration envelope policyBindingId does not match information_policy")
+        if envelope.policy_hash != canonical_policy_hash(policy):
+            raise ValueError("integration envelope policyHash does not match information_policy")
+        if envelope.classification.handling_class != policy.handling_class:
+            raise ValueError("integration envelope handlingClass does not match information_policy")
+        if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
+            raise ValueError("integration envelope TLP/PAP does not match information_policy")
+        if self.file.sha256 != self.file_hash:
+            raise ValueError("file.sha256 does not match file_hash")
+        if (
+            envelope.payload.sha256 != self.file_hash
+            or envelope.payload.source_document_id != self.source_location.path
+            or self.source_location.sha256 != self.file_hash
+        ):
+            raise ValueError("AIIP envelope/source_location does not match file_hash")
+        if envelope.source_resource.scope.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        ) != self.governance_scope.model_dump(mode="json", by_alias=True, exclude_none=True):
+            raise ValueError("governance_scope does not match sourceResource.scope")
+        return self
+
+
 class DocumentVersionCreate(BaseModel):
     version_label: str = Field(min_length=1, max_length=80)
     valid_from: date | None = None
@@ -648,6 +885,7 @@ class DocumentVersionResponse(BaseModel):
     governed_parent_resource_id: str | None = None
     governance_scope_type: str = "organization"
     governance_scope_id: str | None = "org_stratos"
+    governance_scope_owner_subject_id: str | None = None
     governance_registration_status: str = "LEGACY_UNREGISTERED"
     governance_registered_at: datetime | None = None
     valid_from: date | None
@@ -658,6 +896,71 @@ class DocumentVersionResponse(BaseModel):
     change_summary: str | None
     created_at: datetime
     published_at: datetime | None
+
+
+class AiipDocumentVersionCreateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: DocumentVersionResponse
+    external_document: ExternalDocumentResponse
+    created: bool
+    governance_confirmation: AiipGovernanceConfirmation
+
+
+class AiipExternalDocumentCurrentUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    expected_current_document_version_id: str | None = Field(default=None, min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    file_id: str = Field(min_length=1, max_length=64)
+    ingestion_job_id: str = Field(min_length=1, max_length=128)
+    ingestion_status: Literal[
+        "REGISTERED",
+        "VERSION_CREATED",
+        "UPLOADING",
+        "INGESTING",
+        "INDEXED",
+        "FAILED",
+        "PERMISSION_DENIED",
+        "STALE",
+    ]
+    information_policy: InformationPolicyBinding
+    integration_envelope: AiipUploadIntegrationEnvelope
+    governance_scope: GovernanceScope
+
+    @model_validator(mode="after")
+    def validate_governed_current(self) -> "AiipExternalDocumentCurrentUpdateRequest":
+        envelope = self.integration_envelope
+        policy = self.information_policy
+        source = envelope.source_resource
+        if envelope.source_system != "STRATOS_AIIP" or envelope.actor.type != "person":
+            raise ValueError("AIIP upload requires a person-authored STRATOS_AIIP envelope")
+        if source is None:
+            raise ValueError("AIIP upload requires sourceResource")
+        if source.scope.type == "own" and source.scope.owner_subject_id != envelope.actor.subject_id:
+            raise ValueError("AIIP own upload scope must belong to the envelope actor")
+        if envelope.policy_binding_id != policy.policy_binding_id:
+            raise ValueError("integration envelope policyBindingId does not match information_policy")
+        if envelope.policy_hash != canonical_policy_hash(policy):
+            raise ValueError("integration envelope policyHash does not match information_policy")
+        if envelope.classification.handling_class != policy.handling_class:
+            raise ValueError("integration envelope handlingClass does not match information_policy")
+        if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
+            raise ValueError("integration envelope TLP/PAP does not match information_policy")
+        if source.scope.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        ) != self.governance_scope.model_dump(mode="json", by_alias=True, exclude_none=True):
+            raise ValueError("governance_scope does not match sourceResource.scope")
+        return self
+
+
+class AiipExternalDocumentCurrentUpdateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    external_document: ExternalDocumentResponse
+    updated: bool
+    governance_confirmation: AiipGovernanceConfirmation
 
 
 class DocumentVersionListResponse(BaseModel):
@@ -783,6 +1086,124 @@ class AuthzCheckResponse(BaseModel):
     reason: str
     reason_codes: list[str] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
+
+
+class IngestionAuthorizationIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["document.ingest", "document.read", "document.reindex"]
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+    )
+
+
+class IngestionAuthorizationConfirmRequest(IngestionAuthorizationIssueRequest):
+    authorization_token: str = Field(min_length=32, max_length=4096)
+    expected_subject_id: str = Field(
+        min_length=2,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]+$",
+    )
+    document_id: str = Field(min_length=1, max_length=128)
+    document_version_id: str = Field(min_length=1, max_length=128)
+
+
+class IngestionAuthorizationResponse(BaseModel):
+    authorization_token: str | None = None
+    authorization_id: str
+    confirmed_subject_id: str
+    action: Literal["document.ingest", "document.read", "document.reindex"]
+    document_id: str
+    document_version_id: str
+    correlation_id: str
+    idempotency_key: str
+    expires_at: datetime
+
+
+class IntelligenceScopeAuthorizationIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_ids: list[str] = Field(min_length=1, max_length=500)
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+    )
+
+    @field_validator("document_ids")
+    @classmethod
+    def normalize_document_ids(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() if isinstance(value, str) else "" for value in values]
+        if any(not value or len(value) > 128 for value in normalized):
+            raise ValueError("Each document id must contain between 1 and 128 characters")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Intelligence document scope must not contain duplicates")
+        return sorted(normalized)
+
+
+class IntelligenceDocumentCoordinate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=128)
+    document_version_id: str = Field(min_length=1, max_length=128)
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class IntelligenceScopeAuthorizationConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authorization_token: str = Field(min_length=32, max_length=4096)
+    expected_subject_id: str = Field(
+        min_length=2,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]+$",
+    )
+    documents: list[IntelligenceDocumentCoordinate] = Field(min_length=1, max_length=500)
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+    )
+
+    @field_validator("documents")
+    @classmethod
+    def normalize_documents(
+        cls,
+        values: list[IntelligenceDocumentCoordinate],
+    ) -> list[IntelligenceDocumentCoordinate]:
+        if len({item.document_id for item in values}) != len(values):
+            raise ValueError("Intelligence coordinates must contain each document once")
+        return sorted(values, key=lambda item: item.document_id)
+
+
+class IntelligenceScopeAuthorizationResponse(BaseModel):
+    authorization_token: str | None = None
+    authorization_id: str
+    confirmed_subject_id: str
+    action: Literal["intelligence.query"] = "intelligence.query"
+    document_scope_hash: str
+    document_count: int = Field(ge=1, le=500)
+    documents: list[IntelligenceDocumentCoordinate]
+    correlation_id: str
+    idempotency_key: str
+    expires_at: datetime
 
 
 class AuthzFilterDocumentsRequest(BaseModel):

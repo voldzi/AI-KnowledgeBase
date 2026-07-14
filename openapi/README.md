@@ -25,3 +25,10 @@ The service-local `openapi.yaml` files are retained during this migration as
 legacy source contracts for each service. They must stay aligned with runtime
 `/openapi.json`; the root JSON contract is the repository-level binding artifact
 used by CI and cross-application integration work.
+
+The governed AIIP upload bridge is an explicit exception to generic web-route
+indexing. Its preflight, binary content, and confirm operations are maintained
+as closed schemas in the generator because they carry two independent
+identities, immutable governance lineage, signed upload headers, and an opaque
+post-persistence receipt. Do not replace those operations with `GenericJson` or
+move `X-AKL-Upload-Token` out of preflight `required_headers`.

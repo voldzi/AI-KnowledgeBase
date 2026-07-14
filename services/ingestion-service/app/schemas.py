@@ -4,11 +4,14 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class JobStatus(str, Enum):
+    pending_authorization = "pending_authorization"
+    claiming = "claiming"
     queued = "queued"
+    starting = "starting"
     running = "running"
     completed = "completed"
     failed = "failed"
@@ -38,6 +41,11 @@ class ReadinessResponse(BaseModel):
 class IngestionJobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+    )
     document_id: str = Field(min_length=1, max_length=128)
     document_version_id: str = Field(min_length=1, max_length=128)
     source_file_uri: str = Field(min_length=1, max_length=2048)
@@ -46,6 +54,11 @@ class IngestionJobCreate(BaseModel):
     ocr_enabled: bool = True
     chunking_strategy: str = Field(default="legal_structured", min_length=1, max_length=80)
     embedding_profile: str = Field(default="default", min_length=1, max_length=80)
+    expected_current_ingestion_job_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+    )
 
 
 class ReindexRequest(BaseModel):
@@ -134,6 +147,35 @@ class EntityFacetReport(BaseModel):
     warnings: list[ReportMessage] = Field(default_factory=list)
 
 
+class IntelligenceDocumentCoordinate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=128)
+    document_version_id: str = Field(min_length=1, max_length=128)
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class EntityFacetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authorized_documents: list[IntelligenceDocumentCoordinate] = Field(
+        min_length=1,
+        max_length=500,
+    )
+    limit: int = Field(default=8, ge=1, le=50)
+    value_limit: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("authorized_documents")
+    @classmethod
+    def normalize_authorized_documents(
+        cls,
+        values: list[IntelligenceDocumentCoordinate],
+    ) -> list[IntelligenceDocumentCoordinate]:
+        if len({item.document_id for item in values}) != len(values):
+            raise ValueError("Authorized intelligence scope contains duplicate documents")
+        return sorted(values, key=lambda item: item.document_id)
+
+
 class EntitySearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -145,6 +187,7 @@ class EntitySearchRequest(BaseModel):
     status: str | None = Field(default=None, max_length=80)
     allowed_document_ids: list[str] = Field(default_factory=list, max_length=5000)
     allowed_policy_hashes: dict[str, list[str]] | None = None
+    authorized_documents: list[IntelligenceDocumentCoordinate] = Field(default_factory=list, max_length=500)
     limit: int = Field(default=12, ge=1, le=50)
 
     @field_validator("query", "entity_type", "entity_value", "document_type", "classification", "status", mode="before")
@@ -221,6 +264,7 @@ class AnalystSearchRequest(BaseModel):
     status: str | None = Field(default=None, max_length=80)
     allowed_document_ids: list[str] = Field(default_factory=list, max_length=5000)
     allowed_policy_hashes: dict[str, list[str]] | None = None
+    authorized_documents: list[IntelligenceDocumentCoordinate] = Field(default_factory=list, max_length=500)
     limit: int = Field(default=12, ge=1, le=50)
 
     @field_validator("query", "entity_type", "entity_value", "document_type", "classification", "status", mode="before")
@@ -282,6 +326,7 @@ class EntityRelationshipRequest(BaseModel):
     status: str | None = Field(default=None, max_length=80)
     allowed_document_ids: list[str] = Field(default_factory=list, max_length=5000)
     allowed_policy_hashes: dict[str, list[str]] | None = None
+    authorized_documents: list[IntelligenceDocumentCoordinate] = Field(default_factory=list, max_length=500)
     min_evidence_count: int = Field(default=1, ge=1, le=20)
     limit: int = Field(default=12, ge=1, le=50)
 
@@ -371,6 +416,8 @@ class DocumentMetadata(BaseModel):
     policy_version: str | None = None
     policy_hash: str | None = None
     policy_summary: dict[str, Any] = Field(default_factory=dict)
+    source_file_uri: str | None = None
+    file_hash: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
 
 
 class DocumentChunk(BaseModel):
@@ -425,3 +472,23 @@ class StoredJob(BaseModel):
     request: IngestionJobCreate
     job: IngestionJobResponse
     report: IngestionReport | None = None
+    request_hash: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    authoritative_claim_requested: bool = False
+    actor_subject_id: str | None = Field(default=None, min_length=1, max_length=128)
+    actor_authorization_id: str | None = Field(default=None, min_length=1, max_length=128)
+    transport_client_id: str | None = Field(default=None, min_length=1, max_length=128)
+    cancel_requested: bool = False
+    pending_external_status: Literal["INDEXED", "FAILED"] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_pre_idempotency_jobs(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        request = value.get("request")
+        job = value.get("job")
+        if isinstance(request, dict) and "idempotency_key" not in request and isinstance(job, dict):
+            job_id = job.get("job_id")
+            if isinstance(job_id, str) and job_id:
+                value = {**value, "request": {**request, "idempotency_key": f"legacy:{job_id}"}}
+        return value

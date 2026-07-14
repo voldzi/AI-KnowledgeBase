@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getStratosUploadSettings
 } from "@/lib/stratos/document-ai";
-import { persistUploadedObject, verifyUploadToken } from "@/lib/upload/preflight";
+import {
+  createUploadReceipt,
+  persistUploadedObject,
+  readBoundedUploadContent,
+  verifyUploadToken
+} from "@/lib/upload/preflight";
 
 import { stratosBridgeError } from "../../../../errors";
 
@@ -23,6 +28,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const token = request.headers.get("X-AKL-Upload-Token") ?? "";
     const declaredSha256 = request.headers.get("X-AKL-Content-SHA256") ?? "";
     const payload = verifyUploadToken(token, settings);
+    const declaredContentType = request.headers.get("Content-Type")?.trim().toLowerCase() ?? "";
 
     if (payload.session_id !== sessionId) {
       return NextResponse.json(
@@ -37,7 +43,20 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (declaredSha256 && declaredSha256.toLowerCase() !== payload.sha256) {
+    if (!declaredSha256) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "UPLOAD_HASH_HEADER_REQUIRED",
+            message: "X-AKL-Content-SHA256 is required.",
+            trace_id: "web-stratos-upload"
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    if (declaredSha256.toLowerCase() !== payload.sha256) {
       return NextResponse.json(
         {
           error: {
@@ -50,12 +69,27 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (!declaredContentType || declaredContentType !== payload.file_type) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "UPLOAD_CONTENT_TYPE_MISMATCH",
+            message: "Content-Type must exactly match the signed upload decision.",
+            trace_id: "web-stratos-upload"
+          }
+        },
+        { status: 415 }
+      );
+    }
+
+    const bytes = await readBoundedUploadContent(request, payload, settings);
     const persisted = await persistUploadedObject(payload, bytes, settings);
+    const uploadReceipt = createUploadReceipt(token, payload, persisted, settings);
 
     return NextResponse.json(
       {
         uploaded: true,
+        upload_receipt: uploadReceipt,
         upload_session_id: payload.session_id,
         source_file_uri: payload.source_file_uri,
         file: {

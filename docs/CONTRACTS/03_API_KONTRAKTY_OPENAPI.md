@@ -378,15 +378,21 @@ dokument použije pro citované odpovědi.
 
 ```text
 GET  /intelligence/entities/facets
+POST /intelligence/entities/facets/query
 POST /intelligence/analyst/search
 POST /intelligence/entities/search
 POST /intelligence/entities/relationships
 ```
 
-Tyto endpointy jsou read-only nad OpenSearch chunk indexem. Search a
-relationship requesty vyžadují `allowed_document_ids`; web bridge je odvozuje z
-Registry API dokumentů viditelných aktuálnímu uživateli a vrácené evidence ještě
-jednou filtruje před odesláním do browseru.
+Tyto endpointy jsou read-only nad OpenSearch chunk indexem. Produkční dotazy
+používají scoped POST kontrakty: web bridge si od Registry vyžádá krátkodobý
+proof svázaný s přesně seřazenými souřadnicemi `document_id`,
+`document_version_id` a `policy_hash`, Ingestion proof potvrdí přes Registry a
+teprve potom souřadnice sváže s OpenSearch filtry. Klientské
+`allowed_document_ids` samo o sobě není oprávnění. Web bridge vrácené evidence
+navíc znovu filtruje podle potvrzené množiny před odesláním do browseru. Legacy
+unscoped `GET /intelligence/entities/facets` je pouze pro lokální mock/disabled
+režim a v produkci fail-closed.
 
 `POST /intelligence/analyst/search` podporuje režimy `smart`, `boolean`,
 `phrase`, `proximity` a `fielded`. Fielded dotazy používají aliasy `title:`,

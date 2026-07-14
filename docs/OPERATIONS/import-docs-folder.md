@@ -1,8 +1,13 @@
 # Import Docs Folder
 
-`tools/import_docs_folder.py` imports local Markdown documentation into AKL as controlled project documentation.
-It is a Markdown-source importer. If the Markdown file is only a text derivative of an original PDF, import the
-original PDF as the current source version with `tools/import_original_pdf_versions.py`; see
+`tools/import_docs_folder.py` provides dry-run inventory for local Markdown
+documentation. Mutation is retired in every environment and fails before
+Registry, Ingestion, object-storage, or index writes. Actual imports use the
+governed application UI/API.
+It is a Markdown-source importer. If the Markdown file is only a text derivative
+of an original PDF, use `tools/import_original_pdf_versions.py` only for a
+dry-run inventory; host-side `--apply` is retired in every environment and
+actual imports use the governed application. See
 `docs/OPERATIONS/import-original-pdf-sources.md`.
 
 ## Prerequisites
@@ -32,16 +37,6 @@ source_system: git
 
 ## Run
 
-Import the full docs folder:
-
-```bash
-python3 tools/import_docs_folder.py \
-  --source ./docs \
-  --manifest docs/import-manifest.yaml \
-  --mode reindex \
-  --report reports/docs_import_report.json
-```
-
 Dry run without Registry/Ingestion/Qdrant writes:
 
 ```bash
@@ -54,11 +49,10 @@ python3 tools/import_docs_folder.py \
   --report reports/docs_import_report.json
 ```
 
-## Modes
+## Retired Mutation Modes
 
-- `skip-existing`: if a Registry document with `metadata.source_path` already exists, leave it unchanged and count its latest Qdrant points when a version exists.
-- `new-version`: if the document exists, create and publish a new version, then ingest it.
-- `reindex`: if the document exists, reuse its latest version and run ingestion again. If it does not exist, create the document and first version.
+- `skip-existing`, `new-version`, and `reindex` remain usable only as dry-run
+  planning inputs. Without `--dry-run`, the tool exits before mutation.
 
 The idempotency key is Registry document metadata field `source_path`. Repeated runs do not create duplicate Document rows for the same Markdown path.
 
@@ -67,16 +61,18 @@ The idempotency key is Registry document metadata field `source_path`. Repeated 
 Markdown imports store the Markdown file as the Registry `source_file_uri` and as the object shown by signed source
 opening. This is correct for repository documentation and Markdown-native controlled documents.
 
-For corpora prepared from external PDFs, keep the Markdown derivative only as ingestion/import working material and
-run the original PDF import after the Markdown documents exist:
+For corpora prepared from external PDFs, keep the Markdown derivative only as
+ingestion/import working material and run only the original PDF dry-run
+inventory after the Markdown documents exist:
 
 ```bash
 python3 tools/import_original_pdf_versions.py --report reports/original_pdf_import_report.dry-run.json
-python3 tools/import_original_pdf_versions.py --apply --report reports/original_pdf_import_report.json
 ```
 
-The PDF import creates draft PDF versions, ingests them, publishes them only after chunks are created, and supersedes
-the prior Markdown version. Documents without a matching raw PDF remain Markdown-backed until the original is supplied.
+Do not add `--apply` in any profile. The PDF tool is also dry-run-only and exits
+before mutation. Actual imports use the governed application UI/API. Documents
+without a governed PDF import path remain Markdown-backed until the original is
+supplied.
 
 ## Reports
 
@@ -90,21 +86,9 @@ When OpenSearch is reachable, it also contains `opensearch_documents`; set `AKL_
 
 ## Smoke Test
 
-```bash
-python3 scripts/phase_03_docs_import_smoke.py
-```
-
-For an OIDC/STRATOS governance profile, provide the bearer token only through
-`AKL_SMOKE_BEARER_TOKEN` (or `AKL_IMPORT_BEARER_TOKEN`) and point
-`AKL_IMPORT_INFORMATION_POLICY_FILE` to a non-secret JSON file containing the
-exact Registry-issued binding. When a bearer token is present, the importer
-does not send the legacy `X-AKL-Subject` or `X-AKL-Roles` headers. The same
-binding is persisted on the document and every imported version. The smoke
-scripts complete the Registry review task before publication. Direct importer
-runs must opt into that controlled action with `--approve-for-publish` (or
-`AKL_IMPORT_APPROVE_FOR_PUBLISH=true`).
-
-The smoke test imports a limited subset of `docs/`, verifies Qdrant points and OpenSearch documents, and asks RAG:
+Importer-backed mutating smoke flows are retired; neither bearer credentials
+nor disabled/mock auth enables them. Perform imports through the governed
+application UI/API, then verify Qdrant/OpenSearch and ask RAG:
 
 ```text
 Jak funguje RAG retrieval a citace?
@@ -112,15 +96,11 @@ Jak funguje RAG retrieval a citace?
 
 The answer must include citations.
 
-## Document Viewer Smoke Test
+## Document Viewer Verification
 
-After source-context support is enabled, run:
-
-```bash
-python3 scripts/phase_03_document_viewer_smoke.py
-```
-
-The test reindexes a small docs subset, asks a RAG question, opens the first citation through `GET /api/v1/citations/{chunk_id}/open`, and verifies that `source_file_uri`, `viewer_mode`, and `chunk_text` match the Qdrant payload.
+After a governed import, use the application/citation flow to open the first
+citation through `GET /api/v1/citations/{chunk_id}/open` and verify that
+`source_file_uri`, `viewer_mode`, and `chunk_text` match the indexed payload.
 
 ## OpenSearch Backfill
 

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -67,6 +68,9 @@ class Settings(BaseSettings):
     stratos_information_resources_url: str | None = Field(
         default=None, alias="AKL_STRATOS_INFORMATION_RESOURCES_URL"
     )
+    stratos_aiip_akb_resources_url: str | None = Field(
+        default=None, alias="AKL_STRATOS_AIIP_AKB_RESOURCES_URL"
+    )
     stratos_information_publications_url: str | None = Field(
         default=None, alias="AKL_STRATOS_INFORMATION_PUBLICATIONS_URL"
     )
@@ -75,6 +79,9 @@ class Settings(BaseSettings):
     )
     stratos_policy_service_token: str | None = Field(
         default=None, alias="AKB_POLICY_SERVICE_TOKEN"
+    )
+    stratos_aiip_ingest_service_token: str | None = Field(
+        default=None, alias="AKB_AIIP_INGEST_SERVICE_TOKEN"
     )
     public_delivery_internal_token: str | None = Field(
         default=None, alias="AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN"
@@ -143,6 +150,20 @@ class Settings(BaseSettings):
     stratos_access_cache_ttl_seconds: float = Field(
         default=0.0, ge=0, alias="AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS"
     )
+    ingestion_authorization_secret: str | None = Field(
+        default=None,
+        alias="AKL_INGESTION_AUTHORIZATION_SECRET",
+    )
+    ingestion_authorization_secret_file: str | None = Field(
+        default=None,
+        alias="AKL_INGESTION_AUTHORIZATION_SECRET_FILE",
+    )
+    ingestion_authorization_ttl_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=300,
+        alias="AKL_INGESTION_AUTHORIZATION_TTL_SECONDS",
+    )
 
     keycloak_admin_base_url: str | None = Field(default=None, alias="AKL_KEYCLOAK_ADMIN_BASE_URL")
     keycloak_realm: str = Field(default="stratos", alias="AKL_KEYCLOAK_REALM")
@@ -175,6 +196,25 @@ class Settings(BaseSettings):
             self.service_client_route_grants,
             variable_name="AKL_SERVICE_CLIENT_ROUTE_GRANTS",
         )
+
+    @property
+    def ingestion_authorization_signing_secret(self) -> str:
+        if self.ingestion_authorization_secret:
+            return self.ingestion_authorization_secret
+        if self.ingestion_authorization_secret_file:
+            try:
+                value = Path(self.ingestion_authorization_secret_file).read_text(
+                    encoding="utf-8"
+                ).strip()
+            except OSError as exc:
+                raise ValueError(
+                    "AKL_INGESTION_AUTHORIZATION_SECRET_FILE could not be read"
+                ) from exc
+            if value:
+                return value
+        if self.env != "production":
+            return "akb-development-ingestion-authorization-secret-v1"
+        raise ValueError("Ingestion authorization signing secret is unavailable")
 
     @model_validator(mode="after")
     def validate_security_mode(self) -> "Settings":
@@ -236,6 +276,8 @@ class Settings(BaseSettings):
                 "access-admin-write",
                 "profile-read",
                 "profile-write",
+                "aiip-upload",
+                "ingestion-status",
             }
         }
         if invalid_routes:
@@ -245,9 +287,37 @@ class Settings(BaseSettings):
             )
 
         if self.env == "production":
+            if bool(self.ingestion_authorization_secret) == bool(
+                self.ingestion_authorization_secret_file
+            ):
+                raise ValueError(
+                    "Production Registry requires exactly one of "
+                    "AKL_INGESTION_AUTHORIZATION_SECRET or "
+                    "AKL_INGESTION_AUTHORIZATION_SECRET_FILE"
+                )
+            if len(self.ingestion_authorization_signing_secret) < 32:
+                raise ValueError(
+                    "The ingestion authorization signing secret must contain at least 32 characters"
+                )
             if not route_grants:
                 raise ValueError(
                     "Production OIDC requires AKL_SERVICE_CLIENT_ROUTE_GRANTS"
+                )
+            required_ingestion_routes = frozenset(
+                {"authz", "audit", "documents-read", "ingestion-status"}
+            )
+            if "svc-ingestion" not in trusted_service_clients:
+                raise ValueError(
+                    "Production Registry requires trusted client svc-ingestion"
+                )
+            if route_grants.get("svc-ingestion") != required_ingestion_routes:
+                raise ValueError(
+                    "Production svc-ingestion grants must be exactly "
+                    "authz|audit|documents-read|ingestion-status"
+                )
+            if route_grants.get("aiip-service") != frozenset({"aiip-upload"}):
+                raise ValueError(
+                    "Production aiip-service grant must be exactly aiip-upload"
                 )
             missing_governance = [
                 name
@@ -256,9 +326,11 @@ class Settings(BaseSettings):
                     "AKL_STRATOS_POLICY_BINDINGS_URL": self.stratos_policy_bindings_url,
                     "AKL_STRATOS_POLICY_DECISIONS_URL": self.stratos_policy_decisions_url,
                     "AKL_STRATOS_INFORMATION_RESOURCES_URL": self.stratos_information_resources_url,
+                    "AKL_STRATOS_AIIP_AKB_RESOURCES_URL": self.stratos_aiip_akb_resources_url,
                     "AKL_STRATOS_INFORMATION_PUBLICATIONS_URL": self.stratos_information_publications_url,
                     "AKL_STRATOS_PUBLIC_DECISIONS_URL": self.stratos_public_decisions_url,
                     "AKB_POLICY_SERVICE_TOKEN": self.stratos_policy_service_token,
+                    "AKB_AIIP_INGEST_SERVICE_TOKEN": self.stratos_aiip_ingest_service_token,
                     "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN": self.public_delivery_internal_token,
                 }.items()
                 if not value
@@ -270,6 +342,10 @@ class Settings(BaseSettings):
             if len(self.public_delivery_internal_token or "") < 32:
                 raise ValueError(
                     "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN must contain at least 32 characters in production"
+                )
+            if self.stratos_aiip_ingest_service_token == self.stratos_policy_service_token:
+                raise ValueError(
+                    "AKB_AIIP_INGEST_SERVICE_TOKEN must be distinct from AKB_POLICY_SERVICE_TOKEN"
                 )
 
         return self

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
+import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
 import {
   filterSearchItems,
   latestVersion,
@@ -9,7 +10,7 @@ import {
   stringList,
   toSearchItem
 } from "@/lib/stratos/document-ai";
-import type { Classification, Document, DocumentType, DocumentVersion } from "@/lib/types";
+import type { Classification, Document, DocumentType } from "@/lib/types";
 
 import { stratosBridgeError } from "../../errors";
 
@@ -27,11 +28,12 @@ export async function POST(request: NextRequest) {
     const matchingDocuments = filterDocumentsByQuery(documents, body);
     const pageDocuments = matchingDocuments.slice(offset, offset + limit);
 
-    const jobs = await clients.ingestion.listJobs(context).catch(() => []);
+    const jobs = await listVisibleIngestionJobs(clients, pageDocuments, context);
     const items = await mapWithConcurrency(pageDocuments, 4, async (document) => {
-      const versions = await clients.registry
-        .listDocumentVersions(document.document_id, context)
-        .catch((): DocumentVersion[] => []);
+      const versions = await clients.registry.listDocumentVersions(
+        document.document_id,
+        context,
+      );
       const version = latestVersion(versions);
       const job = version
         ? jobs.find((candidate) => candidate.document_version_id === version.document_version_id) ?? null

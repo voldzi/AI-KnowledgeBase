@@ -32,12 +32,13 @@ Authorization: Bearer <gateway service token>
 X-AKL-Subject: svc-ingestion | svc-rag
 X-AKL-Audience: llm-gateway-service
 X-AKL-Roles: service_ingestion | service_rag
-X-AKL-On-Behalf-Of: <original caller id, when available>
+X-AKL-On-Behalf-Of: <proof-confirmed caller id, when available>
 ```
 
 LLM Gateway requires the configured audience and at least one allowed service
 role in production. The original caller token is no longer forwarded as the
-gateway credential.
+gateway credential. The caller-id header is confirmed audit context from the
+Registry-issued ingestion proof and is not delegated authority.
 
 Upload confirmation now resolves the external identity and deterministic
 version key before creating lifecycle records. An exact replay returns HTTP

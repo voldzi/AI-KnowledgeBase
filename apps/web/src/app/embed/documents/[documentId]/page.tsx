@@ -2,7 +2,12 @@ import { notFound } from "next/navigation";
 
 import { DocumentDetail } from "@/features/documents/document-detail";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { ApiClientError } from "@/lib/types";
+import {
+  ApiClientError,
+  type AuditEvent,
+  type RegistryWorkflowTask,
+} from "@/lib/types";
+import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +32,12 @@ export default async function EmbeddedDocumentPage({ params }: EmbeddedDocumentP
         throw error;
       }),
       clients.registry.listDocumentVersions(documentId, context),
-      clients.ingestion.listJobs(context),
+      listVisibleIngestionJobs(clients, [{ document_id: documentId }], context),
       clients.registry.getAuthorizationHints(context),
-      clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }).catch(() => []),
-      clients.registry.listAuditEvents(context, { limit: 200 }).catch(() => [])
+      listVisibleWorkflowTasks(
+        clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }),
+      ),
+      listVisibleAuditEvents(clients.registry.listAuditEvents(context, { limit: 200 }))
     ]);
 
     return (
@@ -50,6 +57,24 @@ export default async function EmbeddedDocumentPage({ params }: EmbeddedDocumentP
     if (error instanceof ApiClientError && error.status === 404) {
       notFound();
     }
+    throw error;
+  }
+}
+
+async function listVisibleWorkflowTasks(request: Promise<RegistryWorkflowTask[]>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 403) return [];
+    throw error;
+  }
+}
+
+async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 403) return [];
     throw error;
   }
 }

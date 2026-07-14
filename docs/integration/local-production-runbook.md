@@ -23,27 +23,15 @@ docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml co
 docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml up -d --build
 ```
 
-Run the Phase 02 regression smoke:
-
-```bash
-python3 scripts/phase_02_controlled_document_smoke.py
-```
-
-Import project documentation:
-
-```bash
-python3 tools/import_docs_folder.py \
-  --source ./docs \
-  --manifest docs/import-manifest.yaml \
-  --mode reindex \
-  --report reports/docs_import_report.json
-```
+Do not run `phase_01_smoke.py`, `phase_02_controlled_document_smoke.py`, or the
+host Markdown/PDF importers against this production/OIDC-shaped profile. They
+fail before mutation in every environment, even when a bearer is supplied.
+Create and ingest documents through the governed AKB application UI/API. Host
+tools remain available only for explicit dry-run inventory.
 
 Run the Phase 03 smoke:
 
 ```bash
-python3 scripts/phase_03_docs_import_smoke.py
-python3 scripts/phase_03_document_viewer_smoke.py
 python3 scripts/phase_03_local_production_smoke.py
 python3 scripts/phase_04_employee_assistant_smoke.py
 ```
@@ -78,7 +66,9 @@ docker compose --env-file .env.local-prod \
 
 ## Operational Notes
 
-Use `--mode reindex` for normal local refreshes. It avoids duplicate Document rows and refreshes Qdrant points for the latest version. Use `--mode new-version` when a changed Markdown file should become a new Registry version. Use `--mode skip-existing` for one-time bootstrap runs that must not touch already imported files.
+Legacy importer modes may be used only together with `--dry-run` for planning.
+Normal refreshes, new versions, and reindex operations use the governed
+application UI/API.
 
 The import uses `metadata.source_path` as the idempotency key. The source URI is stable under `s3://akl-documents/docs-import/...` and maps to the dev compose local object storage under the Ingestion Service container.
 

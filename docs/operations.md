@@ -62,6 +62,38 @@ Do not manipulate VPN, VLAN, firewall, or network segmentation from this repo.
 Production deploys use the immutable exact-SHA workflow in
 `docs/OPERATIONS/immutable-docker-home-release.md`; `/srv/akl/repo` is not a
 release source and must not be pulled, checked out, or switched during deploy.
+If an existing immutable `current` predates
+`AKL_IMMUTABLE_ORCHESTRATOR_CONTRACT=2`, its scripts are not used to roll out
+the first hardened release. Follow the canonical runbook's target-side
+`--transition-existing-current` procedure; it prepares an exact target from a
+disposable checkout, then revalidates the old current and target before the
+target orchestrator obtains the standard lock. After contract 2 is current,
+ordinary releases resume through `/srv/akl/current/scripts/`.
+The host does not need `psql`, `pg_dump`, or `pg_restore`. Registry release
+database operations use the exact, already-local image configured by
+`AKL_RELEASE_POSTGRES_TOOL_IMAGE`; mutable tags and implicit pulls fail closed.
+The same exact image performs three writable-primary checks before build, three
+more after build immediately before any Registry writer may be stopped, and
+three more after backup immediately before migration. Every connection must
+report `transaction_read_only=off` and `pg_is_in_recovery()=false` plus the
+configured exact `current_database()`/`current_user`; read-only, recovery, or
+wrong database/user fails closed at that boundary. Backup inventory records the observed
+backend address/port when available. This is routing evidence, not a
+privileged cluster-identity assertion.
+Run the workflow from a clean shell without sourcing the production env. It
+rejects ambient env-file key collisions and any ambient variable interpolated
+by the exact target Compose file, including variables absent from the env file;
+production env values containing `$` are forbidden. Preparation and first-host
+bootstrap enforce the same rule. Release entry scripts disable xtrace before
+reading configuration. Deploy creates one linked single-link mode-`0600` env
+snapshot in a private mode-`0700` directory below `/srv/akl/env` and binds every
+Compose/database/backup/verification step to its root/directory/file
+device/inode/size/SHA-256 identity; changing the persistent env mid-attempt cannot
+retarget migration. Normal exit removes and fsyncs the snapshot. A SIGKILL copy
+blocks the next attempt until the exact stale-snapshot cleanup procedure is run.
+Git replacement refs/config injection and
+ambient Docker daemon routing are rejected; production Docker must be the
+local default Unix socket.
 
 ## Configuration
 
@@ -84,6 +116,48 @@ the fixed `service:akb` identity; integration-envelope actors are stored only
 as audit metadata. A missing endpoint or service credential fails governed
 writes closed.
 
+AIIP governed upload additionally requires
+`AKL_STRATOS_AIIP_AKB_RESOURCES_URL` and
+`AKB_AIIP_INGEST_SERVICE_TOKEN`. The latter is a separate central-call
+credential and production start rejects it when it equals
+`AKB_POLICY_SERVICE_TOKEN`. Allow only the exact route grant
+`aiip-service=aiip-upload`; do not add `authz`, document administration, or a
+wildcard route grant to that client. The AKB web bridge forwards the
+`aiip-service` transport bearer and a separate current actor bearer; Registry
+must receive both. Rotate the two static AKB tokens independently, update the
+external secret store, restart Registry, and verify readiness plus one denied
+missing-actor probe before accepting traffic. Never print either token in
+shell output, logs, manifests, or test reports.
+
+The downstream ingestion pipeline has a third, independent Keycloak boundary.
+Provision `svc-ingestion` with role `service_ingestion`, audience `akl-api`, and
+store its secret in `/srv/akl/env/svc-ingestion.client-secret` mode `0600`.
+`ingestion-service` obtains short-lived tokens through
+`AKL_INGESTION_REGISTRY_TOKEN_URL`; the secret file is mounted read-only only
+into that container. Registry must trust the client with exactly
+`authz|audit|documents-read|ingestion-status`. Do not add generic grants to
+`aiip-service`, share either client secret, or use an inbound AIIP bearer as a
+fallback. `/ready` must return HTTP `503` with Registry `not_ready` when this
+identity cannot be obtained; rotate the secret and recreate only the ingestion
+container before a bounded ingestion smoke.
+
+Interactive web-to-ingestion traffic has a fourth independent boundary.
+Provision `svc-akb-web-ingestion` with role
+`service_akb_web_ingestion`, audience `akl-api`, and store its secret at
+`/srv/akl/env/svc-akb-web-ingestion.client-secret` mode `0600`. It receives no
+Registry route grant. Web mounts the host file read-only and copies it into a
+private tmpfs for the unprivileged runtime user. Registry separately requires
+`/srv/akl/env/ingestion-authorization.secret`, owned by the release operator,
+mode `0600`, with at least 32 random bytes. Never reuse either client secret as
+the signing secret.
+
+The immutable release preflights those two files, the existing
+`svc-ingestion.client-secret`, and
+`akb-rag-service.client-secret` before burning the SHA or building images.
+First rollout selects Registry, Ingestion, RAG and web, so all four files and
+their corresponding environment keys must exist before the maintenance
+window.
+
 Set the same independent, random value of at least 32 characters as
 `AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN` in the Registry and web containers. It is
 only a private resolver credential; it is never accepted as a STRATOS policy
@@ -92,32 +166,66 @@ value disables public source delivery. Public metadata and source responses
 must remain `no-store`; operators verify revoke by observing an immediate 404
 after the next fresh central decision.
 
-### Forward-only public delivery migrations (`0015`, `0016`)
+### Forward-only governance migrations (`0015`–`0018`)
 
 Treat `0015_document_publications` and `0016_public_audit_aggregation` as
 forward-only production migrations. The second migration adds nullable
 aggregation identity plus occurrence/last-seen fields to existing audit rows;
 it does not rewrite or prune authenticated audit.
+`0017_canonical_own_scope` adds the canonical owner coordinate to document and
+version governance scopes. It backfills every existing `own` row from the
+persisted document owner, clears its former generic scope id, and only then
+enables the database shape constraint. This prevents an existing private row
+from being reinterpreted as organization-wide content.
+`0018_ingestion_attempts` creates one authoritative ingestion-attempt CAS row
+per document, protected by a same-document composite version foreign key,
+unique job id, and bounded status constraint. It backfills only unambiguous
+current job/version/status values from external references. Partial, conflicting
+or invalid legacy state aborts the migration for explicit reconciliation; the
+migration never guesses a winner.
 Use the environment-specific Compose command and backup procedure from the
 deployment runbook; the sequence is mandatory:
 
-1. Create and verify a current backup/restore point before changing the
-   Registry database. On `docker.home.cz`, the immutable release workflow must
-   first stop and verify quiescence of the Compose Registry writer, then
+1. Create a current Registry dump artifact before changing the database. On
+   `docker.home.cz`, the immutable release workflow must
+   first stop and verify quiescence of the Compose Registry writer through
+   lock-bound per-deployment evidence and repeated `docker ps -a` checks, then
    produce a PostgreSQL custom dump under `/srv/akl/backups`, its SHA-256, a
    successful `pg_restore --list`, and a non-secret inventory containing the
-   full current Alembic revision before Alembic is allowed to start. The
-   general backup policy remains in
-   `docs/OPERATIONS/backup-restore.md`.
-2. Deploy full-Git-SHA image tags for only the affected Registry, RAG, and web
-   services, then run `alembic upgrade head` in the target `registry-api`
-   image. Confirm with `alembic current` that
-   revision `0016_public_audit_aggregation` (or a later approved head
-   containing it) is active.
-3. Require the Registry and web readiness endpoints to pass before public
-   traffic is tested. The release must also prove exact image tag/ID and
+   exactly one full current Alembic revision, critical table row counts, plus
+   exact tool image identity and client versions. The dump, list, checksum, inventory, directories, and parent are
+   fsynced before Alembic is allowed to start. PostgreSQL clients run only
+   from the pinned image with a private pgpass bind below
+   `/srv/akl/state/postgres-credentials`. A SIGKILL remnant blocks a later
+   release and is removed only by the exact validated cleanup procedure. The general
+   exact isolated Registry rehearsal is in
+   `docs/OPERATIONS/immutable-docker-home-release.md`. These checks
+   establish checksum integrity and syntactic custom-dump/TOC readability, not
+   a proven restore point; only the documented isolated restore rehearsal does
+   that.
+2. Deploy full-Git-SHA image tags for only the affected Registry, Ingestion,
+   RAG, and web services, then run `alembic upgrade head` in the target
+   `registry-api` image. A shared production Compose change is accepted only
+   when a structural comparison proves that it changes complete blocks of
+   those four services and leaves every unmanaged block and the top-level
+   envelope byte-identical. Durably record each post-build image ID and verify exact
+   SHA/project/service labels again before Alembic/restart, after recreation,
+   and after all smoke tests immediately before activation. Reconciliation loads
+   the original IDs from the deployment record named by the verified runtime
+   marker; it never trusts a newly resolved mutable tag. Alembic and Compose
+   recreation execute from the recorded image IDs directly, so a concurrent tag
+   retarget cannot select different bytes. Require the target image to declare
+   exactly one head and `alembic current` to return exactly one canonical
+   revision equal to it (currently `0018_ingestion_attempts` or a later
+   approved single head). Multi-head or malformed state fails closed.
+3. Require Registry, Ingestion, RAG, and web health/readiness for every selected
+   service before public traffic is tested. Ingestion `/ready` is authenticated;
+   the release runs its exact in-container `svc-ingestion` probe and never
+   treats an anonymous 401/403 as readiness. It also verifies the non-mutating
+   exact web-transport route. The release must prove exact image tag/ID and
    release/Compose labels. A failed readiness or identity check stops the
-   rollout and leaves the applied-runtime SHA marked for forward-fix recovery.
+   rollout, quarantines provable unverified target containers, and leaves the
+   applied-runtime SHA marked for forward-fix recovery.
 4. Use a deliberately disposable, already approved public document version to
    smoke the anonymous metadata endpoint and source endpoint. Require HTTP
    `200`, `Cache-Control: no-store`, only the sanitized metadata allowlist, and
@@ -152,6 +260,23 @@ If deployment fails after images or a migration were applied, leave
 `/srv/akl/current` unchanged and deploy a reviewed descendant SHA through the
 forward-fix wrapper. Do not interpret the old symlink as permission to run old
 code against the new schema.
+The pre-stop writable-primary gate precedes target build and may retry the same
+approved SHA. Immediately before build, the workflow durably creates
+`/srv/akl/state/burned-shas/<full-sha>`; a pre-existing target tag also creates
+it. Once this marker exists or `target_build_may_have_started=true`, retain
+immutable tags and deploy a reviewed descendant even when no tag exists and
+`migration_started=false`. Never delete a burn marker to force a retry. A
+pre-quiesce gate failure is still before writer stop but already post-build and
+therefore requires a descendant.
+If a crash occurs while stopping the Registry writer, treat a durable
+`registry_stop_may_have_started=true` deployment record as evidence that the
+writer may be stopped even when verified quiescence was not yet recorded. If
+the marker is already fully `verified` for the target but `current` is still
+old, rerun that same SHA to re-verify and reconcile activation without a build
+or migration. If `current` already names the same fully verified target but the
+success record is missing, the same no-forward-fix retry records
+`reconciled_verified_success` without changing the link again; a rollback
+wrapper is not a reconciliation shortcut.
 
 ## Health And Readiness
 
@@ -270,17 +395,20 @@ python3 tools/okf_profile.py validate --source ./okf --report reports/okf_valida
 python3 tools/okf_profile.py plan-import --source ./okf --report reports/okf_import_plan.json
 ```
 
-Import OKF concepts through the existing Markdown importer with the STRATOS OKF
-metadata profile enabled:
+Create a dry-run OKF import inventory with the STRATOS OKF metadata profile:
 
 ```bash
 python3 tools/import_docs_folder.py \
   --source ./okf \
   --manifest docs/import-manifest.yaml \
-  --mode reindex \
+  --mode skip-existing \
   --okf-profile \
+  --dry-run \
   --report reports/okf_import_report.json
 ```
+
+Host importer mutation is retired in every profile and fails before writes.
+Actual OKF imports use the governed application UI/API.
 
 Profile details: `docs/integration/STRATOS_OKF_PROFILE.md`.
 

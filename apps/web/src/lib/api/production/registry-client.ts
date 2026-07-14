@@ -27,6 +27,11 @@ import type {
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
+  IngestionAuthorizationRequest,
+  IngestionAuthorizationResponse,
+  RegistryIngestionAttempt,
+  IntelligenceScopeAuthorizationRequest,
+  IntelligenceScopeAuthorizationResponse,
   ProfileSettingsPutRequest,
   ProfileSettingsResponse,
   RegistryApiClient,
@@ -37,6 +42,7 @@ import type {
   UpsertRoleMappingRequest,
   WorkflowTaskListOptions
 } from "@/lib/types";
+import { ApiClientError } from "@/lib/types";
 
 import type { AklFetch } from "../http-client";
 import { requestJson } from "../http-client";
@@ -248,6 +254,69 @@ export class ProductionRegistryClient implements RegistryApiClient {
       },
       `authz:${action}:${documentId}`,
       context
+    );
+  }
+
+  createIngestionAuthorization(
+    documentId: string,
+    versionId: string,
+    request: IngestionAuthorizationRequest,
+    context: ApiRequestContext,
+  ): Promise<IngestionAuthorizationResponse> {
+    return this.post<IngestionAuthorizationResponse>(
+      `/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/ingestion-authorization`,
+      request,
+      `createIngestionAuthorization:${documentId}:${versionId}`,
+      context,
+    );
+  }
+
+  async getDocumentIngestionAttempt(
+    documentId: string,
+    context: ApiRequestContext,
+  ): Promise<RegistryIngestionAttempt | null> {
+    const response = await this.get<{
+      document_id: string;
+      ingestion_attempt: RegistryIngestionAttempt | null;
+    }>(
+      `/documents/${encodeURIComponent(documentId)}/external-references/current`,
+      `getDocumentIngestionAttempt:${documentId}`,
+      context,
+    );
+    if (response.document_id !== documentId) {
+      throw new ApiClientError(
+        "Registry returned an ingestion attempt for another document.",
+        502,
+        "INGESTION_ATTEMPT_CONFLICT",
+        context.correlationId ?? context.requestId ?? "registry-ingestion-projection",
+      );
+    }
+    if (
+      response.ingestion_attempt !== null
+      && (
+        !isRegistryIngestionAttempt(response.ingestion_attempt)
+        || response.ingestion_attempt.document_id !== documentId
+      )
+    ) {
+      throw new ApiClientError(
+        "Registry returned a mismatched ingestion attempt projection.",
+        502,
+        "INGESTION_ATTEMPT_CONFLICT",
+        context.correlationId ?? context.requestId ?? "registry-ingestion-projection",
+      );
+    }
+    return response.ingestion_attempt;
+  }
+
+  createIntelligenceScopeAuthorization(
+    request: IntelligenceScopeAuthorizationRequest,
+    context: ApiRequestContext,
+  ): Promise<IntelligenceScopeAuthorizationResponse> {
+    return this.post<IntelligenceScopeAuthorizationResponse>(
+      "/intelligence/authorization",
+      request,
+      "createIntelligenceScopeAuthorization",
+      context,
     );
   }
 
@@ -558,6 +627,26 @@ export class ProductionRegistryClient implements RegistryApiClient {
       fetcher: this.fetcher
     });
   }
+}
+
+function isRegistryIngestionAttempt(value: unknown): value is RegistryIngestionAttempt {
+  if (typeof value !== "object" || value === null) return false;
+  const attempt = value as Partial<RegistryIngestionAttempt>;
+  return (
+    typeof attempt.document_id === "string"
+    && attempt.document_id.length > 0
+    && typeof attempt.document_version_id === "string"
+    && attempt.document_version_id.length > 0
+    && typeof attempt.ingestion_job_id === "string"
+    && attempt.ingestion_job_id.length > 0
+    && ["QUEUED", "INGESTING", "INDEXED", "FAILED"].includes(
+      attempt.ingestion_status ?? "",
+    )
+    && typeof attempt.created_at === "string"
+    && Number.isFinite(Date.parse(attempt.created_at))
+    && typeof attempt.updated_at === "string"
+    && Number.isFinite(Date.parse(attempt.updated_at))
+  );
 }
 
 function registryDocumentParams(options: DocumentMetadataSummaryOptions | DocumentListOptions): URLSearchParams {

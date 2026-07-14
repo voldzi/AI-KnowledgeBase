@@ -5,6 +5,7 @@ import {
   getServerRequestContextForPath,
 } from "@/lib/api/server";
 import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { authorizeIntelligenceScope } from "@/lib/intelligence/scope-authorization";
 import type { AnalystCase, EntityFacetReport } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function IntelligencePage() {
   const context = await getServerRequestContextForPath("/intelligence");
   requirePageAccess(context, "intelligence");
 
-  const [documents, summary, readiness, entityFacets, analystCases] = await Promise.all([
+  const [documents, summary, readiness, analystCases] = await Promise.all([
     clients.registry.listDocuments(context),
     clients.registry.getDocumentMetadataSummary(context, {
       topics: ["all documents"],
@@ -22,11 +23,21 @@ export default async function IntelligencePage() {
     clients.registry.getDocumentReadinessReport(context, {
       maxIssues: 24,
     }),
-    clients.ingestion
-      .getEntityFacets(context, { limit: 8, valueLimit: 8 })
-      .catch(() => unavailableEntityFacets()),
     clients.registry.listAnalystCases(context).catch(() => [] as AnalystCase[]),
   ]);
+  const entityFacets = await authorizeIntelligenceScope(
+    clients,
+    context,
+    documents.map((document) => document.document_id),
+  )
+    .then((scope) =>
+      clients.ingestion.getEntityFacets(context, {
+        ...scope,
+        limit: 8,
+        valueLimit: 8,
+      }),
+    )
+    .catch(() => unavailableEntityFacets());
 
   return (
     <>

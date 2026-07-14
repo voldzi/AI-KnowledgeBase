@@ -117,11 +117,9 @@ Evaluate Qwen in a parallel collection such as `akl_document_chunks_qwen3_8b_102
 
 ## Smoke Verification
 
-Run:
-
-```bash
-python3 scripts/phase_02_controlled_document_smoke.py
-```
+The legacy `phase_02_controlled_document_smoke.py` mutation flow is retired in
+every environment. Create and ingest the test document through the governed
+application UI/API, then perform the read-only Qdrant and RAG assertions below.
 
 The smoke test:
 

@@ -4,7 +4,8 @@ import {
   getServerRequestContextForPath,
 } from "@/lib/api/server";
 import { redirectEmployeeChatOnly } from "@/lib/auth/server-route-guard";
-import { ApiClientError, type AuditEvent } from "@/lib/types";
+import { ApiClientError, type AuditEvent, type RegistryWorkflowTask } from "@/lib/types";
+import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
 
 import { DashboardOverview } from "./dashboard-overview";
 
@@ -20,11 +21,11 @@ export async function DashboardPage({
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath(returnTo);
   redirectEmployeeChatOnly(context);
-  const [documents, jobs, auditEvents, registryTasks, authorization] = await Promise.all([
-    clients.registry.listDocuments(context),
-    clients.ingestion.listJobs(context),
+  const documents = await clients.registry.listDocuments(context);
+  const [jobs, auditEvents, registryTasks, authorization] = await Promise.all([
+    listVisibleIngestionJobs(clients, documents, context),
     listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
-    clients.registry.listWorkflowTasks(context).catch(() => undefined),
+    listVisibleWorkflowTasks(clients.registry.listWorkflowTasks(context)),
     clients.registry.getAuthorizationHints(context)
   ]);
 
@@ -47,6 +48,17 @@ export async function DashboardPage({
       />
     </>
   );
+}
+
+async function listVisibleWorkflowTasks(request: Promise<RegistryWorkflowTask[]>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 403) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {

@@ -3,7 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import type { ApiRequestContext } from "@/lib/types";
+import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 
 import { createApiClients } from ".";
 import { getAklConfig } from "./config";
@@ -75,6 +75,22 @@ export async function getServerRequestContextForRequest(
       `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`,
     ),
   );
+}
+
+export async function getAiipActorRequestContext(
+  request: RequestLike,
+): Promise<ApiRequestContext> {
+  const authorization = request.headers.get("X-AIIP-Actor-Authorization") ?? "";
+  const [scheme, token] = authorization.trim().split(/\s+/, 2);
+  if (scheme?.toLowerCase() !== "bearer" || !token) {
+    throw new ApiClientError(
+      "A fresh AIIP actor bearer is required.",
+      401,
+      "AIIP_ACTOR_AUTH_REQUIRED",
+      "web-stratos-bridge",
+    );
+  }
+  return contextFromStratosAccessProjection(token, getAklConfig());
 }
 
 export async function getOptionalServerRequestContext(

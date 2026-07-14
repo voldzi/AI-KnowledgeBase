@@ -9,7 +9,7 @@ interface ProjectionAccess {
   application?: unknown;
   profileId?: unknown;
   capabilities?: unknown;
-  scopes?: unknown;
+  effectiveScopes?: unknown;
   validUntil?: unknown;
 }
 
@@ -77,7 +77,10 @@ export async function contextFromStratosAccessProjection(
     roles: [],
     groups: [],
     capabilities: active ? stringArray(access?.capabilities) : [],
-    scopes: active ? scopeArray(access?.scopes) : [],
+    // Only the central projection's effective scope closure is authoritative.
+    // Raw grants can contain inactive, orphaned or non-descendant scopes and
+    // must never be evaluated locally as runtime access.
+    scopes: active ? scopeArray(access?.effectiveScopes) : [],
     organizationId: "org_stratos",
     identityActive: true,
     membershipActive: true,

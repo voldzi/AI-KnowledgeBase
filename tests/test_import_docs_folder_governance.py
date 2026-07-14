@@ -4,9 +4,10 @@ import base64
 import json
 from types import SimpleNamespace
 import unittest
-from unittest.mock import call, patch
+from unittest.mock import patch
 
 from tools.import_docs_folder import approve_document_for_publication, bearer_subject_id
+from tools.legacy_mutation_guard import LegacyMutationBlocked
 
 
 class ImportDocsFolderGovernanceTest(unittest.TestCase):
@@ -15,43 +16,13 @@ class ImportDocsFolderGovernanceTest(unittest.TestCase):
 
         self.assertEqual(bearer_subject_id(f"header.{payload}.signature"), "subject-123")
 
-    def test_approval_completes_open_review_task(self) -> None:
+    def test_legacy_approval_is_retired_before_http(self) -> None:
         options = SimpleNamespace(registry_url="http://registry.test")
-        with (
-            patch("tools.import_docs_folder.patch_document", return_value={"status": "review"}) as patch_document,
-            patch(
-                "tools.import_docs_folder.request_json",
-                side_effect=[
-                    {"document_id": "doc-1", "status": "draft"},
-                    {
-                        "items": [
-                            {
-                                "task_id": "task-1",
-                                "document_id": "doc-1",
-                                "status": "open",
-                            }
-                        ]
-                    },
-                    {"task_id": "task-1", "status": "resolved"},
-                ],
-            ) as request_json,
-        ):
-            approve_document_for_publication("doc-1", options)  # type: ignore[arg-type]
+        with patch("tools.import_docs_folder.request_json") as request_json:
+            with self.assertRaisesRegex(LegacyMutationBlocked, "LEGACY_MUTATION_RETIRED"):
+                approve_document_for_publication("doc-1", options)  # type: ignore[arg-type]
 
-        patch_document.assert_called_once_with("doc-1", {"status": "review"}, options)
-        self.assertEqual(request_json.call_count, 3)
-        self.assertEqual(
-            request_json.call_args_list[-1],
-            call(
-                "POST",
-                "http://registry.test/api/v1/workflow/tasks/task-1/actions",
-                {
-                    "action": "approve",
-                    "comment": "Approved by the controlled documentation import workflow.",
-                },
-                options=options,
-            ),
-        )
+        request_json.assert_not_called()
 
 
 if __name__ == "__main__":

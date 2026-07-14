@@ -30,10 +30,11 @@ def _settings(**overrides) -> Settings:
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
         "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v1/auth/me",
         "AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS": 0,
-        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-service",
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-service,svc-ingestion",
         "AKL_SERVICE_CLIENT_ROUTE_GRANTS": (
             "akb-rag-service=authz|audit|idempotency,"
-            "aiip-service=audit|idempotency"
+            "aiip-service=aiip-upload,"
+            "svc-ingestion=authz|audit|documents-read|ingestion-status"
         ),
         "AKL_SERVICE_CLIENT_DELEGATIONS": "akb-rag-service=aiip-service",
     }
@@ -46,7 +47,8 @@ def test_user_projection_reflects_immediate_application_suspension(monkeypatch) 
         {"tenantId": "org_stratos", "applicationAccess": [{
             "application": "AKB",
             "capabilities": ["akb:chat"],
-            "scopes": [{"type": "organization", "id": "org_stratos"}],
+            "scopes": [{"type": "project", "id": "inactive-or-orphaned"}],
+            "effectiveScopes": [{"type": "organization", "id": "org_stratos"}],
         }]},
         {"tenantId": "org_stratos", "applicationAccess": []},
     ]
@@ -72,6 +74,7 @@ def test_user_projection_reflects_immediate_application_suspension(monkeypatch) 
 
     assert active.application_access_active is True
     assert active.capabilities == frozenset({"akb:chat"})
+    assert active.scopes == frozenset({"organization:org_stratos"})
     assert suspended.application_access_active is False
     assert suspended.capabilities == frozenset()
 
@@ -97,6 +100,92 @@ def test_user_projection_fails_closed_when_stratos_is_unavailable(monkeypatch) -
         raise AssertionError("projection must fail closed")
     except GovernanceUnavailable:
         pass
+
+
+def test_user_projection_never_falls_back_to_raw_scope_grants(monkeypatch) -> None:
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get(self, _url, **_kwargs):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "tenantId": "org_stratos",
+                    "applicationAccess": [{
+                        "application": "AKB",
+                        "capabilities": ["akb:read_document"],
+                        "scopes": [{"type": "organization", "id": "org_stratos"}],
+                    }],
+                },
+            )
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    projection = StratosGovernanceClient(_settings()).user_projection(
+        "token",
+        token_expires_at=None,
+    )
+
+    assert projection.application_access_active is True
+    assert projection.capabilities == frozenset({"akb:read_document"})
+    assert projection.scopes == frozenset()
+
+
+def test_policy_registry_response_must_match_every_immutable_dimension(monkeypatch) -> None:
+    binding = _policy()
+    expected_hash = canonical_policy_hash(binding)
+    response_body = {
+        "schemaVersion": "stratos-information-policy-2",
+        "organizationId": "org_stratos",
+        "applicationId": "akb",
+        "policyBindingId": binding.policy_binding_id,
+        "policyVersion": binding.policy_version,
+        "policyHash": expected_hash,
+        "handlingClass": binding.handling_class,
+        "legalClassification": binding.legal_classification,
+        "tlp": binding.tlp,
+        "pap": binding.pap,
+        "contentCategories": list(binding.content_categories),
+        "audience": binding.audience.model_dump(mode="json", by_alias=True),
+        "obligations": list(binding.obligations),
+        "originatorId": None,
+        "originator": None,
+        "issuedAt": "2026-07-14T00:00:00Z",
+        "reviewAt": None,
+    }
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def request(self, _method, _url, **_kwargs):
+            return SimpleNamespace(status_code=200, json=lambda: dict(response_body))
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    client = StratosGovernanceClient(_settings(
+        AKL_STRATOS_POLICY_BINDINGS_URL="https://stratos.example/api/v1/policy/bindings",
+        AKB_POLICY_SERVICE_TOKEN="runtime-token",
+    ))
+
+    assert client.ensure_binding_registered(binding) == expected_hash
+    response_body["audience"] = {
+        **response_body["audience"],
+        "scopeIds": ["logistics"],
+    }
+    with pytest.raises(GovernanceUnavailable):
+        client.ensure_binding_registered(binding)
 
 
 def test_oidc_principal_ignores_static_access_claims_and_forged_headers(monkeypatch) -> None:
@@ -266,6 +355,7 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
             calls.append(kwargs)
             return {"decision": "ALLOW", "reasonCodes": ["CAPABILITY_ALLOW"]}
 
+    monkeypatch.setattr(api_module, "get_settings", lambda: _settings())
     monkeypatch.setattr(api_module, "governance_client", lambda _settings: Client())
     principal = Principal(
         subject_id="service-account-akb-rag-service",
@@ -276,9 +366,18 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
         application_access_active=False,
     )
 
+    with pytest.raises(HTTPException) as denied:
+        _service_action_decision(
+            principal=principal,
+            subject_id="service-account-aiip-service",
+            action="rag.query",
+            document=None,
+        )
+    assert denied.value.status_code == 403
+
     decision = _service_action_decision(
         principal=principal,
-        subject_id="service-account-aiip-service",
+        subject_id=principal.subject_id,
         action="rag.query",
         document=None,
     )
@@ -293,6 +392,50 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
     }]
     assert _audit_service_decision_coordinates("aiip.harmonize.completed") == ("akb:chat", "ai")
     assert _audit_service_decision_coordinates("ingestion.job.completed") == ("akb:manage_document", "upload")
+
+
+def test_ingestion_service_document_transport_uses_fixed_central_identity(
+    monkeypatch,
+) -> None:
+    binding = _policy()
+    document = _document(binding)
+    principal = Principal(
+        subject_id="service-account-svc-ingestion",
+        roles={"service_ingestion"},
+        groups=set(),
+        service_identity=True,
+        service_client_id="svc-ingestion",
+        application_access_active=False,
+    )
+    calls = []
+
+    class Client:
+        def decide(self, **kwargs):
+            calls.append(kwargs)
+            return {"decision": "ALLOW", "reasonCodes": ["CAPABILITY_ALLOW"]}
+
+    monkeypatch.setattr(permissions_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(permissions_module, "governance_client", lambda _settings: Client())
+
+    read_decision = evaluate_runtime_document_access(
+        principal,
+        "document.read",
+        document,
+    )
+    ingest_decision = evaluate_runtime_document_access(
+        principal,
+        "document.ingest",
+        document,
+    )
+
+    assert read_decision.allowed is True
+    assert ingest_decision.allowed is True
+    assert [call["operation"] for call in calls] == ["read", "upload"]
+    assert [call["capability_id"] for call in calls] == [
+        "akb:read_document",
+        "akb:manage_document",
+    ]
+    assert all(call["credential_token"] is None for call in calls)
 
 
 def test_rag_service_client_is_default_denied_on_document_registry_routes(client) -> None:
@@ -326,6 +469,7 @@ def _policy(scope_id: str = "it") -> InformationPolicyBinding:
         "schemaVersion": "stratos-information-policy-2",
         "policyBindingId": "pol_scopebinding01",
         "policyVersion": "information-policy-2.0.0",
+        "issuedAt": "2026-07-14T00:00:00Z",
         "handlingClass": "INTERNAL",
         "legalClassification": "NONE",
         "tlp": None,
@@ -426,9 +570,18 @@ def test_governed_resource_registration_uses_verified_obo_contract(monkeypatch) 
                     "resourceType": "document",
                     "resourceId": "doc_1",
                     "sourceVersion": "ver_policy_1",
+                    "parentId": "gir_source_parent",
+                    "scope": {"type": "organization_unit", "id": "it"},
+                    "policyAssignment": "EXPLICIT",
+                    "explicitPolicyBindingId": binding.policy_binding_id,
+                    "confirmedBySubjectId": "user-current-actor",
                     "effectivePolicy": {
                         "policyBindingId": binding.policy_binding_id,
                         "policyHash": canonical_policy_hash(binding),
+                        "originatorId": None,
+                        "originator": None,
+                        "issuedAt": "2026-07-14T00:00:00Z",
+                        "reviewAt": None,
                     },
                 },
             )
