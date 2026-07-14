@@ -1,5 +1,5 @@
 {
-  "tenant_id": "tenant_contract_test",
+  "tenant_id": "org_stratos",
   "classification": "internal",
   "processing_purpose": "idea_harmonization",
   "model_preference": "high_quality",

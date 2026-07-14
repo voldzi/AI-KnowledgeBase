@@ -224,6 +224,54 @@ class StratosGovernanceClient:
             },
         )
 
+    def service_policy_binding(self) -> tuple[dict[str, Any], str]:
+        binding_id = self.settings.stratos_service_policy_binding_id
+        url = self.settings.stratos_policy_bindings_url
+        token = self.settings.stratos_policy_service_token
+        if not binding_id or not url or not token:
+            raise GovernanceUnavailable("STRATOS service policy binding is not configured")
+        response = self._get(f"{url.rstrip('/')}/{quote(binding_id, safe='')}", token)
+        if (
+            response.get("applicationId") != "akb"
+            or response.get("organizationId") != "org_stratos"
+            or response.get("policyBindingId") != binding_id
+        ):
+            raise GovernanceUnavailable("STRATOS returned a conflicting service policy binding")
+        binding_keys = {
+            "schemaVersion",
+            "policyBindingId",
+            "policyVersion",
+            "handlingClass",
+            "legalClassification",
+            "tlp",
+            "pap",
+            "contentCategories",
+            "audience",
+            "obligations",
+            "originatorId",
+            "issuedAt",
+            "reviewAt",
+        }
+        try:
+            binding = InformationPolicyBinding.model_validate(
+                {key: value for key, value in response.items() if key in binding_keys}
+            )
+        except ValidationError as exc:
+            raise GovernanceUnavailable("STRATOS service policy binding is malformed") from exc
+        policy_hash = canonical_policy_hash(binding)
+        if response.get("policyHash") != policy_hash:
+            raise GovernanceUnavailable("STRATOS service policy binding hash is invalid")
+        if (
+            binding.handling_class != "INTERNAL"
+            or binding.audience.scope_type != "organization"
+            or binding.audience.scope_ids
+            or binding.audience.recipient_subject_ids
+            or "AUDIT_ACCESS" not in binding.obligations
+            or "NO_PUBLIC_EXPORT" not in binding.obligations
+        ):
+            raise GovernanceUnavailable("STRATOS service policy binding is not internal audit policy")
+        return binding.model_dump(mode="json", by_alias=True, exclude_none=False), policy_hash
+
     def register_information_resource(
         self,
         *,
@@ -507,6 +555,29 @@ class StratosGovernanceClient:
             raise GovernanceUnavailable("STRATOS access governance returned an invalid response")
         return value
 
+    def _get(self, url: str, token: str) -> dict[str, Any]:
+        try:
+            with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
+                response = client.get(
+                    url,
+                    headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
+                )
+        except httpx.HTTPError as exc:
+            raise GovernanceUnavailable("STRATOS access governance is unavailable") from exc
+        if response.status_code in {401, 403}:
+            raise GovernanceDenied("STRATOS access governance rejected the runtime credential")
+        if response.status_code >= 400:
+            raise GovernanceUnavailable(
+                f"STRATOS access governance returned {response.status_code}"
+            )
+        try:
+            value = response.json()
+        except ValueError as exc:
+            raise GovernanceUnavailable("STRATOS access governance returned invalid JSON") from exc
+        if not isinstance(value, dict):
+            raise GovernanceUnavailable("STRATOS access governance returned an invalid response")
+        return value
+
     def _anonymous_request(self, method: str, url: str, body: dict[str, Any]) -> dict[str, Any]:
         try:
             with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
@@ -570,6 +641,7 @@ def governance_client(settings: Settings) -> StratosGovernanceClient:
         settings.stratos_auth_me_url,
         settings.stratos_policy_bindings_url,
         settings.stratos_policy_decisions_url,
+        settings.stratos_service_policy_binding_id,
         settings.stratos_information_resources_url,
         settings.stratos_aiip_akb_resources_url,
         settings.stratos_information_publications_url,

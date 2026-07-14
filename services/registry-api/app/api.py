@@ -842,12 +842,28 @@ def _service_action_decision(
     capability = capability_override or _primary_capability(action, required)
     policy_summary = dict(document.policy_summary) if document is not None else None
     policy_hash = document.policy_hash if document is not None else None
+    operation = operation_override or _central_operation(action, document is None)
+    if document is None and operation != "access":
+        try:
+            policy_summary, policy_hash = governance_client(settings).service_policy_binding()
+        except GovernanceDenied as exc:
+            raise problem(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "service_policy_binding_credential_rejected",
+                "STRATOS rejected the AKB service policy credential",
+            ) from exc
+        except GovernanceUnavailable as exc:
+            raise problem(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "service_policy_binding_unavailable",
+                "The registered AKB service policy binding is unavailable",
+            ) from exc
     if document is not None and (not policy_summary or not policy_hash):
         return Decision(False, "Document policy binding is unavailable", {}, ("POLICY_UNAVAILABLE",))
     try:
         response = governance_client(settings).decide(
             capability_id=capability,
-            operation=operation_override or _central_operation(action, document is None),
+            operation=operation,
             scope=(
                 document_governance_scope(document)
                 if document is not None
