@@ -188,6 +188,45 @@ def test_policy_registry_response_must_match_every_immutable_dimension(monkeypat
         client.ensure_binding_registered(binding)
 
 
+def test_service_policy_binding_is_fetched_and_hash_verified(monkeypatch) -> None:
+    binding = _service_policy()
+    response_body = {
+        **binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+        "organizationId": "org_stratos",
+        "applicationId": "akb",
+        "policyHash": canonical_policy_hash(binding),
+    }
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get(self, url, **_kwargs):
+            assert url.endswith("/pol_akb_internal_source_v1")
+            return SimpleNamespace(status_code=200, json=lambda: dict(response_body))
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    client = StratosGovernanceClient(_settings(
+        AKL_STRATOS_POLICY_BINDINGS_URL="https://stratos.example/api/v1/policy/bindings",
+        AKL_STRATOS_SERVICE_POLICY_BINDING_ID="pol_akb_internal_source_v1",
+        AKB_POLICY_SERVICE_TOKEN="runtime-token",
+    ))
+
+    summary, policy_hash = client.service_policy_binding()
+    assert summary["policyBindingId"] == "pol_akb_internal_source_v1"
+    assert policy_hash == canonical_policy_hash(binding)
+
+    response_body["policyHash"] = f"sha256:{'f' * 64}"
+    with pytest.raises(GovernanceUnavailable):
+        client.service_policy_binding()
+
+
 def test_oidc_principal_ignores_static_access_claims_and_forged_headers(monkeypatch) -> None:
     class JwkClient:
         def __init__(self, _url):
@@ -349,8 +388,15 @@ def test_oidc_user_flow_on_trusted_client_is_not_promoted_to_service(monkeypatch
 
 def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
     calls = []
+    service_binding = _service_policy()
 
     class Client:
+        def service_policy_binding(self):
+            return (
+                service_binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+                canonical_policy_hash(service_binding),
+            )
+
         def decide(self, **kwargs):
             calls.append(kwargs)
             return {"decision": "ALLOW", "reasonCodes": ["CAPABILITY_ALLOW"]}
@@ -392,6 +438,19 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
     }]
     assert _audit_service_decision_coordinates("aiip.harmonize.completed") == ("akb:chat", "ai")
     assert _audit_service_decision_coordinates("ingestion.job.completed") == ("akb:manage_document", "upload")
+
+    audit_capability, audit_operation = _audit_service_decision_coordinates("aiip.harmonize.completed")
+    audit_decision = _service_action_decision(
+        principal=principal,
+        subject_id=principal.subject_id,
+        action="audit.write",
+        document=None,
+        capability_override=audit_capability,
+        operation_override=audit_operation,
+    )
+    assert audit_decision.allowed is True
+    assert calls[-1]["policy_binding"]["policyBindingId"] == "pol_akb_internal_source_v1"
+    assert calls[-1]["policy_hash"] == canonical_policy_hash(service_binding)
 
 
 def test_ingestion_service_document_transport_uses_fixed_central_identity(
@@ -482,6 +541,27 @@ def _policy(scope_id: str = "it") -> InformationPolicyBinding:
             "recipientSubjectIds": [],
         },
         "obligations": ["AUDIT_ACCESS"],
+    })
+
+
+def _service_policy() -> InformationPolicyBinding:
+    return InformationPolicyBinding.model_validate({
+        "schemaVersion": "stratos-information-policy-2",
+        "policyBindingId": "pol_akb_internal_source_v1",
+        "policyVersion": "information-policy-2.0.0",
+        "issuedAt": "2026-07-14T00:00:00Z",
+        "handlingClass": "INTERNAL",
+        "legalClassification": "NONE",
+        "tlp": None,
+        "pap": None,
+        "contentCategories": ["AUDIT"],
+        "audience": {
+            "organizationId": "org_stratos",
+            "scopeType": "organization",
+            "scopeIds": [],
+            "recipientSubjectIds": [],
+        },
+        "obligations": ["AUDIT_ACCESS", "NO_PUBLIC_EXPORT"],
     })
 
 

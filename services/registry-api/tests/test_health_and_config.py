@@ -38,6 +38,7 @@ def _production_settings(**overrides):
         "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v1/auth/me",
         "AKL_STRATOS_POLICY_BINDINGS_URL": "https://stratos.example/api/v1/policy/bindings",
         "AKL_STRATOS_POLICY_DECISIONS_URL": "https://stratos.example/api/v1/policy/decisions",
+        "AKL_STRATOS_SERVICE_POLICY_BINDING_ID": "pol_akb_internal_source_v1",
         "AKL_STRATOS_INFORMATION_RESOURCES_URL": "https://stratos.example/api/v1/information/resources",
         "AKL_STRATOS_AIIP_AKB_RESOURCES_URL": "https://stratos.example/api/v1/integrations/aiip/akb/resources",
         "AKL_STRATOS_INFORMATION_PUBLICATIONS_URL": "https://stratos.example/api/v1/information/publications",
@@ -60,6 +61,8 @@ def test_production_requires_public_governance_endpoints_and_private_delivery_to
         _production_settings(AKL_STRATOS_AIIP_AKB_RESOURCES_URL="")
     with pytest.raises(ValidationError, match="AKB_AIIP_INGEST_SERVICE_TOKEN"):
         _production_settings(AKB_AIIP_INGEST_SERVICE_TOKEN="")
+    with pytest.raises(ValidationError, match="AKL_STRATOS_SERVICE_POLICY_BINDING_ID"):
+        _production_settings(AKL_STRATOS_SERVICE_POLICY_BINDING_ID="")
     with pytest.raises(ValidationError, match="must be distinct"):
         _production_settings(
             AKB_AIIP_INGEST_SERVICE_TOKEN="dedicated-akb-service-token"

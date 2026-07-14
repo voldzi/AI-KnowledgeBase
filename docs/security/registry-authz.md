@@ -39,6 +39,14 @@ změnit jen job/status pro už dedikovaně potvrzenou current verzi. Produkční
 `aiip-service` zůstává omezený pouze na `aiip-upload` a nesmí získat žádnou z
 těchto generic families.
 
+Globální service audit rozhodnutí používají registrovaný interní AKB binding
+`pol_akb_internal_source_v1`. Registry jej načte z centrálního Policy Registry,
+ověří jeho kanonický hash a teprve poté požádá o odpovídající `ai`, `read` nebo
+`upload` rozhodnutí. Obecné `access` rozhodnutí zůstává bootstrap kontrolou
+služební identity bez vazby na obsahovou policy. Chybějící, cizí nebo změněný
+binding zastaví obsahově specifický auditní zápis fail-closed; route grant
+`audit` sám o sobě nestačí.
+
 ## Role a akce
 
 Služba používá akce z centrálního bezpečnostního kontraktu:
