@@ -1627,6 +1627,10 @@ grep -q '^actual_database_user=release_user$' "$backup_dir/inventory.txt" \
   || fail 'backup inventory lost the actual database user identity'
 grep -q '^backend_server_address=10.0.0.21$' "$backup_dir/inventory.txt" \
   || fail 'backup inventory lost the actual backend address'
+grep -Fq 'host(inet_server_addr())' "$SOURCE_ROOT/scripts/check_registry_writable_primary.sh" \
+  || fail 'writable-primary check does not normalize PostgreSQL inet addresses'
+grep -Fq 'host(inet_server_addr())' "$SOURCE_ROOT/scripts/backup_registry_release.sh" \
+  || fail 'backup does not normalize PostgreSQL inet addresses'
 grep -q '^backend_server_port=5432$' "$backup_dir/inventory.txt" \
   || fail 'backup inventory lost the actual backend port'
 grep -q '^alembic_before=0013_information_policy_v2$' "$backup_dir/inventory.txt" \
