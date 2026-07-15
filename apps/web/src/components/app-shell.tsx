@@ -132,7 +132,7 @@ const shellCopy = {
     logout: "Odhlásit",
     saved: "Uloženo",
     saving: "Ukládám",
-    saveFailed: "Chyba uložení",
+    saveFailed: "Změny nebyly uloženy. Zkuste to prosím znovu.",
     workspaceTitle: "AKB pracovní plocha",
     workspaceSubtitle: "Dokumenty, workflow a znalosti",
     workspaceFooter: "STRATOS jednotné rozhraní",
@@ -181,7 +181,7 @@ const shellCopy = {
     logout: "Logout",
     saved: "Saved",
     saving: "Saving",
-    saveFailed: "Save failed",
+    saveFailed: "Your changes were not saved. Please try again.",
     workspaceTitle: "AKB workspace",
     workspaceSubtitle: "Documents, workflow and knowledge",
     workspaceFooter: "STRATOS unified interface",
@@ -236,6 +236,11 @@ interface AppShellProps {
     roles: string[];
     groups: string[];
     capabilities?: string[];
+    applicationAccess?: Array<{
+      application: string;
+      capabilities: string[];
+      validUntil?: string | null;
+    }>;
   } | null;
 }
 
@@ -370,12 +375,14 @@ function AppShellContent({
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [applicationAccess, setApplicationAccess] = useState(initialUser?.applicationAccess);
   const [settingsMode, setSettingsMode] =
     useState<SettingsSurfaceMode>("modal");
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsSaveError, setSettingsSaveError] = useState<string | null>(
     null,
   );
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [rolePreview, setRolePreview] =
     useState<RolePreviewSettings>(emptyRolePreview);
   const [savedRolePreviewProfileId, setSavedRolePreviewProfileId] =
@@ -459,6 +466,13 @@ function AppShellContent({
               (capability: unknown): capability is string => typeof capability === "string",
             )
           : [];
+        const nextApplicationAccess = Array.isArray(payload.user.applicationAccess)
+          ? payload.user.applicationAccess.filter(
+              (item: unknown): item is { application: string; capabilities: string[]; validUntil?: string | null } =>
+                Boolean(item) && typeof item === "object" && typeof (item as { application?: unknown }).application === "string",
+            )
+          : [];
+        setApplicationAccess(nextApplicationAccess);
         setUserProfile({
           name,
           email,
@@ -908,6 +922,7 @@ function AppShellContent({
   const handleSettingsSave = async () => {
     const nextRolePreviewProfileId = rolePreview.profileId;
     try {
+      setSettingsSaving(true);
       setSettingsSaveError(null);
       const savedProfile = await persistProfileSettings(settingsValues, {
         mode: settingsMode,
@@ -937,6 +952,8 @@ function AppShellContent({
     } catch {
       setSettingsDirty(true);
       setSettingsSaveError(copy.saveFailed);
+    } finally {
+      setSettingsSaving(false);
     }
   };
 
@@ -972,6 +989,7 @@ function AppShellContent({
           onSettingsOpen={() => setSettingsOpen(true)}
           projectName={copy.assistantBrand}
           user={userProfile}
+          applicationAccess={applicationAccess}
           workspaceName="AKB"
         />
         <CommandCenter
@@ -993,8 +1011,6 @@ function AppShellContent({
         {children}
         {settingsOpen ? (
           <AppSettingsSurface
-            apiModeLabel={apiModeLabel}
-            authModeLabel={authModeLabel}
             dirty={settingsDirty}
             language={language}
             mode={settingsMode}
@@ -1007,6 +1023,7 @@ function AppShellContent({
             accessInfo={accessInfo}
             rolePreview={rolePreview}
             saveError={settingsSaveError}
+            saving={settingsSaving}
             userInitials={userProfile.initials}
             values={settingsValues}
           />
@@ -1120,6 +1137,7 @@ function AppShellContent({
             onSettingsOpen={() => setSettingsOpen(true)}
             projectName={activeTopbarContext}
             user={userProfile}
+            applicationAccess={applicationAccess}
             workspaceName={activeModuleLabel}
           />
           <CommandCenter
@@ -1140,8 +1158,6 @@ function AppShellContent({
           />
           {settingsOpen ? (
             <AppSettingsSurface
-              apiModeLabel={apiModeLabel}
-              authModeLabel={authModeLabel}
               dirty={settingsDirty}
               language={language}
               mode={settingsMode}
@@ -1154,6 +1170,7 @@ function AppShellContent({
               accessInfo={accessInfo}
               rolePreview={rolePreview}
               saveError={settingsSaveError}
+              saving={settingsSaving}
               userInitials={userProfile.initials}
               values={settingsValues}
             />

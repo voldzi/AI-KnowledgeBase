@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
         roles: activePreview?.roles ?? actualContext.roles ?? [],
         actualRoles: session.roles,
         groups: session.groups,
-        capabilities: actualContext.capabilities ?? []
+        capabilities: actualContext.capabilities ?? [],
+        applicationAccess: actualContext.applicationAccess ?? []
       },
       rolePreview: {
         canUse: canUseAdminSurface(actualContext),

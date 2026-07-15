@@ -126,6 +126,11 @@ export interface ApiRequestContext {
   identityActive?: boolean;
   membershipActive?: boolean;
   applicationAccessActive?: boolean;
+  applicationAccess?: Array<{
+    application: string;
+    capabilities: string[];
+    validUntil?: string | null;
+  }>;
   authorizationSource?: "mock" | "stratos_projection";
   serviceClientId?: string;
   accessToken?: string;

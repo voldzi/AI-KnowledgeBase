@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, KeyRound, ShieldCheck, UserCog } from "lucide-react";
+import { KeyRound, UserCog } from "lucide-react";
 import { useMemo } from "react";
 import {
   HelpHint,
@@ -22,8 +22,6 @@ import type { AklLanguage } from "@/lib/i18n";
 
 interface AppSettingsSurfaceProps {
   accessInfo: SettingsAccessInfo;
-  apiModeLabel: string;
-  authModeLabel: string;
   dirty: boolean;
   language: AklLanguage;
   mode: SettingsSurfaceMode;
@@ -35,6 +33,7 @@ interface AppSettingsSurfaceProps {
   onValueChange: (key: StratosSettingsCoreValueKey, value: StratosSettingsCoreValue) => void;
   rolePreview: RolePreviewSettings;
   saveError?: string | null;
+  saving?: boolean;
   userInitials: string;
   values: StratosSettingsCoreValues;
 }
@@ -62,18 +61,9 @@ export interface RolePreviewSettings {
 
 const settingsCopy = {
   cs: {
-    runtimeGroup: "AKB",
-    runtime: "Prostředí AKB",
-    runtimeDescription: "Aplikační stav a režimy používané webovým rozhraním.",
-    apiMode: "API klienti",
-    apiModeDescription: "Režim napojení webu na AKB služby.",
-    authMode: "Autentizace",
-    authModeDescription: "Režim přihlášení a autorizace uživatele.",
-    owner: "Vlastník aplikace",
-    ownerDescription: "Sdílený STRATOS modul správy znalostí.",
-    accessGroup: "Oprávnění",
-    access: "Role a oprávnění",
-    accessDescription: "Read-only přehled z přihlášení a RBAC. Hodnoty se neupravují v AKB.",
+    accessGroup: "Přístupy",
+    access: "Přístupy v AKB",
+    accessDescription: "Přehled částí AKB, které můžete používat. Přístupy spravuje STRATOS Access Center.",
     subject: "Uživatel",
     roles: "Role",
     groups: "Skupiny",
@@ -81,7 +71,9 @@ const settingsCopy = {
     accessActive: "Aktivní",
     accessInactive: "Neaktivní",
     accessEmpty: "Pro aktuální identitu není k dispozici žádný efektivní přístup.",
-    accessSource: "Keycloak / AKB RBAC",
+    accessSource: "STRATOS Access Center",
+    accessGranted: "Přístup je přidělen.",
+    accessMissing: "Přístup není přidělen.",
     accessTenant: "STRATOS",
     accessEmployeeChat: "AKB chat",
     accessWorkspace: "AKB dokumenty",
@@ -101,18 +93,9 @@ const settingsCopy = {
     logout: "Odhlásit"
   },
   en: {
-    runtimeGroup: "AKB",
-    runtime: "AKB environment",
-    runtimeDescription: "Application state and modes used by the web interface.",
-    apiMode: "API clients",
-    apiModeDescription: "Web connection mode for AKB services.",
-    authMode: "Authentication",
-    authModeDescription: "User sign-in and authorization mode.",
-    owner: "Application owner",
-    ownerDescription: "Shared STRATOS knowledge management module.",
     accessGroup: "Access",
     access: "Roles and permissions",
-    accessDescription: "Read-only summary from sign-in and RBAC. AKB does not edit these values.",
+    accessDescription: "Overview of the AKB areas you can use. Access is managed in STRATOS Access Center.",
     subject: "User",
     roles: "Roles",
     groups: "Groups",
@@ -120,7 +103,9 @@ const settingsCopy = {
     accessActive: "Active",
     accessInactive: "Inactive",
     accessEmpty: "No effective access is available for the current identity.",
-    accessSource: "Keycloak / AKB RBAC",
+    accessSource: "STRATOS Access Center",
+    accessGranted: "Access is assigned.",
+    accessMissing: "Access is not assigned.",
     accessTenant: "STRATOS",
     accessEmployeeChat: "AKB chat",
     accessWorkspace: "AKB documents",
@@ -143,8 +128,6 @@ const settingsCopy = {
 
 export function AppSettingsSurface({
   accessInfo,
-  apiModeLabel,
-  authModeLabel,
   dirty,
   language,
   mode,
@@ -156,6 +139,7 @@ export function AppSettingsSurface({
   onValueChange,
   rolePreview,
   saveError,
+  saving,
   userInitials,
   values
 }: AppSettingsSurfaceProps) {
@@ -166,14 +150,6 @@ export function AppSettingsSurface({
   );
   const appNavItems = useMemo<SettingsNavItem[]>(
     () => [
-      {
-        id: "akb-runtime",
-        group: copy.runtimeGroup,
-        label: copy.runtime,
-        description: copy.runtimeDescription,
-        icon: <Database size={16} aria-hidden="true" />,
-        keywords: ["akb", "api", "auth", "runtime", "provoz"]
-      },
       {
         id: "akb-access",
         group: copy.accessGroup,
@@ -200,42 +176,17 @@ export function AppSettingsSurface({
   const appSections = useMemo<SettingsContentSection[]>(
     () => [
       {
-        id: "akb-runtime-state",
-        navItemId: "akb-runtime",
-        title: copy.runtime,
-        description: copy.runtimeDescription,
-        keywords: ["akb", "api", "auth", "owner"],
-        children: (
-          <>
-            <SettingsField label={copy.apiMode} description={copy.apiModeDescription}>
-              <SettingsTextInput value={apiModeLabel} readOnly onChange={() => undefined} />
-            </SettingsField>
-            <SettingsField label={copy.authMode} description={copy.authModeDescription}>
-              <SettingsTextInput icon={<ShieldCheck size={15} aria-hidden="true" />} value={authModeLabel} readOnly onChange={() => undefined} />
-            </SettingsField>
-            <SettingsField label={copy.owner} description={copy.ownerDescription}>
-              <SettingsTextInput value="STRATOS / AKB" readOnly onChange={() => undefined} />
-            </SettingsField>
-          </>
-        )
-      },
-      {
         id: "akb-access-state",
         navItemId: "akb-access",
         title: copy.access,
         description: copy.accessDescription,
         keywords: ["akb", "role", "rbac", "keycloak", "opravneni"],
         children: (
-          <>
-            <SettingsField label={copy.subject} description={copy.accessDescription}>
-              <SettingsTextInput value={accessInfo.subjectId || copy.emptyAccess} readOnly onChange={() => undefined} />
-            </SettingsField>
-            <AccessEffectiveMatrix
+          <AccessEffectiveMatrix
               tenants={effectiveAccessTenants}
               emptyLabel={copy.accessEmpty}
               labels={{ active: copy.accessActive, inactive: copy.accessInactive, empty: copy.accessEmpty }}
             />
-          </>
         )
       },
       ...(rolePreview.canUse
@@ -274,7 +225,7 @@ export function AppSettingsSurface({
           ]
         : [])
     ],
-    [accessInfo, apiModeLabel, authModeLabel, copy, effectiveAccessTenants, onRolePreviewChange, rolePreview]
+    [copy, effectiveAccessTenants, onRolePreviewChange, rolePreview]
   );
 
   return (
@@ -290,6 +241,7 @@ export function AppSettingsSurface({
       roleReadOnly
       dirty={dirty}
       saveError={saveError}
+      saving={saving}
       mode={mode}
       onClose={onClose}
       onLogout={onLogout}
@@ -315,7 +267,7 @@ function buildEffectiveAccessTenants(
       active,
       role: active ? copy.accessAllowed : copy.accessDenied,
       source: copy.accessSource,
-      reason: permission
+      reason: active ? copy.accessGranted : copy.accessMissing
     };
   };
 
