@@ -47,6 +47,12 @@ služební identity bez vazby na obsahovou policy. Chybějící, cizí nebo změ
 binding zastaví obsahově specifický auditní zápis fail-closed; route grant
 `audit` sám o sobě nestačí.
 
+Interaktivní AKB session načítá capabilities a scopes výhradně z centrálního
+`GET /api/v1/auth/me`. Keycloak token proto musí obsahovat dedikovanou
+`stratos-access-api` audience vedle AKB resource audience `akl-api`. Odmítnutá
+nebo nedostupná projekce zůstává fail-closed; chat zobrazí řízenou access chybu
+a nikdy nepřejde na statické role nebo klientské hlavičky.
+
 ## Role a akce
 
 Služba používá akce z centrálního bezpečnostního kontraktu:
