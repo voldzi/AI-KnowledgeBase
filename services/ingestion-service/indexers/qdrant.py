@@ -191,6 +191,12 @@ class QdrantIndexer:
                 index_response.text,
             )
         for field_name in (
+            "document_id",
+            "document_version_id",
+            "document_type",
+            "classification",
+            "status",
+            "tags",
             "organization_id",
             "policy_binding_id",
             "policy_version",

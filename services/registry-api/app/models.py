@@ -41,6 +41,14 @@ class Document(Base, TimestampMixin):
             "AND governance_scope_owner_subject_id IS NULL)",
             name="governance_scope_owner_shape",
         ),
+        CheckConstraint(
+            "status IN ('draft', 'review', 'approved', 'valid', 'superseded', 'archived', 'cancelled')",
+            name="ck_documents_status",
+        ),
+        CheckConstraint(
+            "classification IN ('public', 'internal', 'restricted', 'confidential')",
+            name="ck_documents_classification",
+        ),
     )
 
     document_id: Mapped[str] = mapped_column(
@@ -128,6 +136,7 @@ class DocumentVersion(Base):
             name="uq_document_version_document_identity",
         ),
         Index("ix_document_versions_document_status", "document_id", "status"),
+        Index("ix_document_versions_document_created", "document_id", "created_at"),
         CheckConstraint(
             "(governance_scope_type = 'own' AND governance_scope_id IS NULL "
             "AND governance_scope_owner_subject_id IS NOT NULL "
@@ -135,6 +144,14 @@ class DocumentVersion(Base):
             "OR (governance_scope_type <> 'own' "
             "AND governance_scope_owner_subject_id IS NULL)",
             name="governance_scope_owner_shape",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'review', 'approved', 'valid', 'superseded', 'archived', 'cancelled')",
+            name="ck_document_versions_status",
+        ),
+        CheckConstraint(
+            "valid_from IS NULL OR valid_to IS NULL OR valid_from <= valid_to",
+            name="ck_document_versions_validity",
         ),
     )
 
@@ -280,6 +297,16 @@ class DocumentPublication(Base, TimestampMixin):
 
 class DocumentFile(Base):
     __tablename__ = "document_files"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "document_version_id",
+            "file_id",
+            name="uq_document_file_version_identity",
+        ),
+        CheckConstraint("size_bytes IS NULL OR size_bytes >= 0", name="ck_document_files_size"),
+        Index("ix_document_files_version", "document_id", "document_version_id"),
+    )
 
     file_id: Mapped[str] = mapped_column(
         String(64), primary_key=True, default=lambda: make_id("file")
@@ -316,12 +343,36 @@ class ExternalDocumentRef(Base, TimestampMixin):
         Index("ix_external_document_refs_entity", "tenant_id", "entity_type", "entity_id"),
         Index("ix_external_document_refs_document", "document_id"),
         Index("ix_external_document_refs_ingestion_status", "current_ingestion_status"),
+        Index(
+            "ix_external_document_refs_tenant_status_updated",
+            "tenant_id",
+            "current_ingestion_status",
+            "updated_at",
+        ),
+        ForeignKeyConstraint(
+            ["document_id", "current_document_version_id"],
+            ["document_versions.document_id", "document_versions.document_version_id"],
+            name="fk_external_document_refs_current_version",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["document_id", "current_document_version_id", "current_file_id"],
+            ["document_files.document_id", "document_files.document_version_id", "document_files.file_id"],
+            name="fk_external_document_refs_current_file",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "current_ingestion_job_id IS NULL "
+            "OR (current_document_version_id IS NOT NULL "
+            "AND current_ingestion_status IN ('QUEUED', 'INGESTING', 'INDEXED', 'FAILED'))",
+            name="ck_external_document_refs_ingestion_shape",
+        ),
     )
 
     external_document_id: Mapped[str] = mapped_column(
         String(64), primary_key=True, default=lambda: make_id("extdoc")
     )
-    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, default="default")
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False, default="org_stratos")
     external_system: Mapped[str] = mapped_column(String(80), nullable=False)
     external_ref: Mapped[str] = mapped_column(String(240), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -651,6 +702,11 @@ class AnalystCase(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_analyst_cases_owner_status", "owner_id", "status"),
         Index("ix_analyst_cases_updated", "updated_at"),
+        CheckConstraint("status IN ('open', 'archived')", name="ck_analyst_cases_status"),
+        CheckConstraint(
+            "classification IN ('public', 'internal', 'restricted', 'confidential')",
+            name="ck_analyst_cases_classification",
+        ),
     )
 
     case_id: Mapped[str] = mapped_column(
@@ -684,6 +740,10 @@ class AnalystSavedQuery(Base):
     __tablename__ = "analyst_saved_queries"
     __table_args__ = (
         Index("ix_analyst_saved_queries_case", "case_id", "created_at"),
+        CheckConstraint(
+            "query_mode IN ('smart', 'simple', 'advanced', 'fielded')",
+            name="ck_analyst_saved_queries_mode",
+        ),
     )
 
     saved_query_id: Mapped[str] = mapped_column(
@@ -713,6 +773,8 @@ class AnalystEvidenceItem(Base):
         Index("ix_analyst_evidence_case", "case_id", "created_at"),
         Index("ix_analyst_evidence_document", "document_id", "document_version_id"),
         Index("ix_analyst_evidence_chunk", "chunk_id"),
+        CheckConstraint("page_number IS NULL OR page_number > 0", name="ck_analyst_evidence_page"),
+        CheckConstraint("score IS NULL OR score >= 0", name="ck_analyst_evidence_score"),
     )
 
     evidence_id: Mapped[str] = mapped_column(

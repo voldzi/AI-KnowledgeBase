@@ -445,7 +445,7 @@ class ExternalDocumentUpsertRequest(BaseModel):
     information_policy: InformationPolicyBinding | None = None
     integration_envelope: IntegrationEnvelope | None = None
     owner: ExternalDocumentOwner
-    tenant_id: str = Field(default="default", min_length=1, max_length=128)
+    tenant_id: str = Field(default="org_stratos", min_length=1, max_length=128)
     gestor_unit: str | None = Field(default=None, max_length=128)
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
