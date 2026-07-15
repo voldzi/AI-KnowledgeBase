@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Activity, Menu, X } from "lucide-react";
 import {
+  buildStratosAppsAvailabilityFromAccessProjection,
   CommandCenterTrigger,
   GlobalTopbar,
   GlobalTopbarBreadcrumb,
@@ -36,6 +37,11 @@ interface ProjectTopbarProps {
   onSettingsOpen?: () => void;
   projectName: string;
   user: AklTopbarUserProfile;
+  applicationAccess?: Array<{
+    application: string;
+    capabilities: string[];
+    validUntil?: string | null;
+  }>;
   workspaceName: string;
 }
 
@@ -89,6 +95,7 @@ export function ProjectTopbar({
   onSettingsOpen,
   projectName,
   user,
+  applicationAccess,
   workspaceName,
 }: ProjectTopbarProps) {
   const [healthState, setHealthState] = useState<HealthState>(() => ({
@@ -149,6 +156,7 @@ export function ProjectTopbar({
   return (
     <GlobalTopbar
       currentAppId="akb"
+      appAvailability={buildStratosAppsAvailabilityFromAccessProjection(applicationAccess)}
       appUrls={{
         "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
         projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
@@ -195,7 +203,6 @@ export function ProjectTopbar({
         name: user.name,
         email: user.email,
         initials: user.initials,
-        status: authModeLabel,
         avatar: user.avatarImageUrl ? (
           <img
             className="akb-topbar-avatar-image"

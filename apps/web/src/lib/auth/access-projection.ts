@@ -64,6 +64,16 @@ export async function contextFromStratosAccessProjection(
     throw new ApiClientError("STRATOS organization does not match AKB.", 403, "ORGANIZATION_MISMATCH", "stratos-access");
   }
 
+  const applicationAccess = body.applicationAccess
+    .filter(isRecord)
+    .flatMap((item) => {
+      if (typeof item.application !== "string" || !item.application) return [];
+      return [{
+        application: item.application,
+        capabilities: stringArray(item.capabilities),
+        validUntil: typeof item.validUntil === "string" ? item.validUntil : null,
+      }];
+    });
   const access = body.applicationAccess
     .filter(isRecord)
     .find((item) => normalizeApplication(item.application) === "akb") as ProjectionAccess | undefined;
@@ -85,6 +95,7 @@ export async function contextFromStratosAccessProjection(
     identityActive: true,
     membershipActive: true,
     applicationAccessActive: active,
+    applicationAccess,
     authorizationSource: "stratos_projection",
     accessToken,
   };

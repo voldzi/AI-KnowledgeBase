@@ -141,13 +141,18 @@ Adapter je zapojeny na techto plochach:
   je pouze kontextova akce jednoho vybraneho dokumentu a neni samostatnou
   polozkou navigace ani Command Center.
 - uzivatelske nastaveni pres `StratosSettingsSurface`; AKB pridava pouze
-  `appNavItems` a `appSections` pro provozni stav, read-only role/opravneni a
-  admin role-preview. Profil, jazyk, vzhled a avatar nejsou ulozene v
+  `appNavItems` a `appSections` pro srozumitelný read-only přehled přístupů a
+  admin role-preview. Technické údaje o API/OIDC režimu se uživateli
+  nezobrazují. Profil, jazyk, vzhled a avatar nejsou ulozene v
   `localStorage`, ale pres web bridge `GET/PUT /api/v1/profile/settings` do
   `settings.core` a `settings.apps.akb`. Sdilene hodnoty zahrnuji
   `displayName`, `email`, `avatarId`, `avatarColor`, `avatarImageUrl`,
   `language`/`locale`, `theme`, `accent`/`accentColor` a vybrane preference
   povrchu; AKB domenove hodnoty zustavaji pod `settings.apps.akb`.
+- app switcher získává jednotné zámky přes
+  `buildStratosAppsAvailabilityFromAccessProjection` z autoritativní centrální
+  projekce `applicationAccess`; místní AKB role nejsou zdrojem dostupnosti
+  ostatních STRATOS aplikací.
 - auditni timeline na `/audit`, dashboardu a detailu dokumentu pres
   `AccessAuditList`; lokalni auditni tabulky se nepouzivaji tam, kde jde o
   timeline nebo kratky prehled pristupovych udalosti.

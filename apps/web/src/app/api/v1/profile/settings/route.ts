@@ -65,13 +65,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const upstream: ProfileSettingsResponse | Error = await getServerApiClients()
-    .registry.getProfileSettings(context)
-    .catch((error: unknown) =>
-      error instanceof Error
-        ? error
-        : new Error("Unknown profile settings error"),
-    );
+  const config = getAklConfig();
+  const upstream: ProfileSettingsResponse | Error = await (config.authMode === "oidc"
+    ? getCentralProfileSettings(context, config)
+    : getServerApiClients().registry.getProfileSettings(context))
+    .catch((error: unknown) => error instanceof Error ? error : new Error("Unknown profile settings error"));
   if (upstream instanceof Error) {
     return profileSettingsUpstreamError(upstream);
   }
@@ -106,17 +104,16 @@ export async function PUT(request: NextRequest) {
     asSettingsBundle(body.settings ?? body),
     identity,
   );
+  const persistedSettings = settingsForPersistence(requestedSettings);
   const registryPayload: ProfileSettingsPutRequest = {
-    settings: settingsForPersistence(requestedSettings),
+    settings: persistedSettings,
   };
 
-  const upstream: ProfileSettingsResponse | Error = await getServerApiClients()
-    .registry.putProfileSettings(registryPayload, context)
-    .catch((error: unknown) =>
-      error instanceof Error
-        ? error
-        : new Error("Unknown profile settings error"),
-    );
+  const config = getAklConfig();
+  const upstream: ProfileSettingsResponse | Error = await (config.authMode === "oidc"
+    ? putCentralProfileSettings(context, config, persistedSettings)
+    : getServerApiClients().registry.putProfileSettings(registryPayload, context))
+    .catch((error: unknown) => error instanceof Error ? error : new Error("Unknown profile settings error"));
   if (upstream instanceof Error) {
     return profileSettingsUpstreamError(upstream);
   }
@@ -310,15 +307,62 @@ function enumValue(
   return typeof value === "string" && allowed.has(value) ? value : fallback;
 }
 
-function profileSettingsUpstreamError(error: Error) {
+function profileSettingsUpstreamError(_error: Error) {
   return NextResponse.json(
     {
       error: {
         code: "PROFILE_SETTINGS_UNAVAILABLE",
-        message: "Profile settings are not available.",
-        detail: error.message,
+        message: "Nastavení profilu momentálně není dostupné.",
       },
     },
     { status: 502 },
   );
+}
+
+async function getCentralProfileSettings(
+  context: ApiRequestContext,
+  config: ReturnType<typeof getAklConfig>,
+): Promise<ProfileSettingsResponse> {
+  return requestCentralProfileSettings("GET", context, config);
+}
+
+async function putCentralProfileSettings(
+  context: ApiRequestContext,
+  config: ReturnType<typeof getAklConfig>,
+  settings: ProfileSettingsBundle,
+): Promise<ProfileSettingsResponse> {
+  return requestCentralProfileSettings("PUT", context, config, settings);
+}
+
+async function requestCentralProfileSettings(
+  method: "GET" | "PUT",
+  context: ApiRequestContext,
+  config: ReturnType<typeof getAklConfig>,
+  settings?: ProfileSettingsBundle,
+): Promise<ProfileSettingsResponse> {
+  const accessToken = context.accessToken;
+  const authMeUrl = config.oidc?.stratosAuthMeUrl;
+  if (!accessToken || !authMeUrl) {
+    throw new Error("Central STRATOS profile is not configured.");
+  }
+  const profileUrl = new URL("/api/v1/profile/settings", authMeUrl);
+  const response = await fetch(profileUrl, {
+    method,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      ...(settings ? { "Content-Type": "application/json" } : {}),
+    },
+    body: settings ? JSON.stringify(settings) : undefined,
+    cache: "no-store",
+    signal: AbortSignal.timeout(config.oidc?.accessProjectionTimeoutMs ?? 3000),
+  });
+  if (!response.ok) {
+    throw new Error(`Central STRATOS profile returned ${response.status}.`);
+  }
+  const payload = await response.json().catch(() => null) as ProfileSettingsResponse | null;
+  if (!payload || !payload.settings || typeof payload.settings !== "object") {
+    throw new Error("Central STRATOS profile returned an invalid response.");
+  }
+  return payload;
 }

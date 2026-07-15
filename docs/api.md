@@ -329,12 +329,16 @@ returned as read-only `identity` metadata from Keycloak/RBAC and are never taken
 from saved profile settings. Browser `localStorage` is not a source of truth for
 avatar, language, appearance, or profile values.
 
-Internally, the web bridge persists these values to Registry API:
+In production, the web bridge forwards the verified user bearer to the
+central STRATOS profile endpoint:
 
 ```text
-GET /api/v1/user-profiles/me/settings
-PUT /api/v1/user-profiles/me/settings
+GET  STRATOS /api/v1/profile/settings
+PUT  STRATOS /api/v1/profile/settings
 ```
+
+AKB Registry profile storage remains available only for the local mock mode;
+it is not a second production source of truth.
 
 ## Authentication
 
