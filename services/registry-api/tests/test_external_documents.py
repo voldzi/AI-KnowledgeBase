@@ -1,6 +1,6 @@
 def _external_payload(**overrides):
     payload = {
-        "tenant_id": "default",
+        "tenant_id": "org_stratos",
         "external_system": "STRATOS_BUDGET",
         "external_ref": "contract:256-2022-S:main",
         "entity_type": "Contract",

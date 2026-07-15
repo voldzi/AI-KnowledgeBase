@@ -38,6 +38,12 @@ alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+Alembic head `0019_database_hardening` binds current external document
+version/file pointers to the same document, validates document states and
+validity periods, removes the historical duplicate reference index and creates
+the durable analyst case/query/evidence tables that previously existed only in
+ORM metadata. The migration is forward-only in production.
+
 ## Konfigurace
 
 | Proměnná | Význam |

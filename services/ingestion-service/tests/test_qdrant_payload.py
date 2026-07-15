@@ -583,6 +583,30 @@ async def test_qdrant_indexer_creates_missing_collection_with_phase_02_vector_co
 
 
 @pytest.mark.asyncio
+async def test_qdrant_indexer_creates_lookup_and_policy_payload_indexes(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant"})
+    fake_client = _FakeAsyncClient(put_responses=[_FakeResponse(200) for _ in range(17)])
+    monkeypatch.setattr("indexers.qdrant.httpx.AsyncClient", lambda **_: fake_client)
+
+    await QdrantIndexer(settings)._ensure_text_index()
+
+    indexed_fields = {call["json"]["field_name"] for call in fake_client.put_calls}
+    assert {
+        "normalized_text",
+        "metadata.chunk_index",
+        "document_id",
+        "document_version_id",
+        "document_type",
+        "classification",
+        "status",
+        "tags",
+        "organization_id",
+        "policy_binding_id",
+        "policy_hash",
+    }.issubset(indexed_fields)
+
+
+@pytest.mark.asyncio
 async def test_qdrant_indexer_rejects_existing_collection_with_wrong_vector_size(tmp_path, monkeypatch) -> None:
     settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant"})
     fake_client = _FakeAsyncClient(

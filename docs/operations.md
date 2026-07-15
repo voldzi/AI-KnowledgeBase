@@ -166,7 +166,7 @@ value disables public source delivery. Public metadata and source responses
 must remain `no-store`; operators verify revoke by observing an immediate 404
 after the next fresh central decision.
 
-### Forward-only governance migrations (`0015`–`0018`)
+### Forward-only governance migrations (`0015`–`0019`)
 
 Treat `0015_document_publications` and `0016_public_audit_aggregation` as
 forward-only production migrations. The second migration adds nullable
@@ -183,6 +183,11 @@ unique job id, and bounded status constraint. It backfills only unambiguous
 current job/version/status values from external references. Partial, conflicting
 or invalid legacy state aborts the migration for explicit reconciliation; the
 migration never guesses a winner.
+`0019_database_hardening` adds same-document foreign keys for the current
+version/file projection, validated document state/date/size constraints,
+version and ingestion lookup indexes, and the missing analyst workspace
+tables. Ingestion startup additionally creates Qdrant keyword payload indexes
+for document/version/type/classification/status/tags and policy coordinates.
 Use the environment-specific Compose command and backup procedure from the
 deployment runbook; the sequence is mandatory:
 
