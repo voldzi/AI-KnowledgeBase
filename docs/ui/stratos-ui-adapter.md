@@ -44,6 +44,11 @@ AKB nepridava mobilni opravy pro `.stratos-app-shell-main`,
 `.stratos-app-shell-content` ani `.stratos-global-topbar-context`, pokud jde o
 chovani pokryte sdilenym shellem.
 
+Od baseline `0.3.34` pouziva AKB take sdileny `StratosAuthErrorPage` pro
+nedostupne nebo odmitnute centralni overeni pristupu. Uzivateli se zobrazuje
+stabilni STRATOS reason code a bezpecne akce pro opakovani nebo nove prihlaseni;
+surova odpoved auth sluzby se do UI nepredava.
+
 Pokud ma vyvojove prostredi lokalni `.npmrc`, ktere scope `@voldzi` smeruje na
 GitHub Packages kvuli jinym balickum, nesmi se tento override promitnout do AKB
 lockfile pro `@voldzi/stratos-ui`.
