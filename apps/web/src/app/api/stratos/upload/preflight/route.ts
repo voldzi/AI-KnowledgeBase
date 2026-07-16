@@ -14,8 +14,7 @@ import { createUploadPreflightDecision, validateUploadFileMetadata } from "@/lib
 import { equalCanonicalJson } from "@/lib/stratos/aiip-governance";
 import {
   parseInformationPolicy,
-  parseIntegrationEnvelope,
-  policyHash
+  parseIntegrationEnvelope
 } from "@/lib/stratos/information-policy";
 
 import { stratosBridgeError } from "../../errors";
@@ -55,6 +54,7 @@ export async function POST(request: NextRequest) {
         "web-stratos-bridge",
       );
     }
+    const authoritativePolicyHash = integrationEnvelope.policyHash;
     const actorAuthorization = request.headers.get("X-AIIP-Actor-Authorization")?.trim() ?? "";
     if (!/^Bearer\s+\S+$/i.test(actorAuthorization)) {
       throw new ApiClientError(
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       confirmation.governed_resource.explicit_policy_binding_id !== null ||
       confirmation.governed_resource.effective_policy.policy_binding_id !== informationPolicy.policyBindingId ||
       confirmation.governed_resource.effective_policy.policy_version !== informationPolicy.policyVersion ||
-      confirmation.governed_resource.effective_policy.policy_hash !== policyHash(informationPolicy) ||
+      confirmation.governed_resource.effective_policy.policy_hash !== authoritativePolicyHash ||
       confirmation.governed_resource.effective_policy.originator_id !== (informationPolicy.originatorId ?? null) ||
       confirmation.governed_resource.effective_policy.issued_at !== (informationPolicy.issuedAt ?? null) ||
       confirmation.governed_resource.effective_policy.review_at !== (informationPolicy.reviewAt ?? null) ||
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       confirmation.idempotency_key !== integrationEnvelope.idempotencyKey ||
       confirmation.document_policy_binding_id !== informationPolicy.policyBindingId ||
       confirmation.document_policy_version !== informationPolicy.policyVersion ||
-      confirmation.document_policy_hash !== policyHash(informationPolicy)
+      confirmation.document_policy_hash !== authoritativePolicyHash
     ) {
       throw new ApiClientError(
         "Registry did not return the exact authoritative AIIP governance confirmation.",
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
         sha256: validatedFile.sha256,
         policy_binding_id: informationPolicy.policyBindingId,
         policy_version: informationPolicy.policyVersion,
-        policy_hash: policyHash(informationPolicy),
+        policy_hash: authoritativePolicyHash,
         external_document_id: external.external_document.external_document_id,
         expected_current_document_version_id:
           external.external_document.current_document_version_id,
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
         external_ref: external.external_document.external_ref,
         policy_binding_id: informationPolicy.policyBindingId,
         policy_version: informationPolicy.policyVersion,
-        policy_hash: policyHash(informationPolicy),
+        policy_hash: authoritativePolicyHash,
         governance_confirmation: confirmation,
         canonical_open_url: canonicalDocumentUrl({ documentId: external.document.document_id })
       },

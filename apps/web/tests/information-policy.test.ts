@@ -56,8 +56,9 @@ describe("STRATOS Information Policy V2", () => {
     );
   });
 
-  it("binds the integration envelope to the exact policy hash", () => {
+  it("preserves the Registry-issued policy hash for central governance verification", () => {
     const parsed = parseInformationPolicy(policy());
+    const authoritativePolicyHash = `sha256:${"f".repeat(64)}`;
     const envelope = {
       schemaVersion: "stratos-integration-envelope-1",
       organizationId: "org_stratos",
@@ -76,7 +77,7 @@ describe("STRATOS Information Policy V2", () => {
       idempotencyKey: "idem-12345678",
       policyBindingId: parsed.policyBindingId,
       policyVersion: parsed.policyVersion,
-      policyHash: policyHash(parsed),
+      policyHash: authoritativePolicyHash,
       classification: {
         handlingClass: parsed.handlingClass,
         legalClassification: "NONE",
@@ -92,11 +93,11 @@ describe("STRATOS Information Policy V2", () => {
       }
     };
     const parsedEnvelope = parseIntegrationEnvelope(envelope, parsed);
-    assert.equal(parsedEnvelope?.policyHash, policyHash(parsed));
+    assert.equal(parsedEnvelope?.policyHash, authoritativePolicyHash);
     assert.equal(parsedEnvelope?.externalRef, "aiip:idea:idea-123:requirement-card");
     assert.equal(parsedEnvelope?.sourceResource.resourceId, "idea-123");
     assert.notEqual(parsedEnvelope?.externalRef, parsedEnvelope?.sourceResource.resourceId);
-    assert.throws(() => parseIntegrationEnvelope({ ...envelope, policyHash: `sha256:${"f".repeat(64)}` }, parsed));
+    assert.throws(() => parseIntegrationEnvelope({ ...envelope, policyHash: "sha256:not-a-digest" }, parsed));
     assert.throws(() => parseIntegrationEnvelope({ ...envelope, actor: { ...envelope.actor, delegated: true } }, parsed));
     assert.throws(() => parseIntegrationEnvelope({ ...envelope, payload: { ...envelope.payload, metadata: {} } }, parsed));
     assert.throws(() => parseIntegrationEnvelope({

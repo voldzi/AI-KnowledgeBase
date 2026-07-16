@@ -188,7 +188,10 @@ export function parseIntegrationEnvelope(value: unknown, policy: InformationPoli
   requiredEqual(envelope.sourceSystem, "STRATOS_AIIP", "sourceSystem");
   requiredEqual(envelope.policyVersion, INFORMATION_POLICY_VERSION, "policyVersion");
   requiredEqual(envelope.policyBindingId, policy.policyBindingId, "policyBindingId");
-  requiredEqual(envelope.policyHash, policyHash(policy), "policyHash");
+  const authoritativePolicyHash = requiredText(envelope.policyHash, "policyHash").toLowerCase();
+  if (!/^sha256:[a-f0-9]{64}$/.test(authoritativePolicyHash)) {
+    fail("POLICY_BINDING_INVALID", "policyHash must be a Registry-issued SHA-256 digest.");
+  }
   const classification = strictRecord(envelope.classification, "classification");
   assertKeys(classification, ["handlingClass", "legalClassification", "tlp", "pap"], "classification");
   requiredEqual(classification.handlingClass, policy.handlingClass, "classification.handlingClass");
@@ -254,7 +257,7 @@ export function parseIntegrationEnvelope(value: unknown, policy: InformationPoli
     idempotencyKey: minText(envelope.idempotencyKey, "idempotencyKey", 8),
     policyBindingId: policy.policyBindingId,
     policyVersion: INFORMATION_POLICY_VERSION,
-    policyHash: policyHash(policy),
+    policyHash: authoritativePolicyHash,
     classification: {
       handlingClass: policy.handlingClass,
       legalClassification: "NONE",

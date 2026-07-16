@@ -164,6 +164,8 @@ from app.schemas import (
     IntegrationIdempotencyCompleteResponse,
     IntegrationIdempotencyReserveRequest,
     IntegrationIdempotencyReserveResponse,
+    IntegrationEnvelope,
+    AiipUploadIntegrationEnvelope,
     IngestionAuthorizationConfirmRequest,
     IngestionAuthorizationIssueRequest,
     IngestionAuthorizationResponse,
@@ -418,22 +420,27 @@ def _default_assignment_payloads(payload: DocumentCreate) -> list[DocumentAssign
     return assignments
 
 
-def _external_document_metadata(payload: ExternalDocumentUpsertRequest) -> dict[str, object]:
+def _external_document_metadata(
+    payload: ExternalDocumentUpsertRequest,
+    *,
+    integration_envelope: IntegrationEnvelope | AiipUploadIntegrationEnvelope | None = None,
+) -> dict[str, object]:
     external_system = payload.external_system.value
     source_location = (
         payload.source_location.model_dump(mode="json", exclude_none=True)
         if payload.source_location is not None
         else None
     )
+    envelope = integration_envelope or payload.integration_envelope
     envelope_metadata = (
         {
-            "schema_version": payload.integration_envelope.schema_version,
-            "source_system": payload.integration_envelope.source_system,
-            "correlation_id": payload.integration_envelope.correlation_id,
-            "idempotency_key": payload.integration_envelope.idempotency_key,
-            "policy_hash": payload.integration_envelope.policy_hash,
+            "schema_version": envelope.schema_version,
+            "source_system": envelope.source_system,
+            "correlation_id": envelope.correlation_id,
+            "idempotency_key": envelope.idempotency_key,
+            "policy_hash": envelope.policy_hash,
         }
-        if payload.integration_envelope is not None
+        if envelope is not None
         else None
     )
     return {
@@ -2243,7 +2250,7 @@ def _register_aiip_akb_authoritatively(
             inherited_from_resource_id=envelope.source_resource.governed_resource_id,
             policy_binding_id=payload.information_policy.policy_binding_id,
             policy_version=payload.information_policy.policy_version,
-            policy_hash=canonical_policy_hash(payload.information_policy),
+            policy_hash=envelope.policy_hash,
             originator_id=payload.information_policy.originator_id,
             issued_at=payload.information_policy.issued_at.isoformat(),
             review_at=(
@@ -2296,6 +2303,17 @@ def _aiip_governance_columns(
         "governance_registration_status": "REGISTERED",
         "governance_registered_at": utcnow(),
     }
+
+
+def _aiip_policy_columns(
+    payload: AiipExternalDocumentUpsertRequest
+    | AiipDocumentVersionCreate
+    | AiipExternalDocumentCurrentUpdateRequest,
+    registration: AiipAkbGovernedResourceRegistration,
+) -> dict[str, object]:
+    columns = policy_columns(payload.information_policy)
+    columns["policy_hash"] = registration.policy_hash
+    return columns
 
 
 def _aiip_parent_source(
@@ -2375,7 +2393,7 @@ def _assert_aiip_document_matches(
         or actual_scope != expected_scope
         or document.policy_binding_id != payload.information_policy.policy_binding_id
         or document.policy_version != payload.information_policy.policy_version
-        or document.policy_hash != canonical_policy_hash(payload.information_policy)
+        or document.policy_hash != payload.integration_envelope.policy_hash
         or document.governance_registration_status != "REGISTERED"
         or not document.governed_resource_id
     ):
@@ -2406,7 +2424,7 @@ def _assert_aiip_version_matches(
         or actual_scope != expected_scope
         or version.policy_binding_id != payload.information_policy.policy_binding_id
         or version.policy_version != payload.information_policy.policy_version
-        or version.policy_hash != canonical_policy_hash(payload.information_policy)
+        or version.policy_hash != payload.integration_envelope.policy_hash
         or version.governance_registration_status != "REGISTERED"
         or not version.governed_resource_id
     ):
@@ -2520,7 +2538,9 @@ def upsert_aiip_external_document(
         title=payload.title,
         classification=payload.classification,
         information_policy=payload.information_policy,
-        integration_envelope=payload.integration_envelope,
+        # The dedicated AIIP route has already verified the exact Registry-issued
+        # envelope. Do not pass it through the generic route's local hash check.
+        integration_envelope=None,
         owner=ExternalDocumentOwner(user_id=registration.registered_by_subject_id),
         tags=payload.tags,
         metadata={},
@@ -2539,8 +2559,11 @@ def upsert_aiip_external_document(
         owner_id=registration.registered_by_subject_id,
         gestor_unit=None,
         tags=sorted({*payload.tags, "external", "stratos_aiip"}),
-        document_metadata=_external_document_metadata(normalized_payload),
-        **policy_columns(payload.information_policy),
+        document_metadata=_external_document_metadata(
+            normalized_payload,
+            integration_envelope=payload.integration_envelope,
+        ),
+        **_aiip_policy_columns(payload, registration),
         **_aiip_governance_columns(registration),
     )
     document.access_policies = _external_document_policies(normalized_payload)
@@ -2736,7 +2759,7 @@ def upsert_aiip_document_version(
         ),
         file_hash=payload.file_hash,
         change_summary=payload.change_summary,
-        **policy_columns(payload.information_policy),
+        **_aiip_policy_columns(payload, registration),
         **_aiip_governance_columns(registration),
     )
     file = DocumentFile(
@@ -2794,7 +2817,6 @@ def update_aiip_external_document_current(
         or envelope.source_system != "STRATOS_AIIP"
         or envelope.actor.type != "person"
         or envelope.policy_binding_id != payload.information_policy.policy_binding_id
-        or envelope.policy_hash != canonical_policy_hash(payload.information_policy)
         or source.scope.model_dump(mode="json", by_alias=True, exclude_none=True)
         != _aiip_scope(payload)
     ):

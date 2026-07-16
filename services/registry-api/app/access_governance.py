@@ -359,7 +359,11 @@ class StratosGovernanceClient:
             raise GovernanceUnavailable("The dedicated AIIP to AKB governance route is not configured")
         source = envelope.source_resource
         expected_source_id = source.governed_resource_id
-        expected_hash = canonical_policy_hash(binding)
+        # AIIP supplies the hash issued by the central Policy Registry. Do not
+        # replace it with a hash of AKB's normalized Pydantic representation;
+        # the dedicated STRATOS route below verifies the exact registered
+        # binding and returns the authoritative coordinates.
+        expected_hash = envelope.policy_hash
         response = self._request(
             "PUT",
             (

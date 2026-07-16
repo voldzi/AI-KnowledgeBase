@@ -19,6 +19,7 @@ EXTERNAL_REF = f"aiip:idea:{IDEA_ID}:requirement-card"
 SOURCE_VERSION = "idea-aiip-123-v1"
 FILE_HASH = f"sha256:{'d' * 64}"
 FILE_HASH_2 = f"sha256:{'e' * 64}"
+AUTHORITATIVE_POLICY_HASH = f"sha256:{'f' * 64}"
 
 
 def _policy() -> dict:
@@ -44,7 +45,10 @@ def _policy() -> dict:
     }
 
 
-def _envelope(file_hash: str = FILE_HASH) -> dict:
+def _envelope(
+    file_hash: str = FILE_HASH,
+    policy_hash: str | None = None,
+) -> dict:
     binding = InformationPolicyBinding.model_validate(_policy())
     return {
         "schemaVersion": "stratos-integration-envelope-1",
@@ -64,7 +68,7 @@ def _envelope(file_hash: str = FILE_HASH) -> dict:
         "idempotencyKey": "idem-aiip-upload-123",
         "policyBindingId": binding.policy_binding_id,
         "policyVersion": binding.policy_version,
-        "policyHash": canonical_policy_hash(binding),
+        "policyHash": policy_hash or canonical_policy_hash(binding),
         "classification": {
             "handlingClass": "INTERNAL",
             "legalClassification": "NONE",
@@ -101,7 +105,7 @@ def _ingestion_service_headers() -> dict[str, str]:
     }
 
 
-def _preflight_payload() -> dict:
+def _preflight_payload(policy_hash: str | None = None) -> dict:
     return {
         "tenant_id": "org_stratos",
         "external_system": "STRATOS_AIIP",
@@ -112,7 +116,7 @@ def _preflight_payload() -> dict:
         "title": "AIIP governed source",
         "classification": "internal",
         "information_policy": _policy(),
-        "integration_envelope": _envelope(),
+        "integration_envelope": _envelope(policy_hash=policy_hash),
         "governance_scope": {"type": "own", "ownerSubjectId": ACTOR},
         "tags": ["aiip"],
         "source_location": {
@@ -459,6 +463,21 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
     assert tampered_replay.json()["error"]["code"] == "aiip_upload_version_lineage_conflict"
 
 
+def test_dedicated_aiip_upload_preserves_central_registry_hash(client) -> None:
+    response = client.post(
+        "/api/v1/integrations/aiip-upload/external-documents/upsert",
+        json=_preflight_payload(AUTHORITATIVE_POLICY_HASH),
+        headers=_service_headers(),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["document"]["policy_hash"] == AUTHORITATIVE_POLICY_HASH
+    assert (
+        body["governance_confirmation"]["document_policy_hash"]
+        == AUTHORITATIVE_POLICY_HASH
+    )
+
+
 def test_dedicated_aiip_upload_rejects_broad_or_forged_transport(client) -> None:
     assistance_identity = {
         **_service_headers(),
@@ -532,7 +551,9 @@ def test_dedicated_aiip_upload_schema_rejects_unknown_assignment_and_lineage_fie
 
 def test_central_aiip_akb_client_uses_separate_credentials_and_exact_echo(monkeypatch) -> None:
     binding = InformationPolicyBinding.model_validate(_policy())
-    envelope = IntegrationEnvelope.model_validate(_envelope())
+    envelope = IntegrationEnvelope.model_validate(
+        _envelope(policy_hash=AUTHORITATIVE_POLICY_HASH)
+    )
     scope = {"type": "own", "ownerSubjectId": ACTOR}
     captured = {}
     response = {
@@ -551,7 +572,7 @@ def test_central_aiip_akb_client_uses_separate_credentials_and_exact_echo(monkey
         "effectivePolicy": {
             "policyBindingId": binding.policy_binding_id,
             "policyVersion": binding.policy_version,
-            "policyHash": canonical_policy_hash(binding),
+            "policyHash": AUTHORITATIVE_POLICY_HASH,
             "originatorId": binding.originator_id,
             "originator": binding.originator_id,
             "issuedAt": "2026-07-14T00:00:00Z",
@@ -597,6 +618,7 @@ def test_central_aiip_akb_client_uses_separate_credentials_and_exact_echo(monkey
         reason="test exact lineage",
     )
     assert registration.confirmed_by_subject_id == ACTOR
+    assert registration.policy_hash == AUTHORITATIVE_POLICY_HASH
     assert captured["headers"]["Authorization"] == "Bearer dedicated-akb-ingest-token"
     assert captured["headers"]["X-AIIP-Actor-Authorization"] == "Bearer fresh-person-token"
     assert "fresh-person-token" not in str(captured["json"])
