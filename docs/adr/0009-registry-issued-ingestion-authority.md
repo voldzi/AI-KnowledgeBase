@@ -61,6 +61,19 @@ document. Alembic revision `0018_ingestion_attempts` backfills unambiguous
 current external-reference state and aborts rather than guessing when legacy
 rows conflict.
 
+The initial AIIP upload is a deliberately narrow authorization case. An AIIP
+submitter does not need a general AKB `document.ingest` capability merely to
+store the source of their own submitted idea. Registry may issue the
+`document.ingest` proof without that capability only when the document has an
+exact `STRATOS_AIIP` external reference, both the document and immutable version
+are centrally registered with `own` scope for the same current person, the
+person is the persisted document owner, the version inherits from that exact
+document root, and its single file was uploaded by the same person. This does
+not authorize read, reindex, another user's document, an organization-scoped
+artifact, or any non-AIIP document. The issuance audit records
+`authorization_basis=aiip_owner_submission`; every other issuance continues
+through normal application capability and scope evaluation.
+
 The durable Ingestion job keeps the confirmed authorization id, exact web
 transport client, canonical request hash, and deterministic job id. Jobs
 without complete lineage are quarantined. Processing first obtains the
