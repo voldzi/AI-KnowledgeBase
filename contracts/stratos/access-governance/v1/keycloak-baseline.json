@@ -2,7 +2,7 @@
   "realm": "stratos",
   "organizationId": "org_stratos",
   "realmRoles": ["stratos_user", "stratos_admin"],
-  "deprecatedRealmRoles": ["stratos_superadmin", "stratos_auditor", "stratos_service", "document_manager", "budget_admin", "budget_manager", "budget_contract_manager", "budget_reader", "projectflow_admin", "projectflow_manager", "projectflow_member", "projectflow_reader", "portfolio_manager", "finance_controller", "project_owner", "architecture_reviewer", "process_designer"],
+  "deprecatedRealmRoles": ["stratos_superadmin", "stratos_auditor", "stratos_service", "stratos_architecture_reviewer", "stratos_executive_viewer", "stratos_finance_controller", "stratos_finance_viewer", "stratos_need_submitter", "stratos_portfolio_manager", "stratos_process_designer", "stratos_project_contributor", "stratos_project_owner", "stratos_read_only", "aiip_digital_ambassador", "aiip_portfolio_analyst", "aiip_security_reviewer", "aiip_technology_reviewer", "aiip_working_group_member", "document_manager", "budget_admin", "budget_manager", "budget_contract_manager", "budget_reader", "projectflow_admin", "projectflow_manager", "projectflow_member", "projectflow_reader", "portfolio_manager", "finance_controller", "project_owner", "architecture_reviewer", "process_designer"],
   "groups": [{ "path": "/stratos", "defaultRoles": ["stratos_user"] }],
   "serviceClients": ["budget-api", "projectflow-api", "stratos-directory-reader", "stratos-aiip-handoff", "stratos-akb-service"],
   "publicClients": ["budget-web", "projectflow-web", "archflow-web", "processforge-web"],
