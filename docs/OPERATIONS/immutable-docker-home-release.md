@@ -91,6 +91,12 @@ deploy from the mutable `/srv/akl/repo` working tree.
   are selected. Adding/removing a service or changing reverse proxy,
   platform-status, networks, volumes, or another unmanaged block fails before
   build.
+  `infra/keycloak/realm-stratos.json` is the sole explicit non-runtime
+  exception: the shared STRATOS realm is reconciled and verified through the
+  independent Keycloak administration workflow, so changing this declarative
+  export neither selects nor mutates an AKB Compose service. Every other path
+  below `infra/keycloak/` remains fail-closed. The exception does not apply the
+  realm export and must not be used as evidence that live Keycloak matches it.
 - Immediately before Compose may recreate an affected service, the workflow
   durably records `target_services_start_may_have_started=true`. Any handled
   failure after that boundary and before the verified marker quarantines every
