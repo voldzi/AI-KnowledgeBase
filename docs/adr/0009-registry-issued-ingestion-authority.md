@@ -98,6 +98,13 @@ Registry outbox are one atomic durable write. Recovery replays only fully
 verified jobs, reconciles an unknown claim or terminal outcome, and never
 converts transport uncertainty into permission to execute.
 
+The authoritative current-attempt read and update route is an internal
+`ingestion-status` contract for the exact `svc-ingestion` client. A worker may
+read only the attempt coordinates needed to select and recover the immutable
+version; this route does not grant document content access or substitute for a
+person's `document.read` decision. Interactive person reads continue through
+normal document authorization.
+
 Production global job listing and the legacy bulk reindex contract fail closed.
 Static JWT roles do not authorize either operation. Intelligence queries use a
 separate Registry-issued proof over the exact sorted set of current indexed

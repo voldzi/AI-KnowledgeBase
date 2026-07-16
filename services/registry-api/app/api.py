@@ -3340,7 +3340,16 @@ def get_document_external_references_current(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentCurrentListResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document, db)
+    if principal.service_identity:
+        client_id = _require_service_route(principal, "ingestion-status")
+        if client_id != "svc-ingestion":
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "ingestion_attempt_client_forbidden",
+                "Only the exact ingestion service may read authoritative attempts",
+            )
+    else:
+        require_document_action(principal, Action.document_read, document, db)
     external_refs = list(
         db.execute(
             select(ExternalDocumentRef)
