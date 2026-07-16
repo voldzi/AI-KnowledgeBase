@@ -583,6 +583,88 @@ def test_dedicated_aiip_upload_preserves_central_registry_hash(client) -> None:
         == AUTHORITATIVE_POLICY_HASH
     )
 
+    version_payload = {
+        "version_label": "aiip-file-v1",
+        "valid_from": "2026-07-14",
+        "source_file_uri": "s3://akl-documents/aiip/source.pdf",
+        "source_location": {
+            "kind": "object_storage",
+            "uri": "s3://akl-documents/aiip/source.pdf",
+            "file_name": "source.pdf",
+            "sha256": FILE_HASH,
+            "path": f"/ideas/{IDEA_ID}/documents/source",
+        },
+        "file_hash": FILE_HASH,
+        "change_summary": "AIIP upload",
+        "information_policy": _policy(),
+        "integration_envelope": _envelope(
+            FILE_HASH,
+            policy_hash=AUTHORITATIVE_POLICY_HASH,
+        ),
+        "governance_scope": {"type": "own", "ownerSubjectId": ACTOR},
+        "file": {
+            "filename": "source.pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 123,
+            "sha256": FILE_HASH,
+        },
+    }
+    version_response = client.put(
+        f"/api/v1/integrations/aiip-upload/documents/{body['document']['document_id']}/versions",
+        json=version_payload,
+        headers=_service_headers(),
+    )
+    assert version_response.status_code == 200, version_response.text
+    version = version_response.json()["version"]
+    assert version["policy_hash"] == AUTHORITATIVE_POLICY_HASH
+
+    submitter = Principal(
+        subject_id=ACTOR,
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:use", "akb:chat"},
+        scopes=set(),
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        dynamic_access_loaded=True,
+        bearer_token="current-actor-token",
+    )
+    client.app.dependency_overrides[get_current_principal] = lambda: submitter
+    try:
+        issued = client.post(
+            f"/api/v1/documents/{body['document']['document_id']}/versions/"
+            f"{version['document_version_id']}/ingestion-authorization",
+            headers={
+                "X-Request-ID": "corr-aiip-upload-123",
+                "X-Correlation-ID": "corr-aiip-upload-123",
+            },
+            json={
+                "action": "document.ingest",
+                "correlation_id": "corr-aiip-upload-123",
+                "idempotency_key": "confirm:authoritative-policy-hash",
+            },
+        )
+    finally:
+        client.app.dependency_overrides.pop(get_current_principal, None)
+    assert issued.status_code == 200, issued.text
+
+    confirmed = client.post(
+        "/api/v1/integrations/ingestion/authorizations/confirm",
+        headers=_ingestion_service_headers(),
+        json={
+            "authorization_token": issued.json()["authorization_token"],
+            "expected_subject_id": ACTOR,
+            "action": "document.ingest",
+            "document_id": body["document"]["document_id"],
+            "document_version_id": version["document_version_id"],
+            "correlation_id": "corr-aiip-upload-123",
+            "idempotency_key": "confirm:authoritative-policy-hash",
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
 
 def test_dedicated_aiip_upload_rejects_broad_or_forged_transport(client) -> None:
     assistance_identity = {

@@ -630,12 +630,27 @@ def resolve_document_version_authority(
         binding = InformationPolicyBinding.model_validate(version.policy_summary)
     except ValueError as exc:
         raise ValueError("The document version policy binding is invalid") from exc
-    expected_hash = canonical_policy_hash(binding)
+    locally_canonical_hash = canonical_policy_hash(binding)
+    centrally_registered = version.governance_registration_status == "REGISTERED"
+    persisted_policy_hash = version.policy_hash or ""
+    persisted_digest = persisted_policy_hash.removeprefix("sha256:")
+    persisted_hash_valid = (
+        persisted_policy_hash.startswith("sha256:")
+        and len(persisted_digest) == 64
+        and all(character in "0123456789abcdef" for character in persisted_digest)
+    )
+    authoritative_policy_hash = (
+        persisted_policy_hash if centrally_registered else locally_canonical_hash
+    )
     if (
         version.policy_binding_id != binding.policy_binding_id
         or version.policy_version != POLICY_VERSION
         or version.policy_version != binding.policy_version
-        or version.policy_hash != expected_hash
+        or not persisted_hash_valid
+        or (
+            not centrally_registered
+            and persisted_policy_hash != locally_canonical_hash
+        )
         or binding.audience.organization_id != version.organization_id
     ):
         raise ValueError("The document version policy lineage is stale or conflicting")
@@ -691,7 +706,7 @@ def resolve_document_version_authority(
         governed_parent_resource_id=governed_parent_resource_id,
         policy_binding_id=binding.policy_binding_id,
         policy_version=binding.policy_version,
-        policy_hash=expected_hash,
+        policy_hash=authoritative_policy_hash,
         governance_scope=scope,
         governance_scope_hash=scope_hash,
         policy_binding=binding,
