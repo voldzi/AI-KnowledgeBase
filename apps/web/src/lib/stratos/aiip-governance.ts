@@ -253,9 +253,15 @@ function diagnosticScope(value: unknown): boolean {
   const scope = diagnosticRecord(value);
   if (!scope) return false;
   if (scope.type === "own") {
-    return diagnosticExactKeys(scope, ["type", "ownerSubjectId"]) && diagnosticText(scope.ownerSubjectId);
+    const exact = Object.hasOwn(scope, "id")
+      ? diagnosticExactKeys(scope, ["type", "id", "ownerSubjectId"]) && scope.id === null
+      : diagnosticExactKeys(scope, ["type", "ownerSubjectId"]);
+    return exact && diagnosticText(scope.ownerSubjectId);
   }
-  return diagnosticExactKeys(scope, ["type", "id"]) && diagnosticText(scope.id);
+  const exact = Object.hasOwn(scope, "ownerSubjectId")
+    ? diagnosticExactKeys(scope, ["type", "id", "ownerSubjectId"]) && scope.ownerSubjectId === null
+    : diagnosticExactKeys(scope, ["type", "id"]);
+  return exact && diagnosticText(scope.id);
 }
 
 export function equalAiipGovernanceConfirmation(left: unknown, right: unknown): boolean {
@@ -274,10 +280,16 @@ function parseScope(value: unknown): AiipGovernanceConfirmation["governed_resour
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError();
   const record = value as Record<string, unknown>;
   if (record.type === "own") {
-    const own = exactRecord(record, ["type", "ownerSubjectId"]);
+    const own = Object.hasOwn(record, "id")
+      ? exactRecord(record, ["type", "id", "ownerSubjectId"])
+      : exactRecord(record, ["type", "ownerSubjectId"]);
+    if (Object.hasOwn(own, "id") && own.id !== null) throw new TypeError();
     return { type: "own", ownerSubjectId: text(own.ownerSubjectId) };
   }
-  const scope = exactRecord(record, ["type", "id"]);
+  const scope = Object.hasOwn(record, "ownerSubjectId")
+    ? exactRecord(record, ["type", "id", "ownerSubjectId"])
+    : exactRecord(record, ["type", "id"]);
+  if (Object.hasOwn(scope, "ownerSubjectId") && scope.ownerSubjectId !== null) throw new TypeError();
   if (![
     "organization",
     "organization_unit",
