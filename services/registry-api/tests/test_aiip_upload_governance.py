@@ -292,6 +292,37 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
     assert version_replay.json()["created"] is False
     assert version_replay.json()["version"]["document_version_id"] == version["document_version_id"]
 
+    replay_from_fresh_staging_object = client.put(
+        f"/api/v1/integrations/aiip-upload/documents/{body['document']['document_id']}/versions",
+        json={
+            **version_payload,
+            "source_file_uri": "s3://akl-documents/aiip/retry/source.pdf",
+            "source_location": {
+                **version_payload["source_location"],
+                "uri": "s3://akl-documents/aiip/retry/source.pdf",
+                "storage_ref": "aiip/retry/source.pdf",
+                "captured_at": "2026-07-14T12:00:00Z",
+            },
+        },
+        headers=_service_headers(),
+    )
+    assert replay_from_fresh_staging_object.status_code == 200, (
+        replay_from_fresh_staging_object.text
+    )
+    assert replay_from_fresh_staging_object.json()["created"] is False
+    assert (
+        replay_from_fresh_staging_object.json()["version"]["document_version_id"]
+        == version["document_version_id"]
+    )
+    assert (
+        replay_from_fresh_staging_object.json()["version"]["file_id"]
+        == version["file_id"]
+    )
+    assert (
+        replay_from_fresh_staging_object.json()["version"]["source_file_uri"]
+        == version["source_file_uri"]
+    )
+
     generic_version = client.post(
         f"/api/v1/documents/{body['document']['document_id']}/versions",
         json={

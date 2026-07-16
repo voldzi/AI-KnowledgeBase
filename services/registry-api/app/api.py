@@ -2443,6 +2443,22 @@ def _assert_aiip_version_matches(
         )
 
 
+def _aiip_replay_source_lineage(
+    source_location: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if source_location is None:
+        return None
+    # A retry may upload the same immutable bytes into a fresh staging object.
+    # Those coordinates are transport details; the content hash and AIIP source
+    # lineage below remain authoritative and must still match exactly.
+    ephemeral_fields = {"uri", "storage_ref", "captured_at"}
+    return {
+        key: value
+        for key, value in source_location.items()
+        if key not in ephemeral_fields
+    }
+
+
 @router.post(
     "/integrations/aiip-upload/external-documents/upsert",
     response_model=AiipExternalDocumentUpsertResponse,
@@ -2711,7 +2727,13 @@ def upsert_aiip_document_version(
             resource_type="document_version",
             resource_id=existing.document_version_id,
             correlation_id=registration.correlation_id,
-            metadata={"document_id": document_id, "replay": True},
+            metadata={
+                "document_id": document_id,
+                "replay": True,
+                "canonical_storage_object_reused": (
+                    existing.source_file_uri != payload.source_file_uri
+                ),
+            },
         )
         current_file = max(
             existing.files,
@@ -2728,10 +2750,11 @@ def upsert_aiip_document_version(
             or len(existing.files) != 1
             or existing.valid_from != payload.valid_from
             or existing.valid_to != payload.valid_to
-            or existing.source_file_uri != payload.source_file_uri
-            or existing.source_location != expected_source_location
+            or current_file.uri != existing.source_file_uri
+            or payload.source_location.uri != payload.source_file_uri
+            or _aiip_replay_source_lineage(existing.source_location)
+            != _aiip_replay_source_lineage(expected_source_location)
             or existing.change_summary != payload.change_summary
-            or current_file.uri != payload.source_file_uri
             or current_file.filename != payload.file.filename
             or current_file.mime_type != payload.file.mime_type
             or current_file.size_bytes != payload.file.size_bytes
