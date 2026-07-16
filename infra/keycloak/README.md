@@ -92,22 +92,7 @@ and the `akb-api` audience with:
 
 The script writes the generated secret to
 `/srv/akl/env/aiip-service.client-secret` with mode `0600` and never prints the
-secret. This identity is reserved for AI assistance and receives no Registry
-route grant.
-
-Provision the independent AIIP document transport identity with:
-
-```bash
-AIIP_CLIENT_ID=aiip-document-service \
-AIIP_ROLE=service_aiip_document \
-AIIP_AUDIENCE=akl-api \
-AIIP_SECRET_FILE=/srv/akl/env/aiip-document-service.client-secret \
-SERVICE_CLIENT_NAME="AIIP governed document transport" \
-SERVICE_ROLE_DESCRIPTION="Dedicated AIIP document transport role; restricted to the governed AKB upload bridge." \
-./scripts/ensure_aiip_service_client.sh
-```
-
-The document secret is handed to AIIP through the production secret-management
+secret. The file is handed to AIIP through the production secret-management
 process; it is not consumed by AKB containers and must not be committed.
 
 The production RAG service additionally needs a separate short-lived-token
