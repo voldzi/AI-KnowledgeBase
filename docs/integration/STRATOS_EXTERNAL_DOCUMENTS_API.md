@@ -889,6 +889,12 @@ všechny souřadnice podepíše do upload tokenu. Úspěšný preflight nemá to
 souřadnice, parent, scope a source version. Chybějící i neznámé pole v tomto
 potvrzení je porušení kontraktu, nikoli dopředně kompatibilní metadata.
 
+Scope je diskriminovaný objekt bez neaktivní souřadnice: `own` obsahuje pouze
+`type` a `ownerSubjectId`, zatímco ostatní typy obsahují pouze `type` a `id`.
+Registry nikdy nevydává vzájemně vyloučené pole s hodnotou `null`. Web bridge
+umí při bezpečném přechodu normalizovat i starší databázovou serializaci s
+výlučně `null` neaktivní souřadnicí, ale dál vždy pracuje s kanonickým tvarem.
+
 ```json
 {
   "upload_method": "PUT",

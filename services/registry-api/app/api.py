@@ -2338,6 +2338,13 @@ def _aiip_governance_confirmation(
     | AiipExternalDocumentCurrentUpdateRequest,
     registration: AiipAkbGovernedResourceRegistration,
 ) -> dict[str, object]:
+    # The integration contract uses a discriminated scope shape. Pydantic may
+    # retain the mutually exclusive coordinate as ``None`` after parsing, but
+    # it must not leak into the wire response because TypeScript consumers use
+    # the exact canonical JSON shape for governance comparisons.
+    confirmation_scope = {
+        key: value for key, value in registration.scope.items() if value is not None
+    }
     return {
         "parent_source_resource": _aiip_parent_source(payload),
         "governed_resource": {
@@ -2347,7 +2354,7 @@ def _aiip_governance_confirmation(
             "resource_id": registration.resource_id,
             "source_version": registration.source_version,
             "parent_id": registration.parent_id,
-            "scope": registration.scope,
+            "scope": confirmation_scope,
             "policy_assignment": "INHERITED",
             "explicit_policy_binding_id": None,
             "inherited_from_resource_id": registration.inherited_from_resource_id,

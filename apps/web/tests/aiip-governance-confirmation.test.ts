@@ -65,6 +65,30 @@ describe("AIIP governance confirmation", () => {
         error.code === "AIIP_GOVERNANCE_CONFIRMATION_INVALID",
     );
   });
+
+  it("normalizes Registry scopes with null mutually exclusive coordinates", () => {
+    const confirmation = validConfirmation();
+    const registryScope = { type: "own", id: null, ownerSubjectId: "subject-1" };
+    confirmation.parent_source_resource.scope = registryScope;
+    confirmation.governed_resource.scope = registryScope;
+
+    const parsed = parseAiipGovernanceConfirmation(confirmation);
+    assert.deepEqual(parsed.parent_source_resource.scope, {
+      type: "own",
+      ownerSubjectId: "subject-1",
+    });
+    assert.deepEqual(parsed.governed_resource.scope, {
+      type: "own",
+      ownerSubjectId: "subject-1",
+    });
+    assert.throws(() => parseAiipGovernanceConfirmation({
+      ...confirmation,
+      governed_resource: {
+        ...confirmation.governed_resource,
+        scope: { ...registryScope, id: "scope-forbidden" },
+      },
+    }));
+  });
 });
 
 function validConfirmation() {

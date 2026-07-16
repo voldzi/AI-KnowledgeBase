@@ -151,6 +151,14 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
     assert confirmation["governed_resource"]["parent_id"] == SOURCE_ID
     assert confirmation["governed_resource"]["registered_by_subject_id"] == ACTOR
     assert confirmation["governed_resource"]["confirmed_by_subject_id"] == ACTOR
+    assert confirmation["parent_source_resource"]["scope"] == {
+        "type": "own",
+        "ownerSubjectId": ACTOR,
+    }
+    assert confirmation["governed_resource"]["scope"] == {
+        "type": "own",
+        "ownerSubjectId": ACTOR,
+    }
     assert body["document"]["owner_id"] == ACTOR
     assert body["document"]["gestor_unit"] is None
     assert {item["role"] for item in body["document"]["assignments"]} == {"owner"}
