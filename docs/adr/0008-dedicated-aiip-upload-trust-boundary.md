@@ -75,8 +75,11 @@ current reconciliation operation may advance it under a shared transaction
 lock and compare-and-swap. Concurrent or stale preflights receive a conflict;
 an exact already-applied replay is accepted without downgrading the pointer.
 
-After dedicated confirm creates the ingestion job, the pipeline does not reuse
-the `aiip-service` bearer on generic Registry paths. The narrower proof,
+Dedicated confirm returns as soon as the immutable file/version is persisted
+and selected as current with `VERSION_CREATED`. It schedules ingestion after
+the response; creating or running the ingestion job therefore cannot turn a
+successful source save into an upload failure. The pipeline does not reuse the
+`aiip-service` bearer on generic Registry paths. The narrower proof,
 transport, authoritative-attempt, and recovery contract is now defined by ADR
 0009. Ingestion obtains a short-lived client-credentials bearer for its own
 `svc-ingestion` identity; the AIIP/person bearer is never an Ingestion or generic
@@ -84,11 +87,11 @@ Registry transport credential.
 
 Registry trusts `svc-ingestion` only for `authz`, `audit`, `documents-read`, and
 the exact `ingestion-status` route family. That last family covers only
-`PATCH /documents/{document_id}/external-references/current`. For an AIIP
-reference the request must repeat the already-selected immutable version and
-may mutate only ingestion job id/status. It cannot establish or advance the
-current pointer, file, URI, or source lineage. `aiip-service` retains only the
-`aiip-upload` grant.
+`GET|PATCH /documents/{document_id}/external-references/current`. The GET reads
+only authoritative attempt coordinates. For an AIIP reference PATCH must repeat
+the already-selected immutable version and may mutate only ingestion job
+id/status. It cannot establish or advance the current pointer, file, URI, or
+source lineage. `aiip-service` retains only the `aiip-upload` grant.
 
 ## Consequences
 
@@ -98,8 +101,9 @@ current pointer, file, URI, or source lineage. `aiip-service` retains only the
   bearer cannot enter the integration route without the service identity.
 - Stale, private-to-review-confused, forged, or locally tampered lineage fails
   closed before a readable AKB derivative is created or selected as current.
-- A crash after immutable version creation leaves the previous current pointer
-  intact; it cannot publish a half-confirmed version without an ingestion job.
+- A crash after immutable version creation leaves the exact saved version
+  selected with `VERSION_CREATED`. A later idempotent confirmation or explicit
+  ingestion retry can continue without uploading the binary again.
 - Generic external-document routes remain available to non-AIIP callers, while
   every AIIP write is rejected outside the narrower route family.
 - `openapi/openapi.json` describes the exact dual-identity preflight/confirm,

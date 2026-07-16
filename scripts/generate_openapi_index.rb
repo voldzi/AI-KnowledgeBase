@@ -1246,7 +1246,7 @@ spec = {
           "document_version_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
           "external_document_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
           "file_id" => { "type" => "string", "minLength" => 1, "maxLength" => 64 },
-          "ingestion_job_id" => { "type" => "string", "minLength" => 1, "maxLength" => 128 },
+          "ingestion_job_id" => { "type" => ["string", "null"], "minLength" => 1, "maxLength" => 128 },
           "ingestion_status" => {
             "type" => "string",
             "enum" => [

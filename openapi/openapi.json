@@ -12644,7 +12644,10 @@
             "maxLength": 64
           },
           "ingestion_job_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "maxLength": 128
           },
@@ -13411,9 +13414,16 @@
             "title": "File Id"
           },
           "ingestion_job_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Ingestion Job Id"
           },
           "ingestion_status": {
@@ -13446,7 +13456,6 @@
           "document_id",
           "document_version_id",
           "file_id",
-          "ingestion_job_id",
           "ingestion_status",
           "information_policy",
           "integration_envelope",

@@ -918,7 +918,7 @@ class AiipExternalDocumentCurrentUpdateRequest(BaseModel):
     expected_current_document_version_id: str | None = Field(default=None, min_length=1, max_length=64)
     document_version_id: str = Field(min_length=1, max_length=64)
     file_id: str = Field(min_length=1, max_length=64)
-    ingestion_job_id: str = Field(min_length=1, max_length=128)
+    ingestion_job_id: str | None = Field(default=None, min_length=1, max_length=128)
     ingestion_status: Literal[
         "REGISTERED",
         "VERSION_CREATED",
@@ -954,6 +954,10 @@ class AiipExternalDocumentCurrentUpdateRequest(BaseModel):
             mode="json", by_alias=True, exclude_none=True
         ) != self.governance_scope.model_dump(mode="json", by_alias=True, exclude_none=True):
             raise ValueError("governance_scope does not match sourceResource.scope")
+        if self.ingestion_job_id is None and self.ingestion_status != "VERSION_CREATED":
+            raise ValueError("a current version without an ingestion job must use VERSION_CREATED")
+        if self.ingestion_job_id is not None and self.ingestion_status == "VERSION_CREATED":
+            raise ValueError("VERSION_CREATED must not name an ingestion job")
         return self
 
 

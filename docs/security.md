@@ -48,9 +48,11 @@ host applications do not make authorization decisions for AKB documents.
   default-deny route allowlist; `akb-rag-service` receives only `authz`,
   `audit`, and `idempotency`.
 - `svc-ingestion` receives only `authz`, `audit`, `documents-read`, and the exact
-  `ingestion-status` route. The latter can update job/status only for an already
-  selected AIIP version. `aiip-document-service` remains restricted to
-  `aiip-upload` and can never be reused by the pipeline on generic Registry
+  `ingestion-status` route. The latter reads authoritative attempt coordinates
+  and can update job/status only for an already selected AIIP version;
+  `documents-read` returns only registered document/version metadata required
+  to verify the immutable source. `aiip-document-service` remains restricted
+  to `aiip-upload` and can never be reused by the pipeline on generic Registry
   paths.
 - `svc-akb-web-ingestion` receives no Registry route grant. Ingestion Service
   accepts it only on the bounded job/read/cancel and web-transport readiness
