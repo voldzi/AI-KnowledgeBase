@@ -18,6 +18,122 @@
   "roles": {
     "realm": [
       {
+        "name": "admin",
+        "description": "AKB canonical admin role consumed by AKB Registry API."
+      },
+      {
+        "name": "akl_admin",
+        "description": "Full AKL administration in STRATOS."
+      },
+      {
+        "name": "akl_auditor",
+        "description": "Read AKL audit events."
+      },
+      {
+        "name": "akl_document_manager",
+        "description": "Manage AKL controlled documents and metadata."
+      },
+      {
+        "name": "akl_document_owner",
+        "description": "Own AKL documents and versions."
+      },
+      {
+        "name": "akl_reader",
+        "description": "Read authorized AKL documents and answers."
+      },
+      {
+        "name": "akl_reviewer",
+        "description": "Review AKL document drafts."
+      },
+      {
+        "name": "akl_service_evaluation",
+        "description": "Service role for AKL evaluation workers."
+      },
+      {
+        "name": "akl_service_governance",
+        "description": "Service role for AKL governance workers."
+      },
+      {
+        "name": "akl_service_ingestion",
+        "description": "Service role for AKL ingestion workers."
+      },
+      {
+        "name": "akl_service_llm_gateway",
+        "description": "Service role for AKL LLM Gateway."
+      },
+      {
+        "name": "akl_service_rag",
+        "description": "Service role for AKL RAG retrieval."
+      },
+      {
+        "name": "akl_stratos_service",
+        "description": "Service role for STRATOS server adapters calling AKL."
+      },
+      {
+        "name": "archflow_admin",
+        "description": "ARCHFLOW administration."
+      },
+      {
+        "name": "archflow_architect",
+        "description": "ARCHFLOW architecture workspace author."
+      },
+      {
+        "name": "archflow_reader",
+        "description": "ARCHFLOW read access."
+      },
+      {
+        "name": "auditor",
+        "description": "AKB canonical auditor role consumed by AKB Registry API."
+      },
+      {
+        "name": "budget_admin",
+        "description": "Budget & Contract administration."
+      },
+      {
+        "name": "budget_contract_manager",
+        "description": "Contract lifecycle management."
+      },
+      {
+        "name": "budget_manager",
+        "description": "Budget & Contract management."
+      },
+      {
+        "name": "budget_reader",
+        "description": "Budget & Contract read access."
+      },
+      {
+        "name": "document_manager",
+        "description": "AKB canonical document manager role consumed by AKB Registry API."
+      },
+      {
+        "name": "document_owner",
+        "description": "AKB canonical document owner role consumed by AKB Registry API."
+      },
+      {
+        "name": "projectflow_admin",
+        "description": "ProjectFlow administration."
+      },
+      {
+        "name": "projectflow_manager",
+        "description": "ProjectFlow portfolio and team management."
+      },
+      {
+        "name": "projectflow_member",
+        "description": "ProjectFlow project team member."
+      },
+      {
+        "name": "projectflow_reader",
+        "description": "ProjectFlow read access."
+      },
+      {
+        "name": "reader",
+        "description": "AKB canonical reader role consumed by AKB Registry API."
+      },
+      {
+        "name": "reviewer",
+        "description": "AKB canonical reviewer role consumed by AKB Registry API."
+      },
+      {
         "name": "service_evaluation",
         "description": "AKB canonical evaluation service role consumed by AKB Registry API."
       },
@@ -47,7 +163,15 @@
       },
       {
         "name": "stratos_admin",
-        "description": "STRATOS platform administrator; domain access remains in Access Center."
+        "description": "Full administration across STRATOS applications."
+      },
+      {
+        "name": "stratos_auditor",
+        "description": "Cross-application audit and compliance viewer."
+      },
+      {
+        "name": "stratos_service",
+        "description": "AKB canonical service bridge role consumed by AKB Registry API."
       },
       {
         "name": "stratos_user",
@@ -293,9 +417,86 @@
   ],
   "groups": [
     {
-      "name": "stratos",
+      "name": "STRATOS Administrators",
       "realmRoles": [
-        "stratos_user"
+        "stratos_admin",
+        "stratos_user",
+        "admin",
+        "document_manager",
+        "auditor",
+        "budget_admin",
+        "projectflow_admin",
+        "archflow_admin"
+      ]
+    },
+    {
+      "name": "STRATOS Users",
+      "realmRoles": [
+        "stratos_user",
+        "reader",
+        "budget_reader",
+        "projectflow_reader",
+        "archflow_reader"
+      ]
+    },
+    {
+      "name": "STRATOS Auditors",
+      "realmRoles": [
+        "stratos_auditor",
+        "auditor"
+      ]
+    },
+    {
+      "name": "STRATOS AKL Administrators",
+      "realmRoles": [
+        "stratos_user",
+        "akl_admin",
+        "akl_document_manager",
+        "akl_auditor",
+        "admin",
+        "document_manager",
+        "auditor"
+      ]
+    },
+    {
+      "name": "STRATOS AKL Readers",
+      "realmRoles": [
+        "stratos_user",
+        "akl_reader",
+        "reader"
+      ]
+    },
+    {
+      "name": "STRATOS AKL Services",
+      "realmRoles": [
+        "akl_stratos_service",
+        "stratos_service"
+      ]
+    },
+    {
+      "name": "STRATOS Budget Managers",
+      "realmRoles": [
+        "stratos_user",
+        "budget_manager",
+        "budget_contract_manager",
+        "budget_reader"
+      ]
+    },
+    {
+      "name": "STRATOS ProjectFlow Managers",
+      "realmRoles": [
+        "stratos_user",
+        "projectflow_manager",
+        "projectflow_member",
+        "projectflow_reader"
+      ]
+    },
+    {
+      "name": "STRATOS ARCHFLOW Architects",
+      "realmRoles": [
+        "stratos_user",
+        "archflow_architect",
+        "archflow_reader"
       ]
     }
   ]
