@@ -4,6 +4,21 @@ This document is the flat operational entry point for AKB. Detailed deployment
 and runbook material remains in `docs/deployment/`, `docs/OPERATIONS/`, and
 service README files.
 
+## STRATOS content-security profile
+
+AKB web and ingestion receive the same canonical server-side profile as the
+other STRATOS applications. The pilot uses
+`STRATOS_CONTENT_SECURITY_MODE=disabled`,
+`STRATOS_CONTENT_SECURITY_REQUIRED=false`, and no endpoint. This state means
+that an external DLP/malware scan was not performed; it does not weaken
+Information Policy, ingestion authorization, scope, or audit checks.
+
+Controlled gateway operation will use
+`STRATOS_CONTENT_SECURITY_MODE=gateway`,
+`STRATOS_CONTENT_SECURITY_REQUIRED=true`, and an internal
+`STRATOS_CONTENT_SECURITY_ENDPOINT`. AKB does not accept application-specific
+aliases or a legacy configuration layer.
+
 ## Local Development
 
 Create local configuration:
