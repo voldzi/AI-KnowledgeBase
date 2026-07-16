@@ -18,6 +18,12 @@ host applications do not make authorization decisions for AKB documents.
   short-lived proof bound to the exact actor, action, document/version,
   correlation id and idempotency key. Caller tokens are never reused as
   Ingestion, LLM Gateway, or ingestion-to-Registry credentials.
+- A person submitting an AIIP idea may authorize only the first ingest of their
+  own exact, centrally registered AIIP document version without receiving a
+  general AKB ingest capability. Registry requires the matching AIIP external
+  reference, own-scope owner, immutable parent lineage and uploader identity;
+  other documents, users and ingestion actions remain under normal AKB
+  capability and scope checks.
 - The web backend uses the exact confidential transport
   `svc-akb-web-ingestion`/`service_akb_web_ingestion` for interactive Ingestion
   calls. It sends a Registry-issued proof and the bound subject; Ingestion

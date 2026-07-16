@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.access_governance import GovernanceInvalidResponse, StratosGovernanceClient
+from app.auth import Principal, get_current_principal
 from app.config import Settings
 from app.information_policy import (
     InformationPolicyBinding,
@@ -215,6 +216,72 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
     )
     stored_file = db_session.query(DocumentFile).filter_by(file_id=version["file_id"]).one()
     assert stored_file.uploaded_by == ACTOR
+
+    submitter = Principal(
+        subject_id=ACTOR,
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:use", "akb:chat"},
+        scopes=set(),
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        dynamic_access_loaded=True,
+        bearer_token="current-actor-token",
+    )
+    client.app.dependency_overrides[get_current_principal] = lambda: submitter
+    try:
+        ingestion_authorization = client.post(
+            f"/api/v1/documents/{body['document']['document_id']}/versions/"
+            f"{version['document_version_id']}/ingestion-authorization",
+            headers={
+                "X-Request-ID": "corr-aiip-upload-123",
+                "X-Correlation-ID": "corr-aiip-upload-123",
+            },
+            json={
+                "action": "document.ingest",
+                "correlation_id": "corr-aiip-upload-123",
+                "idempotency_key": "confirm:aiip-owner:document-version",
+            },
+        )
+    finally:
+        client.app.dependency_overrides.pop(get_current_principal, None)
+    assert ingestion_authorization.status_code == 200, ingestion_authorization.text
+    assert ingestion_authorization.json()["confirmed_subject_id"] == ACTOR
+
+    unrelated_user = Principal(
+        subject_id="actor-aiip-unrelated",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:use", "akb:chat"},
+        scopes=set(),
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        dynamic_access_loaded=True,
+        bearer_token="unrelated-actor-token",
+    )
+    client.app.dependency_overrides[get_current_principal] = lambda: unrelated_user
+    try:
+        unrelated_authorization = client.post(
+            f"/api/v1/documents/{body['document']['document_id']}/versions/"
+            f"{version['document_version_id']}/ingestion-authorization",
+            headers={
+                "X-Request-ID": "corr-aiip-upload-123",
+                "X-Correlation-ID": "corr-aiip-upload-123",
+            },
+            json={
+                "action": "document.ingest",
+                "correlation_id": "corr-aiip-upload-123",
+                "idempotency_key": "confirm:aiip-unrelated:document-version",
+            },
+        )
+    finally:
+        client.app.dependency_overrides.pop(get_current_principal, None)
+    assert unrelated_authorization.status_code == 403
+    assert unrelated_authorization.json()["error"]["code"] == "forbidden"
 
     version_replay = client.put(
         f"/api/v1/integrations/aiip-upload/documents/{body['document']['document_id']}/versions",

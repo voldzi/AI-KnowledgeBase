@@ -86,6 +86,7 @@ from app.public_delivery_limiter import (
 from app.permissions import (
     ACTION_CAPABILITIES,
     Decision,
+    DocumentVersionAuthority,
     SubjectContext,
     context_for_principal,
     context_for_subject,
@@ -5106,6 +5107,52 @@ def create_intelligence_scope_authorization_proof(
     )
 
 
+def _aiip_owner_ingestion_authority(
+    *,
+    principal: Principal,
+    action: str,
+    document: Document,
+    version: DocumentVersion,
+    db: Session,
+) -> DocumentVersionAuthority | None:
+    """Allow only the submitter's exact governed AIIP upload to enter ingestion."""
+    if (
+        action != Action.document_ingest.value
+        or document.owner_id != principal.subject_id
+        or document.governance_registration_status != "REGISTERED"
+        or document.governance_scope_type != "own"
+        or document.governance_scope_owner_subject_id != principal.subject_id
+        or version.governance_registration_status != "REGISTERED"
+        or version.governance_scope_type != "own"
+        or version.governance_scope_owner_subject_id != principal.subject_id
+        or version.governed_parent_resource_id != document.governed_resource_id
+    ):
+        return None
+    external_reference = db.execute(
+        select(ExternalDocumentRef.external_document_id).where(
+            ExternalDocumentRef.document_id == document.document_id,
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_aiip.value,
+        )
+    ).scalar_one_or_none()
+    uploaded_files = db.execute(
+        select(DocumentFile.file_id).where(
+            DocumentFile.document_version_id == version.document_version_id,
+            DocumentFile.uploaded_by == principal.subject_id,
+        )
+    ).scalars().all()
+    if external_reference is None or len(uploaded_files) != 1:
+        return None
+    try:
+        return resolve_document_version_authority(document, version)
+    except ValueError as exc:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "document_version_authority_invalid",
+            "The immutable AIIP document version governance authority is unavailable or conflicting",
+        ) from exc
+
+
 @router.post(
     "/documents/{document_id}/versions/{version_id}/ingestion-authorization",
     response_model=IngestionAuthorizationResponse,
@@ -5141,14 +5188,24 @@ def create_ingestion_authorization_proof(
         )
     document = _get_document(db, document_id)
     version = _get_version(db, document_id, version_id)
-    require_document_action(principal, Action(payload.action), document, db)
-    authority = require_document_version_action(
-        principal,
-        Action(payload.action),
-        document,
-        version,
-        db,
+    authority = _aiip_owner_ingestion_authority(
+        principal=principal,
+        action=payload.action,
+        document=document,
+        version=version,
+        db=db,
     )
+    authorization_basis = "aiip_owner_submission"
+    if authority is None:
+        require_document_action(principal, Action(payload.action), document, db)
+        authority = require_document_version_action(
+            principal,
+            Action(payload.action),
+            document,
+            version,
+            db,
+        )
+        authorization_basis = "application_access"
     token, confirmation = issue_ingestion_authorization(
         get_settings(),
         subject_id=principal.subject_id,
@@ -5182,6 +5239,7 @@ def create_ingestion_authorization_proof(
             "policy_version": authority.policy_version,
             "policy_hash": authority.policy_hash,
             "governance_scope_hash": authority.governance_scope_hash,
+            "authorization_basis": authorization_basis,
             "idempotency_key_hash": sha256(payload.idempotency_key.encode("utf-8")).hexdigest(),
         },
     )
