@@ -24,7 +24,7 @@ import {
   verifyPersistedUploadedObject,
   verifyUploadReceipt,
 } from "@/lib/upload/preflight";
-import { parseInformationPolicy, parseIntegrationEnvelope, policyHash } from "@/lib/stratos/information-policy";
+import { parseInformationPolicy, parseIntegrationEnvelope } from "@/lib/stratos/information-policy";
 
 import { stratosBridgeError } from "../../../../errors";
 
@@ -134,6 +134,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
         "web-stratos-bridge",
       );
     }
+    const authoritativePolicyHash = integrationEnvelope.policyHash;
     if (
       requiredString(body, "tenant_id") !== "org_stratos" ||
       requiredString(body, "external_system") !== "STRATOS_AIIP" ||
@@ -206,7 +207,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
     if (
       payload.policy_binding_id !== informationPolicy.policyBindingId ||
       payload.policy_version !== informationPolicy.policyVersion ||
-      payload.policy_hash !== policyHash(informationPolicy) ||
+      payload.policy_hash !== authoritativePolicyHash ||
       payload.external_document_id !== externalDocumentId ||
       payload.source_governed_resource_id !== integrationEnvelope.sourceResource.governedResourceId ||
       payload.source_resource_id !== integrationEnvelope.sourceResource.resourceId ||
@@ -249,7 +250,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       confirmation.governed_resource.explicit_policy_binding_id !== null ||
       confirmation.governed_resource.effective_policy.policy_binding_id !== informationPolicy.policyBindingId ||
       confirmation.governed_resource.effective_policy.policy_version !== informationPolicy.policyVersion ||
-      confirmation.governed_resource.effective_policy.policy_hash !== policyHash(informationPolicy) ||
+      confirmation.governed_resource.effective_policy.policy_hash !== authoritativePolicyHash ||
       confirmation.governed_resource.effective_policy.originator_id !== (informationPolicy.originatorId ?? null) ||
       confirmation.governed_resource.effective_policy.issued_at !== (informationPolicy.issuedAt ?? null) ||
       confirmation.governed_resource.effective_policy.review_at !== (informationPolicy.reviewAt ?? null) ||
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       confirmation.idempotency_key !== integrationEnvelope.idempotencyKey ||
       confirmation.document_policy_binding_id !== informationPolicy.policyBindingId ||
       confirmation.document_policy_version !== informationPolicy.policyVersion ||
-      confirmation.document_policy_hash !== policyHash(informationPolicy)
+      confirmation.document_policy_hash !== authoritativePolicyHash
     ) {
       throw new ApiClientError(
         "Registry returned a conflicting authoritative document-version lineage.",
@@ -406,7 +407,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       }),
       policy_binding_id: informationPolicy.policyBindingId,
       policy_version: informationPolicy.policyVersion,
-      policy_hash: policyHash(informationPolicy),
+      policy_hash: authoritativePolicyHash,
       governance_confirmation: confirmation,
     };
 
