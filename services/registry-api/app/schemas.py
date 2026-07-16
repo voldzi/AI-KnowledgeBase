@@ -591,8 +591,6 @@ class AiipExternalDocumentUpsertRequest(BaseModel):
             raise ValueError("integration envelope externalRef does not match external_ref")
         if envelope.policy_binding_id != policy.policy_binding_id:
             raise ValueError("integration envelope policyBindingId does not match information_policy")
-        if envelope.policy_hash != canonical_policy_hash(policy):
-            raise ValueError("integration envelope policyHash does not match information_policy")
         if envelope.classification.handling_class != policy.handling_class:
             raise ValueError("integration envelope handlingClass does not match information_policy")
         if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
@@ -826,8 +824,6 @@ class AiipDocumentVersionCreate(BaseModel):
             raise ValueError("AIIP own upload scope must belong to the envelope actor")
         if envelope.policy_binding_id != policy.policy_binding_id:
             raise ValueError("integration envelope policyBindingId does not match information_policy")
-        if envelope.policy_hash != canonical_policy_hash(policy):
-            raise ValueError("integration envelope policyHash does not match information_policy")
         if envelope.classification.handling_class != policy.handling_class:
             raise ValueError("integration envelope handlingClass does not match information_policy")
         if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
@@ -942,8 +938,6 @@ class AiipExternalDocumentCurrentUpdateRequest(BaseModel):
             raise ValueError("AIIP own upload scope must belong to the envelope actor")
         if envelope.policy_binding_id != policy.policy_binding_id:
             raise ValueError("integration envelope policyBindingId does not match information_policy")
-        if envelope.policy_hash != canonical_policy_hash(policy):
-            raise ValueError("integration envelope policyHash does not match information_policy")
         if envelope.classification.handling_class != policy.handling_class:
             raise ValueError("integration envelope handlingClass does not match information_policy")
         if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
