@@ -74,6 +74,15 @@ artifact, or any non-AIIP document. The issuance audit records
 `authorization_basis=aiip_owner_submission`; every other issuance continues
 through normal application capability and scope evaluation.
 
+An interrupted AIIP upload may have already persisted its immutable AKB
+version before a later confirmation failed. A retry that presents the same
+content hash, filename, media type, byte size, AIIP source path, policy, and
+governance lineage reuses that first canonical version and file even when the
+retry uploaded the bytes into a fresh staging object. Object URI, storage
+reference, and capture time are transport coordinates, not a new document
+version. Any change to the immutable content or source lineage remains a
+conflict.
+
 The durable Ingestion job keeps the confirmed authorization id, exact web
 transport client, canonical request hash, and deterministic job id. Jobs
 without complete lineage are quarantined. Processing first obtains the
