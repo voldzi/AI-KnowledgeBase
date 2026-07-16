@@ -100,6 +100,13 @@ export function parseAiipGovernanceConfirmation(value: unknown): AiipGovernanceC
     };
     return parsed;
   } catch {
+    console.error(JSON.stringify({
+      service: "registry-api",
+      operation: "parseAiipGovernanceConfirmation",
+      status: 502,
+      error_code: "AIIP_GOVERNANCE_CONFIRMATION_INVALID",
+      validation: governanceConfirmationDiagnostic(value),
+    }));
     throw new ApiClientError(
       "Registry returned a malformed AIIP governance confirmation.",
       502,
@@ -107,6 +114,148 @@ export function parseAiipGovernanceConfirmation(value: unknown): AiipGovernanceC
       "web-stratos-bridge",
     );
   }
+}
+
+function governanceConfirmationDiagnostic(value: unknown): Record<string, unknown> {
+  const confirmation = diagnosticRecord(value);
+  const parent = diagnosticRecord(confirmation?.parent_source_resource);
+  const governed = diagnosticRecord(confirmation?.governed_resource);
+  const effectivePolicy = diagnosticRecord(governed?.effective_policy);
+  const topKeys = [
+    "parent_source_resource",
+    "governed_resource",
+    "document_policy_binding_id",
+    "document_policy_version",
+    "document_policy_hash",
+    "actor_subject_id",
+    "correlation_id",
+    "idempotency_key",
+  ];
+  const parentKeys = [
+    "governed_resource_id",
+    "application",
+    "resource_type",
+    "resource_id",
+    "source_version",
+    "scope",
+  ];
+  const governedKeys = [
+    "id",
+    "application",
+    "resource_type",
+    "resource_id",
+    "source_version",
+    "parent_id",
+    "scope",
+    "policy_assignment",
+    "explicit_policy_binding_id",
+    "inherited_from_resource_id",
+    "effective_policy",
+    "registered_by_subject_id",
+    "confirmed_by_subject_id",
+  ];
+  const effectivePolicyKeys = [
+    "policy_binding_id",
+    "policy_version",
+    "policy_hash",
+    "originator_id",
+    "issued_at",
+    "review_at",
+  ];
+  return {
+    shapes: {
+      top: diagnosticExactKeys(confirmation, topKeys),
+      parent: diagnosticExactKeys(parent, parentKeys),
+      governed: diagnosticExactKeys(governed, governedKeys),
+      effective_policy: diagnosticExactKeys(effectivePolicy, effectivePolicyKeys),
+      parent_scope: diagnosticScope(parent?.scope),
+      governed_scope: diagnosticScope(governed?.scope),
+    },
+    coordinates: {
+      parent_application: parent?.application === "AIIP",
+      parent_resource_type: parent?.resource_type === "idea",
+      governed_application: governed?.application === "AKB",
+      governed_resource_type:
+        governed?.resource_type === "document" || governed?.resource_type === "document-version",
+      policy_assignment: governed?.policy_assignment === "INHERITED",
+      explicit_policy_binding: governed?.explicit_policy_binding_id === null,
+      policy_version: effectivePolicy?.policy_version === "information-policy-2.0.0",
+      document_policy_version: confirmation?.document_policy_version === "information-policy-2.0.0",
+    },
+    relations: {
+      binding: confirmation?.document_policy_binding_id === effectivePolicy?.policy_binding_id,
+      hash: confirmation?.document_policy_hash === effectivePolicy?.policy_hash,
+      actor: confirmation?.actor_subject_id === governed?.confirmed_by_subject_id,
+      inheritance: parent?.governed_resource_id === governed?.inherited_from_resource_id,
+    },
+    values: {
+      document_hash: diagnosticSha256(confirmation?.document_policy_hash),
+      effective_hash: diagnosticSha256(effectivePolicy?.policy_hash),
+      originator: diagnosticNullableText(effectivePolicy?.originator_id),
+      issued_at: diagnosticNullableTimestamp(effectivePolicy?.issued_at),
+      review_at: diagnosticNullableTimestamp(effectivePolicy?.review_at),
+      correlation_id: diagnosticMinText(confirmation?.correlation_id, 8),
+      idempotency_key: diagnosticMinText(confirmation?.idempotency_key, 8),
+      required_text: [
+        parent?.governed_resource_id,
+        parent?.resource_id,
+        parent?.source_version,
+        governed?.id,
+        governed?.resource_id,
+        governed?.source_version,
+        governed?.parent_id,
+        governed?.inherited_from_resource_id,
+        governed?.registered_by_subject_id,
+        governed?.confirmed_by_subject_id,
+        effectivePolicy?.policy_binding_id,
+        confirmation?.document_policy_binding_id,
+        confirmation?.actor_subject_id,
+      ].every(diagnosticText),
+    },
+  };
+}
+
+function diagnosticRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function diagnosticExactKeys(value: Record<string, unknown> | null, expected: string[]): boolean {
+  if (!value) return false;
+  const keys = Object.keys(value);
+  return keys.length === expected.length && keys.every((key) => expected.includes(key));
+}
+
+function diagnosticText(value: unknown): boolean {
+  return typeof value === "string" && Boolean(value.trim());
+}
+
+function diagnosticNullableText(value: unknown): boolean {
+  return value === null || diagnosticText(value);
+}
+
+function diagnosticMinText(value: unknown, length: number): boolean {
+  return diagnosticText(value) && (value as string).length >= length;
+}
+
+function diagnosticSha256(value: unknown): boolean {
+  return diagnosticText(value) && /^sha256:[a-f0-9]{64}$/i.test(value as string);
+}
+
+function diagnosticNullableTimestamp(value: unknown): boolean {
+  if (value === null) return true;
+  if (!diagnosticText(value) || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(value as string)) return false;
+  return Number.isFinite(Date.parse(value as string));
+}
+
+function diagnosticScope(value: unknown): boolean {
+  const scope = diagnosticRecord(value);
+  if (!scope) return false;
+  if (scope.type === "own") {
+    return diagnosticExactKeys(scope, ["type", "ownerSubjectId"]) && diagnosticText(scope.ownerSubjectId);
+  }
+  return diagnosticExactKeys(scope, ["type", "id"]) && diagnosticText(scope.id);
 }
 
 export function equalAiipGovernanceConfirmation(left: unknown, right: unknown): boolean {
