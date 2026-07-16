@@ -4986,3 +4986,22 @@ button {
     max-height: 200px;
   }
 }
+
+/* Keep the standalone AKB shell aligned with the shared STRATOS compact shell. */
+@media (max-width: 768px) {
+  .stratos-app-rail-mobile-item {
+    flex: 1 0 72px;
+  }
+
+  .stratos-app-rail-mobile-item > span:not(.stratos-app-rail-item-icon) {
+    max-width: min(92px, 24vw);
+  }
+}
+
+@media (max-width: 480px) {
+  .stratos-global-topbar[data-mobile-status="compact"]
+    .stratos-topbar-status-group
+    .stratos-topbar-status-indicator:not(:last-child) {
+    display: none;
+  }
+}
