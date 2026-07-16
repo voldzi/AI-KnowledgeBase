@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateAiipServiceJsonRequest } from "@/lib/aiip/application-api";
+import { authenticateAiipDocumentServiceJsonRequest } from "@/lib/aiip/application-api";
 import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 import {
   AIIP_PREFLIGHT_FIELDS,
@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const { principal: service, body } = await authenticateAiipServiceJsonRequest(request);
+    const { principal: service, body } = await authenticateAiipDocumentServiceJsonRequest(request);
     assertExactFields(body, AIIP_PREFLIGHT_FIELDS, "AIIP upload preflight");
     if (typeof body.file_size !== "number" || !Number.isSafeInteger(body.file_size) || body.file_size <= 0) {
       throw new ApiClientError(

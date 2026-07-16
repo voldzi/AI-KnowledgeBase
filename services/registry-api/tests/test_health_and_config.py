@@ -28,10 +28,10 @@ def _production_settings(**overrides):
         "AKL_OIDC_ISSUER": "https://login.example/realms/stratos",
         "AKL_OIDC_AUDIENCE": "akb-api",
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
-        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-service,svc-ingestion",
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-document-service,svc-ingestion",
         "AKL_SERVICE_CLIENT_ROUTE_GRANTS": (
             "akb-rag-service=authz|audit|idempotency,"
-            "aiip-service=aiip-upload,"
+            "aiip-document-service=aiip-upload,"
             "svc-ingestion=authz|audit|documents-read|ingestion-status"
         ),
         "AKL_SERVICE_CLIENT_DELEGATIONS": "akb-rag-service=aiip-service",

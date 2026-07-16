@@ -1248,9 +1248,9 @@ do interních API klientů, kde Registry API vynucuje oprávnění a audit.
 AIIP governed upload má závaznou samostatnou service identity:
 
 ```text
-client_id = aiip-service
-audience = akb-api
-role = service_aiip
+client_id = aiip-document-service
+audience = akl-api
+role = service_aiip_document
 registry_route_grant = aiip-upload
 ```
 
@@ -1261,8 +1261,8 @@ AIIP_AKB_WEB_BASE_URL=http://akl-web-1:3000/akb
 AIIP_AKB_PUBLIC_BASE_URL=https://ip.zeleznalady.cz/akb
 AIIP_AKB_SYNC_REQUIRED=true
 AIIP_AKB_DOCUMENT_OIDC_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token
-AIIP_AKB_DOCUMENT_OIDC_CLIENT_ID=aiip-service
-AIIP_AKB_DOCUMENT_OIDC_AUDIENCE=akb-api
+AIIP_AKB_DOCUMENT_OIDC_CLIENT_ID=aiip-document-service
+AIIP_AKB_DOCUMENT_OIDC_AUDIENCE=akl-api
 AIIP_AKB_DOCUMENT_OIDC_SCOPE=openid
 ```
 

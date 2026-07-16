@@ -382,8 +382,8 @@ services:
       AKL_AUTO_CREATE_SCHEMA: ${AKL_REGISTRY_AUTO_CREATE_SCHEMA:-true}
       AKL_MOCK_SUBJECT: ${AKL_MOCK_SUBJECT:-user_dev}
       AKL_MOCK_ROLES: ${AKL_MOCK_ROLES:-["admin"]}
-      AKL_TRUSTED_SERVICE_CLIENT_IDS: ${AKL_REGISTRY_TRUSTED_SERVICE_CLIENT_IDS:-akb-rag-service,aiip-service,svc-ingestion}
-      AKL_SERVICE_CLIENT_ROUTE_GRANTS: ${AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS:-akb-rag-service=authz|audit|idempotency,aiip-service=aiip-upload,svc-ingestion=authz|audit|documents-read|ingestion-status}
+      AKL_TRUSTED_SERVICE_CLIENT_IDS: ${AKL_REGISTRY_TRUSTED_SERVICE_CLIENT_IDS:-akb-rag-service,aiip-document-service,svc-ingestion}
+      AKL_SERVICE_CLIENT_ROUTE_GRANTS: ${AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS:-akb-rag-service=authz|audit|idempotency,aiip-document-service=aiip-upload,svc-ingestion=authz|audit|documents-read|ingestion-status}
       AKL_SERVICE_CLIENT_DELEGATIONS: ${AKL_REGISTRY_SERVICE_CLIENT_DELEGATIONS:-akb-rag-service=aiip-service}
       AKL_STRATOS_AUTH_ME_URL: ${AKL_STRATOS_AUTH_ME_URL:-http://host.docker.internal:4000/api/v1/auth/me}
       AKL_STRATOS_POLICY_BINDINGS_URL: ${AKL_STRATOS_POLICY_BINDINGS_URL:-http://host.docker.internal:4000/api/v1/policy/bindings}

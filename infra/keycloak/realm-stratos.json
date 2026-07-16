@@ -38,6 +38,10 @@
         "description": "AKB application service role for AI Innovation Portal."
       },
       {
+        "name": "service_aiip_document",
+        "description": "Dedicated AIIP document transport role; restricted to the governed AKB upload bridge."
+      },
+      {
         "name": "service_llm_gateway",
         "description": "AKB canonical LLM Gateway service role consumed by AKB Registry API."
       },

@@ -83,8 +83,9 @@ Produkční minimum pro navazující AIIP ingestion je
 `svc-ingestion=authz|audit|documents-read|ingestion-status`.
 `ingestion-status` mapuje pouze přesný write endpoint
 `/documents/{document_id}/external-references/current`; AIIP reference na něm
-smí změnit jen job/status pro už potvrzenou current verzi. `aiip-service` musí
-zůstat pouze na `aiip-upload`. Interaktivní actor získává
+smí změnit jen job/status pro už potvrzenou current verzi. `aiip-document-service`
+musí zůstat pouze na `aiip-upload`; `aiip-service` se do Registry nepřidává.
+Interaktivní actor získává
 document/version/action proof přímo z Registry; `svc-ingestion` smí proof pouze
 potvrdit a technicky synchronizovat autoritativní attempt, nikdy si nesmí
 zkonstruovat oprávnění za cizí subject.

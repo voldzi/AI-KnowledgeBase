@@ -24,12 +24,14 @@ host applications do not make authorization decisions for AKB documents.
   confirms that proof through Registry with its own short-lived
   `svc-ingestion` bearer. The subject header becomes audit context only after
   exact proof confirmation and is never independently authoritative.
-- AIIP uses only the dedicated Keycloak service identity `aiip-service`, realm
-  role `service_aiip`, audience `akb-api`, and the `client_credentials` grant.
-  The public AKB bridge introspects this token and rejects any different client,
-  role, or audience. AIIP never sends `X-AKL-*` and never calls LLM Gateway,
-  RAG, Qdrant, or OpenSearch directly. Client secrets stay only in the host or
-  CI secret store.
+- AIIP document transport uses only `aiip-document-service`, realm role
+  `service_aiip_document`, audience `akl-api`, and the `client_credentials`
+  grant. Registry gives this client exactly `aiip-upload`. AI assistance uses
+  the independent `aiip-service` identity with `service_aiip` and audience
+  `akb-api`; it has no Registry route grant. The public AKB bridge rejects a
+  client, role, audience, or service-account name from the other profile. AIIP
+  never sends `X-AKL-*` and never calls LLM Gateway, RAG, Qdrant, or OpenSearch
+  directly. Client secrets stay only in the host or CI secret store.
 - RAG uses the separate internal client `akb-rag-service`, role `service_rag`,
   and audience `akl-api` for Registry calls. Its secret is mounted read-only
   only into RAG; the AIIP credential is not shared with RAG or Registry.
@@ -41,8 +43,9 @@ host applications do not make authorization decisions for AKB documents.
   `audit`, and `idempotency`.
 - `svc-ingestion` receives only `authz`, `audit`, `documents-read`, and the exact
   `ingestion-status` route. The latter can update job/status only for an already
-  selected AIIP version. `aiip-service` remains restricted to `aiip-upload` and
-  can never be reused by the pipeline on generic Registry paths.
+  selected AIIP version. `aiip-document-service` remains restricted to
+  `aiip-upload` and can never be reused by the pipeline on generic Registry
+  paths.
 - `svc-akb-web-ingestion` receives no Registry route grant. Ingestion Service
   accepts it only on the bounded job/read/cancel and web-transport readiness
   surface. A valid service token without a matching Registry proof is denied.

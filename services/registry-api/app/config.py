@@ -318,9 +318,11 @@ class Settings(BaseSettings):
                     "Production svc-ingestion grants must be exactly "
                     "authz|audit|documents-read|ingestion-status"
                 )
-            if route_grants.get("aiip-service") != frozenset({"aiip-upload"}):
+            if route_grants.get("aiip-document-service") != frozenset(
+                {"aiip-upload"}
+            ):
                 raise ValueError(
-                    "Production aiip-service grant must be exactly aiip-upload"
+                    "Production aiip-document-service grant must be exactly aiip-upload"
                 )
             missing_governance = [
                 name

@@ -13,6 +13,24 @@ type AiipPrincipal = {
   roles: string[];
 };
 
+type ExactServiceProfile = {
+  clientId: string;
+  audience: string;
+  role: string;
+};
+
+const AIIP_APPLICATION_SERVICE: ExactServiceProfile = {
+  clientId: "aiip-service",
+  audience: "akb-api",
+  role: "service_aiip",
+};
+
+const AIIP_DOCUMENT_SERVICE: ExactServiceProfile = {
+  clientId: "aiip-document-service",
+  audience: "akl-api",
+  role: "service_aiip_document",
+};
+
 export async function authenticateAiipServiceRequest(
   request: Request,
 ): Promise<AiipPrincipal> {
@@ -39,6 +57,47 @@ export async function authenticateAiipServiceJsonRequest(
   } catch (error) {
     if (error instanceof AiipBridgeError) {
       throw new ApiClientError(error.message, error.status, error.code, "web-aiip-service-auth");
+    }
+    throw error;
+  }
+}
+
+export async function authenticateAiipDocumentServiceRequest(
+  request: Request,
+): Promise<AiipPrincipal> {
+  try {
+    return await authenticateExactService(request, AIIP_DOCUMENT_SERVICE);
+  } catch (error) {
+    if (error instanceof AiipBridgeError) {
+      throw new ApiClientError(
+        error.message,
+        error.status,
+        error.code,
+        "web-aiip-document-service-auth",
+      );
+    }
+    throw error;
+  }
+}
+
+export async function authenticateAiipDocumentServiceJsonRequest(
+  request: Request,
+): Promise<{ principal: AiipPrincipal; body: Record<string, unknown> }> {
+  try {
+    rejectCallerInternalHeaders(request);
+    const principal = await authenticateExactService(request, AIIP_DOCUMENT_SERVICE);
+    enforceRateLimit(principal.subjectId);
+    enforceContentLength(request);
+    const body = await readBoundedJson(request);
+    return { principal, body };
+  } catch (error) {
+    if (error instanceof AiipBridgeError) {
+      throw new ApiClientError(
+        error.message,
+        error.status,
+        error.code,
+        "web-aiip-document-service-auth",
+      );
     }
     throw error;
   }
@@ -247,6 +306,13 @@ function enforceClassification(body: Record<string, unknown>) {
 }
 
 async function authenticateAiipService(request: Request): Promise<AiipPrincipal> {
+  return authenticateExactService(request, AIIP_APPLICATION_SERVICE);
+}
+
+async function authenticateExactService(
+  request: Request,
+  profile: ExactServiceProfile,
+): Promise<AiipPrincipal> {
   const authorization = request.headers.get("authorization") ?? "";
   const [scheme, accessToken] = authorization.trim().split(/\s+/, 2);
   if (scheme?.toLowerCase() !== "bearer" || !accessToken) {
@@ -262,31 +328,39 @@ async function authenticateAiipService(request: Request): Promise<AiipPrincipal>
   const authorizedParty = stringClaim(claims.azp);
   const clientId = stringClaim(claims.client_id);
   if (
-    authorizedParty !== "aiip-service"
-    || (clientId !== null && clientId !== "aiip-service")
-  ) {
-    throw new AiipBridgeError(403, "AUTH_FORBIDDEN", "The aiip-service client identity is required.");
-  }
-  const subjectId = stringClaim(claims.sub);
-  if (
-    !subjectId
-    || stringClaim(claims.preferred_username) !== "service-account-aiip-service"
+    authorizedParty !== profile.clientId
+    || (clientId !== null && clientId !== profile.clientId)
   ) {
     throw new AiipBridgeError(
       403,
       "AUTH_FORBIDDEN",
-      "The exact aiip-service service-account identity is required.",
+      `The ${profile.clientId} client identity is required.`,
+    );
+  }
+  const subjectId = stringClaim(claims.sub);
+  if (
+    !subjectId
+    || stringClaim(claims.preferred_username) !== `service-account-${profile.clientId}`
+  ) {
+    throw new AiipBridgeError(
+      403,
+      "AUTH_FORBIDDEN",
+      `The exact ${profile.clientId} service-account identity is required.`,
     );
   }
   const audiences = stringListClaim(claims.aud);
-  if (!audiences.includes("akb-api")) {
-    throw new AiipBridgeError(403, "AUTH_AUDIENCE_INVALID", "The token audience must include akb-api.");
+  if (!audiences.includes(profile.audience)) {
+    throw new AiipBridgeError(
+      403,
+      "AUTH_AUDIENCE_INVALID",
+      `The token audience must include ${profile.audience}.`,
+    );
   }
   const roles = extractRoles(claims);
-  if (!roles.includes("service_aiip")) {
-    throw new AiipBridgeError(403, "AUTH_ROLE_REQUIRED", "The service_aiip role is required.");
+  if (!roles.includes(profile.role)) {
+    throw new AiipBridgeError(403, "AUTH_ROLE_REQUIRED", `The ${profile.role} role is required.`);
   }
-  return { subjectId, accessToken, roles: ["service_aiip"] };
+  return { subjectId, accessToken, roles: [profile.role] };
 }
 
 async function introspectAccessToken(
