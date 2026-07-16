@@ -258,8 +258,7 @@ def _service_route_for_request(request: Request) -> str | None:
     if path.startswith("/document-extractions"):
         return "extractions-write" if write else "extractions-read"
     if (
-        write
-        and len(path_segments) == 4
+        len(path_segments) == 4
         and path_segments[0] == "documents"
         and path_segments[2:] == ["external-references", "current"]
     ):

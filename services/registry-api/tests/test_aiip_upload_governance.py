@@ -413,6 +413,32 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
         )
         assert transitioned.status_code == 200, transitioned.text
 
+        authoritative_attempt = client.get(
+            f"/api/v1/documents/{body['document']['document_id']}"
+            "/external-references/current",
+            headers=_ingestion_service_headers(),
+        )
+        assert authoritative_attempt.status_code == 200, authoritative_attempt.text
+        assert (
+            authoritative_attempt.json()["ingestion_attempt"]["ingestion_status"]
+            == authoritative_status
+        )
+        assert (
+            authoritative_attempt.json()["ingestion_attempt"]["ingestion_job_id"]
+            == "job-aiip-123"
+        )
+
+        non_ingestion_service_read = client.get(
+            f"/api/v1/documents/{body['document']['document_id']}"
+            "/external-references/current",
+            headers=_service_headers(),
+        )
+        assert non_ingestion_service_read.status_code == 403
+        assert (
+            non_ingestion_service_read.json()["error"]["code"]
+            == "service_route_forbidden"
+        )
+
     current_replay = client.patch(
         f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",
         json={
