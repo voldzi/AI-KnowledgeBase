@@ -30,10 +30,10 @@ def _settings(**overrides) -> Settings:
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
         "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v1/auth/me",
         "AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS": 0,
-        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-service,svc-ingestion",
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-document-service,svc-ingestion",
         "AKL_SERVICE_CLIENT_ROUTE_GRANTS": (
             "akb-rag-service=authz|audit|idempotency,"
-            "aiip-service=aiip-upload,"
+            "aiip-document-service=aiip-upload,"
             "svc-ingestion=authz|audit|documents-read|ingestion-status"
         ),
         "AKL_SERVICE_CLIENT_DELEGATIONS": "akb-rag-service=aiip-service",

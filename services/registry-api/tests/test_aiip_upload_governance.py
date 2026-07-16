@@ -85,9 +85,9 @@ def _service_headers() -> dict[str, str]:
     return {
         "Authorization": "Bearer aiip-transport-token",
         "X-AIIP-Actor-Authorization": "Bearer current-actor-token",
-        "X-AKL-Subject": "service-account-aiip-service",
-        "X-AKL-Service-Client-ID": "aiip-service",
-        "X-AKL-Roles": "service_aiip",
+        "X-AKL-Subject": "service-account-aiip-document-service",
+        "X-AKL-Service-Client-ID": "aiip-document-service",
+        "X-AKL-Roles": "service_aiip_document",
         "X-Correlation-ID": "corr-aiip-upload-123",
     }
 
@@ -460,6 +460,20 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
 
 
 def test_dedicated_aiip_upload_rejects_broad_or_forged_transport(client) -> None:
+    assistance_identity = {
+        **_service_headers(),
+        "X-AKL-Subject": "service-account-aiip-service",
+        "X-AKL-Service-Client-ID": "aiip-service",
+        "X-AKL-Roles": "service_aiip",
+    }
+    wrong_service = client.post(
+        "/api/v1/integrations/aiip-upload/external-documents/upsert",
+        json=_preflight_payload(),
+        headers=assistance_identity,
+    )
+    assert wrong_service.status_code == 403
+    assert wrong_service.json()["error"]["code"] == "untrusted_service_identity"
+
     missing_actor = client.post(
         "/api/v1/integrations/aiip-upload/external-documents/upsert",
         json=_preflight_payload(),

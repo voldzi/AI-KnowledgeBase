@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
 
 import {
+  authenticateAiipDocumentServiceJsonRequest,
   authenticateAiipServiceJsonRequest,
   handleAiipApplicationRequest
 } from "../src/lib/aiip/application-api";
@@ -138,6 +139,57 @@ describe("AIIP application API bridge", () => {
         error instanceof ApiClientError &&
         error.status === 413 &&
         error.code === "PAYLOAD_TOO_LARGE"
+    );
+  });
+
+  it("keeps the document transport identity separate from AI assistance", async () => {
+    state.clientId = "aiip-document-service";
+    state.roles = ["service_aiip_document"];
+    state.audience = ["akl-api"];
+
+    const valid = await authenticateAiipDocumentServiceJsonRequest(
+      request({ external_ref: "aiip:test" }, { token: "document-transport-token" }),
+    );
+    assert.equal(valid.principal.roles[0], "service_aiip_document");
+    assert.equal(valid.body.external_ref, "aiip:test");
+
+    state.roles = ["service_aiip"];
+    await assert.rejects(
+      () =>
+        authenticateAiipDocumentServiceJsonRequest(
+          request({ external_ref: "aiip:test" }, { token: "wrong-document-role" }),
+        ),
+      (error: unknown) =>
+        error instanceof ApiClientError &&
+        error.status === 403 &&
+        error.code === "AUTH_ROLE_REQUIRED",
+    );
+
+    state.roles = ["service_aiip_document"];
+    state.audience = ["akb-api"];
+    await assert.rejects(
+      () =>
+        authenticateAiipDocumentServiceJsonRequest(
+          request({ external_ref: "aiip:test" }, { token: "wrong-document-audience" }),
+        ),
+      (error: unknown) =>
+        error instanceof ApiClientError &&
+        error.status === 403 &&
+        error.code === "AUTH_AUDIENCE_INVALID",
+    );
+
+    state.clientId = "aiip-service";
+    state.roles = ["service_aiip"];
+    state.audience = ["akb-api"];
+    await assert.rejects(
+      () =>
+        authenticateAiipDocumentServiceJsonRequest(
+          request({ external_ref: "aiip:test" }, { token: "assistance-token" }),
+        ),
+      (error: unknown) =>
+        error instanceof ApiClientError &&
+        error.status === 403 &&
+        error.code === "AUTH_FORBIDDEN",
     );
   });
 

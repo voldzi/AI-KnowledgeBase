@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { authenticateAiipServiceRequest } from "@/lib/aiip/application-api";
+import { authenticateAiipDocumentServiceRequest } from "@/lib/aiip/application-api";
 import { getAiipActorRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getGovernedIngestionJob } from "@/lib/ingestion/governed-operations";
 import {
@@ -24,7 +24,7 @@ interface RouteContext {
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    await authenticateAiipServiceRequest(request);
+    await authenticateAiipDocumentServiceRequest(request);
     const actorContext = await getAiipActorRequestContext(request);
     const correlationId = request.headers.get("X-Correlation-ID")?.trim() || crypto.randomUUID();
     const clients = getServerApiClients();

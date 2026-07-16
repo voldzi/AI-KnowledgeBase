@@ -95,7 +95,7 @@ PATCH /api/v1/integrations/aiip-upload/external-documents/{external_document_id}
 ```
 
 They are not general integration endpoints. They accept only the
-`aiip-service=aiip-upload` route grant plus an independent
+`aiip-document-service=aiip-upload` route grant plus an independent
 `X-AIIP-Actor-Authorization` bearer, reject arbitrary metadata/owner fields,
 and return `governance_confirmation` containing the exact source and derived
 resource lineage. Details are in ADR 0008 and

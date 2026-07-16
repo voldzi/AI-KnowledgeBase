@@ -2160,11 +2160,14 @@ def confirm_intelligence_scope_authorization_proof(
 
 
 def _require_aiip_upload_service(principal: Principal) -> None:
-    if not principal.service_identity or principal.service_client_id != "aiip-service":
+    if (
+        not principal.service_identity
+        or principal.service_client_id != "aiip-document-service"
+    ):
         raise problem(
             status.HTTP_403_FORBIDDEN,
             "aiip_upload_service_required",
-            "The dedicated aiip-service identity is required for this upload route",
+            "The dedicated aiip-document-service identity is required for this upload route",
         )
 
 

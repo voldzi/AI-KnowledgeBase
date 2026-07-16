@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateAiipServiceJsonRequest } from "@/lib/aiip/application-api";
+import { authenticateAiipDocumentServiceJsonRequest } from "@/lib/aiip/application-api";
 import { getAiipActorRequestContext, getServerApiClients } from "@/lib/api/server";
 import { ApiClientError, type ApiRequestContext, type IngestionJob } from "@/lib/types";
 import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
@@ -66,7 +66,7 @@ const AIIP_CONFIRM_FIELDS = [
 export async function POST(request: NextRequest, routeContext: RouteContext) {
   try {
     const { sessionId } = await routeContext.params;
-    const { principal: service, body } = await authenticateAiipServiceJsonRequest(request);
+    const { principal: service, body } = await authenticateAiipDocumentServiceJsonRequest(request);
     assertExactFields(body, AIIP_CONFIRM_FIELDS, "AIIP upload confirmation");
     assertRequiredStringFields(
       body,

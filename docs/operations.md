@@ -136,9 +136,9 @@ AIIP governed upload additionally requires
 `AKB_AIIP_INGEST_SERVICE_TOKEN`. The latter is a separate central-call
 credential and production start rejects it when it equals
 `AKB_POLICY_SERVICE_TOKEN`. Allow only the exact route grant
-`aiip-service=aiip-upload`; do not add `authz`, document administration, or a
+`aiip-document-service=aiip-upload`; do not add `authz`, document administration, or a
 wildcard route grant to that client. The AKB web bridge forwards the
-`aiip-service` transport bearer and a separate current actor bearer; Registry
+`aiip-document-service` transport bearer and a separate current actor bearer; Registry
 must receive both. Rotate the two static AKB tokens independently, update the
 external secret store, restart Registry, and verify readiness plus one denied
 missing-actor probe before accepting traffic. Never print either token in

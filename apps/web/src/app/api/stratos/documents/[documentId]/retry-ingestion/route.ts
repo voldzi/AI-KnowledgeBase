@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { authenticateAiipServiceJsonRequest } from "@/lib/aiip/application-api";
+import { authenticateAiipDocumentServiceJsonRequest } from "@/lib/aiip/application-api";
 import { getAiipActorRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getGovernedIngestionJob } from "@/lib/ingestion/governed-operations";
 import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
@@ -28,7 +28,7 @@ interface RouteContext {
 export async function POST(request: Request, context: RouteContext) {
   try {
     const { documentId } = await context.params;
-    const { body } = await authenticateAiipServiceJsonRequest(request);
+    const { body } = await authenticateAiipDocumentServiceJsonRequest(request);
     assertExactFields(body, ["operation_id"], "AIIP ingestion retry");
     const operationId = requiredString(body, "operation_id");
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(operationId)) {

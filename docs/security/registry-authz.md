@@ -166,7 +166,7 @@ Hotovo:
 - RAG volá `/authz/filter-documents` s akcí `rag.query` před odpovědí/LLM kontextem.
 - Ingestion, RAG a LLM Gateway přijímají `AKL_AUTH_MODE=oidc` a vyžadují bearer token.
 - Uživatelská Registry authz volání používají caller token. AIIP upload používá
-  výhradně `aiip-service=aiip-upload`; navazující ingestion používá oddělený
+  výhradně `aiip-document-service=aiip-upload`; navazující ingestion používá oddělený
   `svc-ingestion` service account a caller token dál nepředává.
 
 Zbývá:

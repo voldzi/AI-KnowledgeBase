@@ -58,7 +58,7 @@ def test_idempotency_reserve_complete_and_replay(client):
     assert replay.json()["audit_event_id"] == "audit_aiip_1"
 
 
-def test_aiip_service_cannot_call_generic_idempotency_route(client):
+def test_aiip_assistance_service_is_not_a_registry_trusted_client(client):
     response = client.post(
         "/api/v1/integrations/idempotency/reserve",
         headers=_headers("service_aiip"),
@@ -71,7 +71,7 @@ def test_aiip_service_cannot_call_generic_idempotency_route(client):
     )
 
     assert response.status_code == 403
-    assert response.json()["error"]["code"] == "service_route_forbidden"
+    assert response.json()["error"]["code"] == "untrusted_service_identity"
 
 
 def test_idempotency_key_reuse_with_another_hash_is_conflict(client):
