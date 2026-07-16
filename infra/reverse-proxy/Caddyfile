@@ -24,7 +24,11 @@
 
 	log {
 		output stdout
-		format json
+		format filter {
+			request>headers>X-Aiip-Actor-Authorization delete
+			request>headers>X-Akl-Upload-Token delete
+			wrap json
+		}
 	}
 
 	handle / {
