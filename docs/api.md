@@ -121,6 +121,9 @@ a binary `PUT` authenticated by that header and accompanied by the exact
 `upload_receipt`. Confirm requires both `upload_token` and `upload_receipt`
 plus all signed file, policy, scope, and envelope fields. Both successful JSON
 operations return a closed, authoritative `governance_confirmation` schema.
+Its discriminated `scope` uses only the active coordinate: `ownerSubjectId` for
+`own`, or `id` for every other scope type. Mutually exclusive coordinates are
+omitted rather than serialized as `null`.
 
 `STRATOS_AIIP` is rejected by the generic external-document, version, and
 current-pointer write routes. Document-level synchronization outside the

@@ -3,7 +3,7 @@ from enum import Enum
 import unicodedata
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.information_policy import (
     AiipUploadIntegrationEnvelope,
@@ -633,6 +633,10 @@ class AiipGovernanceParentSourceResource(BaseModel):
     source_version: str = Field(min_length=1)
     scope: GovernanceScope
 
+    @field_serializer("scope")
+    def serialize_scope(self, value: GovernanceScope) -> dict[str, object]:
+        return value.model_dump(mode="json", by_alias=True, exclude_none=True)
+
 
 class AiipGovernanceEffectivePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -661,6 +665,10 @@ class AiipGovernedResourceConfirmation(BaseModel):
     effective_policy: AiipGovernanceEffectivePolicy
     registered_by_subject_id: str = Field(min_length=1)
     confirmed_by_subject_id: str = Field(min_length=1)
+
+    @field_serializer("scope")
+    def serialize_scope(self, value: GovernanceScope) -> dict[str, object]:
+        return value.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 class AiipGovernanceConfirmation(BaseModel):
