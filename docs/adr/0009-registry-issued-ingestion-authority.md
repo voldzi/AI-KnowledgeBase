@@ -103,7 +103,11 @@ The authoritative current-attempt read and update route is an internal
 read only the attempt coordinates needed to select and recover the immutable
 version; this route does not grant document content access or substitute for a
 person's `document.read` decision. Interactive person reads continue through
-normal document authorization.
+normal document authorization. The same exact worker may use its separate
+`documents-read` grant on the document and immutable-version detail routes to
+obtain the registered source URI, hash, policy, and parsing metadata. These
+machine routes do not evaluate the worker as a person and never return binary
+content, extracted text, chunks, embeddings, or model output.
 
 Production global job listing and the legacy bulk reindex contract fail closed.
 Static JWT roles do not authorize either operation. Intelligence queries use a
@@ -121,6 +125,11 @@ non-mutating web-transport readiness route with
 This decision supersedes only the post-confirm ingestion authorization
 paragraphs of ADR 0008. ADR 0008 remains authoritative for the AIIP dual-identity
 upload, immutable lineage, and current-pointer compare-and-swap.
+
+The AIIP confirm route performs the immutable save and current-version
+selection synchronously, then starts this proof/job protocol after the HTTP
+response. Failure to create or activate the job is observable as a saved
+`VERSION_CREATED` version and never rolls back or misreports the source save.
 
 ## Consequences
 

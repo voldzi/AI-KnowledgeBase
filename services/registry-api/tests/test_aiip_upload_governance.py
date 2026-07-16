@@ -133,7 +133,7 @@ def _preflight_payload(policy_hash: str | None = None) -> dict:
 
 
 def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
-    client, db_session, admin_headers
+    client, db_session, admin_headers, monkeypatch
 ) -> None:
     first = client.post(
         "/api/v1/integrations/aiip-upload/external-documents/upsert",
@@ -358,6 +358,29 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
     assert file_metadata_conflict.status_code == 409
     assert file_metadata_conflict.json()["error"]["code"] == "aiip_upload_version_payload_conflict"
 
+    stored_current = client.patch(
+        f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",
+        json={
+            "document_id": body["document"]["document_id"],
+            "expected_current_document_version_id": None,
+            "document_version_id": version["document_version_id"],
+            "file_id": version["file_id"],
+            "ingestion_job_id": None,
+            "ingestion_status": "VERSION_CREATED",
+            "information_policy": _policy(),
+            "integration_envelope": _envelope(FILE_HASH),
+            "governance_scope": {"type": "own", "ownerSubjectId": ACTOR},
+        },
+        headers=_service_headers(),
+    )
+    assert stored_current.status_code == 200, stored_current.text
+    assert stored_current.json()["updated"] is True
+    stored_ref = stored_current.json()["external_document"]["external_document"]
+    assert stored_ref["current_document_version_id"] == version["document_version_id"]
+    assert stored_ref["current_file_id"] == version["file_id"]
+    assert stored_ref["current_ingestion_job_id"] is None
+    assert stored_ref["current_ingestion_status"] == "VERSION_CREATED"
+
     current_response = client.patch(
         f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",
         json={
@@ -378,6 +401,27 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
     ref = current_response.json()["external_document"]["external_document"]
     assert ref["current_document_version_id"] == version["document_version_id"]
     assert ref["current_ingestion_job_id"] == "job-aiip-123"
+
+    stored_replay_after_activation = client.patch(
+        f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",
+        json={
+            "document_id": body["document"]["document_id"],
+            "expected_current_document_version_id": None,
+            "document_version_id": version["document_version_id"],
+            "file_id": version["file_id"],
+            "ingestion_job_id": None,
+            "ingestion_status": "VERSION_CREATED",
+            "information_policy": _policy(),
+            "integration_envelope": _envelope(FILE_HASH),
+            "governance_scope": {"type": "own", "ownerSubjectId": ACTOR},
+        },
+        headers=_service_headers(),
+    )
+    assert stored_replay_after_activation.status_code == 200, stored_replay_after_activation.text
+    assert stored_replay_after_activation.json()["updated"] is False
+    replay_ref = stored_replay_after_activation.json()["external_document"]["external_document"]
+    assert replay_ref["current_ingestion_job_id"] == "job-aiip-123"
+    assert replay_ref["current_ingestion_status"] == "INGESTING"
 
     premature_indexed = client.patch(
         f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",
@@ -400,44 +444,67 @@ def test_dedicated_aiip_upload_persists_only_authoritative_actor_and_lineage(
         == "aiip_ingestion_status_authority_conflict"
     )
 
-    for authoritative_status in ("INGESTING", "INDEXED"):
-        transitioned = client.patch(
-            f"/api/v1/documents/{body['document']['document_id']}/external-references/current",
-            json={
-                "current_document_version_id": version["document_version_id"],
-                "expected_current_ingestion_job_id": "job-aiip-123",
-                "current_ingestion_job_id": "job-aiip-123",
-                "current_ingestion_status": authoritative_status,
-            },
-            headers=_ingestion_service_headers(),
-        )
-        assert transitioned.status_code == 200, transitioned.text
+    def reject_person_document_authorization(*_args, **_kwargs):
+        raise AssertionError("ingestion service routes must not use person authorization")
 
-        authoritative_attempt = client.get(
-            f"/api/v1/documents/{body['document']['document_id']}"
-            "/external-references/current",
-            headers=_ingestion_service_headers(),
-        )
-        assert authoritative_attempt.status_code == 200, authoritative_attempt.text
-        assert (
-            authoritative_attempt.json()["ingestion_attempt"]["ingestion_status"]
-            == authoritative_status
-        )
-        assert (
-            authoritative_attempt.json()["ingestion_attempt"]["ingestion_job_id"]
-            == "job-aiip-123"
+    with monkeypatch.context() as ingestion_service_context:
+        ingestion_service_context.setattr(
+            "app.api.require_document_action",
+            reject_person_document_authorization,
         )
 
-        non_ingestion_service_read = client.get(
-            f"/api/v1/documents/{body['document']['document_id']}"
-            "/external-references/current",
-            headers=_service_headers(),
+        document_metadata = client.get(
+            f"/api/v1/documents/{body['document']['document_id']}",
+            headers=_ingestion_service_headers(),
         )
-        assert non_ingestion_service_read.status_code == 403
-        assert (
-            non_ingestion_service_read.json()["error"]["code"]
-            == "service_route_forbidden"
+        assert document_metadata.status_code == 200, document_metadata.text
+
+        version_metadata = client.get(
+            f"/api/v1/documents/{body['document']['document_id']}/versions/"
+            f"{version['document_version_id']}",
+            headers=_ingestion_service_headers(),
         )
+        assert version_metadata.status_code == 200, version_metadata.text
+
+        for authoritative_status in ("INGESTING", "INDEXED"):
+            transitioned = client.patch(
+                f"/api/v1/documents/{body['document']['document_id']}"
+                "/external-references/current",
+                json={
+                    "current_document_version_id": version["document_version_id"],
+                    "expected_current_ingestion_job_id": "job-aiip-123",
+                    "current_ingestion_job_id": "job-aiip-123",
+                    "current_ingestion_status": authoritative_status,
+                },
+                headers=_ingestion_service_headers(),
+            )
+            assert transitioned.status_code == 200, transitioned.text
+
+            authoritative_attempt = client.get(
+                f"/api/v1/documents/{body['document']['document_id']}"
+                "/external-references/current",
+                headers=_ingestion_service_headers(),
+            )
+            assert authoritative_attempt.status_code == 200, authoritative_attempt.text
+            assert (
+                authoritative_attempt.json()["ingestion_attempt"]["ingestion_status"]
+                == authoritative_status
+            )
+            assert (
+                authoritative_attempt.json()["ingestion_attempt"]["ingestion_job_id"]
+                == "job-aiip-123"
+            )
+
+            non_ingestion_service_read = client.get(
+                f"/api/v1/documents/{body['document']['document_id']}"
+                "/external-references/current",
+                headers=_service_headers(),
+            )
+            assert non_ingestion_service_read.status_code == 403
+            assert (
+                non_ingestion_service_read.json()["error"]["code"]
+                == "service_route_forbidden"
+            )
 
     current_replay = client.patch(
         f"/api/v1/integrations/aiip-upload/external-documents/{body['external_document']['external_document_id']}/current",

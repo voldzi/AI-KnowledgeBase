@@ -784,6 +784,27 @@ def _require_service_route(principal: Principal, route: str) -> str:
     return client_id
 
 
+def _require_ingestion_service_route(principal: Principal, route: str) -> None:
+    client_id = _require_service_route(principal, route)
+    if client_id != "svc-ingestion":
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "ingestion_attempt_client_forbidden",
+            "Only the exact ingestion service may use the authoritative ingestion route",
+        )
+
+
+def _require_document_read_or_ingestion_metadata(
+    principal: Principal,
+    document: Document,
+    db: Session,
+) -> None:
+    if principal.service_identity:
+        _require_ingestion_service_route(principal, "documents-read")
+        return
+    require_document_action(principal, Action.document_read, document, db)
+
+
 def _authz_subject_context(
     db: Session,
     principal: Principal,
@@ -2924,17 +2945,27 @@ def update_aiip_external_document_current(
             "STRATOS confirmation conflicts with the persisted AKB current version",
         )
     current_version_id = external_ref.current_document_version_id
-    if current_version_id == version.document_version_id:
-        if (
-            external_ref.current_file_id != file.file_id
-            or external_ref.current_ingestion_job_id != payload.ingestion_job_id
-        ):
+    same_version = current_version_id == version.document_version_id
+    if same_version:
+        if external_ref.current_file_id != file.file_id:
             raise problem(
                 status.HTTP_409_CONFLICT,
                 "aiip_upload_current_replay_conflict",
                 "The selected AIIP-derived AKB version has conflicting current metadata",
             )
-        updated = False
+        if (
+            payload.ingestion_job_id is not None
+            and external_ref.current_ingestion_job_id not in {None, payload.ingestion_job_id}
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "aiip_upload_current_replay_conflict",
+                "The selected AIIP-derived AKB version has a different ingestion job",
+            )
+        updated = (
+            payload.ingestion_job_id is not None
+            and external_ref.current_ingestion_job_id is None
+        )
     else:
         if current_version_id != payload.expected_current_document_version_id:
             raise problem(
@@ -2943,31 +2974,38 @@ def update_aiip_external_document_current(
                 "The AIIP upload preflight was based on a stale current document version",
             )
         updated = True
-    ingestion_attempt = _select_aiip_authoritative_ingestion_attempt(
-        db,
-        document_id=payload.document_id,
-        document_version_id=payload.document_version_id,
-        ingestion_job_id=payload.ingestion_job_id,
-    )
-    authoritative_external_status = {
-        "QUEUED": "INGESTING",
-        "INGESTING": "INGESTING",
-        "INDEXED": "INDEXED",
-        "FAILED": "FAILED",
-    }[ingestion_attempt.ingestion_status]
-    if payload.ingestion_status != authoritative_external_status:
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_ingestion_status_authority_conflict",
-            "AIIP current-state status does not match the authoritative ingestion attempt",
+
+    authoritative_external_status = payload.ingestion_status
+    if payload.ingestion_job_id is not None:
+        ingestion_attempt = _select_aiip_authoritative_ingestion_attempt(
+            db,
+            document_id=payload.document_id,
+            document_version_id=payload.document_version_id,
+            ingestion_job_id=payload.ingestion_job_id,
         )
-    if updated:
+        authoritative_external_status = {
+            "QUEUED": "INGESTING",
+            "INGESTING": "INGESTING",
+            "INDEXED": "INDEXED",
+            "FAILED": "FAILED",
+        }[ingestion_attempt.ingestion_status]
+        if payload.ingestion_status != authoritative_external_status:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "aiip_ingestion_status_authority_conflict",
+                "AIIP current-state status does not match the authoritative ingestion attempt",
+            )
+
+    if not same_version:
         external_ref.current_document_version_id = version.document_version_id
         external_ref.current_file_id = file.file_id
-        external_ref.current_ingestion_job_id = payload.ingestion_job_id
         external_ref.akb_source_uri = version.source_file_uri
         external_ref.source_location = version.source_location
-    external_ref.current_ingestion_status = authoritative_external_status
+    if payload.ingestion_job_id is not None:
+        external_ref.current_ingestion_job_id = payload.ingestion_job_id
+        external_ref.current_ingestion_status = authoritative_external_status
+    elif external_ref.current_ingestion_job_id is None:
+        external_ref.current_ingestion_status = "VERSION_CREATED"
     add_audit_event(
         db,
         actor_id=registration.confirmed_by_subject_id,
@@ -2978,7 +3016,7 @@ def update_aiip_external_document_current(
         metadata={
             "document_id": external_ref.document_id,
             "document_version_id": version.document_version_id,
-            "ingestion_job_id": payload.ingestion_job_id,
+            "ingestion_job_id": external_ref.current_ingestion_job_id,
             "updated": updated,
         },
     )
@@ -3260,15 +3298,16 @@ def update_document_external_references_current(
         .where(Document.document_id == document_id)
         .with_for_update()
     ).scalar_one()
-    if get_settings().auth_mode not in {"disabled", "mock"}:
-        client_id = _require_service_route(principal, "ingestion-status")
-        if client_id != "svc-ingestion":
-            raise problem(
-                status.HTTP_403_FORBIDDEN,
-                "ingestion_attempt_client_forbidden",
-                "Only the exact ingestion service may update authoritative attempts",
-            )
-    require_document_action(principal, Action.document_ingest, document, db)
+    if principal.service_identity:
+        _require_ingestion_service_route(principal, "ingestion-status")
+    elif get_settings().auth_mode not in {"disabled", "mock"}:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "ingestion_attempt_client_forbidden",
+            "Only the exact ingestion service may update authoritative attempts",
+        )
+    else:
+        require_document_action(principal, Action.document_ingest, document, db)
     if payload.current_document_version_id is not None:
         _get_version(db, document_id, payload.current_document_version_id)
     if {
@@ -3341,13 +3380,7 @@ def get_document_external_references_current(
 ) -> ExternalDocumentCurrentListResponse:
     document = _get_document(db, document_id)
     if principal.service_identity:
-        client_id = _require_service_route(principal, "ingestion-status")
-        if client_id != "svc-ingestion":
-            raise problem(
-                status.HTTP_403_FORBIDDEN,
-                "ingestion_attempt_client_forbidden",
-                "Only the exact ingestion service may read authoritative attempts",
-            )
+        _require_ingestion_service_route(principal, "ingestion-status")
     else:
         require_document_action(principal, Action.document_read, document, db)
     external_refs = list(
@@ -4617,7 +4650,7 @@ def get_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document, db)
+    _require_document_read_or_ingestion_metadata(principal, document, db)
     return document
 
 
@@ -4966,7 +4999,7 @@ def get_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_read, document, db)
+    _require_document_read_or_ingestion_metadata(principal, document, db)
     return _document_version_response(_get_version(db, document_id, version_id))
 
 

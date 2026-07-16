@@ -33,9 +33,12 @@ families explicitně uvedené v `AKL_SERVICE_CLIENT_ROUTE_GRANTS`; neuvedená
 route je default-deny.
 
 Produkční `svc-ingestion` má pouze `authz`, `audit`, `documents-read` a
-`ingestion-status`. `ingestion-status` mapuje výhradně write na
-`/documents/{document_id}/external-references/current`; u AIIP záznamu smí
-změnit jen job/status pro už dedikovaně potvrzenou current verzi. Produkční
+`ingestion-status`. `ingestion-status` mapuje pouze GET a PATCH na
+`/documents/{document_id}/external-references/current`; GET vrací souřadnice
+autoritativního attemptu a PATCH smí u AIIP záznamu změnit jen job/status pro už
+dedikovaně potvrzenou current verzi. `documents-read` dovoluje přesnému workeru
+načíst detail dokumentu a neměnné verze pro kontrolu URI, hashe, policy a
+parserových metadat, nikoli binární obsah nebo odvozená data. Produkční
 `aiip-service` zůstává omezený pouze na `aiip-upload` a nesmí získat žádnou z
 těchto generic families.
 

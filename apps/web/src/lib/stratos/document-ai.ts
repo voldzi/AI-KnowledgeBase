@@ -141,7 +141,7 @@ export interface StratosUploadConfirmResult {
   document_version_id: string;
   external_document_id: string;
   file_id: string;
-  ingestion_job_id: string;
+  ingestion_job_id: string | null;
   ingestion_status: StratosIngestionStatus;
   idempotent_replay: boolean;
   canonical_open_url: string;
@@ -516,7 +516,7 @@ export async function updateAiipExternalDocumentCurrent(input: {
   expectedCurrentDocumentVersionId: string | null;
   version: DocumentVersion;
   fileId: string;
-  ingestionJobId: string;
+  ingestionJobId: string | null;
   ingestionStatus: string;
   body: Record<string, unknown>;
   serviceContext: ApiRequestContext;
