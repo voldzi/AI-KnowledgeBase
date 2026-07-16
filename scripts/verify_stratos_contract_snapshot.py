@@ -13,7 +13,7 @@ SNAPSHOT_ROOT = ROOT / "contracts/stratos"
 EXPECTED = {
     "access-governance/v1/access-governance.schema.json": "f3386878a4bf98028add1ad238c21e029954967dfb6d452164a2c8c78b2ac5cc",
     "access-governance/v1/capability-catalog.json": "3902c425e600be1e8bede5e84df76042fe5165675d1ec6dc896922140fd81dec",
-    "access-governance/v1/keycloak-baseline.json": "77dae3495f41c483dbcfe998aa4e5de732f48dab3b0a3618e314fb83fed2f711",
+    "access-governance/v1/keycloak-baseline.json": "f698d105b5b6c5eba98a8143e7395bf992afaed71a755c0b4607548fd045950b",
     "information-policy/v2/information-policy.schema.json": "b32666bbb90d453aebbff8efc6d23c7e5a27c4dcfdbb47bcbd2565c109551f0a",
     "information-policy/v2/policy-bundle.json": "f1b15294712323faea5605336847d9434c54ea7a8540e59578dd42cd6e49cf2f",
     "information-policy/v2/policy-registry.openapi.json": "09b1ccef6e4eef7ce1fe748ec198a0b7c3a50bdbdf8f4a21ef4a73a649e47ba2",
