@@ -83,6 +83,12 @@ reference, and capture time are transport coordinates, not a new document
 version. Any change to the immutable content or source lineage remains a
 conflict.
 
+For a centrally `REGISTERED` immutable version, the Registry-issued ingestion
+authority is bound to the exact policy hash confirmed by STRATOS and persisted
+with that registration. AKB must not replace it with a locally recomputed hash.
+Mock or otherwise non-central registrations continue to require the locally
+canonical policy hash.
+
 The durable Ingestion job keeps the confirmed authorization id, exact web
 transport client, canonical request hash, and deterministic job id. Jobs
 without complete lineage are quarantined. Processing first obtains the
