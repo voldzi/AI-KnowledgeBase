@@ -1059,6 +1059,7 @@ else
         # The shared Keycloak realm is reconciled and verified outside the AKB
         # Compose release. This exact declarative export does not select or
         # mutate an AKB runtime service.
+        # Live-realm reconciliation evidence remains an independent prerequisite.
         ;;
       services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*|infra/docker-compose/docker-compose.docker-home-observability.yml)
         akl_fail "Release changes unsupported runtime path outside registry/ingestion/rag/web: $path"
