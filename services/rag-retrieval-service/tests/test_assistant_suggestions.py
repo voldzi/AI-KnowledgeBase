@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.service import _content_based_suggestions_from_documents
 from tests.conftest import make_client
 
 
@@ -24,3 +25,19 @@ def test_suggestions_use_english_prompts_for_en() -> None:
     suggestions = response.json()["suggestions"]
     assert len(suggestions) > 0
     assert any("regulate" in item["prompt"] for item in suggestions)
+
+
+def test_content_based_suggestions_show_each_document_title_once() -> None:
+    suggestions = _content_based_suggestions_from_documents(
+        [
+            {"document_title": "AI podpora analýzy veřejných zdrojů", "document_type": "project_documentation"},
+            {"document_title": "  AI podpora analýzy veřejných zdrojů  ", "document_type": "project_documentation"},
+            {"document_title": "Provozní směrnice", "document_type": "directive"},
+        ],
+        "cs",
+    )
+
+    assert [item.label for item in suggestions] == [
+        "AI podpora analýzy veřejných zdrojů",
+        "Provozní směrnice",
+    ]

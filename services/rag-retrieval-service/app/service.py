@@ -1424,20 +1424,7 @@ class RagRetrievalService:
         except Exception:
             logger.warning("assistant_suggestions_index_lookup_failed", exc_info=True)
             return []
-        suggestions: list[AssistantSuggestion] = []
-        for document in documents[:8]:
-            title = document.get("document_title", "").strip()
-            if not title:
-                continue
-            domain = _suggestion_domain(document.get("document_type", ""), response_language)
-            if response_language == "en":
-                prompt = f"What does the document “{title}” regulate and what are its key obligations?"
-            else:
-                prompt = f"Co upravuje dokument „{title}“ a jaké jsou jeho klíčové povinnosti?"
-            suggestions.append(
-                AssistantSuggestion(label=_shorten_title(title), prompt=prompt, domain=domain)
-            )
-        return suggestions
+        return _content_based_suggestions_from_documents(documents, response_language)
 
     async def assistant_conversation(
         self,
@@ -3054,6 +3041,33 @@ _SUGGESTION_DOMAINS = {
 def _suggestion_domain(document_type: str, response_language: ResponseLanguage) -> str:
     domains = _SUGGESTION_DOMAINS["en" if response_language == "en" else "cs"]
     return domains.get(document_type, "Dokumenty" if response_language != "en" else "Documents")
+
+
+def _content_based_suggestions_from_documents(
+    documents: list[dict[str, object]],
+    response_language: ResponseLanguage,
+    limit: int = 8,
+) -> list[AssistantSuggestion]:
+    suggestions: list[AssistantSuggestion] = []
+    seen_titles: set[str] = set()
+    for document in documents:
+        title = re.sub(r"\s+", " ", str(document.get("document_title") or "")).strip()
+        title_key = title.casefold()
+        if not title or title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        document_type = str(document.get("document_type") or "")
+        domain = _suggestion_domain(document_type, response_language)
+        if response_language == "en":
+            prompt = f"What does the document “{title}” regulate and what are its key obligations?"
+        else:
+            prompt = f"Co upravuje dokument „{title}“ a jaké jsou jeho klíčové povinnosti?"
+        suggestions.append(
+            AssistantSuggestion(label=_shorten_title(title), prompt=prompt, domain=domain)
+        )
+        if len(suggestions) >= max(1, limit):
+            break
+    return suggestions
 
 
 def _shorten_title(title: str, max_length: int = 48) -> str:
