@@ -11,13 +11,12 @@ import { createMockContext } from "./correlation";
 import {
   buildPublicAppUrl,
   cookieOptions,
+  getOrRefreshOidcSession,
   OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
   readSessionCookie,
-  refreshOidcSession,
   requireOidcConfig,
-  sealAccessToken,
   sealBrowserSession,
   sealRefreshToken,
   type OidcSession,
@@ -174,18 +173,14 @@ async function resolveOptionalServerOidcSession(
     : await cookies();
   const session = readSessionCookie(cookieStore, config);
   if (!session) return null;
-  const refreshed = await refreshOidcSession(config, session);
+  const refreshed = await getOrRefreshOidcSession(config, session);
   if (!refreshed) return null;
   if (request && oidcSessionChanged(session, refreshed)) {
     const oidc = requireOidcConfig(config);
     const responseCookies = await cookies();
     const options = cookieOptions(config);
     responseCookies.set(OIDC_SESSION_COOKIE, sealBrowserSession(refreshed, oidc.sessionSecret), options);
-    if (refreshed.accessToken) {
-      responseCookies.set(OIDC_ACCESS_COOKIE, sealAccessToken(refreshed.accessToken, oidc.sessionSecret), options);
-    } else {
-      responseCookies.delete(OIDC_ACCESS_COOKIE);
-    }
+    responseCookies.delete(OIDC_ACCESS_COOKIE);
     if (refreshed.refreshToken) {
       responseCookies.set(OIDC_REFRESH_COOKIE, sealRefreshToken(refreshed.refreshToken, oidc.sessionSecret), options);
     }
@@ -194,8 +189,7 @@ async function resolveOptionalServerOidcSession(
 }
 
 function oidcSessionChanged(previous: OidcSession, current: OidcSession): boolean {
-  return previous.accessToken !== current.accessToken
-    || previous.refreshToken !== current.refreshToken
+  return previous.refreshToken !== current.refreshToken
     || previous.expiresAt !== current.expiresAt;
 }
 
