@@ -31,7 +31,9 @@ akl_assert_expected_env_snapshot "$ENV_FILE"
   || akl_fail "Verification release must be a real directory"
 PROJECT_NAME="$(akl_env_value "$ENV_FILE" AKL_RELEASE_COMPOSE_PROJECT akl)"
 PUBLIC_BASE_URL="$(akl_env_value "$ENV_FILE" AKL_WEB_PUBLIC_BASE_URL)"
+CHAT_PUBLIC_BASE_URL="$(akl_env_value "$ENV_FILE" AKL_CHAT_WEB_PUBLIC_BASE_URL)"
 PROXY_PORT="$(akl_env_value "$ENV_FILE" AKL_PROXY_HTTP_PORT 8080)"
+CHAT_WEB_PORT="$(akl_env_value "$ENV_FILE" AKL_CHAT_WEB_HTTP_PORT 3221)"
 akl_validate_project_name "$PROJECT_NAME"
 akl_require_file "$COMPOSE_FILE"
 akl_require_command curl
@@ -46,9 +48,12 @@ akl_assert_no_ambient_compose_overrides \
   REGISTRY_API_IMAGE \
   INGESTION_SERVICE_IMAGE \
   RAG_RETRIEVAL_SERVICE_IMAGE \
-  WEB_IMAGE
+  WEB_IMAGE \
+  CHAT_WEB_IMAGE
 [[ "$PUBLIC_BASE_URL" == https://* ]] \
   || akl_fail "Public verification URL must use HTTPS"
+[[ "$CHAT_PUBLIC_BASE_URL" == https://* ]] \
+  || akl_fail "Chat public verification URL must use HTTPS"
 [[ "$RETRY_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || akl_fail "Invalid verification attempt count"
 [[ "$RETRY_DELAY" =~ ^[0-9]+$ ]] || akl_fail "Invalid verification retry delay"
 
@@ -58,6 +63,7 @@ export REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
 export INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
 export RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
 export WEB_IMAGE="akl/web:${TARGET_SHA}"
+export CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
 COMPOSE=(
   docker compose
   --project-name "$PROJECT_NAME"
@@ -68,13 +74,15 @@ COMPOSE=(
 IFS=',' read -r -a services <<<"$SERVICE_CSV"
 [[ ${#services[@]} -gt 0 ]] || akl_fail "At least one service must be verified"
 WEB_AFFECTED="false"
+CHAT_WEB_AFFECTED="false"
 INGESTION_AFFECTED="false"
 for service in "${services[@]}"; do
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|web|chat-web) ;;
     *) akl_fail "Unsupported verification service: $service" ;;
   esac
   [[ "$service" != "web" ]] || WEB_AFFECTED="true"
+  [[ "$service" != "chat-web" ]] || CHAT_WEB_AFFECTED="true"
   [[ "$service" != "ingestion-service" ]] || INGESTION_AFFECTED="true"
 done
 
@@ -84,6 +92,7 @@ expected_image_for_service() {
     ingestion-service) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) printf '%s\n' "$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
+    chat-web) printf '%s\n' "$CHAT_WEB_IMAGE" ;;
     *) akl_fail "Unsupported image identity service: $1" ;;
   esac
 }
@@ -94,6 +103,7 @@ expected_image_id_for_service() {
     ingestion-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_INGESTION_IMAGE_ID:-}" ;;
     rag-retrieval-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_RAG_IMAGE_ID:-}" ;;
     web) printf '%s\n' "${AKL_RELEASE_EXPECTED_WEB_IMAGE_ID:-}" ;;
+    chat-web) printf '%s\n' "${AKL_RELEASE_EXPECTED_CHAT_WEB_IMAGE_ID:-}" ;;
     *) akl_fail "Unsupported durable image identity service: $1" ;;
   esac
 }
@@ -369,6 +379,10 @@ for service in "${services[@]}"; do
       health_url="${local_base}/akb/api/health"
       ready_url="${local_base}/akb/api/ready"
       ;;
+    chat-web)
+      health_url="http://127.0.0.1:${CHAT_WEB_PORT}/api/health"
+      ready_url="http://127.0.0.1:${CHAT_WEB_PORT}/api/ready"
+      ;;
   esac
   curl_json "$health_url" "${tmp_dir}/${service}-health.json"
   validate_health "${tmp_dir}/${service}-health.json"
@@ -392,6 +406,29 @@ else
 fi
 curl_json "${PUBLIC_BASE_URL%/}/api/ready" "${tmp_dir}/public-ready.json"
 validate_ready "${tmp_dir}/public-ready.json"
+
+if [[ "$CHAT_WEB_AFFECTED" == "true" ]]; then
+  curl_json "${CHAT_PUBLIC_BASE_URL%/}/api/health" "${tmp_dir}/chat-public-health.json"
+  validate_health "${tmp_dir}/chat-public-health.json"
+  curl_json "${CHAT_PUBLIC_BASE_URL%/}/manifest.webmanifest" "${tmp_dir}/chat-manifest.json"
+  python3 - "${tmp_dir}/chat-manifest.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    body = json.load(handle)
+if body.get("name") != "AKB Chat" or body.get("scope") != "/" or body.get("start_url") != "/":
+    raise SystemExit("chat PWA manifest is invalid")
+PY
+  blocked_status="$(
+    curl --disable --noproxy '*' --silent --show-error \
+      --output "${tmp_dir}/chat-blocked.json" \
+      --write-out '%{http_code}' \
+      "${CHAT_PUBLIC_BASE_URL%/}/api/documents"
+  )"
+  [[ "$blocked_status" == "403" ]] \
+    || akl_fail "Chat-only API route guard returned HTTP ${blocked_status}, expected 403"
+fi
 
 smoke_slug="akl-release-smoke-${TARGET_SHA:0:12}"
 smoke_status="$(

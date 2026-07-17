@@ -108,6 +108,41 @@
       ]
     },
     {
+      "clientId": "akb-chat-web",
+      "name": "AKB Standalone Chat PWA",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://chat.zeleznalady.cz/api/auth/callback",
+        "http://localhost:3010/api/auth/callback"
+      ],
+      "webOrigins": [
+        "https://chat.zeleznalady.cz",
+        "http://localhost:3010"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://chat.zeleznalady.cz/*##http://localhost:3010/*",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "akl-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "akl-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "archflow-api",
       "name": "ARCHFLOW API Services",
       "enabled": true,

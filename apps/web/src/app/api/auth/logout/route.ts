@@ -7,6 +7,7 @@ import {
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
   OIDC_STATE_COOKIE,
+  OIDC_PKCE_COOKIE,
 } from "@/lib/auth/oidc";
 
 export const runtime = "nodejs";
@@ -18,5 +19,6 @@ export async function GET() {
   response.cookies.delete(OIDC_REFRESH_COOKIE);
   response.cookies.delete(OIDC_SESSION_COOKIE);
   response.cookies.delete(OIDC_STATE_COOKIE);
+  response.cookies.delete(OIDC_PKCE_COOKIE);
   return response;
 }

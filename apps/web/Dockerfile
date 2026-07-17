@@ -17,8 +17,9 @@ RUN node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs run build
 
 FROM node:26-alpine AS runner
 WORKDIR /app
-LABEL cz.zeleznalady.akl.service="web"
 ARG NEXT_PUBLIC_AKL_BASE_PATH=""
+ARG AKL_IMAGE_SERVICE="web"
+LABEL cz.zeleznalady.akl.service="${AKL_IMAGE_SERVICE}"
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH

@@ -120,5 +120,6 @@ Detailed architecture references:
 - `docs/ARCHITECTURE/01_ARCHITEKTURA_DISTRIBUOVANYCH_SLUZEB.md`
 - `docs/ARCHITECTURE/02_SERVICE_BOUNDARIES.md`
 - `docs/ARCHITECTURE/enterprise-architecture.md`
+- `docs/ARCHITECTURE/standalone-chat-pwa.md`
 - `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`
