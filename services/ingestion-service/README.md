@@ -283,6 +283,12 @@ Při reindexu se podle `document_version_id` smaže stará verze v obou indexech
 pokud jsou zapnuté výchozí volby `AKL_QDRANT_DELETE_EXISTING_VERSION=true` a
 `AKL_OPENSEARCH_DELETE_EXISTING_VERSION=true`.
 
+Publikace řízeného dokumentu přes webovou publikační nebo workflow cestu spustí
+právě jeden deterministický následný ingestion pokus pro publikovanou immutable
+verzi. Tím se odvozené Qdrant/OpenSearch payloady srovnají s autoritativním
+stavem `valid` v Registry. Opakovaný bridge požadavek stejný refresh pouze
+idempotentně přehraje.
+
 ## Security A Logging
 
 Inbound API může vyžadovat bearer token. Mezislužbová volání propagují:

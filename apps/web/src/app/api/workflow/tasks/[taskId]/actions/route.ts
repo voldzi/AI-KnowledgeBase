@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import {
+  getServerApiClients,
+  getServerRequestContextForRequest,
+} from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
+import { refreshPublishedVersionIndexes } from "@/lib/ingestion/governed-operations";
 import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTaskAction } from "@/lib/types";
 
 import { workflowBadRequest, workflowBridgeError } from "../../../errors";
@@ -37,13 +41,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const { taskId } = await context.params;
-    const requestContext = await getServerRequestContext();
+    const requestContext = await getServerRequestContextForRequest(request);
     const forbidden = requireApiAccess(requestContext, "knowledge_workspace");
     if (forbidden) return forbidden;
     const clients = getServerApiClients();
     const task = await clients.registry.applyWorkflowTaskAction(taskId, payload, requestContext);
+    const refresh = payload.action === "publish"
+      && task.document_id
+      && task.document_version_id
+      ? await refreshPublishedVersionIndexes(
+          clients,
+          requestContext,
+          task.document_id,
+          task.document_version_id,
+        )
+      : null;
 
-    return NextResponse.json({ task });
+    return NextResponse.json({
+      task,
+      ...(refresh
+        ? {
+            index_refresh: {
+              ingestion_job_id: refresh.job.job_id,
+              ingestion_status: refresh.job.status,
+            },
+          }
+        : {}),
+    });
   } catch (error) {
     return workflowBridgeError(error);
   }

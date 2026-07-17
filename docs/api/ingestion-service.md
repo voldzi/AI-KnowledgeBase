@@ -83,6 +83,10 @@ GET  /ready
   authorized chunks. Returned edges include source/target entity endpoints,
   confidence, evidence counts and cited chunk evidence.
 - Supplies ingestion status that the web layer surfaces in upload, document detail, and workflow contexts.
+- After a controlled version is published, the web orchestration starts one
+  deterministic successor ingestion attempt for that exact immutable version.
+  This refreshes rebuildable Qdrant/OpenSearch payloads with the authoritative
+  `valid` status; PostgreSQL Registry data remains the source of truth.
 - Synchronizes AIIP ingestion status only for the immutable version already
   selected by the dedicated confirm route; it cannot establish/change current
   lineage, file metadata, or source URI.
