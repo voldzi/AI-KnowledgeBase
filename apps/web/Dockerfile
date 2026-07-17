@@ -28,7 +28,7 @@ RUN apk add --no-cache su-exec
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
 RUN mkdir -p /data/object-storage && chown -R nextjs:nextjs /data
 
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nextjs /app/public ./public
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
