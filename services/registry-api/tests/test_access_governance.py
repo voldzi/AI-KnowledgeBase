@@ -913,6 +913,50 @@ def test_service_registration_without_delegated_actor_uses_fixed_akb_identity(mo
     assert captured["audit_actor_subject_id"] is None
 
 
+def test_interactive_registration_uses_fixed_akb_identity_and_human_audit(monkeypatch) -> None:
+    binding = _policy()
+    settings = _settings(
+        AKL_STRATOS_INFORMATION_RESOURCES_URL="https://stratos.example/api/v1/information/resources",
+        AKB_POLICY_SERVICE_TOKEN="fixed-akb-token",
+    )
+    monkeypatch.setattr(api_module, "get_settings", lambda: settings)
+    principal = Principal(
+        subject_id="user-manager",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:upload", "akb:manage_document"},
+        bearer_token="interactive-user-token",
+    )
+    captured = {}
+
+    class Client:
+        def register_information_resource(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                resource_id="gir_interactive_document",
+                source_version="gresver_interactive_1",
+                policy_binding_id=binding.policy_binding_id,
+                policy_hash=canonical_policy_hash(binding),
+            )
+
+    monkeypatch.setattr(api_module, "governance_client", lambda _settings: Client())
+    result = _register_governed_resource(
+        principal=principal,
+        resource_type="document",
+        resource_id="doc_interactive",
+        source_version="gresver_interactive_1",
+        title="Interactive document",
+        policy=binding,
+        requested_scope=None,
+        parent_resource_id=None,
+        reason="test interactive registration",
+    )
+
+    assert result["governance_registration_status"] == "REGISTERED"
+    assert captured["credential_token"] == "fixed-akb-token"
+    assert captured["audit_actor_subject_id"] == "user-manager"
+
+
 def test_official_public_source_marker_requires_exact_public_policy_shape() -> None:
     payload = DocumentCreate.model_validate({
         "title": "Official source",

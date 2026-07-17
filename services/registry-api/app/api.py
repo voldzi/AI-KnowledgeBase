@@ -1135,9 +1135,14 @@ def _register_governed_resource(
             "governance_registered_at": None,
         }
 
-    credential_token = principal.bearer_token
-    if principal.service_identity or use_fixed_akb_identity:
-        credential_token = settings.stratos_policy_service_token
+    # STRATOS authorizes governed-resource registration only through AKB's
+    # fixed service identity. The interactive principal remains the audited
+    # actor, but its bearer must never replace the service transport
+    # credential for this server-to-server write.
+    credential_token = settings.stratos_policy_service_token
+    audit_actor_subject_id = delegated_actor_subject_id
+    if audit_actor_subject_id is None and not principal.service_identity:
+        audit_actor_subject_id = principal.subject_id
     if not credential_token:
         raise problem(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1147,7 +1152,7 @@ def _register_governed_resource(
     try:
         registration = governance_client(settings).register_information_resource(
             credential_token=credential_token,
-            audit_actor_subject_id=delegated_actor_subject_id,
+            audit_actor_subject_id=audit_actor_subject_id,
             resource_type=resource_type,
             resource_id=resource_id,
             source_version=source_version,
