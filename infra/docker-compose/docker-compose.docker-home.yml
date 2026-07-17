@@ -23,7 +23,7 @@ services:
     environment:
       AKL_PROXY_CONTAINER_PORT: ${AKL_PROXY_CONTAINER_PORT:-8080}
       PLATFORM_STATUS_UPSTREAM: ${PLATFORM_STATUS_UPSTREAM:-platform-status:8080}
-      WEB_UPSTREAM: ${WEB_UPSTREAM:-web:3000}
+      WEB_UPSTREAM: ${WEB_UPSTREAM:-akl-web-1:3000}
       REGISTRY_UPSTREAM: ${REGISTRY_UPSTREAM:-registry-api:8000}
       INGESTION_UPSTREAM: ${INGESTION_UPSTREAM:-ingestion-service:8090}
       RAG_UPSTREAM: ${RAG_UPSTREAM:-rag-retrieval-service:8080}
@@ -61,7 +61,7 @@ services:
       PLATFORM_HOST: 0.0.0.0
       PLATFORM_PORT: 8080
       PLATFORM_READY_TIMEOUT_SECONDS: ${PLATFORM_READY_TIMEOUT_SECONDS:-3}
-      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,opensearch=http://opensearch:9200,web=http://web:3000${AKL_WEB_BASE_PATH:-/akb}/health}
+      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,opensearch=http://opensearch:9200,web=http://akl-web-1:3000${AKL_WEB_BASE_PATH:-/akb}/health}
     networks:
       - app_zone
       - management_zone

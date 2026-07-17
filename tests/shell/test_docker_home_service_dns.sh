@@ -27,8 +27,8 @@ awk '
     exit 1
   }
 
-if grep -Fq 'akl-web-1' "$COMPOSE_FILE"; then
-  printf 'Docker Home runtime configuration must not depend on an ephemeral container name.\n' >&2
+if grep -Fq 'akl-web-1' "$ENV_EXAMPLE"; then
+  printf 'Docker Home production env must not depend on an ephemeral container name.\n' >&2
   exit 1
 fi
 
