@@ -34,6 +34,7 @@ import type {
   RegistryWorkflowTask,
   RoleMapping,
   UpdateAnalystCaseRequest,
+  UpdateDocumentRequest,
   UpsertRoleMappingRequest,
   WorkflowTaskListOptions,
   AssistantConversationDetail,
@@ -253,6 +254,17 @@ export class MockRegistryClient implements RegistryApiClient {
       })),
     };
     this.documents.unshift(document);
+    return cloneMock(document);
+  }
+
+  async updateDocument(
+    documentId: string,
+    request: UpdateDocumentRequest,
+    _context: ApiRequestContext,
+  ): Promise<Document> {
+    const document = this.requireDocument(documentId);
+    Object.assign(document, request, { updated_at: new Date().toISOString() });
+    if (request.owner_id) document.owner = request.owner_id;
     return cloneMock(document);
   }
 

@@ -39,6 +39,7 @@ import type {
   RegistryWorkflowTask,
   RoleMapping,
   UpdateAnalystCaseRequest,
+  UpdateDocumentRequest,
   UpsertRoleMappingRequest,
   WorkflowTaskListOptions
 } from "@/lib/types";
@@ -119,6 +120,19 @@ export class ProductionRegistryClient implements RegistryApiClient {
 
   createDocument(request: CreateDocumentRequest, context: ApiRequestContext): Promise<Document> {
     return this.post<Document>("/documents", request, "createDocument", context);
+  }
+
+  updateDocument(
+    documentId: string,
+    request: UpdateDocumentRequest,
+    context: ApiRequestContext
+  ): Promise<Document> {
+    return this.patch<Document>(
+      `/documents/${encodeURIComponent(documentId)}`,
+      request,
+      "updateDocument",
+      context
+    );
   }
 
   async listDocumentAssignments(documentId: string, context: ApiRequestContext): Promise<DocumentAssignment[]> {

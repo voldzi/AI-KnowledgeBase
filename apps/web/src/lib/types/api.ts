@@ -12,7 +12,8 @@ import type {
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
-  ReplaceDocumentAssignmentsRequest
+  ReplaceDocumentAssignmentsRequest,
+  UpdateDocumentRequest
 } from "./documents";
 import type {
   AnalystSearchRequest,
@@ -166,6 +167,11 @@ export interface RegistryApiClient {
   ): Promise<DocumentReadinessReport>;
   getDocument(documentId: string, context: ApiRequestContext): Promise<Document>;
   createDocument(request: CreateDocumentRequest, context: ApiRequestContext): Promise<Document>;
+  updateDocument(
+    documentId: string,
+    request: UpdateDocumentRequest,
+    context: ApiRequestContext
+  ): Promise<Document>;
   listDocumentAssignments(documentId: string, context: ApiRequestContext): Promise<DocumentAssignment[]>;
   replaceDocumentAssignments(
     documentId: string,

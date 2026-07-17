@@ -326,7 +326,11 @@ Kazdy assignment muze nest `sla_days` a eskalacni subjekt. Odvozene tasky uklada
 
 Rozhodnuti nad taskem se zapisuje pres `POST /api/v1/workflow/tasks/{task_id}/actions`. Podporovane akce jsou `assign`, `request_changes`, `approve`, `publish`, `archive` a `resolve`. `approve` nad review taskem nastavuje dokument na `approved`, `request_changes` vraci review/approved dokument na `draft`, `publish` respektuje stejny publish gate jako dokumentovy endpoint a `archive` pouziva stejnou archivacni logiku jako verze.
 
-Stavovy automat dokumentu je `draft -> review -> approved -> valid -> archived/cancelled`. `POST /api/v1/documents/{document_id}/versions/{version_id}/publish` vyzaduje `Document.status=approved`; jinak vraci `409 publish_requires_approval`.
+Stavovy automat dokumentu je `draft -> review -> approved -> valid -> archived/cancelled`.
+Platny dokument muze pri vzniku nove zdrojove verze znovu vstoupit do `review`, pote
+projde `approved -> valid`; drive platna verze se pri publikaci nove verze oznaci
+`superseded`. `POST /api/v1/documents/{document_id}/versions/{version_id}/publish`
+vyzaduje `Document.status=approved`; jinak vraci `409 publish_requires_approval`.
 
 Odvozena synchronizace aktivnich tasku zachovava manualni workflow rozhodnuti (`last_action`, aktualni stav a prirazeni). Sync muze aktualizovat zdrojova metadata jako aktualni stav dokumentu, ale nesmi pri listovani vratit task zpet do vychoziho stavu.
 

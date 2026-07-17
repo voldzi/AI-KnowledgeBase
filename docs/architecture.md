@@ -45,6 +45,7 @@ technical compatibility prefixes unless an explicit migration changes them.
 ```text
 browser -> AKB web bridge -> Registry API
 browser -> AKB web bridge -> upload session -> AKB object storage
+approved official collection -> allowlisted discovery -> immutable AKB version -> Ingestion Service
 Registry document/version write -> STRATOS GovernedInformationResource registration
 Registry document/version -> Ingestion Service -> parser/OCR/chunker
 Ingestion Service -> LLM Gateway embeddings -> Qdrant
@@ -86,6 +87,10 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
 - Web/API bridge mediates browser access; browser clients do not call internal
   storage, Registry, Ingestion, Qdrant, or LLM services directly unless the
   route is an approved AKB public bridge.
+- Official public-source collection discovery and download also remain inside
+  the web backend. The browser selects only a code-reviewed collection and a
+  discovered candidate; it cannot expand the host allowlist or provide a
+  trusted storage URI. See `docs/ingestion/official-public-sources.md`.
 
 ## Authentication And Authorization
 

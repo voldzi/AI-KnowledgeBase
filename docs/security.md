@@ -114,6 +114,14 @@ publication_lifecycle_active`. The publication must first be revoked through
 the governed publication endpoint; only the resulting local `REVOKED` state
 releases those operations.
 
+The same distinction applies to official public-source collections. Their
+public classification describes the source material, while the default
+audience remains the authenticated STRATOS organization. Collection sync uses
+code-reviewed HTTPS host allowlists, checked redirects, bounded file sizes,
+file signatures and SHA-256 version identity. It never creates an anonymous
+publication record. Details are in
+`docs/ingestion/official-public-sources.md`.
+
 The synthetic authenticated scope `public` is also not an organization scope
 or a shortcut to `document.read`. It permits only governed `rag.query` over an
 exact active immutable public version after a fresh anonymous central

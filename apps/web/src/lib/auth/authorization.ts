@@ -177,6 +177,7 @@ export function canAccessWorkspaceRoute(
     if (routeMatches(route, "/help")) return true;
     if (routeMatches(route, "/chat")) return effectiveCapabilities.includes("akb:chat");
     if (routeMatches(route, "/admin")) return effectiveCapabilities.includes("akb:manage_access");
+    if (routeMatches(route, "/sources")) return effectiveCapabilities.includes("akb:manage_document");
     if (routeMatches(route, "/audit")) return effectiveCapabilities.includes("akb:read_audit");
     if (routeMatches(route, "/intelligence")) return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:read_audit"]);
     if (routeMatches(route, "/documents/new") || routeMatches(route, "/upload")) {
@@ -195,6 +196,9 @@ export function canAccessWorkspaceRoute(
   }
   if (routeMatches(route, "/admin")) {
     return hasAnyRole(roles, ADMIN_ROLES);
+  }
+  if (routeMatches(route, "/sources")) {
+    return hasAnyRole(roles, DOCUMENT_CREATOR_ROLES);
   }
   if (routeMatches(route, "/audit")) {
     return hasAnyRole(roles, AUDIT_ROLES);
