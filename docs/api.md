@@ -45,6 +45,21 @@ AKB exposes several REST surfaces:
 | Governance Service | `/api/v1` | Version comparison, compliance, conflicts, KB drafts, validity alerts. |
 | Platform Status | root paths | `/health`, `/ready`, `/metrics`, `/openapi.json`. |
 
+The authenticated AKB web bridge also exposes the manager-only official-source
+operations:
+
+```text
+POST /api/public-sources/discover
+POST /api/public-sources/sync
+```
+
+Discovery accepts only a catalog collection id. Synchronization accepts one
+candidate returned by that catalog, revalidates the collection host allowlist,
+downloads and verifies the original, creates or updates the immutable AKB
+version, publishes it under collection-level approval and starts exact
+Registry-governed ingestion. See
+`docs/ingestion/official-public-sources.md`.
+
 True public AKB documents use a separate immutable delivery surface:
 
 ```text

@@ -286,11 +286,42 @@ export interface CreateDocumentRequest {
   }>;
 }
 
+export interface UpdateDocumentRequest {
+  title?: string;
+  document_type?: DocumentType;
+  owner_id?: string;
+  gestor_unit?: string;
+  classification?: Classification;
+  status?: DocumentStatus;
+  information_policy?: InformationPolicyBindingSummary;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  assignments?: DocumentAssignmentInput[];
+  access_policies?: Array<{
+    subjects: string[];
+    actions: string[];
+    constraints?: Record<string, unknown>;
+  }>;
+}
+
 export interface CreateVersionRequest {
   version_label: string;
   valid_from: string;
   valid_to: string | null;
   source_file_uri: string;
+  source_location?: {
+    kind: "url" | "uploaded_file" | "object_storage" | "generated_text" | "external_repository";
+    uri?: string | null;
+    file_name?: string | null;
+    content_type?: string | null;
+    sha256?: string | null;
+    storage_ref?: string | null;
+    captured_at?: string | null;
+    display_url?: string | null;
+    repository?: string | null;
+    path?: string | null;
+    version?: string | null;
+  } | null;
   file_hash?: string | null;
   change_summary: string;
   information_policy?: InformationPolicyBindingSummary;

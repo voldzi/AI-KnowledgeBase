@@ -80,6 +80,7 @@ Document status workflow:
 
 ```text
 draft -> review -> approved -> valid
+valid -> review (nova zdrojova verze) -> approved -> valid
 valid -> archived
 any active state -> cancelled
 review/approved -> draft when changes are requested

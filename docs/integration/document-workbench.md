@@ -49,7 +49,8 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - `POST /api/v1/workflow/tasks/{task_id}/actions`,
   - auditni zapis `workflow.task.<action>`,
   - idempotentni synchronizace tasku z dokumentovych stavu, citlive klasifikace a auditnich varovani,
-  - stavovy automat `draft -> review -> approved -> valid -> archived/cancelled`,
+  - stavovy automat `draft -> review -> approved -> valid -> archived/cancelled`;
+    nova zdrojova verze muze vratit `valid -> review -> approved -> valid`,
   - publish gate: `/documents/{document_id}/versions/{version_id}/publish` vyzaduje `Document.status=approved`,
   - tabulka `document_assignments`,
   - `GET /api/v1/documents/{document_id}/assignments`,

@@ -292,6 +292,43 @@ def test_document_status_transition_rejects_invalid_jump(client, admin_headers):
     assert rejected.json()["error"]["code"] == "invalid_document_status_transition"
 
 
+def test_valid_document_can_reenter_review_for_a_new_official_version(client, admin_headers):
+    document = _create_document(client, admin_headers)
+    created = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=admin_headers,
+        json={
+            "version_label": "1.0",
+            "valid_from": "2026-07-01",
+            "source_file_uri": "s3://akl-documents/doc/ver/official.pdf",
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "review"},
+    ).status_code == 200
+    assert client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "approved"},
+    ).status_code == 200
+    assert client.post(
+        f"/api/v1/documents/{document['document_id']}/versions/{created.json()['document_version_id']}/publish",
+        headers=admin_headers,
+    ).status_code == 200
+
+    reviewed_again = client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json={"status": "review"},
+    )
+
+    assert reviewed_again.status_code == 200, reviewed_again.text
+    assert reviewed_again.json()["status"] == "review"
+
+
 def test_analyst_case_saved_query_and_evidence_are_persisted(client, admin_headers, reader_headers):
     document = _create_document(client, admin_headers, title="Směrnice RMO 12/2024 pro řízení AI")
 

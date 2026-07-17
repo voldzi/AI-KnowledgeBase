@@ -251,6 +251,7 @@ DOCUMENT_STATUS_TRANSITIONS = {
     },
     DocumentStatus.valid.value: {
         DocumentStatus.valid.value,
+        DocumentStatus.review.value,
         DocumentStatus.archived.value,
         DocumentStatus.cancelled.value,
     },

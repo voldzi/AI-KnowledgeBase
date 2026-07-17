@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   Bot,
+  BookOpen,
   CircleHelp,
   Database,
   FileClock,
@@ -67,6 +68,7 @@ const navigation = {
     { href: "/intelligence", label: "Intelligence", icon: Network },
     { href: "/intelligence/quality", label: "Kvalita vyhledávání", icon: FlaskConical },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
+    { href: "/sources", label: "Veřejné zdroje", icon: BookOpen },
     { href: "/admin", label: "Administrace", icon: UserCog },
     { href: "/help", label: "Nápověda", icon: CircleHelp },
   ],
@@ -79,6 +81,7 @@ const navigation = {
     { href: "/intelligence", label: "Intelligence", icon: Network },
     { href: "/intelligence/quality", label: "Retrieval quality", icon: FlaskConical },
     { href: "/audit", label: "Audit", icon: ShieldCheck },
+    { href: "/sources", label: "Public sources", icon: BookOpen },
     { href: "/admin", label: "Administration", icon: UserCog },
     { href: "/help", label: "Help", icon: CircleHelp },
   ],
@@ -215,7 +218,7 @@ const moduleRouteGroups: Record<ShellModuleId, string[]> = {
   ai: ["/chat", "/help"],
   knowledge: [],
   intelligence: ["/intelligence", "/intelligence/quality"],
-  governance: ["/audit", "/admin"],
+  governance: ["/audit", "/sources", "/admin"],
 };
 
 const moduleRootRoutes: Record<ShellModuleId, string> = {

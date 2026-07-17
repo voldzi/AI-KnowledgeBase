@@ -67,6 +67,7 @@ from the flat standard documents.
 - Retrieval, ingestion, embeddings, citations:
   - `rag/`
   - `ingestion/`
+  - `ingestion/official-public-sources.md`
   - `llm/`
 - Security, authorization, governance:
   - `security/`
