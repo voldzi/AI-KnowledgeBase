@@ -18,9 +18,17 @@ from app.api import (
 from app.auth import Principal, _oidc_principal
 from app.config import Settings
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
-from app.models import Document
+from app.models import Document, DocumentVersion
+from app.official_public_sources import is_official_public_source_document
 from app.schemas import DocumentCreate
-from app.permissions import evaluate_document_access, evaluate_runtime_document_access, SubjectContext
+from app.permissions import (
+    Decision,
+    DocumentVersionAuthority,
+    SubjectContext,
+    evaluate_document_access,
+    evaluate_runtime_document_access,
+    evaluate_runtime_document_version_access,
+)
 
 
 def _settings(**overrides) -> Settings:
@@ -610,6 +618,34 @@ def _document(binding: InformationPolicyBinding) -> Document:
     )
 
 
+def _official_public_document() -> Document:
+    binding = _public_policy()
+    return Document(
+        document_id="doc_official_public",
+        title="Official public source",
+        document_type="methodology",
+        status="valid",
+        classification="public",
+        owner_id="user-manager",
+        tags=["official-public-reference", "official-source-collection:nukib"],
+        document_metadata={
+            "source_model": "official-public-reference-v1",
+            "source_public": True,
+            "audience": "organization",
+            "anonymous_publication": False,
+            "collection_id": "nukib",
+            "authority": "NÚKIB",
+            "canonical_url": "https://nukib.gov.cz/example.pdf",
+        },
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=canonical_policy_hash(binding),
+        policy_summary=binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+    )
+
+
 def test_runtime_decision_rechecks_active_scope_and_fails_closed(monkeypatch) -> None:
     binding = _policy()
     document = _document(binding)
@@ -652,6 +688,120 @@ def test_runtime_decision_rechecks_active_scope_and_fails_closed(monkeypatch) ->
     assert decision.reason_codes == ("SCOPE_INACTIVE",)
     assert calls[0]["scope"] == {"type": "organization_unit", "id": "it"}
     assert calls[0]["credential_token"] == "verified-user-token"
+
+
+def test_official_public_source_runtime_decision_uses_fixed_service_identity(
+    monkeypatch,
+) -> None:
+    document = _official_public_document()
+    principal = Principal(
+        subject_id="user-manager",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:manage_document"},
+        scopes={"organization:org_stratos"},
+        dynamic_access_loaded=True,
+        bearer_token="interactive-user-token",
+    )
+    context = SubjectContext(
+        subject_id="user-manager",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:manage_document"},
+        scopes={"organization:org_stratos"},
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        access_v2=True,
+    )
+    calls = []
+
+    class Client:
+        def decide(self, **kwargs):
+            calls.append(kwargs)
+            return {"decision": "ALLOW", "reasonCodes": ["ACCESS_ALLOW"]}
+
+    monkeypatch.setattr(permissions_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(permissions_module, "governance_client", lambda _settings: Client())
+
+    local = evaluate_document_access(context, "document.update", document)
+    decision = evaluate_runtime_document_access(
+        principal,
+        "document.update",
+        document,
+        local,
+    )
+
+    assert is_official_public_source_document(document) is True
+    assert local.allowed is True
+    assert decision.allowed is True
+    assert calls[0]["credential_token"] is None
+    assert calls[0]["capability_id"] == "akb:manage_document"
+
+
+def test_official_public_source_exact_version_decision_uses_fixed_service_identity(
+    monkeypatch,
+) -> None:
+    document = _official_public_document()
+    binding = _public_policy()
+    policy_hash = canonical_policy_hash(binding)
+    version = DocumentVersion(
+        document_version_id="ver_official_public_1",
+        document_id=document.document_id,
+        version_label="1.0",
+        status="valid",
+        organization_id="org_stratos",
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=policy_hash,
+        policy_summary=binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+    )
+    authority = DocumentVersionAuthority(
+        organization_id="org_stratos",
+        governed_resource_id="gir_official_public_version_1",
+        governed_source_version=version.document_version_id,
+        governed_parent_resource_id="gir_official_public_document",
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=policy_hash,
+        governance_scope={"type": "organization", "id": "org_stratos"},
+        governance_scope_hash="sha256:" + "a" * 64,
+        policy_binding=binding,
+    )
+    principal = Principal(
+        subject_id="user-manager",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:manage_document"},
+        scopes={"organization:org_stratos"},
+        dynamic_access_loaded=True,
+        bearer_token="interactive-user-token",
+    )
+    calls = []
+
+    class Client:
+        def decide(self, **kwargs):
+            calls.append(kwargs)
+            return {"decision": "ALLOW", "reasonCodes": ["ACCESS_ALLOW"]}
+
+    monkeypatch.setattr(permissions_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(permissions_module, "governance_client", lambda _settings: Client())
+
+    result = evaluate_runtime_document_version_access(
+        principal,
+        "document.ingest",
+        document,
+        version,
+        authority,
+        Decision(True, "local allow", {}),
+    )
+
+    assert result.allowed is True
+    assert calls[0]["credential_token"] is None
+    assert calls[0]["capability_id"] == "akb:manage_document"
 
 
 def test_governed_resource_registration_uses_verified_obo_contract(monkeypatch) -> None:
