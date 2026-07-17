@@ -8,6 +8,17 @@ export const OIDC_SESSION_COOKIE = "akl_session";
 export const OIDC_ACCESS_COOKIE = "akl_access";
 export const OIDC_REFRESH_COOKIE = "akl_refresh";
 
+const OIDC_REFRESH_RACE_TTL_MS = 2 * 60 * 1000;
+const OIDC_SESSION_CACHE_MAX_ENTRIES = 256;
+const OIDC_SESSION_CACHE_SKEW_MS = 5_000;
+
+type CachedOidcSession = {
+  expiresAt: number;
+  promise: Promise<OidcSession | null>;
+};
+
+const oidcSessionCache = new Map<string, CachedOidcSession>();
+
 export interface OidcSession {
   accessToken?: string;
   refreshToken?: string;
@@ -238,10 +249,6 @@ export function sealRefreshToken(refreshToken: string, secret: string): string {
   return sealTokenCookie({ refreshToken }, secret);
 }
 
-export function sealAccessToken(accessToken: string, secret: string): string {
-  return sealTokenCookie({ accessToken }, secret);
-}
-
 function sealTokenCookie(payload: Record<string, string>, secret: string): string {
   const iv = crypto.randomBytes(12);
   const key = sessionKey(secret);
@@ -256,14 +263,10 @@ function openRefreshToken(value: string, secret: string): string | undefined {
   return openTokenCookie(value, secret, "refreshToken");
 }
 
-function openAccessToken(value: string, secret: string): string | undefined {
-  return openTokenCookie(value, secret, "accessToken");
-}
-
 function openTokenCookie(
   value: string,
   secret: string,
-  keyName: "accessToken" | "refreshToken",
+  keyName: "refreshToken",
 ): string | undefined {
   try {
     const payload = Buffer.from(value, "base64url");
@@ -354,15 +357,72 @@ export function readSessionCookie(
   const refreshToken = refreshValue
     ? openRefreshToken(refreshValue, oidc.sessionSecret)
     : undefined;
-  const accessValue = cookies.get(OIDC_ACCESS_COOKIE)?.value;
-  const accessToken = accessValue
-    ? openAccessToken(accessValue, oidc.sessionSecret)
-    : undefined;
   return {
     ...session,
-    ...(accessToken ? { accessToken } : {}),
     ...(refreshToken ? { refreshToken } : {}),
   };
+}
+
+export function rememberOidcSession(
+  config: AklConfig,
+  session: OidcSession,
+  nowMs = Date.now(),
+): void {
+  if (
+    !session.accessToken ||
+    !session.refreshToken ||
+    session.expiresAt <= nowMs + OIDC_SESSION_CACHE_SKEW_MS
+  ) {
+    return;
+  }
+  pruneOidcSessionCache(nowMs);
+  setOidcSessionCacheEntry(
+    oidcSessionCacheKey(config, session.refreshToken),
+    {
+      expiresAt: session.expiresAt - OIDC_SESSION_CACHE_SKEW_MS,
+      promise: Promise.resolve(session),
+    },
+  );
+}
+
+export async function getOrRefreshOidcSession(
+  config: AklConfig,
+  session: OidcSession,
+  nowMs = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<OidcSession | null> {
+  if (session.accessToken && session.expiresAt > nowMs) {
+    return session;
+  }
+  if (!session.refreshToken) {
+    return null;
+  }
+
+  pruneOidcSessionCache(nowMs);
+  const cacheKey = oidcSessionCacheKey(config, session.refreshToken);
+  const cached = oidcSessionCache.get(cacheKey);
+  if (cached && cached.expiresAt > nowMs) {
+    return cached.promise;
+  }
+
+  const pending = refreshOidcSession(config, session, nowMs, fetchImpl)
+    .then((refreshed) => {
+      if (!refreshed) {
+        oidcSessionCache.delete(cacheKey);
+        return null;
+      }
+      rememberOidcSession(config, refreshed, nowMs);
+      return refreshed;
+    })
+    .catch((error: unknown) => {
+      oidcSessionCache.delete(cacheKey);
+      throw error;
+    });
+  setOidcSessionCacheEntry(cacheKey, {
+    expiresAt: nowMs + OIDC_REFRESH_RACE_TTL_MS,
+    promise: pending,
+  });
+  return pending;
 }
 
 export async function refreshOidcSession(
@@ -400,7 +460,11 @@ export async function refreshOidcSession(
     return null;
   }
   const tokens = (await response.json()) as OidcCallbackTokens;
-  return sessionFromTokens(tokens, nowMs);
+  const refreshed = sessionFromTokens(tokens, nowMs);
+  return {
+    ...refreshed,
+    refreshToken: refreshed.refreshToken ?? session.refreshToken,
+  };
 }
 
 export function cookieOptions(config: AklConfig) {
@@ -424,6 +488,37 @@ export function requireOidcConfig(
 
 function sessionKey(secret: string): Buffer {
   return crypto.createHash("sha256").update(secret).digest();
+}
+
+function oidcSessionCacheKey(config: AklConfig, refreshToken: string): string {
+  const oidc = requireOidcConfig(config);
+  return crypto
+    .createHash("sha256")
+    .update(`${oidc.issuer}\u0000${oidc.clientId}\u0000${refreshToken}`)
+    .digest("hex");
+}
+
+function pruneOidcSessionCache(nowMs: number): void {
+  for (const [key, entry] of oidcSessionCache) {
+    if (entry.expiresAt <= nowMs) {
+      oidcSessionCache.delete(key);
+    }
+  }
+}
+
+function setOidcSessionCacheEntry(
+  key: string,
+  entry: CachedOidcSession,
+): void {
+  oidcSessionCache.delete(key);
+  oidcSessionCache.set(key, entry);
+  while (oidcSessionCache.size > OIDC_SESSION_CACHE_MAX_ENTRIES) {
+    const oldestKey = oidcSessionCache.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    oidcSessionCache.delete(oldestKey);
+  }
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {

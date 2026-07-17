@@ -25,6 +25,10 @@ cookie before calling Registry or RAG. Splitting and minimizing the cookies keep
 the browser session below proxy and browser header limits and still prevents
 JavaScript from reading credentials. The browser never receives a readable
 refresh token and must not call Registry, RAG, or storage services directly.
+AKB keeps the short-lived access session only in a bounded process-memory cache
+addressed by a one-way hash of the refresh token. Concurrent BFF requests share
+one refresh operation, including rotated refresh tokens; after a restart the
+cache is safely reconstructed by refreshing from the sealed browser cookie.
 
 The OIDC callback consumes the one-time authorization code server-side, sets the
 sealed session cookie, and returns a short no-store page that uses
