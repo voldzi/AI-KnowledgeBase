@@ -105,6 +105,16 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
   180-day retention, archive support, and user/group sharing records.
 - Server-side web route guards redirect employee chat-only users away from
   knowledge-management and admin surfaces.
+- The standalone `AKL_WEB_PROFILE=chat` instance applies an environment-level
+  server allowlist before route execution. Direct management API requests
+  return bounded `403` JSON even for privileged identities; management pages
+  redirect to the chat shell.
+- `chat.zeleznalady.cz` uses the dedicated public OIDC client
+  `akb-chat-web`, Authorization Code + PKCE, a separate session secret and
+  host-only `HttpOnly`, `Secure`, `SameSite=Lax` cookies.
+- The service worker caches only versioned framework assets, icons, manifest
+  and a content-free offline page. Auth, profile, chat, history, citations,
+  documents, exports and every API request remain network-only and `no-store`.
 - Mutating web BFF routes for document administration, governance, workflow
   actions, upload preflight, and admin access require management/admin roles.
 - Regression tests cover restricted and confidential document filtering for

@@ -1,11 +1,13 @@
 export type AklEnvironment = "development" | "test" | "staging" | "production";
 export type ApiClientMode = "mock" | "production";
 export type AuthMode = "mock" | "oidc";
+export type WebProfile = "platform" | "chat";
 
 export interface AklConfig {
   environment: AklEnvironment;
   apiClientMode: ApiClientMode;
   authMode: AuthMode;
+  webProfile?: WebProfile;
   serviceBaseUrls: {
     registry: string;
     ingestion: string;
@@ -59,6 +61,14 @@ function parseAuthMode(value: string | undefined): AuthMode {
   throw new Error(`Unsupported AKL_AUTH_MODE value: ${normalized}`);
 }
 
+function parseWebProfile(value: string | undefined): WebProfile {
+  const normalized = value ?? "platform";
+  if (normalized === "platform" || normalized === "chat") {
+    return normalized;
+  }
+  throw new Error(`Unsupported AKL_WEB_PROFILE value: ${normalized}`);
+}
+
 function normalizeBaseUrl(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required when AKL_API_CLIENT_MODE=production`);
@@ -97,6 +107,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
   const environment = parseEnvironment(env.AKL_ENV);
   const apiClientMode = parseClientMode(env.AKL_API_CLIENT_MODE);
   const authMode = parseAuthMode(env.AKL_AUTH_MODE);
+  const webProfile = parseWebProfile(env.AKL_WEB_PROFILE);
 
   if (environment === "production" && apiClientMode === "mock") {
     throw new Error("Refusing to start production with AKL_API_CLIENT_MODE=mock");
@@ -179,7 +190,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
       "Configure only one of AKL_WEB_INGESTION_CLIENT_SECRET or AKL_WEB_INGESTION_CLIENT_SECRET_FILE",
     );
   }
-  if (environment === "production") {
+  if (environment === "production" && webProfile === "platform") {
     if (!ingestionTransport) {
       throw new Error("Production requires the dedicated web-to-ingestion service identity");
     }
@@ -198,6 +209,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     environment,
     apiClientMode,
     authMode,
+    webProfile,
     serviceBaseUrls,
     oidc,
     ingestionTransport,

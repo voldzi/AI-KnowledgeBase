@@ -55,6 +55,44 @@ Minimalni routovani:
 /arch/     -> ArchFlow upstream, docker.home.cz:3232
 ```
 
+Samostatný chatový klient používá vlastní host route bez path prefixu:
+
+```text
+chat.zeleznalady.cz/ -> AKB chat-web, docker.home.cz:3221
+```
+
+Tato instance používá stejný AKB Registry/RAG/datový stack jako hlavní AKB
+web. Liší se pouze build profilem, OIDC klientem a host-only session secret.
+DNS záznam `chat.zeleznalady.cz` musí směřovat na stejný veřejný DMZ endpoint
+jako hlavní STRATOS doména. Samostatný TLS server blok předává celý host bez
+path prefixu:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name chat.zeleznalady.cz;
+
+    # TLS certifikát a společné bezpečnostní include spravuje DMZ provoz.
+
+    location / {
+        proxy_pass http://docker.home.cz:3221;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+Před reloadem se vždy provede `nginx -t`; po publikaci musí z DMZ projít
+`/api/health`, `/api/ready` a `/manifest.webmanifest`. Management API, například
+`/api/documents`, musí na chat hostu vrátit `403
+CHAT_PROFILE_ROUTE_FORBIDDEN`.
+
 Proxy musi predavat standardni forwarded headers:
 
 ```text
@@ -528,6 +566,7 @@ Porty byly overene jako volne na `docker.home.cz` a jsou rezervovane pro STRATOS
 
 ```text
 3220  AKB / AI KnowledgeBase
+3221  AKB Chat PWA
 3230  Budget & Contract
 3231  ProjectFlow
 3232  ArchFlow
@@ -554,6 +593,9 @@ curl -fsS http://127.0.0.1:3220/rag/health
 curl -fsS http://127.0.0.1:3220/llm-gateway/health
 curl -fsS http://127.0.0.1:3220/governance/health
 curl -fsS http://127.0.0.1:3220/evaluation/health
+curl -fsS http://127.0.0.1:3221/api/health
+curl -fsS http://127.0.0.1:3221/api/ready
+curl -fsS http://127.0.0.1:3221/manifest.webmanifest
 ```
 
 ## Postup Pro Ostatní Aplikace
