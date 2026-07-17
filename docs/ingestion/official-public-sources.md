@@ -24,8 +24,11 @@ workflow.
   A manager with `akb:manage_document` starts the synchronization. Registry
   registers only the strictly marked public-reference document and version
   through the existing fixed `service:akb` identity, while retaining the
-  manager as `metadata.auditActorSubjectId`. Publication, approval and the
-  exact web-to-Ingestion delegated proof remain bound to the current manager.
+  manager as `metadata.auditActorSubjectId`. All central runtime decisions for
+  a strictly marked official-public-reference document also use that fixed
+  system identity. Local collection approval, audit and the exact
+  web-to-Ingestion proof remain bound to the current manager; ordinary uploads
+  continue to use their verified interactive bearer.
 - AKB forwards the policy owner plus `issuedAt` and nullable `reviewAt` to the
   STRATOS Policy Registry. The Registry validates and immutably stores these
   metadata and AKB accepts only the authoritative matching response.

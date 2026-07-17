@@ -23,6 +23,7 @@ from app.information_policy import (
     canonical_policy_hash,
 )
 from app.models import Document, DocumentVersion, RoleMapping
+from app.official_public_sources import is_official_public_source_document
 from app.public_documents import PublicDocumentIntegrityError, validate_publication_integrity
 from app.schemas import Action, Classification, GovernanceScope
 
@@ -760,6 +761,7 @@ def evaluate_document_version_access(
 def evaluate_runtime_document_version_access(
     principal: Principal,
     action: str,
+    document: Document,
     version: DocumentVersion,
     authority: DocumentVersionAuthority,
     local_decision: Decision,
@@ -778,7 +780,11 @@ def evaluate_runtime_document_version_access(
             scope=authority.governance_scope,
             policy_binding=dict(version.policy_summary),
             policy_hash=authority.policy_hash,
-            credential_token=principal.bearer_token,
+            credential_token=(
+                None
+                if is_official_public_source_document(document)
+                else principal.bearer_token
+            ),
         )
     except GovernanceDenied as exc:
         raise problem(
@@ -854,7 +860,11 @@ def evaluate_runtime_document_access(
         return decision
     if not (principal.dynamic_access_loaded or principal.service_identity):
         return decision
-    credential_token = principal.bearer_token if principal.dynamic_access_loaded else None
+    credential_token = (
+        None
+        if is_official_public_source_document(document)
+        else principal.bearer_token if principal.dynamic_access_loaded else None
+    )
     capability = _primary_capability(action)
     try:
         response = governance_client(settings).decide(
@@ -1014,6 +1024,7 @@ def require_document_version_action(
     decision = evaluate_runtime_document_version_access(
         principal,
         action.value,
+        document,
         version,
         authority,
         decision,
