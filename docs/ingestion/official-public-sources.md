@@ -1,8 +1,9 @@
 # Official Public Sources
 
-AKB can import approved collections of original PDF and DOCX documents from
-official public authorities without turning every item into a separately
-managed internal document workflow.
+AKB can import approved collections of original PDF, DOCX and explicitly
+approved structured open-data documents from official public authorities
+without turning every item into a separately managed internal document
+workflow.
 
 ## Product Model
 
@@ -11,9 +12,9 @@ managed internal document workflow.
 - Discovery follows only HTTPS URLs on the collection's explicit host
   allowlist. Redirects are checked again and IP-address destinations are
   rejected.
-- Every file is downloaded by the AKB web backend, checked for the expected PDF
-  or OOXML signature, bounded by the normal upload limit, hashed and stored in
-  AKB object storage.
+- Every file is downloaded by the AKB web backend, checked for the expected PDF,
+  OOXML or collection-approved JSON signature, bounded by the normal upload
+  limit, hashed and stored in AKB object storage.
 - The canonical source URL and capture time are recorded on the immutable AKB
   version. Repeated synchronization is idempotent by collection plus canonical
   URL and SHA-256. A changed hash creates and publishes a new version; an
@@ -22,6 +23,9 @@ managed internal document workflow.
   hash checks. It does not bypass Registry authorization or Ingestion proofs.
   Each version still uses the current actor, Registry policy binding and exact
   web-to-Ingestion delegated proof.
+- AKB forwards the policy owner plus `issuedAt` and nullable `reviewAt` to the
+  STRATOS Policy Registry. The Registry validates and immutably stores these
+  metadata and AKB accepts only the authoritative matching response.
 - Failed indexing remains resumable. Re-running the collection retries the
   failed current attempt or continues from the first missing version.
 
@@ -53,12 +57,17 @@ The curated pilot target is 354 documents:
 | Selected EUR-Lex acts | 26 | fixed CELEX catalog |
 | Open FitSM IT service management | 25 | official-site discovery |
 | Czech Statistical Office | 24 | official-site discovery |
-| Czech legislation from e-Sbírka | 90 | registered official API required |
+| Czech legislation from e-Sbírka | 90 | credential-free official open data |
 
-The first six collections are synchronizable without a new credential. The
-e-Sbírka collection stays visibly disabled until the operator obtains official
-production API access. Do not replace it with scraped copies from unofficial
-legal portals.
+All seven collections are synchronizable without a new credential. The
+e-Sbírka connector reads the legal-act JSON-LD description, selects the newest
+effective version not later than the synchronization date and downloads its
+ordered official fragments through the public SPARQL endpoint. The stable AKB
+document identity uses the undated canonical e-Sbírka URL, so a later effective
+version creates a new immutable AKB version instead of a duplicate document.
+The open-data provider currently warns that identifiers and structure may still
+change; synchronization therefore relies on the reviewed catalog, hashes and
+idempotent replacement rather than undocumented scraping.
 
 ## Operator Procedure
 

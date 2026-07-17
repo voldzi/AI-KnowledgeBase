@@ -54,7 +54,7 @@ export function PublicSourcesWorkbench({
   const [states, setStates] = useState<Record<string, CollectionState>>({});
   const cancelRef = useRef<Record<string, boolean>>({});
   const availableTarget = useMemo(
-    () => collections.filter((item) => item.syncMode !== "api_required").reduce((sum, item) => sum + item.targetDocuments, 0),
+    () => collections.reduce((sum, item) => sum + item.targetDocuments, 0),
     [collections],
   );
   const createdThisSession = useMemo(
@@ -170,7 +170,6 @@ export function PublicSourcesWorkbench({
           const progress = state.candidates.length > 0
             ? Math.round((state.completed / state.candidates.length) * 100)
             : 0;
-          const apiRequired = collection.syncMode === "api_required";
           return (
             <article className="public-source-card" key={collection.id}>
               <header className="public-source-card__header">
@@ -179,9 +178,7 @@ export function PublicSourcesWorkbench({
                   <h2>{collection.name}</h2>
                   <p>{collection.description}</p>
                 </div>
-                <span className={`public-source-card__status ${apiRequired ? "is-waiting" : "is-ready"}`}>
-                  {apiRequired ? "Čeká na API" : "Připraveno"}
-                </span>
+                <span className="public-source-card__status is-ready">Připraveno</span>
               </header>
 
               <div className="public-source-card__numbers">
@@ -215,25 +212,21 @@ export function PublicSourcesWorkbench({
                 <a href={collection.homepage} target="_blank" rel="noreferrer">
                   <ExternalLink aria-hidden="true" /> Oficiální web
                 </a>
-                {!apiRequired ? (
-                  <>
-                    <StratosButton type="button" onClick={() => void discover(collection)} disabled={state.syncing || state.discovering}>
-                      <RefreshCw aria-hidden="true" /> {state.discovering ? "Načítám…" : "Načíst katalog"}
-                    </StratosButton>
-                    <StratosButton
-                      type="button"
-                      tone="primary"
-                      onClick={() => void synchronize(collection)}
-                      disabled={state.syncing || state.discovering || state.candidates.length === 0}
-                    >
-                      <CheckCircle2 aria-hidden="true" /> {state.syncing ? "Synchronizuji…" : "Synchronizovat kolekci"}
-                    </StratosButton>
-                    {state.syncing ? (
-                      <StratosButton type="button" onClick={() => { cancelRef.current[collection.id] = true; }}>
-                        Zastavit po aktuální položce
-                      </StratosButton>
-                    ) : null}
-                  </>
+                <StratosButton type="button" onClick={() => void discover(collection)} disabled={state.syncing || state.discovering}>
+                  <RefreshCw aria-hidden="true" /> {state.discovering ? "Načítám…" : "Načíst katalog"}
+                </StratosButton>
+                <StratosButton
+                  type="button"
+                  tone="primary"
+                  onClick={() => void synchronize(collection)}
+                  disabled={state.syncing || state.discovering || state.candidates.length === 0}
+                >
+                  <CheckCircle2 aria-hidden="true" /> {state.syncing ? "Synchronizuji…" : "Synchronizovat kolekci"}
+                </StratosButton>
+                {state.syncing ? (
+                  <StratosButton type="button" onClick={() => { cancelRef.current[collection.id] = true; }}>
+                    Zastavit po aktuální položce
+                  </StratosButton>
                 ) : null}
               </footer>
             </article>

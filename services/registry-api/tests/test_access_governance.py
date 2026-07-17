@@ -140,6 +140,7 @@ def test_user_projection_never_falls_back_to_raw_scope_grants(monkeypatch) -> No
 def test_policy_registry_response_must_match_every_immutable_dimension(monkeypatch) -> None:
     binding = _policy()
     expected_hash = canonical_policy_hash(binding)
+    requests: list[dict[str, object]] = []
     response_body = {
         "schemaVersion": "stratos-information-policy-2",
         "organizationId": "org_stratos",
@@ -171,6 +172,7 @@ def test_policy_registry_response_must_match_every_immutable_dimension(monkeypat
             return None
 
         def request(self, _method, _url, **_kwargs):
+            requests.append(dict(_kwargs["json"]))
             return SimpleNamespace(status_code=200, json=lambda: dict(response_body))
 
     monkeypatch.setattr("app.access_governance.httpx.Client", Client)
@@ -180,6 +182,9 @@ def test_policy_registry_response_must_match_every_immutable_dimension(monkeypat
     ))
 
     assert client.ensure_binding_registered(binding) == expected_hash
+    assert requests[-1]["originatorId"] == binding.originator_id
+    assert requests[-1]["issuedAt"] == "2026-07-14T00:00:00Z"
+    assert requests[-1]["reviewAt"] is None
     response_body["audience"] = {
         **response_body["audience"],
         "scopeIds": ["logistics"],
