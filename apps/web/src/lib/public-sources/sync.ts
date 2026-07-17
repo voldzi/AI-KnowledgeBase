@@ -419,7 +419,15 @@ async function downloadOfficialDocument(
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       if (!location) throw new Error("Official source returned a redirect without Location.");
-      current = assertPublicSourceUrl(collectionId, new URL(location, current).toString());
+      const redirectUrl = new URL(location, current);
+      if (
+        collectionId === "eu-law"
+        && redirectUrl.protocol === "http:"
+        && redirectUrl.hostname === "publications.europa.eu"
+      ) {
+        redirectUrl.protocol = "https:";
+      }
+      current = assertPublicSourceUrl(collectionId, redirectUrl.toString());
       continue;
     }
     if (!response.ok) throw new Error(`Official source download returned HTTP ${response.status}.`);

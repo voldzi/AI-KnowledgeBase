@@ -122,11 +122,23 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
     });
     const context = createMockContext({ subjectId: "public_source_manager" });
     const bytes = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF");
-    const fetcher: typeof fetch = async (_input, init) => {
+    const fetcher: typeof fetch = async (input, init) => {
       const headers = new Headers(init?.headers);
       assert.match(headers.get("accept") ?? "", /application\/pdf/);
       assert.equal(headers.get("accept-language"), "ces");
       assert.equal(headers.get("accept-max-cs-size"), String(getUploadSettings().maxFileBytes));
+      if (String(input) === "https://publications.europa.eu/resource/celex/32024R1689") {
+        return new Response(null, {
+          status: 303,
+          headers: {
+            Location: "http://publications.europa.eu/resource/cellar/ai-act.0002.01/DOC_1",
+          },
+        });
+      }
+      assert.equal(
+        String(input),
+        "https://publications.europa.eu/resource/cellar/ai-act.0002.01/DOC_1",
+      );
       return new Response(bytes, {
         status: 200,
         headers: {
