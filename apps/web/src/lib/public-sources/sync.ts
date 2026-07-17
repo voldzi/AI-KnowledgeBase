@@ -75,7 +75,11 @@ export async function synchronizePublicSource(
     context,
   );
   const versions = await clients.registry.listDocumentVersions(document.document_id, context);
-  const sameVersion = versions[0]?.file_hash === downloaded.sha256 ? versions[0] : null;
+  const currentVersion = versions[0] ?? null;
+  const sameContent = currentVersion?.file_hash === downloaded.sha256;
+  const sameVersion = sameContent && currentVersionMatchesDownloadMetadata(currentVersion, downloaded)
+    ? currentVersion
+    : null;
   if (sameVersion) {
     if (sameVersion.status !== "valid" || document.status !== "valid") {
       await approveAndPublishOfficialVersion(document, sameVersion, clients, context);
@@ -179,10 +183,11 @@ export async function synchronizePublicSource(
   );
 
   const capturedAt = new Date().toISOString();
+  const metadataCorrection = sameContent && currentVersion !== null;
   const version = await clients.registry.createDocumentVersion(
     document.document_id,
     {
-      version_label: sourceVersionLabel(downloaded, capturedAt),
+      version_label: uniqueSourceVersionLabel(downloaded, capturedAt, versions),
       valid_from: capturedAt.slice(0, 10),
       valid_to: null,
       source_file_uri: preflight.source_file_uri,
@@ -197,9 +202,11 @@ export async function synchronizePublicSource(
         version: downloaded.etag ?? downloaded.lastModified ?? downloaded.sha256,
       },
       file_hash: downloaded.sha256,
-      change_summary: versions.length === 0
-        ? "První automaticky zachycená verze oficiálního veřejného zdroje."
-        : "Nová verze oficiálního veřejného zdroje zjištěná změnou obsahu.",
+      change_summary: metadataCorrection
+        ? "Opravná neměnná verze se správným názvem a typem původního souboru."
+        : versions.length === 0
+          ? "První automaticky zachycená verze oficiálního veřejného zdroje."
+          : "Nová verze oficiálního veřejného zdroje zjištěná změnou obsahu.",
       file: {
         filename: downloaded.filename,
         mime_type: downloaded.mimeType,
@@ -586,21 +593,29 @@ function officialFilename(
   }
   if (!filename) filename = decodeURIComponent(url.pathname.split("/").pop() || "official-document");
   filename = filename.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-").trim();
-  const extension = mimeType === "application/pdf"
-    ? ".pdf"
-    : mimeType === "application/json"
-      ? ".json"
-      : mimeType === "application/xhtml+xml"
-        ? ".xhtml"
-        : mimeType === "text/html"
-          ? ".html"
-          : mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            ? ".pptx"
-            : mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              ? ".xlsx"
-              : ".docx";
-  if (!/\.(pdf|docx|pptx|xlsx|doc|json|xhtml|html|htm)$/i.test(filename)) filename += extension;
+  const extensions = officialExtensions(mimeType);
+  const currentExtension = filename.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() ?? "";
+  if (!extensions.includes(currentExtension)) {
+    filename = currentExtension
+      ? filename.slice(0, -(currentExtension.length + 1)) + `.${extensions[0]}`
+      : `${filename}.${extensions[0]}`;
+  }
   return filename.slice(0, 300);
+}
+
+function officialExtensions(mimeType: string): readonly string[] {
+  if (mimeType === "application/pdf") return ["pdf"];
+  if (mimeType === "application/json") return ["json"];
+  if (mimeType === "application/xhtml+xml") return ["xhtml"];
+  if (mimeType === "text/html") return ["html", "htm"];
+  if (mimeType === "application/msword") return ["doc"];
+  if (mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
+    return ["pptx"];
+  }
+  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    return ["xlsx"];
+  }
+  return ["docx"];
 }
 
 function czechLawOpenDataFilename(url: URL): string | null {
@@ -615,6 +630,37 @@ function sourceVersionLabel(downloaded: DownloadedOfficialDocument, capturedAt: 
     ? sourceDate.toISOString().slice(0, 10)
     : capturedAt.slice(0, 10);
   return `${date}-${downloaded.sha256.slice(-12)}`;
+}
+
+function uniqueSourceVersionLabel(
+  downloaded: DownloadedOfficialDocument,
+  capturedAt: string,
+  versions: readonly DocumentVersion[],
+): string {
+  const base = sourceVersionLabel(downloaded, capturedAt);
+  const labels = new Set(versions.map((version) => version.version_label));
+  if (!labels.has(base)) return base;
+  for (let revision = 1; revision <= 999; revision += 1) {
+    const candidate = `${base}-r${revision}`;
+    if (!labels.has(candidate)) return candidate;
+  }
+  throw new Error("Official source exhausted corrective version labels.");
+}
+
+function currentVersionMatchesDownloadMetadata(
+  version: DocumentVersion,
+  downloaded: DownloadedOfficialDocument,
+): boolean {
+  const sourceLocation = (version as DocumentVersion & {
+    source_location?: {
+      file_name?: string | null;
+      content_type?: string | null;
+      sha256?: string | null;
+    } | null;
+  }).source_location;
+  return sourceLocation?.file_name === downloaded.filename
+    && sourceLocation.content_type === downloaded.mimeType
+    && sourceLocation.sha256 === downloaded.sha256;
 }
 
 function normalizeDocumentTitle(value: string, url: URL): string {
