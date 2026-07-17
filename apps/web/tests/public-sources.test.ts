@@ -50,13 +50,86 @@ test("e-Sbírka discovery uses credential-free open data and selects the current
   const procurementAct = result.candidates.find((item) => item.title.startsWith("134/2016 Sb."));
 
   assert.equal(collection?.syncMode, "open_data");
-  assert.equal(result.candidates.length, 90);
-  assert.equal(result.pagesVisited, 90);
-  assert.equal(requests, 90);
+  assert.equal(result.candidates.length, collection?.openDataActs?.length);
+  assert.equal(result.pagesVisited, collection?.openDataActs?.length);
+  assert.equal(requests, collection?.openDataActs?.length);
   assert.equal(result.warnings.length, 0);
   assert.equal(procurementAct?.canonicalUrl, "https://e-sbirka.gov.cz/sb/2016/134");
   assert.match(procurementAct?.sourceUrl ?? "", /^https:\/\/opendata\.eselpoint\.gov\.cz\/sparql\?/);
   assert.match(decodeURIComponent(procurementAct?.sourceUrl ?? ""), /2016\/134\/2025-01-01/);
+});
+
+test("ČSÚ collection keeps authoritative HTML catalog pages as searchable originals", async () => {
+  const collection = publicSourceCollection("cz-statistics");
+  const result = await discoverPublicSourceCollection(
+    "cz-statistics",
+    async (_input) => new Response("<html><body><main>Statistické produkty</main></body></html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    }),
+  );
+
+  assert.equal(collection?.allowHtml, true);
+  assert.ok(result.candidates.some((item) => item.sourceUrl === "https://csu.gov.cz/katalog-produktu"));
+  assert.ok(result.candidates.some((item) => item.sourceUrl === "https://csu.gov.cz/otevrena_data"));
+});
+
+test("ČSÚ HTML source is stored as an immutable controlled-document version", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "akb-public-csu-source-"));
+  const previousRoot = process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+  const previousEnvironment = process.env.AKL_ENV;
+  process.env.AKL_WEB_OBJECT_STORAGE_ROOT = storageRoot;
+  process.env.AKL_ENV = "test";
+  try {
+    const clients = createApiClients({
+      env: {
+        AKL_ENV: "test",
+        AKL_API_CLIENT_MODE: "mock",
+        AKL_AUTH_MODE: "mock",
+      },
+    });
+    const context = createMockContext({ subjectId: "public_source_manager" });
+    const bytes = new TextEncoder().encode("<html><body><main>Katalog produktů ČSÚ</main></body></html>");
+    const transport = async (correlationId: string) => ({
+      ...context,
+      requestId: correlationId,
+      correlationId,
+    });
+    const created = await synchronizePublicSource(
+      {
+        collectionId: "cz-statistics",
+        sourceUrl: "https://csu.gov.cz/katalog-produktu",
+        title: "Katalog produktů Českého statistického úřadu",
+      },
+      clients,
+      context,
+      async (_input, init) => {
+        assert.match(new Headers(init?.headers).get("accept") ?? "", /text\/html/);
+        return new Response(bytes, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Length": String(bytes.byteLength),
+          },
+        });
+      },
+      transport,
+    );
+    const details = created.version as typeof created.version & {
+      file?: { mime_type?: string | null };
+      source_location?: { file_name?: string | null };
+    };
+
+    assert.equal(created.action, "created");
+    assert.equal(details.file?.mime_type, "text/html");
+    assert.match(details.source_location?.file_name ?? "", /\.html$/);
+  } finally {
+    if (previousRoot === undefined) delete process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+    else process.env.AKL_WEB_OBJECT_STORAGE_ROOT = previousRoot;
+    if (previousEnvironment === undefined) delete process.env.AKL_ENV;
+    else process.env.AKL_ENV = previousEnvironment;
+    await rm(storageRoot, { recursive: true, force: true });
+  }
 });
 
 test("crawler discovers documents and refuses links outside the collection allowlist", async () => {

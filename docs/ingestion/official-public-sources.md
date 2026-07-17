@@ -1,7 +1,7 @@
 # Official Public Sources
 
-AKB can import approved collections of original PDF, DOCX and explicitly
-approved structured open-data documents from official public authorities
+AKB can import approved collections of original PDF, DOCX, reviewed HTML
+catalog pages and explicitly approved structured open-data documents from official public authorities
 without turning every item into a separately managed internal document
 workflow.
 
@@ -13,7 +13,7 @@ workflow.
   allowlist. Redirects are checked again and IP-address destinations are
   rejected.
 - Every file is downloaded by the AKB web backend, checked for the expected PDF,
-  OOXML or collection-approved JSON signature, bounded by the normal upload
+  OOXML, reviewed HTML or collection-approved JSON signature, bounded by the normal upload
   limit, hashed and stored in AKB object storage.
 - The canonical source URL and capture time are recorded on the immutable AKB
   version. Repeated synchronization is idempotent by collection plus canonical
@@ -58,17 +58,17 @@ The source metadata uses:
 
 ## Pilot Catalog
 
-The curated pilot target is 354 documents:
+The curated pilot target is 384 documents:
 
 | Collection | Target | Mode |
 | --- | ---: | --- |
 | NÚKIB supporting materials | 70 | official-site discovery |
 | Public procurement methods | 82 | official-site discovery |
 | DIA architecture and eGovernment | 37 | official-site discovery |
-| Selected EU legal acts | 26 | fixed CELEX catalog through the official Cellar dissemination API |
+| Selected EU legal acts | 33 | fixed CELEX catalog through the official Cellar dissemination API |
 | Open FitSM IT service management | 25 | official-site discovery |
-| Czech Statistical Office | 24 | official-site discovery |
-| Czech legislation from e-Sbírka | 90 | credential-free official open data |
+| Czech Statistical Office | 40 | official-site discovery plus reviewed HTML catalog pages |
+| Czech legislation from e-Sbírka | 97 | credential-free official open data |
 
 All seven collections are synchronizable without a new credential. The
 EU-law connector downloads the official Czech XHTML expression from the
@@ -79,6 +79,14 @@ expression is complete and directly indexable. The connector does not scrape
 the browser-facing EUR-Lex site or depend on its interactive WAF challenge.
 Cellar's legacy same-host HTTP redirect is upgraded back to HTTPS before
 download; redirects to HTTP or to another host remain rejected.
+
+The Czech Statistical Office collection includes reviewed official HTML
+originals for the product catalog, subscription products, open data, databases,
+applications, classifications and methodological overview. These pages cover
+questions that cannot be answered from annual statistical-program PDFs alone.
+HTML is accepted only for collections with an explicit code-reviewed
+`allowHtml` flag and remains subject to the same host allowlist, byte limit,
+content signature, immutable hash and Registry policy as file downloads.
 
 The e-Sbírka connector reads the legal-act JSON-LD description, selects the newest
 effective version not later than the synchronization date and downloads its
@@ -93,6 +101,29 @@ No additional Keycloak user or client is created for this workflow. It reuses
 the existing `AKB_POLICY_SERVICE_TOKEN` mapped by STRATOS to `service:akb`.
 Missing or invalid service credentials fail closed before an AKB document is
 committed.
+
+Licensed or copyrighted internal references, including organization-owned ITIL
+copies, are not added to this public-source catalog. They are imported as
+ordinary controlled documents with `classification=internal`, an
+organization-only audience and explicit licensing metadata. Openly licensed
+FitSM material remains in the public collection.
+
+## Search Indexes
+
+Registry/PostgreSQL remains authoritative for document identity, versions,
+workflow, policy and audit, while object storage remains authoritative for the
+immutable source bytes. Qdrant and OpenSearch are rebuildable derived indexes:
+
+- Qdrant supplies semantic vector retrieval.
+- OpenSearch supplies Czech BM25 retrieval over exact titles, legal
+  identifiers, articles, paragraphs, product names and domain terminology.
+- RAG combines the ranked lists and still performs Registry authorization
+  before returning evidence.
+
+Production ingestion writes every new chunk to both indexes. Environments that
+already contain Qdrant chunks must run
+`scripts/backfill_opensearch_from_qdrant.py` and verify equal chunk counts
+before switching `AKL_RAG_FULLTEXT_MODE` to `opensearch`.
 
 ## Operator Procedure
 

@@ -36,6 +36,7 @@ export interface PublicSourceCollection {
   maxPages: number;
   maxDocuments: number;
   licenseNote: string;
+  allowHtml?: boolean;
   fixedDocuments?: PublicSourceFixedDocument[];
   openDataActs?: PublicSourceOpenDataAct[];
 }
@@ -64,6 +65,13 @@ const eurLexActs: ReadonlyArray<readonly [string, string]> = [
   ["Rozhodnutí o politickém programu Digitální dekáda 2030", "32022D2481"],
   ["Nařízení o volném pohybu neosobních údajů", "32018R1807"],
   ["Nařízení o evropské statistice", "32009R0223"],
+  ["Prováděcí nařízení o datových souborech s vysokou hodnotou", "32023R0138"],
+  ["Směrnice INSPIRE", "32007L0002"],
+  ["Nařízení o evropských podnikových statistikách", "32019R2152"],
+  ["Nařízení o evropských statistikách o osobách a domácnostech", "32019R1700"],
+  ["Nařízení o Evropském systému národních a regionálních účtů", "32013R0549"],
+  ["Nařízení o harmonizovaných indexech spotřebitelských cen", "32016R0792"],
+  ["Nařízení o evropské statistice obyvatelstva a domů", "32025R2458"],
   ["Finanční nařízení EU", "32018R1046"],
   ["Směrnice o přístupnosti webových stránek a mobilních aplikací subjektů veřejného sektoru", "32016L2102"],
   ["Evropský kodex pro elektronické komunikace", "32018L1972"],
@@ -76,8 +84,11 @@ const eurLexDocuments: PublicSourceFixedDocument[] = eurLexActs.map(([title, cel
 }));
 
 const czechLawActs: PublicSourceOpenDataAct[] = [
+  { title: "Zákon o správě dat, o řízeném přístupu k datům a o změně některých souvisejících zákonů (zákon o správě dat a o řízeném přístupu k datům)", year: 2026, number: "60" },
   { title: "Zákon o svobodném přístupu k informacím", year: 1999, number: "106" },
+  { title: "Vyhláška o struktuře informací zveřejňovaných o povinném subjektu a osnově popisu úkonů vykonávaných v rámci agendy", year: 2020, number: "515" },
   { title: "Zákon o informačních systémech veřejné správy a o změně některých dalších zákonů", year: 2000, number: "365" },
+  { title: "Vyhláška o dlouhodobém řízení informačních systémů veřejné správy", year: 2023, number: "360" },
   { title: "Zákon o elektronických úkonech a autorizované konverzi dokumentů", year: 2008, number: "300" },
   { title: "Zákon o základních registrech", year: 2009, number: "111" },
   { title: "Zákon o právu na digitální služby a o změně některých zákonů", year: 2020, number: "12" },
@@ -129,6 +140,10 @@ const czechLawActs: PublicSourceOpenDataAct[] = [
   { title: "Zákon o kybernetické bezpečnosti", year: 2025, number: "264" },
   { title: "Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o kybernetické bezpečnosti", year: 2025, number: "265" },
   { title: "Zákon o odolnosti subjektů kritické infrastruktury a o změně souvisejících zákonů (zákon o kritické infrastruktuře)", year: 2025, number: "266" },
+  { title: "Vyhláška o regulovaných službách", year: 2025, number: "408" },
+  { title: "Vyhláška o bezpečnostních opatřeních poskytovatele regulované služby v režimu vyšších povinností", year: 2025, number: "409" },
+  { title: "Vyhláška o bezpečnostních opatřeních poskytovatele regulované služby v režimu nižších povinností", year: 2025, number: "410" },
+  { title: "Vyhláška o bezpečnostních úrovních informačních systémů veřejné správy", year: 2025, number: "411" },
   { title: "Vyhláška o plánu odolnosti, posouzení rizik, opatřeních k zajištění odolnosti subjektů kritické infrastruktury a o hlášení incidentu", year: 2026, number: "122" },
   { title: "Vyhláška o Portálu Národního úřadu pro kybernetickou a informační bezpečnost a požadavcích na některé úkony", year: 2025, number: "334" },
   { title: "Vyhláška o bezpečnostních pravidlech pro orgány veřejné správy využívající služby poskytovatelů cloud computingu", year: 2025, number: "412" },
@@ -166,6 +181,37 @@ const czechLawActs: PublicSourceOpenDataAct[] = [
   { title: "Zákon, kterým se mění některé zákony v souvislosti s další elektronizací postupů orgánů veřejné moci", year: 2021, number: "261" },
   { title: "Zákon, kterým se mění zákon č. 12/2020 Sb., o právu na digitální služby a o změně některých zákonů, ve znění pozdějších předpisů, a další související zákony", year: 2022, number: "471" },
   { title: "Zákon, kterým se mění zákon č. 12/2020 Sb., o právu na digitální služby a o změně některých zákonů, ve znění pozdějších předpisů, a další související zákony", year: 2024, number: "1" },
+];
+
+const czechStatisticsDocuments: PublicSourceFixedDocument[] = [
+  {
+    title: "Státní statistická služba České republiky",
+    url: "https://csu.gov.cz/statni-statisticka-sluzba-cr",
+  },
+  {
+    title: "Katalog produktů Českého statistického úřadu",
+    url: "https://csu.gov.cz/katalog-produktu",
+  },
+  {
+    title: "Produkty Českého statistického úřadu k odběru",
+    url: "https://csu.gov.cz/produkty-k-odberu",
+  },
+  {
+    title: "Otevřená data Českého statistického úřadu",
+    url: "https://csu.gov.cz/otevrena_data",
+  },
+  {
+    title: "Databáze a aplikace Českého statistického úřadu",
+    url: "https://csu.gov.cz/databaze-a-aplikace",
+  },
+  {
+    title: "Metodiky pro orgány státní statistické služby",
+    url: "https://csu.gov.cz/metodiky-pro-organy-statni-statisticke-sluzby-a-onas",
+  },
+  {
+    title: "Klasifikace a číselníky Českého statistického úřadu",
+    url: "https://csu.gov.cz/klasifikace-a-ciselniky",
+  },
 ];
 
 export const PUBLIC_SOURCE_COLLECTIONS: readonly PublicSourceCollection[] = [
@@ -281,7 +327,7 @@ export const PUBLIC_SOURCE_COLLECTIONS: readonly PublicSourceCollection[] = [
     homepage: "https://csu.gov.cz/",
     topic: "statisticka-sluzba",
     documentType: "methodology",
-    targetDocuments: 24,
+    targetDocuments: 40,
     syncMode: "crawler",
     allowedHosts: ["csu.gov.cz", "www.czso.cz", "apl.czso.cz"],
     seedUrls: [
@@ -300,8 +346,10 @@ export const PUBLIC_SOURCE_COLLECTIONS: readonly PublicSourceCollection[] = [
       "/zakon_o_statni_statisticke_sluzbe",
     ],
     maxPages: 80,
-    maxDocuments: 24,
+    maxDocuments: 40,
     licenseNote: "Veřejné oficiální dokumenty ČSÚ; u statistických dat se zachovává zdroj a časová verze.",
+    allowHtml: true,
+    fixedDocuments: czechStatisticsDocuments,
   },
   {
     id: "czech-law",

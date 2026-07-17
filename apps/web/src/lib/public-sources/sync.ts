@@ -58,7 +58,7 @@ export async function synchronizePublicSource(
     collection.id,
     input.canonicalUrl || input.sourceUrl,
   );
-  const downloaded = await downloadOfficialDocument(sourceUrl, collection.id, fetcher);
+  const downloaded = await downloadOfficialDocument(sourceUrl, collection, fetcher);
   const stableId = officialSourceStableId(collection.id, canonicalUrl.toString());
   const stableTag = `official-source-id:${stableId}`;
   const existing = await clients.registry.listDocuments(context, { tag: stableTag });
@@ -394,13 +394,13 @@ interface DownloadedOfficialDocument {
 
 async function downloadOfficialDocument(
   input: URL,
-  collectionId: string,
+  collection: NonNullable<ReturnType<typeof publicSourceCollection>>,
   fetcher: typeof fetch,
 ): Promise<DownloadedOfficialDocument> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
     try {
-      return await downloadOfficialDocumentOnce(input, collectionId, fetcher);
+      return await downloadOfficialDocumentOnce(input, collection, fetcher);
     } catch (error) {
       lastError = error;
       if (attempt === DOWNLOAD_ATTEMPTS || !isRetryableOfficialDownloadError(error)) throw error;
@@ -412,9 +412,11 @@ async function downloadOfficialDocument(
 
 async function downloadOfficialDocumentOnce(
   input: URL,
-  collectionId: string,
+  collection: NonNullable<ReturnType<typeof publicSourceCollection>>,
   fetcher: typeof fetch,
 ): Promise<DownloadedOfficialDocument> {
+  const collectionId = collection.id;
+  const allowHtml = collection.allowHtml === true || collectionId === "eu-law";
   let current = assertPublicSourceUrl(collectionId, input.toString());
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     const maxBytes = getUploadSettings().maxFileBytes;
@@ -424,7 +426,9 @@ async function downloadOfficialDocumentOnce(
           ? "application/sparql-results+json,application/ld+json,application/json;q=0.9"
           : collectionId === "eu-law"
             ? "application/xhtml+xml"
-          : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword;q=0.8,*/*;q=0.1",
+            : allowHtml
+              ? "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document;q=0.9,*/*;q=0.1"
+              : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword;q=0.8,*/*;q=0.1",
         ...(collectionId === "eu-law"
           ? {
               "Accept-Language": "ces",
@@ -464,7 +468,7 @@ async function downloadOfficialDocumentOnce(
       response.headers.get("content-type"),
       bytes,
       collectionId === "czech-law",
-      collectionId === "eu-law",
+      allowHtml,
     );
     if (collectionId === "czech-law") assertCzechLawSparqlPayload(bytes);
     const filename = officialFilename(
@@ -497,7 +501,7 @@ function normalizeOfficialMimeType(
   value: string | null,
   bytes: Uint8Array,
   allowJson: boolean,
-  allowXhtml: boolean,
+  allowHtml: boolean,
 ): string {
   const declared = value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   if (startsWithAscii(bytes, "%PDF-")) return "application/pdf";
@@ -507,11 +511,11 @@ function normalizeOfficialMimeType(
   if (declared === "application/msword") return declared;
   const firstContentByte = bytes.find((value) => ![0x09, 0x0a, 0x0d, 0x20].includes(value));
   if (
-    allowXhtml
+    allowHtml
     && ["application/xhtml+xml", "text/html"].includes(declared)
     && firstContentByte === 0x3c
   ) {
-    return "application/xhtml+xml";
+    return declared;
   }
   if (
     allowJson
@@ -573,8 +577,10 @@ function officialFilename(
       ? ".json"
       : mimeType === "application/xhtml+xml"
         ? ".xhtml"
-      : ".docx";
-  if (!/\.(pdf|docx|doc|json|xhtml)$/i.test(filename)) filename += extension;
+        : mimeType === "text/html"
+          ? ".html"
+          : ".docx";
+  if (!/\.(pdf|docx|doc|json|xhtml|html|htm)$/i.test(filename)) filename += extension;
   return filename.slice(0, 300);
 }
 
