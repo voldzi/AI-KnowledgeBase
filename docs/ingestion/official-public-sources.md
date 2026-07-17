@@ -139,6 +139,10 @@ before switching `AKL_RAG_FULLTEXT_MODE` to `opensearch`.
    timeout, HTTP 429 and HTTP 5xx failures receive one automatic retry.
 5. Verify that failures are zero and that newly created ingestion attempts reach
    `INDEXED`. A failed item can be retried by synchronizing the collection again.
+   When a previously captured OOXML original has the correct content hash but
+   legacy file-type metadata, synchronization creates a corrective immutable
+   version with the detected DOCX, PPTX or XLSX metadata and keeps the earlier
+   version in the audit history.
 6. Ask a representative question in Knowledge chat and verify that the answer
    cites the official authority and opens the stored original.
 

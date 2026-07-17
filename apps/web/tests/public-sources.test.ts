@@ -188,6 +188,59 @@ test("FitSM PPTX source keeps its presentation type instead of being mislabeled 
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     );
     assert.equal(details.source_location?.file_name, "FitSM_Advanced_Training_SOC_V3.4.1_DE.pptx");
+
+    const mutableVersions = (clients.registry as unknown as {
+      versions: Array<typeof created.version & {
+        source_location?: {
+          file_name?: string | null;
+          content_type?: string | null;
+          sha256?: string | null;
+        } | null;
+      }>;
+    }).versions;
+    const legacyVersion = mutableVersions.find(
+      (version) => version.document_version_id === created.version.document_version_id,
+    );
+    assert.ok(legacyVersion?.source_location);
+    legacyVersion.source_location.file_name = "FitSM_Advanced_Training_SOC_V3.4.1_DE.docx";
+    legacyVersion.source_location.content_type =
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+    const repaired = await synchronizePublicSource(
+      {
+        collectionId: "open-itsm",
+        sourceUrl: "https://www.fitsm.eu/download/1552/",
+        title: "Advanced Training in Service Operation and Control",
+      },
+      clients,
+      context,
+      async () => new Response(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": "attachment; filename=FitSM_Advanced_Training_SOC_V3.4.1_DE.docx",
+          "Content-Length": String(bytes.byteLength),
+        },
+      }),
+      transport,
+    );
+    const repairedDetails = repaired.version as typeof repaired.version & {
+      source_location?: { file_name?: string | null; content_type?: string | null };
+    };
+    const repairedVersions = await clients.registry.listDocumentVersions(
+      created.document.document_id,
+      context,
+    );
+
+    assert.equal(repaired.action, "updated");
+    assert.equal(repaired.version.file_hash, created.version.file_hash);
+    assert.notEqual(repaired.version.version_label, created.version.version_label);
+    assert.equal(repairedDetails.source_location?.file_name, "FitSM_Advanced_Training_SOC_V3.4.1_DE.pptx");
+    assert.equal(
+      repairedDetails.source_location?.content_type,
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    assert.equal(repairedVersions.length, 2);
   } finally {
     if (previousRoot === undefined) delete process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
     else process.env.AKL_WEB_OBJECT_STORAGE_ROOT = previousRoot;
