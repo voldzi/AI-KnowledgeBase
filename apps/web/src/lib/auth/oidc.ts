@@ -7,6 +7,7 @@ export const OIDC_STATE_COOKIE = "akl_oidc_state";
 export const OIDC_SESSION_COOKIE = "akl_session";
 export const OIDC_ACCESS_COOKIE = "akl_access";
 export const OIDC_REFRESH_COOKIE = "akl_refresh";
+export const OIDC_PKCE_COOKIE = "akl_oidc_pkce";
 
 const OIDC_REFRESH_RACE_TTL_MS = 2 * 60 * 1000;
 const OIDC_SESSION_CACHE_MAX_ENTRIES = 256;
@@ -41,6 +42,7 @@ export interface OidcCallbackTokens {
 export function buildAuthorizationUrl(
   config: AklConfig,
   state: string,
+  codeVerifier?: string,
 ): string {
   const oidc = requireOidcConfig(config);
   const url = new URL(`${oidc.issuer}/protocol/openid-connect/auth`);
@@ -49,7 +51,15 @@ export function buildAuthorizationUrl(
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", oidc.scopes);
   url.searchParams.set("state", state);
+  if (codeVerifier) {
+    url.searchParams.set("code_challenge", pkceCodeChallenge(codeVerifier));
+    url.searchParams.set("code_challenge_method", "S256");
+  }
   return url.toString();
+}
+
+export function createPkceVerifier(): string {
+  return crypto.randomBytes(48).toString("base64url");
 }
 
 export function buildLogoutUrl(config: AklConfig): string {
@@ -96,6 +106,7 @@ export function normalizeReturnToForPublicBase(
 export async function exchangeAuthorizationCode(
   config: AklConfig,
   code: string,
+  codeVerifier?: string,
 ): Promise<OidcCallbackTokens> {
   const oidc = requireOidcConfig(config);
   const body = new URLSearchParams({
@@ -106,6 +117,9 @@ export async function exchangeAuthorizationCode(
   });
   if (oidc.clientSecret) {
     body.set("client_secret", oidc.clientSecret);
+  }
+  if (codeVerifier) {
+    body.set("code_verifier", codeVerifier);
   }
 
   const response = await fetch(`${oidc.issuer}/protocol/openid-connect/token`, {
@@ -121,6 +135,13 @@ export async function exchangeAuthorizationCode(
     );
   }
   return (await response.json()) as OidcCallbackTokens;
+}
+
+function pkceCodeChallenge(codeVerifier: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(codeVerifier)
+    .digest("base64url");
 }
 
 export function sessionFromTokens(

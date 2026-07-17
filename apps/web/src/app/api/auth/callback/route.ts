@@ -8,6 +8,7 @@ import {
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
   OIDC_STATE_COOKIE,
+  OIDC_PKCE_COOKIE,
   buildPublicAppUrl,
   normalizeReturnToForPublicBase,
   rememberOidcSession,
@@ -26,19 +27,20 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const expectedState = request.cookies.get(OIDC_STATE_COOKIE)?.value;
+  const codeVerifier = request.cookies.get(OIDC_PKCE_COOKIE)?.value;
   const returnTo = normalizeReturnToForPublicBase(
     config,
     safeReturnToFromState(state, "/"),
   );
 
-  if (!code || !state || state !== expectedState) {
+  if (!code || !state || state !== expectedState || !codeVerifier) {
     console.warn("OIDC callback rejected due to invalid state.");
     return redirectToLogin(config, returnTo);
   }
 
   let tokens;
   try {
-    tokens = await exchangeAuthorizationCode(config, code);
+    tokens = await exchangeAuthorizationCode(config, code, codeVerifier);
   } catch (error) {
     console.error("OIDC callback token exchange failed.", error);
     return redirectToLogin(config, returnTo);
@@ -48,6 +50,7 @@ export async function GET(request: NextRequest) {
   rememberOidcSession(config, session);
   const response = redirectTo(buildPublicAppUrl(config, returnTo));
   response.cookies.delete(OIDC_STATE_COOKIE);
+  response.cookies.delete(OIDC_PKCE_COOKIE);
   response.cookies.set(OIDC_SESSION_COOKIE, sealBrowserSession(session, oidc.sessionSecret), cookieOptions(config));
   response.cookies.delete(OIDC_ACCESS_COOKIE);
   if (session.refreshToken) {
@@ -60,6 +63,7 @@ function redirectToLogin(config: ReturnType<typeof getAklConfig>, returnTo: stri
   const loginUrl = buildPublicAppUrl(config, `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`);
   const response = redirectTo(loginUrl);
   response.cookies.delete(OIDC_STATE_COOKIE);
+  response.cookies.delete(OIDC_PKCE_COOKIE);
   response.cookies.delete(OIDC_SESSION_COOKIE);
   response.cookies.delete(OIDC_ACCESS_COOKIE);
   response.cookies.delete(OIDC_REFRESH_COOKIE);

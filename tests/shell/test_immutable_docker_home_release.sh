@@ -173,6 +173,8 @@ services:
     image: ${RAG_RETRIEVAL_SERVICE_IMAGE}
   web:
     image: ${WEB_IMAGE}
+  chat-web:
+    image: ${CHAT_WEB_IMAGE}
 YAML
 printf 'registry-v1\n' >"$WORK_REPO/services/registry-api/release.txt"
 printf 'FROM scratch\n' >"$WORK_REPO/services/ingestion-service/Dockerfile"
@@ -206,6 +208,8 @@ AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE=${INGESTION_REGISTRY_CLIENT_SECRET_FIL
 AKL_RAG_REGISTRY_CLIENT_SECRET_FILE=${RAG_REGISTRY_CLIENT_SECRET_FILE}
 AKL_WEB_INGESTION_CLIENT_SECRET_FILE=${WEB_INGESTION_CLIENT_SECRET_FILE}
 AKL_WEB_PUBLIC_BASE_URL=https://stratos.example.invalid/akb
+AKL_CHAT_WEB_PUBLIC_BASE_URL=https://chat.example.invalid
+AKL_CHAT_WEB_HTTP_PORT=18221
 AKL_PROXY_HTTP_PORT=18080
 ENV
 chmod 0600 "$AKL_PROD_ENV_FILE"
@@ -258,6 +262,7 @@ image_ref_for_service() {
     ingestion-service) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) printf '%s\n' "$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
+    chat-web) printf '%s\n' "$CHAT_WEB_IMAGE" ;;
     *) return 1 ;;
   esac
 }
@@ -265,7 +270,7 @@ image_ref_for_service() {
 service_for_image_ref() {
   local ref="$1"
   local service
-  for service in registry-api ingestion-service rag-retrieval-service web; do
+  for service in registry-api ingestion-service rag-retrieval-service web chat-web; do
     if [[ "$(image_ref_for_service "$service")" == "$ref" ]]; then
       printf '%s\n' "$service"
       return 0
@@ -296,7 +301,7 @@ write_image_state() {
 container_service_for_id() {
   local requested_id="$1"
   local service state_dir
-  for service in registry-api ingestion-service rag-retrieval-service web; do
+  for service in registry-api ingestion-service rag-retrieval-service web chat-web; do
     state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
     if [[ -f "${state_dir}/id" && "$(<"${state_dir}/id")" == "$requested_id" ]]; then
       printf '%s\n' "$service"
@@ -642,7 +647,7 @@ if [[ "${1-}" == "ps" ]]; then
   shift 2
   [[ "${1-}" == "--format" && "${2-}" == '{{.ID}}' && $# -eq 2 ]]
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|web|chat-web) ;;
     *) exit 98 ;;
   esac
   if [[ "$service" == "registry-api" \
@@ -837,7 +842,7 @@ case "$command_name" in
     printf 'up:%s\n' "$*" >>"$CALL_LOG"
     for argument in "$@"; do
       case "$argument" in
-        registry-api|ingestion-service|rag-retrieval-service|web)
+        registry-api|ingestion-service|rag-retrieval-service|web|chat-web)
           if [[ "${FAKE_IMAGE_RETARGET_DURING_UP_SERVICE:-}" == "$argument" \
             && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up" ]]; then
             : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up"
@@ -867,14 +872,14 @@ case "$command_name" in
   ps)
     case "$*" in
       '--status running --services')
-        for service in registry-api ingestion-service rag-retrieval-service web; do
+        for service in registry-api ingestion-service rag-retrieval-service web chat-web; do
           state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
           if [[ -f "${state_dir}/running" && "$(<"${state_dir}/running")" == "true" ]]; then
             printf '%s\n' "$service"
           fi
         done
         ;;
-      '-q registry-api'|'-q ingestion-service'|'-q rag-retrieval-service'|'-q web')
+      '-q registry-api'|'-q ingestion-service'|'-q rag-retrieval-service'|'-q web'|'-q chat-web')
         service="${2-}"
         state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
         [[ ! -f "${state_dir}/id" ]] || cat "${state_dir}/id"
@@ -1048,7 +1053,7 @@ if [[ -n "${FAKE_IMAGE_RETARGET_DURING_SMOKE_SERVICE:-}" \
   && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-smoke" ]]; then
   service="$FAKE_IMAGE_RETARGET_DURING_SMOKE_SERVICE"
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|web|chat-web) ;;
     *) exit 98 ;;
   esac
   : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-smoke"
@@ -1061,6 +1066,12 @@ if [[ "$url" == */api/public/documents/* ]]; then
   printf 'HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nCache-Control: no-store\r\n\r\n' >"$header_file"
   printf '{"error":{"code":"PUBLIC_DOCUMENT_UNAVAILABLE","message":"The public document is unavailable."}}\n' >"$output_file"
   printf '404'
+elif [[ "$url" == */manifest.webmanifest ]]; then
+  printf '{"name":"AKB Chat","scope":"/","start_url":"/"}\n' >"$output_file"
+elif [[ "$url" == */api/documents ]]; then
+  [[ -n "$output_file" && "$write_out" == '%{http_code}' ]]
+  printf '{"error":{"code":"CHAT_PROFILE_ROUTE_FORBIDDEN"}}\n' >"$output_file"
+  printf '403'
 elif [[ "$url" == */health ]]; then
   health_version="$AKL_SERVICE_VERSION"
   if [[ "$url" == */akb/api/health && -f "$FAKE_WEB_STATE" ]]; then
@@ -1573,7 +1584,8 @@ for image_field in \
   target_registry_image_id \
   target_ingestion_image_id \
   target_rag_image_id \
-  target_web_image_id; do
+  target_web_image_id \
+  target_chat_web_image_id; do
   grep -Eq "^${image_field}=sha256:[0-9a-f]{64}$" "$first_success_record" \
     || fail "successful immutable rollout did not durably record ${image_field}"
 done
@@ -1666,8 +1678,8 @@ migration_line="$(grep -n '^alembic_upgrade$' "$CALL_LOG" | head -n 1 | cut -d: 
 first_success_log="$(awk '/^MARK first-immutable-success$/ {capture=1; next} capture' "$CALL_LOG")"
 grep -Fxq "bootstrap_target_deploy:${AKL_RELEASE_ROOT}/releases/${SHA_ONE}" <<<"$first_success_log" \
   || fail 'first rollout did not execute the orchestrator from the exact target release'
-grep -Fxq 'build:registry-api rag-retrieval-service web' <<<"$first_success_log" \
-  || fail 'first rollout did not Compose-build the immutable Registry, RAG, and web images'
+grep -Fxq 'build:registry-api rag-retrieval-service web chat-web' <<<"$first_success_log" \
+  || fail 'first rollout did not Compose-build the immutable Registry, RAG, web, and chat-web images'
 grep -Fxq 'build:ingestion-service' <<<"$first_success_log" \
   || fail 'first rollout did not directly build the immutable ingestion image'
 grep -Fxq 'docker_exec_readiness:web-ingestion-transport:nextjs' <<<"$first_success_log" \
@@ -1944,7 +1956,7 @@ fi
 assert_current_sha "$TRANSITION_FAILED_LEGACY_SHA"
 assert_runtime_marker "$TRANSITION_FAILED_SHA" failed
 transition_failed_record="$(deployment_record_for_sha "$TRANSITION_FAILED_SHA")"
-for service in registry-api ingestion-service rag-retrieval-service web; do
+for service in registry-api ingestion-service rag-retrieval-service web chat-web; do
   [[ ! -e "${FAKE_RUNTIME_DIR}/containers/${service}" ]] \
     || fail "transition verification failure left the unverified ${service} container present"
 done
@@ -1958,6 +1970,8 @@ grep -Fxq 'target_rag_quarantined=true' "$transition_failed_record" \
   || fail 'transition failure record omitted RAG quarantine'
 grep -Fxq 'target_web_quarantined=true' "$transition_failed_record" \
   || fail 'transition failure record omitted web quarantine'
+grep -Fxq 'target_chat_web_quarantined=true' "$transition_failed_record" \
+  || fail 'transition failure record omitted chat web quarantine'
 grep -Fxq 'deploy_lock_preserved=false' "$transition_failed_record" \
   || fail 'successful transition quarantine unexpectedly preserved the deployment lock'
 transition_failed_log="$(
@@ -2139,7 +2153,7 @@ printf 'MARK scripts-only-release\n' >>"$CALL_LOG"
 assert_current_sha "$SCRIPTS_ONLY_SHA"
 assert_runtime_marker "$SCRIPTS_ONLY_SHA" verified
 scripts_only_log="$(awk '/^MARK scripts-only-release$/ {capture=1; next} capture' "$CALL_LOG")"
-grep -Fxq 'build:registry-api rag-retrieval-service web' <<<"$scripts_only_log" \
+grep -Fxq 'build:registry-api rag-retrieval-service web chat-web' <<<"$scripts_only_log" \
   || fail 'scripts-only release did not Compose-build every supported non-ingestion service'
 grep -Fxq 'build:ingestion-service' <<<"$scripts_only_log" \
   || fail 'scripts-only release did not build ingestion-service'
@@ -2159,7 +2173,7 @@ assert_current_sha "$SHA_ONE"
 assert_runtime_marker "$SHA_ONE" verified
 assert_burned_sha "$BUILD_BEFORE_TAG_FAILED_SHA" build_may_have_started
 build_before_tag_log="$(awk '/^MARK build-before-tag-fault$/ {capture=1; next} capture' "$CALL_LOG")"
-grep -q '^build:web$' <<<"$build_before_tag_log" \
+grep -q '^build:web chat-web$' <<<"$build_before_tag_log" \
   || fail 'build-before-tag fixture did not reach the target image build'
 grep -q '^fault:build-before-tag$' <<<"$build_before_tag_log" \
   || fail 'build-before-tag fault was not injected'
@@ -2168,6 +2182,8 @@ if grep -q '^up:\|^registry_stop$\|^alembic_upgrade$' <<<"$build_before_tag_log"
 fi
 [[ "$(<"${FAKE_RUNTIME_DIR}/images/web/ref")" != "akl/web:${BUILD_BEFORE_TAG_FAILED_SHA}" ]] \
   || fail 'build-before-tag fixture unexpectedly created the target image tag'
+[[ "$(<"${FAKE_RUNTIME_DIR}/images/chat-web/ref")" != "akl/chat-web:${BUILD_BEFORE_TAG_FAILED_SHA}" ]] \
+  || fail 'build-before-tag fixture unexpectedly created the chat target image tag'
 build_before_tag_record="$(find "${AKL_RELEASE_ROOT}/deployments" -type f -name '*.txt' -print | sort | tail -n 1)"
 grep -q '^target_build_may_have_started=true$' "$build_before_tag_record" \
   || fail 'build-before-tag failure record lost the possible build boundary'
@@ -2608,19 +2624,28 @@ fi
 assert_current_sha "$SHA_ONE"
 assert_runtime_marker "$SHA_TWO" failed
 second_log="$(awk '/^MARK second-release$/ {capture=1; next} capture' "$CALL_LOG")"
-grep -q '^build:web$' <<<"$second_log" || fail 'web-only release did not build web'
+grep -q '^build:web chat-web$' <<<"$second_log" \
+  || fail 'web source release did not build both web profiles'
 if grep -q '^build:.*registry-api\|^build:ingestion-service\|^build:.*rag-retrieval-service' <<<"$second_log"; then
   fail 'web-only release built an unaffected service'
 fi
 [[ ! -e "${FAKE_RUNTIME_DIR}/containers/web" ]] \
   || fail 'failed web readiness left the unverified target container present'
+[[ ! -e "${FAKE_RUNTIME_DIR}/containers/chat-web" ]] \
+  || fail 'failed web readiness left the unverified chat target container present'
 grep -q '^docker_rm:web:akl-test-web-1$' <<<"$second_log" \
   || fail 'failed web readiness did not force-remove the exact target container'
+grep -q '^docker_rm:chat-web:akl-test-chat-web-1$' <<<"$second_log" \
+  || fail 'failed web readiness did not force-remove the exact chat target container'
 second_record="$(deployment_record_for_sha "$SHA_TWO")"
 grep -Fxq 'target_web_quarantined=true' "$second_record" \
   || fail 'failed web readiness record omitted the successful quarantine'
 grep -Fxq 'target_web_quarantine_failed=false' "$second_record" \
   || fail 'failed web readiness recorded a spurious quarantine failure'
+grep -Fxq 'target_chat_web_quarantined=true' "$second_record" \
+  || fail 'failed web readiness record omitted the successful chat quarantine'
+grep -Fxq 'target_chat_web_quarantine_failed=false' "$second_record" \
+  || fail 'failed web readiness recorded a spurious chat quarantine failure'
 grep -Fxq 'deploy_lock_preserved=false' "$second_record" \
   || fail 'successful web quarantine unexpectedly preserved the deployment lock'
 [[ ! -e "${AKL_RELEASE_ROOT}/.immutable-deploy.lock" ]] \
@@ -2677,7 +2702,8 @@ printf 'MARK forward-fix\n' >>"$CALL_LOG"
 assert_current_sha "$SHA_THREE"
 assert_runtime_marker "$SHA_THREE" verified
 forward_log="$(awk '/^MARK forward-fix$/ {capture=1; next} capture' "$CALL_LOG")"
-grep -q '^build:web$' <<<"$forward_log" || fail 'forward fix did not build web'
+grep -q '^build:web chat-web$' <<<"$forward_log" \
+  || fail 'forward fix did not build both web profiles'
 if grep -q '^build:.*registry-api\|^build:ingestion-service\|^build:.*rag-retrieval-service' <<<"$forward_log"; then
   fail 'forward fix built an unaffected service'
 fi
@@ -2702,6 +2728,10 @@ grep -Fxq 'target_web_quarantined=false' "$quarantine_failure_record" \
   || fail 'failed quarantine recorded a successful web quarantine'
 grep -Fxq 'target_web_quarantine_failed=true' "$quarantine_failure_record" \
   || fail 'failed quarantine record omitted the web quarantine failure'
+grep -Fxq 'target_chat_web_quarantined=true' "$quarantine_failure_record" \
+  || fail 'failed quarantine did not remove the unverified chat target'
+grep -Fxq 'target_chat_web_quarantine_failed=false' "$quarantine_failure_record" \
+  || fail 'failed quarantine recorded a spurious chat quarantine failure'
 grep -Fxq 'deploy_lock_preserved=true' "$quarantine_failure_record" \
   || fail 'failed quarantine record did not require lock preservation'
 [[ -d "${AKL_RELEASE_ROOT}/.immutable-deploy.lock" ]] \
@@ -2943,7 +2973,7 @@ fi
 assert_current_sha "$SHA_SIX"
 assert_runtime_marker "$PARTIAL_UP_FAILED_SHA" failed
 partial_up_record="$(deployment_record_for_sha "$PARTIAL_UP_FAILED_SHA")"
-grep -Fxq 'services=registry-api,ingestion-service,rag-retrieval-service,web' "$partial_up_record" \
+grep -Fxq 'services=registry-api,ingestion-service,rag-retrieval-service,web,chat-web' "$partial_up_record" \
   || fail 'partial-up fixture did not select every release service'
 grep -Fxq 'migration_started=true' "$partial_up_record" \
   || fail 'partial-up fixture did not cross the forward-only migration boundary'
@@ -2955,6 +2985,8 @@ grep -Fxq 'target_rag_quarantine_failed=true' "$partial_up_record" \
   || fail 'partial-up failure did not preserve the unmatched RAG predecessor'
 grep -Fxq 'target_web_quarantine_failed=true' "$partial_up_record" \
   || fail 'partial-up failure did not preserve the unmatched web predecessor'
+grep -Fxq 'target_chat_web_quarantine_failed=true' "$partial_up_record" \
+  || fail 'partial-up failure did not preserve the unmatched chat web predecessor'
 grep -Fxq 'deploy_lock_preserved=true' "$partial_up_record" \
   || fail 'partial-up failure did not durably preserve the incident lock'
 partial_up_registry_image_id="$(awk -F= '$1 == "target_registry_image_id" {print $2}' "$partial_up_record")"
@@ -2966,14 +2998,15 @@ grep -Fxq "container_execution:registry-api:${partial_up_registry_image_id}:${pa
   || fail 'partial Compose up did not create Registry from its durable image ID'
 grep -q '^docker_rm:registry-api:' <<<"$partial_up_log" \
   || fail 'partial Compose up did not remove the proven Registry target'
-if grep -q '^docker_rm:ingestion-service:\|^docker_rm:rag-retrieval-service:\|^docker_rm:web:' <<<"$partial_up_log"; then
+if grep -q '^docker_rm:ingestion-service:\|^docker_rm:rag-retrieval-service:\|^docker_rm:web:\|^docker_rm:chat-web:' <<<"$partial_up_log"; then
   fail 'partial Compose up removed unmatched predecessor containers'
 fi
 [[ ! -e "${FAKE_RUNTIME_DIR}/containers/registry-api" ]] \
   || fail 'partial Compose-up quarantine retained the Registry target'
 [[ -d "${FAKE_RUNTIME_DIR}/containers/ingestion-service" \
   && -d "${FAKE_RUNTIME_DIR}/containers/rag-retrieval-service" \
-  && -d "${FAKE_RUNTIME_DIR}/containers/web" ]] \
+  && -d "${FAKE_RUNTIME_DIR}/containers/web" \
+  && -d "${FAKE_RUNTIME_DIR}/containers/chat-web" ]] \
   || fail 'partial Compose-up recovery lost an unmatched predecessor container'
 [[ -d "${AKL_RELEASE_ROOT}/.immutable-deploy.lock" ]] \
   || fail 'partial Compose-up failure lost the preserved deployment lock'
@@ -3438,7 +3471,7 @@ SHARED_COMPOSE_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
 git -C "$WORK_REPO" push --quiet origin main
   printf 'MARK unsupported-shared-compose\n' >>"$CALL_LOG"
   if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHARED_COMPOSE_SHA"; then
-    fail 'four-service workflow accepted a production Compose change outside managed service blocks'
+    fail 'managed-service workflow accepted a production Compose change outside managed service blocks'
   fi
 assert_current_sha "$POWER_LOSS_SHA"
 assert_runtime_marker "$POWER_LOSS_SHA" verified
@@ -3487,6 +3520,8 @@ grep -Fxq 'target_rag_image_id=not-affected' "$ingestion_only_record" \
   || fail 'ingestion-only deployment record assigned a RAG image ID'
 grep -Fxq 'target_web_image_id=not-affected' "$ingestion_only_record" \
   || fail 'ingestion-only deployment record assigned a web image ID'
+grep -Fxq 'target_chat_web_image_id=not-affected' "$ingestion_only_record" \
+  || fail 'ingestion-only deployment record assigned a chat web image ID'
 akl_assert_no_stale_private_env_snapshots "${AKL_RELEASE_ROOT}/env" \
   || fail 'successful and trapped releases left a private env snapshot behind'
 

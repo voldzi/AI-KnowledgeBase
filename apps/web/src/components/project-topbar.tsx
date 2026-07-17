@@ -43,6 +43,7 @@ interface ProjectTopbarProps {
     validUntil?: string | null;
   }>;
   workspaceName: string;
+  showCommandCenter?: boolean;
 }
 
 type HealthState = {
@@ -97,6 +98,7 @@ export function ProjectTopbar({
   user,
   applicationAccess,
   workspaceName,
+  showCommandCenter = true,
 }: ProjectTopbarProps) {
   const [healthState, setHealthState] = useState<HealthState>(() => ({
     label: `${healthLabel} · ${apiModeLabel} · ${authModeLabel}`,
@@ -227,13 +229,13 @@ export function ProjectTopbar({
           ]}
         />
       }
-      center={
+      center={showCommandCenter ? (
         <CommandCenterTrigger
           label={commandCenterPlaceholder}
           aria-label={commandCenterLabel}
           onClick={onCommandCenterOpen}
         />
-      }
+      ) : undefined}
       status={
         <TopbarStatusGroup
           label={healthLabel}

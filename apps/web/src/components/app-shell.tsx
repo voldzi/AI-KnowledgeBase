@@ -57,6 +57,7 @@ import {
 import { ProjectTopbar } from "@/components/project-topbar";
 import { withAppBasePath } from "@/lib/app-url";
 import { LanguageProvider, useLanguage, type AklLanguage } from "@/lib/i18n";
+import type { WebProfile } from "@/lib/api/config";
 
 const navigation = {
   cs: [
@@ -234,6 +235,7 @@ interface AppShellProps {
   children: React.ReactNode;
   apiMode: "mock" | "production";
   authMode: "mock" | "oidc";
+  webProfile?: WebProfile;
   initialUser?: {
     subjectId: string;
     roles: string[];
@@ -309,6 +311,7 @@ export function AppShell({
   children,
   apiMode,
   authMode,
+  webProfile = "platform",
   initialUser,
 }: AppShellProps) {
   return (
@@ -316,6 +319,7 @@ export function AppShell({
       <AppShellContent
         apiMode={apiMode}
         authMode={authMode}
+        webProfile={webProfile}
         initialUser={initialUser}
       >
         {children}
@@ -328,6 +332,7 @@ function AppShellContent({
   children,
   apiMode,
   authMode,
+  webProfile = "platform",
   initialUser,
 }: AppShellProps) {
   const pathname = usePathname();
@@ -717,11 +722,15 @@ function AppShellContent({
   }, [authModeLabel, language, settingsDirty, userProfile]);
 
   const accessibleNavigation = useMemo(
-    () =>
-      navigation[language].filter((item) =>
+    () => {
+      const available = navigation[language].filter((item) =>
         canAccessWorkspaceRoute(userProfile.roles, item.href, userProfile.capabilities),
-      ),
-    [language, userProfile.capabilities, userProfile.roles],
+      );
+      return webProfile === "chat"
+        ? available.filter((item) => item.href === "/chat")
+        : available;
+    },
+    [language, userProfile.capabilities, userProfile.roles, webProfile],
   );
   const railDefinitions: Array<{
     id: ShellModuleId;
@@ -977,7 +986,13 @@ function AppShellContent({
     return <main className="akb-embed-shell">{children}</main>;
   }
 
-  if (isEmployeeChatOnly({ roles: userProfile.roles, capabilities: userProfile.capabilities })) {
+  if (
+    webProfile === "chat"
+    || isEmployeeChatOnly({
+      roles: userProfile.roles,
+      capabilities: userProfile.capabilities,
+    })
+  ) {
     return (
       <div className="akb-employee-portal-shell">
         <ProjectTopbar
@@ -994,8 +1009,9 @@ function AppShellContent({
           user={userProfile}
           applicationAccess={applicationAccess}
           workspaceName="AKB"
+          showCommandCenter={webProfile !== "chat"}
         />
-        <CommandCenter
+        {webProfile !== "chat" ? <CommandCenter
           open={commandCenterOpen}
           query={commandCenterQuery}
           items={commandCenterItems}
@@ -1010,7 +1026,7 @@ function AppShellContent({
           }}
           onQueryChange={setCommandCenterQuery}
           onClose={() => setCommandCenterOpen(false)}
-        />
+        /> : null}
         {children}
         {settingsOpen ? (
           <AppSettingsSurface
