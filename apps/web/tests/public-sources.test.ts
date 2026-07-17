@@ -121,10 +121,12 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
       },
     });
     const context = createMockContext({ subjectId: "public_source_manager" });
-    const bytes = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF");
+    const bytes = new TextEncoder().encode(
+      '<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p>AI Act</p></body></html>',
+    );
     const fetcher: typeof fetch = async (input, init) => {
       const headers = new Headers(init?.headers);
-      assert.match(headers.get("accept") ?? "", /application\/pdf/);
+      assert.equal(headers.get("accept"), "application/xhtml+xml");
       assert.equal(headers.get("accept-language"), "ces");
       assert.equal(headers.get("accept-max-cs-size"), String(getUploadSettings().maxFileBytes));
       if (String(input) === "https://publications.europa.eu/resource/celex/32024R1689") {
@@ -142,9 +144,8 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
       return new Response(bytes, {
         status: 200,
         headers: {
-          "Content-Type": "application/pdf",
+          "Content-Type": "application/xhtml+xml;charset=UTF-8",
           "Content-Length": String(bytes.byteLength),
-          "Content-Disposition": 'attachment; filename="ai-act.pdf"',
           ETag: '"official-v1"',
         },
       });

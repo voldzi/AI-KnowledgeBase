@@ -403,6 +403,8 @@ async function downloadOfficialDocument(
       headers: {
         Accept: collectionId === "czech-law"
           ? "application/sparql-results+json,application/ld+json,application/json;q=0.9"
+          : collectionId === "eu-law"
+            ? "application/xhtml+xml"
           : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword;q=0.8,*/*;q=0.1",
         ...(collectionId === "eu-law"
           ? {
@@ -443,6 +445,7 @@ async function downloadOfficialDocument(
       response.headers.get("content-type"),
       bytes,
       collectionId === "czech-law",
+      collectionId === "eu-law",
     );
     if (collectionId === "czech-law") assertCzechLawSparqlPayload(bytes);
     const filename = officialFilename(
@@ -468,6 +471,7 @@ function normalizeOfficialMimeType(
   value: string | null,
   bytes: Uint8Array,
   allowJson: boolean,
+  allowXhtml: boolean,
 ): string {
   const declared = value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   if (startsWithAscii(bytes, "%PDF-")) return "application/pdf";
@@ -476,6 +480,13 @@ function normalizeOfficialMimeType(
   }
   if (declared === "application/msword") return declared;
   const firstContentByte = bytes.find((value) => ![0x09, 0x0a, 0x0d, 0x20].includes(value));
+  if (
+    allowXhtml
+    && ["application/xhtml+xml", "text/html"].includes(declared)
+    && firstContentByte === 0x3c
+  ) {
+    return "application/xhtml+xml";
+  }
   if (
     allowJson
     && ["application/json", "application/ld+json", "application/sparql-results+json"].includes(declared)
@@ -534,8 +545,10 @@ function officialFilename(
     ? ".pdf"
     : mimeType === "application/json"
       ? ".json"
+      : mimeType === "application/xhtml+xml"
+        ? ".xhtml"
       : ".docx";
-  if (!/\.(pdf|docx|doc|json)$/i.test(filename)) filename += extension;
+  if (!/\.(pdf|docx|doc|json|xhtml)$/i.test(filename)) filename += extension;
   return filename.slice(0, 300);
 }
 
