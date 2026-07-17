@@ -5,6 +5,9 @@ import { publicSourceCollection, type PublicSourceCollection } from "./catalog";
 const MAX_REDIRECTS = 5;
 const PAGE_TIMEOUT_MS = 20_000;
 const PAGE_MAX_BYTES = 2 * 1024 * 1024;
+const OPEN_DATA_CONCURRENCY = 6;
+const E_SBIRKA_OPEN_DATA_ORIGIN = "https://opendata.eselpoint.gov.cz";
+const E_SBIRKA_PUBLIC_ORIGIN = "https://e-sbirka.gov.cz";
 
 export interface PublicSourceCandidate {
   title: string;
@@ -27,13 +30,8 @@ export async function discoverPublicSourceCollection(
 ): Promise<PublicSourceDiscoveryResult> {
   const collection = publicSourceCollection(collectionId);
   if (!collection) throw new Error("Unknown public source collection.");
-  if (collection.syncMode === "api_required") {
-    return {
-      collectionId,
-      candidates: [],
-      pagesVisited: 0,
-      warnings: [collection.licenseNote],
-    };
+  if (collection.syncMode === "open_data") {
+    return discoverCzechLawOpenData(collection, fetcher);
   }
 
   const fixed = (collection.fixedDocuments ?? []).map((document) => ({
@@ -114,16 +112,45 @@ export function assertPublicSourceUrl(collectionId: string, value: string): URL 
   return normalizedAllowedUrl(value, collection);
 }
 
+export function assertCzechLawOpenDataSourceUrl(input: URL): {
+  year: string;
+  number: string;
+  effectiveDate: string;
+} {
+  if (
+    input.origin !== E_SBIRKA_OPEN_DATA_ORIGIN
+    || input.pathname !== "/sparql"
+    || [...input.searchParams.keys()].some((key) => key !== "query")
+  ) {
+    throw new Error("The e-Sbírka source is not an approved open-data query.");
+  }
+  const query = input.searchParams.get("query") ?? "";
+  const match = query.match(
+    /<https:\/\/opendata\.eselpoint\.gov\.cz\/esel-esb\/eli\/cz\/sb\/(\d{4})\/(\d+)\/(\d{4}-\d{2}-\d{2})>/,
+  );
+  if (!match) throw new Error("The e-Sbírka query has no valid legal-act version.");
+  const [, year, number, effectiveDate] = match;
+  const version = new URL(
+    `/esel-esb/eli/cz/sb/${year}/${number}/${effectiveDate}`,
+    E_SBIRKA_OPEN_DATA_ORIGIN,
+  );
+  if (query !== czechLawSparqlUrl(version).searchParams.get("query")) {
+    throw new Error("The e-Sbírka source query is not the reviewed fragment query.");
+  }
+  return { year, number, effectiveDate };
+}
+
 async function safeFetch(
   input: URL,
   collection: PublicSourceCollection,
   fetcher: Fetcher,
+  accept = "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document;q=0.9,*/*;q=0.1",
 ): Promise<Response> {
   let current = normalizedAllowedUrl(input.toString(), collection);
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     const response = await fetcher(current, {
       headers: {
-        Accept: "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document;q=0.9,*/*;q=0.1",
+        Accept: accept,
         "User-Agent": "STRATOS-AKB-Public-Sources/1.0 (+https://stratos.zeleznalady.cz/akb)",
       },
       redirect: "manual",
@@ -139,6 +166,102 @@ async function safeFetch(
     return response;
   }
   throw new Error("Official source exceeded the redirect limit.");
+}
+
+async function discoverCzechLawOpenData(
+  collection: PublicSourceCollection,
+  fetcher: Fetcher,
+): Promise<PublicSourceDiscoveryResult> {
+  const acts = collection.openDataActs ?? [];
+  const candidates: PublicSourceCandidate[] = [];
+  const warnings: string[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  let cursor = 0;
+  let pagesVisited = 0;
+
+  const worker = async () => {
+    while (cursor < acts.length) {
+      const act = acts[cursor];
+      cursor += 1;
+      const baseUrl = normalizedAllowedUrl(
+        `${E_SBIRKA_OPEN_DATA_ORIGIN}/esel-esb/eli/cz/sb/${act.year}/${act.number}`,
+        collection,
+      );
+      try {
+        const response = await safeFetch(
+          baseUrl,
+          collection,
+          fetcher,
+          "application/ld+json,application/json;q=0.9",
+        );
+        pagesVisited += 1;
+        const payload = JSON.parse(await readBoundedText(response, PAGE_MAX_BYTES)) as unknown;
+        const effectiveVersion = selectEffectiveCzechLawVersion(
+          payload,
+          act.year,
+          act.number,
+          today,
+        );
+        candidates.push({
+          title: `${act.number}/${act.year} Sb. – ${act.title}`,
+          sourceUrl: czechLawSparqlUrl(effectiveVersion).toString(),
+          canonicalUrl: `${E_SBIRKA_PUBLIC_ORIGIN}/sb/${act.year}/${act.number}`,
+        });
+      } catch (error) {
+        warnings.push(`${act.number}/${act.year} Sb.: ${errorMessage(error)}`);
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(OPEN_DATA_CONCURRENCY, acts.length) }, () => worker()),
+  );
+  return {
+    collectionId: collection.id,
+    candidates: deduplicateCandidates(candidates).slice(0, collection.maxDocuments),
+    pagesVisited,
+    warnings: warnings.slice(0, 20),
+  };
+}
+
+function selectEffectiveCzechLawVersion(
+  payload: unknown,
+  year: number,
+  number: string,
+  today: string,
+): URL {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Open data returned an unsupported legal-act shape.");
+  }
+  const record = payload as Record<string, unknown>;
+  const values = Array.isArray(record["má-znění"])
+    ? record["má-znění"]
+    : [record["má-znění"]].filter(Boolean);
+  const expectedPrefix = `esel-esb/eli/cz/sb/${year}/${number}/`;
+  const available = values
+    .filter((value): value is string => typeof value === "string")
+    .filter((value) => value.startsWith(expectedPrefix))
+    .map((value) => ({ value, date: value.slice(expectedPrefix.length) }))
+    .filter(({ date }) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date !== "0000-00-00" && date <= today)
+    .sort((left, right) => right.date.localeCompare(left.date));
+  const selected = available[0]?.value ?? record["má-vyhlášené-znění"];
+  if (typeof selected !== "string" || !selected.startsWith(expectedPrefix)) {
+    throw new Error("Open data does not contain an applicable legal-act version.");
+  }
+  return new URL(selected.replace(/^\/+/, ""), `${E_SBIRKA_OPEN_DATA_ORIGIN}/`);
+}
+
+function czechLawSparqlUrl(version: URL): URL {
+  const query = `SELECT ?order ?citation ?text WHERE {
+  <${version.toString()}> <https://slovník.gov.cz/datový/sbírka/pojem/má-fragment-znění> ?versionFragment .
+  ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/obsahuje-fragment> ?fragment .
+  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/pořadí-fragmentu-znění-právního-aktu> ?order . }
+  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/citace-označení-fragmentu-znění-právního-aktu> ?citation . }
+  ?fragment <https://slovník.gov.cz/datový/sbírka/pojem/text-fragmentu> ?text .
+} ORDER BY ?order`;
+  const url = new URL("/sparql", E_SBIRKA_OPEN_DATA_ORIGIN);
+  url.searchParams.set("query", query);
+  return url;
 }
 
 function normalizedAllowedUrl(value: string, collection: PublicSourceCollection): URL {

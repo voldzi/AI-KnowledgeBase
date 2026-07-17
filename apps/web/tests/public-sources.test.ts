@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { createApiClients } from "../src/lib/api";
 import { createMockContext } from "../src/lib/api/correlation";
-import { publicSourceTargetTotal } from "../src/lib/public-sources/catalog";
+import { publicSourceCollection, publicSourceTargetTotal } from "../src/lib/public-sources/catalog";
 import { assertPublicSourceUrl, discoverPublicSourceCollection } from "../src/lib/public-sources/discovery";
 import { synchronizePublicSource } from "../src/lib/public-sources/sync";
 
@@ -20,6 +20,41 @@ test("fixed EUR-Lex collection returns only approved HTTPS sources", async () =>
   const result = await discoverPublicSourceCollection("eu-law");
   assert.ok(result.candidates.length >= 20);
   assert.ok(result.candidates.every((item) => item.sourceUrl.startsWith("https://eur-lex.europa.eu/")));
+});
+
+test("e-Sbírka discovery uses credential-free open data and selects the current effective version", async () => {
+  let requests = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    requests += 1;
+    assert.match(String(input), /^https:\/\/opendata\.eselpoint\.gov\.cz\/esel-esb\/eli\/cz\/sb\//);
+    assert.equal(new Headers(init?.headers).get("authorization"), null);
+    assert.match(new Headers(init?.headers).get("accept") ?? "", /application\/ld\+json/);
+    const path = new URL(String(input)).pathname;
+    return new Response(JSON.stringify({
+      "má-vyhlášené-znění": `${path.slice(1)}/0000-00-00`,
+      "má-znění": [
+        `${path.slice(1)}/0000-00-00`,
+        `${path.slice(1)}/2025-01-01`,
+        `${path.slice(1)}/2999-01-01`,
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/ld+json" },
+    });
+  };
+
+  const collection = publicSourceCollection("czech-law");
+  const result = await discoverPublicSourceCollection("czech-law", fetcher);
+  const procurementAct = result.candidates.find((item) => item.title.startsWith("134/2016 Sb."));
+
+  assert.equal(collection?.syncMode, "open_data");
+  assert.equal(result.candidates.length, 90);
+  assert.equal(result.pagesVisited, 90);
+  assert.equal(requests, 90);
+  assert.equal(result.warnings.length, 0);
+  assert.equal(procurementAct?.canonicalUrl, "https://e-sbirka.gov.cz/sb/2016/134");
+  assert.match(procurementAct?.sourceUrl ?? "", /^https:\/\/opendata\.eselpoint\.gov\.cz\/sparql\?/);
+  assert.match(decodeURIComponent(procurementAct?.sourceUrl ?? ""), /2016\/134\/2025-01-01/);
 });
 
 test("crawler discovers documents and refuses links outside the collection allowlist", async () => {
@@ -120,6 +155,98 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
     assert.equal(versions.length, 1);
     assert.equal(documents[0]?.metadata?.audience, "organization");
     assert.equal(documents[0]?.metadata?.anonymous_publication, false);
+  } finally {
+    if (previousRoot === undefined) delete process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+    else process.env.AKL_WEB_OBJECT_STORAGE_ROOT = previousRoot;
+    if (previousEnvironment === undefined) delete process.env.AKL_ENV;
+    else process.env.AKL_ENV = previousEnvironment;
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test("e-Sbírka sync accepts the official SPARQL JSON original", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "akb-public-law-source-"));
+  const previousRoot = process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+  const previousEnvironment = process.env.AKL_ENV;
+  process.env.AKL_WEB_OBJECT_STORAGE_ROOT = storageRoot;
+  process.env.AKL_ENV = "test";
+  try {
+    const clients = createApiClients({
+      env: {
+        AKL_ENV: "test",
+        AKL_API_CLIENT_MODE: "mock",
+        AKL_AUTH_MODE: "mock",
+      },
+    });
+    const context = createMockContext({ subjectId: "public_source_manager" });
+    const bytes = new TextEncoder().encode(JSON.stringify({
+      head: { vars: ["order", "citation", "text"] },
+      results: { bindings: [{ text: { type: "literal", value: "Zadavatel postupuje transparentně." } }] },
+    }));
+    const fetcher: typeof fetch = async (_input, init) => {
+      assert.match(new Headers(init?.headers).get("accept") ?? "", /sparql-results\+json/);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/sparql-results+json; charset=utf-8",
+          "Content-Length": String(bytes.byteLength),
+        },
+      });
+    };
+    const sourceUrl = new URL("https://opendata.eselpoint.gov.cz/sparql");
+    sourceUrl.searchParams.set(
+      "query",
+      `SELECT ?order ?citation ?text WHERE {
+  <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2016/134/2025-04-03> <https://slovník.gov.cz/datový/sbírka/pojem/má-fragment-znění> ?versionFragment .
+  ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/obsahuje-fragment> ?fragment .
+  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/pořadí-fragmentu-znění-právního-aktu> ?order . }
+  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/citace-označení-fragmentu-znění-právního-aktu> ?citation . }
+  ?fragment <https://slovník.gov.cz/datový/sbírka/pojem/text-fragmentu> ?text .
+} ORDER BY ?order`,
+    );
+    const transport = async (correlationId: string) => ({
+      ...context,
+      requestId: correlationId,
+      correlationId,
+    });
+
+    const created = await synchronizePublicSource(
+      {
+        collectionId: "czech-law",
+        sourceUrl: sourceUrl.toString(),
+        canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
+        title: "134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+      },
+      clients,
+      context,
+      fetcher,
+      transport,
+    );
+    const versions = await clients.registry.listDocumentVersions(created.document.document_id, context);
+    const versionDetails = created.version as typeof created.version & {
+      file?: { mime_type?: string | null };
+      source_location?: { file_name?: string | null };
+    };
+
+    assert.equal(created.action, "created");
+    assert.equal(versionDetails.file?.mime_type, "application/json");
+    assert.equal(versionDetails.source_location?.file_name, "sb-2016-134-2025-04-03.json");
+    assert.equal(versions.length, 1);
+    await assert.rejects(
+      synchronizePublicSource(
+        {
+          collectionId: "czech-law",
+          sourceUrl: "https://opendata.eselpoint.gov.cz/sparql?query=SELECT+*+WHERE+%7B%3Fs+%3Fp+%3Fo%7D",
+          canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
+          title: "Neomezený dotaz",
+        },
+        clients,
+        context,
+        fetcher,
+        transport,
+      ),
+      /valid legal-act version|reviewed fragment query/i,
+    );
   } finally {
     if (previousRoot === undefined) delete process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
     else process.env.AKL_WEB_OBJECT_STORAGE_ROOT = previousRoot;

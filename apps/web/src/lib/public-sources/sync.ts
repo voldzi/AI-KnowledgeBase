@@ -20,7 +20,7 @@ import type {
 } from "@/lib/types";
 
 import { publicSourceCollection } from "./catalog";
-import { assertPublicSourceUrl } from "./discovery";
+import { assertCzechLawOpenDataSourceUrl, assertPublicSourceUrl } from "./discovery";
 
 const MAX_REDIRECTS = 5;
 const DOWNLOAD_TIMEOUT_MS = 45_000;
@@ -51,10 +51,8 @@ export async function synchronizePublicSource(
 ): Promise<PublicSourceSyncResult> {
   const collection = publicSourceCollection(input.collectionId);
   if (!collection) throw new Error("Unknown public source collection.");
-  if (collection.syncMode === "api_required") {
-    throw new Error("This collection requires the registered official API connector.");
-  }
   const sourceUrl = assertPublicSourceUrl(collection.id, input.sourceUrl);
+  if (collection.id === "czech-law") assertCzechLawOpenDataSourceUrl(sourceUrl);
   const canonicalUrl = assertPublicSourceUrl(
     collection.id,
     input.canonicalUrl || input.sourceUrl,
@@ -402,7 +400,9 @@ async function downloadOfficialDocument(
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     const response = await fetcher(current, {
       headers: {
-        Accept: "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword;q=0.8,*/*;q=0.1",
+        Accept: collectionId === "czech-law"
+          ? "application/sparql-results+json,application/ld+json,application/json;q=0.9"
+          : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword;q=0.8,*/*;q=0.1",
         "User-Agent": "STRATOS-AKB-Public-Sources/1.0 (+https://stratos.zeleznalady.cz/akb)",
       },
       cache: "no-store",
@@ -428,11 +428,14 @@ async function downloadOfficialDocument(
     const mimeType = normalizeOfficialMimeType(
       response.headers.get("content-type"),
       bytes,
+      collectionId === "czech-law",
     );
+    if (collectionId === "czech-law") assertCzechLawSparqlPayload(bytes);
     const filename = officialFilename(
       response.headers.get("content-disposition"),
       current,
       mimeType,
+      collectionId,
     );
     const sha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
     return {
@@ -447,25 +450,85 @@ async function downloadOfficialDocument(
   throw new Error("Official source exceeded the redirect limit.");
 }
 
-function normalizeOfficialMimeType(value: string | null, bytes: Uint8Array): string {
+function normalizeOfficialMimeType(
+  value: string | null,
+  bytes: Uint8Array,
+  allowJson: boolean,
+): string {
   const declared = value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   if (startsWithAscii(bytes, "%PDF-")) return "application/pdf";
   if (bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) {
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   }
   if (declared === "application/msword") return declared;
-  throw new Error("Official source did not return a supported PDF or Word original.");
+  const firstContentByte = bytes.find((value) => ![0x09, 0x0a, 0x0d, 0x20].includes(value));
+  if (
+    allowJson
+    && ["application/json", "application/ld+json", "application/sparql-results+json"].includes(declared)
+    && (firstContentByte === 0x7b || firstContentByte === 0x5b)
+  ) {
+    return "application/json";
+  }
+  throw new Error("Official source did not return a supported PDF, Word or approved open-data JSON original.");
 }
 
-function officialFilename(contentDisposition: string | null, url: URL, mimeType: string): string {
+function assertCzechLawSparqlPayload(bytes: Uint8Array): void {
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new Error("The e-Sbírka open-data response is not valid UTF-8 JSON.");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The e-Sbírka open-data response has an unsupported shape.");
+  }
+  const results = (value as { results?: unknown }).results;
+  const bindings = results && typeof results === "object" && !Array.isArray(results)
+    ? (results as { bindings?: unknown }).bindings
+    : null;
+  if (
+    !Array.isArray(bindings)
+    || bindings.length === 0
+    || bindings.some((binding) => {
+      if (!binding || typeof binding !== "object" || Array.isArray(binding)) return true;
+      const text = (binding as { text?: unknown }).text;
+      return !text
+        || typeof text !== "object"
+        || Array.isArray(text)
+        || typeof (text as { value?: unknown }).value !== "string";
+    })
+  ) {
+    throw new Error("The e-Sbírka open-data response contains no valid legal fragments.");
+  }
+}
+
+function officialFilename(
+  contentDisposition: string | null,
+  url: URL,
+  mimeType: string,
+  collectionId: string,
+): string {
   const encoded = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
   const plain = contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1];
   let filename = encoded ? decodeURIComponent(encoded) : plain;
+  if (!filename && collectionId === "czech-law") {
+    filename = czechLawOpenDataFilename(url) ?? undefined;
+  }
   if (!filename) filename = decodeURIComponent(url.pathname.split("/").pop() || "official-document");
   filename = filename.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-").trim();
-  const extension = mimeType === "application/pdf" ? ".pdf" : ".docx";
-  if (!/\.(pdf|docx|doc)$/i.test(filename)) filename += extension;
+  const extension = mimeType === "application/pdf"
+    ? ".pdf"
+    : mimeType === "application/json"
+      ? ".json"
+      : ".docx";
+  if (!/\.(pdf|docx|doc|json)$/i.test(filename)) filename += extension;
   return filename.slice(0, 300);
+}
+
+function czechLawOpenDataFilename(url: URL): string | null {
+  const query = url.searchParams.get("query") ?? "";
+  const match = query.match(/\/eli\/cz\/sb\/(\d{4})\/(\d+)\/(\d{4}-\d{2}-\d{2})>/);
+  return match ? `sb-${match[1]}-${match[2]}-${match[3]}.json` : null;
 }
 
 function sourceVersionLabel(downloaded: DownloadedOfficialDocument, capturedAt: string): string {

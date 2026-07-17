@@ -175,11 +175,18 @@ class StratosGovernanceClient:
         token = self.settings.stratos_policy_service_token
         if not url or not token:
             raise GovernanceUnavailable("STRATOS Policy Registry is not configured")
+        policy_value = binding.model_dump(mode="json", by_alias=True, exclude_none=False)
         response = self._request(
             "POST",
             url,
             token,
-            {"applicationId": "akb", **canonical_policy_payload(binding)},
+            {
+                "applicationId": "akb",
+                **canonical_policy_payload(binding),
+                "originatorId": policy_value["originatorId"],
+                "issuedAt": policy_value["issuedAt"],
+                "reviewAt": policy_value["reviewAt"],
+            },
         )
         expected = {
             "schemaVersion": "stratos-information-policy-2",
