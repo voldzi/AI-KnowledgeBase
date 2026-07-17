@@ -427,8 +427,8 @@ async function downloadOfficialDocumentOnce(
           : collectionId === "eu-law"
             ? "application/xhtml+xml"
             : allowHtml
-              ? "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document;q=0.9,*/*;q=0.1"
-              : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword;q=0.8,*/*;q=0.1",
+              ? "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;q=0.9,*/*;q=0.1"
+              : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword;q=0.8,*/*;q=0.1",
         ...(collectionId === "eu-law"
           ? {
               "Accept-Language": "ces",
@@ -506,7 +506,8 @@ function normalizeOfficialMimeType(
   const declared = value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   if (startsWithAscii(bytes, "%PDF-")) return "application/pdf";
   if (bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) {
-    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const detected = detectOoxmlMimeType(bytes);
+    if (detected) return detected;
   }
   if (declared === "application/msword") return declared;
   const firstContentByte = bytes.find((value) => ![0x09, 0x0a, 0x0d, 0x20].includes(value));
@@ -524,7 +525,21 @@ function normalizeOfficialMimeType(
   ) {
     return "application/json";
   }
-  throw new Error("Official source did not return a supported PDF, Word or approved open-data JSON original.");
+  throw new Error("Official source did not return a supported PDF, OOXML or approved open-data JSON original.");
+}
+
+function detectOoxmlMimeType(bytes: Uint8Array): string | null {
+  const packageBytes = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (packageBytes.includes(Buffer.from("word/document.xml", "ascii"))) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  if (packageBytes.includes(Buffer.from("ppt/presentation.xml", "ascii"))) {
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  }
+  if (packageBytes.includes(Buffer.from("xl/workbook.xml", "ascii"))) {
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  }
+  return null;
 }
 
 function assertCzechLawSparqlPayload(bytes: Uint8Array): void {
@@ -579,8 +594,12 @@ function officialFilename(
         ? ".xhtml"
         : mimeType === "text/html"
           ? ".html"
-          : ".docx";
-  if (!/\.(pdf|docx|doc|json|xhtml|html|htm)$/i.test(filename)) filename += extension;
+          : mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ? ".pptx"
+            : mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              ? ".xlsx"
+              : ".docx";
+  if (!/\.(pdf|docx|pptx|xlsx|doc|json|xhtml|html|htm)$/i.test(filename)) filename += extension;
   return filename.slice(0, 300);
 }
 
@@ -602,7 +621,7 @@ function normalizeDocumentTitle(value: string, url: URL): string {
   const title = value.replace(/\s+/g, " ").trim();
   if (title) return title.slice(0, 300);
   return decodeURIComponent(url.pathname.split("/").pop() || "Oficiální veřejný dokument")
-    .replace(/\.(pdf|docx|doc)$/i, "")
+    .replace(/\.(pdf|docx|pptx|xlsx|doc)$/i, "")
     .replace(/[-_]+/g, " ")
     .slice(0, 300);
 }

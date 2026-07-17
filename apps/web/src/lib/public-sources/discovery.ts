@@ -144,7 +144,7 @@ async function safeFetch(
   input: URL,
   collection: PublicSourceCollection,
   fetcher: Fetcher,
-  accept = "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document;q=0.9,*/*;q=0.1",
+  accept = "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;q=0.9,*/*;q=0.1",
 ): Promise<Response> {
   let current = normalizedAllowedUrl(input.toString(), collection);
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
@@ -287,16 +287,16 @@ function isCrawlPage(url: URL, collection: PublicSourceCollection): boolean {
 
 function looksLikeDocument(url: URL, text: string): boolean {
   const path = `${url.pathname}${url.search}`.toLowerCase();
-  return /\.(pdf|docx)(?:$|[?#])/.test(path)
-    || /(?:[?&](?:ext|format)=\.?(?:pdf|docx))(?:&|$)/.test(path)
-    || /\b(pdf|docx)\b/i.test(text);
+  return /\.(pdf|docx|pptx|xlsx)(?:$|[?#])/.test(path)
+    || /(?:[?&](?:ext|format)=\.?(?:pdf|docx|pptx|xlsx))(?:&|$)/.test(path)
+    || /\b(pdf|docx|pptx|xlsx)\b/i.test(text);
 }
 
 function directDocumentUrl(input: URL): URL {
   const url = new URL(input);
   if (url.hostname === "archi.gov.cz" && url.searchParams.get("do") === "media") {
     const media = url.searchParams.get("image") ?? url.searchParams.get("media");
-    if (media && /\.(pdf|docx)$/i.test(media)) {
+    if (media && /\.(pdf|docx|pptx|xlsx)$/i.test(media)) {
       return new URL(`/_media/${media.replace(/^\/+/, "")}`, url.origin);
     }
   }
@@ -341,15 +341,15 @@ function normalizeTitle(value: string, sourceUrl: string): string {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (
     cleaned
-    && !/^\[?\s*(?:pdf|docx)\s*\]?$/i.test(cleaned)
-    && !/^(?:st[aá]hnout|download)\s*(?:pdf|docx|doc)?$/i.test(cleaned)
+    && !/^\[?\s*(?:pdf|docx|pptx|xlsx)\s*\]?$/i.test(cleaned)
+    && !/^(?:st[aá]hnout|download)\s*(?:pdf|docx|pptx|xlsx|doc)?$/i.test(cleaned)
     && !/^https?:\/\//i.test(cleaned)
   ) {
     return cleaned.slice(0, 300);
   }
   const url = new URL(sourceUrl);
   const filename = decodeURIComponent(url.pathname.split("/").pop() || "Dokument");
-  return filename.replace(/\.(pdf|docx)$/i, "").replace(/[-_]+/g, " ").slice(0, 300);
+  return filename.replace(/\.(pdf|docx|pptx|xlsx)$/i, "").replace(/[-_]+/g, " ").slice(0, 300);
 }
 
 function deduplicateCandidates(candidates: PublicSourceCandidate[]): PublicSourceCandidate[] {

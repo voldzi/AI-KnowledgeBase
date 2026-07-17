@@ -132,6 +132,71 @@ test("ČSÚ HTML source is stored as an immutable controlled-document version", 
   }
 });
 
+test("FitSM PPTX source keeps its presentation type instead of being mislabeled as DOCX", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "akb-public-fitsm-source-"));
+  const previousRoot = process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+  const previousEnvironment = process.env.AKL_ENV;
+  process.env.AKL_WEB_OBJECT_STORAGE_ROOT = storageRoot;
+  process.env.AKL_ENV = "test";
+  try {
+    const clients = createApiClients({
+      env: {
+        AKL_ENV: "test",
+        AKL_API_CLIENT_MODE: "mock",
+        AKL_AUTH_MODE: "mock",
+      },
+    });
+    const context = createMockContext({ subjectId: "public_source_manager" });
+    const packageMarker = new TextEncoder().encode("ppt/presentation.xml");
+    const bytes = new Uint8Array(4 + packageMarker.byteLength);
+    bytes.set([0x50, 0x4b, 0x03, 0x04]);
+    bytes.set(packageMarker, 4);
+    const transport = async (correlationId: string) => ({
+      ...context,
+      requestId: correlationId,
+      correlationId,
+    });
+    const created = await synchronizePublicSource(
+      {
+        collectionId: "open-itsm",
+        sourceUrl: "https://www.fitsm.eu/download/1552/",
+        title: "Advanced Training in Service Operation and Control",
+      },
+      clients,
+      context,
+      async (_input, init) => {
+        assert.match(new Headers(init?.headers).get("accept") ?? "", /presentationml/);
+        return new Response(bytes, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "Content-Disposition": "attachment; filename=FitSM_Advanced_Training_SOC_V3.4.1_DE.pptx",
+            "Content-Length": String(bytes.byteLength),
+          },
+        });
+      },
+      transport,
+    );
+    const details = created.version as typeof created.version & {
+      file?: { mime_type?: string | null };
+      source_location?: { file_name?: string | null };
+    };
+
+    assert.equal(created.action, "created");
+    assert.equal(
+      details.file?.mime_type,
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    assert.equal(details.source_location?.file_name, "FitSM_Advanced_Training_SOC_V3.4.1_DE.pptx");
+  } finally {
+    if (previousRoot === undefined) delete process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+    else process.env.AKL_WEB_OBJECT_STORAGE_ROOT = previousRoot;
+    if (previousEnvironment === undefined) delete process.env.AKL_ENV;
+    else process.env.AKL_ENV = previousEnvironment;
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test("crawler discovers documents and refuses links outside the collection allowlist", async () => {
   const html = `
     <a href="/docs/good.pdf">Metodika PDF</a>
