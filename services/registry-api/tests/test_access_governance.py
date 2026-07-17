@@ -11,6 +11,7 @@ import app.permissions as permissions_module
 from app.access_governance import AccessProjection, GovernanceUnavailable, StratosGovernanceClient
 from app.api import (
     _audit_service_decision_coordinates,
+    _is_official_public_source_create,
     _register_governed_resource,
     _service_action_decision,
 )
@@ -18,6 +19,7 @@ from app.auth import Principal, _oidc_principal
 from app.config import Settings
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 from app.models import Document
+from app.schemas import DocumentCreate
 from app.permissions import evaluate_document_access, evaluate_runtime_document_access, SubjectContext
 
 
@@ -570,6 +572,27 @@ def _service_policy() -> InformationPolicyBinding:
     })
 
 
+def _public_policy() -> InformationPolicyBinding:
+    return InformationPolicyBinding.model_validate({
+        "schemaVersion": "stratos-information-policy-2",
+        "policyBindingId": "pol_akb_public_source_v1",
+        "policyVersion": "information-policy-2.0.0",
+        "issuedAt": "2026-07-14T00:00:00Z",
+        "handlingClass": "PUBLIC",
+        "legalClassification": "NONE",
+        "tlp": None,
+        "pap": None,
+        "contentCategories": ["PUBLIC_INFORMATION"],
+        "audience": {
+            "organizationId": "org_stratos",
+            "scopeType": "organization",
+            "scopeIds": [],
+            "recipientSubjectIds": [],
+        },
+        "obligations": ["AUDIT_ACCESS"],
+    })
+
+
 def _document(binding: InformationPolicyBinding) -> Document:
     return Document(
         document_id="doc_scope",
@@ -738,6 +761,80 @@ def test_service_registration_without_delegated_actor_uses_fixed_akb_identity(mo
     assert result["governance_registration_status"] == "REGISTERED"
     assert captured["credential_token"] == "runtime-token"
     assert captured["audit_actor_subject_id"] is None
+
+
+def test_official_public_source_marker_requires_exact_public_policy_shape() -> None:
+    payload = DocumentCreate.model_validate({
+        "title": "Official source",
+        "document_type": "methodology",
+        "owner_id": "user-manager",
+        "classification": "public",
+        "information_policy": _public_policy().model_dump(mode="json", by_alias=True),
+        "tags": ["official-public-reference", "official-source-collection:nukib"],
+        "metadata": {
+            "source_model": "official-public-reference-v1",
+            "source_public": True,
+            "audience": "organization",
+            "anonymous_publication": False,
+            "collection_id": "nukib",
+            "authority": "NÚKIB",
+            "canonical_url": "https://nukib.gov.cz/example.pdf",
+        },
+    })
+
+    assert _is_official_public_source_create(payload) is True
+    assert _is_official_public_source_create(
+        payload.model_copy(update={"metadata": {**payload.metadata, "source_public": False}})
+    ) is False
+    assert _is_official_public_source_create(
+        payload.model_copy(update={"tags": ["official-source-collection:nukib"]})
+    ) is False
+
+
+def test_official_public_registration_uses_fixed_identity_and_human_audit(monkeypatch) -> None:
+    binding = _public_policy()
+    settings = _settings(
+        AKL_STRATOS_INFORMATION_RESOURCES_URL="https://stratos.example/api/v1/information/resources",
+        AKB_POLICY_SERVICE_TOKEN="fixed-akb-token",
+    )
+    monkeypatch.setattr(api_module, "get_settings", lambda: settings)
+    principal = Principal(
+        subject_id="user-manager",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:upload", "akb:manage_document"},
+        bearer_token="interactive-user-token",
+    )
+    captured = {}
+
+    class Client:
+        def register_information_resource(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                resource_id="gir_official_source",
+                source_version="gresver_public_1",
+                policy_binding_id=binding.policy_binding_id,
+                policy_hash=canonical_policy_hash(binding),
+            )
+
+    monkeypatch.setattr(api_module, "governance_client", lambda _settings: Client())
+    result = _register_governed_resource(
+        principal=principal,
+        resource_type="document",
+        resource_id="doc_official_source",
+        source_version="gresver_public_1",
+        title="Official source",
+        policy=binding,
+        requested_scope=None,
+        parent_resource_id=None,
+        reason="test official source registration",
+        delegated_actor_subject_id=principal.subject_id,
+        use_fixed_akb_identity=True,
+    )
+
+    assert result["governance_registration_status"] == "REGISTERED"
+    assert captured["credential_token"] == "fixed-akb-token"
+    assert captured["audit_actor_subject_id"] == "user-manager"
 
 
 def test_publication_write_forwards_interactive_bearer_and_public_decision_is_anonymous(

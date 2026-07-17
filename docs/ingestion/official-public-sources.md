@@ -21,8 +21,11 @@ workflow.
   unchanged hash does not create a duplicate.
 - Collection approval authorizes the mechanical source-origin, file-type and
   hash checks. It does not bypass Registry authorization or Ingestion proofs.
-  Each version still uses the current actor, Registry policy binding and exact
-  web-to-Ingestion delegated proof.
+  A manager with `akb:manage_document` starts the synchronization. Registry
+  registers only the strictly marked public-reference document and version
+  through the existing fixed `service:akb` identity, while retaining the
+  manager as `metadata.auditActorSubjectId`. Publication, approval and the
+  exact web-to-Ingestion delegated proof remain bound to the current manager.
 - AKB forwards the policy owner plus `issuedAt` and nullable `reviewAt` to the
   STRATOS Policy Registry. The Registry validates and immutably stores these
   metadata and AKB accepts only the authoritative matching response.
@@ -68,6 +71,11 @@ version creates a new immutable AKB version instead of a duplicate document.
 The open-data provider currently warns that identifiers and structure may still
 change; synchronization therefore relies on the reviewed catalog, hashes and
 idempotent replacement rather than undocumented scraping.
+
+No additional Keycloak user or client is created for this workflow. It reuses
+the existing `AKB_POLICY_SERVICE_TOKEN` mapped by STRATOS to `service:akb`.
+Missing or invalid service credentials fail closed before an AKB document is
+committed.
 
 ## Operator Procedure
 
