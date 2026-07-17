@@ -172,6 +172,8 @@ Purpose:
 - load persisted conversation history from Registry API through the web BFF
 - keep share-thread controls visible as the product path for collaborative work with retention policy
 - ask RAG Retrieval Service for answers through the assistant API
+- offer each indexed document title at most once in the suggested-question area,
+  even when the retrieval index contains several versions or chunks of the same document
 - show confidence, warnings and no-answer states inside the active thread
 - display citations with document id, version id, section path, page and chunk id
 - keep source-context and direct source-document opening available from the answer
