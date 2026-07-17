@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
 import type { CreateIngestionJobRequest } from "@/lib/types";
 import { assertUploadMatchesIngestionPayload, UploadPreflightError } from "@/lib/upload/preflight";
@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const context = await getServerRequestContext();
+    const context = await getServerRequestContextForRequest(request);
     const clients = getServerApiClients();
     const documentId = String(body.document_id ?? "").trim();
     const sourceFileUri = String(body.source_file_uri ?? "").trim();

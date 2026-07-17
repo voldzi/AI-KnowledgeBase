@@ -45,6 +45,11 @@ AKB exposes several REST surfaces:
 | Governance Service | `/api/v1` | Version comparison, compliance, conflicts, KB drafts, validity alerts. |
 | Platform Status | root paths | `/health`, `/ready`, `/metrics`, `/openapi.json`. |
 
+Controlled-document create, upload preflight, binary upload and ingestion use
+one request-bound identity path. They accept either the current secure OIDC web
+session or an `Authorization: Bearer <access_token>` header and derive the same
+current STRATOS access projection before touching Registry or object storage.
+
 The authenticated AKB web bridge also exposes the manager-only official-source
 operations:
 

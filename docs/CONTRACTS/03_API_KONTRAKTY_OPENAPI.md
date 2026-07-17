@@ -824,6 +824,12 @@ PUT  /api/controlled-document/upload/sessions/{sessionId}/content
 POST /api/controlled-document/ingestion
 ```
 
+Vsechny tri operace akceptuji stejnou aktivni uzivatelskou relaci bud z
+bezpecne serverove OIDC session cookie, nebo z hlavicky
+`Authorization: Bearer <access_token>`. Bearer se vzdy prevede na aktualni
+STRATOS access projection; endpoint nesmi pri programovem importu spadnout zpet
+na cookie relaci ani na technicke hlavicky identity.
+
 STRATOS upload a retrieval kontrakty publikuji `policy_binding_id`,
 `policy_version` a `policy_hash`. Vstupni preflight navic validuje plny
 `information-policy-2.0.0` binding a `stratos-integration-envelope-1` pred

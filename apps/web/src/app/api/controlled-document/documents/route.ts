@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import type { Classification, DocumentAssignmentInput, DocumentType } from "@/lib/types";
 import { createDefaultInformationPolicy, parseInformationPolicy } from "@/lib/stratos/information-policy";
@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const context = await getServerRequestContext();
+    const context = await getServerRequestContextForRequest(request);
     const forbidden = requireApiAccess(context, "knowledge_workspace");
     if (forbidden) return forbidden;
     const clients = getServerApiClients();
