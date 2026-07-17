@@ -11,8 +11,9 @@ ARG NEXT_PUBLIC_AKL_BASE_PATH=""
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /usr/local/lib/node_modules/pnpm /usr/local/lib/node_modules/pnpm
 COPY . .
-RUN npm install -g pnpm@11.7.0 && pnpm run build
+RUN node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs run build
 
 FROM node:26-alpine AS runner
 WORKDIR /app
