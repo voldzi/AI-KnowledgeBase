@@ -10,6 +10,7 @@ import {
   getGovernedIngestionReport,
   listVisibleIngestionJobs,
   listVisibleIngestionReports,
+  refreshPublishedVersionIndexes,
   retryCurrentGovernedIngestionAttempt,
 } from "../src/lib/ingestion/governed-operations";
 import {
@@ -548,6 +549,115 @@ describe("Registry-governed ingestion operations", () => {
         && error.code === "INGESTION_RETRY_OPERATION_ID_INVALID",
     );
     assert.equal(called, false);
+  });
+
+  it("refreshes the exact published version with one deterministic successor job", async () => {
+    const idempotencyKeys: string[] = [];
+    const fetcher: AklFetch = async (input, init) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      if (url.endsWith("/documents/doc_1/external-references/current")) {
+        return Response.json({
+          document_id: "doc_1",
+          ingestion_attempt: {
+            document_id: "doc_1",
+            document_version_id: "ver_1",
+            ingestion_job_id: "ing_1",
+            ingestion_status: "INDEXED",
+            created_at: "2026-07-14T10:00:00Z",
+            updated_at: "2026-07-14T10:02:00Z",
+          },
+        });
+      }
+      if (url.endsWith("/documents/doc_1/versions")) {
+        return Response.json({ items: [versionFixture()] });
+      }
+      if (url.includes("/ingestion-authorization")) {
+        const body = JSON.parse(String(init?.body)) as {
+          action: "document.read" | "document.ingest";
+          correlation_id: string;
+          idempotency_key: string;
+        };
+        idempotencyKeys.push(body.idempotency_key);
+        return Response.json({
+          authorization_token: `registry-${body.action}-proof-token-with-bounded-length-1234`,
+          authorization_id: `iauth_${body.action.replace(".", "_")}`,
+          confirmed_subject_id: "user_1",
+          action: body.action,
+          document_id: "doc_1",
+          document_version_id: "ver_1",
+          correlation_id: body.correlation_id,
+          idempotency_key: body.idempotency_key,
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        });
+      }
+      assert.equal(headers.get("Authorization"), "Bearer transport-token");
+      if (url.endsWith("/ingestion/jobs/ing_1")) {
+        return Response.json(jobFixture("completed", "ing_1"));
+      }
+      if (url.endsWith("/ingestion/jobs") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        assert.equal(body.expected_current_ingestion_job_id, "ing_1");
+        return Response.json(jobFixture("queued", "ing_refresh"));
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    };
+    const clients = createApiClients({ env: productionEnv, fetcher });
+
+    const result = await refreshPublishedVersionIndexes(
+      clients,
+      actorContext,
+      "doc_1",
+      "ver_1",
+      {
+        transportContextFactory: async (correlationId) => dedicatedTransportContext(correlationId),
+      },
+    );
+
+    assert.equal(result.job.job_id, "ing_refresh");
+    assert.match(idempotencyKeys[0] ?? "", /^read:ing_1:/);
+    assert.match(idempotencyKeys[1] ?? "", /^retry:[a-f0-9]{64}$/);
+  });
+
+  it("fails before reading or writing an index when the published version is not current", async () => {
+    let ingestionCalled = false;
+    const clients = createApiClients({
+      env: productionEnv,
+      fetcher: async (input) => {
+        const url = String(input);
+        if (url.includes("ingestion.local")) ingestionCalled = true;
+        if (url.endsWith("/documents/doc_1/external-references/current")) {
+          return Response.json({
+            document_id: "doc_1",
+            ingestion_attempt: {
+              document_id: "doc_1",
+              document_version_id: "ver_1",
+              ingestion_job_id: "ing_1",
+              ingestion_status: "INDEXED",
+              created_at: "2026-07-14T10:00:00Z",
+              updated_at: "2026-07-14T10:02:00Z",
+            },
+          });
+        }
+        if (url.endsWith("/documents/doc_1/versions")) {
+          return Response.json({ items: [versionFixture()] });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await assert.rejects(
+      () => refreshPublishedVersionIndexes(
+        clients,
+        actorContext,
+        "doc_1",
+        "ver_other",
+      ),
+      (error: unknown) => error instanceof ApiClientError
+        && error.status === 502
+        && error.code === "INGESTION_PUBLISHED_VERSION_CONFLICT",
+    );
+    assert.equal(ingestionCalled, false);
   });
 });
 

@@ -38,6 +38,8 @@ interface ExactIngestionOperationOptions {
 
 interface RetryCurrentIngestionOptions extends ExactIngestionOperationOptions {
   correlationId?: string;
+  expectedDocumentVersionId?: string;
+  requirePublishedVersion?: boolean;
 }
 
 export interface RetriedCurrentIngestionAttempt {
@@ -198,6 +200,23 @@ export async function retryCurrentGovernedIngestionAttempt(
       correlationId,
     );
   }
+  if (
+    options.expectedDocumentVersionId
+    && version.document_version_id !== options.expectedDocumentVersionId
+  ) {
+    throw conflict(
+      "The Registry current ingestion attempt is not the published document version.",
+      "INGESTION_PUBLISHED_VERSION_CONFLICT",
+      correlationId,
+    );
+  }
+  if (options.requirePublishedVersion && version.status !== "valid") {
+    throw conflict(
+      "Only a published valid document version can refresh its retrieval indexes.",
+      "INGESTION_PUBLISHED_VERSION_REQUIRED",
+      correlationId,
+    );
+  }
 
   const currentJob = await getGovernedIngestionJob(
     clients,
@@ -258,6 +277,34 @@ export async function retryCurrentGovernedIngestionAttempt(
     );
   }
   return { job, version, previousAttempt };
+}
+
+/**
+ * Re-runs the exact Registry-visible ingestion attempt after publication so
+ * derived Qdrant/OpenSearch payloads inherit the authoritative `valid` status.
+ * The deterministic operation id makes a repeated publish bridge request
+ * replay the same refresh job instead of creating duplicate work.
+ */
+export async function refreshPublishedVersionIndexes(
+  clients: IngestionClients,
+  actorContext: ApiRequestContext,
+  documentId: string,
+  documentVersionId: string,
+  options: ExactIngestionOperationOptions = {},
+): Promise<RetriedCurrentIngestionAttempt> {
+  const coordinate = `${documentId}\0${documentVersionId}`;
+  const operationId = `published-index:${createHash("sha256").update(coordinate).digest("hex")}`;
+  return retryCurrentGovernedIngestionAttempt(
+    clients,
+    actorContext,
+    documentId,
+    operationId,
+    {
+      ...options,
+      expectedDocumentVersionId: documentVersionId,
+      requirePublishedVersion: true,
+    },
+  );
 }
 
 /**
