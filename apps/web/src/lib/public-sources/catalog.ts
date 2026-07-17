@@ -71,7 +71,7 @@ const eurLexActs: ReadonlyArray<readonly [string, string]> = [
 
 const eurLexDocuments: PublicSourceFixedDocument[] = eurLexActs.map(([title, celex]) => ({
   title,
-  url: `https://eur-lex.europa.eu/legal-content/CS/TXT/PDF/?uri=CELEX:${celex}`,
+  url: `https://publications.europa.eu/resource/celex/${celex}`,
   canonicalUrl: `https://eur-lex.europa.eu/legal-content/CS/TXT/?uri=CELEX:${celex}`,
 }));
 
@@ -248,7 +248,7 @@ export const PUBLIC_SOURCE_COLLECTIONS: readonly PublicSourceCollection[] = [
     documentType: "regulation",
     targetDocuments: eurLexDocuments.length,
     syncMode: "fixed",
-    allowedHosts: ["eur-lex.europa.eu"],
+    allowedHosts: ["publications.europa.eu", "eur-lex.europa.eu"],
     seedUrls: [],
     crawlPathPrefixes: ["/legal-content/"],
     maxPages: 0,
