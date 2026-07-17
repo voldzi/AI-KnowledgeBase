@@ -109,6 +109,31 @@ describe("OIDC web session", () => {
     assert.equal(read?.refreshToken, "refresh-token");
   });
 
+  it("restores an expired metadata session so its refresh token can renew access", () => {
+    const config = testOidcConfig();
+    const session = sessionFromTokens(
+      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 30 },
+      1_000
+    );
+    const browserSession = sealBrowserSession(session, "test-secret");
+    const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
+    const read = readSessionCookie(
+      {
+        get: (name: string) =>
+          ({
+            [OIDC_SESSION_COOKIE]: { value: browserSession },
+            [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
+          })[name]
+      },
+      config,
+      session.expiresAt + 1
+    );
+
+    assert.equal(read?.subjectId, "user-123");
+    assert.equal(read?.accessToken, undefined);
+    assert.equal(read?.refreshToken, "refresh-token");
+  });
+
   it("refreshes a non-expired metadata session when the access token is absent", async () => {
     const config = testOidcConfig();
     const refreshedAccessToken = jwt({

@@ -10,8 +10,16 @@ import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
 import {
   buildPublicAppUrl,
+  cookieOptions,
+  OIDC_ACCESS_COOKIE,
+  OIDC_REFRESH_COOKIE,
+  OIDC_SESSION_COOKIE,
   readSessionCookie,
   refreshOidcSession,
+  requireOidcConfig,
+  sealAccessToken,
+  sealBrowserSession,
+  sealRefreshToken,
   type OidcSession,
 } from "../auth/oidc";
 import { contextFromStratosAccessProjection } from "../auth/access-projection";
@@ -26,6 +34,8 @@ type RequestLike = Request & {
 type CookieReader = {
   get(name: string): { value: string } | undefined;
 };
+
+const requestOidcSessions = new WeakMap<object, Promise<OidcSession | null>>();
 
 export function getServerApiClients() {
   return createApiClients();
@@ -142,6 +152,19 @@ export async function getOptionalServerRequestContext(
 export async function getOptionalServerOidcSession(
   request?: RequestLike,
 ): Promise<OidcSession | null> {
+  if (request) {
+    const pending = requestOidcSessions.get(request);
+    if (pending) return pending;
+    const resolved = resolveOptionalServerOidcSession(request);
+    requestOidcSessions.set(request, resolved);
+    return resolved;
+  }
+  return resolveOptionalServerOidcSession();
+}
+
+async function resolveOptionalServerOidcSession(
+  request?: RequestLike,
+): Promise<OidcSession | null> {
   const config = getAklConfig();
   if (config.authMode !== "oidc") {
     return null;
@@ -150,7 +173,30 @@ export async function getOptionalServerOidcSession(
     ? cookieReaderFromRequest(request)
     : await cookies();
   const session = readSessionCookie(cookieStore, config);
-  return session ? refreshOidcSession(config, session) : null;
+  if (!session) return null;
+  const refreshed = await refreshOidcSession(config, session);
+  if (!refreshed) return null;
+  if (request && oidcSessionChanged(session, refreshed)) {
+    const oidc = requireOidcConfig(config);
+    const responseCookies = await cookies();
+    const options = cookieOptions(config);
+    responseCookies.set(OIDC_SESSION_COOKIE, sealBrowserSession(refreshed, oidc.sessionSecret), options);
+    if (refreshed.accessToken) {
+      responseCookies.set(OIDC_ACCESS_COOKIE, sealAccessToken(refreshed.accessToken, oidc.sessionSecret), options);
+    } else {
+      responseCookies.delete(OIDC_ACCESS_COOKIE);
+    }
+    if (refreshed.refreshToken) {
+      responseCookies.set(OIDC_REFRESH_COOKIE, sealRefreshToken(refreshed.refreshToken, oidc.sessionSecret), options);
+    }
+  }
+  return refreshed;
+}
+
+function oidcSessionChanged(previous: OidcSession, current: OidcSession): boolean {
+  return previous.accessToken !== current.accessToken
+    || previous.refreshToken !== current.refreshToken
+    || previous.expiresAt !== current.expiresAt;
 }
 
 function cookieReaderFromRequest(request: RequestLike): CookieReader {

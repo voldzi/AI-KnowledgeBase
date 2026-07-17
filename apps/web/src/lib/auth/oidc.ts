@@ -345,7 +345,7 @@ export function readSessionCookie(
   const oidc = requireOidcConfig(config);
   const sessionValue = cookies.get(OIDC_SESSION_COOKIE)?.value;
   const session = sessionValue
-    ? openSession(sessionValue, oidc.sessionSecret, nowMs)
+    ? openSession(sessionValue, oidc.sessionSecret, nowMs, { allowExpired: true })
     : null;
   if (!session) {
     return null;
