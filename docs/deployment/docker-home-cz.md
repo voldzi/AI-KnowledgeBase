@@ -383,6 +383,10 @@ nesouvisejících kontejnerů. V `/srv/akl/env/akl.prod.env` proto držte explic
 `PLATFORM_READY_CHECKS` na `http://akl-platform-web:3000/akb/health`.
 Kontejnerové jméno se při bezpečné rekreaci služby může změnit nebo dočasně
 zmizet; unikátní network alias je stabilní kontrakt Docker Compose sítě.
+Hodnoty v produkčním env souboru jsou povinným provozním kontraktem. Fallback
+uvnitř bloků `reverse-proxy` a `platform-status` zůstává byte-identický se
+stávajícím immutable releasem, protože tyto dvě služby neleží v řízené release
+hranici; v produkci se díky explicitnímu env souboru nikdy nepoužije.
 
 ## 7. Nasazovací Postup
 
