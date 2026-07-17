@@ -3,16 +3,27 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/infra/docker-compose/docker-compose.docker-home.yml"
+ENV_EXAMPLE="$ROOT_DIR/infra/docker-compose/docker-home.env.example"
 
-grep -Fq "WEB_UPSTREAM: \${WEB_UPSTREAM:-web:3000}" "$COMPOSE_FILE" \
+grep -Fq "WEB_UPSTREAM=akl-platform-web:3000" "$ENV_EXAMPLE" \
   || {
-    printf 'Docker Home reverse proxy must use the stable Compose web service DNS name.\n' >&2
+    printf 'Docker Home production env must route the reverse proxy through the collision-free AKB web service DNS name.\n' >&2
     exit 1
   }
 
-grep -Fq "web=http://web:3000\${AKL_WEB_BASE_PATH:-/akb}/health" "$COMPOSE_FILE" \
+grep -Fq "web=http://akl-platform-web:3000/akb/health" "$ENV_EXAMPLE" \
   || {
-    printf 'Docker Home readiness checks must use the stable Compose web service DNS name.\n' >&2
+    printf 'Docker Home production env readiness checks must use the collision-free AKB web service DNS name.\n' >&2
+    exit 1
+  }
+
+awk '
+  /^  web:$/ { in_web = 1; next }
+  in_web && /^  [a-zA-Z0-9_-]+:$/ { exit }
+  in_web { print }
+' "$COMPOSE_FILE" | grep -Fq 'akl-platform-web' \
+  || {
+    printf 'Docker Home web service must publish the collision-free AKB network alias.\n' >&2
     exit 1
   }
 

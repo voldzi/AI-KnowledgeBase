@@ -138,7 +138,9 @@ services:
       evaluation-service:
         condition: service_healthy
     networks:
-      - app_zone
+      app_zone:
+        aliases:
+          - akl-platform-web
     healthcheck:
       test:
         [
