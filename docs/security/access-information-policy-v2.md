@@ -70,7 +70,13 @@ immutable source version, parent id, concrete registered scope, registration
 status, and registration timestamp. Normal user operations register with the
 verified user bearer. Generic service writes use the dedicated
 `AKB_POLICY_SERVICE_TOKEN`, mapped to the fixed `service:akb` identity; an
-integration-envelope actor on those routes remains audit metadata only.
+integration-envelope actor on those routes remains audit metadata only. The
+narrowly defined official-public-reference workflow is the only interactive
+exception: a manager with `akb:manage_document` approves the collection, while
+Registry uses the same fixed `service:akb` identity only for central resource
+registration and records the manager as audit metadata. Marker, metadata,
+public policy shape and organization scope must all match; ordinary uploads
+continue to use the verified user bearer.
 
 AIIP ingestion is a narrower exception described in ADR 0008. Only the
 `aiip-service` client may enter the `aiip-upload` route family, and every call
