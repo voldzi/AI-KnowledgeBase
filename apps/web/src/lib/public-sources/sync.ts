@@ -24,6 +24,7 @@ import { assertCzechLawOpenDataSourceUrl, assertPublicSourceUrl } from "./discov
 
 const MAX_REDIRECTS = 5;
 const DOWNLOAD_TIMEOUT_MS = 45_000;
+const DOWNLOAD_ATTEMPTS = 2;
 const PUBLIC_SOURCE_TAG = "official-public-reference";
 
 export interface PublicSourceSyncRequest {
@@ -396,6 +397,24 @@ async function downloadOfficialDocument(
   collectionId: string,
   fetcher: typeof fetch,
 ): Promise<DownloadedOfficialDocument> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      return await downloadOfficialDocumentOnce(input, collectionId, fetcher);
+    } catch (error) {
+      lastError = error;
+      if (attempt === DOWNLOAD_ATTEMPTS || !isRetryableOfficialDownloadError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError;
+}
+
+async function downloadOfficialDocumentOnce(
+  input: URL,
+  collectionId: string,
+  fetcher: typeof fetch,
+): Promise<DownloadedOfficialDocument> {
   let current = assertPublicSourceUrl(collectionId, input.toString());
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     const maxBytes = getUploadSettings().maxFileBytes;
@@ -465,6 +484,13 @@ async function downloadOfficialDocument(
     };
   }
   throw new Error("Official source exceeded the redirect limit.");
+}
+
+function isRetryableOfficialDownloadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "TimeoutError" || /aborted due to timeout/i.test(error.message)) return true;
+  const status = error.message.match(/HTTP (\d{3})/)?.[1];
+  return status === "429" || (status !== undefined && Number(status) >= 500);
 }
 
 function normalizeOfficialMimeType(

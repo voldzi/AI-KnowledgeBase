@@ -44,6 +44,50 @@ const emptyState = (): CollectionState => ({
   error: null,
 });
 
+class PublicSourceSyncResponseError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "PublicSourceSyncResponseError";
+  }
+}
+
+async function synchronizeCandidate(
+  collection: PublicSourceCollection,
+  candidate: PublicSourceCandidate,
+): Promise<"created" | "updated" | "unchanged"> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetch(withAppBasePath("/api/public-sources/sync"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          collection_id: collection.id,
+          source_url: candidate.sourceUrl,
+          canonical_url: candidate.canonicalUrl,
+          title: candidate.title,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new PublicSourceSyncResponseError(errorMessage(body), response.status);
+      return body.action as "created" | "updated" | "unchanged";
+    } catch (error) {
+      if (attempt === 2 || !isRetryableCandidateError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw new Error("Jedna položka se nepodařila synchronizovat.");
+}
+
+function isRetryableCandidateError(error: unknown): boolean {
+  if (error instanceof PublicSourceSyncResponseError) {
+    return error.status === 429 || error.status >= 500;
+  }
+  return error instanceof TypeError
+    || error instanceof SyntaxError
+    || (error instanceof Error && /failed to fetch/i.test(error.message));
+}
+
 export function PublicSourcesWorkbench({
   collections,
   importedByCollection,
@@ -116,20 +160,7 @@ export function PublicSourcesWorkbench({
         const candidate = candidates[cursor];
         cursor += 1;
         try {
-          const response = await fetch(withAppBasePath("/api/public-sources/sync"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "same-origin",
-            body: JSON.stringify({
-              collection_id: collection.id,
-              source_url: candidate.sourceUrl,
-              canonical_url: candidate.canonicalUrl,
-              title: candidate.title,
-            }),
-          });
-          const body = await response.json();
-          if (!response.ok) throw new Error(errorMessage(body));
-          const action = body.action as "created" | "updated" | "unchanged";
+          const action = await synchronizeCandidate(collection, candidate);
           update(collection.id, (current) => ({
             ...current,
             completed: current.completed + 1,

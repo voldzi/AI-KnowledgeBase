@@ -124,7 +124,12 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
     const bytes = new TextEncoder().encode(
       '<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p>AI Act</p></body></html>',
     );
+    let timedOut = false;
     const fetcher: typeof fetch = async (input, init) => {
+      if (!timedOut) {
+        timedOut = true;
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      }
       const headers = new Headers(init?.headers);
       assert.equal(headers.get("accept"), "application/xhtml+xml");
       assert.equal(headers.get("accept-language"), "ces");

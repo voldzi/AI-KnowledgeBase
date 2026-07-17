@@ -61,7 +61,7 @@ const eurLexActs: ReadonlyArray<readonly [string, string]> = [
   ["Směrnice o odpovědnosti za vadné výrobky", "32024L2853"],
   ["Nařízení Interoperable Europe Act", "32024R0903"],
   ["Nařízení o evropském prostoru pro zdravotní data", "32025R0327"],
-  ["Směrnice o opakovaném použití informací veřejného sektoru", "32003L0098"],
+  ["Rozhodnutí o politickém programu Digitální dekáda 2030", "32022D2481"],
   ["Nařízení o volném pohybu neosobních údajů", "32018R1807"],
   ["Nařízení o evropské statistice", "32009R0223"],
   ["Finanční nařízení EU", "32018R1046"],
