@@ -185,6 +185,9 @@ cleanup command in the runbook is used. A change to the shared
 production Compose file is accepted only when its top-level envelope and every
 unmanaged service block are byte-identical and changes are confined to complete
 Registry/Ingestion/RAG/web blocks. All other Compose changes fail before build.
+The realm export and `infra/keycloak/update-stratos-public-routing.sh` are
+non-runtime resources: immutable AKB deployment ignores them and their live
+application and verification remain a separate Keycloak administration step.
 
 A failed pre-stop writable-primary gate occurs before build and can retry the
 same approved SHA. Immediately before build, a durable

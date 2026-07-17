@@ -1086,10 +1086,11 @@ else
         add_service web
         add_service chat-web
         ;;
-      infra/keycloak/realm-stratos.json)
-        # The shared Keycloak realm is reconciled and verified outside the AKB
-        # Compose release. This exact declarative export does not select or
-        # mutate an AKB runtime service.
+      infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh)
+        # The shared Keycloak realm and public-routing client reconciliation
+        # are applied and verified outside the AKB Compose release. These exact
+        # declarative/admin resources do not select or mutate an AKB runtime
+        # service.
         # Live-realm reconciliation evidence remains an independent prerequisite.
         ;;
       services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*|infra/docker-compose/docker-compose.docker-home-observability.yml)
