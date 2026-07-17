@@ -66,12 +66,14 @@ The curated pilot target is 354 documents:
 | Czech legislation from e-Sbírka | 90 | credential-free official open data |
 
 All seven collections are synchronizable without a new credential. The
-EU-law connector downloads Czech PDF originals from the Publications Office
-Cellar API with the CELEX identifier and retains EUR-Lex as the canonical human
-reference. It does not scrape the browser-facing EUR-Lex site or depend on its
-interactive WAF challenge. Cellar's legacy same-host HTTP redirect is upgraded
-back to HTTPS before download; redirects to HTTP or to another host remain
-rejected.
+EU-law connector downloads the official Czech XHTML expression from the
+Publications Office Cellar API with the CELEX identifier and retains EUR-Lex as
+the canonical human reference. XHTML is used consistently because Cellar does
+not expose one-file Czech PDFs for every selected act, while the official XHTML
+expression is complete and directly indexable. The connector does not scrape
+the browser-facing EUR-Lex site or depend on its interactive WAF challenge.
+Cellar's legacy same-host HTTP redirect is upgraded back to HTTPS before
+download; redirects to HTTP or to another host remain rejected.
 
 The e-Sbírka connector reads the legal-act JSON-LD description, selects the newest
 effective version not later than the synchronization date and downloads its
