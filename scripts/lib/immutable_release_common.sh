@@ -474,6 +474,7 @@ SUPPORTED = (
     "ingestion-service",
     "rag-retrieval-service",
     "web",
+    "chat-web",
 )
 SERVICE_HEADER = re.compile(r"^  ([a-z0-9][a-z0-9_-]*):(?:[ \t]*#[^\r\n]*)?\r?\n?$")
 TOP_LEVEL = re.compile(r"^[A-Za-z0-9_.-]+:")
@@ -534,15 +535,18 @@ current_envelope, current_services = split_compose(sys.argv[1])
 target_envelope, target_services = split_compose(sys.argv[2])
 if current_envelope != target_envelope:
     raise SystemExit(
-        "shared production Compose change modifies top-level configuration outside the four-service release boundary"
+        "shared production Compose change modifies top-level configuration outside the managed-service release boundary"
     )
 if current_services.keys() != target_services.keys():
-    raise SystemExit("shared production Compose change adds or removes a service")
+    added = set(target_services) - set(current_services)
+    removed = set(current_services) - set(target_services)
+    if removed or added != {"chat-web"}:
+        raise SystemExit("shared production Compose change adds or removes an unsupported service")
 
 changed = [
     name
     for name in target_services
-    if current_services[name] != target_services[name]
+    if name not in current_services or current_services[name] != target_services[name]
 ]
 unsupported = [name for name in changed if name not in SUPPORTED]
 if unsupported:
@@ -552,13 +556,13 @@ if unsupported:
     )
 if not changed:
     raise SystemExit(
-        "shared production Compose change has no service-block change inside the four-service release boundary"
+        "shared production Compose change has no service-block change inside the managed-service release boundary"
     )
 for name in SUPPORTED:
     if name in changed:
         print(name)
 PY
-)" || akl_fail "Shared production Compose change is outside the coordinated four-service release boundary"
+)" || akl_fail "Shared production Compose change is outside the coordinated managed-service release boundary"
   [[ -n "$changed_services" ]] \
     || akl_fail "Shared production Compose change selected no managed service"
   printf '%s\n' "$changed_services"
@@ -1678,7 +1682,7 @@ if values["phase"] not in {
     "verified",
 }:
     raise SystemExit("runtime marker phase is invalid")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web))*)", values["services"]):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web))*)", values["services"]):
     raise SystemExit("runtime marker services are invalid")
 if values["migration_started"] not in {"true", "false"}:
     raise SystemExit("runtime marker migration flag is invalid")
@@ -1720,7 +1724,7 @@ if state not in {"applying", "failed", "verified"}:
     raise SystemExit("invalid runtime marker state")
 if phase not in {"seeded", "migrating", "migrated", "restarting", "verifying", "verified"}:
     raise SystemExit("invalid runtime marker phase")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web))*)", services):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web))*)", services):
     raise SystemExit("invalid runtime marker services")
 if migration_started not in {"true", "false"}:
     raise SystemExit("invalid runtime marker migration flag")
@@ -2589,7 +2593,7 @@ akl_quarantine_unverified_compose_service() {
   local -a container_ids=()
 
   akl_validate_project_name "$project_name"
-  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web)$ ]] \
+  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web|chat-web)$ ]] \
     || akl_fail "Unverified Compose service name is invalid"
   [[ "$target_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || akl_fail "Unverified durable target image ID is invalid"
