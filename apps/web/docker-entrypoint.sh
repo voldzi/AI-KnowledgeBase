@@ -2,8 +2,15 @@
 set -eu
 
 OBJECT_STORAGE_ROOT="${AKL_WEB_OBJECT_STORAGE_ROOT:-/data/object-storage}"
-mkdir -p "$OBJECT_STORAGE_ROOT"
-chown -R nextjs:nextjs "$OBJECT_STORAGE_ROOT"
+if [ "${AKL_WEB_PROFILE:-platform}" = "chat" ]; then
+  if [ ! -d "$OBJECT_STORAGE_ROOT" ]; then
+    echo "chat object storage is not available" >&2
+    exit 1
+  fi
+else
+  mkdir -p "$OBJECT_STORAGE_ROOT"
+  chown -R nextjs:nextjs "$OBJECT_STORAGE_ROOT"
+fi
 
 INGESTION_SECRET_SOURCE="${AKL_WEB_INGESTION_CLIENT_SECRET_SOURCE_FILE:-}"
 INGESTION_SECRET_RUNTIME="${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-}"

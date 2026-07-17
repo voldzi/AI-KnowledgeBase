@@ -18,6 +18,7 @@ scripts=(
   scripts/verify_docker_home_release.sh
   tests/fixtures/legacy_deploy_orchestrator.sh
   tests/shell/test_immutable_docker_home_release.sh
+  tests/shell/test_web_docker_entrypoint.sh
 )
 
 for script in "${scripts[@]}"; do
@@ -86,3 +87,4 @@ PY
 )
 
 bash tests/shell/test_immutable_docker_home_release.sh
+bash tests/shell/test_web_docker_entrypoint.sh
