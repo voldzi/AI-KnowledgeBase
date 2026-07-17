@@ -75,57 +75,12 @@ CLIENTS
   /opt/keycloak/bin/kcadm.sh update "clients/$id" -r "$REALM" \
     -s "redirectUris=$redirect_uris_json" \
     -s "webOrigins=$web_origins_json" >/dev/null
-  if [ "$client_id" = "akb-chat-web" ]; then
-    /opt/keycloak/bin/kcadm.sh update "clients/$id" -r "$REALM" \
-      -s 'attributes."post.logout.redirect.uris"=https://chat.zeleznalady.cz/*##http://localhost:3010/*' \
-      -s 'attributes."pkce.code.challenge.method"=S256' >/dev/null
-  fi
   echo "updated $client_id"
 }
-
-ensure_akb_chat_client() {
-  id=$(
-    /opt/keycloak/bin/kcadm.sh get clients -r "$REALM" \
-      -q clientId=akb-chat-web --fields id --format csv \
-      | tail -n 1 \
-      | tr -d '"\r'
-  )
-  if [ -n "$id" ] && [ "$id" != "id" ]; then
-    return
-  fi
-
-  id=$(
-    /opt/keycloak/bin/kcadm.sh create clients -r "$REALM" \
-      -s clientId=akb-chat-web \
-      -s 'name=AKB Standalone Chat PWA' \
-      -s enabled=true \
-      -s protocol=openid-connect \
-      -s publicClient=true \
-      -s standardFlowEnabled=true \
-      -s directAccessGrantsEnabled=false \
-      -s serviceAccountsEnabled=false \
-      -i
-  )
-  /opt/keycloak/bin/kcadm.sh create "clients/$id/protocol-mappers/models" -r "$REALM" \
-    -s 'name=akl-api audience' \
-    -s protocol=openid-connect \
-    -s protocolMapper=oidc-audience-mapper \
-    -s consentRequired=false \
-    -s 'config."included.client.audience"=akl-api' \
-    -s 'config."id.token.claim"=false' \
-    -s 'config."access.token.claim"=true' >/dev/null
-  echo "created akb-chat-web"
-}
-
-ensure_akb_chat_client
 
 update_client "akl-web" \
   '["https://stratos.zeleznalady.cz/akb/*","https://akl.zeleznalady.cz/*","https://docker.home.cz/*","http://localhost:3000/*","http://localhost:3002/*","http://localhost:3003/*"]' \
   '["https://stratos.zeleznalady.cz","https://akl.zeleznalady.cz","https://docker.home.cz","+"]'
-
-update_client "akb-chat-web" \
-  '["https://chat.zeleznalady.cz/api/auth/callback","http://localhost:3010/api/auth/callback"]' \
-  '["https://chat.zeleznalady.cz","http://localhost:3010"]'
 
 update_client "budget-web" \
   '["https://stratos.zeleznalady.cz/*","https://budget.zeleznalady.cz/*","https://contracts.zeleznalady.cz/*","https://docker.home.cz/*","http://localhost:3004/*"]' \
