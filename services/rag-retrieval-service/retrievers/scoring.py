@@ -47,6 +47,12 @@ QUERY_EXPANSION_GROUPS: tuple[tuple[str, ...], ...] = (
     ("pril", "priloha", "annex"),
     ("vyjimka", "odchylka", "exception"),
     ("schvaleni", "schvalit", "odsouhlaseni", "approve", "approval"),
+    ("csu", "czso", "cesky statisticky urad", "statisticky urad"),
+    ("statisticka sluzba", "statni statisticka sluzba", "oficialni statistika", "evropska statistika"),
+    ("produkt", "produkty", "statisticky produkt", "katalog produktu", "statisticka publikace", "casova rada", "verejna databaze", "open data"),
+    ("it sluzby", "rizeni it sluzeb", "itsm", "it service management", "itil", "fitsm", "sprava it sluzeb"),
+    ("servisni pozadavek", "incident", "problem", "zmena", "service request", "change"),
+    ("informacni system verejne spravy", "isvs", "rizeni informatiky", "informacni koncepce"),
 )
 
 CONCEPT_BONUSES: tuple[tuple[set[str], set[str], float], ...] = (

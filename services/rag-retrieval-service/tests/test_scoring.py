@@ -12,6 +12,16 @@ def test_expand_query_text_adds_controlled_document_synonyms() -> None:
     assert "owner" in expanded
 
 
+def test_expand_query_text_adds_czech_statistics_and_itsm_synonyms() -> None:
+    statistics = expand_query_text("Jaké produkty vytváří ČSÚ?")
+    service_management = expand_query_text("Jak řídit IT služby?")
+
+    assert "katalog produktu" in statistics
+    assert "cesky statisticky urad" in statistics
+    assert "itil" in service_management
+    assert "fitsm" in service_management
+
+
 def test_extract_query_identifiers_normalizes_document_and_citation_references() -> None:
     identifiers = extract_query_identifiers("Najdi RMO č. 12/2024, čl. 4 odst. 2.")
 
