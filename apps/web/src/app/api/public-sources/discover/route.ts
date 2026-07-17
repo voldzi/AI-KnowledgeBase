@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import { discoverPublicSourceCollection } from "@/lib/public-sources/discovery";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const context = await getServerRequestContext();
+    const context = await getServerRequestContextForRequest(request);
     const forbidden = requireApiAccess(context, "knowledge_workspace");
     if (forbidden) return forbidden;
     const authorization = await getServerApiClients().registry.getAuthorizationHints(context);
