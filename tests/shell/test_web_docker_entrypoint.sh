@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENTRYPOINT="${ROOT_DIR}/apps/web/docker-entrypoint.sh"
+DOCKERFILE="${ROOT_DIR}/apps/web/Dockerfile"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/akb-web-entrypoint.XXXXXX")"
 
 cleanup() {
@@ -69,5 +70,13 @@ if PATH="${BIN_DIR}:${PATH}" \
   exit 1
 fi
 grep -Fxq 'chat object storage is not available' "${TEST_ROOT}/missing.err"
+
+grep -Fxq \
+  'COPY --from=builder --chown=nextjs:nextjs /app/public ./public' \
+  "$DOCKERFILE" \
+  || {
+    printf 'Web runtime image must make immutable public assets readable by nextjs.\n' >&2
+    exit 1
+  }
 
 printf 'Web Docker entrypoint profile checks passed.\n'
