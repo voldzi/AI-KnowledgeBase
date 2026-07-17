@@ -60,13 +60,18 @@ The curated pilot target is 354 documents:
 | NÚKIB supporting materials | 70 | official-site discovery |
 | Public procurement methods | 82 | official-site discovery |
 | DIA architecture and eGovernment | 37 | official-site discovery |
-| Selected EUR-Lex acts | 26 | fixed CELEX catalog |
+| Selected EU legal acts | 26 | fixed CELEX catalog through the official Cellar dissemination API |
 | Open FitSM IT service management | 25 | official-site discovery |
 | Czech Statistical Office | 24 | official-site discovery |
 | Czech legislation from e-Sbírka | 90 | credential-free official open data |
 
 All seven collections are synchronizable without a new credential. The
-e-Sbírka connector reads the legal-act JSON-LD description, selects the newest
+EU-law connector downloads Czech PDF originals from the Publications Office
+Cellar API with the CELEX identifier and retains EUR-Lex as the canonical human
+reference. It does not scrape the browser-facing EUR-Lex site or depend on its
+interactive WAF challenge.
+
+The e-Sbírka connector reads the legal-act JSON-LD description, selects the newest
 effective version not later than the synchronization date and downloads its
 ordered official fragments through the public SPARQL endpoint. The stable AKB
 document identity uses the undated canonical e-Sbírka URL, so a later effective

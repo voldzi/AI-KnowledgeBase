@@ -9,6 +9,7 @@ import { createMockContext } from "../src/lib/api/correlation";
 import { publicSourceCollection, publicSourceTargetTotal } from "../src/lib/public-sources/catalog";
 import { assertPublicSourceUrl, discoverPublicSourceCollection } from "../src/lib/public-sources/discovery";
 import { synchronizePublicSource } from "../src/lib/public-sources/sync";
+import { getUploadSettings } from "../src/lib/upload/preflight";
 
 test("official source catalog targets the requested pilot corpus size", () => {
   const total = publicSourceTargetTotal();
@@ -19,7 +20,8 @@ test("official source catalog targets the requested pilot corpus size", () => {
 test("fixed EUR-Lex collection returns only approved HTTPS sources", async () => {
   const result = await discoverPublicSourceCollection("eu-law");
   assert.ok(result.candidates.length >= 20);
-  assert.ok(result.candidates.every((item) => item.sourceUrl.startsWith("https://eur-lex.europa.eu/")));
+  assert.ok(result.candidates.every((item) => item.sourceUrl.startsWith("https://publications.europa.eu/resource/celex/")));
+  assert.ok(result.candidates.every((item) => item.canonicalUrl.startsWith("https://eur-lex.europa.eu/")));
 });
 
 test("e-Sbírka discovery uses credential-free open data and selects the current effective version", async () => {
@@ -120,18 +122,24 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
     });
     const context = createMockContext({ subjectId: "public_source_manager" });
     const bytes = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF");
-    const fetcher: typeof fetch = async () => new Response(bytes, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Length": String(bytes.byteLength),
-        "Content-Disposition": 'attachment; filename="ai-act.pdf"',
-        ETag: '"official-v1"',
-      },
-    });
+    const fetcher: typeof fetch = async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      assert.match(headers.get("accept") ?? "", /application\/pdf/);
+      assert.equal(headers.get("accept-language"), "ces");
+      assert.equal(headers.get("accept-max-cs-size"), String(getUploadSettings().maxFileBytes));
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Length": String(bytes.byteLength),
+          "Content-Disposition": 'attachment; filename="ai-act.pdf"',
+          ETag: '"official-v1"',
+        },
+      });
+    };
     const input = {
       collectionId: "eu-law",
-      sourceUrl: "https://eur-lex.europa.eu/legal-content/CS/TXT/PDF/?uri=CELEX:32024R1689",
+      sourceUrl: "https://publications.europa.eu/resource/celex/32024R1689",
       canonicalUrl: "https://eur-lex.europa.eu/legal-content/CS/TXT/?uri=CELEX:32024R1689",
       title: "Nařízení o umělé inteligenci (AI Act)",
     };

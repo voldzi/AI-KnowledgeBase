@@ -398,11 +398,18 @@ async function downloadOfficialDocument(
 ): Promise<DownloadedOfficialDocument> {
   let current = assertPublicSourceUrl(collectionId, input.toString());
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
+    const maxBytes = getUploadSettings().maxFileBytes;
     const response = await fetcher(current, {
       headers: {
         Accept: collectionId === "czech-law"
           ? "application/sparql-results+json,application/ld+json,application/json;q=0.9"
           : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword;q=0.8,*/*;q=0.1",
+        ...(collectionId === "eu-law"
+          ? {
+              "Accept-Language": "ces",
+              "Accept-Max-Cs-Size": String(maxBytes),
+            }
+          : {}),
         "User-Agent": "STRATOS-AKB-Public-Sources/1.0 (+https://stratos.zeleznalady.cz/akb)",
       },
       cache: "no-store",
@@ -416,7 +423,6 @@ async function downloadOfficialDocument(
       continue;
     }
     if (!response.ok) throw new Error(`Official source download returned HTTP ${response.status}.`);
-    const maxBytes = getUploadSettings().maxFileBytes;
     const declaredSize = Number(response.headers.get("content-length") ?? "0");
     if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
       throw new Error("Official document exceeds the AKB upload limit.");
