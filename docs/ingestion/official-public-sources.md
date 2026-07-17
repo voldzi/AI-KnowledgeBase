@@ -13,7 +13,8 @@ workflow.
   allowlist. Redirects are checked again and IP-address destinations are
   rejected.
 - Every file is downloaded by the AKB web backend, checked for the expected PDF,
-  OOXML, reviewed HTML or collection-approved JSON signature, bounded by the normal upload
+  supported OOXML package (DOCX, PPTX or XLSX), reviewed HTML or
+  collection-approved JSON signature, bounded by the normal upload
   limit, hashed and stored in AKB object storage.
 - The canonical source URL and capture time are recorded on the immutable AKB
   version. Repeated synchronization is idempotent by collection plus canonical

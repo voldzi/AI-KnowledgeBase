@@ -375,12 +375,14 @@ Navržené endpointy:
 Veřejně vystavit jen STRATOS shell a aplikační path prefixy přes DMZ reverse proxy na `dmz.home.cz`. AKL běží pod `/akb`; interní service API ponechat v Docker síti. Souhrnný route kontrakt pro všechny STRATOS aplikace je v `docs/deployment/stratos-public-routing-and-docker-home.md`.
 
 Produkční reverse proxy i `platform-status` musí pro web používat stabilní
-Compose service DNS `web:3000`, nikdy jméno konkrétního kontejneru, například
-`akl-web-1`. V `/srv/akl/env/akl.prod.env` proto držte explicitně
-`WEB_UPSTREAM=web:3000` a nastavte také webovou část
-`PLATFORM_READY_CHECKS` na `http://web:3000/akb/health`. Kontejnerové jméno se
-při bezpečné rekreaci služby může změnit nebo dočasně zmizet; service DNS je
-stabilní kontrakt Docker Compose sítě.
+unikátní Compose network alias `akl-platform-web:3000`, nikdy obecný alias
+`web:3000` ani jméno konkrétního kontejneru, například `akl-web-1`. Sdílenou
+síť používá i hlavní STRATOS web, takže obecný alias `web` může vracet více
+nesouvisejících kontejnerů. V `/srv/akl/env/akl.prod.env` proto držte explicitně
+`WEB_UPSTREAM=akl-platform-web:3000` a nastavte také webovou část
+`PLATFORM_READY_CHECKS` na `http://akl-platform-web:3000/akb/health`.
+Kontejnerové jméno se při bezpečné rekreaci služby může změnit nebo dočasně
+zmizet; unikátní network alias je stabilní kontrakt Docker Compose sítě.
 
 ## 7. Nasazovací Postup
 
