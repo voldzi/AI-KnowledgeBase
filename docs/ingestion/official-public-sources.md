@@ -34,6 +34,11 @@ workflow.
   metadata and AKB accepts only the authoritative matching response.
 - Failed indexing remains resumable. Re-running the collection retries the
   failed current attempt or continues from the first missing version.
+- A transient browser request failure and a transient official-source download
+  failure each receive one bounded retry. Only network/timeout failures, HTTP
+  429 and HTTP 5xx are retryable; permanent source errors such as HTTP 404 stay
+  visible in the collection result. Idempotent hashes prevent a retry from
+  creating a duplicate document or version.
 
 ## Public Origin Is Not Anonymous Publication
 
@@ -98,7 +103,8 @@ committed.
    authority and any warnings.
 4. Select **Synchronize collection**. The browser uses two bounded workers.
    Leaving the page stops new browser requests but committed documents remain;
-   running synchronization again resumes idempotently.
+   running synchronization again resumes idempotently. Transient network,
+   timeout, HTTP 429 and HTTP 5xx failures receive one automatic retry.
 5. Verify that failures are zero and that newly created ingestion attempts reach
    `INDEXED`. A failed item can be retried by synchronizing the collection again.
 6. Ask a representative question in Knowledge chat and verify that the answer
