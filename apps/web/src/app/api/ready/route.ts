@@ -18,13 +18,21 @@ export async function GET() {
           ),
         );
     const isReady = Object.values(dependencies).every((status) => status === "ready" || status === "mock");
-    return NextResponse.json({
-      service: "web-frontend",
-      status: isReady ? "ready" : "not_ready",
-      api_client_mode: config.apiClientMode,
-      auth_mode: config.authMode,
-      dependencies
-    }, { status: isReady ? 200 : 503 });
+    return NextResponse.json(
+      {
+        service: "web-frontend",
+        status: isReady ? "ready" : "not_ready",
+        api_client_mode: config.apiClientMode,
+        auth_mode: config.authMode,
+        dependencies
+      },
+      {
+        status: isReady ? 200 : 503,
+        headers: {
+          "cache-control": "no-store, max-age=0"
+        }
+      }
+    );
   } catch (error) {
     return NextResponse.json(
       {
@@ -32,7 +40,12 @@ export async function GET() {
         status: "not_ready",
         error: error instanceof Error ? error.message : "Unknown readiness error"
       },
-      { status: 503 }
+      {
+        status: 503,
+        headers: {
+          "cache-control": "no-store, max-age=0"
+        }
+      }
     );
   }
 }

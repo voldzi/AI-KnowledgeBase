@@ -1,12 +1,7 @@
-import { NextResponse } from "next/server";
+import { GET as apiHealth } from "../api/health/route";
 
 export const runtime = "nodejs";
 
 export function GET() {
-  return NextResponse.json({
-    service: "web-frontend",
-    status: "ok",
-    version: process.env.AKL_SERVICE_VERSION ?? "dev",
-    timestamp: new Date().toISOString()
-  });
+  return apiHealth();
 }

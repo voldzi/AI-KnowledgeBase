@@ -15,6 +15,7 @@ describe("health endpoints", () => {
     assert.equal(body.service, "web-frontend");
     assert.equal(body.status, "ok");
     assert.equal(body.version, "dev");
+    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   });
 
   it("returns root health status for service baseline compatibility", async () => {
@@ -25,6 +26,7 @@ describe("health endpoints", () => {
     assert.equal(body.service, "web-frontend");
     assert.equal(body.status, "ok");
     assert.equal(body.version, "dev");
+    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   });
 
   it("returns readiness status from configuration", async () => {
@@ -35,14 +37,17 @@ describe("health endpoints", () => {
     assert.equal(body.service, "web-frontend");
     assert.equal(body.status, "ready");
     assert.equal(body.dependencies.registry, "mock");
+    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   });
 
   it("returns root readiness status for service baseline compatibility", async () => {
-    const response = rootReady();
+    const response = await rootReady();
     const body = await response.json();
 
     assert.equal(response.status, 200);
     assert.equal(body.service, "web-frontend");
     assert.equal(body.status, "ready");
+    assert.equal(body.dependencies.registry, "mock");
+    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   });
 });

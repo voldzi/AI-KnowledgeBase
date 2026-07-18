@@ -337,11 +337,16 @@ GET /ready
 The web frontend exposes:
 
 ```text
+GET /health
+GET /ready
 GET /api/health
 GET /api/ready
 ```
 
-Production base-path deployment publishes these under `/akb/api/...`.
+Production base-path deployment publishes the API variants under
+`/akb/api/...`. The standalone chat profile explicitly allows the root
+`/health` and `/ready` probes on `chat.zeleznalady.cz`; both responses are
+uncached and do not require an interactive OIDC session.
 
 ## AIIP Application API
 

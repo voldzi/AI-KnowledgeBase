@@ -1,6 +1,6 @@
 import type { WebProfile } from "@/lib/api/config";
 
-const CHAT_PAGE_PATHS = new Set(["/", "/chat"]);
+const CHAT_PAGE_PATHS = new Set(["/", "/chat", "/health", "/ready"]);
 const CHAT_API_PREFIXES = [
   "/api/assistant",
   "/api/auth/callback",

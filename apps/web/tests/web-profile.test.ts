@@ -13,6 +13,8 @@ describe("AKB chat-only route policy", () => {
       "/",
       "/chat",
       "/chat?thread=abc",
+      "/health",
+      "/ready",
       "/api/auth/login",
       "/api/auth/callback",
       "/api/auth/logout",
