@@ -155,39 +155,47 @@ ensure_akb_chat_client() {
     -s 'attributes."post.logout.redirect.uris"=https://chat.zeleznalady.cz/*' \
     -s 'attributes."pkce.code.challenge.method"=S256' >/dev/null
 
+  ensure_audience_mapper "$id" "akl-api audience" "akl-api"
+  ensure_audience_mapper "$id" "budget-web audience" "budget-web"
+  echo "reconciled akb-chat-web"
+}
+
+ensure_audience_mapper() {
+  client_uuid="$1"
+  mapper_name="$2"
+  audience="$3"
   mapper_id=""
   while IFS=, read -r raw_id raw_name; do
     raw_id=$(strip_quotes "$raw_id")
     raw_name=$(strip_quotes "$raw_name")
-    if [ "$raw_name" = "akl-api audience" ]; then
+    if [ "$raw_name" = "$mapper_name" ]; then
       mapper_id="$raw_id"
       break
     fi
   done <<MAPPERS
-$(/opt/keycloak/bin/kcadm.sh get "clients/$id/protocol-mappers/models" -r "$REALM" --fields id,name --format csv)
+$(/opt/keycloak/bin/kcadm.sh get "clients/$client_uuid/protocol-mappers/models" -r "$REALM" --fields id,name --format csv)
 MAPPERS
 
   if [ -z "$mapper_id" ]; then
-    /opt/keycloak/bin/kcadm.sh create "clients/$id/protocol-mappers/models" -r "$REALM" \
-      -s 'name=akl-api audience' \
+    /opt/keycloak/bin/kcadm.sh create "clients/$client_uuid/protocol-mappers/models" -r "$REALM" \
+      -s "name=$mapper_name" \
       -s protocol=openid-connect \
       -s protocolMapper=oidc-audience-mapper \
       -s consentRequired=false \
-      -s 'config."included.client.audience"=akl-api' \
+      -s "config.\"included.client.audience\"=$audience" \
       -s 'config."id.token.claim"=false' \
       -s 'config."access.token.claim"=true' >/dev/null
   else
     /opt/keycloak/bin/kcadm.sh update \
-      "clients/$id/protocol-mappers/models/$mapper_id" -r "$REALM" \
-      -s 'name=akl-api audience' \
+      "clients/$client_uuid/protocol-mappers/models/$mapper_id" -r "$REALM" \
+      -s "name=$mapper_name" \
       -s protocol=openid-connect \
       -s protocolMapper=oidc-audience-mapper \
       -s consentRequired=false \
-      -s 'config."included.client.audience"=akl-api' \
+      -s "config.\"included.client.audience\"=$audience" \
       -s 'config."id.token.claim"=false' \
       -s 'config."access.token.claim"=true' >/dev/null
   fi
-  echo "reconciled akb-chat-web"
 }
 
 ensure_akb_chat_client
