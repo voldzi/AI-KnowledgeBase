@@ -531,5 +531,17 @@ Implementace v repozitáři obsahuje:
 - automatické testy konfigurace, rout a cache politiky;
 - release ověření health/readiness, manifestu a blokovaného management API.
 
-Produkční stav a datum ověření se doplní po vytvoření DNS/TLS/DMZ route,
-reconciliaci Keycloak klienta a immutable nasazení.
+Produkční stav 2026-07-18:
+
+- DNS, TLS, DMZ route a Keycloak klient jsou aktivní;
+- kanonická start URL je `https://chat.zeleznalady.cz/`;
+- staré route `/chat` a `/assistant` vracejí permanentní přesměrování na `/`;
+- immutable release `dc6bdf6263df37ce6ba1402813a64ee69d7b58dc` prošel
+  health/readiness, OIDC, manifest, service worker, historii, živý retrieval a
+  autorizované citace;
+- produkční quality gate `eval_run_02455940cef9` prošel nad osmi gold případy
+  bez regrese.
+
+Fyzická instalace a odinstalace na konkrétních spravovaných iOS/Android
+zařízeních zůstává uživatelským akceptačním krokem pilotu. Nevyžaduje další
+serverovou změnu.
