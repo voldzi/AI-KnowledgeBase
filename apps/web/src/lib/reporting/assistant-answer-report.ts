@@ -17,6 +17,7 @@ import {
   getAssistantReportQualityIssues,
   summarizeAssistantReportQuality
 } from "./assistant-report-quality";
+import { deriveAssistantChartArtifacts } from "./assistant-chart";
 
 type CellValue = string | number | boolean | null;
 type ArtifactGeneratedFrom = "rag_markdown_table" | "rag_structured_artifact" | "registry_metadata";
@@ -28,7 +29,7 @@ interface ParsedMarkdownTable {
   endLine: number;
 }
 
-const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf)/i;
+const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf|graf|diagram|vizualiz|chart|plot)/i;
 const SOURCE_COLUMN_RE = /(odkaz|zdroj|dokument|citac|citace|link|url|source|document)/i;
 
 export function normalizeAssistantAnswerReports(
@@ -379,6 +380,7 @@ function finalizeAssistantReportArtifact(
       ? []
       : exportFormatsForQueryPlan(options.queryPlan, artifact.export_formats),
     rows,
+    charts: [],
     provenance: artifact.provenance ?? {
       generated_from: options.generatedFrom,
       assistant_tool: options.queryPlan?.tool ?? (registryMetadata ? "registry_document_report" : "rag_document_answer"),
@@ -387,6 +389,7 @@ function finalizeAssistantReportArtifact(
       row_citations_required: options.queryPlan?.quality_gates.row_citations_required ?? !registryMetadata
     }
   };
+  enriched.charts = deriveAssistantChartArtifacts(enriched, options.message);
   return {
     ...enriched,
     quality: summarizeAssistantReportQuality(enriched, { message: options.message })

@@ -1231,6 +1231,8 @@ class AuthzFilterDocumentsRequest(BaseModel):
 class AuthzFilterDocumentsResponse(BaseModel):
     allowed_document_ids: list[str]
     denied_document_ids: list[str]
+    allowed_document_version_ids: dict[str, list[str]] = Field(default_factory=dict)
+    denied_document_version_ids: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class AuditEventCreate(BaseModel):
@@ -1566,6 +1568,34 @@ class AssistantMessageAppendRequest(BaseModel):
     retention_until: datetime | None = None
 
 
+class AssistantMessageFeedbackPutRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rating: Literal["helpful", "not_helpful"]
+    reason_code: Literal[
+        "accurate_useful",
+        "incomplete",
+        "incorrect",
+        "citation_problem",
+        "access_problem",
+        "other",
+    ] | None = None
+
+    @model_validator(mode="after")
+    def validate_reason(self) -> "AssistantMessageFeedbackPutRequest":
+        if self.rating == "not_helpful" and self.reason_code is None:
+            raise ValueError("A bounded reason is required for not-helpful feedback")
+        return self
+
+
+class AssistantMessageFeedbackResponse(BaseModel):
+    feedback_id: str
+    rating: Literal["helpful", "not_helpful"]
+    reason_code: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class AssistantMessageResponse(BaseModel):
     message_id: str
     role: str
@@ -1580,6 +1610,7 @@ class AssistantMessageResponse(BaseModel):
         default="available",
         pattern="^(available|source_access_changed)$",
     )
+    viewer_feedback: AssistantMessageFeedbackResponse | None = None
     created_at: datetime
 
 
@@ -1606,6 +1637,7 @@ class AssistantConversationPatch(BaseModel):
     status: str | None = Field(default=None, pattern="^(active|archived)$")
     visibility: str | None = Field(default=None, pattern="^(private|shared)$")
     retention_until: datetime | None = None
+    pinned: bool | None = None
 
 
 class AssistantConversationShareReplaceRequest(BaseModel):
@@ -1621,6 +1653,7 @@ class AssistantConversationListItemResponse(BaseModel):
     visibility: str
     retention_until: datetime | None = None
     archived_at: datetime | None = None
+    pinned_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)
@@ -1641,6 +1674,7 @@ class AssistantConversationDetailResponse(BaseModel):
     visibility: str
     retention_until: datetime | None = None
     archived_at: datetime | None = None
+    pinned_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)

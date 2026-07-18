@@ -22,6 +22,10 @@ from app.assistant_retention import (
     record_assistant_deletion_metrics,
     stage_assistant_conversation_deletion,
 )
+from app.assistant_observability import (
+    record_assistant_feedback_metric,
+    record_assistant_history_access_change_metrics,
+)
 from app.access_governance import (
     AiipAkbGovernedResourceRegistration,
     GovernanceDenied,
@@ -57,6 +61,7 @@ from app.models import (
     AssistantConversation,
     AssistantConversationShare,
     AssistantMessage,
+    AssistantMessageFeedback,
     Document,
     DocumentAccessPolicy,
     DocumentAssignment,
@@ -199,6 +204,8 @@ from app.schemas import (
     AssistantConversationShareReplaceRequest,
     AssistantConversationShareResponse,
     AssistantMessageAppendRequest,
+    AssistantMessageFeedbackPutRequest,
+    AssistantMessageFeedbackResponse,
     AssistantMessageResponse,
 )
 
@@ -6013,10 +6020,15 @@ def filter_authorized_documents(
 
     allowed_document_ids = []
     denied_document_ids = []
+    allowed_document_version_ids: dict[str, list[str]] = {}
+    denied_document_version_ids: dict[str, list[str]] = {}
     for document_id in payload.candidate_document_ids:
         document = documents_by_id.get(document_id)
         if document is None:
             denied_document_ids.append(document_id)
+            missing_versions = set(payload.candidate_document_versions.get(document_id, []))
+            if missing_versions:
+                denied_document_version_ids[document_id] = sorted(missing_versions)
             continue
         decision: Decision = (
             _service_action_decision(
@@ -6035,22 +6047,89 @@ def filter_authorized_documents(
         )
         candidate_hashes = set(payload.candidate_policy_hashes.get(document_id, []))
         candidate_versions = set(payload.candidate_document_versions.get(document_id, []))
-        if _candidate_document_coordinates_allowed(
+        allowed_versions = _allowed_candidate_document_versions(
             context=context,
             decision=decision,
             document=document,
             candidate_hashes=candidate_hashes,
             candidate_versions=candidate_versions,
             versions_by_id=versions_by_id,
-        ):
+        )
+        denied_versions = candidate_versions - allowed_versions
+        coordinates_allowed = (
+            _candidate_document_policy_allowed(
+                context=context,
+                decision=decision,
+                document=document,
+                candidate_hashes=candidate_hashes,
+            )
+            if not candidate_versions
+            else bool(allowed_versions)
+        )
+        if coordinates_allowed:
             allowed_document_ids.append(document_id)
+            if allowed_versions:
+                allowed_document_version_ids[document_id] = sorted(allowed_versions)
         else:
             denied_document_ids.append(document_id)
+        if denied_versions:
+            denied_document_version_ids[document_id] = sorted(denied_versions)
 
     return AuthzFilterDocumentsResponse(
         allowed_document_ids=allowed_document_ids,
         denied_document_ids=denied_document_ids,
+        allowed_document_version_ids=allowed_document_version_ids,
+        denied_document_version_ids=denied_document_version_ids,
     )
+
+
+def _allowed_candidate_document_versions(
+    *,
+    context: SubjectContext | None,
+    decision: Decision,
+    document: Document,
+    candidate_hashes: set[str],
+    candidate_versions: set[str],
+    versions_by_id: dict[str, DocumentVersion],
+) -> set[str]:
+    if not _candidate_document_policy_allowed(
+        context=context,
+        decision=decision,
+        document=document,
+        candidate_hashes=candidate_hashes,
+    ) or not candidate_versions:
+        return set()
+    if decision.constraints.get("public_version_ids"):
+        active_public_versions = {
+            item
+            for item in decision.constraints.get("public_version_ids", [])
+            if isinstance(item, str)
+        }
+        return candidate_versions.intersection(active_public_versions)
+    if context is not None and not context.access_v2:
+        return set(candidate_versions)
+    return {
+        version_id
+        for version_id in candidate_versions
+        if (version := versions_by_id.get(version_id)) is not None
+        and version.document_id == document.document_id
+        and version.status == DocumentStatus.valid.value
+        and version.policy_hash == document.policy_hash
+    }
+
+
+def _candidate_document_policy_allowed(
+    *,
+    context: SubjectContext | None,
+    decision: Decision,
+    document: Document,
+    candidate_hashes: set[str],
+) -> bool:
+    legacy_access = context is not None and not context.access_v2
+    policy_hash_matches = legacy_access or (
+        bool(document.policy_hash) and candidate_hashes == {document.policy_hash}
+    )
+    return decision.allowed and policy_hash_matches
 
 
 def _candidate_document_coordinates_allowed(
@@ -6062,31 +6141,16 @@ def _candidate_document_coordinates_allowed(
     candidate_versions: set[str],
     versions_by_id: dict[str, DocumentVersion],
 ) -> bool:
-    legacy_access = context is not None and not context.access_v2
-    policy_hash_matches = legacy_access or (
-        bool(document.policy_hash) and candidate_hashes == {document.policy_hash}
+    return bool(
+        _allowed_candidate_document_versions(
+            context=context,
+            decision=decision,
+            document=document,
+            candidate_hashes=candidate_hashes,
+            candidate_versions=candidate_versions,
+            versions_by_id=versions_by_id,
+        )
     )
-    if decision.constraints.get("public_version_ids"):
-        active_public_versions = {
-            item
-            for item in decision.constraints.get("public_version_ids", [])
-            if isinstance(item, str)
-        }
-        versions_match = bool(candidate_versions) and candidate_versions.issubset(
-            active_public_versions
-        )
-    else:
-        versions_match = legacy_access or (
-            bool(candidate_versions)
-            and all(
-                (version := versions_by_id.get(version_id)) is not None
-                and version.document_id == document.document_id
-                and version.status == DocumentStatus.valid.value
-                and version.policy_hash == document.policy_hash
-                for version_id in candidate_versions
-            )
-        )
-    return decision.allowed and policy_hash_matches and versions_match
 
 
 @router.get("/workflow/tasks", response_model=WorkflowTaskListResponse)
@@ -7057,6 +7121,14 @@ def _assistant_message_response(
     principal: Principal,
     access_cache: dict[tuple[str, str], bool],
 ) -> AssistantMessageResponse:
+    viewer_feedback = next(
+        (
+            feedback
+            for feedback in message.feedback
+            if feedback.actor_id == principal.subject_id
+        ),
+        None,
+    )
     citations = [
         citation
         for citation in message.citations
@@ -7094,6 +7166,17 @@ def _assistant_message_response(
             if source_access_changed
             else "available"
         ),
+        viewer_feedback=(
+            AssistantMessageFeedbackResponse(
+                feedback_id=viewer_feedback.feedback_id,
+                rating=viewer_feedback.rating,
+                reason_code=viewer_feedback.reason_code,
+                created_at=viewer_feedback.created_at,
+                updated_at=viewer_feedback.updated_at,
+            )
+            if viewer_feedback is not None
+            else None
+        ),
         created_at=message.created_at,
     )
 
@@ -7119,7 +7202,20 @@ def _conversation_response(
     principal: Principal,
 ) -> AssistantConversationDetailResponse:
     access_cache: dict[tuple[str, str], bool] = {}
-    return AssistantConversationDetailResponse(
+    messages = [
+        _assistant_message_response(
+            message,
+            db=db,
+            principal=principal,
+            access_cache=access_cache,
+        )
+        for message in conversation.messages
+    ]
+    redacted_message_count = sum(
+        message.availability == "source_access_changed"
+        for message in messages
+    )
+    response = AssistantConversationDetailResponse(
         conversation_id=conversation.conversation_id,
         user_id=conversation.user_id,
         status=conversation.status,
@@ -7127,19 +7223,30 @@ def _conversation_response(
         visibility=conversation.visibility,
         retention_until=conversation.retention_until,
         archived_at=conversation.archived_at,
+        pinned_at=conversation.pinned_at,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         shared_with=[_assistant_share_response(share) for share in conversation.shares if share.status == "active"],
-        messages=[
-            _assistant_message_response(
-                message,
-                db=db,
-                principal=principal,
-                access_cache=access_cache,
-            )
-            for message in conversation.messages
-        ],
+        messages=messages,
     )
+    if redacted_message_count:
+        record_assistant_history_access_change_metrics(
+            redacted_message_count,
+        )
+        add_audit_event(
+            db,
+            actor_id=principal.subject_id,
+            event_type="assistant.history.source_access_changed",
+            resource_type="assistant_conversation",
+            resource_id=conversation.conversation_id,
+            severity="warning",
+            metadata={
+                "content_retained_in_audit": False,
+                "redacted_message_count": redacted_message_count,
+            },
+        )
+        db.commit()
+    return response
 
 
 def _conversation_list_item_response(conversation: AssistantConversation) -> AssistantConversationListItemResponse:
@@ -7151,6 +7258,7 @@ def _conversation_list_item_response(conversation: AssistantConversation) -> Ass
         visibility=conversation.visibility,
         retention_until=conversation.retention_until,
         archived_at=conversation.archived_at,
+        pinned_at=conversation.pinned_at,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         shared_with=[_assistant_share_response(share) for share in conversation.shares if share.status == "active"],
@@ -7196,7 +7304,12 @@ def _conversation_for_principal(
     context = require_global_action(principal, Action.rag_query, db)
     conversation = db.execute(
         select(AssistantConversation)
-        .options(selectinload(AssistantConversation.messages), selectinload(AssistantConversation.shares))
+        .options(
+            selectinload(AssistantConversation.messages).selectinload(
+                AssistantMessage.feedback,
+            ),
+            selectinload(AssistantConversation.shares),
+        )
         .where(AssistantConversation.conversation_id == conversation_id)
     ).scalar_one_or_none()
     if conversation is None or not _conversation_retained(conversation):
@@ -7255,7 +7368,10 @@ def list_assistant_conversations(
     conversations = db.execute(
         select(AssistantConversation)
         .options(selectinload(AssistantConversation.messages), selectinload(AssistantConversation.shares))
-        .order_by(desc(AssistantConversation.updated_at))
+        .order_by(
+            desc(AssistantConversation.pinned_at),
+            desc(AssistantConversation.updated_at),
+        )
     ).scalars()
     visible: list[AssistantConversation] = []
     for conversation in conversations:
@@ -7308,6 +7424,12 @@ def append_assistant_messages(
                 status.HTTP_404_NOT_FOUND,
                 "conversation_not_found",
                 "Assistant conversation was not found",
+            )
+        if conversation.status == "archived":
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "conversation_archived",
+                "Archived conversations must be restored before adding messages",
             )
     if conversation.user_id != payload.user_id:
         raise problem(
@@ -7428,6 +7550,8 @@ def update_assistant_conversation(
     if payload.status is not None:
         conversation.status = payload.status
         conversation.archived_at = utcnow() if payload.status == "archived" else None
+    if payload.pinned is not None:
+        conversation.pinned_at = utcnow() if payload.pinned else None
     conversation.updated_at = utcnow()
     db.commit()
     db.refresh(conversation)
@@ -7464,6 +7588,88 @@ def delete_assistant_conversation(
     db.commit()
     record_assistant_deletion_metrics(deletion, reason="owner_request")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put(
+    "/assistant/conversation-history/{conversation_id}/messages/{message_id}/feedback",
+    response_model=AssistantMessageFeedbackResponse,
+)
+def put_assistant_message_feedback(
+    conversation_id: str,
+    message_id: str,
+    payload: AssistantMessageFeedbackPutRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantMessageFeedbackResponse:
+    conversation, context = _conversation_for_principal(
+        db,
+        conversation_id,
+        principal,
+    )
+    message = next(
+        (
+            candidate
+            for candidate in conversation.messages
+            if candidate.message_id == message_id
+        ),
+        None,
+    )
+    if message is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "assistant_message_not_found",
+            "Assistant message was not found",
+        )
+    if message.role != "assistant":
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "assistant_feedback_role_invalid",
+            "Feedback can only be recorded for an assistant response",
+        )
+    feedback = db.execute(
+        select(AssistantMessageFeedback).where(
+            AssistantMessageFeedback.message_id == message_id,
+            AssistantMessageFeedback.actor_id == context.subject_id,
+        )
+    ).scalar_one_or_none()
+    if feedback is None:
+        feedback = AssistantMessageFeedback(
+            conversation_id=conversation_id,
+            message_id=message_id,
+            actor_id=context.subject_id,
+            rating=payload.rating,
+            reason_code=payload.reason_code,
+        )
+        db.add(feedback)
+    else:
+        feedback.rating = payload.rating
+        feedback.reason_code = payload.reason_code
+        feedback.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=context.subject_id,
+        event_type="assistant.response.feedback",
+        resource_type="assistant_message",
+        resource_id=message_id,
+        metadata={
+            "content_retained_in_audit": False,
+            "rating": payload.rating,
+            "reason_code": payload.reason_code,
+        },
+    )
+    db.commit()
+    db.refresh(feedback)
+    record_assistant_feedback_metric(
+        rating=feedback.rating,
+        reason_code=feedback.reason_code,
+    )
+    return AssistantMessageFeedbackResponse(
+        feedback_id=feedback.feedback_id,
+        rating=feedback.rating,
+        reason_code=feedback.reason_code,
+        created_at=feedback.created_at,
+        updated_at=feedback.updated_at,
+    )
 
 
 @router.put(

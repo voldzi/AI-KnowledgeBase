@@ -139,6 +139,16 @@ Akceptace:
 
 ### P0-E: měřitelná kvalita odpovědí
 
+Stav implementace 2026-07-18: Evaluation Service poskytuje verzované datasety,
+retrieval/answer metriky, historické porovnání, exportovatelný report a quality
+gate. Chat ukládá hodnocení `pomohlo/nepomohlo` s omezeným důvodem bez volného
+textu a exportuje agregovatelnou provozní metriku. Skript
+`scripts/check_assistant_quality_release.py` fail-closed ověřuje dokončený
+report, minimální počet gold případů, všechny způsobilé prahy a absenci regresí.
+Produkční nasazení ještě musí vytvořit a spustit reprezentativní dataset nad
+aktuálními immutable document IDs; bez prošlého reportu se P0-E nepovažuje za
+uzavřené.
+
 Rozsah:
 
 - vytvořit reprezentativní český gold dataset pro statistickou službu, IT,
@@ -159,6 +169,11 @@ Akceptace:
 
 ### Řízený vícekolový kontext
 
+Stav implementace 2026-07-18: dokončeno lokálně. Z čerstvě autorizované
+Registry historie se používají nejvýše čtyři předchozí uživatelské otázky a
+celkově nejvýše 1 800 znaků. Staré odpovědi asistenta, citace ani skryté zdroje
+se do modelového kontextu nepřenášejí.
+
 - server sestaví omezenou historii relevantních předchozích tahů;
 - kontext je velikostně omezený a odděluje instrukce, uživatelská tvrzení a
   citované znalosti;
@@ -166,6 +181,11 @@ Akceptace:
 - uživatel může zahájit nové vlákno bez přenosu starých předpokladů.
 
 ### Správa vláken
+
+Stav implementace 2026-07-18: dokončeno lokálně. Přejmenování, serverové
+připnutí, archivace, obnova, odstranění a filtry vlastních, sdílených a
+archivovaných vláken používají jeden Registry kontrakt. Archiv je pouze pro
+čtení a dotykové akce mají nejméně 44 × 44 px.
 
 - přejmenovat, archivovat, obnovit a odstranit;
 - připnout oblíbená vlákna až po zavedení serverově uloženého stavu;
@@ -188,6 +208,14 @@ Interní termíny jako OIDC, RRF, scope projection nebo API se běžnému uživa
 nezobrazují mimo rozbalitelné technické podrobnosti.
 
 ## P2 – tabulky, grafy a sestavy
+
+Stav první produkční etapy 2026-07-18: tabulky a `report.v2` zůstávají
+autoritativním datovým kontraktem; explicitní požadavek na graf vytváří
+deterministickou mapu `chart.v1` na validované sloupce stejné tabulky. Web
+podporuje sloupcový, skládaný, spojnicový, koláčový a bodový graf bez
+spustitelného HTML, skriptu nebo externí URL. Samostatné `metric.v1`,
+`table.v1` a kompozitní `report.v3` zůstávají následnou kompatibilní evolucí,
+nikoli podmínkou tohoto pilotního vydání.
 
 Rozšířit strukturovaný kontrakt o artefakty:
 
@@ -212,6 +240,13 @@ První podporované grafy:
 - bodový pro korelace s dostatečným počtem pozorování.
 
 ## P3 – analýza vložených dokumentů v chatu
+
+Stav produkčního vydání 2026-07-18: záměrně není zapnuto. Stávající upload
+session ukládá řízený dokument a nesplňuje požadovanou thread-scoped retenci,
+malware kontrolu a úplné odstranění dočasných chunků. Dokud nebude tento
+samostatný bezpečnostní kontrakt implementován a akceptován, chat nezobrazuje
+nefunkční nebo zavádějící tlačítko přílohy. Publikace dokumentu do AKB nadále
+probíhá pouze řízeným dokumentovým workflow.
 
 Uživatelské rozhraní musí výslovně oddělit dvě akce:
 

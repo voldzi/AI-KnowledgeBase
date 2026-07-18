@@ -36,8 +36,9 @@ Cílový model je:
 
 AKB již obsahuje potřebný funkční základ:
 
-- samostatnou uživatelskou route `/chat`;
-- kompatibilní přesměrování `/assistant` na `/chat`;
+- samostatný uživatelský chat sdílený hlavním AKB a chat-only profilem;
+- kompatibilní přesměrování historických `/chat` a `/assistant` na kanonický
+  kořen samostatné domény;
 - chatové rozhraní bez administračního postranního menu pro uživatele pouze s
   chatovým oprávněním;
 - capability kontrolu `akb:chat`;

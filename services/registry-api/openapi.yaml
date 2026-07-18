@@ -2160,6 +2160,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/conversation-history/{conversation_id}/messages/{message_id}/feedback:
+    put:
+      summary: Put Assistant Message Feedback
+      operationId: put_assistant_message_feedback_api_v1_assistant_conversation_history__conversation_id__messages__message_id__feedback_put
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Conversation Id
+      - name: message_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Message Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantMessageFeedbackPutRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantMessageFeedbackResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/assistant/conversation-history/{conversation_id}/shares:
     put:
       summary: Replace Assistant Conversation Shares
@@ -2668,7 +2704,8 @@ components:
           minLength: 1
           title: Source Version
         scope:
-          $ref: '#/components/schemas/GovernanceScope'
+          additionalProperties: true
+          type: object
       additionalProperties: false
       type: object
       required:
@@ -2708,7 +2745,8 @@ components:
           minLength: 1
           title: Parent Id
         scope:
-          $ref: '#/components/schemas/GovernanceScope'
+          additionalProperties: true
+          type: object
         policy_assignment:
           type: string
           const: INHERITED
@@ -3395,6 +3433,12 @@ components:
             format: date-time
           - type: 'null'
           title: Archived At
+        pinned_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Pinned At
         created_at:
           type: string
           format: date-time
@@ -3454,6 +3498,12 @@ components:
             format: date-time
           - type: 'null'
           title: Archived At
+        pinned_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Pinned At
         created_at:
           type: string
           format: date-time
@@ -3525,6 +3575,11 @@ components:
             format: date-time
           - type: 'null'
           title: Retention Until
+        pinned:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Pinned
       type: object
       title: AssistantConversationPatch
     AssistantConversationShareCreate:
@@ -3675,6 +3730,62 @@ components:
       - role
       - content
       title: AssistantMessageCreate
+    AssistantMessageFeedbackPutRequest:
+      properties:
+        rating:
+          type: string
+          enum:
+          - helpful
+          - not_helpful
+          title: Rating
+        reason_code:
+          anyOf:
+          - type: string
+            enum:
+            - accurate_useful
+            - incomplete
+            - incorrect
+            - citation_problem
+            - access_problem
+            - other
+          - type: 'null'
+          title: Reason Code
+      additionalProperties: false
+      type: object
+      required:
+      - rating
+      title: AssistantMessageFeedbackPutRequest
+    AssistantMessageFeedbackResponse:
+      properties:
+        feedback_id:
+          type: string
+          title: Feedback Id
+        rating:
+          type: string
+          enum:
+          - helpful
+          - not_helpful
+          title: Rating
+        reason_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason Code
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - feedback_id
+      - rating
+      - created_at
+      - updated_at
+      title: AssistantMessageFeedbackResponse
     AssistantMessageResponse:
       properties:
         message_id:
@@ -3718,6 +3829,10 @@ components:
           pattern: ^(available|source_access_changed)$
           title: Availability
           default: available
+        viewer_feedback:
+          anyOf:
+          - $ref: '#/components/schemas/AssistantMessageFeedbackResponse'
+          - type: 'null'
         created_at:
           type: string
           format: date-time
@@ -4012,6 +4127,20 @@ components:
             type: string
           type: array
           title: Denied Document Ids
+        allowed_document_version_ids:
+          additionalProperties:
+            items:
+              type: string
+            type: array
+          type: object
+          title: Allowed Document Version Ids
+        denied_document_version_ids:
+          additionalProperties:
+            items:
+              type: string
+            type: array
+          type: object
+          title: Denied Document Version Ids
       type: object
       required:
       - allowed_document_ids
@@ -5796,7 +5925,7 @@ components:
           maxLength: 128
           minLength: 1
           title: Tenant Id
-          default: default
+          default: org_stratos
         gestor_unit:
           anyOf:
           - type: string

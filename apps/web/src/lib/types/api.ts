@@ -64,6 +64,8 @@ import type {
   AssistantConversationDetail,
   AssistantConversationListResponse,
   AssistantConversationMessageAppendRequest,
+  AssistantMessageFeedback,
+  AssistantMessageFeedbackPutRequest,
   AssistantConversationPatchRequest,
   AssistantConversationResponse,
   AssistantConversationShareReplaceRequest,
@@ -269,6 +271,12 @@ export interface RegistryApiClient {
     request: AssistantConversationPatchRequest,
     context: ApiRequestContext
   ): Promise<AssistantConversationDetail>;
+  putAssistantMessageFeedback(
+    conversationId: string,
+    messageId: string,
+    request: AssistantMessageFeedbackPutRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantMessageFeedback>;
   deleteAssistantConversation(
     conversationId: string,
     context: ApiRequestContext

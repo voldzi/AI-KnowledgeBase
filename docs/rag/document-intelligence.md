@@ -288,6 +288,27 @@ be optimized into a SQL-backed aggregate/search projection that can group by
 topic, type, classification, owner, ingestion state, tenant, external system,
 and context tags without transferring all rows through the web layer.
 
+## Version-aware retrieval authorization
+
+Hybrid retrieval may temporarily return chunks from both the current version
+and an older index entry while asynchronous index reconciliation is finishing.
+Registry authorization therefore evaluates candidate coordinates per immutable
+`document_version_id`, not only per document:
+
+- the document decision and exact policy hash must still pass;
+- only versions that are currently `valid`, belong to the document and carry
+  its current policy hash are returned as allowed coordinates;
+- a stale or superseded version is filtered without hiding a different,
+  currently valid version of the same document;
+- the RAG service discards every chunk whose version is absent from the
+  Registry response before reranking or answer composition.
+
+The source-aware reranker uses chunk content for general questions and applies
+an additional title signal only when the query strongly matches the governed
+document title. This preserves no-answer behavior for weak partial matches
+while making exact legal titles and identifiers deterministic release-gate
+queries.
+
 ## Conversation Persistence
 
 Assistant conversations are persisted in Registry API
@@ -306,11 +327,13 @@ GET   /api/v1/assistant/conversation-history
 GET   /api/v1/assistant/conversation-history/{conversation_id}
 PATCH /api/v1/assistant/conversation-history/{conversation_id}
 PUT   /api/v1/assistant/conversation-history/{conversation_id}/shares
+PUT   /api/v1/assistant/conversation-history/{conversation_id}/messages/{message_id}/feedback
 ```
 
 New conversations default to private visibility and 180-day retention. Owners
-and admins may archive a conversation, shorten or extend `retention_until`, and
-replace active user/group shares. Shared subjects can read the conversation;
+and admins may rename, pin, archive or restore a conversation, shorten or
+extend `retention_until`, and replace active user/group shares. Archived
+conversations reject new messages until restored. Shared subjects can read the conversation;
 `commenter` shares may append to the conversation without changing its owner.
 Expired conversations are treated as not found and archived conversations are
 hidden from the default list.
@@ -321,6 +344,19 @@ history is available; when the conversation does not exist or Registry API is
 unavailable, the response degrades to `status: "ephemeral"` with the
 `CONVERSATION_HISTORY_NOT_PERSISTED` warning. Persistence failures never block
 the chat response itself.
+
+For a follow-up turn, RAG can load only a bounded window of earlier
+user-authored questions from the freshly authorized Registry conversation.
+Stored assistant answers are deliberately excluded from model context; they are
+neither instructions nor an authority and may refer to sources whose access has
+changed. The current question is still answered only from freshly authorized
+retrieval.
+
+Validated table reports can expose a deterministic `chart.v1` mapping when the
+user explicitly asks for a chart. The mapping references the table artifact and
+column keys; it does not contain executable markup, scripts, remote URLs or a
+second copy of the data. The web renders the graph locally and keeps the
+underlying table as the accessible authoritative representation.
 
 ## Language Contract
 

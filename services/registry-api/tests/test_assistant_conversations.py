@@ -111,9 +111,118 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
     assert messages[1]["author_display_name"] == "AKB Assistant"
 
 
-def test_history_redacts_answer_when_cited_version_is_not_available(
+def test_assistant_feedback_is_private_bounded_and_idempotent(
+    client: TestClient,
+    db_session,
+    monkeypatch,
+) -> None:
+    recorded_metrics: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        registry_api,
+        "record_assistant_feedback_metric",
+        lambda *, rating, reason_code: recorded_metrics.append(
+            (rating, reason_code)
+        ),
+    )
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_feedback/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Citovaná odpověď.",
+                    "response_type": "answer",
+                    "citations": [],
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    message_id = created.json()["messages"][0]["message_id"]
+
+    helpful = client.put(
+        f"/api/v1/assistant/conversation-history/conv_feedback/messages/{message_id}/feedback",
+        json={"rating": "helpful", "reason_code": "accurate_useful"},
+    )
+    assert helpful.status_code == 200, helpful.text
+    feedback_id = helpful.json()["feedback_id"]
+
+    updated = client.put(
+        f"/api/v1/assistant/conversation-history/conv_feedback/messages/{message_id}/feedback",
+        json={"rating": "not_helpful", "reason_code": "citation_problem"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["feedback_id"] == feedback_id
+    assert updated.json()["rating"] == "not_helpful"
+
+    fetched = client.get(
+        "/api/v1/assistant/conversation-history/conv_feedback",
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["messages"][0]["viewer_feedback"] == updated.json()
+    assert recorded_metrics == [
+        ("helpful", "accurate_useful"),
+        ("not_helpful", "citation_problem"),
+    ]
+    db_session.expire_all()
+    audits = (
+        db_session.query(AuditEvent)
+        .filter(AuditEvent.event_type == "assistant.response.feedback")
+        .all()
+    )
+    assert len(audits) == 2
+    assert all(
+        audit.event_metadata["content_retained_in_audit"] is False
+        for audit in audits
+    )
+    assert all("content" not in audit.event_metadata for audit in audits)
+
+
+def test_assistant_feedback_rejects_unbounded_or_user_message_feedback(
     client: TestClient,
 ) -> None:
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_feedback_invalid/messages",
+        json=_append_payload(),
+    )
+    assert created.status_code == 201
+    user_message_id = created.json()["messages"][0]["message_id"]
+
+    missing_reason = client.put(
+        f"/api/v1/assistant/conversation-history/conv_feedback_invalid/messages/{user_message_id}/feedback",
+        json={"rating": "not_helpful"},
+    )
+    assert missing_reason.status_code == 422
+
+    wrong_role = client.put(
+        f"/api/v1/assistant/conversation-history/conv_feedback_invalid/messages/{user_message_id}/feedback",
+        json={"rating": "helpful"},
+    )
+    assert wrong_role.status_code == 422
+
+    free_text = client.put(
+        f"/api/v1/assistant/conversation-history/conv_feedback_invalid/messages/{user_message_id}/feedback",
+        json={
+            "rating": "not_helpful",
+            "reason_code": "because this free text could be sensitive",
+        },
+    )
+    assert free_text.status_code == 422
+
+
+def test_history_redacts_answer_when_cited_version_is_not_available(
+    client: TestClient,
+    db_session,
+    monkeypatch,
+) -> None:
+    metric_counts: list[int] = []
+    monkeypatch.setattr(
+        registry_api,
+        "record_assistant_history_access_change_metrics",
+        metric_counts.append,
+    )
     client.post(
         "/api/v1/assistant/conversations/conv_redacted/messages",
         json=_append_payload(),
@@ -154,6 +263,26 @@ def test_history_redacts_answer_when_cited_version_is_not_available(
     )
     assert fetched.status_code == 200
     assert fetched.json()["messages"][1] == redacted
+    assert metric_counts == [1, 1]
+    db_session.expire_all()
+    audits = (
+        db_session.query(AuditEvent)
+        .filter(
+            AuditEvent.resource_id == "conv_redacted",
+            AuditEvent.event_type
+            == "assistant.history.source_access_changed",
+        )
+        .all()
+    )
+    assert len(audits) == 2
+    assert all(
+        audit.event_metadata
+        == {
+            "content_retained_in_audit": False,
+            "redacted_message_count": 1,
+        }
+        for audit in audits
+    )
 
 
 def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
@@ -443,6 +572,67 @@ def test_archive_hides_conversation_from_default_list(client: TestClient) -> Non
     with_archived = client.get("/api/v1/assistant/conversation-history?include_archived=true", headers=owner_headers)
     assert with_archived.status_code == 200, with_archived.text
     assert [item["conversation_id"] for item in with_archived.json()["items"]] == ["conv_archive"]
+
+
+def test_owner_can_rename_pin_archive_and_restore_conversation(
+    client: TestClient,
+) -> None:
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    for conversation_id in ("conv_regular", "conv_managed"):
+        created = client.post(
+            f"/api/v1/assistant/conversations/{conversation_id}/messages",
+            headers=owner_headers,
+            json=_append_payload(),
+        )
+        assert created.status_code == 201, created.text
+
+    managed = client.patch(
+        "/api/v1/assistant/conversation-history/conv_managed",
+        headers=owner_headers,
+        json={"title": "Řízení služeb IT", "pinned": True},
+    )
+    assert managed.status_code == 200, managed.text
+    assert managed.json()["title"] == "Řízení služeb IT"
+    assert managed.json()["pinned_at"]
+
+    listed = client.get(
+        "/api/v1/assistant/conversation-history",
+        headers=owner_headers,
+    )
+    assert listed.status_code == 200, listed.text
+    assert [
+        item["conversation_id"] for item in listed.json()["items"]
+    ] == ["conv_managed", "conv_regular"]
+
+    archived = client.patch(
+        "/api/v1/assistant/conversation-history/conv_managed",
+        headers=owner_headers,
+        json={"status": "archived"},
+    )
+    assert archived.status_code == 200, archived.text
+    rejected_append = client.post(
+        "/api/v1/assistant/conversations/conv_managed/messages",
+        headers=owner_headers,
+        json=_append_payload(content="Toto se nesmí přidat do archivu."),
+    )
+    assert rejected_append.status_code == 409
+    assert rejected_append.json()["error"]["code"] == "conversation_archived"
+
+    restored = client.patch(
+        "/api/v1/assistant/conversation-history/conv_managed",
+        headers=owner_headers,
+        json={"status": "active", "pinned": False},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["status"] == "active"
+    assert restored.json()["archived_at"] is None
+    assert restored.json()["pinned_at"] is None
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_managed/messages",
+        headers=owner_headers,
+        json=_append_payload(content="Po obnovení lze pokračovat."),
+    )
+    assert appended.status_code == 201, appended.text
 
 
 def test_owner_delete_cascades_content_and_keeps_content_free_audit(

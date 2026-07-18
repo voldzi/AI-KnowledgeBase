@@ -8,6 +8,8 @@ import type {
   AssistantConversationDetail,
   AssistantConversationListResponse,
   AssistantConversationMessageAppendRequest,
+  AssistantMessageFeedback,
+  AssistantMessageFeedbackPutRequest,
   AssistantConversationPatchRequest,
   AssistantConversationShareReplaceRequest,
   CreateAnalystCaseRequest,
@@ -593,6 +595,20 @@ export class ProductionRegistryClient implements RegistryApiClient {
       `/assistant/conversation-history/${encodeURIComponent(conversationId)}`,
       request,
       "updateAssistantConversation",
+      context
+    );
+  }
+
+  putAssistantMessageFeedback(
+    conversationId: string,
+    messageId: string,
+    request: AssistantMessageFeedbackPutRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantMessageFeedback> {
+    return this.put<AssistantMessageFeedback>(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/feedback`,
+      request,
+      "putAssistantMessageFeedback",
       context
     );
   }

@@ -1010,6 +1010,7 @@ function AppShellContent({
           applicationAccess={applicationAccess}
           workspaceName="AKB"
           showCommandCenter={webProfile !== "chat"}
+          standaloneChat={webProfile === "chat"}
         />
         {webProfile !== "chat" ? <CommandCenter
           open={commandCenterOpen}

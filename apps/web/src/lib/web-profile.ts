@@ -45,8 +45,13 @@ export function isChatProfileApiPath(pathname: string): boolean {
 
 export function chatProfileRedirectPath(pathname: string): string | null {
   const path = normalizePath(pathname);
-  if (path === "/assistant" || path.startsWith("/assistant/")) {
-    return "/chat";
+  if (
+    path === "/chat"
+    || path.startsWith("/chat/")
+    || path === "/assistant"
+    || path.startsWith("/assistant/")
+  ) {
+    return "/";
   }
   return null;
 }

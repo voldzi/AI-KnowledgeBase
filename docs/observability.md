@@ -53,11 +53,24 @@ Important platform metrics:
 - assistant conversations expired and physically deleted,
 - assistant messages and sharing grants deleted,
 - assistant deletion audit tombstones pruned.
+- assistant history loads and messages redacted after current-access
+  reauthorization.
+- privacy-safe assistant response feedback grouped only by rating and bounded
+  reason code.
 
 Registry exports the assistant-retention counters through OpenTelemetry using
 the `akb.assistant.*` metric namespace. Every purge cycle also writes one
 content-free structured summary log containing only aggregate counts. It never
 logs a conversation title, prompt, answer, citation, participant, or token.
+History reauthorization exports
+`akb.assistant.history.messages.redacted` and
+`akb.assistant.history.loads.redacted`. Its audit event contains only the
+conversation identifier and aggregate redacted-message count; it never stores
+the withheld answer, citation or participant list.
+Response feedback exports `akb.assistant.feedback.recorded`. The matching
+`assistant.response.feedback` audit event contains only the message identifier,
+rating, bounded reason code and an explicit marker that no content was retained.
+Free-text feedback is not part of the API contract.
 
 For the AIIP application API, operational logs and Registry audit metadata may
 include operation, request/correlation/audit ids, canonical input hash, status,

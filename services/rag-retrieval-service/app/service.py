@@ -1170,18 +1170,28 @@ class RagRetrievalService:
                 metadata={"question_ids": [question.id for question in questions]},
                 auth_context=auth_context,
             )
-            await self._persist_conversation_turn(
+            persisted = await self._persist_conversation_turn(
                 conversation_id=conversation_id,
                 user_id=payload.user_id,
                 user_message=payload.message,
                 response=response,
                 auth_context=auth_context,
             )
+            if not persisted:
+                response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
+        query_context = dict(payload.context)
+        if payload.conversation_id:
+            earlier_questions = await self._authorized_conversation_questions(
+                conversation_id=payload.conversation_id,
+                auth_context=auth_context,
+            )
+            if earlier_questions:
+                query_context["earlier_user_questions"] = earlier_questions
         query_id = _query_id()
-        retrieval_query = _assistant_query(payload.message, payload.context)
-        answer_query = _assistant_answer_query(payload.message, payload.context)
+        retrieval_query = _assistant_query(payload.message, query_context)
+        answer_query = _assistant_answer_query(payload.message, query_context)
         run = await self._retrieve_authorized(
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
@@ -1321,13 +1331,15 @@ class RagRetrievalService:
                 },
                 auth_context=auth_context,
             )
-            await self._persist_conversation_turn(
+            persisted = await self._persist_conversation_turn(
                 conversation_id=conversation_id,
                 user_id=payload.user_id,
                 user_message=payload.message,
                 response=response,
                 auth_context=auth_context,
             )
+            if not persisted:
+                response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
         response_type = "handoff_recommended" if rag_answer.confidence == "insufficient_source" else "no_answer"
@@ -1355,14 +1367,48 @@ class RagRetrievalService:
             metadata={"warnings": rag_answer.warnings, "missing_information": rag_answer.missing_information},
             auth_context=auth_context,
         )
-        await self._persist_conversation_turn(
+        persisted = await self._persist_conversation_turn(
             conversation_id=conversation_id,
             user_id=payload.user_id,
             user_message=payload.message,
             response=response,
             auth_context=auth_context,
         )
+        if not persisted:
+            response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
         return response
+
+    async def _authorized_conversation_questions(
+        self,
+        *,
+        conversation_id: str,
+        auth_context: AuthContext | None,
+    ) -> list[str]:
+        """Return a small, user-authored context window from the freshly
+        authorized Registry projection.
+
+        Assistant answers are deliberately excluded: they are neither
+        instructions nor an authority and could contain source-derived content
+        whose access has since changed.
+        """
+        try:
+            stored = await self._registry_client.fetch_conversation(
+                conversation_id=conversation_id,
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "assistant_conversation_context_unavailable conversation_id=%s reason=%s",
+                conversation_id,
+                exc.__class__.__name__,
+            )
+            return []
+        if not stored:
+            return []
+        messages = stored.get("messages")
+        if not isinstance(messages, list):
+            return []
+        return _bounded_conversation_questions(messages)
 
     async def _follow_up_questions(
         self,
@@ -1467,7 +1513,7 @@ class RagRetrievalService:
         user_message: str,
         response: AssistantChatResponse,
         auth_context: AuthContext | None = None,
-    ) -> None:
+    ) -> bool:
         assistant_content = response.answer or response.message or ""
         try:
             await self._registry_client.append_conversation_messages(
@@ -1496,12 +1542,14 @@ class RagRetrievalService:
                 ],
                 auth_context=auth_context,
             )
+            return True
         except Exception as exc:
             logger.warning(
                 "assistant_conversation_persist_failed conversation_id=%s reason=%s",
                 conversation_id,
                 exc.__class__.__name__,
             )
+            return False
 
     async def source_context(
         self,
@@ -1648,6 +1696,14 @@ class RagRetrievalService:
             chunk
             for chunk in eligible_chunks
             if chunk.citation.document_id in authz.allowed_document_ids
+            and (
+                authz.allowed_document_version_ids is None
+                or chunk.citation.document_version_id
+                in authz.allowed_document_version_ids.get(
+                    chunk.citation.document_id,
+                    set(),
+                )
+            )
         ]
         return allowed, authz.denied_document_ids | invalid_policy_document_ids
 
@@ -2358,12 +2414,53 @@ ASSISTANT_INTERNAL_CONTEXT_KEYS = {
 }
 
 
+def _bounded_conversation_questions(
+    messages: list[object],
+    *,
+    max_messages: int = 4,
+    max_message_length: int = 600,
+    max_total_length: int = 1800,
+) -> list[str]:
+    questions: list[str] = []
+    total_length = 0
+    for value in reversed(messages):
+        if not isinstance(value, dict) or value.get("role") != "user":
+            continue
+        content = value.get("content")
+        if not isinstance(content, str):
+            continue
+        normalized = re.sub(r"\s+", " ", content).strip()
+        if not normalized:
+            continue
+        bounded = normalized[:max_message_length]
+        if total_length + len(bounded) > max_total_length:
+            remaining = max_total_length - total_length
+            if remaining < 80:
+                break
+            bounded = bounded[:remaining]
+        questions.append(bounded)
+        total_length += len(bounded)
+        if len(questions) >= max_messages or total_length >= max_total_length:
+            break
+    questions.reverse()
+    return questions
+
+
 def _assistant_query(message: str, context: dict[str, object]) -> str:
     context_parts = [
         f"{key}: {value_text}"
         for key, value in sorted(context.items())
         if key not in ASSISTANT_INTERNAL_CONTEXT_KEYS
-        for value_text in [_assistant_context_value(value)]
+        for value_text in [
+            _assistant_context_value(
+                value,
+                max_length=(
+                    1800
+                    if key == "earlier_user_questions"
+                    else 500
+                ),
+            )
+        ]
         if value_text
     ]
     if not context_parts:

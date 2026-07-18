@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  conversationShareUrl,
   conversationListItemFromDetail,
   includeRequestedConversation,
   initialConversationId,
@@ -23,6 +24,7 @@ function listItem(
     visibility: "private",
     retention_until: null,
     archived_at: null,
+    pinned_at: null,
     created_at: "2026-07-18T08:00:00.000Z",
     updated_at: "2026-07-18T09:00:00.000Z",
     shared_with: [],
@@ -51,6 +53,23 @@ function detail(conversationId: string): AssistantConversationDetail {
 }
 
 describe("assistant conversation navigation", () => {
+  it("builds canonical links from the currently visible chat route", () => {
+    assert.equal(
+      conversationShareUrl(
+        "https://chat.example/?blocked=1",
+        "conv_shared",
+      ),
+      "https://chat.example/?thread=conv_shared",
+    );
+    assert.equal(
+      conversationShareUrl(
+        "https://stratos.example/akb/chat?thread=old#answer",
+        "conv_new",
+      ),
+      "https://stratos.example/akb/chat?thread=conv_new",
+    );
+  });
+
   it("accepts bounded opaque ids and rejects malformed thread parameters", () => {
     assert.equal(requestedConversationId(" conv_123:abc "), "conv_123:abc");
     assert.equal(requestedConversationId(["conv_shared", "ignored"]), "conv_shared");

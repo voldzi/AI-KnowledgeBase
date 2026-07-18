@@ -399,7 +399,53 @@ def test_stale_or_revoked_vector_version_is_filtered(client, db_session) -> None
     assert allowed.json()["allowed_document_ids"] == [document["document_id"]]
 
     stored_version.status = "archived"
+    replacement = DocumentVersion(
+        document_id=document["document_id"],
+        version_label="2.0",
+        status="valid",
+        organization_id=stored_version.organization_id,
+        policy_binding_id=stored_version.policy_binding_id,
+        policy_version=stored_version.policy_version,
+        policy_hash=stored_version.policy_hash,
+        policy_summary=dict(stored_version.policy_summary),
+        governed_resource_id="gir_policy_v2_replacement",
+        governed_source_version="source_policy_v2_replacement",
+        governed_parent_resource_id=stored_document.governed_resource_id,
+        governance_scope_type=stored_version.governance_scope_type,
+        governance_scope_id=stored_version.governance_scope_id,
+        governance_scope_owner_subject_id=stored_version.governance_scope_owner_subject_id,
+        governance_registration_status=stored_version.governance_registration_status,
+        governance_registered_at=stored_version.governance_registered_at,
+        source_file_uri="s3://akl-documents/policy-v2/vector-v2.pdf",
+        file_hash=f"sha256:{'e' * 64}",
+    )
+    db_session.add(replacement)
     db_session.commit()
+
+    mixed = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=headers,
+        json={
+            "subject_id": "user_reader",
+            "action": "rag.query",
+            "candidate_document_ids": [document["document_id"]],
+            "candidate_policy_hashes": {document["document_id"]: [document["policy_hash"]]},
+            "candidate_document_versions": {
+                document["document_id"]: [
+                    version_id,
+                    replacement.document_version_id,
+                ]
+            },
+        },
+    )
+    assert mixed.json()["allowed_document_ids"] == [document["document_id"]]
+    assert mixed.json()["allowed_document_version_ids"] == {
+        document["document_id"]: [replacement.document_version_id]
+    }
+    assert mixed.json()["denied_document_version_ids"] == {
+        document["document_id"]: [version_id]
+    }
+
     revoked = client.post(
         "/api/v1/authz/filter-documents",
         headers=headers,

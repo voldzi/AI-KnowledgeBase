@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.schemas import RagQueryFilters
+from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
+from rerankers.lexical import LexicalReranker
 from retrievers.scoring import expand_query_text, extract_query_identifiers, payload_matches_filters, sparse_score
 
 
@@ -26,6 +27,47 @@ def test_extract_query_identifiers_normalizes_document_and_citation_references()
     identifiers = extract_query_identifiers("Najdi RMO č. 12/2024, čl. 4 odst. 2.")
 
     assert identifiers == ["rmo 12/2024", "cl 4", "odst 2"]
+
+
+def test_reranker_prefers_exact_source_title_over_semantic_noise() -> None:
+    exact_title = RetrievedChunk(
+        chunk_id="chunk_exact_title",
+        score=0.82,
+        retrieval_method="opensearch",
+        text="Obecné povinnosti poskytovatelů a uživatelů systémů.",
+        citation=ChunkCitation(
+            document_id="doc_ai_act",
+            document_version_id="ver_ai_act",
+            document_title="Nařízení o umělé inteligenci (AI Act)",
+            version_label="2024",
+            section_path=[],
+        ),
+        metadata={"sparse_score": 0.82},
+    )
+    semantic_noise = RetrievedChunk(
+        chunk_id="chunk_semantic_noise",
+        score=0.84,
+        retrieval_method="qdrant",
+        text="AI Act je zmíněn v obecném přehledu digitalizace a inovací.",
+        citation=ChunkCitation(
+            document_id="doc_overview",
+            document_version_id="ver_overview",
+            document_title="Aktuality z oblasti digitalizace",
+            version_label="2024",
+            section_path=[],
+        ),
+        metadata={"sparse_score": 0.84},
+    )
+
+    reranked = LexicalReranker().rerank(
+        query="AI Act",
+        chunks=[semantic_noise, exact_title],
+        limit=2,
+    )
+
+    assert reranked[0].chunk_id == "chunk_exact_title"
+    assert reranked[0].metadata["rerank_title_score"] == 1.0
+    assert reranked[0].metadata["rerank_method"] == "source_aware_lexical_overlap"
 
 
 def test_sparse_score_links_acronyms_to_controlled_document_language() -> None:

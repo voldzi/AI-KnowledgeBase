@@ -763,6 +763,7 @@ describe("production API clients", () => {
       visibility: "shared",
       retention_until: "2026-12-31T00:00:00Z",
       archived_at: null,
+      pinned_at: null,
       created_at: "2026-06-22T10:00:00Z",
       updated_at: "2026-06-22T10:05:00Z",
       shared_with: [
@@ -826,6 +827,15 @@ describe("production API clients", () => {
       },
       context
     );
+    await clients.registry.putAssistantMessageFeedback(
+      "conv_1",
+      "msg_1",
+      {
+        rating: "not_helpful",
+        reason_code: "citation_problem",
+      },
+      context,
+    );
     await clients.registry.deleteAssistantConversation("conv_1", context);
 
     assert.equal(calls[0][0], "https://registry.local/api/v1/assistant/conversation-history?include_archived=true&limit=50&offset=0");
@@ -838,8 +848,10 @@ describe("production API clients", () => {
     assert.equal(calls[3][1]?.method, "PATCH");
     assert.equal(calls[4][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/shares");
     assert.equal(calls[4][1]?.method, "PUT");
-    assert.equal(calls[5][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
-    assert.equal(calls[5][1]?.method, "DELETE");
+    assert.equal(calls[5][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/messages/msg_1/feedback");
+    assert.equal(calls[5][1]?.method, "PUT");
+    assert.equal(calls[6][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[6][1]?.method, "DELETE");
   });
 
   it("loads workflow tasks from the Registry API", async () => {

@@ -19,6 +19,8 @@ from app.security import AuthContext
 class AuthzFilterResult:
     allowed_document_ids: set[str]
     denied_document_ids: set[str]
+    allowed_document_version_ids: dict[str, set[str]] | None = None
+    denied_document_version_ids: dict[str, set[str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -434,6 +436,30 @@ class HttpRegistryClient:
         return AuthzFilterResult(
             allowed_document_ids=set(payload.get("allowed_document_ids", [])),
             denied_document_ids=set(payload.get("denied_document_ids", [])),
+            allowed_document_version_ids=(
+                {
+                    str(document_id): {str(version_id) for version_id in version_ids}
+                    for document_id, version_ids in payload.get(
+                        "allowed_document_version_ids", {}
+                    ).items()
+                    if isinstance(version_ids, list)
+                }
+                if "allowed_document_version_ids" in payload
+                and isinstance(payload.get("allowed_document_version_ids"), dict)
+                else None
+            ),
+            denied_document_version_ids=(
+                {
+                    str(document_id): {str(version_id) for version_id in version_ids}
+                    for document_id, version_ids in payload.get(
+                        "denied_document_version_ids", {}
+                    ).items()
+                    if isinstance(version_ids, list)
+                }
+                if "denied_document_version_ids" in payload
+                and isinstance(payload.get("denied_document_version_ids"), dict)
+                else None
+            ),
         )
     async def write_audit_event(
         self,

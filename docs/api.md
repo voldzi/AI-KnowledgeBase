@@ -308,6 +308,7 @@ GET   /api/v1/assistant/conversation-history/{conversationId}
 PATCH /api/v1/assistant/conversation-history/{conversationId}
 DELETE /api/v1/assistant/conversation-history/{conversationId}
 PUT   /api/v1/assistant/conversation-history/{conversationId}/shares
+PUT   /api/v1/assistant/conversation-history/{conversationId}/messages/{messageId}/feedback
 GET   /api/v1/assistant/directory/users
 ```
 
@@ -319,6 +320,7 @@ GET   /api/assistant/conversations/{conversationId}
 PATCH /api/assistant/conversations/{conversationId}
 DELETE /api/assistant/conversations/{conversationId}
 PUT   /api/assistant/conversations/{conversationId}/shares
+PUT   /api/assistant/conversations/{conversationId}/messages/{messageId}/feedback
 GET   /api/assistant/directory
 ```
 
@@ -331,6 +333,11 @@ transaction. It returns `204`; the only retained record is a content-free audit
 tombstone containing the conversation ID, deletion reason, previous state, and
 message/share counts. The tombstone is itself pruned according to
 `AKL_ASSISTANT_DELETION_AUDIT_RETENTION_DAYS`.
+Owners can rename, archive, restore and pin a conversation. `pinned_at` is
+server-owned and pinned conversations sort before other conversations; an
+archived conversation rejects new messages until it is restored. Response
+feedback is an idempotent per-viewer `helpful | not_helpful` value with one
+bounded reason code. Free-text feedback is intentionally not accepted.
 Each returned message includes `availability`. Assistant messages with citations
 are reauthorized against every exact cited document version on each history
 read. If one of those versions is no longer allowed or cannot be safely

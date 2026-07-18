@@ -8,6 +8,7 @@ import {
   getServerApiClients,
   getServerRequestContextForPath,
 } from "@/lib/api/server";
+import { getAklConfig } from "@/lib/api/config";
 import { requirePageAccess } from "@/lib/auth/server-route-guard";
 import type {
   AssistantConversationListItem,
@@ -49,7 +50,9 @@ interface ChatPageProps {
 
 export default async function ChatPage({ searchParams }: ChatPageProps) {
   const clients = getServerApiClients();
-  const context = await getServerRequestContextForPath("/chat");
+  const context = await getServerRequestContextForPath(
+    getAklConfig().webProfile === "chat" ? "/" : "/chat",
+  );
   requirePageAccess(context, "employee_chat");
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const requestedId = requestedConversationId(resolvedSearchParams.thread);
@@ -60,7 +63,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
   const [suggestionsResult, conversationsResult] = await Promise.allSettled([
     clients.rag.assistantSuggestions(context),
-    clients.registry.listAssistantConversations(context),
+    clients.registry.listAssistantConversations(context, true),
   ]);
   if (suggestionsResult.status === "fulfilled") {
     suggestions = suggestionsResult.value.suggestions;

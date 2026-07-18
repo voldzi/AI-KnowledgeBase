@@ -115,7 +115,12 @@ def test_registry_client_uses_cached_rag_service_identity(monkeypatch) -> None:
     async def fake_request_json_with_retry(**kwargs):
         registry_calls.append(kwargs)
         if kwargs["url"].endswith("/authz/filter-documents"):
-            return {"allowed_document_ids": ["doc-1"], "denied_document_ids": []}
+            return {
+                "allowed_document_ids": ["doc-1"],
+                "denied_document_ids": [],
+                "allowed_document_version_ids": {"doc-1": ["ver-1"]},
+                "denied_document_version_ids": {"doc-1": ["ver-stale"]},
+            }
         return {"state": "reserved", "record_id": "idem-1"}
 
     monkeypatch.setattr(registry_client_module.httpx, "AsyncClient", TokenClient)
@@ -147,6 +152,8 @@ def test_registry_client_uses_cached_rag_service_identity(monkeypatch) -> None:
     )
 
     assert result.allowed_document_ids == {"doc-1"}
+    assert result.allowed_document_version_ids == {"doc-1": {"ver-1"}}
+    assert result.denied_document_version_ids == {"doc-1": {"ver-stale"}}
     assert token_calls == 1
     assert all(call["bearer_token_override"] == service_token for call in registry_calls)
     assert all(call["service_identity"] is True for call in registry_calls)
