@@ -307,6 +307,7 @@ GET   /api/v1/assistant/conversation-history
 GET   /api/v1/assistant/conversation-history/{conversationId}
 PATCH /api/v1/assistant/conversation-history/{conversationId}
 PUT   /api/v1/assistant/conversation-history/{conversationId}/shares
+GET   /api/v1/assistant/directory/users
 ```
 
 The browser uses only the AKB web/API bridge for this UI flow:
@@ -316,6 +317,7 @@ GET   /api/assistant/conversations
 GET   /api/assistant/conversations/{conversationId}
 PATCH /api/assistant/conversations/{conversationId}
 PUT   /api/assistant/conversations/{conversationId}/shares
+GET   /api/assistant/directory
 ```
 
 Conversation history defaults to private visibility and 180-day retention.
@@ -326,6 +328,21 @@ read. If one of those versions is no longer allowed or cannot be safely
 verified, Registry returns `availability=source_access_changed`, an empty
 `content`, no citations, and only the bounded
 `metadata.history_access_changed=true` marker.
+
+Assistant sharing never accepts a free-text person identifier. The web bridge
+loads a bounded active-user list from the assistant-specific Keycloak directory
+contract and submits the stable subject ID selected by the user. Registry
+verifies that subject again when a share is written and persists a safe display
+name snapshot. New group shares fail closed until the STRATOS organization
+group directory exposes an equivalent verified lookup; existing group shares
+remain readable and removable.
+
+Every returned message contains server-derived `author_subject_id`,
+`author_subject_type` (`user` or `service`) and optional
+`author_display_name`. Callers cannot supply or override these fields. A
+trusted persistence service records the delegated conversation user as the
+author of a user turn and `akb-assistant` as the stable author of an assistant
+turn. A shared commenter is recorded under their own subject ID.
 
 ## STRATOS Profile Settings
 

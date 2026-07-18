@@ -37,6 +37,9 @@ function detail(conversationId: string): AssistantConversationDetail {
       {
         message_id: "msg_1",
         role: "user",
+        author_subject_id: "user_1",
+        author_subject_type: "user",
+        author_display_name: "Jan Novák",
         content: "Dotaz",
         response_type: null,
         citations: [],

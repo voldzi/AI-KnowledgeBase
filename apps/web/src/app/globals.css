@@ -1412,14 +1412,20 @@ button {
   padding: 16px;
 }
 
-.akb-share-dialog__body input {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  color: var(--ink);
-  min-height: 38px;
-  padding: 0 10px;
-  width: 100%;
+.akb-share-person-picker {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.akb-share-person-picker > * {
+  max-width: 100%;
+}
+
+.akb-share-person-picker__status {
+  color: var(--danger);
+  font-size: 12px;
+  margin: 0;
 }
 
 @media (max-width: 1240px) {

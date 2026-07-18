@@ -90,10 +90,18 @@ Akceptace:
 
 ### P0-C: spravované sdílení a autorství
 
+Stav: osoby, autorství a oprávnění komentátora jsou implementovány. Volný text
+byl nahrazen společným adresářovým pickerem; Registry při zápisu znovu ověřuje
+existenci a aktivitu Keycloak identity, ukládá stabilní subject ID a bezpečný
+zobrazovací snapshot. Každá zpráva má serverově odvozeného autora a typ
+identity. Nové skupinové sdílení je záměrně fail-closed, dokud STRATOS
+organizační adresář neposkytne ověřený kontrakt skupin. Před pilotem zbývá
+end-to-end smoke se dvěma reálnými uživateli.
+
 Rozsah:
 
-- nahradit volný text adresářovým výběrem aktivních osob a skupin;
-- ukládat stabilní subject ID, ale zobrazovat aktuální jméno a typ subjektu;
+- nahradit volný text adresářovým výběrem aktivních osob a ověřených skupin;
+- ukládat stabilní subject ID a bezpečný zobrazovací snapshot;
 - doplnit ke každé zprávě autora, typ identity a čas;
 - rozlišit oprávnění číst a přispívat;
 - znemožnit vlastníkovi odebrat si vlastnictví;
@@ -277,6 +285,33 @@ Před nasazením:
   projection;
 - ověřit odebrání scope mezi vytvořením a znovunačtením odpovědi;
 - doplnit provozní auditní metriku pro `source_access_changed`.
+
+### 2026-07-18 – druhá P0 změna
+
+Implementováno:
+
+- samostatný `rag.query` adresářový kontrakt pro chat bez udělení workflow nebo
+  administrativních oprávnění;
+- sdílení pouze výběrem aktivní Keycloak identity ze společného STRATOS
+  `DirectoryPersonPicker`;
+- opakované ověření příjemce v Registry při každém zápisu sdílení;
+- bezpečný zobrazovací snapshot příjemce a stabilní subject ID;
+- odmítnutí neexistujícího či neaktivního uživatele a nových neověřených skupin;
+- serverově odvozené autorství uživatelských, asistenčních a komentátorských
+  zpráv;
+- migrace existující historie a sdílení bez ztráty konverzací;
+- sdílená transformace Keycloak osob pro workflow a chat bez duplikované UI
+  logiky.
+
+Ověření:
+
+- 243 webových testů a web typecheck;
+- 153 Registry testů, 1 přeskočený;
+- produkční Next.js build včetně `/api/assistant/directory`;
+- shoda dotčených FastAPI a service-local OpenAPI schémat;
+- root OpenAPI, skeleton a diff kontrola;
+- vizuální smoke dialogu, adresářového popoveru, hledání a výběru osoby v
+  lokálním chat-only profilu.
 
 ## Definition of Done každé etapy
 

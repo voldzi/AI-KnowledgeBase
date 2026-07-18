@@ -246,6 +246,11 @@ export interface RegistryApiClient {
   listAuditEvents(context: ApiRequestContext, options?: AuditEventListOptions): Promise<AuditEvent[]>;
   createAuditEvent(request: CreateAuditEventRequest, context: ApiRequestContext): Promise<AuditEvent>;
   searchDirectoryUsers(query: string, context: ApiRequestContext, limit?: number): Promise<DirectoryUser[]>;
+  searchAssistantDirectoryUsers(
+    query: string,
+    context: ApiRequestContext,
+    limit?: number
+  ): Promise<DirectoryUser[]>;
   listRoleMappings(context: ApiRequestContext, includeRemoved?: boolean): Promise<RoleMapping[]>;
   importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser>;
   upsertRoleMapping(request: UpsertRoleMappingRequest, context: ApiRequestContext): Promise<RoleMapping>;

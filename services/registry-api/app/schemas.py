@@ -1569,6 +1569,9 @@ class AssistantMessageAppendRequest(BaseModel):
 class AssistantMessageResponse(BaseModel):
     message_id: str
     role: str
+    author_subject_id: str
+    author_subject_type: str = Field(pattern="^(user|service)$")
+    author_display_name: str | None = None
     content: str
     response_type: str | None = None
     citations: list[dict[str, Any]] = Field(default_factory=list)
@@ -1590,6 +1593,7 @@ class AssistantConversationShareResponse(BaseModel):
     conversation_share_id: str
     subject_type: str
     subject_id: str
+    subject_display_name: str | None = None
     permission: str
     status: str
     created_by: str

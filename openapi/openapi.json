@@ -3926,6 +3926,72 @@
         }
       ]
     },
+    "/api/v1/assistant/directory/users": {
+      "get": {
+        "summary": "Search Assistant Directory Users",
+        "operationId": "registry_api_search_assistant_directory_users_api_v1_assistant_directory_users_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": "",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDirectoryUserListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/admin/directory/users/import": {
       "post": {
         "summary": "Import Directory User",
@@ -7877,6 +7943,47 @@
         ],
         "summary": "GET /api/assistant/conversations",
         "operationId": "web_get_api_assistant_conversations",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/directory": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "GET /api/assistant/directory",
+        "operationId": "web_get_api_assistant_directory",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -15247,6 +15354,17 @@
             "type": "string",
             "title": "Subject Id"
           },
+          "subject_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Display Name"
+          },
           "permission": {
             "type": "string",
             "title": "Permission"
@@ -15399,6 +15517,26 @@
             "type": "string",
             "title": "Role"
           },
+          "author_subject_id": {
+            "type": "string",
+            "title": "Author Subject Id"
+          },
+          "author_subject_type": {
+            "type": "string",
+            "pattern": "^(user|service)$",
+            "title": "Author Subject Type"
+          },
+          "author_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Display Name"
+          },
           "content": {
             "type": "string",
             "title": "Content"
@@ -15443,6 +15581,8 @@
         "required": [
           "message_id",
           "role",
+          "author_subject_id",
+          "author_subject_type",
           "content",
           "created_at"
         ],

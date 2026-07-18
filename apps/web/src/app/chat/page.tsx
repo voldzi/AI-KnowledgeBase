@@ -93,6 +93,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
   return (
     <AkbAssistantApp
+      currentSubjectId={context.subjectId}
       initialNowIso={new Date().toISOString()}
       initialConversations={initialConversations}
       initialConversationId={initialConversationId(

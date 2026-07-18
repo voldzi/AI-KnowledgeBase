@@ -493,6 +493,24 @@ export class ProductionRegistryClient implements RegistryApiClient {
     return response.users;
   }
 
+  async searchAssistantDirectoryUsers(
+    query: string,
+    context: ApiRequestContext,
+    limit = 20
+  ): Promise<DirectoryUser[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    const normalizedQuery = query.trim();
+    if (normalizedQuery) {
+      params.set("query", normalizedQuery);
+    }
+    const response = await this.get<{ users: DirectoryUser[] }>(
+      `/assistant/directory/users?${params}`,
+      "searchAssistantDirectoryUsers",
+      context
+    );
+    return response.users;
+  }
+
   async listRoleMappings(context: ApiRequestContext, includeRemoved = false): Promise<RoleMapping[]> {
     const params = new URLSearchParams({ include_removed: String(includeRemoved) });
     const response = await this.get<{ members: RoleMapping[] }>(

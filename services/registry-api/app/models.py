@@ -662,6 +662,7 @@ class AssistantConversationShare(Base, TimestampMixin):
     )
     subject_type: Mapped[str] = mapped_column(String(32), nullable=False, default="user", index=True)
     subject_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    subject_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     permission: Mapped[str] = mapped_column(String(32), nullable=False, default="viewer")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
     created_by: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -673,6 +674,16 @@ class AssistantMessage(Base):
     __tablename__ = "assistant_messages"
     __table_args__ = (
         Index("ix_assistant_messages_conversation_created", "conversation_id", "created_at"),
+        Index(
+            "ix_assistant_messages_author_created",
+            "author_subject_type",
+            "author_subject_id",
+            "created_at",
+        ),
+        CheckConstraint(
+            "author_subject_type IN ('user', 'service')",
+            name="assistant_messages_author_subject_type",
+        ),
     )
 
     message_id: Mapped[str] = mapped_column(
@@ -684,6 +695,9 @@ class AssistantMessage(Base):
         nullable=False,
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
+    author_subject_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    author_subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    author_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     response_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     citations: Mapped[list[dict[str, object]]] = mapped_column(

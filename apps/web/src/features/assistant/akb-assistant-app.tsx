@@ -26,6 +26,7 @@ import {
   Users,
   X
 } from "lucide-react";
+import { DirectoryPersonPicker as PersonPicker } from "@voldzi/stratos-ui";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosDataTable, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
@@ -42,6 +43,10 @@ import {
   type AssistantReportTemplate
 } from "@/lib/assistant/assistant-report-request";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
+import {
+  directoryUserDisplayName,
+  directoryUsersToPeople,
+} from "@/lib/directory-people";
 import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
 import type {
   AssistantChatResponse,
@@ -53,10 +58,12 @@ import type {
   AssistantSuggestion,
   Citation,
   ClarificationQuestion,
+  DirectoryUser,
   SourceContext
 } from "@/lib/types";
 
 interface AkbAssistantAppProps {
+  currentSubjectId: string;
   initialNowIso: string;
   initialConversations?: AssistantConversationListItem[];
   initialConversationId?: string | null;
@@ -73,6 +80,9 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  authorSubjectId?: string;
+  authorSubjectType?: "user" | "service";
+  authorDisplayName?: string | null;
   response?: AssistantChatResponse;
   pending?: boolean;
 }
@@ -87,7 +97,12 @@ interface AssistantThread {
   visibility: ThreadVisibility;
   pinned: boolean;
   updatedAt: string;
-  sharedWith: Array<{ name: string; permission: SharePermission }>;
+  sharedWith: Array<{
+    subjectType: "user" | "group";
+    subjectId: string;
+    displayName: string;
+    permission: SharePermission;
+  }>;
   historyLoaded?: boolean;
 }
 
@@ -223,13 +238,20 @@ const assistantAppCopy = {
     warningGeneric: "Odpověď obsahuje provozní upozornění.",
     citationViewer: "Prohlížeč citací",
     shareTitle: "Sdílet vlákno",
-    shareTarget: "Uživatel nebo skupina",
-    shareTargetPlaceholder: "např. Security reviewers",
+    shareTarget: "Osoba z adresáře",
+    shareTargetPlaceholder: "Vyberte zaměstnance",
+    shareDirectoryTitle: "Adresář zaměstnanců",
+    shareDirectorySearch: "Hledat jméno, e-mail nebo účet",
+    shareDirectoryEmpty: "Nebyla nalezena žádná aktivní osoba.",
+    shareDirectoryLoading: "Načítám adresář…",
+    shareDirectoryFailed: "Adresář osob se nepodařilo načíst.",
     sharePermission: "Oprávnění",
     viewer: "Čtenář",
     commenter: "Komentátor",
     addShare: "Přidat sdílení",
-    shareSaved: "Sdílení uloženo pro tuto relaci.",
+    shareSaving: "Ukládám sdílení…",
+    shareFailed: "Sdílení se nepodařilo uložit. Zkuste to prosím znovu.",
+    shareSaved: "Sdílení bylo bezpečně uloženo.",
     shareEmpty: "Zatím nikdo další.",
     shareAfterFirstMessage: "Vlákno lze sdílet po uložení první odpovědi.",
     historyUnavailable: "Historii se nepodařilo načíst. Nový dotaz můžete zadat a načtení historie zkusit později.",
@@ -237,6 +259,7 @@ const assistantAppCopy = {
     historySourceAccessChanged: "Přístup ke zdrojům této historické odpovědi se změnil. Položte dotaz znovu, aby AKB použila pouze aktuálně dostupné zdroje.",
     close: "Zavřít",
     owner: "Vlastník",
+    anotherUser: "Uživatel",
     you: "Vy"
   },
   en: {
@@ -322,13 +345,20 @@ const assistantAppCopy = {
     warningGeneric: "The answer contains an operational notice.",
     citationViewer: "Citation viewer",
     shareTitle: "Share thread",
-    shareTarget: "User or group",
-    shareTargetPlaceholder: "e.g. Security reviewers",
+    shareTarget: "Directory person",
+    shareTargetPlaceholder: "Select an employee",
+    shareDirectoryTitle: "Employee directory",
+    shareDirectorySearch: "Search name, email, or account",
+    shareDirectoryEmpty: "No active person was found.",
+    shareDirectoryLoading: "Loading directory…",
+    shareDirectoryFailed: "The people directory could not be loaded.",
     sharePermission: "Permission",
     viewer: "Viewer",
     commenter: "Commenter",
     addShare: "Add share",
-    shareSaved: "Sharing saved for this session.",
+    shareSaving: "Saving sharing…",
+    shareFailed: "Sharing could not be saved. Please try again.",
+    shareSaved: "Sharing was saved securely.",
     shareEmpty: "No one else yet.",
     shareAfterFirstMessage: "The thread can be shared after its first answer has been saved.",
     historyUnavailable: "Conversation history could not be loaded. You can ask a new question and try loading history later.",
@@ -336,11 +366,13 @@ const assistantAppCopy = {
     historySourceAccessChanged: "Access to the sources for this historical answer has changed. Ask the question again so AKB uses only sources currently available to you.",
     close: "Close",
     owner: "Owner",
+    anotherUser: "User",
     you: "You"
   }
 } satisfies Record<AklLanguage, AssistantAppLabels>;
 
 export function AkbAssistantApp({
+  currentSubjectId,
   initialNowIso,
   initialConversations = [],
   initialConversationId = null,
@@ -369,9 +401,10 @@ export function AkbAssistantApp({
   const [openingSourceId, setOpeningSourceId] = useState<string | null>(null);
   const [citationModalOpen, setCitationModalOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [shareTarget, setShareTarget] = useState("");
+  const [shareTarget, setShareTarget] = useState<DirectoryUser | null>(null);
   const [sharePermission, setSharePermission] = useState<SharePermission>("viewer");
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareSaving, setShareSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [clarificationValues, setClarificationValues] = useState<Record<string, string>>({});
   const [reportModeEnabled, setReportModeEnabled] = useState(false);
@@ -713,11 +746,24 @@ export function AkbAssistantApp({
   }
 
   function addShare() {
-    const target = shareTarget.trim();
-    if (!target || !activeThread.conversationId) {
+    if (!shareTarget || !activeThread.conversationId) {
       return;
     }
-    const nextSharedWith = [...activeThread.sharedWith.filter((item) => item.name !== target), { name: target, permission: sharePermission }];
+    const nextSharedWith = [
+      ...activeThread.sharedWith.filter(
+        (item) =>
+          item.subjectType !== "user" ||
+          item.subjectId !== shareTarget.subject_id,
+      ),
+      {
+        subjectType: "user" as const,
+        subjectId: shareTarget.subject_id,
+        displayName: directoryUserDisplayName(shareTarget),
+        permission: sharePermission,
+      },
+    ];
+    setShareSaving(true);
+    setShareStatus(null);
     fetch(withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}/shares`), {
       method: "PUT",
       credentials: "same-origin",
@@ -725,8 +771,8 @@ export function AkbAssistantApp({
       body: JSON.stringify({
         visibility: "shared",
         shares: nextSharedWith.map((item) => ({
-          subject_type: item.name.startsWith("group:") ? "group" : "user",
-          subject_id: item.name.replace(/^group:/, ""),
+          subject_type: item.subjectType,
+          subject_id: item.subjectId,
           permission: item.permission
         }))
       })
@@ -739,15 +785,16 @@ export function AkbAssistantApp({
           redirectToLoginAfterUnauthorized();
           return Promise.reject(new Error(copy.sessionExpired));
         }
-        return Promise.reject(new Error(copy.requestFailed));
+        return Promise.reject(new Error(copy.shareFailed));
       })
       .then((payload) => {
         const conversation = payload.conversation as AssistantConversationDetail;
         updateThread(activeThread.id, () => threadFromConversation(conversation, language));
-        setShareTarget("");
+        setShareTarget(null);
         setShareStatus(copy.shareSaved);
       })
-      .catch((error) => setShareStatus(error instanceof Error ? error.message : copy.requestFailed));
+      .catch((error) => setShareStatus(error instanceof Error ? error.message : copy.shareFailed))
+      .finally(() => setShareSaving(false));
   }
 
   async function copyThreadLink() {
@@ -889,6 +936,7 @@ export function AkbAssistantApp({
                   key={message.id}
                   message={message}
                   copy={copy}
+                  currentSubjectId={currentSubjectId}
                   clarificationValues={clarificationValues}
                   setClarificationValues={setClarificationValues}
                   onSubmitClarification={submitClarification}
@@ -1040,9 +1088,12 @@ export function AkbAssistantApp({
             </div>
             {activeThread.sharedWith.length ? (
               activeThread.sharedWith.map((item) => (
-                <div className="akb-chat-access__row" key={item.name}>
+                <div
+                  className="akb-chat-access__row"
+                  key={`${item.subjectType}:${item.subjectId}`}
+                >
                   <span>{item.permission === "viewer" ? copy.viewer : copy.commenter}</span>
-                  <strong>{item.name}</strong>
+                  <strong>{item.displayName}</strong>
                 </div>
               ))
             ) : (
@@ -1076,18 +1127,14 @@ export function AkbAssistantApp({
               </button>
             </div>
             <div className="akb-share-dialog__body">
-              <label className="field" htmlFor="akb-share-target">
-                <span>{copy.shareTarget}</span>
-                <input
-                  id="akb-share-target"
-                  value={shareTarget}
-                  onChange={(event) => {
-                    setShareTarget(event.target.value);
-                    setShareStatus(null);
-                  }}
-                  placeholder={copy.shareTargetPlaceholder}
-                />
-              </label>
+              <AssistantSharePersonPicker
+                copy={copy}
+                selectedUser={shareTarget}
+                onSelect={(user) => {
+                  setShareTarget(user);
+                  setShareStatus(null);
+                }}
+              />
               <StratosSelect
                 id="akb-share-permission"
                 label={copy.sharePermission}
@@ -1097,9 +1144,14 @@ export function AkbAssistantApp({
                 <option value="viewer">{copy.viewer}</option>
                 <option value="commenter">{copy.commenter}</option>
               </StratosSelect>
-              <StratosButton tone="primary" type="button" onClick={addShare}>
+              <StratosButton
+                tone="primary"
+                type="button"
+                disabled={!shareTarget || shareSaving}
+                onClick={addShare}
+              >
                 <Users size={16} aria-hidden="true" />
-                {copy.addShare}
+                {shareSaving ? copy.shareSaving : copy.addShare}
               </StratosButton>
               {shareStatus ? <div className="notice">{shareStatus}</div> : null}
             </div>
@@ -1229,9 +1281,103 @@ function ThreadGroup({
   );
 }
 
+function AssistantSharePersonPicker({
+  copy,
+  selectedUser,
+  onSelect,
+}: {
+  copy: AssistantAppLabels;
+  selectedUser: DirectoryUser | null;
+  onSelect: (user: DirectoryUser) => void;
+}) {
+  const [users, setUsers] = useState<DirectoryUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(withAppBasePath("/api/assistant/directory?limit=50"), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await assistantHttpErrorMessage(response, copy));
+        }
+        return response.json() as Promise<{ users?: DirectoryUser[] }>;
+      })
+      .then((payload) => {
+        setUsers(Array.isArray(payload.users) ? payload.users : []);
+        setError(false);
+      })
+      .catch((fetchError) => {
+        if (
+          fetchError instanceof DOMException &&
+          fetchError.name === "AbortError"
+        ) {
+          return;
+        }
+        setUsers([]);
+        setError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [copy]);
+
+  const people = useMemo(
+    () => directoryUsersToPeople(selectedUser ? [selectedUser, ...users] : users),
+    [selectedUser, users],
+  );
+
+  return (
+    <div className="akb-share-person-picker">
+      <PersonPicker
+        disabled={loading || error || people.length === 0}
+        label={copy.shareTarget}
+        labels={{
+          title: copy.shareDirectoryTitle,
+          search: copy.shareDirectorySearch,
+          placeholder: loading
+            ? copy.shareDirectoryLoading
+            : copy.shareTargetPlaceholder,
+          empty: error
+            ? copy.shareDirectoryFailed
+            : copy.shareDirectoryEmpty,
+          close: copy.close,
+        }}
+        people={people}
+        popoverMinWidth={380}
+        popoverPlacement="bottom-start"
+        popoverZIndex={150}
+        selectedPersonId={selectedUser?.subject_id ?? null}
+        onPersonSelect={(personId) => {
+          const user =
+            users.find((candidate) => candidate.subject_id === personId) ??
+            selectedUser;
+          if (user) {
+            onSelect(user);
+          }
+        }}
+      />
+      {error ? (
+        <p className="akb-share-person-picker__status" role="alert">
+          {copy.shareDirectoryFailed}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatBubble({
   message,
   copy,
+  currentSubjectId,
   clarificationValues,
   setClarificationValues,
   onSubmitClarification,
@@ -1239,6 +1385,7 @@ function ChatBubble({
 }: {
   message: ChatMessage;
   copy: AssistantAppLabels;
+  currentSubjectId: string;
   clarificationValues: Record<string, string>;
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
@@ -1252,7 +1399,14 @@ function ChatBubble({
       </div>
       <div className="akb-chat-message__body">
         <div className="akb-chat-message__meta">
-          <strong>{message.role === "assistant" ? "AKB Assistant" : copy.you}</strong>
+          <strong>
+            {message.role === "assistant"
+              ? message.authorDisplayName ?? "AKB Assistant"
+              : message.authorSubjectId === currentSubjectId ||
+                  !message.authorSubjectId
+                ? copy.you
+                : message.authorDisplayName ?? copy.anotherUser}
+          </strong>
           <span>
             <Clock3 size={12} aria-hidden="true" />
             {formatThreadTime(message.createdAt)}
@@ -1671,7 +1825,11 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
     pinned: false,
     updatedAt: conversation.updated_at,
     sharedWith: conversation.shared_with.map((share) => ({
-      name: shareName(share.subject_type, share.subject_id),
+      subjectType: share.subject_type,
+      subjectId: share.subject_id,
+      displayName:
+        share.subject_display_name ??
+        shareName(share.subject_type, share.subject_id),
       permission: share.permission
     })),
     historyLoaded: false
@@ -1705,7 +1863,11 @@ function threadFromConversation(
     pinned: false,
     updatedAt: conversation.updated_at,
     sharedWith: conversation.shared_with.map((share) => ({
-      name: shareName(share.subject_type, share.subject_id),
+      subjectType: share.subject_type,
+      subjectId: share.subject_id,
+      displayName:
+        share.subject_display_name ??
+        shareName(share.subject_type, share.subject_id),
       permission: share.permission
     })),
     historyLoaded: true
@@ -1726,6 +1888,9 @@ function messageFromConversationMessage(
     role: message.role,
     content,
     createdAt: message.created_at,
+    authorSubjectId: message.author_subject_id,
+    authorSubjectType: message.author_subject_type,
+    authorDisplayName: message.author_display_name,
     response: message.role === "assistant"
       ? responseFromPersistedMessage(
           conversationId,

@@ -597,6 +597,39 @@ describe("production API clients", () => {
     assert.equal(calls[0][1]?.method, "GET");
   });
 
+  it("loads assistant share recipients through the chat-scoped directory endpoint", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        users: [
+          {
+            subject_id: "employee_2",
+            display_name: "Eva Horáková",
+            email: "eva.horakova@example.cz",
+            username: "employee_2",
+            enabled: true,
+            groups: [],
+          },
+        ],
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const users = await clients.registry.searchAssistantDirectoryUsers(
+      "",
+      createMockContext(),
+      50,
+    );
+
+    assert.equal(users[0]?.subject_id, "employee_2");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/assistant/directory/users?limit=50",
+    );
+    assert.equal(calls[0][1]?.method, "GET");
+  });
+
   it("maps upstream error bodies to ApiClientError", async () => {
     const fetcher: AklFetch = async () =>
       Response.json(
@@ -737,6 +770,7 @@ describe("production API clients", () => {
           conversation_share_id: "share_1",
           subject_type: "group",
           subject_id: "projectflow",
+          subject_display_name: "ProjectFlow",
           permission: "viewer",
           status: "active",
           created_by: "employee_1",
@@ -748,6 +782,9 @@ describe("production API clients", () => {
         {
           message_id: "msg_1",
           role: "user",
+          author_subject_id: "employee_1",
+          author_subject_type: "user",
+          author_display_name: "Jan Novák",
           content: "Kolik máme dokumentů k digitalizaci?",
           response_type: null,
           citations: [],

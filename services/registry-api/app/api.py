@@ -6852,6 +6852,24 @@ def search_workflow_directory_users(
     return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
 
 
+@router.get("/assistant/directory/users", response_model=DirectoryUserListResponse)
+def search_assistant_directory_users(
+    query: str = Query(default="", max_length=200),
+    limit: Limit = 20,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserListResponse:
+    require_global_action(principal, Action.rag_query, db)
+    users = _directory_adapter().search_users(query, max_results=min(limit, 50))
+    return DirectoryUserListResponse(
+        users=[
+            _directory_user_response(user)
+            for user in users
+            if user.enabled
+        ]
+    )
+
+
 @router.post(
     "/admin/directory/users/import",
     response_model=DirectoryUserResponse,
@@ -7057,6 +7075,9 @@ def _assistant_message_response(
     return AssistantMessageResponse(
         message_id=message.message_id,
         role=message.role,
+        author_subject_id=message.author_subject_id,
+        author_subject_type=message.author_subject_type,
+        author_display_name=message.author_display_name,
         content="" if source_access_changed else message.content,
         response_type=message.response_type,
         citations=[] if source_access_changed else citations,
@@ -7079,6 +7100,7 @@ def _assistant_share_response(share: AssistantConversationShare) -> AssistantCon
         conversation_share_id=share.conversation_share_id,
         subject_type=share.subject_type,
         subject_id=share.subject_id,
+        subject_display_name=share.subject_display_name,
         permission=share.permission,
         status=share.status,
         created_by=share.created_by,
@@ -7243,14 +7265,14 @@ def append_assistant_messages(
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
     subject_context = require_global_action(principal, Action.rag_query, db)
-    if not _can_persist_for_user(subject_context, payload.user_id):
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "conversation_user_mismatch",
-            "Conversation can only be persisted for the current user",
-        )
     conversation = db.get(AssistantConversation, conversation_id)
     if conversation is None:
+        if not _can_persist_for_user(subject_context, payload.user_id):
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "conversation_user_mismatch",
+                "Conversation can only be persisted for the current user",
+            )
         conversation = AssistantConversation(
             conversation_id=conversation_id,
             user_id=payload.user_id,
@@ -7261,16 +7283,25 @@ def append_assistant_messages(
         db.add(conversation)
     else:
         db.refresh(conversation, attribute_names=["shares"])
-    if conversation.user_id != payload.user_id and not _conversation_subject_allowed(
-        conversation,
-        subject_context,
-        allow_comment=True,
-        include_admin=False,
-    ):
+    if conversation.user_id != payload.user_id:
         raise problem(
             status.HTTP_403_FORBIDDEN,
             "conversation_user_mismatch",
             "Conversation belongs to a different user",
+        )
+    if not (
+        _can_persist_for_user(subject_context, payload.user_id)
+        or _conversation_subject_allowed(
+            conversation,
+            subject_context,
+            allow_comment=True,
+            include_admin=False,
+        )
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_comment_denied",
+            "The current subject cannot add messages to this conversation",
         )
     if payload.title and not conversation.title:
         conversation.title = payload.title
@@ -7279,11 +7310,45 @@ def append_assistant_messages(
     if payload.retention_until:
         conversation.retention_until = payload.retention_until
 
+    acts_for_conversation_owner = (
+        subject_context.subject_id != payload.user_id
+        and _can_persist_for_user(subject_context, payload.user_id)
+    )
+    user_author_subject_id = (
+        payload.user_id
+        if acts_for_conversation_owner
+        else subject_context.subject_id
+    )
+    profile = db.get(UserProfile, user_author_subject_id)
+    user_author_display_name = profile.display_name if profile else next(
+        (
+            share.subject_display_name
+            for share in conversation.shares
+            if share.status == "active"
+            and share.subject_type == "user"
+            and share.subject_id == user_author_subject_id
+        ),
+        None,
+    )
     for message in payload.messages:
+        is_assistant_message = message.role == "assistant"
         db.add(
             AssistantMessage(
                 conversation_id=conversation_id,
                 role=message.role,
+                author_subject_id=(
+                    "akb-assistant"
+                    if is_assistant_message
+                    else user_author_subject_id
+                ),
+                author_subject_type=(
+                    "service" if is_assistant_message else "user"
+                ),
+                author_display_name=(
+                    "AKB Assistant"
+                    if is_assistant_message
+                    else user_author_display_name
+                ),
                 content=message.content,
                 response_type=message.response_type,
                 citations=message.citations,
@@ -7361,6 +7426,36 @@ def replace_assistant_conversation_shares(
             "Only the conversation owner can change sharing",
         )
 
+    existing_keys = {
+        (share.subject_type, share.subject_id)
+        for share in conversation.shares
+        if share.status == "active"
+    }
+    verified_user_names: dict[str, str] = {}
+    for requested_share in payload.shares:
+        if requested_share.subject_type == "group":
+            if ("group", requested_share.subject_id) not in existing_keys:
+                raise problem(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "assistant_group_directory_unavailable",
+                    "New group shares require the STRATOS organization group directory",
+                )
+            continue
+        directory_user = _directory_adapter().get_user(requested_share.subject_id)
+        if directory_user is None:
+            raise problem(
+                status.HTTP_404_NOT_FOUND,
+                "directory_user_not_found",
+                "The selected sharing recipient was not found in the identity directory",
+            )
+        if not directory_user.enabled:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "directory_user_inactive",
+                "The selected sharing recipient is not active",
+            )
+        verified_user_names[requested_share.subject_id] = directory_user.name
+
     requested = {(share.subject_type, share.subject_id): share for share in payload.shares}
     for share in conversation.shares:
         if (share.subject_type, share.subject_id) not in requested:
@@ -7378,6 +7473,8 @@ def replace_assistant_conversation_shares(
         if existing:
             existing.permission = request_share.permission
             existing.status = "active"
+            if subject_type == "user":
+                existing.subject_display_name = verified_user_names[subject_id]
             existing.updated_at = utcnow()
         else:
             db.add(
@@ -7385,6 +7482,7 @@ def replace_assistant_conversation_shares(
                     conversation_id=conversation_id,
                     subject_type=subject_type,
                     subject_id=subject_id,
+                    subject_display_name=verified_user_names.get(subject_id),
                     permission=request_share.permission,
                     created_by=context.subject_id,
                 )

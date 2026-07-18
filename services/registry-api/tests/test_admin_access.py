@@ -96,3 +96,26 @@ def test_workflow_directory_search_requires_workflow_write(client: TestClient, r
     )
     assert default_listing.status_code == 503
     assert default_listing.json()["error"]["code"] == "keycloak_directory_not_configured"
+
+
+def test_assistant_directory_search_requires_rag_access(
+    client: TestClient,
+) -> None:
+    denied = client.get(
+        "/api/v1/assistant/directory/users",
+        headers={
+            "X-AKL-Subject": "user_without_chat",
+            "X-AKL-Roles": "stratos_user",
+        },
+    )
+    assert denied.status_code == 403
+
+    reader = client.get(
+        "/api/v1/assistant/directory/users",
+        headers={
+            "X-AKL-Subject": "user_reader",
+            "X-AKL-Roles": "reader",
+        },
+    )
+    assert reader.status_code == 503
+    assert reader.json()["error"]["code"] == "keycloak_directory_not_configured"

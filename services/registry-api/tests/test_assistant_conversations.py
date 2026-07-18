@@ -1,5 +1,46 @@
 from fastapi.testclient import TestClient
 
+import app.api as registry_api
+from app.keycloak_directory import DirectoryUser
+
+
+class _Directory:
+    def __init__(self, users: list[DirectoryUser]) -> None:
+        self._users = {user.subject: user for user in users}
+
+    def search_users(self, query: str, max_results: int = 20) -> list[DirectoryUser]:
+        normalized = query.casefold().strip()
+        users = [
+            user
+            for user in self._users.values()
+            if not normalized
+            or normalized in user.name.casefold()
+            or normalized in (user.email or "").casefold()
+            or normalized in (user.username or "").casefold()
+        ]
+        return users[:max_results]
+
+    def get_user(self, subject: str) -> DirectoryUser | None:
+        return self._users.get(subject)
+
+
+def _directory_user(
+    subject: str,
+    name: str,
+    *,
+    enabled: bool = True,
+) -> DirectoryUser:
+    return DirectoryUser(
+        id=subject,
+        subject=subject,
+        provider="keycloak",
+        name=name,
+        initials="".join(part[0] for part in name.split()[:2]).upper(),
+        email=f"{subject}@example.cz",
+        username=subject,
+        enabled=enabled,
+    )
+
 
 def _append_payload(role: str = "user", content: str = "Jak požádám o přístup?") -> dict[str, object]:
     return {
@@ -26,6 +67,8 @@ def test_append_creates_conversation_and_returns_messages(client: TestClient) ->
     assert body["user_id"] == "employee_1"
     assert len(body["messages"]) == 1
     assert body["messages"][0]["role"] == "user"
+    assert body["messages"][0]["author_subject_id"] == "employee_1"
+    assert body["messages"][0]["author_subject_type"] == "user"
 
 
 def test_append_accumulates_message_history(client: TestClient) -> None:
@@ -53,6 +96,9 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[1]["availability"] == "available"
     assert messages[1]["content"] == "Postup je následující..."
+    assert messages[1]["author_subject_id"] == "akb-assistant"
+    assert messages[1]["author_subject_type"] == "service"
+    assert messages[1]["author_display_name"] == "AKB Assistant"
 
 
 def test_history_redacts_answer_when_cited_version_is_not_available(
@@ -217,10 +263,17 @@ def test_reader_cannot_read_another_users_conversation(client: TestClient) -> No
     assert denied.status_code == 403
 
 
-def test_owner_can_share_conversation_with_user_and_group(client: TestClient) -> None:
+def test_owner_can_share_conversation_with_verified_user(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
     owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
     user_headers = {"X-AKL-Subject": "employee_2", "X-AKL-Roles": "reader"}
-    group_headers = {"X-AKL-Subject": "employee_3", "X-AKL-Roles": "reader", "X-AKL-Groups": "finance-team"}
     created = client.post(
         "/api/v1/assistant/conversations/conv_shared/messages",
         headers=owner_headers,
@@ -234,16 +287,125 @@ def test_owner_can_share_conversation_with_user_and_group(client: TestClient) ->
         json={
             "shares": [
                 {"subject_type": "user", "subject_id": "employee_2", "permission": "viewer"},
-                {"subject_type": "group", "subject_id": "finance-team", "permission": "commenter"},
             ]
         },
     )
     assert shared.status_code == 200, shared.text
     assert shared.json()["visibility"] == "shared"
-    assert len(shared.json()["shared_with"]) == 2
+    assert len(shared.json()["shared_with"]) == 1
+    assert shared.json()["shared_with"][0]["subject_display_name"] == "Eva Horáková"
 
     assert client.get("/api/v1/assistant/conversation-history/conv_shared", headers=user_headers).status_code == 200
-    assert client.get("/api/v1/assistant/conversation-history/conv_shared", headers=group_headers).status_code == 200
+
+
+def test_new_group_share_is_rejected_without_group_directory(
+    client: TestClient,
+) -> None:
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_group/messages",
+        json=_append_payload(),
+    )
+    assert created.status_code == 201, created.text
+    response = client.put(
+        "/api/v1/assistant/conversation-history/conv_group/shares",
+        json={
+            "shares": [
+                {
+                    "subject_type": "group",
+                    "subject_id": "finance-team",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+    assert response.status_code == 422
+    assert (
+        response.json()["error"]["code"]
+        == "assistant_group_directory_unavailable"
+    )
+
+
+def test_share_rejects_inactive_directory_user(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory(
+            [_directory_user("employee_inactive", "Neaktivní Osoba", enabled=False)]
+        ),
+    )
+    client.post(
+        "/api/v1/assistant/conversations/conv_inactive/messages",
+        json=_append_payload(),
+    )
+    response = client.put(
+        "/api/v1/assistant/conversation-history/conv_inactive/shares",
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_inactive",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "directory_user_inactive"
+
+
+def test_commenter_message_keeps_actual_author(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    commenter_headers = {
+        "X-AKL-Subject": "employee_2",
+        "X-AKL-Roles": "reader",
+    }
+    client.post(
+        "/api/v1/assistant/conversations/conv_comment/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    shared = client.put(
+        "/api/v1/assistant/conversation-history/conv_comment/shares",
+        headers=owner_headers,
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_2",
+                    "permission": "commenter",
+                }
+            ]
+        },
+    )
+    assert shared.status_code == 200, shared.text
+
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_comment/messages",
+        headers=commenter_headers,
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Doplňuji otázku jako komentátor.",
+                }
+            ],
+        },
+    )
+    assert appended.status_code == 201, appended.text
+    assert appended.json()["messages"][-1]["author_subject_id"] == "employee_2"
+    assert appended.json()["messages"][-1]["author_display_name"] == "Eva Horáková"
 
 
 def test_archive_hides_conversation_from_default_list(client: TestClient) -> None:
