@@ -88,6 +88,8 @@ The assistant workflow emits these event types:
 - `assistant.no_answer_returned`
 - `assistant.handoff_recommended`
 - `assistant.citation_opened`
+- `assistant.conversation.deleted`
+- `assistant.conversation.purged`
 
 Employee Chat Portal source opening uses `GET /api/v1/assistant/citations/{chunk_id}/open` and audits `assistant.citation_opened`. Admin/technical citation viewer flows can still use the generic `citation.opened` event.
 
@@ -103,6 +105,31 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
 
 - Assistant conversations are persisted only with explicit ownership, default
   180-day retention, archive support, and user/group sharing records.
+- Only the authenticated owner may permanently delete a conversation. Registry
+  deletes the conversation, messages, and shares transactionally and retains
+  no title, prompt, answer, citation, or shared participant identity in the
+  deletion audit metadata. The standard audit envelope still identifies the
+  deleting owner or the retention service. The content-free tombstone contains
+  only the opaque
+  conversation ID, reason, previous state, deletion time, retention deadline,
+  and aggregate message/share counts.
+- Expired conversations are hidden immediately and physically purged in bounded
+  database batches. PostgreSQL workers use row locks with `SKIP LOCKED`, making
+  concurrent purge cycles idempotent. A purge cycle also removes old deletion
+  tombstones after their separate audit retention deadline.
+- New person shares are selected from the active Keycloak directory and
+  independently revalidated by Registry at write time. Arbitrary free-text
+  identities and inactive accounts are rejected. New group shares remain
+  fail-closed until the STRATOS organization group directory can verify them.
+- Message authorship is derived by Registry from the authenticated or delegated
+  subject. Browser and service payloads cannot forge author IDs or service
+  labels; shared commenters retain their own author identity.
+- Every cited assistant message is reauthorized against the current immutable
+  document-version policy when conversation history is returned. If any cited
+  version is missing, unavailable, or no longer allowed, Registry returns the
+  message as `source_access_changed` without its stored answer, citations, or
+  structured metadata. Conversation ownership or sharing never preserves
+  obsolete source access.
 - Server-side web route guards redirect employee chat-only users away from
   knowledge-management and admin surfaces.
 - The standalone `AKL_WEB_PROFILE=chat` instance applies an environment-level

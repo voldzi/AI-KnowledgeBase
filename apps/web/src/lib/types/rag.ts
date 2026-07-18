@@ -242,10 +242,14 @@ export interface AssistantConversationResponse {
 export interface AssistantConversationMessage {
   message_id: string;
   role: "user" | "assistant";
+  author_subject_id: string;
+  author_subject_type: "user" | "service";
+  author_display_name: string | null;
   content: string;
   response_type: AssistantResponseType | null;
   citations: Citation[];
   metadata: Record<string, unknown>;
+  availability?: "available" | "source_access_changed";
   created_at: string;
 }
 
@@ -253,6 +257,7 @@ export interface AssistantConversationShare {
   conversation_share_id: string;
   subject_type: "user" | "group";
   subject_id: string;
+  subject_display_name: string | null;
   permission: "viewer" | "commenter";
   status: "active" | "removed";
   created_by: string;

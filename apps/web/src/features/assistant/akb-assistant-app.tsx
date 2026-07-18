@@ -23,9 +23,11 @@ import {
   Share2,
   ShieldAlert,
   Table2,
+  Trash2,
   Users,
   X
 } from "lucide-react";
+import { DirectoryPersonPicker as PersonPicker } from "@voldzi/stratos-ui";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosDataTable, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
@@ -42,6 +44,10 @@ import {
   type AssistantReportTemplate
 } from "@/lib/assistant/assistant-report-request";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
+import {
+  directoryUserDisplayName,
+  directoryUsersToPeople,
+} from "@/lib/directory-people";
 import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
 import type {
   AssistantChatResponse,
@@ -53,12 +59,17 @@ import type {
   AssistantSuggestion,
   Citation,
   ClarificationQuestion,
+  DirectoryUser,
   SourceContext
 } from "@/lib/types";
 
 interface AkbAssistantAppProps {
+  currentSubjectId: string;
   initialNowIso: string;
   initialConversations?: AssistantConversationListItem[];
+  initialConversationId?: string | null;
+  initialHistoryUnavailable?: boolean;
+  initialRequestedThreadUnavailable?: boolean;
   suggestions: AssistantSuggestion[];
 }
 
@@ -70,6 +81,9 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  authorSubjectId?: string;
+  authorSubjectType?: "user" | "service";
+  authorDisplayName?: string | null;
   response?: AssistantChatResponse;
   pending?: boolean;
 }
@@ -77,6 +91,7 @@ interface ChatMessage {
 interface AssistantThread {
   id: string;
   conversationId: string | null;
+  ownerSubjectId: string | null;
   title: string;
   context: Record<string, unknown>;
   messages: ChatMessage[];
@@ -84,7 +99,13 @@ interface AssistantThread {
   visibility: ThreadVisibility;
   pinned: boolean;
   updatedAt: string;
-  sharedWith: Array<{ name: string; permission: SharePermission }>;
+  retentionUntil: string | null;
+  sharedWith: Array<{
+    subjectType: "user" | "group";
+    subjectId: string;
+    displayName: string;
+    permission: SharePermission;
+  }>;
   historyLoaded?: boolean;
 }
 
@@ -150,6 +171,14 @@ const assistantAppCopy = {
     ready: "Připraven",
     share: "Sdílet",
     archive: "Archivovat",
+    deleteThread: "Trvale odstranit",
+    deleteTitle: "Trvale odstranit vlákno?",
+    deleteBody: "Zprávy i sdílení budou nenávratně odstraněny. Zůstane pouze obsahově prázdný auditní záznam o odstranění.",
+    deleteRetention: "Automatické odstranění je jinak naplánováno na",
+    deleteCancel: "Ponechat vlákno",
+    deletingThread: "Odstraňuji…",
+    deleteFailed: "Vlákno se nepodařilo odstranit. Zkuste to prosím znovu.",
+    deleteSucceeded: "Vlákno bylo trvale odstraněno.",
     copied: "Zkopírováno",
     copyLink: "Kopírovat odkaz",
     sourcesPanel: "Zdroje odpovědi",
@@ -220,16 +249,28 @@ const assistantAppCopy = {
     warningGeneric: "Odpověď obsahuje provozní upozornění.",
     citationViewer: "Prohlížeč citací",
     shareTitle: "Sdílet vlákno",
-    shareTarget: "Uživatel nebo skupina",
-    shareTargetPlaceholder: "např. Security reviewers",
+    shareTarget: "Osoba z adresáře",
+    shareTargetPlaceholder: "Vyberte zaměstnance",
+    shareDirectoryTitle: "Adresář zaměstnanců",
+    shareDirectorySearch: "Hledat jméno, e-mail nebo účet",
+    shareDirectoryEmpty: "Nebyla nalezena žádná aktivní osoba.",
+    shareDirectoryLoading: "Načítám adresář…",
+    shareDirectoryFailed: "Adresář osob se nepodařilo načíst.",
     sharePermission: "Oprávnění",
     viewer: "Čtenář",
     commenter: "Komentátor",
     addShare: "Přidat sdílení",
-    shareSaved: "Sdílení uloženo pro tuto relaci.",
+    shareSaving: "Ukládám sdílení…",
+    shareFailed: "Sdílení se nepodařilo uložit. Zkuste to prosím znovu.",
+    shareSaved: "Sdílení bylo bezpečně uloženo.",
     shareEmpty: "Zatím nikdo další.",
+    shareAfterFirstMessage: "Vlákno lze sdílet po uložení první odpovědi.",
+    historyUnavailable: "Historii se nepodařilo načíst. Nový dotaz můžete zadat a načtení historie zkusit později.",
+    requestedThreadUnavailable: "Požadované vlákno není dostupné nebo k němu nemáte přístup.",
+    historySourceAccessChanged: "Přístup ke zdrojům této historické odpovědi se změnil. Položte dotaz znovu, aby AKB použila pouze aktuálně dostupné zdroje.",
     close: "Zavřít",
     owner: "Vlastník",
+    anotherUser: "Uživatel",
     you: "Vy"
   },
   en: {
@@ -245,6 +286,14 @@ const assistantAppCopy = {
     ready: "Ready",
     share: "Share",
     archive: "Archive",
+    deleteThread: "Delete permanently",
+    deleteTitle: "Permanently delete this thread?",
+    deleteBody: "Messages and sharing will be removed permanently. Only a content-free deletion audit record will remain.",
+    deleteRetention: "Automatic deletion is otherwise scheduled for",
+    deleteCancel: "Keep thread",
+    deletingThread: "Deleting…",
+    deleteFailed: "The thread could not be deleted. Please try again.",
+    deleteSucceeded: "The thread was permanently deleted.",
     copied: "Copied",
     copyLink: "Copy link",
     sourcesPanel: "Answer sources",
@@ -315,37 +364,68 @@ const assistantAppCopy = {
     warningGeneric: "The answer contains an operational notice.",
     citationViewer: "Citation viewer",
     shareTitle: "Share thread",
-    shareTarget: "User or group",
-    shareTargetPlaceholder: "e.g. Security reviewers",
+    shareTarget: "Directory person",
+    shareTargetPlaceholder: "Select an employee",
+    shareDirectoryTitle: "Employee directory",
+    shareDirectorySearch: "Search name, email, or account",
+    shareDirectoryEmpty: "No active person was found.",
+    shareDirectoryLoading: "Loading directory…",
+    shareDirectoryFailed: "The people directory could not be loaded.",
     sharePermission: "Permission",
     viewer: "Viewer",
     commenter: "Commenter",
     addShare: "Add share",
-    shareSaved: "Sharing saved for this session.",
+    shareSaving: "Saving sharing…",
+    shareFailed: "Sharing could not be saved. Please try again.",
+    shareSaved: "Sharing was saved securely.",
     shareEmpty: "No one else yet.",
+    shareAfterFirstMessage: "The thread can be shared after its first answer has been saved.",
+    historyUnavailable: "Conversation history could not be loaded. You can ask a new question and try loading history later.",
+    requestedThreadUnavailable: "The requested thread is unavailable or you do not have access to it.",
+    historySourceAccessChanged: "Access to the sources for this historical answer has changed. Ask the question again so AKB uses only sources currently available to you.",
     close: "Close",
     owner: "Owner",
+    anotherUser: "User",
     you: "You"
   }
 } satisfies Record<AklLanguage, AssistantAppLabels>;
 
-export function AkbAssistantApp({ initialNowIso, initialConversations = [], suggestions }: AkbAssistantAppProps) {
+export function AkbAssistantApp({
+  currentSubjectId,
+  initialNowIso,
+  initialConversations = [],
+  initialConversationId = null,
+  initialHistoryUnavailable = false,
+  initialRequestedThreadUnavailable = false,
+  suggestions
+}: AkbAssistantAppProps) {
   const { language } = useLanguage();
   const copy = assistantAppCopy[language];
   const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso, initialConversations));
-  const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations));
+  const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations, initialConversationId));
   const [threadSearch, setThreadSearch] = useState("");
   const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(() => {
+    if (initialRequestedThreadUnavailable) {
+      return assistantAppCopy[language].requestedThreadUnavailable;
+    }
+    if (initialHistoryUnavailable) {
+      return assistantAppCopy[language].historyUnavailable;
+    }
+    return null;
+  });
   const [submitting, setSubmitting] = useState(false);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [openingSourceId, setOpeningSourceId] = useState<string | null>(null);
   const [citationModalOpen, setCitationModalOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [shareTarget, setShareTarget] = useState("");
+  const [shareTarget, setShareTarget] = useState<DirectoryUser | null>(null);
   const [sharePermission, setSharePermission] = useState<SharePermission>("viewer");
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareSaving, setShareSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingThread, setDeletingThread] = useState(false);
   const [copied, setCopied] = useState(false);
   const [clarificationValues, setClarificationValues] = useState<Record<string, string>>({});
   const [reportModeEnabled, setReportModeEnabled] = useState(false);
@@ -355,6 +435,8 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   const [reportColumns, setReportColumns] = useState<AssistantReportColumnKey[]>(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS.obligation_table);
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
+  const canManageActiveThread = !activeThread?.conversationId ||
+    activeThread.ownerSubjectId === currentSubjectId;
   const composer = activeThread?.draft ?? "";
   const lastAssistantResponse = findLastAssistantResponse(activeThread);
   const visibleThreads = useMemo(() => {
@@ -381,7 +463,10 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         if (!active || !payload?.conversation) {
           return;
         }
-        const loadedThread = threadFromConversation(payload.conversation as AssistantConversationDetail);
+        const loadedThread = threadFromConversation(
+          payload.conversation as AssistantConversationDetail,
+          language
+        );
         setThreads((current) => current.map((thread) => (
           thread.id === activeThread.id ? { ...loadedThread, pinned: thread.pinned, draft: thread.draft } : thread
         )));
@@ -390,7 +475,19 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     return () => {
       active = false;
     };
-  }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.id]);
+  }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.id, language]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeThread?.conversationId) {
+      url.searchParams.set("thread", activeThread.conversationId);
+    } else {
+      url.searchParams.delete("thread");
+    }
+    if (url.toString() !== window.location.href) {
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+  }, [activeThread?.conversationId]);
 
   function updateThread(threadId: string, updater: (thread: AssistantThread) => AssistantThread) {
     setThreads((current) => current.map((thread) => (thread.id === threadId ? updater(thread) : thread)));
@@ -424,6 +521,22 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     setMobileThreadsOpen(false);
   }
 
+  function removeThreadFromView(threadId: string, successMessage?: string) {
+    const remaining = threads.filter((thread) => thread.id !== threadId);
+    if (remaining.length) {
+      setThreads(remaining);
+      setActiveThreadId(remaining[0].id);
+    } else {
+      const replacement = createEmptyThread(copy.emptyThreadTitle);
+      setThreads([replacement]);
+      setActiveThreadId(replacement.id);
+    }
+    setDeleteOpen(false);
+    if (successMessage) {
+      setStatusMessage(successMessage);
+    }
+  }
+
   function redirectToLoginAfterUnauthorized() {
     setStatusMessage(copy.sessionExpired);
     window.setTimeout(() => {
@@ -433,15 +546,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
 
   async function archiveActiveThread() {
     if (!activeThread.conversationId) {
-      const remaining = threads.filter((thread) => thread.id !== activeThread.id);
-      if (remaining.length) {
-        setThreads(remaining);
-        setActiveThreadId(remaining[0].id);
-      } else {
-        const replacement = createEmptyThread(copy.emptyThreadTitle);
-        setThreads([replacement]);
-        setActiveThreadId(replacement.id);
-      }
+      removeThreadFromView(activeThread.id);
       return;
     }
     try {
@@ -459,17 +564,45 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         setStatusMessage(copy.requestFailed);
         return;
       }
-      const remaining = threads.filter((thread) => thread.id !== activeThread.id);
-      if (remaining.length) {
-        setThreads(remaining);
-        setActiveThreadId(remaining[0].id);
-      } else {
-        const replacement = createEmptyThread(copy.emptyThreadTitle);
-        setThreads([replacement]);
-        setActiveThreadId(replacement.id);
-      }
+      removeThreadFromView(activeThread.id);
     } catch (error) {
       setStatusMessage(copy.requestFailed);
+    }
+  }
+
+  async function deleteActiveThread() {
+    if (
+      !activeThread.conversationId ||
+      activeThread.ownerSubjectId !== currentSubjectId ||
+      deletingThread
+    ) {
+      return;
+    }
+    setDeletingThread(true);
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`,
+        ),
+        {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          return;
+        }
+        setStatusMessage(copy.deleteFailed);
+        return;
+      }
+      removeThreadFromView(activeThread.id, copy.deleteSucceeded);
+    } catch {
+      setStatusMessage(copy.deleteFailed);
+    } finally {
+      setDeletingThread(false);
     }
   }
 
@@ -560,6 +693,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
       updateThread(threadId, (thread) => ({
         ...thread,
         conversationId: response.conversation_id,
+        ownerSubjectId: thread.ownerSubjectId ?? currentSubjectId,
         context: response.current_context ?? effectiveContext,
         messages: thread.messages.map((message) => (message.id === pendingMessage.id ? assistantMessage : message)),
         updatedAt: new Date().toISOString()
@@ -672,11 +806,24 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   }
 
   function addShare() {
-    const target = shareTarget.trim();
-    if (!target || !activeThread.conversationId) {
+    if (!shareTarget || !activeThread.conversationId) {
       return;
     }
-    const nextSharedWith = [...activeThread.sharedWith.filter((item) => item.name !== target), { name: target, permission: sharePermission }];
+    const nextSharedWith = [
+      ...activeThread.sharedWith.filter(
+        (item) =>
+          item.subjectType !== "user" ||
+          item.subjectId !== shareTarget.subject_id,
+      ),
+      {
+        subjectType: "user" as const,
+        subjectId: shareTarget.subject_id,
+        displayName: directoryUserDisplayName(shareTarget),
+        permission: sharePermission,
+      },
+    ];
+    setShareSaving(true);
+    setShareStatus(null);
     fetch(withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}/shares`), {
       method: "PUT",
       credentials: "same-origin",
@@ -684,8 +831,8 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
       body: JSON.stringify({
         visibility: "shared",
         shares: nextSharedWith.map((item) => ({
-          subject_type: item.name.startsWith("group:") ? "group" : "user",
-          subject_id: item.name.replace(/^group:/, ""),
+          subject_type: item.subjectType,
+          subject_id: item.subjectId,
           permission: item.permission
         }))
       })
@@ -698,19 +845,24 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
           redirectToLoginAfterUnauthorized();
           return Promise.reject(new Error(copy.sessionExpired));
         }
-        return Promise.reject(new Error(copy.requestFailed));
+        return Promise.reject(new Error(copy.shareFailed));
       })
       .then((payload) => {
         const conversation = payload.conversation as AssistantConversationDetail;
-        updateThread(activeThread.id, () => threadFromConversation(conversation));
-        setShareTarget("");
+        updateThread(activeThread.id, () => threadFromConversation(conversation, language));
+        setShareTarget(null);
         setShareStatus(copy.shareSaved);
       })
-      .catch((error) => setShareStatus(error instanceof Error ? error.message : copy.requestFailed));
+      .catch((error) => setShareStatus(error instanceof Error ? error.message : copy.shareFailed))
+      .finally(() => setShareSaving(false));
   }
 
   async function copyThreadLink() {
-    const link = `${window.location.origin}${withAppBasePath(`/chat?thread=${encodeURIComponent(activeThread.conversationId ?? activeThread.id)}`)}`;
+    if (!activeThread.conversationId) {
+      setStatusMessage(copy.shareAfterFirstMessage);
+      return;
+    }
+    const link = `${window.location.origin}${withAppBasePath(`/chat?thread=${encodeURIComponent(activeThread.conversationId)}`)}`;
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
@@ -794,13 +946,46 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               >
                 <PanelLeftOpen size={16} aria-hidden="true" />
               </button>
-              <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
-                <Archive size={16} aria-hidden="true" />
-              </button>
-              <button className="akb-chat-icon-button" type="button" onClick={copyThreadLink} title={copy.copyLink} aria-label={copy.copyLink}>
+              {canManageActiveThread ? (
+                <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
+                  <Archive size={16} aria-hidden="true" />
+                </button>
+              ) : null}
+              {activeThread.conversationId &&
+              activeThread.ownerSubjectId === currentSubjectId ? (
+                <button
+                  className="akb-chat-icon-button akb-chat-icon-button--danger"
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  title={copy.deleteThread}
+                  aria-label={copy.deleteThread}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              ) : null}
+              <button
+                className="akb-chat-icon-button"
+                type="button"
+                onClick={copyThreadLink}
+                title={activeThread.conversationId ? copy.copyLink : copy.shareAfterFirstMessage}
+                aria-label={activeThread.conversationId ? copy.copyLink : copy.shareAfterFirstMessage}
+                disabled={!activeThread.conversationId}
+              >
                 {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
               </button>
-              <StratosButton type="button" onClick={() => setShareOpen(true)}>
+              <StratosButton
+                type="button"
+                onClick={() => setShareOpen(true)}
+                disabled={
+                  !activeThread.conversationId ||
+                  activeThread.ownerSubjectId !== currentSubjectId
+                }
+                title={
+                  activeThread.conversationId
+                    ? copy.share
+                    : copy.shareAfterFirstMessage
+                }
+              >
                 <Share2 size={16} aria-hidden="true" />
                 {copy.share}
               </StratosButton>
@@ -832,6 +1017,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
                   key={message.id}
                   message={message}
                   copy={copy}
+                  currentSubjectId={currentSubjectId}
                   clarificationValues={clarificationValues}
                   setClarificationValues={setClarificationValues}
                   onSubmitClarification={submitClarification}
@@ -983,9 +1169,12 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
             </div>
             {activeThread.sharedWith.length ? (
               activeThread.sharedWith.map((item) => (
-                <div className="akb-chat-access__row" key={item.name}>
+                <div
+                  className="akb-chat-access__row"
+                  key={`${item.subjectType}:${item.subjectId}`}
+                >
                   <span>{item.permission === "viewer" ? copy.viewer : copy.commenter}</span>
-                  <strong>{item.name}</strong>
+                  <strong>{item.displayName}</strong>
                 </div>
               ))
             ) : (
@@ -1019,18 +1208,14 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               </button>
             </div>
             <div className="akb-share-dialog__body">
-              <label className="field" htmlFor="akb-share-target">
-                <span>{copy.shareTarget}</span>
-                <input
-                  id="akb-share-target"
-                  value={shareTarget}
-                  onChange={(event) => {
-                    setShareTarget(event.target.value);
-                    setShareStatus(null);
-                  }}
-                  placeholder={copy.shareTargetPlaceholder}
-                />
-              </label>
+              <AssistantSharePersonPicker
+                copy={copy}
+                selectedUser={shareTarget}
+                onSelect={(user) => {
+                  setShareTarget(user);
+                  setShareStatus(null);
+                }}
+              />
               <StratosSelect
                 id="akb-share-permission"
                 label={copy.sharePermission}
@@ -1040,11 +1225,73 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
                 <option value="viewer">{copy.viewer}</option>
                 <option value="commenter">{copy.commenter}</option>
               </StratosSelect>
-              <StratosButton tone="primary" type="button" onClick={addShare}>
+              <StratosButton
+                tone="primary"
+                type="button"
+                disabled={!shareTarget || shareSaving}
+                onClick={addShare}
+              >
                 <Users size={16} aria-hidden="true" />
-                {copy.addShare}
+                {shareSaving ? copy.shareSaving : copy.addShare}
               </StratosButton>
               {shareStatus ? <div className="notice">{shareStatus}</div> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteOpen ? (
+        <div
+          className="akb-share-backdrop"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="akb-delete-thread-title"
+          aria-describedby="akb-delete-thread-description"
+        >
+          <div className="akb-share-dialog akb-delete-dialog">
+            <div className="akb-share-dialog__header">
+              <h2 id="akb-delete-thread-title">{copy.deleteTitle}</h2>
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(false)}
+                aria-label={copy.close}
+                disabled={deletingThread}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="akb-share-dialog__body">
+              <div className="akb-delete-dialog__warning">
+                <Trash2 size={20} aria-hidden="true" />
+                <p id="akb-delete-thread-description">{copy.deleteBody}</p>
+              </div>
+              <div className="akb-delete-dialog__thread">
+                <strong>{activeThread.title}</strong>
+                {activeThread.retentionUntil ? (
+                  <span>
+                    {copy.deleteRetention}{" "}
+                    {formatRetentionDate(activeThread.retentionUntil, language)}.
+                  </span>
+                ) : null}
+              </div>
+              <div className="akb-delete-dialog__actions">
+                <StratosButton
+                  type="button"
+                  onClick={() => setDeleteOpen(false)}
+                  disabled={deletingThread}
+                >
+                  {copy.deleteCancel}
+                </StratosButton>
+                <StratosButton
+                  tone="danger"
+                  type="button"
+                  onClick={() => void deleteActiveThread()}
+                  disabled={deletingThread}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  {deletingThread ? copy.deletingThread : copy.deleteThread}
+                </StratosButton>
+              </div>
             </div>
           </div>
         </div>
@@ -1172,9 +1419,103 @@ function ThreadGroup({
   );
 }
 
+function AssistantSharePersonPicker({
+  copy,
+  selectedUser,
+  onSelect,
+}: {
+  copy: AssistantAppLabels;
+  selectedUser: DirectoryUser | null;
+  onSelect: (user: DirectoryUser) => void;
+}) {
+  const [users, setUsers] = useState<DirectoryUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(withAppBasePath("/api/assistant/directory?limit=50"), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await assistantHttpErrorMessage(response, copy));
+        }
+        return response.json() as Promise<{ users?: DirectoryUser[] }>;
+      })
+      .then((payload) => {
+        setUsers(Array.isArray(payload.users) ? payload.users : []);
+        setError(false);
+      })
+      .catch((fetchError) => {
+        if (
+          fetchError instanceof DOMException &&
+          fetchError.name === "AbortError"
+        ) {
+          return;
+        }
+        setUsers([]);
+        setError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [copy]);
+
+  const people = useMemo(
+    () => directoryUsersToPeople(selectedUser ? [selectedUser, ...users] : users),
+    [selectedUser, users],
+  );
+
+  return (
+    <div className="akb-share-person-picker">
+      <PersonPicker
+        disabled={loading || error || people.length === 0}
+        label={copy.shareTarget}
+        labels={{
+          title: copy.shareDirectoryTitle,
+          search: copy.shareDirectorySearch,
+          placeholder: loading
+            ? copy.shareDirectoryLoading
+            : copy.shareTargetPlaceholder,
+          empty: error
+            ? copy.shareDirectoryFailed
+            : copy.shareDirectoryEmpty,
+          close: copy.close,
+        }}
+        people={people}
+        popoverMinWidth={380}
+        popoverPlacement="bottom-start"
+        popoverZIndex={150}
+        selectedPersonId={selectedUser?.subject_id ?? null}
+        onPersonSelect={(personId) => {
+          const user =
+            users.find((candidate) => candidate.subject_id === personId) ??
+            selectedUser;
+          if (user) {
+            onSelect(user);
+          }
+        }}
+      />
+      {error ? (
+        <p className="akb-share-person-picker__status" role="alert">
+          {copy.shareDirectoryFailed}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatBubble({
   message,
   copy,
+  currentSubjectId,
   clarificationValues,
   setClarificationValues,
   onSubmitClarification,
@@ -1182,6 +1523,7 @@ function ChatBubble({
 }: {
   message: ChatMessage;
   copy: AssistantAppLabels;
+  currentSubjectId: string;
   clarificationValues: Record<string, string>;
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
@@ -1195,7 +1537,14 @@ function ChatBubble({
       </div>
       <div className="akb-chat-message__body">
         <div className="akb-chat-message__meta">
-          <strong>{message.role === "assistant" ? "AKB Assistant" : copy.you}</strong>
+          <strong>
+            {message.role === "assistant"
+              ? message.authorDisplayName ?? "AKB Assistant"
+              : message.authorSubjectId === currentSubjectId ||
+                  !message.authorSubjectId
+                ? copy.you
+                : message.authorDisplayName ?? copy.anotherUser}
+          </strong>
           <span>
             <Clock3 size={12} aria-hidden="true" />
             {formatThreadTime(message.createdAt)}
@@ -1554,28 +1903,37 @@ function createInitialThreads(
   conversations: AssistantConversationListItem[] = []
 ): AssistantThread[] {
   if (conversations.length > 0) {
-    return conversations.map((conversation, index) => threadFromConversationListItem(conversation, index === 0));
+    return conversations.map((conversation) => threadFromConversationListItem(conversation));
   }
   return [
     {
       id: "thread-current",
       conversationId: null,
+      ownerSubjectId: null,
       title: language === "en" ? "New thread" : "Nové vlákno",
       context: {},
       messages: [],
       draft: "",
       visibility: "private",
-      pinned: true,
+      pinned: false,
       updatedAt: now,
+      retentionUntil: null,
       sharedWith: [],
       historyLoaded: true
     }
   ];
 }
 
-function initialActiveThreadId(conversations: AssistantConversationListItem[] = []): string {
-  return conversations[0]?.conversation_id
-    ? threadIdFromConversationId(conversations[0].conversation_id)
+function initialActiveThreadId(
+  conversations: AssistantConversationListItem[] = [],
+  requestedConversationId: string | null = null
+): string {
+  const conversationId = requestedConversationId &&
+    conversations.some((conversation) => conversation.conversation_id === requestedConversationId)
+    ? requestedConversationId
+    : conversations[0]?.conversation_id;
+  return conversationId
+    ? threadIdFromConversationId(conversationId)
     : "thread-current";
 }
 
@@ -1583,6 +1941,7 @@ function createEmptyThread(title: string): AssistantThread {
   return {
     id: createClientId("thread"),
     conversationId: null,
+    ownerSubjectId: null,
     title,
     context: {},
     messages: [],
@@ -1590,39 +1949,55 @@ function createEmptyThread(title: string): AssistantThread {
     visibility: "private",
     pinned: false,
     updatedAt: new Date().toISOString(),
+    retentionUntil: null,
     sharedWith: [],
     historyLoaded: true
   };
 }
 
-function threadFromConversationListItem(conversation: AssistantConversationListItem, pinned: boolean): AssistantThread {
+function threadFromConversationListItem(conversation: AssistantConversationListItem): AssistantThread {
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
+    ownerSubjectId: conversation.user_id,
     title: conversation.title ?? "AKB chat",
     context: {},
     messages: [],
     draft: "",
     visibility: conversation.visibility,
-    pinned,
+    pinned: false,
     updatedAt: conversation.updated_at,
+    retentionUntil: conversation.retention_until,
     sharedWith: conversation.shared_with.map((share) => ({
-      name: shareName(share.subject_type, share.subject_id),
+      subjectType: share.subject_type,
+      subjectId: share.subject_id,
+      displayName:
+        share.subject_display_name ??
+        shareName(share.subject_type, share.subject_id),
       permission: share.permission
     })),
     historyLoaded: false
   };
 }
 
-function threadFromConversation(conversation: AssistantConversationDetail): AssistantThread {
+function threadFromConversation(
+  conversation: AssistantConversationDetail,
+  language: AklLanguage
+): AssistantThread {
   let previousUserMessage = "";
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
+    ownerSubjectId: conversation.user_id,
     title: conversation.title ?? "AKB chat",
     context: {},
     messages: conversation.messages.map((message) => {
-      const chatMessage = messageFromConversationMessage(conversation.conversation_id, message, previousUserMessage);
+      const chatMessage = messageFromConversationMessage(
+        conversation.conversation_id,
+        message,
+        previousUserMessage,
+        language
+      );
       if (message.role === "user") {
         previousUserMessage = message.content;
       }
@@ -1632,8 +2007,13 @@ function threadFromConversation(conversation: AssistantConversationDetail): Assi
     visibility: conversation.visibility,
     pinned: false,
     updatedAt: conversation.updated_at,
+    retentionUntil: conversation.retention_until,
     sharedWith: conversation.shared_with.map((share) => ({
-      name: shareName(share.subject_type, share.subject_id),
+      subjectType: share.subject_type,
+      subjectId: share.subject_id,
+      displayName:
+        share.subject_display_name ??
+        shareName(share.subject_type, share.subject_id),
       permission: share.permission
     })),
     historyLoaded: true
@@ -1643,27 +2023,42 @@ function threadFromConversation(conversation: AssistantConversationDetail): Assi
 function messageFromConversationMessage(
   conversationId: string,
   message: AssistantConversationMessage,
-  previousUserMessage = ""
+  previousUserMessage = "",
+  language: AklLanguage
 ): ChatMessage {
+  const content = message.availability === "source_access_changed"
+    ? assistantAppCopy[language].historySourceAccessChanged
+    : message.content;
   return {
     id: message.message_id,
     role: message.role,
-    content: message.content,
+    content,
     createdAt: message.created_at,
-    response: message.role === "assistant" ? responseFromPersistedMessage(conversationId, message, previousUserMessage) : undefined
+    authorSubjectId: message.author_subject_id,
+    authorSubjectType: message.author_subject_type,
+    authorDisplayName: message.author_display_name,
+    response: message.role === "assistant"
+      ? responseFromPersistedMessage(
+          conversationId,
+          message,
+          previousUserMessage,
+          content
+        )
+      : undefined
   };
 }
 
 function responseFromPersistedMessage(
   conversationId: string,
   message: AssistantConversationMessage,
-  previousUserMessage: string
+  previousUserMessage: string,
+  content: string
 ): AssistantChatResponse {
   const metadata = message.metadata ?? {};
   const response: AssistantChatResponse = {
     response_type: message.response_type ?? "answer",
     conversation_id: conversationId,
-    answer: message.content,
+    answer: content,
     message: null,
     questions: [],
     why_needed: null,
@@ -1727,5 +2122,15 @@ function formatThreadTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Europe/Prague"
+  }).format(date);
+}
+
+function formatRetentionDate(value: string, language: AklLanguage): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "cs-CZ", {
+    dateStyle: "long",
   }).format(date);
 }

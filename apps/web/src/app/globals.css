@@ -803,6 +803,12 @@ button {
   color: var(--ink);
 }
 
+.akb-chat-icon-button--danger:hover {
+  background: #fff4f4;
+  border-color: #efb7b7;
+  color: var(--danger);
+}
+
 .akb-chat-transcript {
   background: #fbfcfc;
   display: grid;
@@ -1412,14 +1418,67 @@ button {
   padding: 16px;
 }
 
-.akb-share-dialog__body input {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+.akb-delete-dialog__warning {
+  align-items: flex-start;
+  background: #fff4f4;
+  border: 1px solid #f1c6c6;
+  border-radius: 8px;
+  color: var(--danger);
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+}
+
+.akb-delete-dialog__warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.akb-delete-dialog__warning p {
   color: var(--ink);
-  min-height: 38px;
-  padding: 0 10px;
-  width: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.akb-delete-dialog__thread {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.akb-delete-dialog__thread strong {
+  font-size: 13px;
+}
+
+.akb-delete-dialog__thread span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.akb-delete-dialog__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.akb-share-person-picker {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.akb-share-person-picker > * {
+  max-width: 100%;
+}
+
+.akb-share-person-picker__status {
+  color: var(--danger);
+  font-size: 12px;
+  margin: 0;
 }
 
 @media (max-width: 1240px) {

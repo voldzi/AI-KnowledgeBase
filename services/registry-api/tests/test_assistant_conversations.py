@@ -1,4 +1,55 @@
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
+
+import app.api as registry_api
+from app.assistant_retention import purge_expired_assistant_conversations
+from app.keycloak_directory import DirectoryUser
+from app.models import (
+    AuditEvent,
+    AssistantConversation,
+    AssistantConversationShare,
+    AssistantMessage,
+    utcnow,
+)
+
+
+class _Directory:
+    def __init__(self, users: list[DirectoryUser]) -> None:
+        self._users = {user.subject: user for user in users}
+
+    def search_users(self, query: str, max_results: int = 20) -> list[DirectoryUser]:
+        normalized = query.casefold().strip()
+        users = [
+            user
+            for user in self._users.values()
+            if not normalized
+            or normalized in user.name.casefold()
+            or normalized in (user.email or "").casefold()
+            or normalized in (user.username or "").casefold()
+        ]
+        return users[:max_results]
+
+    def get_user(self, subject: str) -> DirectoryUser | None:
+        return self._users.get(subject)
+
+
+def _directory_user(
+    subject: str,
+    name: str,
+    *,
+    enabled: bool = True,
+) -> DirectoryUser:
+    return DirectoryUser(
+        id=subject,
+        subject=subject,
+        provider="keycloak",
+        name=name,
+        initials="".join(part[0] for part in name.split()[:2]).upper(),
+        email=f"{subject}@example.cz",
+        username=subject,
+        enabled=enabled,
+    )
 
 
 def _append_payload(role: str = "user", content: str = "Jak požádám o přístup?") -> dict[str, object]:
@@ -26,6 +77,8 @@ def test_append_creates_conversation_and_returns_messages(client: TestClient) ->
     assert body["user_id"] == "employee_1"
     assert len(body["messages"]) == 1
     assert body["messages"][0]["role"] == "user"
+    assert body["messages"][0]["author_subject_id"] == "employee_1"
+    assert body["messages"][0]["author_subject_type"] == "user"
 
 
 def test_append_accumulates_message_history(client: TestClient) -> None:
@@ -39,7 +92,7 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
                     "role": "assistant",
                     "content": "Postup je následující...",
                     "response_type": "answer",
-                    "citations": [{"chunk_id": "chunk_789", "document_id": "doc_123"}],
+                    "citations": [],
                     "metadata": {"confidence": "high"},
                 }
             ],
@@ -51,7 +104,144 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
     assert fetched.status_code == 200
     messages = fetched.json()["messages"]
     assert [message["role"] for message in messages] == ["user", "assistant"]
-    assert messages[1]["citations"][0]["chunk_id"] == "chunk_789"
+    assert messages[1]["availability"] == "available"
+    assert messages[1]["content"] == "Postup je následující..."
+    assert messages[1]["author_subject_id"] == "akb-assistant"
+    assert messages[1]["author_subject_type"] == "service"
+    assert messages[1]["author_display_name"] == "AKB Assistant"
+
+
+def test_history_redacts_answer_when_cited_version_is_not_available(
+    client: TestClient,
+) -> None:
+    client.post(
+        "/api/v1/assistant/conversations/conv_redacted/messages",
+        json=_append_payload(),
+    )
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_redacted/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Obsah, který nesmí obejít aktuální oprávnění.",
+                    "response_type": "answer",
+                    "citations": [
+                        {
+                            "chunk_id": "chunk_removed",
+                            "document_id": "doc_removed",
+                            "document_version_id": "ver_removed",
+                        }
+                    ],
+                    "metadata": {
+                        "confidence": "high",
+                        "report_artifacts": [{"artifact_id": "sensitive_report"}],
+                    },
+                }
+            ],
+        },
+    )
+    assert appended.status_code == 201
+    redacted = appended.json()["messages"][1]
+    assert redacted["availability"] == "source_access_changed"
+    assert redacted["content"] == ""
+    assert redacted["citations"] == []
+    assert redacted["metadata"] == {"history_access_changed": True}
+
+    fetched = client.get(
+        "/api/v1/assistant/conversation-history/conv_redacted",
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["messages"][1] == redacted
+
+
+def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
+    client: TestClient,
+) -> None:
+    owner_headers = {
+        "X-AKL-Subject": "employee_1",
+        "X-AKL-Roles": "stratos_user",
+        "X-STRATOS-Capabilities": "akb:upload,akb:manage_document,akb:chat",
+        "X-STRATOS-Scopes": "organization",
+        "X-STRATOS-Organization-ID": "org_stratos",
+    }
+    document = client.post(
+        "/api/v1/documents",
+        headers=owner_headers,
+        json={
+            "title": "Aktuální metodika",
+            "document_type": "manual",
+            "owner_id": "employee_1",
+            "classification": "internal",
+            "information_policy": {
+                "schemaVersion": "stratos-information-policy-2",
+                "policyBindingId": "pol_historyauthorized01",
+                "policyVersion": "information-policy-2.0.0",
+                "handlingClass": "INTERNAL",
+                "legalClassification": "NONE",
+                "tlp": None,
+                "pap": None,
+                "contentCategories": ["CONTRACTUAL"],
+                "audience": {
+                    "organizationId": "org_stratos",
+                    "scopeType": "organization",
+                    "scopeIds": [],
+                    "recipientSubjectIds": [],
+                },
+                "obligations": ["AUDIT_ACCESS", "NO_EXTERNAL_AI"],
+                "originatorId": "employee_1",
+                "issuedAt": "2026-07-18T08:00:00Z",
+                "reviewAt": None,
+            },
+        },
+    )
+    assert document.status_code == 201, document.text
+    document_id = document.json()["document_id"]
+    version = client.post(
+        f"/api/v1/documents/{document_id}/versions",
+        headers=owner_headers,
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/history/authorized.pdf",
+            "file_hash": f"sha256:{'a' * 64}",
+        },
+    )
+    assert version.status_code == 201, version.text
+    version_id = version.json()["document_version_id"]
+
+    client.post(
+        "/api/v1/assistant/conversations/conv_authorized/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_authorized/messages",
+        headers=owner_headers,
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Tato odpověď zůstává dostupná.",
+                    "response_type": "answer",
+                    "citations": [
+                        {
+                            "chunk_id": "chunk_authorized",
+                            "document_id": document_id,
+                            "document_version_id": version_id,
+                        }
+                    ],
+                    "metadata": {"confidence": "high"},
+                }
+            ],
+        },
+    )
+    assert appended.status_code == 201, appended.text
+    answer = appended.json()["messages"][1]
+    assert answer["availability"] == "available"
+    assert answer["content"] == "Tato odpověď zůstává dostupná."
+    assert answer["citations"][0]["document_version_id"] == version_id
 
 
 def test_append_rejects_user_mismatch(client: TestClient) -> None:
@@ -83,10 +273,17 @@ def test_reader_cannot_read_another_users_conversation(client: TestClient) -> No
     assert denied.status_code == 403
 
 
-def test_owner_can_share_conversation_with_user_and_group(client: TestClient) -> None:
+def test_owner_can_share_conversation_with_verified_user(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
     owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
     user_headers = {"X-AKL-Subject": "employee_2", "X-AKL-Roles": "reader"}
-    group_headers = {"X-AKL-Subject": "employee_3", "X-AKL-Roles": "reader", "X-AKL-Groups": "finance-team"}
     created = client.post(
         "/api/v1/assistant/conversations/conv_shared/messages",
         headers=owner_headers,
@@ -100,16 +297,125 @@ def test_owner_can_share_conversation_with_user_and_group(client: TestClient) ->
         json={
             "shares": [
                 {"subject_type": "user", "subject_id": "employee_2", "permission": "viewer"},
-                {"subject_type": "group", "subject_id": "finance-team", "permission": "commenter"},
             ]
         },
     )
     assert shared.status_code == 200, shared.text
     assert shared.json()["visibility"] == "shared"
-    assert len(shared.json()["shared_with"]) == 2
+    assert len(shared.json()["shared_with"]) == 1
+    assert shared.json()["shared_with"][0]["subject_display_name"] == "Eva Horáková"
 
     assert client.get("/api/v1/assistant/conversation-history/conv_shared", headers=user_headers).status_code == 200
-    assert client.get("/api/v1/assistant/conversation-history/conv_shared", headers=group_headers).status_code == 200
+
+
+def test_new_group_share_is_rejected_without_group_directory(
+    client: TestClient,
+) -> None:
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_group/messages",
+        json=_append_payload(),
+    )
+    assert created.status_code == 201, created.text
+    response = client.put(
+        "/api/v1/assistant/conversation-history/conv_group/shares",
+        json={
+            "shares": [
+                {
+                    "subject_type": "group",
+                    "subject_id": "finance-team",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+    assert response.status_code == 422
+    assert (
+        response.json()["error"]["code"]
+        == "assistant_group_directory_unavailable"
+    )
+
+
+def test_share_rejects_inactive_directory_user(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory(
+            [_directory_user("employee_inactive", "Neaktivní Osoba", enabled=False)]
+        ),
+    )
+    client.post(
+        "/api/v1/assistant/conversations/conv_inactive/messages",
+        json=_append_payload(),
+    )
+    response = client.put(
+        "/api/v1/assistant/conversation-history/conv_inactive/shares",
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_inactive",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "directory_user_inactive"
+
+
+def test_commenter_message_keeps_actual_author(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    commenter_headers = {
+        "X-AKL-Subject": "employee_2",
+        "X-AKL-Roles": "reader",
+    }
+    client.post(
+        "/api/v1/assistant/conversations/conv_comment/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    shared = client.put(
+        "/api/v1/assistant/conversation-history/conv_comment/shares",
+        headers=owner_headers,
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_2",
+                    "permission": "commenter",
+                }
+            ]
+        },
+    )
+    assert shared.status_code == 200, shared.text
+
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_comment/messages",
+        headers=commenter_headers,
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Doplňuji otázku jako komentátor.",
+                }
+            ],
+        },
+    )
+    assert appended.status_code == 201, appended.text
+    assert appended.json()["messages"][-1]["author_subject_id"] == "employee_2"
+    assert appended.json()["messages"][-1]["author_display_name"] == "Eva Horáková"
 
 
 def test_archive_hides_conversation_from_default_list(client: TestClient) -> None:
@@ -137,3 +443,221 @@ def test_archive_hides_conversation_from_default_list(client: TestClient) -> Non
     with_archived = client.get("/api/v1/assistant/conversation-history?include_archived=true", headers=owner_headers)
     assert with_archived.status_code == 200, with_archived.text
     assert [item["conversation_id"] for item in with_archived.json()["items"]] == ["conv_archive"]
+
+
+def test_owner_delete_cascades_content_and_keeps_content_free_audit(
+    client: TestClient,
+    db_session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_delete/messages",
+        headers=owner_headers,
+        json={
+            **_append_payload(),
+            "title": "Citlivý pracovní dotaz",
+            "messages": [
+                {"role": "user", "content": "Text, který nesmí zůstat."},
+                {"role": "assistant", "content": "Odpověď, která se také maže."},
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    shared = client.put(
+        "/api/v1/assistant/conversation-history/conv_delete/shares",
+        headers=owner_headers,
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_2",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+    assert shared.status_code == 200, shared.text
+
+    deleted = client.delete(
+        "/api/v1/assistant/conversation-history/conv_delete",
+        headers=owner_headers,
+    )
+    assert deleted.status_code == 204, deleted.text
+    db_session.expire_all()
+    assert db_session.get(AssistantConversation, "conv_delete") is None
+    assert (
+        db_session.query(AssistantMessage)
+        .filter(AssistantMessage.conversation_id == "conv_delete")
+        .count()
+        == 0
+    )
+    assert (
+        db_session.query(AssistantConversationShare)
+        .filter(AssistantConversationShare.conversation_id == "conv_delete")
+        .count()
+        == 0
+    )
+    audit = (
+        db_session.query(AuditEvent)
+        .filter(
+            AuditEvent.resource_id == "conv_delete",
+            AuditEvent.event_type == "assistant.conversation.deleted",
+        )
+        .one()
+    )
+    assert audit.event_type == "assistant.conversation.deleted"
+    assert audit.resource_type == "assistant_conversation_tombstone"
+    assert audit.event_metadata["content_retained"] is False
+    assert audit.event_metadata["message_count"] == 2
+    assert audit.event_metadata["share_count"] == 1
+    assert "Citlivý" not in str(audit.event_metadata)
+    assert "Text, který" not in str(audit.event_metadata)
+
+
+def test_shared_reader_cannot_delete_owner_conversation(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    reader_headers = {"X-AKL-Subject": "employee_2", "X-AKL-Roles": "reader"}
+    client.post(
+        "/api/v1/assistant/conversations/conv_delete_denied/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    client.put(
+        "/api/v1/assistant/conversation-history/conv_delete_denied/shares",
+        headers=owner_headers,
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_2",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+
+    denied = client.delete(
+        "/api/v1/assistant/conversation-history/conv_delete_denied",
+        headers=reader_headers,
+    )
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "conversation_owner_required"
+    assert (
+        client.get(
+            "/api/v1/assistant/conversation-history/conv_delete_denied",
+            headers=owner_headers,
+        ).status_code
+        == 200
+    )
+
+
+def test_retention_purge_is_physical_and_idempotent(
+    client: TestClient,
+    db_session,
+) -> None:
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    now = utcnow()
+    for conversation_id in ("conv_expired", "conv_retained"):
+        created = client.post(
+            f"/api/v1/assistant/conversations/{conversation_id}/messages",
+            headers=owner_headers,
+            json={
+                **_append_payload(),
+                "retention_until": (now + timedelta(days=1)).isoformat(),
+            },
+        )
+        assert created.status_code == 201, created.text
+    expired = db_session.get(AssistantConversation, "conv_expired")
+    assert expired is not None
+    expired.retention_until = now - timedelta(seconds=1)
+    db_session.add(
+        AuditEvent(
+            audit_event_id="audit_old_assistant_deletion",
+            actor_id="employee_legacy",
+            event_type="assistant.conversation.deleted",
+            resource_type="assistant_conversation_tombstone",
+            resource_id="conv_old_deleted",
+            event_metadata={"content_retained": False},
+            last_seen_at=now - timedelta(days=731),
+            created_at=now - timedelta(days=731),
+        )
+    )
+    db_session.commit()
+
+    first = purge_expired_assistant_conversations(
+        db_session,
+        now=now,
+        batch_size=50,
+        audit_retention_days=730,
+    )
+    assert first.conversations == 1
+    assert first.messages == 1
+    assert first.audit_records_pruned == 1
+    assert db_session.get(AssistantConversation, "conv_expired") is None
+    assert db_session.get(AssistantConversation, "conv_retained") is not None
+    tombstone = (
+        db_session.query(AuditEvent)
+        .filter(AuditEvent.resource_id == "conv_expired")
+        .one()
+    )
+    assert tombstone.event_type == "assistant.conversation.purged"
+    assert tombstone.actor_id == "system:assistant-retention"
+    assert (
+        db_session.get(AuditEvent, "audit_old_assistant_deletion") is None
+    )
+
+    second = purge_expired_assistant_conversations(
+        db_session,
+        now=now,
+        batch_size=50,
+        audit_retention_days=730,
+    )
+    assert second.conversations == 0
+    assert (
+        db_session.query(AuditEvent)
+        .filter(AuditEvent.resource_id == "conv_expired")
+        .count()
+        == 1
+    )
+
+
+def test_append_cannot_revive_expired_conversation(
+    client: TestClient,
+    db_session,
+) -> None:
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_cannot_revive/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    assert created.status_code == 201, created.text
+    conversation = db_session.get(
+        AssistantConversation,
+        "conv_cannot_revive",
+    )
+    assert conversation is not None
+    conversation.retention_until = utcnow() - timedelta(seconds=1)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/assistant/conversations/conv_cannot_revive/messages",
+        headers=owner_headers,
+        json=_append_payload(content="Toto nesmí vlákno obnovit."),
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "conversation_not_found"

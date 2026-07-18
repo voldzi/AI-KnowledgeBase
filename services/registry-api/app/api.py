@@ -8,7 +8,7 @@ import json
 from threading import Lock
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.security import APIKeyHeader
 from sqlalchemy import delete, desc, select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -18,6 +18,10 @@ from sqlalchemy.orm import Session, selectinload
 from starlette import status
 
 from app.audit import add_audit_event
+from app.assistant_retention import (
+    record_assistant_deletion_metrics,
+    stage_assistant_conversation_deletion,
+)
 from app.access_governance import (
     AiipAkbGovernedResourceRegistration,
     GovernanceDenied,
@@ -6852,6 +6856,24 @@ def search_workflow_directory_users(
     return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
 
 
+@router.get("/assistant/directory/users", response_model=DirectoryUserListResponse)
+def search_assistant_directory_users(
+    query: str = Query(default="", max_length=200),
+    limit: Limit = 20,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DirectoryUserListResponse:
+    require_global_action(principal, Action.rag_query, db)
+    users = _directory_adapter().search_users(query, max_results=min(limit, 50))
+    return DirectoryUserListResponse(
+        users=[
+            _directory_user_response(user)
+            for user in users
+            if user.enabled
+        ]
+    )
+
+
 @router.post(
     "/admin/directory/users/import",
     response_model=DirectoryUserResponse,
@@ -6990,18 +7012,88 @@ def update_role_mapping_status(
     return _role_mapping_response(mapping, profile.display_name if profile else None)
 
 
-ASSISTANT_CONVERSATION_DEFAULT_RETENTION_DAYS = 180
 CONVERSATION_SERVICE_ROLES = {"admin", "service_rag", "stratos_service"}
 
 
-def _assistant_message_response(message: AssistantMessage) -> AssistantMessageResponse:
+def _assistant_citation_version_allowed(
+    citation: dict[str, object],
+    *,
+    db: Session,
+    principal: Principal,
+    access_cache: dict[tuple[str, str], bool],
+) -> bool:
+    document_id = citation.get("document_id")
+    document_version_id = citation.get("document_version_id")
+    if not isinstance(document_id, str) or not isinstance(document_version_id, str):
+        return False
+    cache_key = (document_id, document_version_id)
+    cached = access_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    document = db.get(Document, document_id)
+    version = db.get(DocumentVersion, document_version_id)
+    if document is None or version is None or version.document_id != document_id:
+        access_cache[cache_key] = False
+        return False
+    try:
+        require_document_version_action(
+            principal,
+            Action.rag_query,
+            document,
+            version,
+            db,
+        )
+    except HTTPException:
+        access_cache[cache_key] = False
+        return False
+    access_cache[cache_key] = True
+    return True
+
+
+def _assistant_message_response(
+    message: AssistantMessage,
+    *,
+    db: Session,
+    principal: Principal,
+    access_cache: dict[tuple[str, str], bool],
+) -> AssistantMessageResponse:
+    citations = [
+        citation
+        for citation in message.citations
+        if isinstance(citation, dict)
+    ]
+    source_access_changed = (
+        message.role == "assistant"
+        and bool(citations)
+        and not all(
+            _assistant_citation_version_allowed(
+                citation,
+                db=db,
+                principal=principal,
+                access_cache=access_cache,
+            )
+            for citation in citations
+        )
+    )
     return AssistantMessageResponse(
         message_id=message.message_id,
         role=message.role,
-        content=message.content,
+        author_subject_id=message.author_subject_id,
+        author_subject_type=message.author_subject_type,
+        author_display_name=message.author_display_name,
+        content="" if source_access_changed else message.content,
         response_type=message.response_type,
-        citations=message.citations,
-        metadata=message.message_metadata,
+        citations=[] if source_access_changed else citations,
+        metadata=(
+            {"history_access_changed": True}
+            if source_access_changed
+            else message.message_metadata
+        ),
+        availability=(
+            "source_access_changed"
+            if source_access_changed
+            else "available"
+        ),
         created_at=message.created_at,
     )
 
@@ -7011,6 +7103,7 @@ def _assistant_share_response(share: AssistantConversationShare) -> AssistantCon
         conversation_share_id=share.conversation_share_id,
         subject_type=share.subject_type,
         subject_id=share.subject_id,
+        subject_display_name=share.subject_display_name,
         permission=share.permission,
         status=share.status,
         created_by=share.created_by,
@@ -7019,7 +7112,13 @@ def _assistant_share_response(share: AssistantConversationShare) -> AssistantCon
     )
 
 
-def _conversation_response(conversation: AssistantConversation) -> AssistantConversationDetailResponse:
+def _conversation_response(
+    conversation: AssistantConversation,
+    *,
+    db: Session,
+    principal: Principal,
+) -> AssistantConversationDetailResponse:
+    access_cache: dict[tuple[str, str], bool] = {}
     return AssistantConversationDetailResponse(
         conversation_id=conversation.conversation_id,
         user_id=conversation.user_id,
@@ -7031,7 +7130,15 @@ def _conversation_response(conversation: AssistantConversation) -> AssistantConv
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         shared_with=[_assistant_share_response(share) for share in conversation.shares if share.status == "active"],
-        messages=[_assistant_message_response(message) for message in conversation.messages],
+        messages=[
+            _assistant_message_response(
+                message,
+                db=db,
+                principal=principal,
+                access_cache=access_cache,
+            )
+            for message in conversation.messages
+        ],
     )
 
 
@@ -7052,8 +7159,6 @@ def _conversation_list_item_response(conversation: AssistantConversation) -> Ass
 
 
 def _conversation_retained(conversation: AssistantConversation) -> bool:
-    if conversation.retention_until is None:
-        return True
     retention_until = conversation.retention_until
     if retention_until.tzinfo is None:
         retention_until = retention_until.replace(tzinfo=timezone.utc)
@@ -7114,7 +7219,25 @@ def _can_persist_for_user(context: SubjectContext, user_id: str) -> bool:
 
 
 def _default_conversation_retention_until():
-    return utcnow() + timedelta(days=ASSISTANT_CONVERSATION_DEFAULT_RETENTION_DAYS)
+    return utcnow() + timedelta(
+        days=get_settings().assistant_conversation_default_retention_days
+    )
+
+
+def _validate_conversation_retention_until(
+    retention_until: datetime | None,
+) -> None:
+    if retention_until is None:
+        return
+    deadline = retention_until
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    if deadline <= utcnow():
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "conversation_retention_deadline_expired",
+            "Conversation retention deadline must be in the future",
+        )
 
 
 @router.get(
@@ -7161,14 +7284,15 @@ def append_assistant_messages(
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
     subject_context = require_global_action(principal, Action.rag_query, db)
-    if not _can_persist_for_user(subject_context, payload.user_id):
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "conversation_user_mismatch",
-            "Conversation can only be persisted for the current user",
-        )
+    _validate_conversation_retention_until(payload.retention_until)
     conversation = db.get(AssistantConversation, conversation_id)
     if conversation is None:
+        if not _can_persist_for_user(subject_context, payload.user_id):
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "conversation_user_mismatch",
+                "Conversation can only be persisted for the current user",
+            )
         conversation = AssistantConversation(
             conversation_id=conversation_id,
             user_id=payload.user_id,
@@ -7179,16 +7303,31 @@ def append_assistant_messages(
         db.add(conversation)
     else:
         db.refresh(conversation, attribute_names=["shares"])
-    if conversation.user_id != payload.user_id and not _conversation_subject_allowed(
-        conversation,
-        subject_context,
-        allow_comment=True,
-        include_admin=False,
-    ):
+        if not _conversation_retained(conversation):
+            raise problem(
+                status.HTTP_404_NOT_FOUND,
+                "conversation_not_found",
+                "Assistant conversation was not found",
+            )
+    if conversation.user_id != payload.user_id:
         raise problem(
             status.HTTP_403_FORBIDDEN,
             "conversation_user_mismatch",
             "Conversation belongs to a different user",
+        )
+    if not (
+        _can_persist_for_user(subject_context, payload.user_id)
+        or _conversation_subject_allowed(
+            conversation,
+            subject_context,
+            allow_comment=True,
+            include_admin=False,
+        )
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_comment_denied",
+            "The current subject cannot add messages to this conversation",
         )
     if payload.title and not conversation.title:
         conversation.title = payload.title
@@ -7197,11 +7336,45 @@ def append_assistant_messages(
     if payload.retention_until:
         conversation.retention_until = payload.retention_until
 
+    acts_for_conversation_owner = (
+        subject_context.subject_id != payload.user_id
+        and _can_persist_for_user(subject_context, payload.user_id)
+    )
+    user_author_subject_id = (
+        payload.user_id
+        if acts_for_conversation_owner
+        else subject_context.subject_id
+    )
+    profile = db.get(UserProfile, user_author_subject_id)
+    user_author_display_name = profile.display_name if profile else next(
+        (
+            share.subject_display_name
+            for share in conversation.shares
+            if share.status == "active"
+            and share.subject_type == "user"
+            and share.subject_id == user_author_subject_id
+        ),
+        None,
+    )
     for message in payload.messages:
+        is_assistant_message = message.role == "assistant"
         db.add(
             AssistantMessage(
                 conversation_id=conversation_id,
                 role=message.role,
+                author_subject_id=(
+                    "akb-assistant"
+                    if is_assistant_message
+                    else user_author_subject_id
+                ),
+                author_subject_type=(
+                    "service" if is_assistant_message else "user"
+                ),
+                author_display_name=(
+                    "AKB Assistant"
+                    if is_assistant_message
+                    else user_author_display_name
+                ),
                 content=message.content,
                 response_type=message.response_type,
                 citations=message.citations,
@@ -7212,7 +7385,7 @@ def append_assistant_messages(
     db.commit()
     db.refresh(conversation)
     db.refresh(conversation, attribute_names=["messages", "shares"])
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)
 
 
 @router.get(
@@ -7225,7 +7398,7 @@ def get_assistant_conversation(
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
     conversation, _ = _conversation_for_principal(db, conversation_id, principal)
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)
 
 
 @router.patch(
@@ -7245,6 +7418,7 @@ def update_assistant_conversation(
             "conversation_owner_required",
             "Only the conversation owner can update retention, title or archive status",
         )
+    _validate_conversation_retention_until(payload.retention_until)
     if payload.title is not None:
         conversation.title = payload.title
     if payload.visibility is not None:
@@ -7258,7 +7432,38 @@ def update_assistant_conversation(
     db.commit()
     db.refresh(conversation)
     db.refresh(conversation, attribute_names=["messages", "shares"])
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)
+
+
+@router.delete(
+    "/assistant/conversation-history/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_assistant_conversation(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> Response:
+    conversation, context = _conversation_for_principal(
+        db,
+        conversation_id,
+        principal,
+    )
+    if conversation.user_id != context.subject_id:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "conversation_owner_required",
+            "Only the conversation owner can permanently delete it",
+        )
+    deletion = stage_assistant_conversation_deletion(
+        db,
+        conversation=conversation,
+        actor_id=context.subject_id,
+        reason="owner_request",
+    )
+    db.commit()
+    record_assistant_deletion_metrics(deletion, reason="owner_request")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put(
@@ -7279,6 +7484,36 @@ def replace_assistant_conversation_shares(
             "Only the conversation owner can change sharing",
         )
 
+    existing_keys = {
+        (share.subject_type, share.subject_id)
+        for share in conversation.shares
+        if share.status == "active"
+    }
+    verified_user_names: dict[str, str] = {}
+    for requested_share in payload.shares:
+        if requested_share.subject_type == "group":
+            if ("group", requested_share.subject_id) not in existing_keys:
+                raise problem(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "assistant_group_directory_unavailable",
+                    "New group shares require the STRATOS organization group directory",
+                )
+            continue
+        directory_user = _directory_adapter().get_user(requested_share.subject_id)
+        if directory_user is None:
+            raise problem(
+                status.HTTP_404_NOT_FOUND,
+                "directory_user_not_found",
+                "The selected sharing recipient was not found in the identity directory",
+            )
+        if not directory_user.enabled:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "directory_user_inactive",
+                "The selected sharing recipient is not active",
+            )
+        verified_user_names[requested_share.subject_id] = directory_user.name
+
     requested = {(share.subject_type, share.subject_id): share for share in payload.shares}
     for share in conversation.shares:
         if (share.subject_type, share.subject_id) not in requested:
@@ -7296,6 +7531,8 @@ def replace_assistant_conversation_shares(
         if existing:
             existing.permission = request_share.permission
             existing.status = "active"
+            if subject_type == "user":
+                existing.subject_display_name = verified_user_names[subject_id]
             existing.updated_at = utcnow()
         else:
             db.add(
@@ -7303,6 +7540,7 @@ def replace_assistant_conversation_shares(
                     conversation_id=conversation_id,
                     subject_type=subject_type,
                     subject_id=subject_id,
+                    subject_display_name=verified_user_names.get(subject_id),
                     permission=request_share.permission,
                     created_by=context.subject_id,
                 )
@@ -7323,4 +7561,4 @@ def replace_assistant_conversation_shares(
     db.commit()
     db.refresh(conversation)
     db.refresh(conversation, attribute_names=["messages", "shares"])
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)

@@ -1002,6 +1002,14 @@ export class MockRegistryClient implements RegistryApiClient {
     ];
   }
 
+  async searchAssistantDirectoryUsers(
+    query: string,
+    context: ApiRequestContext,
+    limit = 20,
+  ): Promise<DirectoryUser[]> {
+    return this.searchDirectoryUsers(query, context, limit);
+  }
+
   async listRoleMappings(
     _context: ApiRequestContext,
     includeRemoved = false,
@@ -1160,6 +1168,12 @@ export class MockRegistryClient implements RegistryApiClient {
       ...request.messages.map((message, index) => ({
         message_id: `mock_msg_${Date.now()}_${index}`,
         role: message.role,
+        author_subject_id:
+          message.role === "assistant" ? "akb-assistant" : context.subjectId,
+        author_subject_type:
+          message.role === "assistant" ? "service" as const : "user" as const,
+        author_display_name:
+          message.role === "assistant" ? "AKB Assistant" : null,
         content: message.content,
         response_type: message.response_type ?? null,
         citations: message.citations ?? [],
@@ -1202,6 +1216,14 @@ export class MockRegistryClient implements RegistryApiClient {
     return cloneMock(conversation);
   }
 
+  async deleteAssistantConversation(
+    conversationId: string,
+    context: ApiRequestContext,
+  ): Promise<void> {
+    this.requireAssistantConversation(conversationId, context);
+    this.assistantConversations.delete(conversationId);
+  }
+
   async replaceAssistantConversationShares(
     conversationId: string,
     request: AssistantConversationShareReplaceRequest,
@@ -1218,6 +1240,7 @@ export class MockRegistryClient implements RegistryApiClient {
       conversation_share_id: `mock_share_${conversationId}_${index + 1}`,
       subject_type: share.subject_type,
       subject_id: share.subject_id,
+      subject_display_name: share.subject_id,
       permission: share.permission,
       status: "active",
       created_by: context.subjectId,

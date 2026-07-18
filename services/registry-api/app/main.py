@@ -1,9 +1,11 @@
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
 from app.api import health_router, router
+from app.assistant_retention import assistant_purge_loop
 from app.config import get_settings
 from app.database import create_schema
 from app.errors import register_exception_handlers
@@ -16,7 +18,19 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     if settings.auto_create_schema:
         create_schema()
-    yield
+    purge_task: asyncio.Task[None] | None = None
+    if settings.assistant_purge_enabled:
+        purge_task = asyncio.create_task(
+            assistant_purge_loop(settings),
+            name="assistant-conversation-purge",
+        )
+    try:
+        yield
+    finally:
+        if purge_task:
+            purge_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await purge_task
 
 
 def create_app() -> FastAPI:

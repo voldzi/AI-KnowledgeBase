@@ -119,6 +119,27 @@ for compatibility. Production values belong outside Git, for example in
 When configuration changes, update `.env.example`, this document, and the
 specific deployment document.
 
+Assistant conversation retention is enforced by Registry, not by the browser.
+Production Compose enables the worker with these bounded settings:
+
+```text
+AKL_ASSISTANT_CONVERSATION_RETENTION_DAYS=180
+AKL_ASSISTANT_PURGE_ENABLED=true
+AKL_ASSISTANT_PURGE_INTERVAL_SECONDS=3600
+AKL_ASSISTANT_PURGE_BATCH_SIZE=500
+AKL_ASSISTANT_DELETION_AUDIT_RETENTION_DAYS=730
+```
+
+The first cycle runs immediately after Registry startup and then once per
+configured interval. It deletes only rows whose `retention_until` has passed,
+uses PostgreSQL row locks with `SKIP LOCKED`, cascades messages and shares in
+the same transaction, and leaves a content-free audit tombstone. After a
+database restore, start Registry with the worker enabled and verify the
+`assistant_conversation_purge_completed` aggregate log plus the
+`akb.assistant.conversations.deleted` metric before accepting chat traffic.
+Disabling the worker is allowed only during the bounded database migration or
+restore maintenance window.
+
 Production Registry governance requires STRATOS endpoints for current access
 projection, registered bindings, runtime decisions, governed information
 resources, information publications, and anonymous public decisions. Configure
@@ -181,7 +202,7 @@ value disables public source delivery. Public metadata and source responses
 must remain `no-store`; operators verify revoke by observing an immediate 404
 after the next fresh central decision.
 
-### Forward-only governance migrations (`0015`–`0019`)
+### Forward-only governance and chat migrations (`0015`–`0021`)
 
 Treat `0015_document_publications` and `0016_public_audit_aggregation` as
 forward-only production migrations. The second migration adds nullable
@@ -203,6 +224,12 @@ version/file projection, validated document state/date/size constraints,
 version and ingestion lookup indexes, and the missing analyst workspace
 tables. Ingestion startup additionally creates Qdrant keyword payload indexes
 for document/version/type/classification/status/tags and policy coordinates.
+`0020_assistant_authorship` adds verified display snapshots and server-derived
+message authorship. `0021_assistant_retention`
+assigns every legacy null-retention conversation a fresh 180-day grace period
+from migration time and then makes the deadline mandatory. It intentionally
+does not calculate from an old update timestamp, so the migration itself
+cannot immediately purge historical rows.
 Use the environment-specific Compose command and backup procedure from the
 deployment runbook; the sequence is mandatory:
 
