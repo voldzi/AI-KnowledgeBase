@@ -34,6 +34,10 @@ AKL_LLM_GATEWAY_BASE_URL=http://llm-gateway-service:8080/api/v1
 AKL_REGISTRY_BASE_URL=http://registry-api:8000/api/v1
 ```
 
+Tento HTTP příklad je pouze lokální. Produkce používá centrální TLS endpoint,
+read-only Basic Auth identitu, password file a CA file podle
+`docs/OPERATIONS/central-opensearch.md`.
+
 The retriever query embedding must use the same embedding model as ingestion. In the real local RAG profile this is `bge-m3` with a 1024-dimensional Qdrant collection. Do not query a `bge-m3` collection with mock embeddings.
 
 ## Payload Contract

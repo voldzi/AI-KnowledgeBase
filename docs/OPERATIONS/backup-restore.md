@@ -9,6 +9,8 @@ Backups cover:
 - PostgreSQL databases,
 - MinIO document bucket,
 - Qdrant collections,
+- OpenSearch alias/mapping/count inventory and the evidence needed to rebuild
+  the derived central index,
 - Keycloak realm configuration,
 - reverse proxy and monitoring configuration.
 
@@ -34,6 +36,14 @@ Qdrant snapshot restore is opt-in:
 RESTORE_CONFIRM=restore-akl RESTORE_QDRANT_SNAPSHOTS=true ./infra/backup/restore.sh <backup-directory>
 ```
 
+The production OpenSearch index is centrally operated and rebuildable. AKB
+backup does not copy its Docker volume or Lucene data. Record the active alias,
+mapping revision, chunk/document/version/entity counts, and the matching
+Qdrant/Registry release. Restore canonical stores first, then rebuild the
+central alias from Qdrant with
+`docs/OPERATIONS/central-opensearch.md`. Central cluster snapshots and replica
+recovery remain the responsibility of the central OpenSearch operator.
+
 ## Secrets
 
 `.env` is not copied by default because it may contain passwords or client secrets. Use:
@@ -58,6 +68,8 @@ only when the backup target is encrypted and access controlled.
 - Restore PostgreSQL.
 - Restore MinIO bucket.
 - Restore or verify Qdrant snapshots.
+- Rebuild the OpenSearch alias and compare all recorded counts and policy-field
+  completeness.
 - Import or verify Keycloak realm configuration.
 - Confirm `/health` and `/ready` through reverse proxy.
 - Confirm Prometheus target health.
@@ -67,5 +79,7 @@ only when the backup target is encrypted and access controlled.
 
 - MinIO restore overwrites objects in the target bucket.
 - Qdrant snapshot upload requires compatible Qdrant versions.
+- OpenSearch Lucene data must never be copied between major/minor image
+  generations; use the documented logical reindex.
 - Keycloak production realm imports should be reviewed before applying to a live realm.
 - Backups must be encrypted outside the local developer workstation.

@@ -131,6 +131,73 @@ def test_opensearch_server_error_is_not_treated_as_empty(monkeypatch) -> None:
         raise AssertionError("OpenSearch 500 must remain an upstream error")
 
 
+def test_opensearch_client_uses_ca_and_basic_auth(tmp_path, monkeypatch) -> None:
+    password_file = tmp_path / "opensearch.password"
+    password_file.write_text("reader-secret\n", encoding="utf-8")
+    ca_file = tmp_path / "opensearch-ca.pem"
+    ca_file.write_text("test-ca\n", encoding="utf-8")
+    settings = load_settings(
+        {
+            "AKL_RAG_DEPENDENCY_MODE": "http",
+            "AKL_RAG_FULLTEXT_MODE": "opensearch",
+            "AKL_OPENSEARCH_USERNAME": "reader",
+            "AKL_OPENSEARCH_PASSWORD_FILE": str(password_file),
+            "AKL_OPENSEARCH_CA_FILE": str(ca_file),
+        }
+    )
+    captured: dict = {}
+    sentinel = object()
+
+    monkeypatch.setattr(
+        "retrievers.qdrant._opensearch_tls_verifier",
+        lambda value: sentinel if value == ca_file else None,
+    )
+    monkeypatch.setattr(
+        "retrievers.qdrant.httpx.AsyncClient",
+        lambda **kwargs: captured.update(kwargs) or object(),
+    )
+
+    OpenSearchFullTextClient(settings)._client()
+
+    assert captured["verify"] is sentinel
+    assert isinstance(captured["auth"], httpx.BasicAuth)
+
+
+def test_opensearch_readiness_fails_closed_for_bad_tls_or_auth(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    password_file = tmp_path / "opensearch.password"
+    password_file.write_text("reader-secret\n", encoding="utf-8")
+    settings = load_settings(
+        {
+            "AKL_RAG_DEPENDENCY_MODE": "http",
+            "AKL_RAG_FULLTEXT_MODE": "opensearch",
+            "AKL_OPENSEARCH_USERNAME": "reader",
+            "AKL_OPENSEARCH_PASSWORD_FILE": str(password_file),
+        }
+    )
+    client = OpenSearchFullTextClient(settings)
+    monkeypatch.setattr(
+        "retrievers.qdrant._opensearch_tls_verifier",
+        lambda _value: (_ for _ in ()).throw(OSError("bad ca")),
+    )
+    assert asyncio.run(client.readiness()) == "not_ready"
+
+    class UnauthorizedAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            pass
+
+        async def get(self, *args, **kwargs) -> httpx.Response:
+            return httpx.Response(401, json={})
+
+    monkeypatch.setattr(client, "_client", lambda: UnauthorizedAsyncClient())
+    assert asyncio.run(client.readiness()) == "not_ready"
+
+
 def test_qdrant_payload_metadata_fallback_builds_citation() -> None:
     chunk = _point_to_chunk(
         {

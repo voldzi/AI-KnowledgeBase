@@ -129,3 +129,51 @@ def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:
 def test_invalid_high_quality_min_context_chunks_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS"):
         load_settings({"AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS": "0"})
+
+
+def test_opensearch_password_file_overrides_direct_password(tmp_path) -> None:
+    password_file = tmp_path / "opensearch.password"
+    password_file.write_text("reader-secret\n", encoding="utf-8")
+
+    settings = load_settings(
+        {
+            "AKL_ENV": "development",
+            "AKL_RAG_FULLTEXT_MODE": "opensearch",
+            "AKL_OPENSEARCH_USERNAME": "reader",
+            "AKL_OPENSEARCH_PASSWORD": "direct-password",
+            "AKL_OPENSEARCH_PASSWORD_FILE": str(password_file),
+        }
+    )
+
+    assert settings.opensearch_password == "reader-secret"
+    assert settings.opensearch_password_file == password_file
+
+
+def test_production_opensearch_requires_tls_and_secret_file(tmp_path) -> None:
+    password_file = tmp_path / "opensearch.password"
+    password_file.write_text("reader-secret\n", encoding="utf-8")
+    ca_file = tmp_path / "opensearch-ca.pem"
+    ca_file.write_text("test-ca\n", encoding="utf-8")
+    base = {
+        **_production_env(),
+        "AKL_RAG_FULLTEXT_MODE": "opensearch",
+        "AKL_OPENSEARCH_BASE_URL": "https://opensearch.example:9200",
+        "AKL_OPENSEARCH_USERNAME": "reader",
+        "AKL_OPENSEARCH_PASSWORD_FILE": str(password_file),
+        "AKL_OPENSEARCH_CA_FILE": str(ca_file),
+    }
+
+    settings = load_settings(base)
+    assert settings.opensearch_password == "reader-secret"
+    assert settings.opensearch_ca_file == ca_file
+
+    with pytest.raises(ConfigError, match="AKL_OPENSEARCH_PASSWORD_FILE"):
+        load_settings(
+            {
+                **base,
+                "AKL_OPENSEARCH_PASSWORD_FILE": "",
+                "AKL_OPENSEARCH_PASSWORD": "direct-only",
+            }
+        )
+    with pytest.raises(ConfigError, match="must use HTTPS"):
+        load_settings({**base, "AKL_OPENSEARCH_BASE_URL": "http://opensearch:9200"})

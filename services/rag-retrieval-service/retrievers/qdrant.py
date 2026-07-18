@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from base64 import b64encode
+import ssl
 from datetime import UTC, datetime
 from typing import Any
 
@@ -249,18 +249,19 @@ class OpenSearchFullTextClient:
 
     async def readiness(self) -> str:
         try:
-            async with httpx.AsyncClient(timeout=self._settings.request_timeout_seconds) as client:
+            async with self._client() as client:
                 response = await client.get(
                     f"{self._settings.opensearch_base_url}/{self._settings.opensearch_index}",
                     headers=self._headers(),
                 )
-        except httpx.HTTPError:
+        except (httpx.HTTPError, OSError):
             return "not_ready"
-        return "ready" if response.status_code in {200, 404} else "not_ready"
+        allowed_statuses = {200, 404} if self._settings.env != "production" else {200}
+        return "ready" if response.status_code in allowed_statuses else "not_ready"
 
     async def retrieve(self, *, query: str, filters: RagQueryFilters, limit: int) -> list[RetrievedChunk]:
         body = _opensearch_query(query=query, filters=filters, limit=limit)
-        async with httpx.AsyncClient(timeout=self._settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self._settings.opensearch_base_url}/{self._settings.opensearch_index}/_search",
                 headers=self._headers(),
@@ -279,15 +280,25 @@ class OpenSearchFullTextClient:
         return _opensearch_hits_to_chunks(query=query, payload=payload)
 
     def _headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if self._settings.opensearch_api_key:
-            headers["Authorization"] = f"ApiKey {self._settings.opensearch_api_key}"
-        elif self._settings.opensearch_username and self._settings.opensearch_password:
-            token = b64encode(
-                f"{self._settings.opensearch_username}:{self._settings.opensearch_password}".encode("utf-8")
-            ).decode("ascii")
-            headers["Authorization"] = f"Basic {token}"
-        return headers
+        return {"Content-Type": "application/json"}
+
+    def _client(self) -> httpx.AsyncClient:
+        kwargs: dict[str, Any] = {
+            "timeout": self._settings.request_timeout_seconds,
+            "verify": _opensearch_tls_verifier(self._settings.opensearch_ca_file),
+        }
+        if self._settings.opensearch_username and self._settings.opensearch_password:
+            kwargs["auth"] = httpx.BasicAuth(
+                self._settings.opensearch_username,
+                self._settings.opensearch_password,
+            )
+        return httpx.AsyncClient(**kwargs)
+
+
+def _opensearch_tls_verifier(ca_file: Any) -> ssl.SSLContext | bool:
+    if ca_file is None:
+        return True
+    return ssl.create_default_context(cafile=str(ca_file))
 
 
 async def _request_qdrant_json_allow_missing(

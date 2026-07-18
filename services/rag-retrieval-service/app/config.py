@@ -76,6 +76,39 @@ def _secret_value(source: Mapping[str, str], value_key: str, file_key: str) -> s
     return value or None
 
 
+def _file_preferred_secret_value(
+    source: Mapping[str, str],
+    value_key: str,
+    file_key: str,
+) -> str | None:
+    path = source.get(file_key)
+    if path:
+        try:
+            value = Path(path).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ConfigError(f"{file_key} could not be read") from exc
+        if not value:
+            raise ConfigError(f"{file_key} must not be empty")
+        return value
+    return source.get(value_key) or None
+
+
+def _optional_readable_file(
+    source: Mapping[str, str],
+    key: str,
+) -> Path | None:
+    raw_path = source.get(key)
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    try:
+        with path.open("rb"):
+            pass
+    except OSError as exc:
+        raise ConfigError(f"{key} could not be read") from exc
+    return path
+
+
 @dataclass(frozen=True)
 class Settings:
     service_name: str
@@ -114,7 +147,8 @@ class Settings:
     opensearch_index: str
     opensearch_username: str | None
     opensearch_password: str | None
-    opensearch_api_key: str | None
+    opensearch_password_file: Path | None
+    opensearch_ca_file: Path | None
     llm_gateway_base_url: str
     llm_gateway_token: str | None
     llm_gateway_audience: str
@@ -236,6 +270,26 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if high_quality_min_context_chunks <= 0:
         raise ConfigError("AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS must be greater than zero")
 
+    opensearch_base_url = _get(
+        source,
+        "AKL_OPENSEARCH_BASE_URL",
+        "http://localhost:9200",
+    ).rstrip("/")
+    opensearch_username = source.get("AKL_OPENSEARCH_USERNAME") or None
+    opensearch_password_file = _optional_readable_file(
+        source,
+        "AKL_OPENSEARCH_PASSWORD_FILE",
+    )
+    opensearch_password = _file_preferred_secret_value(
+        source,
+        "AKL_OPENSEARCH_PASSWORD",
+        "AKL_OPENSEARCH_PASSWORD_FILE",
+    )
+    opensearch_ca_file = _optional_readable_file(
+        source,
+        "AKL_OPENSEARCH_CA_FILE",
+    )
+
     if env_name == "production":
         if auth_mode not in {"bearer", "oidc"}:
             raise ConfigError("Production requires AKL_AUTH_MODE=bearer or oidc")
@@ -261,6 +315,17 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Production OIDC requires AKL_TRUSTED_SERVICE_CLIENT_IDS")
         if not aiip_service_client_ids:
             raise ConfigError("Production requires AKL_RAG_AIIP_SERVICE_CLIENT_IDS")
+        if fulltext_mode == "opensearch":
+            if not opensearch_base_url.startswith("https://"):
+                raise ConfigError("Production OpenSearch must use HTTPS")
+            if not opensearch_username or not opensearch_password:
+                raise ConfigError("Production OpenSearch requires Basic Auth credentials")
+            if opensearch_password_file is None:
+                raise ConfigError(
+                    "Production OpenSearch requires AKL_OPENSEARCH_PASSWORD_FILE"
+                )
+            if opensearch_ca_file is None:
+                raise ConfigError("Production OpenSearch requires AKL_OPENSEARCH_CA_FILE")
 
     denied = tuple(
         item.strip()
@@ -308,11 +373,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ),
         qdrant_base_url=_get(source, "AKL_QDRANT_BASE_URL", "http://localhost:6333").rstrip("/"),
         qdrant_collection=_get(source, "AKL_QDRANT_COLLECTION", "akl_document_chunks"),
-        opensearch_base_url=_get(source, "AKL_OPENSEARCH_BASE_URL", "http://localhost:9200").rstrip("/"),
+        opensearch_base_url=opensearch_base_url,
         opensearch_index=_get(source, "AKL_OPENSEARCH_INDEX", "akl_document_chunks"),
-        opensearch_username=source.get("AKL_OPENSEARCH_USERNAME") or None,
-        opensearch_password=source.get("AKL_OPENSEARCH_PASSWORD") or None,
-        opensearch_api_key=source.get("AKL_OPENSEARCH_API_KEY") or None,
+        opensearch_username=opensearch_username,
+        opensearch_password=opensearch_password,
+        opensearch_password_file=opensearch_password_file,
+        opensearch_ca_file=opensearch_ca_file,
         llm_gateway_base_url=_normalize_api_base_url(
             _get(source, "AKL_LLM_GATEWAY_BASE_URL", "http://localhost:8080/api/v1")
         ),

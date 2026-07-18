@@ -217,3 +217,76 @@ def test_ocrmypdf_provider_configuration_is_supported(tmp_path) -> None:
     assert settings.ocr_provider == "ocrmypdf"
     assert settings.ocrmypdf_command == "/usr/bin/ocrmypdf"
     assert settings.ocr_timeout_seconds == 600
+
+
+def test_opensearch_password_file_overrides_direct_password(tmp_path) -> None:
+    password_file = tmp_path / "opensearch.password"
+    password_file.write_text("file-password\n", encoding="utf-8")
+
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_INGESTION_REGISTRY_CLIENT_MODE": "mock",
+            "AKL_INGESTION_OBJECT_STORAGE_MODE": "local",
+            "AKL_OBJECT_STORAGE_ROOT": str(tmp_path),
+            "AKL_INGESTION_EMBEDDING_CLIENT_MODE": "mock",
+            "AKL_INGESTION_INDEXER_MODE": "opensearch",
+            "AKL_OPENSEARCH_USERNAME": "writer",
+            "AKL_OPENSEARCH_PASSWORD": "direct-password",
+            "AKL_OPENSEARCH_PASSWORD_FILE": str(password_file),
+        }
+    )
+
+    assert settings.opensearch_password == "file-password"
+    assert settings.opensearch_password_file == password_file
+
+
+def test_production_opensearch_requires_tls_secret_files_and_managed_alias(
+    tmp_path,
+) -> None:
+    registry_secret = tmp_path / "registry.secret"
+    registry_secret.write_text("registry-secret\n", encoding="utf-8")
+    opensearch_password = tmp_path / "opensearch.password"
+    opensearch_password.write_text("writer-secret\n", encoding="utf-8")
+    ca_file = tmp_path / "opensearch-ca.pem"
+    ca_file.write_text("test-ca\n", encoding="utf-8")
+    base = {
+        "AKL_ENV": "production",
+        "AKL_AUTH_MODE": "oidc",
+        "AKL_OIDC_ISSUER": "https://login.example/realms/stratos",
+        "AKL_OIDC_AUDIENCE": "akl-api",
+        "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
+        "AKL_SERVICE_ACCOUNT_SUBJECT": "svc-ingestion",
+        "AKL_INGESTION_REGISTRY_CLIENT_MODE": "http",
+        "AKL_REGISTRY_SERVICE_TOKEN_URL": "https://login.example/token",
+        "AKL_REGISTRY_SERVICE_CLIENT_ID": "svc-ingestion",
+        "AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE": str(registry_secret),
+        "AKL_INGESTION_OBJECT_STORAGE_MODE": "local",
+        "AKL_OBJECT_STORAGE_ROOT": str(tmp_path / "objects"),
+        "AKL_INGESTION_EMBEDDING_CLIENT_MODE": "http",
+        "AKL_INGESTION_INDEXER_MODE": "qdrant,opensearch",
+        "AKL_OPENSEARCH_BASE_URL": "https://opensearch.example:9200",
+        "AKL_OPENSEARCH_USERNAME": "writer",
+        "AKL_OPENSEARCH_PASSWORD_FILE": str(opensearch_password),
+        "AKL_OPENSEARCH_CA_FILE": str(ca_file),
+        "AKL_OPENSEARCH_AUTO_CREATE_INDEX": "false",
+    }
+
+    settings = load_settings(base)
+    assert settings.opensearch_password == "writer-secret"
+    assert settings.opensearch_ca_file == ca_file
+    assert settings.opensearch_auto_create_index is False
+
+    with pytest.raises(ConfigError, match="AKL_OPENSEARCH_PASSWORD_FILE"):
+        load_settings(
+            {
+                **base,
+                "AKL_OPENSEARCH_PASSWORD_FILE": "",
+                "AKL_OPENSEARCH_PASSWORD": "direct-only",
+            }
+        )
+    with pytest.raises(ConfigError, match="must use HTTPS"):
+        load_settings({**base, "AKL_OPENSEARCH_BASE_URL": "http://opensearch:9200"})
+    with pytest.raises(ConfigError, match="AUTO_CREATE_INDEX=false"):
+        load_settings({**base, "AKL_OPENSEARCH_AUTO_CREATE_INDEX": "true"})

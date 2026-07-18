@@ -101,6 +101,39 @@ def _secret_value(source: Mapping[str, str], value_key: str, file_key: str) -> s
     return value or None
 
 
+def _file_preferred_secret_value(
+    source: Mapping[str, str],
+    value_key: str,
+    file_key: str,
+) -> str | None:
+    path = source.get(file_key)
+    if path:
+        try:
+            value = Path(path).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ConfigError(f"{file_key} could not be read") from exc
+        if not value:
+            raise ConfigError(f"{file_key} must not be empty")
+        return value
+    return source.get(value_key) or None
+
+
+def _optional_readable_file(
+    source: Mapping[str, str],
+    key: str,
+) -> Path | None:
+    raw_path = source.get(key)
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    try:
+        with path.open("rb"):
+            pass
+    except OSError as exc:
+        raise ConfigError(f"{key} could not be read") from exc
+    return path
+
+
 @dataclass(frozen=True)
 class Settings:
     service_name: str
@@ -172,7 +205,9 @@ class Settings:
     opensearch_index: str
     opensearch_username: str | None
     opensearch_password: str | None
-    opensearch_api_key: str | None
+    opensearch_password_file: Path | None
+    opensearch_ca_file: Path | None
+    opensearch_auto_create_index: bool
     opensearch_delete_existing_version: bool
 
     job_store_path: Path
@@ -279,6 +314,28 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         registry_service_client_id,
         registry_service_client_secret,
     )
+    opensearch_base_url = _get(
+        source,
+        "AKL_OPENSEARCH_BASE_URL",
+        "http://localhost:9200",
+    ).rstrip("/")
+    opensearch_username = source.get("AKL_OPENSEARCH_USERNAME") or None
+    opensearch_password_file = _optional_readable_file(
+        source,
+        "AKL_OPENSEARCH_PASSWORD_FILE",
+    )
+    opensearch_password = _file_preferred_secret_value(
+        source,
+        "AKL_OPENSEARCH_PASSWORD",
+        "AKL_OPENSEARCH_PASSWORD_FILE",
+    )
+    opensearch_ca_file = _optional_readable_file(
+        source,
+        "AKL_OPENSEARCH_CA_FILE",
+    )
+    opensearch_auto_create_index = _parse_bool(
+        _get(source, "AKL_OPENSEARCH_AUTO_CREATE_INDEX", "true")
+    )
     if any(registry_service_credentials) and not all(registry_service_credentials):
         raise ConfigError(
             "Registry service identity requires AKL_REGISTRY_SERVICE_TOKEN_URL, "
@@ -337,6 +394,21 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Production must not use mock embedding client")
         if "mock" in indexer_targets:
             raise ConfigError("Production must not use mock indexer")
+        if "opensearch" in indexer_targets:
+            if not opensearch_base_url.startswith("https://"):
+                raise ConfigError("Production OpenSearch must use HTTPS")
+            if not opensearch_username or not opensearch_password:
+                raise ConfigError("Production OpenSearch requires Basic Auth credentials")
+            if opensearch_password_file is None:
+                raise ConfigError(
+                    "Production OpenSearch requires AKL_OPENSEARCH_PASSWORD_FILE"
+                )
+            if opensearch_ca_file is None:
+                raise ConfigError("Production OpenSearch requires AKL_OPENSEARCH_CA_FILE")
+            if opensearch_auto_create_index:
+                raise ConfigError(
+                    "Production OpenSearch requires AKL_OPENSEARCH_AUTO_CREATE_INDEX=false"
+                )
         if not _parse_bool(_get(source, "AKL_INGESTION_PROCESS_JOBS_INLINE", "true")):
             raise ConfigError(
                 "Production requires AKL_INGESTION_PROCESS_JOBS_INLINE=true until a durable worker is deployed"
@@ -417,11 +489,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         qdrant_delete_existing_version=_parse_bool(
             _get(source, "AKL_QDRANT_DELETE_EXISTING_VERSION", "true")
         ),
-        opensearch_base_url=_get(source, "AKL_OPENSEARCH_BASE_URL", "http://localhost:9200").rstrip("/"),
+        opensearch_base_url=opensearch_base_url,
         opensearch_index=_get(source, "AKL_OPENSEARCH_INDEX", "akl_document_chunks"),
-        opensearch_username=source.get("AKL_OPENSEARCH_USERNAME") or None,
-        opensearch_password=source.get("AKL_OPENSEARCH_PASSWORD") or None,
-        opensearch_api_key=source.get("AKL_OPENSEARCH_API_KEY") or None,
+        opensearch_username=opensearch_username,
+        opensearch_password=opensearch_password,
+        opensearch_password_file=opensearch_password_file,
+        opensearch_ca_file=opensearch_ca_file,
+        opensearch_auto_create_index=opensearch_auto_create_index,
         opensearch_delete_existing_version=_parse_bool(
             _get(source, "AKL_OPENSEARCH_DELETE_EXISTING_VERSION", "true")
         ),

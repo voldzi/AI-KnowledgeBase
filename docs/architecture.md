@@ -35,9 +35,14 @@ technical compatibility prefixes unless an explicit migration changes them.
   ingestion artifacts. Local and production-like profiles map `s3://` URIs to
   configured storage roots; production targets SeaweedFS/S3-compatible storage.
 - Qdrant stores indexed chunk vectors and citation payload metadata.
-- OpenSearch stores the same chunks as a BM25/fulltext index for exact titles,
+- The centrally operated OpenSearch 3.7 cluster stores the same chunks through
+  the managed `akl_document_chunks` alias as a BM25/fulltext index for exact titles,
   document numbers, sections, abbreviations, Czech lexical recall, Intelligence
   entity facets, analyst search and evidence-backed relationship exploration.
+  It is rebuildable from Qdrant/canonical AKB data. Production ingestion uses a
+  write-only role where appropriate, RAG uses a read-only role, and both verify
+  TLS with the mounted cluster CA. See
+  `docs/OPERATIONS/central-opensearch.md`.
 - Keycloak/STRATOS OIDC is the enterprise identity provider.
 
 ## Core Data Flow
