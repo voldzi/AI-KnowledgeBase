@@ -54,5 +54,11 @@ def test_live_reconciliation_ensures_standalone_chat_client() -> None:
     assert "akl-api audience" in script
     assert "budget-web audience" in script
     assert 'ensure_audience_mapper "$id" "budget-web audience" "budget-web"' in script
+    assert '\\"included.client.audience\\":\\"$audience\\"' in script
+    assert '\\"id\\":\\"$mapper_id\\"' in script
+    assert '-f "$mapper_payload_file"' in script
+    assert "--fields config" not in script
+    assert 'config.\\"included.client.audience\\"' not in script
+    assert "did not persist audience" in script
     assert "KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE" in script
     assert "cleanup_bootstrap_client" in script
