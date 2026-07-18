@@ -103,6 +103,39 @@ describe("STRATOS access projection", () => {
         && error.code === "ACCESS_PROJECTION_UNAVAILABLE",
     );
   });
+
+  it("logs only the bounded upstream rejection reason", async () => {
+    const token = jwt({ sub: "user-123", exp: 2_000 });
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => warnings.push(args);
+    try {
+      await assert.rejects(
+        () => contextFromStratosAccessProjection(
+          token,
+          config(),
+          async () => Response.json(
+            { message: `Invalid OIDC audience\n${"x".repeat(200)}` },
+            { status: 401 },
+          ),
+          NOW,
+        ),
+        (error: unknown) => error instanceof ApiClientError
+          && error.status === 401
+          && error.code === "ACCESS_PROJECTION_DENIED",
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0]?.[0], "STRATOS access projection rejected bearer identity.");
+    const detail = warnings[0]?.[1] as { status?: unknown; reason?: unknown };
+    assert.equal(detail.status, 401);
+    assert.equal(typeof detail.reason, "string");
+    assert.equal((detail.reason as string).includes("\n"), false);
+    assert.equal((detail.reason as string).length, 160);
+  });
 });
 
 function config(): AklConfig {

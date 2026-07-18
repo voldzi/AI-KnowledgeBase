@@ -52,6 +52,11 @@ export async function contextFromStratosAccessProjection(
     throw projectionUnavailable("STRATOS access projection is unavailable.");
   }
   if (response.status === 401 || response.status === 403) {
+    const reason = await upstreamRejectionReason(response);
+    console.warn("STRATOS access projection rejected bearer identity.", {
+      status: response.status,
+      reason,
+    });
     throw new ApiClientError("STRATOS rejected the bearer identity.", response.status, "ACCESS_PROJECTION_DENIED", "stratos-access");
   }
   if (!response.ok) throw projectionUnavailable(`STRATOS access projection returned ${response.status}.`);
@@ -115,6 +120,13 @@ export function resetAccessProjectionCacheForTests(): void {
 
 function normalizeApplication(value: unknown): string {
   return typeof value === "string" ? value.toLowerCase().replaceAll("_", "-") : "";
+}
+
+async function upstreamRejectionReason(response: Response): Promise<string> {
+  const body = await response.json().catch(() => null);
+  if (!isRecord(body) || typeof body.message !== "string") return "unspecified";
+  const normalized = body.message.replaceAll(/[\r\n\t]+/g, " ").trim();
+  return normalized.slice(0, 160) || "unspecified";
 }
 
 function stringArray(value: unknown): string[] {

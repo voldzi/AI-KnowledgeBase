@@ -150,6 +150,12 @@ web origin: https://chat.zeleznalady.cz
 Konkrétní typ klienta, audience mappery a service scopes musí odpovídat
 schválenému STRATOS OIDC profilu.
 
+Access token klienta obsahuje dvě explicitní audience: `akl-api` pro AKB
+Registry/RAG hranici a `budget-web` pro centrální STRATOS
+`GET /api/v1/auth/me` access projection. Audience pouze dovolují oběma
+backendům ověřit tentýž uživatelský token; capabilities a effective scopes
+zůstávají výhradně v čerstvé STRATOS access projection.
+
 Povinné bezpečnostní principy:
 
 - prohlížeč dostává pouze zapečetěné HTTP-only cookies;

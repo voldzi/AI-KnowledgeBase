@@ -155,39 +155,59 @@ ensure_akb_chat_client() {
     -s 'attributes."post.logout.redirect.uris"=https://chat.zeleznalady.cz/*' \
     -s 'attributes."pkce.code.challenge.method"=S256' >/dev/null
 
+  ensure_audience_mapper "$id" "akl-api audience" "akl-api"
+  ensure_audience_mapper "$id" "budget-web audience" "budget-web"
+  echo "reconciled akb-chat-web"
+}
+
+ensure_audience_mapper() {
+  client_uuid="$1"
+  mapper_name="$2"
+  audience="$3"
+  mapper_payload_file="/tmp/akb-audience-mapper-$$.json"
   mapper_id=""
   while IFS=, read -r raw_id raw_name; do
     raw_id=$(strip_quotes "$raw_id")
     raw_name=$(strip_quotes "$raw_name")
-    if [ "$raw_name" = "akl-api audience" ]; then
+    if [ "$raw_name" = "$mapper_name" ]; then
       mapper_id="$raw_id"
       break
     fi
   done <<MAPPERS
-$(/opt/keycloak/bin/kcadm.sh get "clients/$id/protocol-mappers/models" -r "$REALM" --fields id,name --format csv)
+$(/opt/keycloak/bin/kcadm.sh get "clients/$client_uuid/protocol-mappers/models" -r "$REALM" --fields id,name --format csv)
 MAPPERS
 
   if [ -z "$mapper_id" ]; then
-    /opt/keycloak/bin/kcadm.sh create "clients/$id/protocol-mappers/models" -r "$REALM" \
-      -s 'name=akl-api audience' \
-      -s protocol=openid-connect \
-      -s protocolMapper=oidc-audience-mapper \
-      -s consentRequired=false \
-      -s 'config."included.client.audience"=akl-api' \
-      -s 'config."id.token.claim"=false' \
-      -s 'config."access.token.claim"=true' >/dev/null
+    printf '%s\n' \
+      "{\"name\":\"$mapper_name\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"consentRequired\":false,\"config\":{\"included.client.audience\":\"$audience\",\"id.token.claim\":\"false\",\"access.token.claim\":\"true\"}}" \
+      >"$mapper_payload_file"
+    mapper_id=$(
+      /opt/keycloak/bin/kcadm.sh create "clients/$client_uuid/protocol-mappers/models" -r "$REALM" \
+        -f "$mapper_payload_file" \
+        -i
+    )
   else
+    printf '%s\n' \
+      "{\"id\":\"$mapper_id\",\"name\":\"$mapper_name\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"consentRequired\":false,\"config\":{\"included.client.audience\":\"$audience\",\"id.token.claim\":\"false\",\"access.token.claim\":\"true\"}}" \
+      >"$mapper_payload_file"
     /opt/keycloak/bin/kcadm.sh update \
-      "clients/$id/protocol-mappers/models/$mapper_id" -r "$REALM" \
-      -s 'name=akl-api audience' \
-      -s protocol=openid-connect \
-      -s protocolMapper=oidc-audience-mapper \
-      -s consentRequired=false \
-      -s 'config."included.client.audience"=akl-api' \
-      -s 'config."id.token.claim"=false' \
-      -s 'config."access.token.claim"=true' >/dev/null
+      "clients/$client_uuid/protocol-mappers/models/$mapper_id" -r "$REALM" \
+      -f "$mapper_payload_file" >/dev/null
   fi
-  echo "reconciled akb-chat-web"
+  rm -f "$mapper_payload_file"
+
+  mapper_config=$(
+    /opt/keycloak/bin/kcadm.sh get \
+      "clients/$client_uuid/protocol-mappers/models/$mapper_id" -r "$REALM" \
+      --format json | tr -d '[:space:]'
+  )
+  case "$mapper_config" in
+    *"\"included.client.audience\":\"$audience\""*) ;;
+    *)
+      echo "ERROR: audience mapper $mapper_name did not persist audience $audience" >&2
+      exit 1
+      ;;
+  esac
 }
 
 ensure_akb_chat_client

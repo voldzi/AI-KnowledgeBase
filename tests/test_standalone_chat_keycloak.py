@@ -28,16 +28,15 @@ def test_standalone_chat_client_is_exact_public_pkce_client() -> None:
         == "https://chat.zeleznalady.cz/*"
     )
 
-    audience_mappers = [
-        mapper
+    audience_mappers = {
+        mapper["name"]: mapper["config"]["included.client.audience"]
         for mapper in client["protocolMappers"]
-        if mapper["name"] == "akl-api audience"
-    ]
-    assert len(audience_mappers) == 1
-    assert (
-        audience_mappers[0]["config"]["included.client.audience"]
-        == "akl-api"
-    )
+        if mapper["protocolMapper"] == "oidc-audience-mapper"
+    }
+    assert audience_mappers == {
+        "akl-api audience": "akl-api",
+        "budget-web audience": "budget-web",
+    }
 
 
 def test_live_reconciliation_ensures_standalone_chat_client() -> None:
@@ -53,5 +52,13 @@ def test_live_reconciliation_ensures_standalone_chat_client() -> None:
     assert "https://chat.zeleznalady.cz/api/auth/callback" in script
     assert "pkce.code.challenge.method" in script
     assert "akl-api audience" in script
+    assert "budget-web audience" in script
+    assert 'ensure_audience_mapper "$id" "budget-web audience" "budget-web"' in script
+    assert '\\"included.client.audience\\":\\"$audience\\"' in script
+    assert '\\"id\\":\\"$mapper_id\\"' in script
+    assert '-f "$mapper_payload_file"' in script
+    assert "--fields config" not in script
+    assert 'config.\\"included.client.audience\\"' not in script
+    assert "did not persist audience" in script
     assert "KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE" in script
     assert "cleanup_bootstrap_client" in script
