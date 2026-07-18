@@ -628,7 +628,8 @@ Skript se pta na Keycloak admin heslo a upravuje pouze:
 
 - `redirectUris` a `webOrigins` existujicich STRATOS klientu,
 - samostatny public klient `akb-chat-web`, jeho PKCE nastaveni a audience
-  mappery `akl-api` pro AKB a `budget-web` pro STRATOS access projection.
+  mappery `akl-api` pro AKB, `budget-web` pro Budget API a
+  `stratos-access-api` pro oddelenou STRATOS access projection.
 
 Pokud `akb-chat-web` chybi, skript jej idempotentne vytvori. Nemaze uzivatele,
 role, skupiny ani client secrets.

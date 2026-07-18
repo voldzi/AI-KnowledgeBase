@@ -157,6 +157,7 @@ ensure_akb_chat_client() {
 
   ensure_audience_mapper "$id" "akl-api audience" "akl-api"
   ensure_audience_mapper "$id" "budget-web audience" "budget-web"
+  ensure_audience_mapper "$id" "stratos-access-api audience" "stratos-access-api"
   echo "reconciled akb-chat-web"
 }
 
