@@ -632,3 +632,21 @@ Skript se pta na Keycloak admin heslo a upravuje pouze:
 
 Pokud `akb-chat-web` chybi, skript jej idempotentne vytvori. Nemaze uzivatele,
 role, skupiny ani client secrets.
+
+Samostatny chat pouziva verejny Authorization Code + PKCE klient s presnym
+produkcim kontraktem:
+
+```text
+redirect URI: https://chat.zeleznalady.cz/api/auth/callback
+post logout URI: https://chat.zeleznalady.cz/*
+web origin: https://chat.zeleznalady.cz
+```
+
+Na produkcnim hostu lze misto interaktivniho zadani hesla pouzit podporovany
+kratkodoby bootstrap administracni klient. Skript jej vytvori s nahodnym
+tajemstvim pouze pro dobu rekonciliace a pred ukoncenim jej odstrani:
+
+```bash
+KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
+  /srv/akl/current/infra/keycloak/update-stratos-public-routing.sh
+```
