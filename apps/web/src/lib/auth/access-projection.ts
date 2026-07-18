@@ -53,9 +53,11 @@ export async function contextFromStratosAccessProjection(
   }
   if (response.status === 401 || response.status === 403) {
     const reason = await upstreamRejectionReason(response);
+    const tokenRouting = tokenRoutingClaims(accessToken);
     console.warn("STRATOS access projection rejected bearer identity.", {
       status: response.status,
       reason,
+      ...tokenRouting,
     });
     throw new ApiClientError("STRATOS rejected the bearer identity.", response.status, "ACCESS_PROJECTION_DENIED", "stratos-access");
   }
@@ -127,6 +129,23 @@ async function upstreamRejectionReason(response: Response): Promise<string> {
   if (!isRecord(body) || typeof body.message !== "string") return "unspecified";
   const normalized = body.message.replaceAll(/[\r\n\t]+/g, " ").trim();
   return normalized.slice(0, 160) || "unspecified";
+}
+
+function tokenRoutingClaims(accessToken: string): { audiences: string[]; authorizedParty: string | null } {
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<string, unknown>;
+    const audiences = Array.isArray(payload.aud)
+      ? stringArray(payload.aud)
+      : typeof payload.aud === "string" && payload.aud
+        ? [payload.aud]
+        : [];
+    return {
+      audiences: audiences.slice(0, 8).map((audience) => audience.slice(0, 80)),
+      authorizedParty: typeof payload.azp === "string" ? payload.azp.slice(0, 80) : null,
+    };
+  } catch {
+    return { audiences: [], authorizedParty: null };
+  }
 }
 
 function stringArray(value: unknown): string[] {
