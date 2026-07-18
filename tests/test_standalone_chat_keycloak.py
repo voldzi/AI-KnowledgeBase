@@ -36,6 +36,7 @@ def test_standalone_chat_client_is_exact_public_pkce_client() -> None:
     assert audience_mappers == {
         "akl-api audience": "akl-api",
         "budget-web audience": "budget-web",
+        "stratos-access-api audience": "stratos-access-api",
     }
 
 
@@ -53,7 +54,12 @@ def test_live_reconciliation_ensures_standalone_chat_client() -> None:
     assert "pkce.code.challenge.method" in script
     assert "akl-api audience" in script
     assert "budget-web audience" in script
+    assert "stratos-access-api audience" in script
     assert 'ensure_audience_mapper "$id" "budget-web audience" "budget-web"' in script
+    assert (
+        'ensure_audience_mapper "$id" "stratos-access-api audience" '
+        '"stratos-access-api"'
+    ) in script
     assert '\\"included.client.audience\\":\\"$audience\\"' in script
     assert '\\"id\\":\\"$mapper_id\\"' in script
     assert '-f "$mapper_payload_file"' in script
