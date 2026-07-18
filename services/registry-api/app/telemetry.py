@@ -41,11 +41,14 @@ def configure_telemetry(app: FastAPI, *, service_name: str, service_version: str
 
     global _configured
     try:
-        from opentelemetry import trace
+        from opentelemetry import metrics, trace
+        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
         from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError as exc:
@@ -53,12 +56,29 @@ def configure_telemetry(app: FastAPI, *, service_name: str, service_version: str
         return
 
     if not _configured:
-        provider = TracerProvider(resource=Resource.create(_resource_attributes(service_name, service_version)))
+        resource = Resource.create(
+            _resource_attributes(service_name, service_version)
+        )
+        provider = TracerProvider(resource=resource)
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
         try:
             trace.set_tracer_provider(provider)
         except Exception as exc:  # pragma: no cover - defensive for reused test processes
             logger.warning("otel_tracer_provider_already_configured reason=%s", exc.__class__.__name__)
+        try:
+            metrics.set_meter_provider(
+                MeterProvider(
+                    resource=resource,
+                    metric_readers=[
+                        PeriodicExportingMetricReader(OTLPMetricExporter())
+                    ],
+                )
+            )
+        except Exception as exc:  # pragma: no cover - defensive for reused processes
+            logger.warning(
+                "otel_meter_provider_already_configured reason=%s",
+                exc.__class__.__name__,
+            )
         HTTPXClientInstrumentor().instrument()
         _configured = True
 

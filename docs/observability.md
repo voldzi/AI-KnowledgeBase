@@ -50,6 +50,14 @@ Important platform metrics:
 - no-answer rate,
 - citation coverage,
 - authorization denied count.
+- assistant conversations expired and physically deleted,
+- assistant messages and sharing grants deleted,
+- assistant deletion audit tombstones pruned.
+
+Registry exports the assistant-retention counters through OpenTelemetry using
+the `akb.assistant.*` metric namespace. Every purge cycle also writes one
+content-free structured summary log containing only aggregate counts. It never
+logs a conversation title, prompt, answer, citation, participant, or token.
 
 For the AIIP application API, operational logs and Registry audit metadata may
 include operation, request/correlation/audit ids, canonical input hash, status,
@@ -128,7 +136,8 @@ observability stack is unavailable, AKB services should continue to run and keep
 using health/readiness plus request/correlation ids.
 
 The following Python FastAPI services emit inbound HTTP spans and `httpx`
-outbound client spans when tracing is enabled:
+outbound client spans when telemetry is enabled. Registry also exports the
+implemented assistant-retention counters through the same OTLP collector:
 
 - Registry API,
 - Ingestion Service,
@@ -141,8 +150,9 @@ The next observability rollout steps are:
 
 1. Next.js web bridge spans for `/akb/api/*`, especially STRATOS upload,
    source open, viewer, citation and RAG flows.
-2. Domain metrics for ingestion duration, retrieval latency, LLM latency,
-   citation coverage, source-open failures and authorization denied counts.
+2. Additional domain metrics for ingestion duration, retrieval latency, LLM
+   latency, citation coverage, source-open failures and authorization denied
+   counts.
 3. Logs enriched with `trace_id` and `span_id` while preserving the existing
    AKB `trace_id` error field compatibility.
 

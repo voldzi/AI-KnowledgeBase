@@ -1,7 +1,17 @@
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
 
 import app.api as registry_api
+from app.assistant_retention import purge_expired_assistant_conversations
 from app.keycloak_directory import DirectoryUser
+from app.models import (
+    AuditEvent,
+    AssistantConversation,
+    AssistantConversationShare,
+    AssistantMessage,
+    utcnow,
+)
 
 
 class _Directory:
@@ -433,3 +443,221 @@ def test_archive_hides_conversation_from_default_list(client: TestClient) -> Non
     with_archived = client.get("/api/v1/assistant/conversation-history?include_archived=true", headers=owner_headers)
     assert with_archived.status_code == 200, with_archived.text
     assert [item["conversation_id"] for item in with_archived.json()["items"]] == ["conv_archive"]
+
+
+def test_owner_delete_cascades_content_and_keeps_content_free_audit(
+    client: TestClient,
+    db_session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_delete/messages",
+        headers=owner_headers,
+        json={
+            **_append_payload(),
+            "title": "Citlivý pracovní dotaz",
+            "messages": [
+                {"role": "user", "content": "Text, který nesmí zůstat."},
+                {"role": "assistant", "content": "Odpověď, která se také maže."},
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    shared = client.put(
+        "/api/v1/assistant/conversation-history/conv_delete/shares",
+        headers=owner_headers,
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_2",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+    assert shared.status_code == 200, shared.text
+
+    deleted = client.delete(
+        "/api/v1/assistant/conversation-history/conv_delete",
+        headers=owner_headers,
+    )
+    assert deleted.status_code == 204, deleted.text
+    db_session.expire_all()
+    assert db_session.get(AssistantConversation, "conv_delete") is None
+    assert (
+        db_session.query(AssistantMessage)
+        .filter(AssistantMessage.conversation_id == "conv_delete")
+        .count()
+        == 0
+    )
+    assert (
+        db_session.query(AssistantConversationShare)
+        .filter(AssistantConversationShare.conversation_id == "conv_delete")
+        .count()
+        == 0
+    )
+    audit = (
+        db_session.query(AuditEvent)
+        .filter(
+            AuditEvent.resource_id == "conv_delete",
+            AuditEvent.event_type == "assistant.conversation.deleted",
+        )
+        .one()
+    )
+    assert audit.event_type == "assistant.conversation.deleted"
+    assert audit.resource_type == "assistant_conversation_tombstone"
+    assert audit.event_metadata["content_retained"] is False
+    assert audit.event_metadata["message_count"] == 2
+    assert audit.event_metadata["share_count"] == 1
+    assert "Citlivý" not in str(audit.event_metadata)
+    assert "Text, který" not in str(audit.event_metadata)
+
+
+def test_shared_reader_cannot_delete_owner_conversation(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_api,
+        "_directory_adapter",
+        lambda: _Directory([_directory_user("employee_2", "Eva Horáková")]),
+    )
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    reader_headers = {"X-AKL-Subject": "employee_2", "X-AKL-Roles": "reader"}
+    client.post(
+        "/api/v1/assistant/conversations/conv_delete_denied/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    client.put(
+        "/api/v1/assistant/conversation-history/conv_delete_denied/shares",
+        headers=owner_headers,
+        json={
+            "shares": [
+                {
+                    "subject_type": "user",
+                    "subject_id": "employee_2",
+                    "permission": "viewer",
+                }
+            ]
+        },
+    )
+
+    denied = client.delete(
+        "/api/v1/assistant/conversation-history/conv_delete_denied",
+        headers=reader_headers,
+    )
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "conversation_owner_required"
+    assert (
+        client.get(
+            "/api/v1/assistant/conversation-history/conv_delete_denied",
+            headers=owner_headers,
+        ).status_code
+        == 200
+    )
+
+
+def test_retention_purge_is_physical_and_idempotent(
+    client: TestClient,
+    db_session,
+) -> None:
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    now = utcnow()
+    for conversation_id in ("conv_expired", "conv_retained"):
+        created = client.post(
+            f"/api/v1/assistant/conversations/{conversation_id}/messages",
+            headers=owner_headers,
+            json={
+                **_append_payload(),
+                "retention_until": (now + timedelta(days=1)).isoformat(),
+            },
+        )
+        assert created.status_code == 201, created.text
+    expired = db_session.get(AssistantConversation, "conv_expired")
+    assert expired is not None
+    expired.retention_until = now - timedelta(seconds=1)
+    db_session.add(
+        AuditEvent(
+            audit_event_id="audit_old_assistant_deletion",
+            actor_id="employee_legacy",
+            event_type="assistant.conversation.deleted",
+            resource_type="assistant_conversation_tombstone",
+            resource_id="conv_old_deleted",
+            event_metadata={"content_retained": False},
+            last_seen_at=now - timedelta(days=731),
+            created_at=now - timedelta(days=731),
+        )
+    )
+    db_session.commit()
+
+    first = purge_expired_assistant_conversations(
+        db_session,
+        now=now,
+        batch_size=50,
+        audit_retention_days=730,
+    )
+    assert first.conversations == 1
+    assert first.messages == 1
+    assert first.audit_records_pruned == 1
+    assert db_session.get(AssistantConversation, "conv_expired") is None
+    assert db_session.get(AssistantConversation, "conv_retained") is not None
+    tombstone = (
+        db_session.query(AuditEvent)
+        .filter(AuditEvent.resource_id == "conv_expired")
+        .one()
+    )
+    assert tombstone.event_type == "assistant.conversation.purged"
+    assert tombstone.actor_id == "system:assistant-retention"
+    assert (
+        db_session.get(AuditEvent, "audit_old_assistant_deletion") is None
+    )
+
+    second = purge_expired_assistant_conversations(
+        db_session,
+        now=now,
+        batch_size=50,
+        audit_retention_days=730,
+    )
+    assert second.conversations == 0
+    assert (
+        db_session.query(AuditEvent)
+        .filter(AuditEvent.resource_id == "conv_expired")
+        .count()
+        == 1
+    )
+
+
+def test_append_cannot_revive_expired_conversation(
+    client: TestClient,
+    db_session,
+) -> None:
+    owner_headers = {"X-AKL-Subject": "employee_1", "X-AKL-Roles": "reader"}
+    created = client.post(
+        "/api/v1/assistant/conversations/conv_cannot_revive/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    assert created.status_code == 201, created.text
+    conversation = db_session.get(
+        AssistantConversation,
+        "conv_cannot_revive",
+    )
+    assert conversation is not None
+    conversation.retention_until = utcnow() - timedelta(seconds=1)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/assistant/conversations/conv_cannot_revive/messages",
+        headers=owner_headers,
+        json=_append_payload(content="Toto nesmí vlákno obnovit."),
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "conversation_not_found"

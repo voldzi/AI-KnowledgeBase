@@ -101,6 +101,34 @@ class Settings(BaseSettings):
         le=86400,
         alias="AKL_PUBLIC_AUDIT_PRUNE_INTERVAL_SECONDS",
     )
+    assistant_conversation_default_retention_days: int = Field(
+        default=180,
+        ge=1,
+        le=3650,
+        alias="AKL_ASSISTANT_CONVERSATION_RETENTION_DAYS",
+    )
+    assistant_purge_enabled: bool = Field(
+        default=False,
+        alias="AKL_ASSISTANT_PURGE_ENABLED",
+    )
+    assistant_purge_interval_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        alias="AKL_ASSISTANT_PURGE_INTERVAL_SECONDS",
+    )
+    assistant_purge_batch_size: int = Field(
+        default=500,
+        ge=1,
+        le=5000,
+        alias="AKL_ASSISTANT_PURGE_BATCH_SIZE",
+    )
+    assistant_deletion_audit_retention_days: int = Field(
+        default=730,
+        ge=30,
+        le=3650,
+        alias="AKL_ASSISTANT_DELETION_AUDIT_RETENTION_DAYS",
+    )
     registry_public_rate_window_ms: int = Field(
         default=60000,
         ge=1000,

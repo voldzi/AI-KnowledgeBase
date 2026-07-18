@@ -597,6 +597,17 @@ export class ProductionRegistryClient implements RegistryApiClient {
     );
   }
 
+  deleteAssistantConversation(
+    conversationId: string,
+    context: ApiRequestContext
+  ): Promise<void> {
+    return this.delete(
+      `/assistant/conversation-history/${encodeURIComponent(conversationId)}`,
+      "deleteAssistantConversation",
+      context
+    );
+  }
+
   replaceAssistantConversationShares(
     conversationId: string,
     request: AssistantConversationShareReplaceRequest,
@@ -655,6 +666,18 @@ export class ProductionRegistryClient implements RegistryApiClient {
       path,
       method: "PATCH",
       body,
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  private delete(path: string, operation: string, context: ApiRequestContext): Promise<void> {
+    return requestJson<void>({
+      service: "registry-api",
+      operation,
+      baseUrl: this.baseUrl,
+      path,
+      method: "DELETE",
       context,
       fetcher: this.fetcher
     });

@@ -23,6 +23,7 @@ import {
   Share2,
   ShieldAlert,
   Table2,
+  Trash2,
   Users,
   X
 } from "lucide-react";
@@ -90,6 +91,7 @@ interface ChatMessage {
 interface AssistantThread {
   id: string;
   conversationId: string | null;
+  ownerSubjectId: string | null;
   title: string;
   context: Record<string, unknown>;
   messages: ChatMessage[];
@@ -97,6 +99,7 @@ interface AssistantThread {
   visibility: ThreadVisibility;
   pinned: boolean;
   updatedAt: string;
+  retentionUntil: string | null;
   sharedWith: Array<{
     subjectType: "user" | "group";
     subjectId: string;
@@ -168,6 +171,14 @@ const assistantAppCopy = {
     ready: "Připraven",
     share: "Sdílet",
     archive: "Archivovat",
+    deleteThread: "Trvale odstranit",
+    deleteTitle: "Trvale odstranit vlákno?",
+    deleteBody: "Zprávy i sdílení budou nenávratně odstraněny. Zůstane pouze obsahově prázdný auditní záznam o odstranění.",
+    deleteRetention: "Automatické odstranění je jinak naplánováno na",
+    deleteCancel: "Ponechat vlákno",
+    deletingThread: "Odstraňuji…",
+    deleteFailed: "Vlákno se nepodařilo odstranit. Zkuste to prosím znovu.",
+    deleteSucceeded: "Vlákno bylo trvale odstraněno.",
     copied: "Zkopírováno",
     copyLink: "Kopírovat odkaz",
     sourcesPanel: "Zdroje odpovědi",
@@ -275,6 +286,14 @@ const assistantAppCopy = {
     ready: "Ready",
     share: "Share",
     archive: "Archive",
+    deleteThread: "Delete permanently",
+    deleteTitle: "Permanently delete this thread?",
+    deleteBody: "Messages and sharing will be removed permanently. Only a content-free deletion audit record will remain.",
+    deleteRetention: "Automatic deletion is otherwise scheduled for",
+    deleteCancel: "Keep thread",
+    deletingThread: "Deleting…",
+    deleteFailed: "The thread could not be deleted. Please try again.",
+    deleteSucceeded: "The thread was permanently deleted.",
     copied: "Copied",
     copyLink: "Copy link",
     sourcesPanel: "Answer sources",
@@ -405,6 +424,8 @@ export function AkbAssistantApp({
   const [sharePermission, setSharePermission] = useState<SharePermission>("viewer");
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [shareSaving, setShareSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingThread, setDeletingThread] = useState(false);
   const [copied, setCopied] = useState(false);
   const [clarificationValues, setClarificationValues] = useState<Record<string, string>>({});
   const [reportModeEnabled, setReportModeEnabled] = useState(false);
@@ -414,6 +435,8 @@ export function AkbAssistantApp({
   const [reportColumns, setReportColumns] = useState<AssistantReportColumnKey[]>(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS.obligation_table);
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
+  const canManageActiveThread = !activeThread?.conversationId ||
+    activeThread.ownerSubjectId === currentSubjectId;
   const composer = activeThread?.draft ?? "";
   const lastAssistantResponse = findLastAssistantResponse(activeThread);
   const visibleThreads = useMemo(() => {
@@ -498,6 +521,22 @@ export function AkbAssistantApp({
     setMobileThreadsOpen(false);
   }
 
+  function removeThreadFromView(threadId: string, successMessage?: string) {
+    const remaining = threads.filter((thread) => thread.id !== threadId);
+    if (remaining.length) {
+      setThreads(remaining);
+      setActiveThreadId(remaining[0].id);
+    } else {
+      const replacement = createEmptyThread(copy.emptyThreadTitle);
+      setThreads([replacement]);
+      setActiveThreadId(replacement.id);
+    }
+    setDeleteOpen(false);
+    if (successMessage) {
+      setStatusMessage(successMessage);
+    }
+  }
+
   function redirectToLoginAfterUnauthorized() {
     setStatusMessage(copy.sessionExpired);
     window.setTimeout(() => {
@@ -507,15 +546,7 @@ export function AkbAssistantApp({
 
   async function archiveActiveThread() {
     if (!activeThread.conversationId) {
-      const remaining = threads.filter((thread) => thread.id !== activeThread.id);
-      if (remaining.length) {
-        setThreads(remaining);
-        setActiveThreadId(remaining[0].id);
-      } else {
-        const replacement = createEmptyThread(copy.emptyThreadTitle);
-        setThreads([replacement]);
-        setActiveThreadId(replacement.id);
-      }
+      removeThreadFromView(activeThread.id);
       return;
     }
     try {
@@ -533,17 +564,45 @@ export function AkbAssistantApp({
         setStatusMessage(copy.requestFailed);
         return;
       }
-      const remaining = threads.filter((thread) => thread.id !== activeThread.id);
-      if (remaining.length) {
-        setThreads(remaining);
-        setActiveThreadId(remaining[0].id);
-      } else {
-        const replacement = createEmptyThread(copy.emptyThreadTitle);
-        setThreads([replacement]);
-        setActiveThreadId(replacement.id);
-      }
+      removeThreadFromView(activeThread.id);
     } catch (error) {
       setStatusMessage(copy.requestFailed);
+    }
+  }
+
+  async function deleteActiveThread() {
+    if (
+      !activeThread.conversationId ||
+      activeThread.ownerSubjectId !== currentSubjectId ||
+      deletingThread
+    ) {
+      return;
+    }
+    setDeletingThread(true);
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`,
+        ),
+        {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          return;
+        }
+        setStatusMessage(copy.deleteFailed);
+        return;
+      }
+      removeThreadFromView(activeThread.id, copy.deleteSucceeded);
+    } catch {
+      setStatusMessage(copy.deleteFailed);
+    } finally {
+      setDeletingThread(false);
     }
   }
 
@@ -634,6 +693,7 @@ export function AkbAssistantApp({
       updateThread(threadId, (thread) => ({
         ...thread,
         conversationId: response.conversation_id,
+        ownerSubjectId: thread.ownerSubjectId ?? currentSubjectId,
         context: response.current_context ?? effectiveContext,
         messages: thread.messages.map((message) => (message.id === pendingMessage.id ? assistantMessage : message)),
         updatedAt: new Date().toISOString()
@@ -886,9 +946,23 @@ export function AkbAssistantApp({
               >
                 <PanelLeftOpen size={16} aria-hidden="true" />
               </button>
-              <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
-                <Archive size={16} aria-hidden="true" />
-              </button>
+              {canManageActiveThread ? (
+                <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
+                  <Archive size={16} aria-hidden="true" />
+                </button>
+              ) : null}
+              {activeThread.conversationId &&
+              activeThread.ownerSubjectId === currentSubjectId ? (
+                <button
+                  className="akb-chat-icon-button akb-chat-icon-button--danger"
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  title={copy.deleteThread}
+                  aria-label={copy.deleteThread}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              ) : null}
               <button
                 className="akb-chat-icon-button"
                 type="button"
@@ -902,8 +976,15 @@ export function AkbAssistantApp({
               <StratosButton
                 type="button"
                 onClick={() => setShareOpen(true)}
-                disabled={!activeThread.conversationId}
-                title={activeThread.conversationId ? copy.share : copy.shareAfterFirstMessage}
+                disabled={
+                  !activeThread.conversationId ||
+                  activeThread.ownerSubjectId !== currentSubjectId
+                }
+                title={
+                  activeThread.conversationId
+                    ? copy.share
+                    : copy.shareAfterFirstMessage
+                }
               >
                 <Share2 size={16} aria-hidden="true" />
                 {copy.share}
@@ -1154,6 +1235,63 @@ export function AkbAssistantApp({
                 {shareSaving ? copy.shareSaving : copy.addShare}
               </StratosButton>
               {shareStatus ? <div className="notice">{shareStatus}</div> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteOpen ? (
+        <div
+          className="akb-share-backdrop"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="akb-delete-thread-title"
+          aria-describedby="akb-delete-thread-description"
+        >
+          <div className="akb-share-dialog akb-delete-dialog">
+            <div className="akb-share-dialog__header">
+              <h2 id="akb-delete-thread-title">{copy.deleteTitle}</h2>
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(false)}
+                aria-label={copy.close}
+                disabled={deletingThread}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="akb-share-dialog__body">
+              <div className="akb-delete-dialog__warning">
+                <Trash2 size={20} aria-hidden="true" />
+                <p id="akb-delete-thread-description">{copy.deleteBody}</p>
+              </div>
+              <div className="akb-delete-dialog__thread">
+                <strong>{activeThread.title}</strong>
+                {activeThread.retentionUntil ? (
+                  <span>
+                    {copy.deleteRetention}{" "}
+                    {formatRetentionDate(activeThread.retentionUntil, language)}.
+                  </span>
+                ) : null}
+              </div>
+              <div className="akb-delete-dialog__actions">
+                <StratosButton
+                  type="button"
+                  onClick={() => setDeleteOpen(false)}
+                  disabled={deletingThread}
+                >
+                  {copy.deleteCancel}
+                </StratosButton>
+                <StratosButton
+                  tone="danger"
+                  type="button"
+                  onClick={() => void deleteActiveThread()}
+                  disabled={deletingThread}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  {deletingThread ? copy.deletingThread : copy.deleteThread}
+                </StratosButton>
+              </div>
             </div>
           </div>
         </div>
@@ -1771,6 +1909,7 @@ function createInitialThreads(
     {
       id: "thread-current",
       conversationId: null,
+      ownerSubjectId: null,
       title: language === "en" ? "New thread" : "Nové vlákno",
       context: {},
       messages: [],
@@ -1778,6 +1917,7 @@ function createInitialThreads(
       visibility: "private",
       pinned: false,
       updatedAt: now,
+      retentionUntil: null,
       sharedWith: [],
       historyLoaded: true
     }
@@ -1801,6 +1941,7 @@ function createEmptyThread(title: string): AssistantThread {
   return {
     id: createClientId("thread"),
     conversationId: null,
+    ownerSubjectId: null,
     title,
     context: {},
     messages: [],
@@ -1808,6 +1949,7 @@ function createEmptyThread(title: string): AssistantThread {
     visibility: "private",
     pinned: false,
     updatedAt: new Date().toISOString(),
+    retentionUntil: null,
     sharedWith: [],
     historyLoaded: true
   };
@@ -1817,6 +1959,7 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
+    ownerSubjectId: conversation.user_id,
     title: conversation.title ?? "AKB chat",
     context: {},
     messages: [],
@@ -1824,6 +1967,7 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
     visibility: conversation.visibility,
     pinned: false,
     updatedAt: conversation.updated_at,
+    retentionUntil: conversation.retention_until,
     sharedWith: conversation.shared_with.map((share) => ({
       subjectType: share.subject_type,
       subjectId: share.subject_id,
@@ -1844,6 +1988,7 @@ function threadFromConversation(
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
+    ownerSubjectId: conversation.user_id,
     title: conversation.title ?? "AKB chat",
     context: {},
     messages: conversation.messages.map((message) => {
@@ -1862,6 +2007,7 @@ function threadFromConversation(
     visibility: conversation.visibility,
     pinned: false,
     updatedAt: conversation.updated_at,
+    retentionUntil: conversation.retention_until,
     sharedWith: conversation.shared_with.map((share) => ({
       subjectType: share.subject_type,
       subjectId: share.subject_id,
@@ -1976,5 +2122,15 @@ function formatThreadTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Europe/Prague"
+  }).format(date);
+}
+
+function formatRetentionDate(value: string, language: AklLanguage): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "cs-CZ", {
+    dateStyle: "long",
   }).format(date);
 }

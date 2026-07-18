@@ -1216,6 +1216,14 @@ export class MockRegistryClient implements RegistryApiClient {
     return cloneMock(conversation);
   }
 
+  async deleteAssistantConversation(
+    conversationId: string,
+    context: ApiRequestContext,
+  ): Promise<void> {
+    this.requireAssistantConversation(conversationId, context);
+    this.assistantConversations.delete(conversationId);
+  }
+
   async replaceAssistantConversationShares(
     conversationId: string,
     request: AssistantConversationShareReplaceRequest,

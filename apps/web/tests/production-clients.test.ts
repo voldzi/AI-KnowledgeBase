@@ -826,6 +826,7 @@ describe("production API clients", () => {
       },
       context
     );
+    await clients.registry.deleteAssistantConversation("conv_1", context);
 
     assert.equal(calls[0][0], "https://registry.local/api/v1/assistant/conversation-history?include_archived=true&limit=50&offset=0");
     assert.equal(calls[0][1]?.method, "GET");
@@ -837,6 +838,8 @@ describe("production API clients", () => {
     assert.equal(calls[3][1]?.method, "PATCH");
     assert.equal(calls[4][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/shares");
     assert.equal(calls[4][1]?.method, "PUT");
+    assert.equal(calls[5][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[5][1]?.method, "DELETE");
   });
 
   it("loads workflow tasks from the Registry API", async () => {

@@ -42,3 +42,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return assistantBridgeError(error);
   }
 }
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  try {
+    const requestContext = await getOptionalServerRequestContext(request);
+    if (!requestContext) {
+      return unauthorizedAssistantRequest();
+    }
+    const { conversationId } = await context.params;
+    const clients = getServerApiClients();
+    await clients.registry.deleteAssistantConversation(
+      conversationId,
+      requestContext,
+    );
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    return assistantBridgeError(error);
+  }
+}

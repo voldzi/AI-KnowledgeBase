@@ -115,6 +115,14 @@ Akceptace:
 
 ### P0-D: retence a odstranění
 
+Stav implementace 2026-07-18: dokončeno lokálně. Registry fyzicky maže
+vlastníkem potvrzená i retenčně expirovaná vlákna, přičemž zprávy a sdílení
+odstraňuje ve stejné transakci pomocí cascade vazeb. Zůstává pouze obsahově
+prázdný auditní doklad s počty a důvodem odstranění. Periodická úloha běží
+okamžitě po startu a potom v konfigurovaném intervalu, takže po obnově databáze
+zálohovaná expirovaná vlákna nezůstanou dostupná. Nové metriky se exportují
+přes OTLP. Před pilotem zbývá produkční migrační a provozní smoke.
+
 Rozsah:
 
 - zavést periodickou purge úlohu nad `retention_until`;

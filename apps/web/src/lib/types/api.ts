@@ -269,6 +269,10 @@ export interface RegistryApiClient {
     request: AssistantConversationPatchRequest,
     context: ApiRequestContext
   ): Promise<AssistantConversationDetail>;
+  deleteAssistantConversation(
+    conversationId: string,
+    context: ApiRequestContext
+  ): Promise<void>;
   replaceAssistantConversationShares(
     conversationId: string,
     request: AssistantConversationShareReplaceRequest,

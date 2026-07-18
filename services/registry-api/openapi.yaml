@@ -2141,6 +2141,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      summary: Delete Assistant Conversation
+      operationId: delete_assistant_conversation_api_v1_assistant_conversation_history__conversation_id__delete
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Conversation Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/assistant/conversation-history/{conversation_id}/shares:
     put:
       summary: Replace Assistant Conversation Shares

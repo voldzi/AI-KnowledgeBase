@@ -261,6 +261,12 @@ queries, answer/no-answer events, source opening, and citation opening. Audit
 events carry correlation ids and avoid storing full prompt/answer/source text
 by default.
 
+Conversation deletion is a physical data operation. Only the owner may request
+it interactively; the retention worker performs the same cascade after
+`retention_until`. Messages, citations, answer metadata, and sharing grants are
+removed transactionally. The remaining audit tombstone is content-free and is
+itself removed after the separately configured deletion-audit retention period.
+
 For service-written events, Registry always stores the verified caller subject
 as `actor_id`; a payload actor is only `reported_actor_id` metadata, and the
 server-derived `service_client_id` overwrites any supplied value. Idempotency

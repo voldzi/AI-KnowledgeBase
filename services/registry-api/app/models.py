@@ -626,7 +626,9 @@ class AssistantConversation(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
     title: Mapped[str | None] = mapped_column(String(300), nullable=True)
     visibility: Mapped[str] = mapped_column(String(32), nullable=False, default="private", index=True)
-    retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    retention_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     messages: Mapped[list["AssistantMessage"]] = relationship(

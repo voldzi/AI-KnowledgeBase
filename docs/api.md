@@ -306,6 +306,7 @@ POST  /api/v1/assistant/conversations/{conversationId}/messages
 GET   /api/v1/assistant/conversation-history
 GET   /api/v1/assistant/conversation-history/{conversationId}
 PATCH /api/v1/assistant/conversation-history/{conversationId}
+DELETE /api/v1/assistant/conversation-history/{conversationId}
 PUT   /api/v1/assistant/conversation-history/{conversationId}/shares
 GET   /api/v1/assistant/directory/users
 ```
@@ -316,12 +317,20 @@ The browser uses only the AKB web/API bridge for this UI flow:
 GET   /api/assistant/conversations
 GET   /api/assistant/conversations/{conversationId}
 PATCH /api/assistant/conversations/{conversationId}
+DELETE /api/assistant/conversations/{conversationId}
 PUT   /api/assistant/conversations/{conversationId}/shares
 GET   /api/assistant/directory
 ```
 
-Conversation history defaults to private visibility and 180-day retention.
-Archived or expired conversations are omitted from the default list.
+Conversation history defaults to private visibility and configurable 180-day
+retention. Archived conversations are omitted from the default list. Expired
+conversations are hidden immediately and the Registry retention worker
+physically deletes them in bounded locked batches. `DELETE` is limited to the
+conversation owner and removes the conversation, messages, and shares in one
+transaction. It returns `204`; the only retained record is a content-free audit
+tombstone containing the conversation ID, deletion reason, previous state, and
+message/share counts. The tombstone is itself pruned according to
+`AKL_ASSISTANT_DELETION_AUDIT_RETENTION_DAYS`.
 Each returned message includes `availability`. Assistant messages with citations
 are reauthorized against every exact cited document version on each history
 read. If one of those versions is no longer allowed or cannot be safely

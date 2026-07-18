@@ -147,6 +147,14 @@ POST   /api/v1/audit/events
 GET    /api/v1/audit/events
 GET    /api/v1/audit/events/{event_id}
 
+POST   /api/v1/assistant/conversations/{conversation_id}/messages
+GET    /api/v1/assistant/conversation-history
+GET    /api/v1/assistant/conversation-history/{conversation_id}
+PATCH  /api/v1/assistant/conversation-history/{conversation_id}
+DELETE /api/v1/assistant/conversation-history/{conversation_id}
+PUT    /api/v1/assistant/conversation-history/{conversation_id}/shares
+GET    /api/v1/assistant/directory/users
+
 POST   /api/v1/document-extractions
 GET    /api/v1/document-extractions/{extraction_id}
 POST   /api/v1/document-extractions/{extraction_id}/feedback

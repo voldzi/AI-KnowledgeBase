@@ -88,6 +88,8 @@ The assistant workflow emits these event types:
 - `assistant.no_answer_returned`
 - `assistant.handoff_recommended`
 - `assistant.citation_opened`
+- `assistant.conversation.deleted`
+- `assistant.conversation.purged`
 
 Employee Chat Portal source opening uses `GET /api/v1/assistant/citations/{chunk_id}/open` and audits `assistant.citation_opened`. Admin/technical citation viewer flows can still use the generic `citation.opened` event.
 
@@ -103,6 +105,18 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
 
 - Assistant conversations are persisted only with explicit ownership, default
   180-day retention, archive support, and user/group sharing records.
+- Only the authenticated owner may permanently delete a conversation. Registry
+  deletes the conversation, messages, and shares transactionally and retains
+  no title, prompt, answer, citation, or shared participant identity in the
+  deletion audit metadata. The standard audit envelope still identifies the
+  deleting owner or the retention service. The content-free tombstone contains
+  only the opaque
+  conversation ID, reason, previous state, deletion time, retention deadline,
+  and aggregate message/share counts.
+- Expired conversations are hidden immediately and physically purged in bounded
+  database batches. PostgreSQL workers use row locks with `SKIP LOCKED`, making
+  concurrent purge cycles idempotent. A purge cycle also removes old deletion
+  tombstones after their separate audit retention deadline.
 - New person shares are selected from the active Keycloak directory and
   independently revalidated by Registry at write time. Arbitrary free-text
   identities and inactive accounts are rejected. New group shares remain
