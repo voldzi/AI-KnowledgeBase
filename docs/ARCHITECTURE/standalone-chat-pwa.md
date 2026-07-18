@@ -529,6 +529,7 @@ Implementace v repozitáři obsahuje:
   service worker;
 - řízenou aktivaci aktualizace bez offline fronty;
 - automatické testy konfigurace, rout a cache politiky;
+- veřejné neinteraktivní `/health` a `/ready` endpointy s politikou `no-store`;
 - release ověření health/readiness, manifestu a blokovaného management API.
 
 Produkční stav 2026-07-18:
