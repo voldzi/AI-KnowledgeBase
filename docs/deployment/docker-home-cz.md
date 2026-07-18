@@ -296,6 +296,7 @@ Externí nebo sdílené služby:
 - PostgreSQL
 - Keycloak
 - SeaweedFS
+- centrální OpenSearch 3.7
 - reverse proxy
 - případně Ollama nebo jiný LLM provider
 
@@ -308,9 +309,20 @@ AKL_WEB_AUTH_MODE=oidc
 AKL_RAG_REQUIRE_CITATIONS=true
 AKL_RAG_AUTHZ_MODE=registry
 AKL_RAG_RETRIEVER_MODE=qdrant
-AKL_INGESTION_INDEXER_MODE=qdrant
+AKL_RAG_FULLTEXT_MODE=opensearch
+AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
 AKL_QDRANT_COLLECTION=akl_document_chunks
+AKL_OPENSEARCH_BASE_URL=https://opensearch.home.cz:9200
+AKL_OPENSEARCH_INDEX=akl_document_chunks
 ```
+
+Produkční OpenSearch je externí sdílený cluster, nikoli lokální Compose
+kontejner. Ingestion používá výhradně účet `akl_ingestion_writer`, RAG výhradně
+`akl_rag_reader`; CA a hesla se mountují read-only z mode-`0600` souborů pod
+`/srv/akl/env`. Přímá hesla do env nebo Compose nepatří. Readiness
+`platform-status` lokální URL `http://opensearch:9200` nekontroluje. Úplný
+cutover, reindexace, bezpečnostní testy a cleanup jsou v
+`docs/OPERATIONS/central-opensearch.md`.
 
 Pokud Ollama běží mimo AKB compose stack, nastavte explicitní kandidátní
 endpointy. AKB neprohledává lokální síť; zkusí pouze uvedené URL v pořadí:

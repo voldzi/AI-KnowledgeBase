@@ -186,10 +186,12 @@ disclosure, not access control: direct page requests and every bridge/backend
 operation remain independently authorized.
 
 The Query Intelligence preview route stores only permission-scoped document
-ids and policy hashes in a five-second in-process cache keyed by the complete
-access context. OpenSearch requires both the authorized document id and its
-current policy hash. Executing an analyst search reloads current Registry
-authorization, so result content never relies on the preview cache.
+coordinates in a five-second in-process cache keyed by the complete access
+context. OpenSearch requires the indexed SHA-256 authorization key derived from
+the exact document id, document-version id, and current policy hash. One
+bounded `terms` filter replaces per-document Boolean branches. Invalid or empty
+coordinates become `match_none`. Executing an analyst search reloads current
+Registry authorization, so result content never relies on the preview cache.
 
 Retrieval Quality Lab uses the same identity boundary. Evaluation Service
 validates the current OIDC token against issuer, audience and JWKS, requires a

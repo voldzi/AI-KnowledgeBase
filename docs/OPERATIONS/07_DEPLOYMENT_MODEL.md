@@ -87,11 +87,11 @@ Server 6 — observability
 | Ingestion | Registry API | HTTPS | metadata, authz, audit |
 | Ingestion | MinIO | S3 API | soubory |
 | Ingestion | Qdrant | HTTP/gRPC | indexace |
-| Ingestion | OpenSearch | HTTP | fulltext indexace |
+| Ingestion | central OpenSearch | HTTPS + Basic Auth + private CA | fulltext indexace, writer identity |
 | Ingestion | LLM Gateway | HTTPS | embeddings |
 | RAG | Registry API | HTTPS | authz, metadata, audit |
 | RAG | Qdrant | HTTP/gRPC | retrieval |
-| RAG | OpenSearch | HTTP | BM25/fulltext retrieval |
+| RAG | central OpenSearch | HTTPS + Basic Auth + private CA | BM25/fulltext retrieval, reader identity |
 | RAG | LLM Gateway | HTTPS | generování odpovědi |
 | LLM Gateway | Ollama/vLLM | HTTP | lokální/AI síť |
 
@@ -148,7 +148,8 @@ Zálohovat:
 - PostgreSQL,
 - MinIO bucket,
 - Qdrant collections,
-- OpenSearch indexes,
+- OpenSearch index inventory and rebuild evidence; central snapshots are owned
+  by the central cluster operator,
 - Keycloak konfiguraci,
 - konfigurační soubory,
 - eval datasety.
@@ -202,6 +203,8 @@ Dashboardy:
 - TLS všude, kde je provoz mimo lokální docker network.
 - Žádný mock auth v produkci.
 - Secrets mimo repozitář.
+- Produkční OpenSearch hesla pouze v read-only secret files; TLS se vždy
+  ověřuje přes schválený CA soubor.
 - Služby za reverse proxy.
 - Admin endpointy pouze v management síti.
 - Pravidelný restore test.

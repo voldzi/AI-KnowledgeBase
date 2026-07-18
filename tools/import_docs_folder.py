@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shlex
+import ssl
 import subprocess
 import sys
 import time
@@ -71,6 +72,9 @@ class ImportOptions:
     bearer_token: str | None
     information_policy: dict[str, Any] | None
     approve_for_publish: bool
+    opensearch_username: str | None = None
+    opensearch_password: str | None = None
+    opensearch_ca_file: Path | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -103,6 +107,18 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
     parser.add_argument(
         "--opensearch-index",
         default=os.getenv("AKL_IMPORT_OPENSEARCH_INDEX", os.getenv("AKL_OPENSEARCH_INDEX", DEFAULT_OPENSEARCH_INDEX)),
+    )
+    parser.add_argument(
+        "--opensearch-username",
+        default=os.getenv("AKL_OPENSEARCH_USERNAME"),
+    )
+    parser.add_argument(
+        "--opensearch-password-file",
+        default=os.getenv("AKL_OPENSEARCH_PASSWORD_FILE"),
+    )
+    parser.add_argument(
+        "--opensearch-ca-file",
+        default=os.getenv("AKL_OPENSEARCH_CA_FILE"),
     )
     parser.add_argument(
         "--require-opensearch",
@@ -139,6 +155,18 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
 
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be greater than zero")
+    try:
+        opensearch_password = load_opensearch_password(args.opensearch_password_file)
+        opensearch_ca_file = readable_file(
+            args.opensearch_ca_file,
+            "OpenSearch CA file",
+        )
+    except argparse.ArgumentTypeError as exc:
+        parser.error(str(exc))
+    if bool(args.opensearch_username) != bool(opensearch_password):
+        parser.error("OpenSearch username and password must be configured together")
+    if args.opensearch_url.startswith("https://") and opensearch_ca_file is None:
+        parser.error("HTTPS OpenSearch requires --opensearch-ca-file")
     if not args.dry_run:
         retire_legacy_mutation("tools/import_docs_folder.py")
 
@@ -166,6 +194,9 @@ def parse_args(argv: list[str] | None = None) -> ImportOptions:
         bearer_token=os.getenv("AKL_IMPORT_BEARER_TOKEN") or None,
         information_policy=load_information_policy_file(args.information_policy_file),
         approve_for_publish=args.approve_for_publish,
+        opensearch_username=args.opensearch_username,
+        opensearch_password=opensearch_password,
+        opensearch_ca_file=opensearch_ca_file,
     )
 
 
@@ -868,7 +899,8 @@ def opensearch_count(document_version_id: str, options: ImportOptions) -> int | 
             f"{options.opensearch_url}/{options.opensearch_index}/_count",
             {"query": {"term": {"document_version_id": document_version_id}}},
             options=options,
-            headers=opensearch_headers(),
+            headers=opensearch_headers(options),
+            ssl_context=opensearch_ssl_context(options),
         )
     except Exception:
         if options.require_opensearch:
@@ -1003,6 +1035,7 @@ def request_json(
     options: ImportOptions,
     expected_status: int = 200,
     headers: dict[str, str] | None = None,
+    ssl_context: ssl.SSLContext | None = None,
 ) -> dict[str, Any]:
     normalized_method = method.upper()
     if normalized_method != "GET":
@@ -1025,7 +1058,7 @@ def request_json(
         request_headers.update(headers)
     request = urllib.request.Request(url, data=data, method=normalized_method, headers=request_headers)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=30, context=ssl_context) as response:
             raw = response.read().decode("utf-8")
             body = json.loads(raw) if raw else {}
             status = response.status
@@ -1043,16 +1076,42 @@ def qdrant_headers() -> dict[str, str]:
     return {"api-key": api_key} if api_key else {}
 
 
-def opensearch_headers() -> dict[str, str]:
-    api_key = os.getenv("AKL_OPENSEARCH_API_KEY")
-    if api_key:
-        return {"Authorization": f"ApiKey {api_key}"}
-    username = os.getenv("AKL_OPENSEARCH_USERNAME")
-    password = os.getenv("AKL_OPENSEARCH_PASSWORD")
+def opensearch_headers(options: ImportOptions) -> dict[str, str]:
+    username = options.opensearch_username
+    password = options.opensearch_password
     if username and password:
         token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
         return {"Authorization": f"Basic {token}"}
     return {}
+
+
+def load_opensearch_password(password_file: str | None) -> str | None:
+    if password_file:
+        path = readable_file(password_file, "OpenSearch password file")
+        assert path is not None
+        password = path.read_text(encoding="utf-8").strip()
+        if not password:
+            raise argparse.ArgumentTypeError("OpenSearch password file must not be empty")
+        return password
+    return os.getenv("AKL_OPENSEARCH_PASSWORD") or None
+
+
+def readable_file(value: str | None, label: str) -> Path | None:
+    if not value:
+        return None
+    path = Path(value)
+    try:
+        with path.open("rb"):
+            pass
+    except OSError as exc:
+        raise argparse.ArgumentTypeError(f"{label} could not be read") from exc
+    return path
+
+
+def opensearch_ssl_context(options: ImportOptions) -> ssl.SSLContext | None:
+    if options.opensearch_ca_file is None:
+        return None
+    return ssl.create_default_context(cafile=str(options.opensearch_ca_file))
 
 
 def report_totals(files: list[Path], items: list[dict[str, Any]], errors: list[dict[str, str]]) -> dict[str, int]:

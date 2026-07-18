@@ -130,6 +130,9 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_QDRANT_COLLECTION` | `akl_document_chunks` | Qdrant collection s payloadem chunku. |
 | `AKL_OPENSEARCH_BASE_URL` | `http://localhost:9200` | OpenSearch base URL. |
 | `AKL_OPENSEARCH_INDEX` | `akl_document_chunks` | OpenSearch index se stejnymi chunk payloady. |
+| `AKL_OPENSEARCH_USERNAME` | prázdné | Basic Auth uživatel; v produkci pouze read-only RAG identita. |
+| `AKL_OPENSEARCH_PASSWORD_FILE` | prázdné | Read-only soubor s heslem; má přednost před lokální přímou hodnotou. |
+| `AKL_OPENSEARCH_CA_FILE` | prázdné | CA bundle pro povinné TLS ověření centrálního clusteru. |
 | `AKL_LLM_GATEWAY_BASE_URL` | `http://localhost:8080/api/v1` | LLM Gateway API base URL. |
 | `AKL_LLM_GATEWAY_TOKEN` | prázdné | Samostatný bearer token pouze pro LLM Gateway. |
 | `AKL_LLM_GATEWAY_AUDIENCE` | `llm-gateway-service` | Audience posílaná se service identitou `svc-rag`. |
@@ -139,6 +142,11 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_RAG_REQUIRE_CITATIONS` | `true` | Vynuti citace u odpovedi. |
 | `AKL_RAG_ENABLE_RERANKING` | `true` | Zapne/vypne lexical reranking. |
 | `AKL_RAG_AUTHZ_MODE` | `dev` | `dev` pouzije lokalni authz filtr, `registry` pouzije Registry API klienta. |
+
+Produkce s `AKL_RAG_FULLTEXT_MODE=opensearch` vyžaduje HTTPS, Basic Auth,
+password file a CA file. Neplatná CA, certifikát nebo autentizace vrací
+`not_ready`; klient nikdy nepoužívá `verify=false`. Viz
+`docs/OPERATIONS/central-opensearch.md`.
 
 ## Spusteni
 

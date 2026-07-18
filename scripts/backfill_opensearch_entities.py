@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import ssl
 import sys
 import time
 from dataclasses import dataclass
@@ -56,7 +58,11 @@ def main(argv: list[str] | None = None) -> int:
         ensure_entity_mapping(args)
     stats = backfill_entities(args)
     if args.refresh and not args.dry_run:
-        request_json("POST", f"{args.opensearch_url}/{args.opensearch_index}/_refresh")
+        request_json(
+            args,
+            "POST",
+            f"{args.opensearch_url}/{args.opensearch_index}/_refresh",
+        )
     print(json.dumps({"status": "completed", **stats.as_dict()}, sort_keys=True))
     return 0 if stats.bulk_failures == 0 else 2
 
@@ -67,6 +73,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--opensearch-url", default="http://localhost:9200")
     parser.add_argument("--opensearch-index", default="akl_document_chunks")
+    parser.add_argument(
+        "--opensearch-username",
+        default=os.getenv("AKL_OPENSEARCH_USERNAME"),
+    )
+    parser.add_argument(
+        "--opensearch-password-file",
+        default=os.getenv("AKL_OPENSEARCH_PASSWORD_FILE"),
+    )
+    parser.add_argument(
+        "--opensearch-ca-file",
+        default=os.getenv("AKL_OPENSEARCH_CA_FILE"),
+    )
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--scroll-ttl", default="2m")
@@ -79,6 +97,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be greater than zero")
     args.opensearch_url = args.opensearch_url.rstrip("/")
+    args.opensearch_password = _load_opensearch_password(args.opensearch_password_file)
+    if bool(args.opensearch_username) != bool(args.opensearch_password):
+        parser.error("OpenSearch username and password must be configured together")
+    if args.opensearch_url.startswith("https://") and not args.opensearch_ca_file:
+        parser.error("HTTPS OpenSearch requires --opensearch-ca-file")
+    args.opensearch_ssl_context = _opensearch_ssl_context(args.opensearch_ca_file)
     return args
 
 
@@ -142,6 +166,7 @@ def initial_search(args: argparse.Namespace) -> dict[str, Any]:
         "query": query,
     }
     return request_json(
+        args,
         "POST",
         f"{args.opensearch_url}/{args.opensearch_index}/_search",
         params={"scroll": args.scroll_ttl},
@@ -151,6 +176,7 @@ def initial_search(args: argparse.Namespace) -> dict[str, Any]:
 
 def scroll_search(args: argparse.Namespace, scroll_id: str) -> dict[str, Any]:
     return request_json(
+        args,
         "POST",
         f"{args.opensearch_url}/_search/scroll",
         payload={"scroll": args.scroll_ttl, "scroll_id": scroll_id},
@@ -159,7 +185,12 @@ def scroll_search(args: argparse.Namespace, scroll_id: str) -> dict[str, Any]:
 
 def clear_scroll(args: argparse.Namespace, scroll_id: str) -> None:
     try:
-        request_json("DELETE", f"{args.opensearch_url}/_search/scroll", payload={"scroll_id": [scroll_id]})
+        request_json(
+            args,
+            "DELETE",
+            f"{args.opensearch_url}/_search/scroll",
+            payload={"scroll_id": [scroll_id]},
+        )
     except RuntimeError:
         return
 
@@ -222,6 +253,7 @@ def bulk_update(args: argparse.Namespace, updates: list[tuple[str, dict[str, Any
         lines.append(json.dumps({"doc": update_doc}, ensure_ascii=False))
     body = ("\n".join(lines) + "\n").encode("utf-8")
     response = request_json(
+        args,
         "POST",
         f"{args.opensearch_url}/_bulk",
         params={"refresh": "false"},
@@ -247,6 +279,7 @@ def bulk_errors(response: dict[str, Any]) -> list[dict[str, Any]]:
 
 def ensure_entity_mapping(args: argparse.Namespace) -> None:
     request_json(
+        args,
         "PUT",
         f"{args.opensearch_url}/{args.opensearch_index}/_mapping",
         payload={
@@ -260,6 +293,7 @@ def ensure_entity_mapping(args: argparse.Namespace) -> None:
 
 
 def request_json(
+    args: argparse.Namespace,
     method: str,
     url: str,
     *,
@@ -272,7 +306,17 @@ def request_json(
     if headers:
         request_headers.update(headers)
     try:
-        with httpx.Client(timeout=120.0) as client:
+        auth = None
+        if args.opensearch_username and args.opensearch_password:
+            auth = httpx.BasicAuth(
+                args.opensearch_username,
+                args.opensearch_password,
+            )
+        with httpx.Client(
+            timeout=120.0,
+            verify=args.opensearch_ssl_context,
+            auth=auth,
+        ) as client:
             response = client.request(
                 method,
                 url,
@@ -289,6 +333,31 @@ def request_json(
         raise RuntimeError(f"{method} {url} failed: {exc}") from exc
     raw = response.text
     return json.loads(raw) if raw else {}
+
+
+def _load_opensearch_password(password_file: str | None) -> str | None:
+    if password_file:
+        try:
+            password = Path(password_file).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise argparse.ArgumentTypeError(
+                "OpenSearch password file could not be read"
+            ) from exc
+        if not password:
+            raise argparse.ArgumentTypeError("OpenSearch password file must not be empty")
+        return password
+    return os.getenv("AKL_OPENSEARCH_PASSWORD") or None
+
+
+def _opensearch_ssl_context(ca_file: str | None) -> ssl.SSLContext | bool:
+    if ca_file is None:
+        return True
+    try:
+        return ssl.create_default_context(cafile=ca_file)
+    except (OSError, ssl.SSLError) as exc:
+        raise argparse.ArgumentTypeError(
+            "OpenSearch CA file could not be loaded"
+        ) from exc
 
 
 def print_progress(stats: BackfillStats, started: float, *, dry_run: bool) -> None:

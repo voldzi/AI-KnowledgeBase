@@ -49,6 +49,26 @@ remain in `docs/deployment/` and `docs/OPERATIONS/`.
    follow the documented reindex path. Do not mix mock embeddings with the real
    `bge-m3` collection.
 
+## Central OpenSearch Unavailable Or Unauthorized
+
+1. Check Ingestion and RAG `/ready`; both must validate TLS and authenticate
+   against `https://opensearch.home.cz:9200`.
+2. Confirm the CA and the service-specific password file exist on the host,
+   retain the expected owner/mode, and are mounted read-only. Never print their
+   contents.
+3. Confirm Ingestion uses `akl_ingestion_writer` and RAG uses
+   `akl_rag_reader`; never swap or share the credentials.
+4. A TLS validation failure is not bypassed with `verify=false`. Repair the CA,
+   certificate chain, hostname, or mount, then recreate only the affected
+   service.
+5. A missing `akl_document_chunks` alias is fail-closed. Do not let AKB create
+   a physical index with that name; restore the managed alias through the
+   central operator.
+6. For an empty or inconsistent alias, logically rebuild from Qdrant and verify
+   counts and policy fields using
+   `docs/OPERATIONS/central-opensearch.md`. Never copy the former OpenSearch
+   2.x volume or Lucene files.
+
 ## LLM Provider Unavailable
 
 1. Check LLM Gateway `/ready`.

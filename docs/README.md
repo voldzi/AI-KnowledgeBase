@@ -16,6 +16,7 @@ Start with these flat documents for repository-wide orientation:
 | Security | `security.md` |
 | Operations | `operations.md` |
 | Observability | `observability.md` |
+| Central OpenSearch operations | `OPERATIONS/central-opensearch.md` |
 | Runbook | `runbook.md` |
 | ADRs | `adr/` |
 | Archive | `archive/` |

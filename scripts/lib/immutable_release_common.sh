@@ -533,21 +533,52 @@ def split_compose(path: str):
 
 current_envelope, current_services = split_compose(sys.argv[1])
 target_envelope, target_services = split_compose(sys.argv[2])
-if current_envelope != target_envelope:
+
+
+def normalize_one_time_central_opensearch_envelope(value: str) -> str:
+    return re.sub(
+        r"(?m)^  opensearch-data:[ \t]*(?:#[^\r\n]*)?\r?\n",
+        "",
+        value,
+    )
+
+
+def normalize_one_time_central_opensearch_platform_status(value: str) -> str:
+    return value.replace(",opensearch=http://opensearch:9200", "")
+
+
+removed = set(current_services) - set(target_services)
+added = set(target_services) - set(current_services)
+central_opensearch_cutover = removed == {"opensearch"} and not added
+current_envelope_for_comparison = (
+    normalize_one_time_central_opensearch_envelope(current_envelope)
+    if central_opensearch_cutover
+    else current_envelope
+)
+if current_envelope_for_comparison != target_envelope:
     raise SystemExit(
         "shared production Compose change modifies top-level configuration outside the managed-service release boundary"
     )
 if current_services.keys() != target_services.keys():
-    added = set(target_services) - set(current_services)
-    removed = set(current_services) - set(target_services)
-    if removed or added != {"chat-web"}:
+    if not central_opensearch_cutover and (removed or added != {"chat-web"}):
         raise SystemExit("shared production Compose change adds or removes an unsupported service")
 
-changed = [
-    name
-    for name in target_services
-    if name not in current_services or current_services[name] != target_services[name]
-]
+changed = []
+for name, target_block in target_services.items():
+    if name not in current_services:
+        changed.append(name)
+        continue
+    current_block = current_services[name]
+    if central_opensearch_cutover and name == "platform-status":
+        current_block = normalize_one_time_central_opensearch_platform_status(
+            current_block
+        )
+    if current_block != target_block:
+        changed.append(name)
+if central_opensearch_cutover:
+    for service in ("ingestion-service", "rag-retrieval-service"):
+        if service not in changed:
+            changed.append(service)
 unsupported = [name for name in changed if name not in SUPPORTED]
 if unsupported:
     raise SystemExit(
