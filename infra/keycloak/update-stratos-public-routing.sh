@@ -4,6 +4,8 @@ set -euo pipefail
 KEYCLOAK_CONTAINER="${KEYCLOAK_CONTAINER:-keycloak}"
 KEYCLOAK_INTERNAL_URL="${KEYCLOAK_INTERNAL_URL:-http://127.0.0.1:8081}"
 KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
+KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE="${KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE:-false}"
+KEYCLOAK_BOOTSTRAP_MANAGEMENT_PORT="${KEYCLOAK_BOOTSTRAP_MANAGEMENT_PORT:-19000}"
 REALM="${REALM:-stratos}"
 
 fail() {
@@ -18,26 +20,54 @@ printf "Keycloak URL:       %s\n" "$KEYCLOAK_INTERNAL_URL"
 printf "Admin user:         %s\n" "$KEYCLOAK_ADMIN_USER"
 printf "Realm:              %s\n" "$REALM"
 printf "\n"
-read -rsp "Keycloak admin password: " KEYCLOAK_ADMIN_PASSWORD
-printf "\n"
 
-if [[ -z "$KEYCLOAK_ADMIN_PASSWORD" ]]; then
-  fail "Password cannot be empty."
+AUTH_MODE="password"
+BOOTSTRAP_CLIENT_ID=""
+BOOTSTRAP_CLIENT_SECRET=""
+if [[ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" && "$KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE" = "true" ]]; then
+  AUTH_MODE="bootstrap-service"
+  BOOTSTRAP_CLIENT_ID="akb-chat-bootstrap-$(date +%s)"
+  BOOTSTRAP_CLIENT_SECRET="$(openssl rand -hex 32)"
+  docker exec \
+    -e BOOTSTRAP_CLIENT_ID="$BOOTSTRAP_CLIENT_ID" \
+    -e BOOTSTRAP_CLIENT_SECRET="$BOOTSTRAP_CLIENT_SECRET" \
+    "$KEYCLOAK_CONTAINER" sh -c \
+    '/opt/keycloak/bin/kc.sh bootstrap-admin service --client-id "$BOOTSTRAP_CLIENT_ID" --client-secret:env BOOTSTRAP_CLIENT_SECRET --no-prompt --http-management-port "'"$KEYCLOAK_BOOTSTRAP_MANAGEMENT_PORT"'" >/dev/null'
+elif [[ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ]]; then
+  read -rsp "Keycloak admin password: " KEYCLOAK_ADMIN_PASSWORD
+  printf "\n"
 fi
+
+[[ -n "${KEYCLOAK_ADMIN_PASSWORD:-}" || "$AUTH_MODE" = "bootstrap-service" ]] \
+  || fail "Password cannot be empty."
+
+trap 'unset KEYCLOAK_ADMIN_PASSWORD BOOTSTRAP_CLIENT_SECRET' EXIT
 
 docker exec -i \
   -e KEYCLOAK_INTERNAL_URL="$KEYCLOAK_INTERNAL_URL" \
   -e KEYCLOAK_ADMIN_USER="$KEYCLOAK_ADMIN_USER" \
-  -e KEYCLOAK_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
+  -e KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-}" \
+  -e AUTH_MODE="$AUTH_MODE" \
+  -e BOOTSTRAP_CLIENT_ID="$BOOTSTRAP_CLIENT_ID" \
+  -e BOOTSTRAP_CLIENT_SECRET="$BOOTSTRAP_CLIENT_SECRET" \
   -e REALM="$REALM" \
   "$KEYCLOAK_CONTAINER" sh -s <<"IN_CONTAINER"
 set -euo pipefail
 
-/opt/keycloak/bin/kcadm.sh config credentials \
-  --server "$KEYCLOAK_INTERNAL_URL" \
-  --realm master \
-  --user "$KEYCLOAK_ADMIN_USER" \
-  --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
+KCADM=/opt/keycloak/bin/kcadm.sh
+if [ "$AUTH_MODE" = "bootstrap-service" ]; then
+  "$KCADM" config credentials \
+    --server "$KEYCLOAK_INTERNAL_URL" \
+    --realm master \
+    --client "$BOOTSTRAP_CLIENT_ID" \
+    --secret "$BOOTSTRAP_CLIENT_SECRET" >/dev/null
+else
+  "$KCADM" config credentials \
+    --server "$KEYCLOAK_INTERNAL_URL" \
+    --realm master \
+    --user "$KEYCLOAK_ADMIN_USER" \
+    --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
+fi
 
 
 strip_quotes() {
@@ -51,11 +81,9 @@ strip_quotes() {
   printf "%s" "$value"
 }
 
-update_client() {
+find_client_id() {
   client_id="$1"
-  redirect_uris_json="$2"
-  web_origins_json="$3"
-
+  client_realm="${2:-$REALM}"
   id=""
   while IFS=, read -r raw_id raw_client_id; do
     raw_id=$(strip_quotes "$raw_id")
@@ -65,8 +93,29 @@ update_client() {
       break
     fi
   done <<CLIENTS
-$(/opt/keycloak/bin/kcadm.sh get clients -r "$REALM" -q clientId="$client_id" --fields id,clientId --format csv)
+$("$KCADM" get clients -r "$client_realm" -q clientId="$client_id" --fields id,clientId --format csv)
 CLIENTS
+  printf "%s" "$id"
+}
+
+cleanup_bootstrap_client() {
+  if [ "$AUTH_MODE" != "bootstrap-service" ]; then
+    return
+  fi
+  bootstrap_id=$(find_client_id "$BOOTSTRAP_CLIENT_ID" master)
+  if [ -n "$bootstrap_id" ]; then
+    "$KCADM" delete "clients/$bootstrap_id" -r master >/dev/null || true
+  fi
+}
+
+trap cleanup_bootstrap_client EXIT
+
+update_client() {
+  client_id="$1"
+  redirect_uris_json="$2"
+  web_origins_json="$3"
+
+  id=$(find_client_id "$client_id")
   if [ -z "$id" ]; then
     echo "ERROR: client not found: $client_id" >&2
     exit 1
@@ -77,6 +126,71 @@ CLIENTS
     -s "webOrigins=$web_origins_json" >/dev/null
   echo "updated $client_id"
 }
+
+ensure_akb_chat_client() {
+  id=$(find_client_id "akb-chat-web")
+  if [ -z "$id" ]; then
+    id=$(
+      /opt/keycloak/bin/kcadm.sh create clients -r "$REALM" \
+        -s clientId=akb-chat-web \
+        -s 'name=AKB Standalone Chat PWA' \
+        -s enabled=true \
+        -s protocol=openid-connect \
+        -i
+    )
+    echo "created akb-chat-web"
+  fi
+
+  /opt/keycloak/bin/kcadm.sh update "clients/$id" -r "$REALM" \
+    -s 'name=AKB Standalone Chat PWA' \
+    -s enabled=true \
+    -s protocol=openid-connect \
+    -s publicClient=true \
+    -s standardFlowEnabled=true \
+    -s implicitFlowEnabled=false \
+    -s directAccessGrantsEnabled=false \
+    -s serviceAccountsEnabled=false \
+    -s 'redirectUris=["https://chat.zeleznalady.cz/api/auth/callback"]' \
+    -s 'webOrigins=["https://chat.zeleznalady.cz"]' \
+    -s 'attributes."post.logout.redirect.uris"=https://chat.zeleznalady.cz/*' \
+    -s 'attributes."pkce.code.challenge.method"=S256' >/dev/null
+
+  mapper_id=""
+  while IFS=, read -r raw_id raw_name; do
+    raw_id=$(strip_quotes "$raw_id")
+    raw_name=$(strip_quotes "$raw_name")
+    if [ "$raw_name" = "akl-api audience" ]; then
+      mapper_id="$raw_id"
+      break
+    fi
+  done <<MAPPERS
+$(/opt/keycloak/bin/kcadm.sh get "clients/$id/protocol-mappers/models" -r "$REALM" --fields id,name --format csv)
+MAPPERS
+
+  if [ -z "$mapper_id" ]; then
+    /opt/keycloak/bin/kcadm.sh create "clients/$id/protocol-mappers/models" -r "$REALM" \
+      -s 'name=akl-api audience' \
+      -s protocol=openid-connect \
+      -s protocolMapper=oidc-audience-mapper \
+      -s consentRequired=false \
+      -s 'config."included.client.audience"=akl-api' \
+      -s 'config."id.token.claim"=false' \
+      -s 'config."access.token.claim"=true' >/dev/null
+  else
+    /opt/keycloak/bin/kcadm.sh update \
+      "clients/$id/protocol-mappers/models/$mapper_id" -r "$REALM" \
+      -s 'name=akl-api audience' \
+      -s protocol=openid-connect \
+      -s protocolMapper=oidc-audience-mapper \
+      -s consentRequired=false \
+      -s 'config."included.client.audience"=akl-api' \
+      -s 'config."id.token.claim"=false' \
+      -s 'config."access.token.claim"=true' >/dev/null
+  fi
+  echo "reconciled akb-chat-web"
+}
+
+ensure_akb_chat_client
 
 update_client "akl-web" \
   '["https://stratos.zeleznalady.cz/akb/*","https://akl.zeleznalady.cz/*","https://docker.home.cz/*","http://localhost:3000/*","http://localhost:3002/*","http://localhost:3003/*"]' \
@@ -99,8 +213,9 @@ update_client "stratos-shell" \
   '["https://stratos.zeleznalady.cz","https://docker.home.cz","+"]'
 
 echo
-/opt/keycloak/bin/kcadm.sh get clients -r "$REALM" --fields clientId,redirectUris,webOrigins --format json
+"$KCADM" get clients -r "$REALM" --fields clientId,redirectUris,webOrigins --format json
 IN_CONTAINER
 
-unset KEYCLOAK_ADMIN_PASSWORD
+unset KEYCLOAK_ADMIN_PASSWORD BOOTSTRAP_CLIENT_SECRET
+trap - EXIT
 printf "\nSTRATOS public routing clients updated.\n"

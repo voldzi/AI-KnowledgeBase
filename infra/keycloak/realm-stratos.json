@@ -117,15 +117,13 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "https://chat.zeleznalady.cz/api/auth/callback",
-        "http://localhost:3010/api/auth/callback"
+        "https://chat.zeleznalady.cz/api/auth/callback"
       ],
       "webOrigins": [
-        "https://chat.zeleznalady.cz",
-        "http://localhost:3010"
+        "https://chat.zeleznalady.cz"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "https://chat.zeleznalady.cz/*##http://localhost:3010/*",
+        "post.logout.redirect.uris": "https://chat.zeleznalady.cz/*",
         "pkce.code.challenge.method": "S256"
       },
       "protocolMappers": [
