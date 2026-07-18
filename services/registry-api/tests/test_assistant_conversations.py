@@ -39,7 +39,7 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
                     "role": "assistant",
                     "content": "Postup je následující...",
                     "response_type": "answer",
-                    "citations": [{"chunk_id": "chunk_789", "document_id": "doc_123"}],
+                    "citations": [],
                     "metadata": {"confidence": "high"},
                 }
             ],
@@ -51,7 +51,141 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
     assert fetched.status_code == 200
     messages = fetched.json()["messages"]
     assert [message["role"] for message in messages] == ["user", "assistant"]
-    assert messages[1]["citations"][0]["chunk_id"] == "chunk_789"
+    assert messages[1]["availability"] == "available"
+    assert messages[1]["content"] == "Postup je následující..."
+
+
+def test_history_redacts_answer_when_cited_version_is_not_available(
+    client: TestClient,
+) -> None:
+    client.post(
+        "/api/v1/assistant/conversations/conv_redacted/messages",
+        json=_append_payload(),
+    )
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_redacted/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Obsah, který nesmí obejít aktuální oprávnění.",
+                    "response_type": "answer",
+                    "citations": [
+                        {
+                            "chunk_id": "chunk_removed",
+                            "document_id": "doc_removed",
+                            "document_version_id": "ver_removed",
+                        }
+                    ],
+                    "metadata": {
+                        "confidence": "high",
+                        "report_artifacts": [{"artifact_id": "sensitive_report"}],
+                    },
+                }
+            ],
+        },
+    )
+    assert appended.status_code == 201
+    redacted = appended.json()["messages"][1]
+    assert redacted["availability"] == "source_access_changed"
+    assert redacted["content"] == ""
+    assert redacted["citations"] == []
+    assert redacted["metadata"] == {"history_access_changed": True}
+
+    fetched = client.get(
+        "/api/v1/assistant/conversation-history/conv_redacted",
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["messages"][1] == redacted
+
+
+def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
+    client: TestClient,
+) -> None:
+    owner_headers = {
+        "X-AKL-Subject": "employee_1",
+        "X-AKL-Roles": "stratos_user",
+        "X-STRATOS-Capabilities": "akb:upload,akb:manage_document,akb:chat",
+        "X-STRATOS-Scopes": "organization",
+        "X-STRATOS-Organization-ID": "org_stratos",
+    }
+    document = client.post(
+        "/api/v1/documents",
+        headers=owner_headers,
+        json={
+            "title": "Aktuální metodika",
+            "document_type": "manual",
+            "owner_id": "employee_1",
+            "classification": "internal",
+            "information_policy": {
+                "schemaVersion": "stratos-information-policy-2",
+                "policyBindingId": "pol_historyauthorized01",
+                "policyVersion": "information-policy-2.0.0",
+                "handlingClass": "INTERNAL",
+                "legalClassification": "NONE",
+                "tlp": None,
+                "pap": None,
+                "contentCategories": ["CONTRACTUAL"],
+                "audience": {
+                    "organizationId": "org_stratos",
+                    "scopeType": "organization",
+                    "scopeIds": [],
+                    "recipientSubjectIds": [],
+                },
+                "obligations": ["AUDIT_ACCESS", "NO_EXTERNAL_AI"],
+                "originatorId": "employee_1",
+                "issuedAt": "2026-07-18T08:00:00Z",
+                "reviewAt": None,
+            },
+        },
+    )
+    assert document.status_code == 201, document.text
+    document_id = document.json()["document_id"]
+    version = client.post(
+        f"/api/v1/documents/{document_id}/versions",
+        headers=owner_headers,
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/history/authorized.pdf",
+            "file_hash": f"sha256:{'a' * 64}",
+        },
+    )
+    assert version.status_code == 201, version.text
+    version_id = version.json()["document_version_id"]
+
+    client.post(
+        "/api/v1/assistant/conversations/conv_authorized/messages",
+        headers=owner_headers,
+        json=_append_payload(),
+    )
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_authorized/messages",
+        headers=owner_headers,
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Tato odpověď zůstává dostupná.",
+                    "response_type": "answer",
+                    "citations": [
+                        {
+                            "chunk_id": "chunk_authorized",
+                            "document_id": document_id,
+                            "document_version_id": version_id,
+                        }
+                    ],
+                    "metadata": {"confidence": "high"},
+                }
+            ],
+        },
+    )
+    assert appended.status_code == 201, appended.text
+    answer = appended.json()["messages"][1]
+    assert answer["availability"] == "available"
+    assert answer["content"] == "Tato odpověď zůstává dostupná."
+    assert answer["citations"][0]["document_version_id"] == version_id
 
 
 def test_append_rejects_user_mismatch(client: TestClient) -> None:

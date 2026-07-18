@@ -103,6 +103,12 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
 
 - Assistant conversations are persisted only with explicit ownership, default
   180-day retention, archive support, and user/group sharing records.
+- Every cited assistant message is reauthorized against the current immutable
+  document-version policy when conversation history is returned. If any cited
+  version is missing, unavailable, or no longer allowed, Registry returns the
+  message as `source_access_changed` without its stored answer, citations, or
+  structured metadata. Conversation ownership or sharing never preserves
+  obsolete source access.
 - Server-side web route guards redirect employee chat-only users away from
   knowledge-management and admin surfaces.
 - The standalone `AKL_WEB_PROFILE=chat` instance applies an environment-level

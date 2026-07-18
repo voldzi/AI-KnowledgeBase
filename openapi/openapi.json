@@ -15427,6 +15427,12 @@
             "type": "object",
             "title": "Metadata"
           },
+          "availability": {
+            "type": "string",
+            "pattern": "^(available|source_access_changed)$",
+            "title": "Availability",
+            "default": "available"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",

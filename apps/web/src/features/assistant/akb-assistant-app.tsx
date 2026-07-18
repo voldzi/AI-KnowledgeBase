@@ -59,6 +59,9 @@ import type {
 interface AkbAssistantAppProps {
   initialNowIso: string;
   initialConversations?: AssistantConversationListItem[];
+  initialConversationId?: string | null;
+  initialHistoryUnavailable?: boolean;
+  initialRequestedThreadUnavailable?: boolean;
   suggestions: AssistantSuggestion[];
 }
 
@@ -228,6 +231,10 @@ const assistantAppCopy = {
     addShare: "Přidat sdílení",
     shareSaved: "Sdílení uloženo pro tuto relaci.",
     shareEmpty: "Zatím nikdo další.",
+    shareAfterFirstMessage: "Vlákno lze sdílet po uložení první odpovědi.",
+    historyUnavailable: "Historii se nepodařilo načíst. Nový dotaz můžete zadat a načtení historie zkusit později.",
+    requestedThreadUnavailable: "Požadované vlákno není dostupné nebo k němu nemáte přístup.",
+    historySourceAccessChanged: "Přístup ke zdrojům této historické odpovědi se změnil. Položte dotaz znovu, aby AKB použila pouze aktuálně dostupné zdroje.",
     close: "Zavřít",
     owner: "Vlastník",
     you: "Vy"
@@ -323,20 +330,39 @@ const assistantAppCopy = {
     addShare: "Add share",
     shareSaved: "Sharing saved for this session.",
     shareEmpty: "No one else yet.",
+    shareAfterFirstMessage: "The thread can be shared after its first answer has been saved.",
+    historyUnavailable: "Conversation history could not be loaded. You can ask a new question and try loading history later.",
+    requestedThreadUnavailable: "The requested thread is unavailable or you do not have access to it.",
+    historySourceAccessChanged: "Access to the sources for this historical answer has changed. Ask the question again so AKB uses only sources currently available to you.",
     close: "Close",
     owner: "Owner",
     you: "You"
   }
 } satisfies Record<AklLanguage, AssistantAppLabels>;
 
-export function AkbAssistantApp({ initialNowIso, initialConversations = [], suggestions }: AkbAssistantAppProps) {
+export function AkbAssistantApp({
+  initialNowIso,
+  initialConversations = [],
+  initialConversationId = null,
+  initialHistoryUnavailable = false,
+  initialRequestedThreadUnavailable = false,
+  suggestions
+}: AkbAssistantAppProps) {
   const { language } = useLanguage();
   const copy = assistantAppCopy[language];
   const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso, initialConversations));
-  const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations));
+  const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations, initialConversationId));
   const [threadSearch, setThreadSearch] = useState("");
   const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(() => {
+    if (initialRequestedThreadUnavailable) {
+      return assistantAppCopy[language].requestedThreadUnavailable;
+    }
+    if (initialHistoryUnavailable) {
+      return assistantAppCopy[language].historyUnavailable;
+    }
+    return null;
+  });
   const [submitting, setSubmitting] = useState(false);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
@@ -381,7 +407,10 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
         if (!active || !payload?.conversation) {
           return;
         }
-        const loadedThread = threadFromConversation(payload.conversation as AssistantConversationDetail);
+        const loadedThread = threadFromConversation(
+          payload.conversation as AssistantConversationDetail,
+          language
+        );
         setThreads((current) => current.map((thread) => (
           thread.id === activeThread.id ? { ...loadedThread, pinned: thread.pinned, draft: thread.draft } : thread
         )));
@@ -390,7 +419,19 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
     return () => {
       active = false;
     };
-  }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.id]);
+  }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.id, language]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeThread?.conversationId) {
+      url.searchParams.set("thread", activeThread.conversationId);
+    } else {
+      url.searchParams.delete("thread");
+    }
+    if (url.toString() !== window.location.href) {
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+  }, [activeThread?.conversationId]);
 
   function updateThread(threadId: string, updater: (thread: AssistantThread) => AssistantThread) {
     setThreads((current) => current.map((thread) => (thread.id === threadId ? updater(thread) : thread)));
@@ -702,7 +743,7 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
       })
       .then((payload) => {
         const conversation = payload.conversation as AssistantConversationDetail;
-        updateThread(activeThread.id, () => threadFromConversation(conversation));
+        updateThread(activeThread.id, () => threadFromConversation(conversation, language));
         setShareTarget("");
         setShareStatus(copy.shareSaved);
       })
@@ -710,7 +751,11 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
   }
 
   async function copyThreadLink() {
-    const link = `${window.location.origin}${withAppBasePath(`/chat?thread=${encodeURIComponent(activeThread.conversationId ?? activeThread.id)}`)}`;
+    if (!activeThread.conversationId) {
+      setStatusMessage(copy.shareAfterFirstMessage);
+      return;
+    }
+    const link = `${window.location.origin}${withAppBasePath(`/chat?thread=${encodeURIComponent(activeThread.conversationId)}`)}`;
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
@@ -797,10 +842,22 @@ export function AkbAssistantApp({ initialNowIso, initialConversations = [], sugg
               <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                 <Archive size={16} aria-hidden="true" />
               </button>
-              <button className="akb-chat-icon-button" type="button" onClick={copyThreadLink} title={copy.copyLink} aria-label={copy.copyLink}>
+              <button
+                className="akb-chat-icon-button"
+                type="button"
+                onClick={copyThreadLink}
+                title={activeThread.conversationId ? copy.copyLink : copy.shareAfterFirstMessage}
+                aria-label={activeThread.conversationId ? copy.copyLink : copy.shareAfterFirstMessage}
+                disabled={!activeThread.conversationId}
+              >
                 {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
               </button>
-              <StratosButton type="button" onClick={() => setShareOpen(true)}>
+              <StratosButton
+                type="button"
+                onClick={() => setShareOpen(true)}
+                disabled={!activeThread.conversationId}
+                title={activeThread.conversationId ? copy.share : copy.shareAfterFirstMessage}
+              >
                 <Share2 size={16} aria-hidden="true" />
                 {copy.share}
               </StratosButton>
@@ -1554,7 +1611,7 @@ function createInitialThreads(
   conversations: AssistantConversationListItem[] = []
 ): AssistantThread[] {
   if (conversations.length > 0) {
-    return conversations.map((conversation, index) => threadFromConversationListItem(conversation, index === 0));
+    return conversations.map((conversation) => threadFromConversationListItem(conversation));
   }
   return [
     {
@@ -1565,7 +1622,7 @@ function createInitialThreads(
       messages: [],
       draft: "",
       visibility: "private",
-      pinned: true,
+      pinned: false,
       updatedAt: now,
       sharedWith: [],
       historyLoaded: true
@@ -1573,9 +1630,16 @@ function createInitialThreads(
   ];
 }
 
-function initialActiveThreadId(conversations: AssistantConversationListItem[] = []): string {
-  return conversations[0]?.conversation_id
-    ? threadIdFromConversationId(conversations[0].conversation_id)
+function initialActiveThreadId(
+  conversations: AssistantConversationListItem[] = [],
+  requestedConversationId: string | null = null
+): string {
+  const conversationId = requestedConversationId &&
+    conversations.some((conversation) => conversation.conversation_id === requestedConversationId)
+    ? requestedConversationId
+    : conversations[0]?.conversation_id;
+  return conversationId
+    ? threadIdFromConversationId(conversationId)
     : "thread-current";
 }
 
@@ -1595,7 +1659,7 @@ function createEmptyThread(title: string): AssistantThread {
   };
 }
 
-function threadFromConversationListItem(conversation: AssistantConversationListItem, pinned: boolean): AssistantThread {
+function threadFromConversationListItem(conversation: AssistantConversationListItem): AssistantThread {
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
@@ -1604,7 +1668,7 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
     messages: [],
     draft: "",
     visibility: conversation.visibility,
-    pinned,
+    pinned: false,
     updatedAt: conversation.updated_at,
     sharedWith: conversation.shared_with.map((share) => ({
       name: shareName(share.subject_type, share.subject_id),
@@ -1614,7 +1678,10 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
   };
 }
 
-function threadFromConversation(conversation: AssistantConversationDetail): AssistantThread {
+function threadFromConversation(
+  conversation: AssistantConversationDetail,
+  language: AklLanguage
+): AssistantThread {
   let previousUserMessage = "";
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
@@ -1622,7 +1689,12 @@ function threadFromConversation(conversation: AssistantConversationDetail): Assi
     title: conversation.title ?? "AKB chat",
     context: {},
     messages: conversation.messages.map((message) => {
-      const chatMessage = messageFromConversationMessage(conversation.conversation_id, message, previousUserMessage);
+      const chatMessage = messageFromConversationMessage(
+        conversation.conversation_id,
+        message,
+        previousUserMessage,
+        language
+      );
       if (message.role === "user") {
         previousUserMessage = message.content;
       }
@@ -1643,27 +1715,39 @@ function threadFromConversation(conversation: AssistantConversationDetail): Assi
 function messageFromConversationMessage(
   conversationId: string,
   message: AssistantConversationMessage,
-  previousUserMessage = ""
+  previousUserMessage = "",
+  language: AklLanguage
 ): ChatMessage {
+  const content = message.availability === "source_access_changed"
+    ? assistantAppCopy[language].historySourceAccessChanged
+    : message.content;
   return {
     id: message.message_id,
     role: message.role,
-    content: message.content,
+    content,
     createdAt: message.created_at,
-    response: message.role === "assistant" ? responseFromPersistedMessage(conversationId, message, previousUserMessage) : undefined
+    response: message.role === "assistant"
+      ? responseFromPersistedMessage(
+          conversationId,
+          message,
+          previousUserMessage,
+          content
+        )
+      : undefined
   };
 }
 
 function responseFromPersistedMessage(
   conversationId: string,
   message: AssistantConversationMessage,
-  previousUserMessage: string
+  previousUserMessage: string,
+  content: string
 ): AssistantChatResponse {
   const metadata = message.metadata ?? {};
   const response: AssistantChatResponse = {
     response_type: message.response_type ?? "answer",
     conversation_id: conversationId,
-    answer: message.content,
+    answer: content,
     message: null,
     questions: [],
     why_needed: null,

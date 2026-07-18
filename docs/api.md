@@ -320,6 +320,12 @@ PUT   /api/assistant/conversations/{conversationId}/shares
 
 Conversation history defaults to private visibility and 180-day retention.
 Archived or expired conversations are omitted from the default list.
+Each returned message includes `availability`. Assistant messages with citations
+are reauthorized against every exact cited document version on each history
+read. If one of those versions is no longer allowed or cannot be safely
+verified, Registry returns `availability=source_access_changed`, an empty
+`content`, no citations, and only the bounded
+`metadata.history_access_changed=true` marker.
 
 ## STRATOS Profile Settings
 

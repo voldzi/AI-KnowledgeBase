@@ -1573,6 +1573,10 @@ class AssistantMessageResponse(BaseModel):
     response_type: str | None = None
     citations: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    availability: str = Field(
+        default="available",
+        pattern="^(available|source_access_changed)$",
+    )
     created_at: datetime
 
 

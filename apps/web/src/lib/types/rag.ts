@@ -246,6 +246,7 @@ export interface AssistantConversationMessage {
   response_type: AssistantResponseType | null;
   citations: Citation[];
   metadata: Record<string, unknown>;
+  availability?: "available" | "source_access_changed";
   created_at: string;
 }
 

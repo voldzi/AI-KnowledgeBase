@@ -8,7 +8,7 @@ import json
 from threading import Lock
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.security import APIKeyHeader
 from sqlalchemy import delete, desc, select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -6994,14 +6994,82 @@ ASSISTANT_CONVERSATION_DEFAULT_RETENTION_DAYS = 180
 CONVERSATION_SERVICE_ROLES = {"admin", "service_rag", "stratos_service"}
 
 
-def _assistant_message_response(message: AssistantMessage) -> AssistantMessageResponse:
+def _assistant_citation_version_allowed(
+    citation: dict[str, object],
+    *,
+    db: Session,
+    principal: Principal,
+    access_cache: dict[tuple[str, str], bool],
+) -> bool:
+    document_id = citation.get("document_id")
+    document_version_id = citation.get("document_version_id")
+    if not isinstance(document_id, str) or not isinstance(document_version_id, str):
+        return False
+    cache_key = (document_id, document_version_id)
+    cached = access_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    document = db.get(Document, document_id)
+    version = db.get(DocumentVersion, document_version_id)
+    if document is None or version is None or version.document_id != document_id:
+        access_cache[cache_key] = False
+        return False
+    try:
+        require_document_version_action(
+            principal,
+            Action.rag_query,
+            document,
+            version,
+            db,
+        )
+    except HTTPException:
+        access_cache[cache_key] = False
+        return False
+    access_cache[cache_key] = True
+    return True
+
+
+def _assistant_message_response(
+    message: AssistantMessage,
+    *,
+    db: Session,
+    principal: Principal,
+    access_cache: dict[tuple[str, str], bool],
+) -> AssistantMessageResponse:
+    citations = [
+        citation
+        for citation in message.citations
+        if isinstance(citation, dict)
+    ]
+    source_access_changed = (
+        message.role == "assistant"
+        and bool(citations)
+        and not all(
+            _assistant_citation_version_allowed(
+                citation,
+                db=db,
+                principal=principal,
+                access_cache=access_cache,
+            )
+            for citation in citations
+        )
+    )
     return AssistantMessageResponse(
         message_id=message.message_id,
         role=message.role,
-        content=message.content,
+        content="" if source_access_changed else message.content,
         response_type=message.response_type,
-        citations=message.citations,
-        metadata=message.message_metadata,
+        citations=[] if source_access_changed else citations,
+        metadata=(
+            {"history_access_changed": True}
+            if source_access_changed
+            else message.message_metadata
+        ),
+        availability=(
+            "source_access_changed"
+            if source_access_changed
+            else "available"
+        ),
         created_at=message.created_at,
     )
 
@@ -7019,7 +7087,13 @@ def _assistant_share_response(share: AssistantConversationShare) -> AssistantCon
     )
 
 
-def _conversation_response(conversation: AssistantConversation) -> AssistantConversationDetailResponse:
+def _conversation_response(
+    conversation: AssistantConversation,
+    *,
+    db: Session,
+    principal: Principal,
+) -> AssistantConversationDetailResponse:
+    access_cache: dict[tuple[str, str], bool] = {}
     return AssistantConversationDetailResponse(
         conversation_id=conversation.conversation_id,
         user_id=conversation.user_id,
@@ -7031,7 +7105,15 @@ def _conversation_response(conversation: AssistantConversation) -> AssistantConv
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         shared_with=[_assistant_share_response(share) for share in conversation.shares if share.status == "active"],
-        messages=[_assistant_message_response(message) for message in conversation.messages],
+        messages=[
+            _assistant_message_response(
+                message,
+                db=db,
+                principal=principal,
+                access_cache=access_cache,
+            )
+            for message in conversation.messages
+        ],
     )
 
 
@@ -7212,7 +7294,7 @@ def append_assistant_messages(
     db.commit()
     db.refresh(conversation)
     db.refresh(conversation, attribute_names=["messages", "shares"])
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)
 
 
 @router.get(
@@ -7225,7 +7307,7 @@ def get_assistant_conversation(
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
     conversation, _ = _conversation_for_principal(db, conversation_id, principal)
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)
 
 
 @router.patch(
@@ -7258,7 +7340,7 @@ def update_assistant_conversation(
     db.commit()
     db.refresh(conversation)
     db.refresh(conversation, attribute_names=["messages", "shares"])
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)
 
 
 @router.put(
@@ -7323,4 +7405,4 @@ def replace_assistant_conversation_shares(
     db.commit()
     db.refresh(conversation)
     db.refresh(conversation, attribute_names=["messages", "shares"])
-    return _conversation_response(conversation)
+    return _conversation_response(conversation, db=db, principal=principal)
