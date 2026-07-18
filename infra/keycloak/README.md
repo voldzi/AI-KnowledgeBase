@@ -83,6 +83,31 @@ AKL_WEB_SESSION_SECRET=<long random value>
 
 `akl-web` and `stratos-akl-adapter` include an `akl-api` audience mapper because Registry API validates bearer tokens with `AKL_OIDC_AUDIENCE=akl-api`.
 
+The standalone chat uses the dedicated public client `akb-chat-web` with
+Authorization Code + PKCE. Existing production realms must reconcile it with
+`update-stratos-public-routing.sh`; importing the realm export is not required:
+
+```text
+redirect URI: https://chat.zeleznalady.cz/api/auth/callback
+post logout URI: https://chat.zeleznalady.cz/*
+web origin: https://chat.zeleznalady.cz
+```
+
+The reconciliation is idempotent. It creates the client and its `akl-api`
+audience mapper when absent and otherwise restores the exact public-client,
+flow, PKCE and URI settings. It does not modify users, roles, groups or other
+client secrets.
+
+Interactive administration uses the Keycloak administrator password. On the
+production host, the supported non-interactive alternative creates a random,
+short-lived bootstrap administration client, performs the reconciliation and
+removes that temporary client before exit:
+
+```bash
+KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
+  ./infra/keycloak/update-stratos-public-routing.sh
+```
+
 Provision the confidential `aiip-service` client, its single application role,
 and the `akb-api` audience with:
 

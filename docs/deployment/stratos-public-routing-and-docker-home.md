@@ -626,7 +626,9 @@ infra/keycloak/update-stratos-public-routing.sh
 
 Skript se pta na Keycloak admin heslo a upravuje pouze:
 
-- `redirectUris`,
-- `webOrigins`.
+- `redirectUris` a `webOrigins` existujicich STRATOS klientu,
+- samostatny public klient `akb-chat-web`, jeho PKCE nastaveni a `akl-api`
+  audience mapper.
 
-Nemaze uzivatele, role, skupiny ani client secrets.
+Pokud `akb-chat-web` chybi, skript jej idempotentne vytvori. Nemaze uzivatele,
+role, skupiny ani client secrets.
