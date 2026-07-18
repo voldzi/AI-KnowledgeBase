@@ -14,7 +14,9 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const legacyRedirect = chatProfileRedirectPath(pathname);
   if (legacyRedirect) {
-    return NextResponse.redirect(new URL(legacyRedirect, request.url), 307);
+    const target = request.nextUrl.clone();
+    target.pathname = legacyRedirect;
+    return NextResponse.redirect(target, 308);
   }
 
   if (!isChatProfilePathAllowed(pathname)) {
@@ -34,7 +36,7 @@ export function proxy(request: NextRequest) {
         },
       );
     }
-    const target = new URL("/chat", request.url);
+    const target = new URL("/", request.url);
     target.searchParams.set("blocked", "1");
     return NextResponse.redirect(target, 307);
   }

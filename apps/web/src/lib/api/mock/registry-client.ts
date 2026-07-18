@@ -40,6 +40,8 @@ import type {
   AssistantConversationDetail,
   AssistantConversationListResponse,
   AssistantConversationMessageAppendRequest,
+  AssistantMessageFeedback,
+  AssistantMessageFeedbackPutRequest,
   AssistantConversationPatchRequest,
   AssistantConversationShareReplaceRequest,
 } from "@/lib/types";
@@ -1127,6 +1129,7 @@ export class MockRegistryClient implements RegistryApiClient {
         visibility: conversation.visibility,
         retention_until: conversation.retention_until,
         archived_at: conversation.archived_at,
+        pinned_at: conversation.pinned_at,
         created_at: conversation.created_at,
         updated_at: conversation.updated_at,
         shared_with: conversation.shared_with,
@@ -1159,6 +1162,7 @@ export class MockRegistryClient implements RegistryApiClient {
       visibility: request.visibility ?? "private",
       retention_until: request.retention_until ?? null,
       archived_at: null,
+      pinned_at: null,
       created_at: now,
       updated_at: now,
       shared_with: [],
@@ -1211,9 +1215,51 @@ export class MockRegistryClient implements RegistryApiClient {
         : request.status === "active"
           ? null
           : conversation.archived_at;
+    if (request.pinned !== undefined) {
+      conversation.pinned_at = request.pinned ? now : null;
+    }
     conversation.updated_at = now;
     this.assistantConversations.set(conversationId, cloneMock(conversation));
     return cloneMock(conversation);
+  }
+
+  async putAssistantMessageFeedback(
+    conversationId: string,
+    messageId: string,
+    request: AssistantMessageFeedbackPutRequest,
+    context: ApiRequestContext,
+  ): Promise<AssistantMessageFeedback> {
+    const conversation = this.requireAssistantConversation(
+      conversationId,
+      context,
+    );
+    const message = conversation.messages.find(
+      (candidate) => candidate.message_id === messageId,
+    );
+    if (!message || message.role !== "assistant") {
+      throw new ApiClientError(
+        "Assistant message not found",
+        404,
+        "ASSISTANT_MESSAGE_NOT_FOUND",
+        "registry-api",
+      );
+    }
+    const now = new Date().toISOString();
+    const feedback: AssistantMessageFeedback = {
+      feedback_id:
+        message.viewer_feedback?.feedback_id ??
+        `mock_feedback_${messageId}_${context.subjectId}`,
+      rating: request.rating,
+      reason_code: request.reason_code ?? null,
+      created_at: message.viewer_feedback?.created_at ?? now,
+      updated_at: now,
+    };
+    message.viewer_feedback = feedback;
+    this.assistantConversations.set(
+      conversationId,
+      cloneMock(conversation),
+    );
+    return cloneMock(feedback);
   }
 
   async deleteAssistantConversation(

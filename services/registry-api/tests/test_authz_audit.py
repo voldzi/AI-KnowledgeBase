@@ -65,6 +65,8 @@ def test_authz_check_and_filter_documents(client, admin_headers):
     assert filtered.json() == {
         "allowed_document_ids": [document_id],
         "denied_document_ids": ["doc_missing"],
+        "allowed_document_version_ids": {},
+        "denied_document_version_ids": {},
     }
 
 

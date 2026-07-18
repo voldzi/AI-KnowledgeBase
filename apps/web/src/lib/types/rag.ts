@@ -188,6 +188,20 @@ export interface AssistantReportArtifactQuality {
   row_citation_coverage: number;
 }
 
+export type AssistantChartType = "bar" | "stacked_bar" | "line" | "pie" | "scatter";
+
+export interface AssistantChartArtifact {
+  artifact_id: string;
+  artifact_contract_version: "chart.v1";
+  chart_type: AssistantChartType;
+  title: string;
+  dataset_artifact_id: string;
+  category_column_key: string;
+  value_column_keys: string[];
+  row_limit: number;
+  warnings: string[];
+}
+
 export interface AssistantReportArtifact {
   artifact_id: string;
   artifact_contract_version?: string;
@@ -199,6 +213,7 @@ export interface AssistantReportArtifact {
   export_formats: Array<"xlsx" | "pdf">;
   source_citation_count: number;
   warnings: string[];
+  charts?: AssistantChartArtifact[];
   provenance?: AssistantReportArtifactProvenance;
   quality?: AssistantReportArtifactQuality;
 }
@@ -250,7 +265,30 @@ export interface AssistantConversationMessage {
   citations: Citation[];
   metadata: Record<string, unknown>;
   availability?: "available" | "source_access_changed";
+  viewer_feedback?: AssistantMessageFeedback | null;
   created_at: string;
+}
+
+export type AssistantMessageFeedbackRating = "helpful" | "not_helpful";
+export type AssistantMessageFeedbackReason =
+  | "accurate_useful"
+  | "incomplete"
+  | "incorrect"
+  | "citation_problem"
+  | "access_problem"
+  | "other";
+
+export interface AssistantMessageFeedback {
+  feedback_id: string;
+  rating: AssistantMessageFeedbackRating;
+  reason_code: AssistantMessageFeedbackReason | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssistantMessageFeedbackPutRequest {
+  rating: AssistantMessageFeedbackRating;
+  reason_code?: AssistantMessageFeedbackReason | null;
 }
 
 export interface AssistantConversationShare {
@@ -273,6 +311,7 @@ export interface AssistantConversationDetail {
   visibility: "private" | "shared";
   retention_until: string | null;
   archived_at: string | null;
+  pinned_at: string | null;
   created_at: string;
   updated_at: string;
   shared_with: AssistantConversationShare[];
@@ -287,6 +326,7 @@ export interface AssistantConversationListItem {
   visibility: "private" | "shared";
   retention_until: string | null;
   archived_at: string | null;
+  pinned_at: string | null;
   created_at: string;
   updated_at: string;
   shared_with: AssistantConversationShare[];
@@ -304,6 +344,7 @@ export interface AssistantConversationPatchRequest {
   status?: "active" | "archived";
   visibility?: "private" | "shared";
   retention_until?: string | null;
+  pinned?: boolean;
 }
 
 export interface AssistantConversationMessageAppendRequest {

@@ -199,6 +199,14 @@ datasets and run reports are visible only to their owner or an administrator;
 draft cases do not enter the production quality gate. A benchmark therefore
 cannot grant access to a document that the caller cannot retrieve normally.
 
+Chat response feedback is deliberately separate from conversation content.
+Registry accepts only `helpful | not_helpful` and a bounded reason code; it
+does not accept free text. Audit and telemetry therefore never contain the
+prompt, response, citation text, or a user explanation. Historical cited
+answers are reauthorized on each load. If current source access is absent, the
+stored answer, citations, and structured artifacts are withheld and only a
+content-free aggregate audit event is written.
+
 ## Secrets
 
 Secrets must not be committed to Git, documentation, package artifacts, shell

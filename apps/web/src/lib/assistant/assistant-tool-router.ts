@@ -31,7 +31,7 @@ export interface AssistantToolRoute {
   reportRequest: AssistantReportRequest | null;
 }
 
-const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf)/i;
+const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf|graf|diagram|vizualiz|chart|plot)/i;
 const OBLIGATION_OUTPUT_RE = /(povinnost|obligation)/i;
 
 export function routeAssistantMessage(

@@ -1,12 +1,16 @@
+import ChatPage from "@/app/chat/page";
 import { DashboardPage } from "@/features/dashboard/dashboard-page";
 import { getAklConfig } from "@/lib/api/config";
-import { redirect } from "next/navigation";
 
 export { dynamic } from "@/features/dashboard/dashboard-page";
 
-export default async function HomePage() {
+interface HomePageProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function HomePage({ searchParams }: HomePageProps) {
   if (getAklConfig().webProfile === "chat") {
-    redirect("/chat");
+    return <ChatPage searchParams={searchParams} />;
   }
   return DashboardPage({ returnTo: "/" });
 }

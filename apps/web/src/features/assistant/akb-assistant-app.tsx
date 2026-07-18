@@ -5,6 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Archive,
+  BarChart3,
   Bot,
   Check,
   Clock3,
@@ -17,12 +18,16 @@ import {
   MessageSquarePlus,
   PanelLeftOpen,
   PanelRightOpen,
+  Pencil,
   Pin,
+  PinOff,
   Search,
   Send,
   Share2,
   ShieldAlert,
   Table2,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   Users,
   X
@@ -32,6 +37,7 @@ import { DirectoryPersonPicker as PersonPicker } from "@voldzi/stratos-ui";
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosDataTable, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
 import { CitationList, CitationModal, SourceContextCard, type CitationViewerLabels } from "@/features/citations/citation-viewer";
+import { conversationShareUrl } from "@/features/assistant/conversation-navigation";
 import { withAppBasePath } from "@/lib/app-url";
 import {
   ASSISTANT_REPORT_REQUEST_CONTEXT_KEY,
@@ -51,9 +57,13 @@ import {
 import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
 import type {
   AssistantChatResponse,
+  AssistantChartArtifact,
   AssistantConversationDetail,
   AssistantConversationListItem,
   AssistantConversationMessage,
+  AssistantMessageFeedback,
+  AssistantMessageFeedbackRating,
+  AssistantMessageFeedbackReason,
   AssistantReportArtifact,
   AssistantReportRow,
   AssistantSuggestion,
@@ -62,6 +72,7 @@ import type {
   DirectoryUser,
   SourceContext
 } from "@/lib/types";
+import { finiteNumber } from "@/lib/reporting/assistant-chart";
 
 interface AkbAssistantAppProps {
   currentSubjectId: string;
@@ -75,6 +86,7 @@ interface AkbAssistantAppProps {
 
 type ThreadVisibility = "private" | "shared";
 type SharePermission = "viewer" | "commenter";
+type ThreadFilter = "active" | "shared" | "archived";
 
 interface ChatMessage {
   id: string;
@@ -86,6 +98,9 @@ interface ChatMessage {
   authorDisplayName?: string | null;
   response?: AssistantChatResponse;
   pending?: boolean;
+  persisted?: boolean;
+  feedback?: AssistantMessageFeedback | null;
+  feedbackSaving?: boolean;
 }
 
 interface AssistantThread {
@@ -96,6 +111,7 @@ interface AssistantThread {
   context: Record<string, unknown>;
   messages: ChatMessage[];
   draft: string;
+  status: "active" | "archived";
   visibility: ThreadVisibility;
   pinned: boolean;
   updatedAt: string;
@@ -166,11 +182,24 @@ const assistantAppCopy = {
     threadList: "Vlákna",
     pinned: "Připnuté",
     recent: "Nedávné",
+    activeThreads: "Moje aktivní",
+    sharedWithMe: "Sdílené se mnou",
+    archivedThreads: "Archiv",
     privateThread: "Soukromé",
     sharedThread: "Sdílené",
     ready: "Připraven",
     share: "Sdílet",
     archive: "Archivovat",
+    restore: "Obnovit z archivu",
+    pinThread: "Připnout",
+    unpinThread: "Odepnout",
+    renameThread: "Přejmenovat",
+    renameTitle: "Přejmenovat vlákno",
+    renameLabel: "Název vlákna",
+    renameSave: "Uložit název",
+    renameFailed: "Název se nepodařilo uložit.",
+    threadUpdateFailed: "Změnu vlákna se nepodařilo uložit.",
+    archivedReadOnly: "Archivované vlákno je pouze pro čtení. Pro pokračování je nejprve obnovte.",
     deleteThread: "Trvale odstranit",
     deleteTitle: "Trvale odstranit vlákno?",
     deleteBody: "Zprávy i sdílení budou nenávratně odstraněny. Zůstane pouze obsahově prázdný auditní záznam o odstranění.",
@@ -247,6 +276,16 @@ const assistantAppCopy = {
     warningConversationNotPersisted: "Odpověď je dostupná, ale vlákno se teď nepodařilo uložit.",
     warningReportAdjusted: "Sestava byla upravena do bezpečného exportovatelného formátu.",
     warningGeneric: "Odpověď obsahuje provozní upozornění.",
+    feedbackHelpful: "Pomohlo",
+    feedbackNotHelpful: "Nepomohlo",
+    feedbackPrompt: "Co bylo potřeba zlepšit?",
+    feedbackIncomplete: "Odpověď je neúplná",
+    feedbackIncorrect: "Odpověď není správná",
+    feedbackCitation: "Problém se zdrojem nebo citací",
+    feedbackAccess: "Problém s přístupem ke zdroji",
+    feedbackOther: "Jiný důvod",
+    feedbackSaved: "Děkujeme, hodnocení bylo uloženo.",
+    feedbackFailed: "Hodnocení se nepodařilo uložit.",
     citationViewer: "Prohlížeč citací",
     shareTitle: "Sdílet vlákno",
     shareTarget: "Osoba z adresáře",
@@ -281,11 +320,24 @@ const assistantAppCopy = {
     threadList: "Threads",
     pinned: "Pinned",
     recent: "Recent",
+    activeThreads: "My active",
+    sharedWithMe: "Shared with me",
+    archivedThreads: "Archive",
     privateThread: "Private",
     sharedThread: "Shared",
     ready: "Ready",
     share: "Share",
     archive: "Archive",
+    restore: "Restore from archive",
+    pinThread: "Pin",
+    unpinThread: "Unpin",
+    renameThread: "Rename",
+    renameTitle: "Rename thread",
+    renameLabel: "Thread name",
+    renameSave: "Save name",
+    renameFailed: "The name could not be saved.",
+    threadUpdateFailed: "The thread change could not be saved.",
+    archivedReadOnly: "An archived thread is read-only. Restore it before continuing.",
     deleteThread: "Delete permanently",
     deleteTitle: "Permanently delete this thread?",
     deleteBody: "Messages and sharing will be removed permanently. Only a content-free deletion audit record will remain.",
@@ -362,6 +414,16 @@ const assistantAppCopy = {
     warningConversationNotPersisted: "The answer is available, but the thread could not be saved right now.",
     warningReportAdjusted: "The report was adjusted into a safe exportable format.",
     warningGeneric: "The answer contains an operational notice.",
+    feedbackHelpful: "Helpful",
+    feedbackNotHelpful: "Not helpful",
+    feedbackPrompt: "What should be improved?",
+    feedbackIncomplete: "The answer is incomplete",
+    feedbackIncorrect: "The answer is incorrect",
+    feedbackCitation: "Source or citation problem",
+    feedbackAccess: "Source access problem",
+    feedbackOther: "Another reason",
+    feedbackSaved: "Thank you. Your feedback was saved.",
+    feedbackFailed: "Feedback could not be saved.",
     citationViewer: "Citation viewer",
     shareTitle: "Share thread",
     shareTarget: "Directory person",
@@ -404,6 +466,7 @@ export function AkbAssistantApp({
   const [threads, setThreads] = useState<AssistantThread[]>(() => createInitialThreads(language, initialNowIso, initialConversations));
   const [activeThreadId, setActiveThreadId] = useState(() => initialActiveThreadId(initialConversations, initialConversationId));
   const [threadSearch, setThreadSearch] = useState("");
+  const [threadFilter, setThreadFilter] = useState<ThreadFilter>("active");
   const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(() => {
     if (initialRequestedThreadUnavailable) {
@@ -426,6 +489,9 @@ export function AkbAssistantApp({
   const [shareSaving, setShareSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingThread, setDeletingThread] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [clarificationValues, setClarificationValues] = useState<Record<string, string>>({});
   const [reportModeEnabled, setReportModeEnabled] = useState(false);
@@ -441,11 +507,23 @@ export function AkbAssistantApp({
   const lastAssistantResponse = findLastAssistantResponse(activeThread);
   const visibleThreads = useMemo(() => {
     const query = threadSearch.trim().toLowerCase();
+    const byView = threads.filter((thread) => {
+      if (threadFilter === "archived") {
+        return thread.status === "archived";
+      }
+      if (thread.status !== "active") {
+        return false;
+      }
+      if (threadFilter === "shared") {
+        return thread.ownerSubjectId !== currentSubjectId;
+      }
+      return thread.ownerSubjectId === currentSubjectId || thread.ownerSubjectId === null;
+    });
     const filtered = query
-      ? threads.filter((thread) => thread.title.toLowerCase().includes(query))
-      : threads;
+      ? byView.filter((thread) => thread.title.toLowerCase().includes(query))
+      : byView;
     return [...filtered].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
-  }, [threadSearch, threads]);
+  }, [currentSubjectId, threadFilter, threadSearch, threads]);
   const visibleSuggestions = suggestions.slice(0, 4);
   const visibleSlashCommands = useMemo(() => slashCommandOptions(composer, language), [composer, language]);
 
@@ -515,6 +593,7 @@ export function AkbAssistantApp({
     const thread = createEmptyThread(copy.emptyThreadTitle);
     setThreads((current) => [thread, ...current]);
     setActiveThreadId(thread.id);
+    setThreadFilter("active");
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
@@ -540,7 +619,8 @@ export function AkbAssistantApp({
   function redirectToLoginAfterUnauthorized() {
     setStatusMessage(copy.sessionExpired);
     window.setTimeout(() => {
-      window.location.assign(withAppBasePath(`/api/auth/login?return_to=${encodeURIComponent("/chat")}`));
+      const returnTo = window.location.pathname === "/" ? "/" : "/chat";
+      window.location.assign(withAppBasePath(`/api/auth/login?return_to=${encodeURIComponent(returnTo)}`));
     }, 250);
   }
 
@@ -561,12 +641,141 @@ export function AkbAssistantApp({
           redirectToLoginAfterUnauthorized();
           return;
         }
-        setStatusMessage(copy.requestFailed);
+        setStatusMessage(copy.threadUpdateFailed);
         return;
       }
-      removeThreadFromView(activeThread.id);
+      const payload = await response.json() as {
+        conversation: AssistantConversationDetail;
+      };
+      const archived = threadFromConversation(payload.conversation, language);
+      const nextThreads = threads.map((thread) => (
+        thread.id === activeThread.id ? archived : thread
+      ));
+      const nextActive = nextThreads.find(
+        (thread) => thread.status === "active"
+          && (thread.ownerSubjectId === currentSubjectId || thread.ownerSubjectId === null),
+      );
+      if (nextActive) {
+        setThreads(nextThreads);
+        setActiveThreadId(nextActive.id);
+      } else {
+        const replacement = createEmptyThread(copy.emptyThreadTitle);
+        setThreads([replacement, ...nextThreads]);
+        setActiveThreadId(replacement.id);
+      }
+      setThreadFilter("active");
     } catch (error) {
-      setStatusMessage(copy.requestFailed);
+      setStatusMessage(copy.threadUpdateFailed);
+    }
+  }
+
+  async function restoreActiveThread() {
+    if (!activeThread.conversationId || !canManageActiveThread) {
+      return;
+    }
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`,
+        ),
+        {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ status: "active" }),
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          return;
+        }
+        setStatusMessage(copy.threadUpdateFailed);
+        return;
+      }
+      const payload = await response.json() as {
+        conversation: AssistantConversationDetail;
+      };
+      updateThread(
+        activeThread.id,
+        () => threadFromConversation(payload.conversation, language),
+      );
+      setThreadFilter("active");
+    } catch {
+      setStatusMessage(copy.threadUpdateFailed);
+    }
+  }
+
+  async function toggleActiveThreadPin() {
+    if (!activeThread.conversationId || !canManageActiveThread) {
+      return;
+    }
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`,
+        ),
+        {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ pinned: !activeThread.pinned }),
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          return;
+        }
+        setStatusMessage(copy.threadUpdateFailed);
+        return;
+      }
+      const payload = await response.json() as {
+        conversation: AssistantConversationDetail;
+      };
+      updateThread(
+        activeThread.id,
+        () => threadFromConversation(payload.conversation, language),
+      );
+    } catch {
+      setStatusMessage(copy.threadUpdateFailed);
+    }
+  }
+
+  async function renameActiveThread() {
+    const title = renameValue.replace(/\s+/g, " ").trim();
+    if (!activeThread.conversationId || !canManageActiveThread || !title) {
+      return;
+    }
+    setRenameSaving(true);
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`,
+        ),
+        {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ title }),
+        },
+      );
+      if (!response.ok) {
+        setStatusMessage(copy.renameFailed);
+        return;
+      }
+      const payload = await response.json() as {
+        conversation: AssistantConversationDetail;
+      };
+      updateThread(
+        activeThread.id,
+        () => threadFromConversation(payload.conversation, language),
+      );
+      setRenameOpen(false);
+    } catch {
+      setStatusMessage(copy.renameFailed);
+    } finally {
+      setRenameSaving(false);
     }
   }
 
@@ -607,6 +816,10 @@ export function AkbAssistantApp({
   }
 
   async function submitQuestion(nextQuestion = composer, endpoint: "/api/assistant/chat" | "/api/assistant/clarify" = "/api/assistant/chat", nextContext = activeThread.context) {
+    if (activeThread.status === "archived") {
+      setStatusMessage(copy.archivedReadOnly);
+      return;
+    }
     const trimmed = nextQuestion.trim();
     if (!trimmed) {
       setStatusMessage(copy.emptyQuestion);
@@ -681,14 +894,18 @@ export function AkbAssistantApp({
         }));
         return;
       }
-      const payload = (await httpResponse.json()) as { response: AssistantChatResponse };
+      const payload = (await httpResponse.json()) as {
+        response: AssistantChatResponse;
+        message_id?: string | null;
+      };
       const response = payload.response;
       const assistantMessage: ChatMessage = {
-        id: createClientId("msg-assistant"),
+        id: payload.message_id ?? createClientId("msg-assistant"),
         role: "assistant",
         content: response.answer ?? response.message ?? response.recommended_action ?? copy.noPreciseSource,
         createdAt: new Date().toISOString(),
-        response
+        response,
+        persisted: Boolean(payload.message_id),
       };
       updateThread(threadId, (thread) => ({
         ...thread,
@@ -706,6 +923,78 @@ export function AkbAssistantApp({
       }));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function submitMessageFeedback(
+    messageId: string,
+    rating: AssistantMessageFeedbackRating,
+    reasonCode: AssistantMessageFeedbackReason | null,
+  ) {
+    if (!activeThread.conversationId) {
+      return;
+    }
+    updateThread(activeThread.id, (thread) => ({
+      ...thread,
+      messages: thread.messages.map((message) => (
+        message.id === messageId
+          ? { ...message, feedbackSaving: true }
+          : message
+      )),
+    }));
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}/messages/${encodeURIComponent(messageId)}/feedback`,
+        ),
+        {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            rating,
+            reason_code: reasonCode,
+          }),
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+          return;
+        }
+        setStatusMessage(copy.feedbackFailed);
+        return;
+      }
+      const payload = (await response.json()) as {
+        feedback: AssistantMessageFeedback;
+      };
+      updateThread(activeThread.id, (thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) => (
+          message.id === messageId
+            ? {
+                ...message,
+                feedback: payload.feedback,
+                feedbackSaving: false,
+              }
+            : message
+        )),
+      }));
+      setStatusMessage(copy.feedbackSaved);
+    } catch {
+      setStatusMessage(copy.feedbackFailed);
+    } finally {
+      updateThread(activeThread.id, (thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) => (
+          message.id === messageId
+            ? { ...message, feedbackSaving: false }
+            : message
+        )),
+      }));
     }
   }
 
@@ -862,7 +1151,10 @@ export function AkbAssistantApp({
       setStatusMessage(copy.shareAfterFirstMessage);
       return;
     }
-    const link = `${window.location.origin}${withAppBasePath(`/chat?thread=${encodeURIComponent(activeThread.conversationId)}`)}`;
+    const link = conversationShareUrl(
+      window.location.href,
+      activeThread.conversationId,
+    );
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
@@ -910,6 +1202,23 @@ export function AkbAssistantApp({
               placeholder={copy.searchThreads}
             />
           </label>
+          <div className="akb-chat-thread-filters" role="group" aria-label={copy.threadList}>
+            {([
+              ["active", copy.activeThreads],
+              ["shared", copy.sharedWithMe],
+              ["archived", copy.archivedThreads],
+            ] as Array<[ThreadFilter, string]>).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={threadFilter === value ? "is-active" : ""}
+                aria-pressed={threadFilter === value}
+                onClick={() => setThreadFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="akb-chat-thread-list">
             <ThreadGroup
               title={copy.pinned}
@@ -946,10 +1255,41 @@ export function AkbAssistantApp({
               >
                 <PanelLeftOpen size={16} aria-hidden="true" />
               </button>
-              {canManageActiveThread ? (
+              {canManageActiveThread && activeThread.status === "active" ? (
                 <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                   <Archive size={16} aria-hidden="true" />
                 </button>
+              ) : null}
+              {canManageActiveThread && activeThread.status === "archived" ? (
+                <button className="akb-chat-icon-button" type="button" onClick={() => void restoreActiveThread()} title={copy.restore} aria-label={copy.restore}>
+                  <Archive size={16} aria-hidden="true" />
+                </button>
+              ) : null}
+              {canManageActiveThread && activeThread.conversationId ? (
+                <>
+                  <button
+                    className="akb-chat-icon-button"
+                    type="button"
+                    onClick={() => void toggleActiveThreadPin()}
+                    title={activeThread.pinned ? copy.unpinThread : copy.pinThread}
+                    aria-label={activeThread.pinned ? copy.unpinThread : copy.pinThread}
+                    aria-pressed={activeThread.pinned}
+                  >
+                    {activeThread.pinned ? <PinOff size={16} aria-hidden="true" /> : <Pin size={16} aria-hidden="true" />}
+                  </button>
+                  <button
+                    className="akb-chat-icon-button"
+                    type="button"
+                    onClick={() => {
+                      setRenameValue(activeThread.title);
+                      setRenameOpen(true);
+                    }}
+                    title={copy.renameThread}
+                    aria-label={copy.renameThread}
+                  >
+                    <Pencil size={16} aria-hidden="true" />
+                  </button>
+                </>
               ) : null}
               {activeThread.conversationId &&
               activeThread.ownerSubjectId === currentSubjectId ? (
@@ -1022,6 +1362,11 @@ export function AkbAssistantApp({
                   setClarificationValues={setClarificationValues}
                   onSubmitClarification={submitClarification}
                   onAskFollowUp={(question) => void submitQuestion(question)}
+                  onFeedback={(rating, reasonCode) => void submitMessageFeedback(
+                    message.id,
+                    rating,
+                    reasonCode,
+                  )}
                 />
               ))
             )}
@@ -1126,8 +1471,9 @@ export function AkbAssistantApp({
                 onKeyDown={handleComposerKeyDown}
                 placeholder={copy.composerPlaceholder}
                 rows={2}
+                disabled={activeThread.status === "archived"}
               />
-              <button type="submit" disabled={submitting} aria-label={submitting ? copy.asking : copy.ask}>
+              <button type="submit" disabled={submitting || activeThread.status === "archived"} aria-label={submitting ? copy.asking : copy.ask}>
                 <Send size={17} aria-hidden="true" />
               </button>
             </div>
@@ -1290,6 +1636,54 @@ export function AkbAssistantApp({
                 >
                   <Trash2 size={16} aria-hidden="true" />
                   {deletingThread ? copy.deletingThread : copy.deleteThread}
+                </StratosButton>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {renameOpen ? (
+        <div
+          className="akb-share-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="akb-rename-thread-title"
+        >
+          <div className="akb-share-dialog akb-delete-dialog">
+            <div className="akb-share-dialog__header">
+              <h2 id="akb-rename-thread-title">{copy.renameTitle}</h2>
+              <button
+                type="button"
+                className="akb-chat-icon-button"
+                onClick={() => setRenameOpen(false)}
+                aria-label={copy.close}
+                disabled={renameSaving}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="akb-share-dialog__body">
+              <label className="akb-chat-rename-field">
+                <span>{copy.renameLabel}</span>
+                <input
+                  value={renameValue}
+                  maxLength={300}
+                  autoFocus
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void renameActiveThread();
+                    }
+                  }}
+                />
+              </label>
+              <div className="akb-delete-dialog__actions">
+                <StratosButton type="button" onClick={() => setRenameOpen(false)} disabled={renameSaving}>
+                  {copy.close}
+                </StratosButton>
+                <StratosButton tone="primary" type="button" onClick={() => void renameActiveThread()} disabled={renameSaving || !renameValue.trim()}>
+                  {copy.renameSave}
                 </StratosButton>
               </div>
             </div>
@@ -1519,7 +1913,8 @@ function ChatBubble({
   clarificationValues,
   setClarificationValues,
   onSubmitClarification,
-  onAskFollowUp
+  onAskFollowUp,
+  onFeedback,
 }: {
   message: ChatMessage;
   copy: AssistantAppLabels;
@@ -1528,8 +1923,13 @@ function ChatBubble({
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
   onAskFollowUp: (question: string) => void;
+  onFeedback: (
+    rating: AssistantMessageFeedbackRating,
+    reasonCode: AssistantMessageFeedbackReason | null,
+  ) => void;
 }) {
   const response = message.response;
+  const [feedbackReasonsOpen, setFeedbackReasonsOpen] = useState(false);
   return (
     <article className={`akb-chat-message akb-chat-message--${message.role}`}>
       <div className="akb-chat-message__avatar" aria-hidden="true">
@@ -1566,6 +1966,56 @@ function ChatBubble({
             onSubmitClarification={onSubmitClarification}
             onAskFollowUp={onAskFollowUp}
           />
+        ) : null}
+        {message.role === "assistant" && message.persisted && !message.pending ? (
+          <div className="akb-chat-feedback">
+            <div
+              className="akb-chat-feedback__actions"
+              aria-label={copy.feedbackPrompt}
+            >
+              <button
+                type="button"
+                className={message.feedback?.rating === "helpful" ? "is-active" : ""}
+                disabled={message.feedbackSaving}
+                aria-pressed={message.feedback?.rating === "helpful"}
+                onClick={() => {
+                  setFeedbackReasonsOpen(false);
+                  onFeedback("helpful", "accurate_useful");
+                }}
+              >
+                <ThumbsUp size={15} aria-hidden="true" />
+                {copy.feedbackHelpful}
+              </button>
+              <button
+                type="button"
+                className={message.feedback?.rating === "not_helpful" ? "is-active" : ""}
+                disabled={message.feedbackSaving}
+                aria-expanded={feedbackReasonsOpen}
+                aria-pressed={message.feedback?.rating === "not_helpful"}
+                onClick={() => setFeedbackReasonsOpen((current) => !current)}
+              >
+                <ThumbsDown size={15} aria-hidden="true" />
+                {copy.feedbackNotHelpful}
+              </button>
+            </div>
+            {feedbackReasonsOpen ? (
+              <div className="akb-chat-feedback__reasons" role="group" aria-label={copy.feedbackPrompt}>
+                {feedbackReasonOptions(copy).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={message.feedbackSaving}
+                    onClick={() => {
+                      setFeedbackReasonsOpen(false);
+                      onFeedback("not_helpful", option.value);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </article>
@@ -1786,6 +2236,13 @@ function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifac
           ) : null}
         </div>
       </div>
+      {(report.charts ?? []).map((chart) => (
+        <AssistantChartPanel
+          key={chart.artifact_id}
+          chart={chart}
+          report={report}
+        />
+      ))}
       <StratosDataTable
         rows={report.rows}
         columns={columns}
@@ -1797,6 +2254,355 @@ function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifac
       {exportError ? <div className="notice">{exportError}</div> : null}
     </section>
   );
+}
+
+const CHART_COLORS = ["#087f8c", "#2864dc", "#7c3aed", "#d97706"];
+
+function AssistantChartPanel({
+  chart,
+  report,
+}: {
+  chart: AssistantChartArtifact;
+  report: AssistantReportArtifact;
+}) {
+  const categoryColumn = report.columns.find(
+    (column) => column.key === chart.category_column_key,
+  );
+  const valueColumns = chart.value_column_keys
+    .map((key) => report.columns.find((column) => column.key === key))
+    .filter(isPresent);
+  const rows = report.rows
+    .slice(0, chart.row_limit)
+    .map((row) => ({
+      label: String(row.cells[chart.category_column_key] ?? "").slice(0, 80),
+      values: valueColumns.map((column) => finiteNumber(row.cells[column.key])),
+    }))
+    .filter(
+      (row) =>
+        row.label.trim() &&
+        row.values.some((value) => value !== null),
+    );
+  if (!categoryColumn || valueColumns.length === 0 || rows.length < 2) {
+    return null;
+  }
+  const width = 760;
+  const height = 320;
+  const plot = { left: 64, top: 24, width: 660, height: 232 };
+  const allValues = rows
+    .flatMap((row) => row.values)
+    .filter((value): value is number => value !== null);
+  const maxValue = Math.max(1, ...allValues);
+  const minValue = Math.min(0, ...allValues);
+  const scaleY = (value: number) =>
+    plot.top +
+    plot.height -
+    ((value - minValue) / Math.max(1, maxValue - minValue)) * plot.height;
+  const baselineY = scaleY(0);
+  const seriesLabel = (key: string) =>
+    report.columns.find((column) => column.key === key)?.label ?? key;
+
+  return (
+    <figure className="akb-chat-chart">
+      <figcaption>
+        <BarChart3 size={16} aria-hidden="true" />
+        <span>{chart.title}</span>
+      </figcaption>
+      <svg
+        role="img"
+        aria-label={`${chart.title}: ${categoryColumn.label}`}
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        <title>{chart.title}</title>
+        {chart.chart_type === "pie" ? (
+          <AssistantPieMarks
+            rows={rows}
+            columnLabel={valueColumns[0]?.label ?? ""}
+          />
+        ) : chart.chart_type === "line" ? (
+          <AssistantLineMarks
+            rows={rows}
+            valueColumns={valueColumns}
+            plot={plot}
+            scaleY={scaleY}
+          />
+        ) : chart.chart_type === "scatter" ? (
+          <AssistantScatterMarks
+            rows={rows}
+            xLabel={valueColumns[0]?.label ?? ""}
+            yLabel={valueColumns[1]?.label ?? ""}
+            plot={plot}
+          />
+        ) : (
+          <AssistantBarMarks
+            rows={rows}
+            valueColumns={valueColumns}
+            plot={plot}
+            scaleY={scaleY}
+            baselineY={baselineY}
+            stacked={chart.chart_type === "stacked_bar"}
+          />
+        )}
+      </svg>
+      <div className="akb-chat-chart__legend" aria-label="Legenda grafu">
+        {chart.value_column_keys.map((key, index) => (
+          <span key={key}>
+            <i style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+            {seriesLabel(key)}
+          </span>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+interface ChartRow {
+  label: string;
+  values: Array<number | null>;
+}
+
+interface ChartPlot {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function AssistantBarMarks({
+  rows,
+  valueColumns,
+  plot,
+  scaleY,
+  baselineY,
+  stacked,
+}: {
+  rows: ChartRow[];
+  valueColumns: AssistantReportArtifact["columns"];
+  plot: ChartPlot;
+  scaleY: (value: number) => number;
+  baselineY: number;
+  stacked: boolean;
+}) {
+  const groupWidth = plot.width / rows.length;
+  const barGap = 3;
+  const barWidth = stacked
+    ? Math.max(3, groupWidth * 0.62)
+    : Math.max(3, (groupWidth * 0.72) / valueColumns.length - barGap);
+  return (
+    <>
+      <line x1={plot.left} y1={baselineY} x2={plot.left + plot.width} y2={baselineY} className="akb-chart-axis" />
+      {rows.map((row, rowIndex) => {
+        let positiveStack = 0;
+        return (
+          <g key={`${row.label}:${rowIndex}`}>
+            {row.values.map((rawValue, seriesIndex) => {
+              if (rawValue === null) return null;
+              const value = stacked ? positiveStack + rawValue : rawValue;
+              const start = stacked ? positiveStack : 0;
+              positiveStack = stacked ? value : positiveStack;
+              const top = Math.min(scaleY(value), scaleY(start));
+              const barHeight = Math.max(1, Math.abs(scaleY(value) - scaleY(start)));
+              const x = stacked
+                ? plot.left + rowIndex * groupWidth + (groupWidth - barWidth) / 2
+                : plot.left + rowIndex * groupWidth + groupWidth * 0.14 + seriesIndex * (barWidth + barGap);
+              return (
+                <rect
+                  key={`${rowIndex}:${seriesIndex}`}
+                  x={x}
+                  y={top}
+                  width={barWidth}
+                  height={barHeight}
+                  rx={2}
+                  fill={CHART_COLORS[seriesIndex % CHART_COLORS.length]}
+                >
+                  <title>{`${row.label}: ${rawValue}`}</title>
+                </rect>
+              );
+            })}
+            <text
+              x={plot.left + rowIndex * groupWidth + groupWidth / 2}
+              y={plot.top + plot.height + 22}
+              textAnchor="middle"
+              className="akb-chart-label"
+            >
+              {shortChartLabel(row.label)}
+            </text>
+          </g>
+        );
+      })}
+    </>
+  );
+}
+
+function AssistantLineMarks({
+  rows,
+  valueColumns,
+  plot,
+  scaleY,
+}: {
+  rows: ChartRow[];
+  valueColumns: AssistantReportArtifact["columns"];
+  plot: ChartPlot;
+  scaleY: (value: number) => number;
+}) {
+  const xFor = (index: number) =>
+    plot.left + (index / Math.max(1, rows.length - 1)) * plot.width;
+  return (
+    <>
+      <line x1={plot.left} y1={plot.top + plot.height} x2={plot.left + plot.width} y2={plot.top + plot.height} className="akb-chart-axis" />
+      {valueColumns.map((column, seriesIndex) => {
+        const points = rows
+          .map((row, index) => {
+            const value = row.values[seriesIndex];
+            return value === null ? null : `${xFor(index)},${scaleY(value)}`;
+          })
+          .filter(isPresent);
+        return (
+          <g key={column.key}>
+            <polyline
+              fill="none"
+              stroke={CHART_COLORS[seriesIndex % CHART_COLORS.length]}
+              strokeWidth={3}
+              points={points.join(" ")}
+            />
+            {rows.map((row, index) => {
+              const value = row.values[seriesIndex];
+              return value === null ? null : (
+                <circle
+                  key={`${column.key}:${index}`}
+                  cx={xFor(index)}
+                  cy={scaleY(value)}
+                  r={4}
+                  fill={CHART_COLORS[seriesIndex % CHART_COLORS.length]}
+                >
+                  <title>{`${row.label}: ${value}`}</title>
+                </circle>
+              );
+            })}
+          </g>
+        );
+      })}
+      {rows.map((row, index) => (
+        <text
+          key={`${row.label}:${index}`}
+          x={xFor(index)}
+          y={plot.top + plot.height + 22}
+          textAnchor="middle"
+          className="akb-chart-label"
+        >
+          {shortChartLabel(row.label)}
+        </text>
+      ))}
+    </>
+  );
+}
+
+function AssistantPieMarks({
+  rows,
+  columnLabel,
+}: {
+  rows: ChartRow[];
+  columnLabel: string;
+}) {
+  const values = rows.map((row) => Math.max(0, row.values[0] ?? 0));
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return null;
+  let cursor = -Math.PI / 2;
+  return (
+    <>
+      {rows.map((row, index) => {
+        const angle = (values[index]! / total) * Math.PI * 2;
+        const start = cursor;
+        const end = cursor + angle;
+        cursor = end;
+        const path = pieSlicePath(380, 150, 116, start, end);
+        return (
+          <path
+            key={`${row.label}:${index}`}
+            d={path}
+            fill={CHART_COLORS[index % CHART_COLORS.length]}
+            stroke="#ffffff"
+            strokeWidth={2}
+          >
+            <title>{`${row.label}: ${values[index]} ${columnLabel}`}</title>
+          </path>
+        );
+      })}
+    </>
+  );
+}
+
+function AssistantScatterMarks({
+  rows,
+  xLabel,
+  yLabel,
+  plot,
+}: {
+  rows: ChartRow[];
+  xLabel: string;
+  yLabel: string;
+  plot: ChartPlot;
+}) {
+  const points = rows
+    .map((row) => ({ label: row.label, x: row.values[0], y: row.values[1] }))
+    .filter((point): point is { label: string; x: number; y: number } => point.x !== null && point.y !== null);
+  if (points.length < 2) return null;
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const xFor = (value: number) => plot.left + ((value - minX) / Math.max(1, maxX - minX)) * plot.width;
+  const yFor = (value: number) => plot.top + plot.height - ((value - minY) / Math.max(1, maxY - minY)) * plot.height;
+  return (
+    <>
+      <line x1={plot.left} y1={plot.top + plot.height} x2={plot.left + plot.width} y2={plot.top + plot.height} className="akb-chart-axis" />
+      <line x1={plot.left} y1={plot.top} x2={plot.left} y2={plot.top + plot.height} className="akb-chart-axis" />
+      <text x={plot.left + plot.width / 2} y={plot.top + plot.height + 42} textAnchor="middle" className="akb-chart-label">{xLabel}</text>
+      <text x={18} y={plot.top + plot.height / 2} textAnchor="middle" className="akb-chart-label" transform={`rotate(-90 18 ${plot.top + plot.height / 2})`}>{yLabel}</text>
+      {points.map((point, index) => (
+        <circle
+          key={`${point.label}:${index}`}
+          cx={xFor(point.x)}
+          cy={yFor(point.y)}
+          r={6}
+          fill={CHART_COLORS[0]}
+          fillOpacity={0.82}
+        >
+          <title>{`${point.label}: ${point.x}, ${point.y}`}</title>
+        </circle>
+      ))}
+    </>
+  );
+}
+
+function pieSlicePath(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  start: number,
+  end: number,
+): string {
+  const startX = centerX + radius * Math.cos(start);
+  const startY = centerY + radius * Math.sin(start);
+  const endX = centerX + radius * Math.cos(end);
+  const endY = centerY + radius * Math.sin(end);
+  const largeArc = end - start > Math.PI ? 1 : 0;
+  return [
+    `M ${centerX} ${centerY}`,
+    `L ${startX} ${startY}`,
+    `A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY}`,
+    "Z",
+  ].join(" ");
+}
+
+function shortChartLabel(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length <= 14 ? compact : `${compact.slice(0, 12)}…`;
+}
+
+function isPresent<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined;
 }
 
 function visibleAssistantWarnings(warnings: string[], copy: AssistantAppLabels): string[] {
@@ -1914,6 +2720,7 @@ function createInitialThreads(
       context: {},
       messages: [],
       draft: "",
+      status: "active",
       visibility: "private",
       pinned: false,
       updatedAt: now,
@@ -1931,7 +2738,10 @@ function initialActiveThreadId(
   const conversationId = requestedConversationId &&
     conversations.some((conversation) => conversation.conversation_id === requestedConversationId)
     ? requestedConversationId
-    : conversations[0]?.conversation_id;
+    : (
+      conversations.find((conversation) => conversation.status === "active") ??
+      conversations[0]
+    )?.conversation_id;
   return conversationId
     ? threadIdFromConversationId(conversationId)
     : "thread-current";
@@ -1946,6 +2756,7 @@ function createEmptyThread(title: string): AssistantThread {
     context: {},
     messages: [],
     draft: "",
+    status: "active",
     visibility: "private",
     pinned: false,
     updatedAt: new Date().toISOString(),
@@ -1964,8 +2775,9 @@ function threadFromConversationListItem(conversation: AssistantConversationListI
     context: {},
     messages: [],
     draft: "",
+    status: conversation.status,
     visibility: conversation.visibility,
-    pinned: false,
+    pinned: conversation.pinned_at !== null,
     updatedAt: conversation.updated_at,
     retentionUntil: conversation.retention_until,
     sharedWith: conversation.shared_with.map((share) => ({
@@ -2004,8 +2816,9 @@ function threadFromConversation(
       return chatMessage;
     }),
     draft: "",
+    status: conversation.status,
     visibility: conversation.visibility,
-    pinned: false,
+    pinned: conversation.pinned_at !== null,
     updatedAt: conversation.updated_at,
     retentionUntil: conversation.retention_until,
     sharedWith: conversation.shared_with.map((share) => ({
@@ -2037,6 +2850,8 @@ function messageFromConversationMessage(
     authorSubjectId: message.author_subject_id,
     authorSubjectType: message.author_subject_type,
     authorDisplayName: message.author_display_name,
+    persisted: true,
+    feedback: message.viewer_feedback ?? null,
     response: message.role === "assistant"
       ? responseFromPersistedMessage(
           conversationId,
@@ -2046,6 +2861,18 @@ function messageFromConversationMessage(
         )
       : undefined
   };
+}
+
+function feedbackReasonOptions(
+  copy: AssistantAppLabels,
+): Array<{ value: AssistantMessageFeedbackReason; label: string }> {
+  return [
+    { value: "incomplete", label: copy.feedbackIncomplete },
+    { value: "incorrect", label: copy.feedbackIncorrect },
+    { value: "citation_problem", label: copy.feedbackCitation },
+    { value: "access_problem", label: copy.feedbackAccess },
+    { value: "other", label: copy.feedbackOther },
+  ];
 }
 
 function responseFromPersistedMessage(

@@ -1,0 +1,205 @@
+{
+  "cases": [
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "statistics_service_law",
+      "expected_relevant_document_ids": [
+        "doc_11d723bd87ce41d29989d8372639e9cc"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_8522c88f339442b1ad1eddbe16b939cd",
+        "topic": "statistical-service"
+      },
+      "query": "Zákon č. 89/1995 Sb., o státní statistické službě, ve znění pozdějších předpisů",
+      "query_category": "exact_title",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    },
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "public_information_systems_law",
+      "expected_relevant_document_ids": [
+        "doc_ff10bdbcf5b845d3a5b5d630a84d8aaa"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_e3d6cfc2b2c749e1b04ffaeafcaab4b9",
+        "topic": "egovernment"
+      },
+      "query": "365/2000 Sb.",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    },
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "public_procurement_law",
+      "expected_relevant_document_ids": [
+        "doc_6152b33db6464cb88e4e277ac3d90475"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_2943ab28141744659c28c3be0e72dc1a",
+        "topic": "public-procurement"
+      },
+      "query": "Zákon č. 134/2016 Sb. – novelizovaný k 16. 7. 2023",
+      "query_category": "exact_title",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    },
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "ai_act",
+      "expected_relevant_document_ids": [
+        "doc_32e81c72d142434b86014cc42c4e86b3"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_73bcd376aae945628e41373655c770f5",
+        "topic": "artificial-intelligence"
+      },
+      "query": "AI Act",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    },
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "itsm_fitsm_foundation",
+      "expected_relevant_document_ids": [
+        "doc_5785f0b3de284befa2fd43dcd2aaf1b5"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_16c22697f0be493e97d167cb58f7a90e",
+        "topic": "it-service-management"
+      },
+      "query": "FitSM Foundation Training (3.0.6 English, PDF)",
+      "query_category": "exact_title",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    },
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "cybersecurity_law",
+      "expected_relevant_document_ids": [
+        "doc_c81496d0008d4f6d98f0338a7b05ccaa"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_b3a832f43c4241eca3367023f0adbc4a",
+        "topic": "cybersecurity"
+      },
+      "query": "264/2025 Sb. – Zákon o kybernetické bezpečnosti",
+      "query_category": "exact_title",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    },
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "long_term_isvs_management",
+      "expected_relevant_document_ids": [
+        "doc_bdd4c6b0dd8a4467abfd4e5411703000"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_3de71a9671c643c8b28167f67ec21400",
+        "topic": "it-governance"
+      },
+      "query": "360/2023 Sb. – Vyhláška o dlouhodobém řízení informačních systémů veřejné správy",
+      "query_category": "exact_title",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    },
+    {
+      "answer_mode": "retrieve_only",
+      "case_id": "digital_services_law",
+      "expected_relevant_document_ids": [
+        "doc_f47da0b532af4de1a2e72a851c5260df"
+      ],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [],
+        "only_valid": true,
+        "tags": []
+      },
+      "judgment_status": "gold",
+      "max_chunks": 8,
+      "metadata": {
+        "document_version_id": "ver_199159cb0c5346e3851505c5481eb725",
+        "topic": "digital-services"
+      },
+      "query": "12/2020 Sb. – Zákon o právu na digitální služby a o změně některých zákonů",
+      "query_category": "exact_title",
+      "role": "employee",
+      "subject_id": "release_quality_subject"
+    }
+  ],
+  "created_at": "2026-07-18T00:00:00Z",
+  "dataset_id": "professional_czech_knowledge_v1",
+  "description": "Produkční release gate pro přesné dohledání veřejných dokumentů k statistické službě, eGovernmentu, veřejným zakázkám, AI, ITSM, kybernetické bezpečnosti, řízení ISVS a digitálním službám.",
+  "metadata": {
+    "classification": "public",
+    "document_identity": "immutable Registry document and version identifiers",
+    "owner": "AKB",
+    "purpose": "assistant release quality gate"
+  },
+  "name": "Professional Czech Knowledge v1",
+  "tags": [
+    "production",
+    "release-gate",
+    "retrieval",
+    "czech-public-knowledge"
+  ],
+  "visibility": "shared"
+}

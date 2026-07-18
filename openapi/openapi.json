@@ -4470,6 +4470,77 @@
         }
       ]
     },
+    "/api/v1/assistant/conversation-history/{conversation_id}/messages/{message_id}/feedback": {
+      "put": {
+        "summary": "Put Assistant Message Feedback",
+        "operationId": "registry_api_put_assistant_message_feedback_api_v1_assistant_conversation_history__conversation_id__messages__message_id__feedback_put",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiAssistantMessageFeedbackPutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiAssistantMessageFeedbackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/assistant/conversation-history/{conversation_id}/shares": {
       "put": {
         "summary": "Replace Assistant Conversation Shares",
@@ -7789,6 +7860,74 @@
             }
           }
         },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/conversations/{conversationId}/messages/{messageId}/feedback": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "put": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "PUT /api/assistant/conversations/{conversationId}/messages/{messageId}/feedback",
+        "operationId": "web_put_api_assistant_conversations_conversationId_messages_messageId_feedback",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -14054,7 +14193,8 @@
             "title": "Source Version"
           },
           "scope": {
-            "$ref": "#/components/schemas/RegistryApiGovernanceScope"
+            "additionalProperties": true,
+            "type": "object"
           }
         },
         "additionalProperties": false,
@@ -14105,7 +14245,8 @@
             "title": "Parent Id"
           },
           "scope": {
-            "$ref": "#/components/schemas/RegistryApiGovernanceScope"
+            "additionalProperties": true,
+            "type": "object"
           },
           "policy_assignment": {
             "type": "string",
@@ -15161,6 +15302,18 @@
             ],
             "title": "Archived At"
           },
+          "pinned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned At"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -15250,6 +15403,18 @@
               }
             ],
             "title": "Archived At"
+          },
+          "pinned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned At"
           },
           "created_at": {
             "type": "string",
@@ -15360,6 +15525,17 @@
               }
             ],
             "title": "Retention Until"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
           }
         },
         "type": "object",
@@ -15579,6 +15755,88 @@
         ],
         "title": "AssistantMessageCreate"
       },
+      "RegistryApiAssistantMessageFeedbackPutRequest": {
+        "properties": {
+          "rating": {
+            "type": "string",
+            "enum": [
+              "helpful",
+              "not_helpful"
+            ],
+            "title": "Rating"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "accurate_useful",
+                  "incomplete",
+                  "incorrect",
+                  "citation_problem",
+                  "access_problem",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rating"
+        ],
+        "title": "AssistantMessageFeedbackPutRequest"
+      },
+      "RegistryApiAssistantMessageFeedbackResponse": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id"
+          },
+          "rating": {
+            "type": "string",
+            "enum": [
+              "helpful",
+              "not_helpful"
+            ],
+            "title": "Rating"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "rating",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AssistantMessageFeedbackResponse"
+      },
       "RegistryApiAssistantMessageResponse": {
         "properties": {
           "message_id": {
@@ -15642,6 +15900,16 @@
             "pattern": "^(available|source_access_changed)$",
             "title": "Availability",
             "default": "available"
+          },
+          "viewer_feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistryApiAssistantMessageFeedbackResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -16038,6 +16306,26 @@
             },
             "type": "array",
             "title": "Denied Document Ids"
+          },
+          "allowed_document_version_ids": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Allowed Document Version Ids"
+          },
+          "denied_document_version_ids": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Denied Document Version Ids"
           }
         },
         "type": "object",
@@ -18849,7 +19137,7 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Tenant Id",
-            "default": "default"
+            "default": "org_stratos"
           },
           "gestor_unit": {
             "anyOf": [

@@ -630,6 +630,7 @@ class AssistantConversation(Base, TimestampMixin):
         DateTime(timezone=True), nullable=False, index=True
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     messages: Mapped[list["AssistantMessage"]] = relationship(
         back_populates="conversation",
@@ -711,6 +712,55 @@ class AssistantMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
     conversation: Mapped[AssistantConversation] = relationship(back_populates="messages")
+    feedback: Mapped[list["AssistantMessageFeedback"]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+    )
+
+
+class AssistantMessageFeedback(Base, TimestampMixin):
+    __tablename__ = "assistant_message_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "message_id",
+            "actor_id",
+            name="uq_assistant_message_feedback_actor",
+        ),
+        Index(
+            "ix_assistant_message_feedback_conversation_created",
+            "conversation_id",
+            "created_at",
+        ),
+        CheckConstraint(
+            "rating IN ('helpful', 'not_helpful')",
+            name="assistant_message_feedback_rating",
+        ),
+        CheckConstraint(
+            "reason_code IS NULL OR reason_code IN "
+            "('accurate_useful', 'incomplete', 'incorrect', "
+            "'citation_problem', 'access_problem', 'other')",
+            name="assistant_message_feedback_reason",
+        ),
+    )
+
+    feedback_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("msgfb")
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        String(80),
+        ForeignKey("assistant_conversations.conversation_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    message_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("assistant_messages.message_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    rating: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    reason_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+
+    message: Mapped[AssistantMessage] = relationship(back_populates="feedback")
 
 
 class AnalystCase(Base, TimestampMixin):

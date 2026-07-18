@@ -10,9 +10,14 @@ import {
   canUseKnowledgeWorkspace,
   isEmployeeChatOnly
 } from "@/lib/auth/authorization";
+import { getAklConfig } from "@/lib/api/config";
 import type { ApiRequestContext } from "@/lib/types";
 
 type PageAccess = "employee_chat" | "knowledge_workspace" | "intelligence" | "admin";
+
+function employeeChatPath(): string {
+  return getAklConfig().webProfile === "chat" ? "/" : "/chat";
+}
 
 export function requirePageAccess(context: ApiRequestContext, access: PageAccess): void {
   if (access === "employee_chat" && canUseEmployeeChat(context)) {
@@ -27,12 +32,12 @@ export function requirePageAccess(context: ApiRequestContext, access: PageAccess
   if (access === "admin" && canUseAdminSurface(context)) {
     return;
   }
-  redirect("/chat");
+  redirect(employeeChatPath());
 }
 
 export function redirectEmployeeChatOnly(context: ApiRequestContext): void {
   if (isEmployeeChatOnly(context)) {
-    redirect("/chat");
+    redirect(employeeChatPath());
   }
 }
 

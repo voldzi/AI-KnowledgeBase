@@ -4,6 +4,7 @@ import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessageForRag } from "@/lib/assistant/assistant-tool-router";
 import { isAklLanguage } from "@/lib/language";
+import type { AssistantConversationDetail } from "@/lib/types";
 
 import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../errors";
 
@@ -38,17 +39,38 @@ export async function POST(request: NextRequest) {
       context
     );
 
-    return NextResponse.json({
-      response: normalizeAssistantChatResponse({
+    const normalizedResponse = normalizeAssistantChatResponse({
         response,
         message,
         language: responseLanguage,
         route: assistantRoute
-      })
+      });
+    const persistedConversation = normalizedResponse.warnings.includes(
+      "CONVERSATION_HISTORY_NOT_PERSISTED",
+    )
+      ? undefined
+      : await clients.registry
+          .getAssistantConversation(normalizedResponse.conversation_id, context)
+          .catch(() => undefined);
+    return NextResponse.json({
+      response: normalizedResponse,
+      message_id: latestAssistantMessageId(persistedConversation),
     });
   } catch (error) {
     return assistantBridgeError(error);
   }
+}
+
+function latestAssistantMessageId(
+  conversation: AssistantConversationDetail | undefined,
+): string | null {
+  if (!conversation) {
+    return null;
+  }
+  return [...conversation.messages]
+    .reverse()
+    .find((message) => message.role === "assistant")
+    ?.message_id ?? null;
 }
 
 function _objectContext(value: unknown): Record<string, unknown> {

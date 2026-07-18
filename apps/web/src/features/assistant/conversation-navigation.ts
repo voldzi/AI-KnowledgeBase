@@ -39,6 +39,7 @@ export function conversationListItemFromDetail(
     visibility: conversation.visibility,
     retention_until: conversation.retention_until,
     archived_at: conversation.archived_at,
+    pinned_at: conversation.pinned_at,
     created_at: conversation.created_at,
     updated_at: conversation.updated_at,
     shared_with: conversation.shared_with,
@@ -58,4 +59,15 @@ export function includeRequestedConversation(
     return conversations;
   }
   return [conversationListItemFromDetail(conversation), ...conversations];
+}
+
+export function conversationShareUrl(
+  currentHref: string,
+  conversationId: string,
+): string {
+  const url = new URL(currentHref);
+  url.hash = "";
+  url.search = "";
+  url.searchParams.set("thread", conversationId);
+  return url.toString();
 }

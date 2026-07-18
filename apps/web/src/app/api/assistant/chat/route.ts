@@ -11,7 +11,14 @@ import {
   registryTopicsForDocumentListRequest,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
-import type { Classification, Document, DocumentMetadataSummaryOptions, DocumentStatus, DocumentType } from "@/lib/types";
+import type {
+  AssistantConversationDetail,
+  Classification,
+  Document,
+  DocumentMetadataSummaryOptions,
+  DocumentStatus,
+  DocumentType,
+} from "@/lib/types";
 
 import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest } from "../errors";
 
@@ -96,7 +103,7 @@ export async function POST(request: NextRequest) {
           language: responseLanguage,
           route: assistantRoute
         });
-        await clients.registry.appendAssistantConversationMessages(
+        const persistedConversation = await clients.registry.appendAssistantConversationMessages(
           normalizedRegistryResponse.conversation_id,
           {
             user_id: context.subjectId,
@@ -154,7 +161,10 @@ export async function POST(request: NextRequest) {
             context
           ).catch(() => undefined);
         }
-        return NextResponse.json({ response: normalizedRegistryResponse });
+        return NextResponse.json({
+          response: normalizedRegistryResponse,
+          message_id: latestAssistantMessageId(persistedConversation),
+        });
       }
     }
 
@@ -170,17 +180,47 @@ export async function POST(request: NextRequest) {
       context
     );
 
-    return NextResponse.json({
-      response: normalizeAssistantChatResponse({
+    const normalizedResponse = normalizeAssistantChatResponse({
         response,
         message,
         language: responseLanguage,
         route: assistantRoute
-      })
+      });
+    let persistedConversation = normalizedResponse.warnings.includes(
+      "CONVERSATION_HISTORY_NOT_PERSISTED",
+    )
+      ? undefined
+      : await clients.registry
+          .getAssistantConversation(normalizedResponse.conversation_id, context)
+          .catch(() => undefined);
+    if (!conversationId && persistedConversation && !persistedConversation.title) {
+      persistedConversation = await clients.registry
+        .updateAssistantConversation(
+          normalizedResponse.conversation_id,
+          { title: titleFromMessage(message) },
+          context,
+        )
+        .catch(() => persistedConversation);
+    }
+    return NextResponse.json({
+      response: normalizedResponse,
+      message_id: latestAssistantMessageId(persistedConversation),
     });
   } catch (error) {
     return assistantBridgeError(error);
   }
+}
+
+function latestAssistantMessageId(
+  conversation: AssistantConversationDetail | undefined,
+): string | null {
+  if (!conversation) {
+    return null;
+  }
+  return [...conversation.messages]
+    .reverse()
+    .find((message) => message.role === "assistant")
+    ?.message_id ?? null;
 }
 
 function _objectContext(value: unknown): Record<string, unknown> {

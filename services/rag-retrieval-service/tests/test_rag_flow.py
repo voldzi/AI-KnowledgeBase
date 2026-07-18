@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+
+from app.registry_client import AuthzFilterResult
 from app.service import (
+    RagRetrievalService,
     _assistant_answer_query,
     _assistant_filters,
     _assistant_query,
+    _bounded_conversation_questions,
     _employee_answer,
     _fallback_follow_up_questions,
     _parse_follow_up_questions,
@@ -13,6 +19,7 @@ from app.schemas import ChunkCitation, RetrievedChunk
 from answer_composer.composer import _policy_metadata
 from hashlib import sha256
 import json
+from unittest.mock import AsyncMock
 from tests.conftest import make_client
 
 
@@ -132,6 +139,52 @@ def test_mixed_source_rag_never_leaks_denied_chunk_or_citation() -> None:
     assert all(item["document_id"] != "doc_denied" for item in body["citations"])
     assert "tajne pravidlo" not in body["answer"].lower()
     assert "AUTHZ_FILTERED_SOURCES" in body["warnings"]
+
+
+def test_authorization_filters_stale_version_without_hiding_current_version() -> None:
+    current = RetrievedChunk(
+        chunk_id="chunk_current",
+        score=0.9,
+        retrieval_method="opensearch",
+        text="Current governed content.",
+        citation=ChunkCitation(
+            document_id="doc_shared",
+            document_version_id="ver_current",
+            document_title="Governed document",
+            version_label="2.0",
+        ),
+    )
+    stale = current.model_copy(
+        update={
+            "chunk_id": "chunk_stale",
+            "citation": current.citation.model_copy(
+                update={"document_version_id": "ver_stale", "version_label": "1.0"}
+            ),
+        }
+    )
+
+    class VersionAwareRegistry:
+        async def filter_allowed_documents(self, **_kwargs):
+            return AuthzFilterResult(
+                allowed_document_ids={"doc_shared"},
+                denied_document_ids=set(),
+                allowed_document_version_ids={"doc_shared": {"ver_current"}},
+                denied_document_version_ids={"doc_shared": {"ver_stale"}},
+            )
+
+    service = object.__new__(RagRetrievalService)
+    service._settings = SimpleNamespace(authz_mode="disabled", registry_client_mode="http")
+    service._registry_client = VersionAwareRegistry()
+
+    allowed, denied_documents = asyncio.run(
+        service._filter_authorized_chunks(
+            subject_id="user_123",
+            chunks=[stale, current],
+        )
+    )
+
+    assert [chunk.chunk_id for chunk in allowed] == ["chunk_current"]
+    assert denied_documents == set()
 
 
 def _policy_chunk(
@@ -396,6 +449,34 @@ def test_assistant_query_omits_internal_report_context_from_retrieval() -> None:
     assert "assistant_query_plan" not in answer_query
 
 
+def test_conversation_context_keeps_only_bounded_user_questions() -> None:
+    messages: list[object] = [
+        {"role": "user", "content": "  První otázka   o statistické službě. "},
+        {
+            "role": "assistant",
+            "content": "Tato stará odpověď ani její zdroje se znovu nepoužijí.",
+            "availability": "available",
+        },
+        {"role": "user", "content": "Jaké povinnosti z toho vyplývají?"},
+        {
+            "role": "assistant",
+            "content": "Obsah, k němuž se změnil přístup.",
+            "availability": "source_access_changed",
+        },
+        {"role": "user", "content": "A kdo je odpovědný?"},
+    ]
+
+    context = _bounded_conversation_questions(messages)
+
+    assert context == [
+        "První otázka o statistické službě.",
+        "Jaké povinnosti z toho vyplývají?",
+        "A kdo je odpovědný?",
+    ]
+    assert "stará odpověď" not in " ".join(context)
+    assert "změnil přístup" not in " ".join(context)
+
+
 def test_assistant_chat_report_context_does_not_degrade_retrieval() -> None:
     with make_client() as client:
         response = client.post(
@@ -569,6 +650,24 @@ def test_unknown_assistant_conversation_reports_ephemeral() -> None:
     body = response.json()
     assert body["status"] == "ephemeral"
     assert "CONVERSATION_HISTORY_NOT_PERSISTED" in body["warnings"]
+
+
+def test_assistant_chat_marks_a_turn_when_history_persistence_fails() -> None:
+    with make_client() as client:
+        client.app.state.rag_service._registry_client.append_conversation_messages = AsyncMock(
+            side_effect=RuntimeError("registry unavailable"),
+        )
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Kdo schvaluje výjimku ze směrnice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        )
+
+    assert response.status_code == 200
+    assert "CONVERSATION_HISTORY_NOT_PERSISTED" in response.json()["warnings"]
 
 
 def test_oidc_auth_mode_requires_bearer_token() -> None:

@@ -55,8 +55,10 @@ describe("AKB chat-only route policy", () => {
   });
 
   it("keeps legacy assistant links compatible without exposing another surface", () => {
-    assert.equal(chatProfileRedirectPath("/assistant"), "/chat");
-    assert.equal(chatProfileRedirectPath("/assistant/thread"), "/chat");
+    assert.equal(chatProfileRedirectPath("/chat"), "/");
+    assert.equal(chatProfileRedirectPath("/chat/thread"), "/");
+    assert.equal(chatProfileRedirectPath("/assistant"), "/");
+    assert.equal(chatProfileRedirectPath("/assistant/thread"), "/");
     assert.equal(chatProfileRedirectPath("/admin"), null);
   });
 
