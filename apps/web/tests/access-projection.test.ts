@@ -105,7 +105,12 @@ describe("STRATOS access projection", () => {
   });
 
   it("logs only the bounded upstream rejection reason", async () => {
-    const token = jwt({ sub: "user-123", exp: 2_000 });
+    const token = jwt({
+      sub: "user-123",
+      exp: 2_000,
+      aud: ["akl-api", "budget-web"],
+      azp: "akb-chat-web",
+    });
     const originalWarn = console.warn;
     const warnings: unknown[][] = [];
     console.warn = (...args: unknown[]) => warnings.push(args);
@@ -130,11 +135,18 @@ describe("STRATOS access projection", () => {
 
     assert.equal(warnings.length, 1);
     assert.equal(warnings[0]?.[0], "STRATOS access projection rejected bearer identity.");
-    const detail = warnings[0]?.[1] as { status?: unknown; reason?: unknown };
+    const detail = warnings[0]?.[1] as {
+      status?: unknown;
+      reason?: unknown;
+      audiences?: unknown;
+      authorizedParty?: unknown;
+    };
     assert.equal(detail.status, 401);
     assert.equal(typeof detail.reason, "string");
     assert.equal((detail.reason as string).includes("\n"), false);
     assert.equal((detail.reason as string).length, 160);
+    assert.deepEqual(detail.audiences, ["akl-api", "budget-web"]);
+    assert.equal(detail.authorizedParty, "akb-chat-web");
   });
 });
 
