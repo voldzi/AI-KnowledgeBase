@@ -1,7 +1,7 @@
 """enforce assistant conversation retention deadlines
 
-Revision ID: 0021_assistant_retention_enforcement
-Revises: 0020_assistant_directory_authorship
+Revision ID: 0021_assistant_retention
+Revises: 0020_assistant_authorship
 Create Date: 2026-07-18
 """
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0021_assistant_retention_enforcement"
-down_revision = "0020_assistant_directory_authorship"
+revision = "0021_assistant_retention"
+down_revision = "0020_assistant_authorship"
 branch_labels = None
 depends_on = None
 

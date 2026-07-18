@@ -1,6 +1,6 @@
 """assistant directory sharing and message authorship
 
-Revision ID: 0020_assistant_directory_authorship
+Revision ID: 0020_assistant_authorship
 Revises: 0019_database_hardening
 Create Date: 2026-07-18
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0020_assistant_directory_authorship"
+revision = "0020_assistant_authorship"
 down_revision = "0019_database_hardening"
 branch_labels = None
 depends_on = None

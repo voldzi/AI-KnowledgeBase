@@ -224,8 +224,8 @@ version/file projection, validated document state/date/size constraints,
 version and ingestion lookup indexes, and the missing analyst workspace
 tables. Ingestion startup additionally creates Qdrant keyword payload indexes
 for document/version/type/classification/status/tags and policy coordinates.
-`0020_assistant_directory_authorship` adds verified display snapshots and
-server-derived message authorship. `0021_assistant_retention_enforcement`
+`0020_assistant_authorship` adds verified display snapshots and server-derived
+message authorship. `0021_assistant_retention`
 assigns every legacy null-retention conversation a fresh 180-day grace period
 from migration time and then makes the deadline mandatory. It intentionally
 does not calculate from an old update timestamp, so the migration itself
