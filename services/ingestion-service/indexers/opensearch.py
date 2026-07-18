@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-from base64 import b64encode
+import ssl
 from dataclasses import dataclass
-from hashlib import sha1
+from hashlib import sha1, sha256
 from itertools import combinations
 from typing import Any
 
@@ -43,13 +43,14 @@ class OpenSearchIndexer:
 
     async def readiness(self) -> str:
         try:
-            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            async with self._client() as client:
                 response = await client.get(
                     f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}",
                     headers=self._headers(),
                 )
-            return "ready" if response.status_code in {200, 404} else "not_ready"
-        except httpx.HTTPError:
+            allowed_statuses = {200, 404} if self.settings.opensearch_auto_create_index else {200}
+            return "ready" if response.status_code in allowed_statuses else "not_ready"
+        except (httpx.HTTPError, OSError):
             return "not_ready"
 
     async def index(
@@ -70,7 +71,7 @@ class OpenSearchIndexer:
         return IndexingResult(indexed_chunks=len(chunks))
 
     async def _ensure_index(self) -> None:
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.get(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}",
                 headers=self._headers(),
@@ -84,6 +85,13 @@ class OpenSearchIndexer:
                     "OpenSearch index check failed",
                     status_code=502,
                     details={"status_code": response.status_code},
+                )
+            if not self.settings.opensearch_auto_create_index:
+                raise IngestionError(
+                    "OPENSEARCH_INDEX_NOT_FOUND",
+                    "Configured OpenSearch index or alias does not exist",
+                    status_code=503,
+                    details={"index_name": self.settings.opensearch_index},
                 )
             create_response = await client.put(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}",
@@ -111,6 +119,7 @@ class OpenSearchIndexer:
                     "policy_binding_id": {"type": "keyword"},
                     "policy_version": {"type": "keyword"},
                     "policy_hash": {"type": "keyword"},
+                    "authorization_key": {"type": "keyword"},
                     "policy_summary": {
                         "properties": {
                             "handlingClass": {"type": "keyword"},
@@ -132,10 +141,11 @@ class OpenSearchIndexer:
             },
         )
         if response.status_code >= 400:
-            logger.warning(
-                "Failed to ensure OpenSearch entity mapping (status %d): %s",
-                response.status_code,
-                response.text,
+            raise IngestionError(
+                "OPENSEARCH_MAPPING_UPDATE_FAILED",
+                "OpenSearch mapping update failed",
+                status_code=502,
+                details={"status_code": response.status_code},
             )
 
     async def entity_facets(
@@ -158,7 +168,7 @@ class OpenSearchIndexer:
         }
         if authorized_documents:
             query["query"] = _authorized_coordinate_filter(authorized_documents)
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}/_search",
                 headers=self._headers(),
@@ -225,7 +235,7 @@ class OpenSearchIndexer:
 
         await self._ensure_index()
         query = _entity_search_query(request)
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}/_search",
                 headers=self._headers(),
@@ -294,7 +304,7 @@ class OpenSearchIndexer:
 
         await self._ensure_index()
         query = _analyst_search_query(request)
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}/_search",
                 headers=self._headers(),
@@ -348,7 +358,7 @@ class OpenSearchIndexer:
 
         await self._ensure_index()
         query = _entity_relationship_query(request)
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}/_search",
                 headers=self._headers(),
@@ -384,7 +394,7 @@ class OpenSearchIndexer:
 
     async def _delete_existing_version(self, document_version_id: str) -> None:
         query = {"query": {"term": {"document_version_id": document_version_id}}}
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self.settings.opensearch_base_url}/{self.settings.opensearch_index}/_delete_by_query",
                 params={"refresh": "true", "conflicts": "proceed"},
@@ -408,7 +418,7 @@ class OpenSearchIndexer:
             lines.append(json.dumps(self._document(chunk, embedding_model=embedding_model), ensure_ascii=False))
         payload = "\n".join(lines) + "\n"
         headers = {**self._headers(), "Content-Type": "application/x-ndjson"}
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self.settings.opensearch_base_url}/_bulk",
                 params={"refresh": "true"},
@@ -438,6 +448,11 @@ class OpenSearchIndexer:
                 payload.pop(key, None)
         chunk_metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
         payload.update(intelligence_payload_fields(chunk_metadata))
+        payload["authorization_key"] = _authorization_key(
+            chunk.document_id,
+            chunk.document_version_id,
+            chunk.policy_hash,
+        )
         payload["embedding_model"] = embedding_model
         payload["search_text"] = "\n".join(
             value
@@ -454,15 +469,19 @@ class OpenSearchIndexer:
         return payload
 
     def _headers(self) -> dict[str, str]:
-        headers: dict[str, str] = {}
-        if self.settings.opensearch_api_key:
-            headers["Authorization"] = f"ApiKey {self.settings.opensearch_api_key}"
-        elif self.settings.opensearch_username and self.settings.opensearch_password:
-            token = b64encode(
-                f"{self.settings.opensearch_username}:{self.settings.opensearch_password}".encode("utf-8")
-            ).decode("ascii")
-            headers["Authorization"] = f"Basic {token}"
-        return headers
+        return {}
+
+    def _client(self) -> httpx.AsyncClient:
+        kwargs: dict[str, Any] = {
+            "timeout": self.settings.request_timeout_seconds,
+            "verify": _opensearch_tls_verifier(self.settings.opensearch_ca_file),
+        }
+        if self.settings.opensearch_username and self.settings.opensearch_password:
+            kwargs["auth"] = httpx.BasicAuth(
+                self.settings.opensearch_username,
+                self.settings.opensearch_password,
+            )
+        return httpx.AsyncClient(**kwargs)
 
 
 @dataclass(frozen=True)
@@ -620,6 +639,7 @@ def _index_definition() -> dict[str, Any]:
                 "policy_binding_id": {"type": "keyword"},
                 "policy_version": {"type": "keyword"},
                 "policy_hash": {"type": "keyword"},
+                "authorization_key": {"type": "keyword"},
                 "policy_summary": {
                     "properties": {
                         "handlingClass": {"type": "keyword"},
@@ -653,9 +673,6 @@ def _index_definition() -> dict[str, Any]:
                 "entity_types": {"type": "keyword"},
                 "entity_values": {"type": "keyword"},
                 "entity_pairs": {"type": "keyword"},
-                "tenant_id": {"type": "keyword"},
-                "external_system": {"type": "keyword"},
-                "external_ref": {"type": "keyword"},
             },
         },
     }
@@ -1008,7 +1025,7 @@ def _authorized_policy_filter(
 def _authorized_coordinate_filter(
     authorized_documents: list[dict[str, str]],
 ) -> dict[str, Any]:
-    pairs: list[dict[str, Any]] = []
+    keys: set[str] = set()
     for item in sorted(
         authorized_documents,
         key=lambda candidate: candidate.get("document_id", ""),
@@ -1023,18 +1040,31 @@ def _authorized_coordinate_filter(
             or not re.fullmatch(r"sha256:[a-f0-9]{64}", policy_hash)
         ):
             continue
-        pairs.append(
-            {
-                "bool": {
-                    "filter": [
-                        {"term": {"document_id": document_id}},
-                        {"term": {"document_version_id": document_version_id}},
-                        {"term": {"policy_hash": policy_hash}},
-                    ]
-                }
-            }
+        keys.add(
+            _authorization_key(
+                document_id,
+                document_version_id,
+                policy_hash,
+            )
         )
-    return {"bool": {"should": pairs, "minimum_should_match": 1}}
+    if not keys:
+        return {"match_none": {}}
+    return {"terms": {"authorization_key": sorted(keys)}}
+
+
+def _authorization_key(
+    document_id: str,
+    document_version_id: str,
+    policy_hash: str,
+) -> str:
+    coordinate = "\x1f".join((document_id, document_version_id, policy_hash))
+    return f"sha256:{sha256(coordinate.encode('utf-8')).hexdigest()}"
+
+
+def _opensearch_tls_verifier(ca_file: Any) -> ssl.SSLContext | bool:
+    if ca_file is None:
+        return True
+    return ssl.create_default_context(cafile=str(ca_file))
 
 
 def _analyst_fields(search_fields: list[str]) -> list[str]:

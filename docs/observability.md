@@ -86,6 +86,10 @@ Provisioned dashboards:
 - `AKB Platform Health` for target health and platform status request rate.
 - `AKB Observability` for target health, OpenTelemetry accepted spans, trace
   exporter throughput, span errors, and platform status request rate.
+- Central OpenSearch index health at
+  `https://wazuh.home.cz/observability/d/akl-opensearch-index/akl-opensearch-index`.
+  The matching Dashboards tenant is `akl` with data view
+  `akl_document_chunks*`.
 
 Provisioned Prometheus alert rules are stored in
 `infra/monitoring/prometheus/rules/akb-alerts.yml` and cover:
@@ -198,6 +202,14 @@ with a two-second bound per dependency. Governance checks Registry and RAG
 concurrently with a three-second bound. A slow or unreachable downstream is
 reported as `not_ready` instead of holding the readiness chain open for the
 full application request timeout.
+
+Production OpenSearch readiness is performed by Ingestion and RAG themselves,
+using their role-specific Basic Auth identity and the mounted CA. The generic
+platform-status probe does not bypass authentication or probe a removed local
+`http://opensearch:9200` container. Alert on central alias unavailability,
+replica degradation, indexing failures, search latency, rejected requests, and
+unexpected count drift. Never label metrics with credentials, source text,
+queries, prompts, or answers.
 
 ## Alerts
 

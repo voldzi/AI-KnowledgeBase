@@ -61,7 +61,7 @@ services:
       PLATFORM_HOST: 0.0.0.0
       PLATFORM_PORT: 8080
       PLATFORM_READY_TIMEOUT_SECONDS: ${PLATFORM_READY_TIMEOUT_SECONDS:-3}
-      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,opensearch=http://opensearch:9200,web=http://akl-web-1:3000${AKL_WEB_BASE_PATH:-/akb}/health}
+      PLATFORM_READY_CHECKS: ${PLATFORM_READY_CHECKS:-registry=http://registry-api:8000/health,qdrant=http://qdrant:6333/readyz,web=http://akl-web-1:3000${AKL_WEB_BASE_PATH:-/akb}/health}
     networks:
       - app_zone
       - management_zone
@@ -334,20 +334,24 @@ services:
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
       AKL_QDRANT_VECTOR_SIZE: ${AKL_QDRANT_VECTOR_SIZE:-1024}
       AKL_QDRANT_DISTANCE: ${AKL_QDRANT_DISTANCE:-Cosine}
-      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-http://opensearch:9200}
+      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-https://opensearch.home.cz:9200}
       AKL_OPENSEARCH_INDEX: ${AKL_OPENSEARCH_INDEX:-akl_document_chunks}
+      AKL_OPENSEARCH_USERNAME: ${AKL_OPENSEARCH_INGESTION_USERNAME:-akl_ingestion_writer}
+      AKL_OPENSEARCH_PASSWORD_FILE: /run/secrets/akl-opensearch-password
+      AKL_OPENSEARCH_CA_FILE: /run/secrets/opensearch-root-ca.pem
+      AKL_OPENSEARCH_AUTO_CREATE_INDEX: "false"
       AKL_INGESTION_JOB_STORE_PATH: /data/ingestion-jobs
       AKL_INGESTION_PROCESS_JOBS_INLINE: ${AKL_INGESTION_PROCESS_JOBS_INLINE:-true}
     volumes:
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage
       - ingestion-jobs:/data/ingestion-jobs
       - ${AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/svc-ingestion.client-secret}:/run/secrets/svc-ingestion-client-secret:ro
+      - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
+      - ${AKL_OPENSEARCH_INGESTION_PASSWORD_SOURCE_FILE:-/srv/akl/env/akl-opensearch-ingestion.password}:/run/secrets/akl-opensearch-password:ro
     depends_on:
       registry-api:
         condition: service_healthy
       qdrant:
-        condition: service_started
-      opensearch:
         condition: service_started
       llm-gateway-service:
         condition: service_healthy
@@ -390,8 +394,11 @@ services:
       AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE: /run/secrets/akb-rag-service-client-secret
       AKL_QDRANT_BASE_URL: http://qdrant:6333
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
-      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-http://opensearch:9200}
+      AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-https://opensearch.home.cz:9200}
       AKL_OPENSEARCH_INDEX: ${AKL_OPENSEARCH_INDEX:-akl_document_chunks}
+      AKL_OPENSEARCH_USERNAME: ${AKL_OPENSEARCH_RAG_USERNAME:-akl_rag_reader}
+      AKL_OPENSEARCH_PASSWORD_FILE: /run/secrets/akl-opensearch-password
+      AKL_OPENSEARCH_CA_FILE: /run/secrets/opensearch-root-ca.pem
       AKL_LLM_GATEWAY_BASE_URL: http://llm-gateway-service:8080/api/v1
       AKL_LLM_GATEWAY_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:?AKL_LLM_GATEWAY_SERVICE_TOKEN must be set}
       AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
@@ -407,12 +414,12 @@ services:
       AKL_RAG_ENABLE_RERANKING: ${AKL_RAG_ENABLE_RERANKING:-true}
     volumes:
       - ${AKL_RAG_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/akb-rag-service.client-secret}:/run/secrets/akb-rag-service-client-secret:ro
+      - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
+      - ${AKL_OPENSEARCH_RAG_PASSWORD_SOURCE_FILE:-/srv/akl/env/akl-opensearch-rag.password}:/run/secrets/akl-opensearch-password:ro
     depends_on:
       registry-api:
         condition: service_healthy
       qdrant:
-        condition: service_started
-      opensearch:
         condition: service_started
       llm-gateway-service:
         condition: service_healthy
@@ -537,27 +544,6 @@ services:
       - management_zone
     logging: *json-logging
 
-  opensearch:
-    image: ${OPENSEARCH_IMAGE:-opensearchproject/opensearch:2}
-    restart: unless-stopped
-    environment:
-      discovery.type: single-node
-      DISABLE_SECURITY_PLUGIN: "true"
-      DISABLE_INSTALL_DEMO_CONFIG: "true"
-      OPENSEARCH_JAVA_OPTS: "${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}"
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
-    networks:
-      - data_zone
-      - management_zone
-    healthcheck:
-      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/9200' >/dev/null 2>&1"]
-      interval: 20s
-      timeout: 5s
-      retries: 15
-      start_period: 40s
-    logging: *json-logging
-
 networks:
   public_zone:
     driver: bridge
@@ -591,7 +577,6 @@ volumes:
   caddy-data:
   caddy-config:
   qdrant-data:
-  opensearch-data:
   ingestion-jobs:
   evaluation-reports:
   evaluation-datasets:

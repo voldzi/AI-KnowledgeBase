@@ -113,3 +113,6 @@ python3 scripts/backfill_opensearch_from_qdrant.py \
 ```
 
 This only writes the OpenSearch chunk index. It does not change Registry documents, source files, Qdrant vectors, or document versions.
+Production uses the authenticated TLS invocation and managed-alias safeguards
+from `docs/OPERATIONS/central-opensearch.md`; never use the local HTTP example
+against `docker.home.cz`.

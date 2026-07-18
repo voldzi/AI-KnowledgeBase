@@ -161,6 +161,19 @@ V `local` režimu služba čte:
 
 V `http` režimu služba stáhne přímo z předané URI, typicky z presigned URL.
 
+## OpenSearch
+
+Lokální vývoj může používat přímé `AKL_OPENSEARCH_PASSWORD`. Produkce vyžaduje
+HTTPS, Basic Auth, `AKL_OPENSEARCH_PASSWORD_FILE`,
+`AKL_OPENSEARCH_CA_FILE` a
+`AKL_OPENSEARCH_AUTO_CREATE_INDEX=false`. Password file má přednost před přímou
+hodnotou. Ingestion používá pouze writer identitu, ověřuje certifikát přes
+zadanou CA a existující alias pouze kontroluje a idempotentně aktualizuje jeho
+mapping. Chybějící alias je fail-closed stav; produkční služba jej nevytváří.
+
+Podrobný produkční postup je v
+`docs/OPERATIONS/central-opensearch.md`.
+
 ## Parsing A OCR
 
 Nativní parsery:

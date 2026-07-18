@@ -145,9 +145,11 @@ gate. Chat ukládá hodnocení `pomohlo/nepomohlo` s omezeným důvodem bez voln
 textu a exportuje agregovatelnou provozní metriku. Skript
 `scripts/check_assistant_quality_release.py` fail-closed ověřuje dokončený
 report, minimální počet gold případů, všechny způsobilé prahy a absenci regresí.
-Produkční nasazení ještě musí vytvořit a spustit reprezentativní dataset nad
-aktuálními immutable document IDs; bez prošlého reportu se P0-E nepovažuje za
-uzavřené.
+Produkční release `dc6bdf6263df37ce6ba1402813a64ee69d7b58dc` uzavřel P0-E
+nad datasetem `professional_czech_knowledge_v1`: všech osm gold případů bylo
+způsobilých, recall i nDCG dosáhly 100 %, podíl falešných nul byl 0 % a
+zahřátá retrieval p95 latence byla 2 119 ms. Fail-closed release kontrola
+potvrdila stav `passed` bez regrese v běhu `eval_run_02455940cef9`.
 
 Rozsah:
 
@@ -355,6 +357,30 @@ Ověření:
 - root OpenAPI, skeleton a diff kontrola;
 - vizuální smoke dialogu, adresářového popoveru, hledání a výběru osoby v
   lokálním chat-only profilu.
+
+### 2026-07-18 – produkční pilotní release
+
+Nasazeno:
+
+- immutable merge commit `dc6bdf6263df37ce6ba1402813a64ee69d7b58dc`;
+- Registry migrace `0022_assistant_feedback` a `0023_assistant_pinning`;
+- samostatný chat na kanonické route `https://chat.zeleznalady.cz/`;
+- permanentní přesměrování starých `/chat` a `/assistant` odkazů na `/` se
+  zachováním query parametrů;
+- P0-E quality gate `eval_run_02455940cef9` s 8/8 gold případy, 100% recall,
+  100% nDCG, 0% falešnými nulami a retrieval p95 2 119 ms;
+- živý produkční dotaz na právní předpis pro informační systémy veřejné správy
+  s odpovědí podle zákona č. 365/2000 Sb. a autorizovanými citacemi;
+- manifest, service worker, všechny deklarované PWA ikony, aktualizační tok,
+  serverovou historii a vytvoření i odstranění testovacího vlákna.
+
+Pro P0, P1 a první produkční etapu P2 prošly automatické testy, immutable
+release verification, health/readiness a veřejné smoke kontroly. P3 zůstává
+záměrně oddělenou etapou: dočasné přílohy se nezapnou bez thread-scoped
+retence, malware kontroly a úplného odstranění binárních i odvozených dat.
+Fyzická instalace a odinstalace na konkrétních spravovaných iOS/Android
+zařízeních je součástí uživatelské akceptace pilotu, nikoli serverového release
+gate.
 
 ## Definition of Done každé etapy
 

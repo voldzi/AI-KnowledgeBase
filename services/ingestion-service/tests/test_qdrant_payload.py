@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from app.config import load_settings
@@ -7,7 +8,13 @@ from app.errors import IngestionError
 from app.schemas import AnalystSearchRequest, Classification, DocumentChunk, EntityRelationshipRequest, EntitySearchRequest
 from embeddings.client import EmbeddingClient
 from indexers.factory import create_indexer
-from indexers.opensearch import CompositeIndexer, OpenSearchIndexer, _authorized_policy_filter, _index_definition
+from indexers.opensearch import (
+    CompositeIndexer,
+    OpenSearchIndexer,
+    _authorization_key,
+    _authorized_policy_filter,
+    _index_definition,
+)
 from indexers.qdrant import QdrantIndexer
 
 
@@ -138,6 +145,11 @@ def test_opensearch_document_contains_search_text_and_citation_fields(tmp_path) 
     assert document["entity_types"] == ["document_number", "email"]
     assert document["entity_values"] == ["RMO12/2024", "ops@example.cz"]
     assert document["entity_pairs"] == ["document_number:RMO12/2024", "email:ops@example.cz"]
+    assert document["authorization_key"] == _authorization_key(
+        "doc_test",
+        "ver_test",
+        "sha256:" + "c" * 64,
+    )
     assert "Directive" in document["search_text"]
     assert "Exception approvals" in document["search_text"]
     assert "RMO12/2024" in document["search_text"]
@@ -160,19 +172,10 @@ def test_opensearch_authorization_filter_binds_document_to_current_policy_hash()
     )
 
     assert result == {
-        "bool": {
-            "should": [
-                {
-                    "bool": {
-                        "filter": [
-                            {"term": {"document_id": "doc_allowed"}},
-                            {"term": {"document_version_id": "ver_1"}},
-                            {"term": {"policy_hash": policy_hash}},
-                        ]
-                    }
-                }
-            ],
-            "minimum_should_match": 1,
+        "terms": {
+            "authorization_key": [
+                _authorization_key("doc_allowed", "ver_1", policy_hash)
+            ]
         }
     }
 def test_opensearch_index_definition_uses_czech_analyzer() -> None:
@@ -185,6 +188,62 @@ def test_opensearch_index_definition_uses_czech_analyzer() -> None:
     assert definition["mappings"]["properties"]["entity_types"]["type"] == "keyword"
     assert definition["mappings"]["properties"]["entity_values"]["type"] == "keyword"
     assert definition["mappings"]["properties"]["entity_pairs"]["type"] == "keyword"
+    assert definition["mappings"]["properties"]["authorization_key"]["type"] == "keyword"
+
+
+def test_opensearch_client_uses_ca_and_basic_auth(tmp_path, monkeypatch) -> None:
+    password_file = tmp_path / "opensearch.password"
+    password_file.write_text("writer-secret\n", encoding="utf-8")
+    ca_file = tmp_path / "opensearch-ca.pem"
+    ca_file.write_text("test-ca\n", encoding="utf-8")
+    settings = _settings(
+        tmp_path,
+        {
+            "AKL_INGESTION_INDEXER_MODE": "opensearch",
+            "AKL_OPENSEARCH_USERNAME": "writer",
+            "AKL_OPENSEARCH_PASSWORD_FILE": str(password_file),
+            "AKL_OPENSEARCH_CA_FILE": str(ca_file),
+        },
+    )
+    captured: dict = {}
+    sentinel = object()
+
+    monkeypatch.setattr(
+        "indexers.opensearch._opensearch_tls_verifier",
+        lambda value: sentinel if value == ca_file else None,
+    )
+    monkeypatch.setattr(
+        "indexers.opensearch.httpx.AsyncClient",
+        lambda **kwargs: captured.update(kwargs) or object(),
+    )
+
+    OpenSearchIndexer(settings)._client()
+
+    assert captured["verify"] is sentinel
+    assert isinstance(captured["auth"], httpx.BasicAuth)
+
+
+@pytest.mark.asyncio
+async def test_opensearch_readiness_fails_closed_for_bad_tls_or_auth(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    settings = _settings(
+        tmp_path,
+        {"AKL_INGESTION_INDEXER_MODE": "opensearch"},
+    )
+    monkeypatch.setattr(
+        "indexers.opensearch._opensearch_tls_verifier",
+        lambda _value: (_ for _ in ()).throw(OSError("bad ca")),
+    )
+    assert await OpenSearchIndexer(settings).readiness() == "not_ready"
+
+    fake_client = _FakeAsyncClient(get_responses=[_FakeResponse(401)])
+    monkeypatch.setattr(
+        "indexers.opensearch.OpenSearchIndexer._client",
+        lambda _self: fake_client,
+    )
+    assert await OpenSearchIndexer(settings).readiness() == "not_ready"
 
 
 @pytest.mark.asyncio
@@ -205,6 +264,7 @@ async def test_opensearch_existing_index_ensures_entity_mapping(tmp_path, monkey
     assert properties["entity_types"] == {"type": "keyword"}
     assert properties["entity_values"] == {"type": "keyword"}
     assert properties["entity_pairs"] == {"type": "keyword"}
+    assert properties["authorization_key"] == {"type": "keyword"}
     assert properties["policy_binding_id"] == {"type": "keyword"}
     assert properties["policy_summary"]["properties"]["obligations"] == {"type": "keyword"}
 
@@ -279,14 +339,35 @@ def test_opensearch_authorization_filter_requires_exact_version_and_policy_coord
         )
     )
 
-    filters = result["bool"]["should"][0]["bool"]["filter"]
-    assert filters == [
-        {"term": {"document_id": "doc_allowed"}},
-        {"term": {"document_version_id": "ver_current"}},
-        {"term": {"policy_hash": policy_hash}},
-    ]
+    assert result == {
+        "terms": {
+            "authorization_key": [
+                _authorization_key("doc_allowed", "ver_current", policy_hash)
+            ]
+        }
+    }
     assert "doc_stale" not in str(result)
     assert ("sha256:" + "d" * 64) not in str(result)
+
+
+def test_opensearch_authorization_filter_uses_one_bounded_terms_clause() -> None:
+    policy_hash = "sha256:" + "c" * 64
+    authorized_documents = [
+        _authorized_document(
+            document_id=f"doc_{index:04d}",
+            document_version_id=f"ver_{index:04d}",
+            policy_hash=policy_hash,
+        )
+        for index in range(500)
+    ]
+
+    result = _authorized_policy_filter(
+        EntitySearchRequest(authorized_documents=authorized_documents)
+    )
+
+    assert list(result) == ["terms"]
+    assert len(result["terms"]["authorization_key"]) == 500
+    assert "bool" not in result
 
 
 @pytest.mark.asyncio

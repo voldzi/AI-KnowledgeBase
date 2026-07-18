@@ -123,6 +123,11 @@ python scripts/backfill_opensearch_entities.py \
   --batch-size 500
 ```
 
+For central production OpenSearch, also provide
+`--opensearch-username`, `--opensearch-password-file`, and
+`--opensearch-ca-file`. The complete managed-alias procedure is in
+`docs/OPERATIONS/central-opensearch.md`.
+
 Před produkčním během použijte read-only kontrolu:
 
 ```bash
