@@ -14,6 +14,13 @@ def test_list_datasets_includes_seed_dataset() -> None:
 
     assert response.status_code == 200
     assert any(dataset["dataset_id"] == "sample_rag_eval" for dataset in response.json())
+    governance = next(
+        dataset
+        for dataset in response.json()
+        if dataset["dataset_id"] == "cz_public_governance_eval"
+    )
+    assert governance["case_count"] == 8
+    assert governance["silver_cases"] == 8
 
 
 def test_run_sample_dataset_and_fetch_reports() -> None:
