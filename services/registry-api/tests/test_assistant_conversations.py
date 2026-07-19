@@ -4,12 +4,15 @@ from fastapi.testclient import TestClient
 
 import app.api as registry_api
 from app.assistant_retention import purge_expired_assistant_conversations
+from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 from app.keycloak_directory import DirectoryUser
 from app.models import (
     AuditEvent,
     AssistantConversation,
     AssistantConversationShare,
     AssistantMessage,
+    Document,
+    DocumentVersion,
     utcnow,
 )
 
@@ -371,6 +374,144 @@ def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
     assert answer["availability"] == "available"
     assert answer["content"] == "Tato odpověď zůstává dostupná."
     assert answer["citations"][0]["document_version_id"] == version_id
+
+
+def test_history_keeps_answer_for_exact_valid_official_public_reference(
+    client: TestClient,
+    db_session,
+) -> None:
+    policy = InformationPolicyBinding.model_validate(
+        {
+            "schemaVersion": "stratos-information-policy-2",
+            "policyBindingId": "pol_historyofficial01",
+            "policyVersion": "information-policy-2.0.0",
+            "handlingClass": "PUBLIC",
+            "legalClassification": "NONE",
+            "tlp": None,
+            "pap": None,
+            "contentCategories": ["PUBLIC_INFORMATION"],
+            "audience": {
+                "organizationId": "org_stratos",
+                "scopeType": "organization",
+                "scopeIds": [],
+                "recipientSubjectIds": [],
+            },
+            "obligations": ["AUDIT_ACCESS"],
+            "originatorId": "service:akb",
+            "issuedAt": "2026-07-19T08:00:00Z",
+            "reviewAt": None,
+        }
+    )
+    policy_hash = canonical_policy_hash(policy)
+    document_id = "doc_history_official_public"
+    version_id = "ver_history_official_public"
+    document = Document(
+        document_id=document_id,
+        title="Zákon o státní statistické službě",
+        document_type="regulation",
+        status="valid",
+        classification="public",
+        owner_id="service:akb",
+        organization_id="org_stratos",
+        tags=["official-public-reference", "official-source-collection:czso"],
+        document_metadata={
+            "source_model": "official-public-reference-v1",
+            "source_public": True,
+            "audience": "organization",
+            "anonymous_publication": False,
+            "collection_id": "czso",
+            "authority": "Český statistický úřad",
+            "canonical_url": "https://www.czso.cz/csu/czso/statistical-service",
+        },
+        policy_binding_id=policy.policy_binding_id,
+        policy_version=policy.policy_version,
+        policy_hash=policy_hash,
+        policy_summary=policy.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+    )
+    version = DocumentVersion(
+        document_version_id=version_id,
+        document_id=document_id,
+        version_label="1.0",
+        status="valid",
+        organization_id="org_stratos",
+        policy_binding_id=policy.policy_binding_id,
+        policy_version=policy.policy_version,
+        policy_hash=policy_hash,
+        policy_summary=policy.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+        governance_registration_status="MOCK_BYPASSED",
+        governed_source_version=version_id,
+        source_file_uri="s3://akl-documents/official/czso/statistical-service.html",
+        file_hash=f"sha256:{'c' * 64}",
+    )
+    db_session.add_all([document, version])
+    db_session.commit()
+    public_headers = {
+        "X-AKL-Subject": "employee_public",
+        "X-AKL-Roles": "stratos_user",
+        "X-STRATOS-Capabilities": "akb:chat,akb:read_document",
+        "X-STRATOS-Scopes": "public",
+        "X-STRATOS-Organization-ID": "org_stratos",
+    }
+    client.post(
+        "/api/v1/assistant/conversations/conv_official_public/messages",
+        headers=public_headers,
+        json={
+            "user_id": "employee_public",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Jakým zákonem se řídí státní statistická služba?",
+                    "citations": [],
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_official_public/messages",
+        headers=public_headers,
+        json={
+            "user_id": "employee_public",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Řídí se zákonem č. 89/1995 Sb.",
+                    "response_type": "answer",
+                    "citations": [
+                        {
+                            "chunk_id": "chunk_history_official_public",
+                            "document_id": document_id,
+                            "document_version_id": version_id,
+                        }
+                    ],
+                    "metadata": {"confidence": "high"},
+                }
+            ],
+        },
+    )
+    fetched = client.get(
+        "/api/v1/assistant/conversation-history/conv_official_public",
+        headers=public_headers,
+    )
+    direct_read = client.get(
+        f"/api/v1/documents/{document_id}",
+        headers=public_headers,
+    )
+
+    assert appended.status_code == 201, appended.text
+    assert appended.json()["messages"][1]["availability"] == "available"
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["messages"][1]["availability"] == "available"
+    assert fetched.json()["messages"][1]["content"] == "Řídí se zákonem č. 89/1995 Sb."
+    assert fetched.json()["messages"][1]["citations"][0]["document_version_id"] == version_id
+    assert direct_read.status_code == 403
+    assert "PUBLIC_PROJECTION_REQUIRED" in direct_read.json()["error"]["details"][
+        "reason_codes"
+    ]
 
 
 def test_append_rejects_user_mismatch(client: TestClient) -> None:

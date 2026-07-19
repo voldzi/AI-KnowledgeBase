@@ -727,6 +727,8 @@ def evaluate_document_version_access(
     action: str,
     version: DocumentVersion,
     authority: DocumentVersionAuthority,
+    *,
+    official_public_reference: bool = False,
 ) -> Decision:
     constraints = {
         "organization_id": authority.organization_id,
@@ -750,19 +752,36 @@ def evaluate_document_version_access(
     base = _v2_base_decision(context, action)
     if base is not None:
         return base
-    if not _scope_allows(context, version, authority.policy_binding):
-        return Decision(
-            False,
-            "Document version audience or scope does not match",
-            constraints,
-            ("VERSION_SCOPE_MISMATCH",),
-        )
+    scoped_access = _scope_allows(context, version, authority.policy_binding)
+    if not scoped_access:
+        if (
+            action == Action.rag_query.value
+            and official_public_reference
+            and version.status == "valid"
+            and "public" in context.scopes
+        ):
+            # Keep the exact immutable citation available to an authenticated
+            # employee who originally queried a curated official public
+            # reference. This is still RAG-only: direct document/version reads
+            # and every non-official organization resource remain denied.
+            constraints["official_public_reference"] = True
+        else:
+            return Decision(
+                False,
+                "Document version audience or scope does not match",
+                constraints,
+                ("VERSION_SCOPE_MISMATCH",),
+            )
     constraints["obligations"] = list(authority.policy_binding.obligations)
     return Decision(
         True,
         "Capability, exact version scope and information policy allow access",
         constraints,
-        ("VERSION_POLICY_ALLOW",),
+        (
+            ("VERSION_OFFICIAL_PUBLIC_REFERENCE_ALLOW",)
+            if constraints.get("official_public_reference") is True
+            else ("VERSION_POLICY_ALLOW",)
+        ),
     )
 
 
@@ -777,6 +796,13 @@ def evaluate_runtime_document_version_access(
     if not local_decision.allowed:
         return local_decision
     settings = get_settings()
+    context = context_for_principal(principal)
+    if (
+        action == Action.rag_query.value
+        and "public" in context.scopes
+        and local_decision.constraints.get("official_public_reference") is True
+    ):
+        return local_decision
     if settings.auth_mode == "mock":
         return local_decision
     if not principal.dynamic_access_loaded:
@@ -1032,6 +1058,10 @@ def require_document_version_action(
         action.value,
         version,
         authority,
+        official_public_reference=(
+            document.status == "valid"
+            and is_official_public_source_document(document)
+        ),
     )
     decision = evaluate_runtime_document_version_access(
         principal,
