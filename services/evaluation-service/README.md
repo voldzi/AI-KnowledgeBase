@@ -67,12 +67,7 @@ Pripad dale nese `role`, `query_category` a `judgment_status`. Rezim
 `answer_mode=retrieve_only` nevola generacni model a je urcen pro rychle
 retrieval baseline.
 
-Minimalni priklad je v `datasets/sample_rag_eval.json`. Sdileny stribrny
-regresni dataset `datasets/cz_public_governance_eval.json` overuje odpovedi
-bezneho zamestnance nad oficialnimi ceskymi zdroji pro statistickou sluzbu,
-eGovernment, digitalni sluzby, verejne zakazky a open data. V produkci se
-spousti se `subject_id_override` aktivniho testovaciho uzivatele se standardnim
-AKB profilem.
+Minimalni priklad je v `datasets/sample_rag_eval.json`.
 
 ## Hlavni tok
 

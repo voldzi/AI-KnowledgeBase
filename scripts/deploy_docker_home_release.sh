@@ -1082,6 +1082,10 @@ else
       services/rag-retrieval-service/*)
         add_service rag-retrieval-service
         ;;
+      services/evaluation-service/README.md|services/evaluation-service/datasets/*|services/evaluation-service/tests/*)
+        # Evaluation documentation, curated datasets, and tests do not alter
+        # a production runtime service managed by this release workflow.
+        ;;
       apps/web/*)
         add_service web
         add_service chat-web
