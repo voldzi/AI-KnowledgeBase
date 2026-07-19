@@ -129,7 +129,11 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
   version is missing, unavailable, or no longer allowed, Registry returns the
   message as `source_access_changed` without its stored answer, citations, or
   structured metadata. Conversation ownership or sharing never preserves
-  obsolete source access.
+  obsolete source access. An authenticated employee with `akb:chat` and the
+  public chat scope keeps RAG-only history access to an exact valid version of
+  a curated official public reference. This exception never grants direct
+  document/version reads, archived versions, untrusted sources, or internal
+  organization content.
 - Server-side web route guards redirect employee chat-only users away from
   knowledge-management and admin surfaces.
 - The standalone `AKL_WEB_PROFILE=chat` instance applies an environment-level

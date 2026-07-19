@@ -314,6 +314,9 @@ Implementováno:
 - reautorizace každé citované neměnné verze při načtení historické odpovědi;
 - fail-closed `source_access_changed` bez textu, citací a strukturovaných
   metadat při změně nebo nedostupnosti přístupu;
+- zachování historie nad přesnou platnou verzí kurátorovaného oficiálního
+  veřejného zdroje pro přihlášeného zaměstnance s `akb:chat` a veřejným scope,
+  bez možnosti přímého čtení dokumentu;
 - aktualizace TypeScript typů, Registry schématu a OpenAPI kontraktů.
 
 Ověření:

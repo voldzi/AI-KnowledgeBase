@@ -343,7 +343,9 @@ are reauthorized against every exact cited document version on each history
 read. If one of those versions is no longer allowed or cannot be safely
 verified, Registry returns `availability=source_access_changed`, an empty
 `content`, no citations, and only the bounded
-`metadata.history_access_changed=true` marker.
+`metadata.history_access_changed=true` marker. Curated official public
+references retain exact-version RAG history for authenticated employees with
+`akb:chat` and public scope while direct Registry reads remain denied.
 
 Assistant sharing never accepts a free-text person identifier. The web bridge
 loads a bounded active-user list from the assistant-specific Keycloak directory

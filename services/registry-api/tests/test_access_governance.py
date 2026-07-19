@@ -26,6 +26,7 @@ from app.permissions import (
     DocumentVersionAuthority,
     SubjectContext,
     evaluate_document_access,
+    evaluate_document_version_access,
     evaluate_runtime_document_access,
     evaluate_runtime_document_version_access,
 )
@@ -883,6 +884,108 @@ def test_official_public_source_exact_version_decision_uses_fixed_service_identi
     assert result.allowed is True
     assert calls[0]["credential_token"] is None
     assert calls[0]["capability_id"] == "akb:manage_document"
+
+
+def test_public_chat_scope_keeps_exact_valid_official_reference_version(
+    monkeypatch,
+) -> None:
+    document = _official_public_document()
+    binding = _public_policy()
+    policy_hash = canonical_policy_hash(binding)
+    version = DocumentVersion(
+        document_version_id="ver_official_public_history",
+        document_id=document.document_id,
+        version_label="1.0",
+        status="valid",
+        organization_id="org_stratos",
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=policy_hash,
+        policy_summary=binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+    )
+    authority = DocumentVersionAuthority(
+        organization_id="org_stratos",
+        governed_resource_id="gir_official_public_history_version",
+        governed_source_version=version.document_version_id,
+        governed_parent_resource_id="gir_official_public_history_document",
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=policy_hash,
+        governance_scope={"type": "organization", "id": "org_stratos"},
+        governance_scope_hash="sha256:" + "b" * 64,
+        policy_binding=binding,
+    )
+    context = SubjectContext(
+        subject_id="user-employee",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:chat", "akb:read_document"},
+        scopes={"public"},
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        access_v2=True,
+    )
+    principal = Principal(
+        subject_id="user-employee",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:chat", "akb:read_document"},
+        scopes={"public"},
+        organization_id="org_stratos",
+        dynamic_access_loaded=True,
+        bearer_token="verified-user-token",
+    )
+
+    local = evaluate_document_version_access(
+        context,
+        "rag.query",
+        version,
+        authority,
+        official_public_reference=True,
+    )
+    without_official_source = evaluate_document_version_access(
+        context,
+        "rag.query",
+        version,
+        authority,
+    )
+    direct_read = evaluate_document_version_access(
+        context,
+        "document.read",
+        version,
+        authority,
+        official_public_reference=True,
+    )
+
+    class Client:
+        def decide(self, **_kwargs):
+            raise AssertionError(
+                "official public historical RAG must not use generic organization-scope PDP"
+            )
+
+    monkeypatch.setattr(permissions_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(permissions_module, "governance_client", lambda _settings: Client())
+    runtime = evaluate_runtime_document_version_access(
+        principal,
+        "rag.query",
+        document,
+        version,
+        authority,
+        local,
+    )
+
+    assert local.allowed is True
+    assert local.constraints["official_public_reference"] is True
+    assert local.reason_codes == ("VERSION_OFFICIAL_PUBLIC_REFERENCE_ALLOW",)
+    assert runtime.allowed is True
+    assert without_official_source.allowed is False
+    assert without_official_source.reason_codes == ("VERSION_SCOPE_MISMATCH",)
+    assert direct_read.allowed is False
+    assert direct_read.reason_codes == ("VERSION_SCOPE_MISMATCH",)
 
 
 def test_governed_resource_registration_uses_verified_obo_contract(monkeypatch) -> None:
