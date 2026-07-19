@@ -1,0 +1,286 @@
+{
+  "cases": [
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_stat_service_law",
+      "expected_answer_terms": [
+        "89/1995 Sb.",
+        "státní statistické službě"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "regulation",
+          "methodology",
+          "knowledge_base_article",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "ČSÚ",
+        "topic": "statistical-service"
+      },
+      "query": "Jakým zákonem se řídí státní statistická služba v České republice?",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_stat_service_coordinator",
+      "expected_answer_terms": [
+        "Český statistický úřad",
+        "koordinuje"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "regulation",
+          "methodology",
+          "knowledge_base_article",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "ČSÚ",
+        "topic": "statistical-service"
+      },
+      "query": "Kdo koordinuje státní statistickou službu?",
+      "query_category": "entity",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_stat_program_2026",
+      "expected_answer_terms": [
+        "445/2025 Sb.",
+        "2026"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "regulation",
+          "methodology",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "ČSÚ",
+        "topic": "statistical-program"
+      },
+      "query": "Který právní předpis stanoví Program statistických zjišťování na rok 2026?",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_csu_products",
+      "expected_answer_terms": [
+        "statistické údaje",
+        "otevřená data"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "methodology",
+          "knowledge_base_article",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "ČSÚ",
+        "topic": "products"
+      },
+      "query": "Jaké hlavní produkty a datové služby poskytuje Český statistický úřad?",
+      "query_category": "semantic",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_information_systems_public_admin",
+      "expected_answer_terms": [
+        "365/2000 Sb.",
+        "informačních systémech veřejné správy"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "regulation",
+          "methodology",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "DIA",
+        "topic": "egovernment"
+      },
+      "query": "Který zákon upravuje informační systémy veřejné správy?",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_right_to_digital_services",
+      "expected_answer_terms": [
+        "12/2020 Sb.",
+        "právu na digitální služby"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "regulation",
+          "methodology",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "DIA",
+        "topic": "digital-services"
+      },
+      "query": "Který zákon zakládá právo osob na digitální služby státu?",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_public_procurement",
+      "expected_answer_terms": [
+        "134/2016 Sb.",
+        "zadávání veřejných zakázek"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "regulation",
+          "methodology",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "MMR",
+        "topic": "public-procurement"
+      },
+      "query": "Který zákon upravuje zadávání veřejných zakázek?",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    },
+    {
+      "answer_mode": "normative_with_citations",
+      "case_id": "cz_freedom_information_open_data",
+      "expected_answer_terms": [
+        "106/1999 Sb.",
+        "svobodném přístupu k informacím"
+      ],
+      "expected_citations": [],
+      "expected_no_answer": false,
+      "expected_relevant_chunk_ids": [],
+      "filters": {
+        "classification_max": "public",
+        "document_types": [
+          "regulation",
+          "methodology",
+          "other"
+        ],
+        "only_valid": true,
+        "tags": []
+      },
+      "forbidden_answer_terms": [],
+      "judgment_status": "silver",
+      "max_chunks": 8,
+      "metadata": {
+        "authority": "DIA",
+        "topic": "open-data"
+      },
+      "query": "Který zákon upravuje svobodný přístup k informacím a související zveřejňování otevřených dat?",
+      "query_category": "exact_identifier",
+      "role": "employee",
+      "subject_id": "eval_subject",
+      "weight": 1.0
+    }
+  ],
+  "created_at": "2026-07-19T00:00:00Z",
+  "dataset_id": "cz_public_governance_eval",
+  "description": "Stříbrná regresní sada pro citované odpovědi běžného zaměstnance nad oficiálními českými zdroji: statistická služba, eGovernment, digitální služby, veřejné zakázky a open data.",
+  "metadata": {
+    "run_instruction": "V produkci spusťte se subject_id_override aktivního uživatele s AKB profilem STRATOS user.",
+    "source": "curated official-public-reference corpus"
+  },
+  "name": "CZ Public Governance",
+  "tags": [
+    "silver",
+    "official-public-reference",
+    "czech-law",
+    "statistics",
+    "egovernment"
+  ],
+  "visibility": "shared"
+}
