@@ -122,6 +122,14 @@ file signatures and SHA-256 version identity. It never creates an anonymous
 publication record. Details are in
 `docs/ingestion/official-public-sources.md`.
 
+For these strictly marked official references only, an active authenticated
+employee with `akb:chat` and the `public` chat scope may perform `rag.query`
+over an exact valid indexed version. This does not grant Registry document
+reads, anonymous delivery, storage access, or access to any ordinary
+organization-scoped content. An archived version, policy-hash mismatch,
+incomplete marker, disabled identity/membership/application access or missing
+capability is denied.
+
 The synthetic authenticated scope `public` is also not an organization scope
 or a shortcut to `document.read`. It permits only governed `rag.query` over an
 exact active immutable public version after a fresh anonymous central

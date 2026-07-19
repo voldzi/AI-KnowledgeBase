@@ -740,6 +740,87 @@ def test_official_public_source_runtime_decision_uses_fixed_service_identity(
     assert calls[0]["capability_id"] == "akb:manage_document"
 
 
+def test_public_chat_scope_can_query_but_not_read_valid_official_reference(
+    monkeypatch,
+) -> None:
+    document = _official_public_document()
+    principal = Principal(
+        subject_id="user-employee",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:chat", "akb:read_document"},
+        scopes={"public"},
+        organization_id="org_stratos",
+        dynamic_access_loaded=True,
+        bearer_token="verified-user-token",
+    )
+    context = SubjectContext(
+        subject_id="user-employee",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:chat", "akb:read_document"},
+        scopes={"public"},
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        access_v2=True,
+    )
+
+    class Client:
+        def decide(self, **_kwargs):
+            raise AssertionError("official public RAG must not use generic organization-scope PDP")
+
+    monkeypatch.setattr(permissions_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(permissions_module, "governance_client", lambda _settings: Client())
+
+    local = evaluate_document_access(context, "rag.query", document)
+    runtime = evaluate_runtime_document_access(principal, "rag.query", document, local)
+    direct_read = evaluate_document_access(context, "document.read", document)
+
+    assert local.allowed is True
+    assert local.constraints["official_public_reference"] is True
+    assert runtime.allowed is True
+    assert direct_read.allowed is False
+    assert direct_read.reason_codes == ("PUBLIC_PROJECTION_REQUIRED",)
+
+
+def test_public_chat_scope_denies_inactive_or_untrusted_official_reference() -> None:
+    document = _official_public_document()
+    context = SubjectContext(
+        subject_id="user-employee",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:chat"},
+        scopes={"public"},
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        access_v2=True,
+    )
+
+    document.status = "archived"
+    archived = evaluate_document_access(context, "rag.query", document)
+    document.status = "valid"
+    document.document_metadata["source_model"] = "untrusted-source"
+    untrusted = evaluate_document_access(context, "rag.query", document)
+    inactive_context = SubjectContext(
+        **{
+            **context.__dict__,
+            "identity_active": False,
+        },
+    )
+    inactive = evaluate_document_access(inactive_context, "rag.query", document)
+
+    assert archived.allowed is False
+    assert archived.reason_codes == ("PUBLICATION_INACTIVE",)
+    assert untrusted.allowed is False
+    assert untrusted.reason_codes == ("PUBLICATION_INACTIVE",)
+    assert inactive.allowed is False
+    assert inactive.reason_codes == ("IDENTITY_DISABLED",)
+
+
 def test_official_public_source_exact_version_decision_uses_fixed_service_identity(
     monkeypatch,
 ) -> None:

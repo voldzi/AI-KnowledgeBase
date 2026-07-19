@@ -36,6 +36,17 @@ def policy(
     }
 
 
+def official_public_reference_policy() -> dict:
+    binding = policy(
+        binding_id="pol_official_public_reference",
+        scope_type="organization",
+    )
+    binding["handlingClass"] = "PUBLIC"
+    binding["contentCategories"] = ["PUBLIC_INFORMATION"]
+    binding["obligations"] = ["AUDIT_ACCESS"]
+    return binding
+
+
 def v2_headers(*, subject: str, capabilities: str, scopes: str = "organization") -> dict[str, str]:
     return {
         "X-AKL-Subject": subject,
@@ -219,6 +230,89 @@ def test_central_organization_scope_with_id_allows_document_version(client) -> N
     )
 
     assert response.status_code == 201, response.text
+
+
+def test_public_chat_filter_allows_exact_valid_official_reference_version(
+    client,
+    db_session,
+) -> None:
+    binding = InformationPolicyBinding.model_validate(official_public_reference_policy())
+    policy_hash = canonical_policy_hash(binding)
+    document = Document(
+        document_id="doc_csu_public_reference",
+        title="Zákon o státní statistické službě",
+        document_type="regulation",
+        status="valid",
+        classification="public",
+        owner_id="service:akb",
+        tags=["official-public-reference", "official-source-collection:czso"],
+        document_metadata={
+            "source_model": "official-public-reference-v1",
+            "source_public": True,
+            "audience": "organization",
+            "anonymous_publication": False,
+            "collection_id": "czso",
+            "authority": "Český statistický úřad",
+            "canonical_url": "https://www.czso.cz/csu/czso/statistical-service",
+        },
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=policy_hash,
+        policy_summary=binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+    )
+    version = DocumentVersion(
+        document_version_id="ver_csu_public_reference",
+        document_id=document.document_id,
+        version_label="1.0",
+        status="valid",
+        organization_id="org_stratos",
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=policy_hash,
+        policy_summary=binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+        source_file_uri="s3://akl-documents/official/czso/statistical-service.html",
+        file_hash=f"sha256:{'c' * 64}",
+    )
+    db_session.add_all([document, version])
+    db_session.commit()
+
+    filtered = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=v2_headers(
+            subject="user-employee",
+            capabilities="akb:chat",
+            scopes="public",
+        ),
+        json={
+            "subject_id": "user-employee",
+            "action": "rag.query",
+            "candidate_document_ids": [document.document_id],
+            "candidate_policy_hashes": {document.document_id: [policy_hash]},
+            "candidate_document_versions": {
+                document.document_id: [version.document_version_id]
+            },
+        },
+    )
+    direct_read = client.get(
+        f"/api/v1/documents/{document.document_id}",
+        headers=v2_headers(
+            subject="user-employee",
+            capabilities="akb:read_document",
+            scopes="public",
+        ),
+    )
+
+    assert filtered.status_code == 200, filtered.text
+    assert filtered.json()["allowed_document_ids"] == [document.document_id]
+    assert filtered.json()["allowed_document_version_ids"] == {
+        document.document_id: [version.document_version_id]
+    }
+    assert direct_read.status_code == 403
+    assert "PUBLIC_PROJECTION_REQUIRED" in direct_read.json()["error"]["details"]["reason_codes"]
 
 
 def test_tlp_red_requires_explicit_recipient(client) -> None:
