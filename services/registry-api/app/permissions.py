@@ -530,10 +530,18 @@ def _v2_document_decision(context: SubjectContext, action: str, document: Docume
                 constraints,
                 ("PUBLIC_PROJECTION_REQUIRED",),
             )
-        public_version_ids = centrally_allowed_true_public_version_ids(document, binding)
-        if binding.audience.scope_type != "public" or not public_version_ids:
-            return Decision(False, "Document is not actively public", constraints, ("PUBLICATION_INACTIVE",))
-        constraints["public_version_ids"] = sorted(public_version_ids)
+        if is_official_public_source_document(document) and document.status == "valid":
+            # Curated official references are authenticated organization
+            # knowledge, not anonymous publications.  A normal employee with
+            # the public chat scope may query an exact valid indexed version,
+            # while Registry document reads and every non-official
+            # organization resource remain scope-protected.
+            constraints["official_public_reference"] = True
+        else:
+            public_version_ids = centrally_allowed_true_public_version_ids(document, binding)
+            if binding.audience.scope_type != "public" or not public_version_ids:
+                return Decision(False, "Document is not actively public", constraints, ("PUBLICATION_INACTIVE",))
+            constraints["public_version_ids"] = sorted(public_version_ids)
     elif not scoped_access:
         return Decision(False, "Document audience or scope does not match", constraints, ("SCOPE_MISMATCH",))
     constraints["obligations"] = list(binding.obligations)
@@ -843,17 +851,21 @@ def evaluate_runtime_document_access(
     if not decision.allowed:
         return decision
     # The public-projection branch above has already performed a fresh anonymous
-    # decision for each exact immutable publication/version.  Sending that
-    # result through the authenticated, scope-oriented PDP would evaluate a
-    # different resource contract (normally the document's organization
-    # scope) and can turn an exact public ALLOW into an unrelated DENY.
-    # Conversely, this bypass is deliberately unavailable to ordinary scoped
-    # access or to full document reads.
+    # decision for each exact immutable publication/version. Curated official
+    # references use the separately validated fixed source model and stay
+    # authenticated organization knowledge. Sending either result through the
+    # generic organization-scope PDP would evaluate a different resource
+    # contract and can turn the deliberately narrow RAG ALLOW into an unrelated
+    # DENY. This bypass is unavailable to ordinary scoped content and full
+    # Registry document reads.
     context = context_for_principal(principal)
     if (
         action == Action.rag_query.value
         and "public" in context.scopes
-        and bool(decision.constraints.get("public_version_ids"))
+        and (
+            bool(decision.constraints.get("public_version_ids"))
+            or decision.constraints.get("official_public_reference") is True
+        )
     ):
         return decision
     if settings.auth_mode == "mock":

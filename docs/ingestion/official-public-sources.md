@@ -49,6 +49,15 @@ immediately available to authorized AKB chat users after indexing. AKB does not
 create an anonymous `InformationPublication` or public download page for them.
 Anonymous publication remains a separate explicit governed lifecycle.
 
+An active user with `akb:chat` and the synthetic `public` chat scope may use
+only `rag.query` over an exact valid version of a document that satisfies the
+complete `official-public-reference-v1` marker, metadata, policy and
+organization-scope contract. This narrow path does not grant
+`document.read`, does not expose source storage, and does not apply to an
+archived, malformed or ordinary organization document. Identity, organization
+membership, AKB application access, capability, candidate policy hash and exact
+version validity still fail closed.
+
 The source metadata uses:
 
 - `source_model=official-public-reference-v1`
@@ -108,6 +117,12 @@ copies, are not added to this public-source catalog. They are imported as
 ordinary controlled documents with `classification=internal`, an
 organization-only audience and explicit licensing metadata. Openly licensed
 FitSM material remains in the public collection.
+
+The bundled `cz_public_governance_eval` silver evaluation dataset exercises
+ordinary-employee questions over statistical service, eGovernment, digital
+services, public procurement and open data. Production runs must provide
+`subject_id_override` for an active test user with the standard AKB employee
+profile; a no-answer or missing citation is a regression.
 
 ## Search Indexes
 
