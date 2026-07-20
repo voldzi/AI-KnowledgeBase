@@ -496,7 +496,7 @@ class StratosGovernanceClient:
                 "parentId": parent_id,
                 "scope": scope,
                 "integrationEnvelope": envelope.model_dump(
-                    mode="json", by_alias=True, exclude_none=True
+                    mode="json", by_alias=True, exclude_none=False
                 ),
                 "reason": reason,
             },
