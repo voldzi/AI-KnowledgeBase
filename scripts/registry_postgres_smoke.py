@@ -197,7 +197,9 @@ def verify_external_document_api(database_url: str) -> None:
 
     payload = {
         "tenant_id": "default",
-        "external_system": "STRATOS_BUDGET",
+        # This smoke exercises the generic external-document contract. Budget
+        # lineage has a dedicated fail-closed route and is covered separately.
+        "external_system": "STRATOS_PROJECTFLOW",
         "external_ref": "contract:postgres-smoke:main",
         "entity_type": "Contract",
         "entity_id": "contract-postgres-smoke",
