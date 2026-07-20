@@ -1,4 +1,12 @@
-from app.information_policy import InformationPolicyBinding, canonical_policy_hash
+from types import SimpleNamespace
+
+from app.access_governance import StratosGovernanceClient
+from app.config import Settings
+from app.information_policy import (
+    InformationPolicyBinding,
+    IntegrationEnvelope,
+    canonical_policy_hash,
+)
 from app.models import (
     AuditEvent,
     DocumentFile,
@@ -17,6 +25,87 @@ PARENT_RESOURCE = "gres-budget-contract-123"
 EXTERNAL_REF = f"contract:{CONTRACT_ID}:document:signed"
 FILE_HASH = f"sha256:{'a' * 64}"
 FILE_HASH_2 = f"sha256:{'b' * 64}"
+
+
+def test_budget_governance_client_preserves_explicit_null_classification(monkeypatch):
+    policy = _policy()
+    policy["tlp"] = None
+    binding = InformationPolicyBinding.model_validate(policy)
+    raw_envelope = _envelope()
+    raw_envelope["policyHash"] = canonical_policy_hash(binding)
+    raw_envelope["classification"]["tlp"] = None
+    envelope = IntegrationEnvelope.model_validate(raw_envelope)
+    captured: dict = {}
+    response = {
+        "id": "gres-budget-document-123",
+        "application": "AKB",
+        "resourceType": "document",
+        "resourceId": "doc-budget-123",
+        "sourceVersion": "document-v1",
+        "parentId": PARENT_RESOURCE,
+        "scope": {"type": "budget_scope", "id": FINANCIAL_SCOPE},
+        "isActive": True,
+        "policyAssignment": "INHERITED",
+        "explicitPolicyBindingId": None,
+        "inheritedFromResourceId": PARENT_RESOURCE,
+        "effectivePolicy": {
+            "policyBindingId": binding.policy_binding_id,
+            "policyVersion": binding.policy_version,
+            "policyHash": canonical_policy_hash(binding),
+            "originatorId": binding.originator_id,
+            "originator": binding.originator_id,
+            "issuedAt": "2026-07-20T00:00:00Z",
+            "reviewAt": None,
+        },
+        "registeredBySubjectId": "service:akb",
+        "confirmedBySubjectId": "service:akb",
+        "correlation_id": envelope.correlation_id,
+        "idempotency_key": envelope.idempotency_key,
+    }
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def request(self, method, url, **kwargs):
+            captured.update(method=method, url=url, **kwargs)
+            return SimpleNamespace(status_code=200, json=lambda: response)
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    settings = Settings(
+        AKL_ENV="test",
+        AKL_AUTH_MODE="mock",
+        AKL_STRATOS_BUDGET_AKB_RESOURCES_URL=(
+            "https://stratos.example/api/v1/integrations/budget/akb/resources"
+        ),
+        AKB_POLICY_SERVICE_TOKEN="budget-policy-token",
+    )
+    StratosGovernanceClient(settings).register_budget_akb_resource(
+        resource_type="document",
+        resource_id="doc-budget-123",
+        source_version="document-v1",
+        title="Smlouva",
+        parent_id=PARENT_RESOURCE,
+        inherited_from_resource_id=PARENT_RESOURCE,
+        scope={"type": "budget_scope", "id": FINANCIAL_SCOPE},
+        envelope=envelope,
+        binding=binding,
+        reason="test exact lineage",
+    )
+
+    classification = captured["json"]["integrationEnvelope"]["classification"]
+    assert classification == {
+        "handlingClass": "INTERNAL",
+        "legalClassification": "NONE",
+        "tlp": None,
+        "pap": None,
+    }
 
 
 def _policy(scope_id: str = FINANCIAL_SCOPE) -> dict:
