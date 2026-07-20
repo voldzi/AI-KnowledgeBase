@@ -337,7 +337,11 @@ Technické logy obsahují ID jobu, dokumentu/verze, počty chunků, status a lat
 
 ## Limity
 
-- Výchozí limit souboru je 50 MiB.
+- Výchozí limit služby je 50 MiB. Produkční profil na `docker.home.cz`
+  nastavuje `AKL_INGESTION_MAX_FILE_BYTES=134217728` (128 MiB), aby ingestion
+  neodmítl dokument, který už prošel odděleným 128MiB limitem důvěryhodného
+  STRATOS Budget upload rozhraní. Běžný webový upload zůstává omezen vlastním,
+  nižším limitem.
 - Výchozí cílová velikost chunku je 1400 znaků.
 - Výchozí maximální velikost chunku je 3000 znaků.
 - Výchozí maximální počet chunků na job je 5000.
