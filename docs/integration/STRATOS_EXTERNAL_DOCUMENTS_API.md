@@ -28,6 +28,12 @@ Implementovaná část:
   ingestion jobu, ingestion status, retry ingestion, canonical open URL,
   citation open URL a embed viewer.
 
+Pro nové zápisy smluv z Budget & Contract platí uzavřený bridge kontrakt
+`STRATOS_BUDGET`. Obecný `POST /external-documents/upsert`, obecné vytvoření
+verze a obecná změna current pointeru nesmějí tuto lineage měnit. Historické
+generické příklady níže zůstávají referencí pro ostatní STRATOS source systémy;
+nejsou zápisovým kontraktem pro Budget.
+
 Navazující části budou doplněné v dalších fázích:
 
 - další extraction profily a UI review panel nad sdílenými komponentami,
@@ -68,130 +74,192 @@ V lokálním mock/dev režimu mohou být použité `X-AKL-*` hlavičky. Produkč
 
 ## Endpointy
 
-### Upsert externího dokumentu
+### Řízený upload smluv z Budget & Contract
+
+Budget server používá pouze samostatný web/BFF namespace:
 
 ```http
-POST /api/v1/external-documents/upsert
+POST /akb/api/stratos/budget-upload/preflight
+PUT  /akb/api/stratos/budget-upload/sessions/{session_id}/content
+POST /akb/api/stratos/budget-upload/sessions/{session_id}/confirm
+GET  /akb/api/stratos/budget-upload/documents/{document_id}/ingestion-status
+POST /akb/api/stratos/budget-upload/documents/{document_id}/retry-ingestion
 ```
 
-Payload:
+Web/BFF následně používá výhradně uzavřený Registry namespace:
+
+```http
+POST  /api/v1/integrations/stratos-budget-upload/external-documents/upsert
+PUT   /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions
+PATCH /api/v1/integrations/stratos-budget-upload/external-documents/{external_document_id}/current
+GET   /api/v1/integrations/stratos-budget-upload/documents/{document_id}/status
+POST  /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/ingestion-authorization
+```
+
+Transportní identita je přesně `client_id=stratos-akb-service`, audience
+`akl-api`, role `service_ingestion` a Registry grant pouze
+`stratos-budget-upload`. Hlavičky dodané volajícím jako `X-AKL-*` nejsou zdroj
+identity. Povolený source system je pouze `STRATOS_BUDGET`.
+
+Povinná contract-level lineage obsahuje `external_ref`, `contractId`, finanční
+scope `budget-global` nebo `budget:<key>` a nadřazený governed resource
+smlouvy. Každá immutable verze navíc nese svůj hash souboru, Information
+Policy V2 a osobu, která konkrétní verzi vložila. Interaktivní confirm nebo
+retry vyžaduje čerstvé
+`X-STRATOS-Actor-Authorization`, jehož canonical subject se přesně rovná
+`integrationEnvelope.actor.subjectId` aktuální verze. Prosté
+`X-STRATOS-Actor` není autorizace. Auditním aktérem service-only registrace je
+služba. Osoba z první registrace zůstává v kořenovém `document.owner_id` jako
+historická provenance, ale není autorizační podmínkou pro dalšího správce,
+kterému STRATOS povolil vložení nové verze.
+
+Úplný serverový `historical_batch` může nést `lifecycle=CURRENT` i
+`lifecycle=ARCHIVED`. Po potvrzení používá samostatný service-only autorizační
+endpoint, který odvodí oprávnění výhradně z uložené a podepsané lineage
+konkrétní verze. Endpoint přijme pouze `document.ingest`, přesný correlation ID
+a idempotency key `confirm:<external_document_id>:<document_version_id>`.
+Nevytváří obecnou delegaci služby a nelze jej použít pro jiný dokument, reindex
+nebo zápis do Budget. Interaktivní i historická cesta následně založí běžný
+ingestion job a stav se sleduje přes BFF `ingestion-status` až do `INDEXED` nebo
+`FAILED`.
+
+Vytvoření dokumentu a verze vrací `201`; přesný idempotentní replay vrací
+`200` a `created=false`. Nová service-only verze CAS-kontroluje předchozí
+current version/job a nikdy nezdědí ingestion job předchozí verze. Potvrzená
+verze se v AKB aktivuje jako `valid`, aby byla vyhledatelná a citovatelná, ale
+nevzniká tím anonymní/public publikace ani automaticky přijatá AI extrakce.
+Confirm vrací také přesné `governance_confirmation` pro dokument a verzi a
+`document_version_status=valid`.
+
+Webový bridge má pro tento řízený provoz oddělený rate limit. Produkční hodnoty
+se nastavují pomocí `AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_LIMIT` a
+`AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_WINDOW_SECONDS`; výchozí profil je 300
+požadavků za 60 sekund a nesdílí okno s ostatními STRATOS bridge voláními.
+
+### Registrace Budget smlouvy v Registry
+
+Obecný endpoint `/api/v1/external-documents/upsert` není pro
+`STRATOS_BUDGET` povolen. Budget používá pouze vyhrazený endpoint a organizaci
+`org_stratos`. Kanonický `external_ref` je buď `contract:<contractId>`, nebo
+`contract:<contractId>:document:<key>`; staré tvary s tenantem `default` nebo
+sufixem `:main` jsou neplatné.
+
+```http
+POST /api/v1/integrations/stratos-budget-upload/external-documents/upsert
+```
+
+Zkrácený reálný tvar requestu (policy a envelope musí být úplné a jejich hash
+musí odpovídat):
 
 ```json
 {
-  "tenant_id": "default",
+  "tenant_id": "org_stratos",
   "external_system": "STRATOS_BUDGET",
-  "external_ref": "contract:256-2022-S:main",
+  "external_ref": "contract:contract-uuid:document:signed",
   "entity_type": "Contract",
   "entity_id": "contract-uuid",
   "document_type": "contract",
-  "title": "Smlouva 256-2022-S - Zajištění provozu přebíracích míst",
+  "title": "256-2022-S – Zajištění provozu přebíracích míst",
   "classification": "internal",
-  "owner": {
-    "user_id": "user-uuid",
-    "display_name": "Portfolio manager"
+  "information_policy": {
+    "schemaVersion": "stratos-information-policy-2",
+    "policyBindingId": "pb_budget_contract_12345678",
+    "policyVersion": "information-policy-2.0.0",
+    "handlingClass": "INTERNAL",
+    "legalClassification": "NONE",
+    "tlp": "TLP:GREEN",
+    "pap": null,
+    "contentCategories": ["CONTRACTUAL", "FINANCIAL"],
+    "audience": {
+      "organizationId": "org_stratos",
+      "scopeType": "budget_scope",
+      "scopeIds": ["budget:sekce-it"],
+      "recipientSubjectIds": []
+    },
+    "obligations": ["AUDIT_ACCESS"],
+    "originatorId": "subject-budget-owner",
+    "issuedAt": "2026-07-20T10:00:00Z",
+    "reviewAt": null
   },
-  "gestor_unit": "Finance",
-  "tags": ["contract", "budget"],
+  "integration_envelope": {
+    "schemaVersion": "stratos-integration-envelope-1",
+    "organizationId": "org_stratos",
+    "sourceSystem": "STRATOS_BUDGET",
+    "externalRef": "contract:contract-uuid:document:signed",
+    "actor": {"type": "person", "subjectId": "subject-budget-owner"},
+    "correlationId": "corr-budget-contract-123",
+    "idempotencyKey": "budget-contract-upload:contract-uuid",
+    "policyBindingId": "pb_budget_contract_12345678",
+    "policyVersion": "information-policy-2.0.0",
+    "policyHash": "sha256:<64 lowercase hex>",
+    "classification": {
+      "handlingClass": "INTERNAL",
+      "legalClassification": "NONE",
+      "tlp": "TLP:GREEN",
+      "pap": null
+    },
+    "payload": {
+      "contractId": "contract-uuid",
+      "financialScopeKey": "budget:sekce-it",
+      "fileHash": "sha256:<64 lowercase hex>"
+    }
+  },
+  "owner": {
+    "user_id": "subject-budget-owner",
+    "display_name": "Ředitel IT"
+  },
+  "tags": ["stratos", "budget", "contract"],
   "metadata": {
     "contract_id": "contract-uuid",
     "contract_number": "256-2022-S",
-    "supplier_id": "supplier-uuid",
-    "supplier_name": "AUTOCONT a.s.",
-    "budget_year": 2026,
-    "procurement_action_id": null,
-    "projectflow_project_id": null
+    "contract_name": "Zajištění provozu přebíracích míst",
+    "financial_scope_key": "budget:sekce-it",
+    "lifecycle": "ARCHIVED",
+    "contract_status": "EXPIRED",
+    "contract_start_date": "2022-01-01",
+    "contract_end_date": "2025-12-31",
+    "documentType": "CONTRACT_ARCHIVE",
+    "document_type": "CONTRACT_ARCHIVE",
+    "batch_manifest_id": "historical-contracts-2026-07-20",
+    "batch_entries_sha256": "sha256:<64 lowercase hex>",
+    "release_revision": "<40 lowercase git hex>"
   },
   "source_location": {
-    "kind": "url",
-    "uri": "https://stratos.local/contracts/256-2022-S/document",
-    "file_name": "256-2022-S.pdf",
+    "kind": "uploaded_file",
+    "file_name": "smlouva.pdf",
     "content_type": "application/pdf",
-    "sha256": "optional-64-char-hex",
-    "storage_ref": null,
-    "captured_at": "2026-06-07T00:00:00Z",
-    "display_url": "https://stratos.local/contracts/256-2022-S",
-    "repository": "BudgetContracts",
-    "path": "/contracts/256-2022-S/document",
-    "version": "2026-06-07"
+    "sha256": "sha256:<64 lowercase hex>",
+    "repository": "Budget & Contract",
+    "path": "contract:contract-uuid:document:signed",
+    "version": "sha256:<64 lowercase hex>"
   },
-  "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
-  "citation_base_url": "https://akb.example/api/v1/citations",
-  "preview_url": "https://stratos.local/contracts/256-2022-S/preview"
+  "governance_scope": {"type": "budget_scope", "id": "budget:sekce-it"},
+  "parent_governed_resource_id": "gres_budget_contract_uuid"
 }
 ```
 
-Odpověď při vytvoření:
+`lifecycle=ARCHIVED` znamená platný historický dokument ukončené nebo
+expirované smlouvy, nikoli chybu. Stav smlouvy `EXPIRED` nebo `TERMINATED`
+zůstává součástí immutable provenance a dokument je nadále dohledatelný v AKB
+pro historii, audit, vazby na akce a citace. Tento stav však sám nespouští žádné
+budoucí rozpočtové operace ani změny v Budget. Trojice `batch_manifest_id`,
+`batch_entries_sha256`, `release_revision` je nepovinná pro interaktivní upload,
+ale historický serverový batch ji musí dodat celou.
 
-```json
-{
-  "created": true,
-  "external_document": {
-    "external_document_id": "extdoc_...",
-    "tenant_id": "default",
-    "external_system": "STRATOS_BUDGET",
-    "external_ref": "contract:256-2022-S:main",
-    "entity_type": "Contract",
-    "entity_id": "contract-uuid",
-    "document_id": "doc_...",
-    "current_document_version_id": null,
-    "current_file_id": null,
-    "current_ingestion_job_id": null,
-    "current_ingestion_status": null,
-    "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
-    "source_location": {
-      "kind": "url",
-      "uri": "https://stratos.local/contracts/256-2022-S/document",
-      "file_name": "256-2022-S.pdf",
-      "content_type": "application/pdf",
-      "display_url": "https://stratos.local/contracts/256-2022-S"
-    },
-    "citation_base_url": "https://akb.example/api/v1/citations",
-    "preview_url": "https://stratos.local/contracts/256-2022-S/preview",
-    "metadata": {
-      "contract_id": "contract-uuid",
-      "contract_number": "256-2022-S"
-    },
-    "created_at": "2026-06-07T00:00:00Z",
-    "updated_at": "2026-06-07T00:00:00Z"
-  },
-  "document": {
-    "document_id": "doc_...",
-    "title": "Smlouva 256-2022-S - Zajištění provozu přebíracích míst",
-    "document_type": "contract",
-    "status": "draft",
-    "classification": "internal",
-    "owner_id": "user-uuid",
-    "owner": "user-uuid",
-    "gestor_unit": "Finance",
-    "tags": ["budget", "contract", "external", "stratos_budget"],
-    "metadata": {
-      "contract_id": "contract-uuid",
-      "contract_number": "256-2022-S",
-      "external": {
-        "tenant_id": "default",
-        "external_system": "STRATOS_BUDGET",
-        "external_ref": "contract:256-2022-S:main",
-        "entity_type": "Contract",
-        "entity_id": "contract-uuid",
-        "source_location": {
-          "kind": "url",
-          "uri": "https://stratos.local/contracts/256-2022-S/document",
-          "file_name": "256-2022-S.pdf"
-        },
-        "akb_source_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
-        "citation_base_url": "https://akb.example/api/v1/citations",
-        "preview_url": "https://stratos.local/contracts/256-2022-S/preview"
-      }
-    },
-    "created_at": "2026-06-07T00:00:00Z",
-    "updated_at": "2026-06-07T00:00:00Z",
-    "access_policies": [],
-    "assignments": []
-  }
-}
-```
+První úspěšná registrace vrací HTTP `201` a `created=true`. Přesný replay stejné
+identity a stabilních contract-level metadat vrací HTTP `200`, stejná ID a
+`created=false`. Jiný soubor pro stejný `external_ref` nevyvolá konflikt na
+úrovni dokumentu; následně se uloží jako nová immutable verze přes vyhrazený
+version endpoint. Plná immutable envelope a hash souboru jsou uloženy u této
+verze, nikoli jako vlastnost celého dokumentu.
 
-Opakované volání se stejným `tenant_id`, `external_system` a `external_ref` vrátí stejnou vazbu s `created: false`.
+Stabilní identitu dokumentu tvoří smlouva (`contract_id`), finanční scope,
+`external_ref`, governance scope a nadřazený governed resource. Popisná pole
+`title`, `contract_number` a `contract_name` se mohou při dalším autorizovaném
+preflightu opravit; Registry změnu uloží na stejném dokumentu a zapíše ji do
+auditní události. Kořenový `document.owner_id` se tím nepřepisuje. Nová verze
+má vlastního `uploaded_by` podle aktéra ve své immutable integration envelope,
+takže předání správy smlouvy jiné oprávněné osobě nevytváří nový AKB dokument.
 
 ### Detail externího dokumentu
 
@@ -249,9 +317,9 @@ Payload:
 
 ```json
 {
-  "tenant_id": "default",
+  "tenant_id": "org_stratos",
   "external_system": "STRATOS_BUDGET",
-  "external_ref": "contract:256-2022-S:main",
+  "external_ref": "contract:contract-uuid:document:signed",
   "entity_type": "Contract",
   "entity_id": "contract-uuid",
   "document_id": "doc_...",
@@ -271,9 +339,9 @@ Odpověď:
 ```json
 {
   "extraction_id": "extract_...",
-  "tenant_id": "default",
+  "tenant_id": "org_stratos",
   "external_system": "STRATOS_BUDGET",
-  "external_ref": "contract:256-2022-S:main",
+  "external_ref": "contract:contract-uuid:document:signed",
   "entity_type": "Contract",
   "entity_id": "contract-uuid",
   "document_id": "doc_...",
@@ -1076,11 +1144,12 @@ STRATOS adapter mapuje vlastní klasifikační kódy na tyto hodnoty před volá
 
 ## Doporučené external_ref
 
-`external_ref` musí být stabilní a čitelné:
+`external_ref` musí být stabilní. Budget používá ID smlouvy, nikoli její číslo:
 
 ```text
-contract:<contractNumber>:main
-contract:<contractNumber>:amendment:<amendmentNumber>
+contract:<contractId>
+contract:<contractId>:document:<documentKey>
+contract:<contractId>:document:amendment-<amendmentId>
 project:<projectId>:meeting:<meetingId>
 project:<projectId>:documentation:<documentKind>:<sourceId>
 directive:<sourceSystemId>:<documentCode>
@@ -1100,7 +1169,8 @@ Neměňte `external_ref` při změně názvu dokumentu. Název je metadata, exte
 ## Minimální tok pro STRATOS aplikaci
 
 1. STRATOS aplikace uloží vlastní obchodní objekt.
-2. STRATOS `apps/api` zavolá `POST /api/v1/external-documents/upsert`.
+2. Budget zavolá vyhrazený web/BFF preflight a ten vyhrazený Registry endpoint;
+   ostatní podporované integrace mohou použít svůj dokumentovaný namespace.
 3. STRATOS uloží `external_document_id` a `document_id` do své `KnowledgeDocumentRef`.
 4. Pro upload sdílená komponenta vytvoří AKB upload session přes AKB bridge a nahraje soubor přímo do AKB.
 5. Sdílená komponenta potvrdí upload přes AKB bridge; AKB vytvoří verzi a ingestion job.
@@ -1110,7 +1180,9 @@ Neměňte `external_ref` při změně názvu dokumentu. Název je metadata, exte
 
 ## Server-Side STRATOS API
 
-Tyto endpointy používá STRATOS backend adapter přes service token nebo OIDC client credentials. Browser je nevolá přímo. První produkční řez má implementovanou idempotentní registraci, detail external documentu a aktualizaci aktuální verze v Registry; ostatní položky jsou závazný cílový kontrakt a pro browser flow jsou dnes kryté AKB web/API bridgem níže.
+Tyto obecné endpointy používá STRATOS backend adapter přes service token nebo
+OIDC client credentials. Browser je nevolá přímo. Neplatí pro
+`STRATOS_BUDGET`, který musí použít výše uvedený vyhrazený namespace.
 
 ```http
 POST /api/v1/external-documents/upsert

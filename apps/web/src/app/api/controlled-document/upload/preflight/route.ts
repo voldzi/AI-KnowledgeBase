@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
-import { createUploadPreflightDecision } from "@/lib/upload/preflight";
+import {
+  CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
+  createUploadPreflightDecision,
+} from "@/lib/upload/preflight";
 import { parseInformationPolicy, policyHash } from "@/lib/stratos/information-policy";
 
 import { uploadErrorResponse } from "../errors";
@@ -27,7 +30,8 @@ export async function POST(request: NextRequest) {
       sha256: String(body.sha256 ?? ""),
       policy_binding_id: informationPolicy.policyBindingId,
       policy_version: informationPolicy.policyVersion,
-      policy_hash: policyHash(informationPolicy)
+      policy_hash: policyHash(informationPolicy),
+      purpose: CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
     });
 
     return NextResponse.json({ preflight }, { status: 201 });

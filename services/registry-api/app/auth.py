@@ -222,11 +222,17 @@ def _enforce_service_route(
 ) -> None:
     client_id = principal.service_client_id
     route = _service_route_for_request(request)
+    dedicated_budget_service = bool(
+        route == "stratos-budget-upload"
+        and client_id == "stratos-akb-service"
+        and "service_ingestion" in principal.roles
+    )
     if (
         not client_id
         or client_id not in settings.trusted_service_clients
         or route is None
         or route not in settings.service_route_grants.get(client_id, frozenset())
+        or (route == "stratos-budget-upload" and not dedicated_budget_service)
     ):
         raise problem(
             status.HTTP_403_FORBIDDEN,
@@ -239,6 +245,8 @@ def _service_route_for_request(request: Request) -> str | None:
     path = request.url.path.removeprefix("/api/v1")
     write = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
     path_segments = path.strip("/").split("/")
+    if path.startswith("/integrations/stratos-budget-upload/"):
+        return "stratos-budget-upload"
     if path.startswith("/integrations/aiip-upload/"):
         return "aiip-upload"
     if path == "/integrations/ingestion/readiness":

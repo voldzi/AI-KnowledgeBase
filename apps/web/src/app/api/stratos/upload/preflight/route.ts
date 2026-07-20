@@ -8,6 +8,7 @@ import {
   canonicalDocumentUrl,
   getStratosUploadSettings,
   requiredString,
+  STRATOS_UPLOAD_TOKEN_PURPOSE,
   upsertExternalDocument
 } from "@/lib/stratos/document-ai";
 import { createUploadPreflightDecision, validateUploadFileMetadata } from "@/lib/upload/preflight";
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
         governance_registered_by_subject_id: confirmation.governed_resource.registered_by_subject_id,
         governance_correlation_id: integrationEnvelope.correlationId,
         governance_idempotency_key: integrationEnvelope.idempotencyKey,
+        purpose: STRATOS_UPLOAD_TOKEN_PURPOSE,
       },
       uploadSettings
     );

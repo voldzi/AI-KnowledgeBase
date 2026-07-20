@@ -6,6 +6,7 @@ import type {
   Document,
   DocumentVersion,
   IngestionJob,
+  RegistryIngestionAttempt,
   SourceContext
 } from "@/lib/types";
 import { ApiClientError } from "@/lib/types";
@@ -13,12 +14,20 @@ import { getAklConfig } from "@/lib/api/config";
 import { requestJson } from "@/lib/api/http-client";
 import { withAppBasePath } from "@/lib/app-url";
 import { equalCanonicalJson, parseAiipGovernanceConfirmation } from "@/lib/stratos/aiip-governance";
-import { getUploadSettings, type UploadSettings } from "@/lib/upload/preflight";
+import {
+  getUploadSettings,
+  type UploadSettings,
+  type UploadTokenPayload,
+} from "@/lib/upload/preflight";
 import {
   parseInformationPolicy,
   parseIntegrationEnvelope,
+  parseStratosBudgetIntegrationEnvelope,
   STRATOS_ORGANIZATION_ID,
+  type InformationPolicyBinding,
   type IntegrationEnvelope,
+  type StratosBudgetGovernanceScope,
+  type StratosBudgetIntegrationEnvelope,
 } from "@/lib/stratos/information-policy";
 
 export type StratosIngestionStatus =
@@ -30,6 +39,34 @@ export type StratosIngestionStatus =
   | "FAILED"
   | "PERMISSION_DENIED"
   | "STALE";
+
+export const STRATOS_UPLOAD_TOKEN_PURPOSE = "stratos-upload";
+export const STRATOS_BUDGET_UPLOAD_TOKEN_PURPOSE = "stratos-budget-upload";
+export const STRATOS_BUDGET_UPLOAD_MAX_FILE_BYTES = 128 * 1024 * 1024;
+
+export type StratosBudgetContractStatus =
+  | "DRAFT"
+  | "ACTIVE"
+  | "AT_RISK"
+  | "EXPIRED"
+  | "TERMINATED";
+
+export type StratosBudgetUploadMode = "interactive" | "historical_batch";
+
+export interface StratosBudgetBatchLineage {
+  batch_manifest_id: string;
+  batch_entries_sha256: string;
+  release_revision: string;
+}
+
+export interface StratosBudgetVersionLineage {
+  upload_mode: StratosBudgetUploadMode;
+  original_file_name: string;
+  contract_status: StratosBudgetContractStatus;
+  contract_start_date: string;
+  contract_end_date: string;
+  batch_lineage: StratosBudgetBatchLineage | null;
+}
 
 export interface ExternalDocumentRef {
   external_document_id: string;
@@ -58,6 +95,15 @@ export interface ExternalDocumentResponse {
   created: boolean;
   governance_confirmation?: AiipGovernanceConfirmation;
 }
+
+export type StratosBudgetGovernedDocument = ExternalDocumentResponse["document"] & {
+  governed_resource_id?: string | null;
+  governed_source_version?: string | null;
+  governed_parent_resource_id?: string | null;
+  governance_scope_type?: string | null;
+  governance_scope_id?: string | null;
+  governance_registration_status?: string | null;
+};
 
 export interface AiipGovernanceConfirmation {
   parent_source_resource: {
@@ -111,6 +157,77 @@ export interface AiipExternalCurrentUpdateResponse {
   governance_confirmation: AiipGovernanceConfirmation;
 }
 
+export interface StratosBudgetDocumentVersionUpsertResponse {
+  version: DocumentVersion;
+  external_document: ExternalDocumentResponse;
+  created: boolean;
+  governance_confirmation: StratosBudgetGovernanceConfirmation;
+}
+
+export interface StratosBudgetGovernanceConfirmation {
+  document: Record<string, unknown>;
+  version: Record<string, unknown>;
+}
+
+export interface StratosBudgetExternalCurrentUpdateResponse {
+  external_document: ExternalDocumentResponse;
+  updated: boolean;
+}
+
+export interface StratosBudgetDocumentStatusResponse {
+  document_id: string;
+  updated: number;
+  items: ExternalDocumentRef[];
+  ingestion_attempt: RegistryIngestionAttempt | null;
+}
+
+export interface StratosBudgetUploadContract {
+  tenantId: typeof STRATOS_ORGANIZATION_ID;
+  externalSystem: "STRATOS_BUDGET";
+  externalRef: string;
+  entityType: "Contract";
+  entityId: string;
+  ownerSubjectId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  fileHash: string;
+  informationPolicy: InformationPolicyBinding;
+  governanceScope: StratosBudgetGovernanceScope;
+  parentGovernedResourceId: string;
+  integrationEnvelope: StratosBudgetIntegrationEnvelope;
+}
+
+export interface StratosBudgetPreflightContract extends StratosBudgetUploadContract {
+  documentType: "contract";
+  title: string;
+  registryClassification: "public" | "internal" | "restricted";
+  ownerDisplayName: string | null;
+  tags: string[];
+  metadata: {
+    contract_id: string;
+    contract_number: string;
+    contract_name: string;
+    financial_scope_key: string;
+    contract_status: StratosBudgetContractStatus;
+    contract_start_date: string;
+    contract_end_date: string;
+    lifecycle: "CURRENT" | "ARCHIVED";
+    documentType: "CONTRACT_PDF" | "CONTRACT_ARCHIVE";
+    document_type: "CONTRACT_PDF" | "CONTRACT_ARCHIVE";
+    batch_manifest_id?: string;
+    batch_entries_sha256?: string;
+    release_revision?: string;
+  };
+}
+
+export interface StratosBudgetStoredLineage {
+  informationPolicy: InformationPolicyBinding;
+  integrationEnvelope: StratosBudgetIntegrationEnvelope;
+  governanceScope: StratosBudgetGovernanceScope;
+  parentGovernedResourceId: string;
+}
+
 export interface ExternalDocumentCurrentUpdateRequest {
   current_document_version_id?: string | null;
   current_file_id?: string | null;
@@ -151,6 +268,17 @@ export interface StratosUploadConfirmResult {
   governance_confirmation: AiipGovernanceConfirmation;
 }
 
+export type StratosBudgetUploadConfirmResult = Omit<
+  StratosUploadConfirmResult,
+  "governance_confirmation"
+> & {
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  document_version_status: "valid";
+  governance_confirmation: StratosBudgetGovernanceConfirmation;
+};
+
 export interface SourceLocationInput {
   kind: string;
   uri?: string | null;
@@ -186,6 +314,54 @@ export const AIIP_PREFLIGHT_FIELDS = [
   "file_type",
   "file_size",
   "sha256",
+] as const;
+
+export const STRATOS_BUDGET_PREFLIGHT_FIELDS = [
+  "tenant_id",
+  "external_system",
+  "external_ref",
+  "entity_type",
+  "entity_id",
+  "document_type",
+  "title",
+  "classification",
+  "owner_actor_id",
+  "owner_display_name",
+  "context_tags",
+  "metadata",
+  "file_name",
+  "file_type",
+  "file_size",
+  "sha256",
+  "information_policy",
+  "governance_scope",
+  "parent_governed_resource_id",
+  "integration_envelope",
+] as const;
+
+export const STRATOS_BUDGET_CONFIRM_FIELDS = [
+  "tenant_id",
+  "external_system",
+  "external_ref",
+  "entity_type",
+  "entity_id",
+  "document_id",
+  "external_document_id",
+  "upload_session_id",
+  "upload_token",
+  "source_file_uri",
+  "file_hash",
+  "file_name",
+  "file_type",
+  "file_size",
+  "version_label",
+  "valid_from",
+  "valid_to",
+  "change_summary",
+  "information_policy",
+  "governance_scope",
+  "parent_governed_resource_id",
+  "integration_envelope",
 ] as const;
 
 export function assertExactFields(
@@ -268,6 +444,20 @@ export function getStratosUploadSettings(): UploadSettings {
   return {
     ...getUploadSettings(),
     publicUploadBasePath: withAppBasePath("/api/stratos/upload/sessions")
+  };
+}
+
+export function getStratosBudgetUploadSettings(
+  env: Record<string, string | undefined> = process.env,
+): UploadSettings {
+  const configuredBudgetLimit = Number(env.AKL_WEB_BUDGET_UPLOAD_MAX_FILE_BYTES);
+  return {
+    ...getUploadSettings(env),
+    maxFileBytes:
+      Number.isSafeInteger(configuredBudgetLimit) && configuredBudgetLimit > 0
+        ? configuredBudgetLimit
+        : STRATOS_BUDGET_UPLOAD_MAX_FILE_BYTES,
+    publicUploadBasePath: withAppBasePath("/api/stratos/budget-upload/sessions")
   };
 }
 
@@ -560,6 +750,480 @@ export async function updateAiipExternalDocumentCurrent(input: {
   return response;
 }
 
+export function parseStratosBudgetPreflightContract(
+  body: Record<string, unknown>,
+): StratosBudgetPreflightContract {
+  assertBudgetExactFields(body, STRATOS_BUDGET_PREFLIGHT_FIELDS, "Budget upload preflight");
+  const contract = parseStratosBudgetUploadContract(body, "sha256");
+  if (
+    requiredString(body, "document_type") !== "contract"
+    || requiredString(body, "owner_actor_id") !== contract.ownerSubjectId
+  ) {
+    budgetContractError(
+      "Budget upload document type and owner must match the immutable integration envelope.",
+      "STRATOS_BUDGET_UPLOAD_LINEAGE_INVALID",
+    );
+  }
+  const expectedInputClassification = contract.informationPolicy.handlingClass.toLowerCase();
+  if (requiredString(body, "classification").toLowerCase() !== expectedInputClassification) {
+    budgetContractError(
+      "classification does not match information_policy.handlingClass.",
+      "STRATOS_BUDGET_UPLOAD_POLICY_INVALID",
+    );
+  }
+  const metadata = recordValue(body.metadata);
+  if (!metadata) budgetContractError("metadata is required.");
+  const requiredMetadataFields = [
+    "contract_id", "contract_number", "contract_name", "financial_scope_key",
+    "contract_status", "contract_start_date", "contract_end_date",
+    "lifecycle", "documentType", "document_type",
+  ] as const;
+  const batchMetadataFields = [
+    "batch_manifest_id", "batch_entries_sha256", "release_revision",
+  ] as const;
+  const allowedMetadataFields = [...requiredMetadataFields, ...batchMetadataFields];
+  const allowedMetadataFieldSet = new Set<string>(allowedMetadataFields);
+  const unknownMetadataFields = Object.keys(metadata)
+    .filter((field) => !allowedMetadataFieldSet.has(field))
+    .sort();
+  if (
+    unknownMetadataFields.length > 0
+    || requiredMetadataFields.some((field) => !(field in metadata))
+  ) {
+    budgetContractError(
+      `metadata must use only the canonical Budget fields${
+        unknownMetadataFields.length ? `; unsupported: ${unknownMetadataFields.join(", ")}` : ""
+      }.`,
+    );
+  }
+  const presentBatchFields = batchMetadataFields.filter((field) => field in metadata);
+  if (presentBatchFields.length !== 0 && presentBatchFields.length !== batchMetadataFields.length) {
+    budgetContractError("Historical batch metadata must be supplied as one complete set.");
+  }
+  const contractId = requiredRecordString(metadata, "contract_id");
+  const contractNumber = requiredRecordString(metadata, "contract_number");
+  const contractName = requiredRecordString(metadata, "contract_name");
+  const financialScopeKey = requiredRecordString(metadata, "financial_scope_key");
+  const contractStatus = requiredRecordString(metadata, "contract_status");
+  const contractStartDate = requiredRecordString(metadata, "contract_start_date");
+  const contractEndDate = requiredRecordString(metadata, "contract_end_date");
+  const lifecycle = requiredRecordString(metadata, "lifecycle");
+  const documentType = requiredRecordString(metadata, "documentType");
+  const documentTypeAlias = requiredRecordString(metadata, "document_type");
+  if (!(["CURRENT", "ARCHIVED"] as const).includes(lifecycle as never)) {
+    budgetContractError("metadata.lifecycle must be CURRENT or ARCHIVED.");
+  }
+  if (!(["DRAFT", "ACTIVE", "AT_RISK", "EXPIRED", "TERMINATED"] as const).includes(
+    contractStatus as never,
+  )) {
+    budgetContractError("metadata.contract_status is invalid.");
+  }
+  assertIsoDate(contractStartDate, "metadata.contract_start_date");
+  assertIsoDate(contractEndDate, "metadata.contract_end_date");
+  if (contractStartDate > contractEndDate) {
+    budgetContractError("metadata.contract_start_date must not be after contract_end_date.");
+  }
+  const expectedDocumentType = lifecycle === "ARCHIVED" ? "CONTRACT_ARCHIVE" : "CONTRACT_PDF";
+  if (documentType !== expectedDocumentType || documentTypeAlias !== expectedDocumentType) {
+    budgetContractError("metadata document type must match the contract lifecycle.");
+  }
+  const batchManifestId = presentBatchFields.length
+    ? requiredRecordString(metadata, "batch_manifest_id")
+    : null;
+  const batchEntriesSha256 = presentBatchFields.length
+    ? requiredRecordString(metadata, "batch_entries_sha256").toLowerCase()
+    : null;
+  const releaseRevision = presentBatchFields.length
+    ? requiredRecordString(metadata, "release_revision").toLowerCase()
+    : null;
+  if (
+    (batchManifestId && !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(batchManifestId))
+    || (batchEntriesSha256 && !/^sha256:[a-f0-9]{64}$/.test(batchEntriesSha256))
+    || (releaseRevision && !/^[a-f0-9]{40}$/.test(releaseRevision))
+  ) {
+    budgetContractError("Historical batch metadata is invalid.");
+  }
+  if (
+    contractId !== contract.entityId
+    || financialScopeKey !== contract.integrationEnvelope.payload.financialScopeKey
+  ) {
+    budgetContractError(
+      "Budget upload metadata does not match the immutable integration envelope.",
+      "STRATOS_BUDGET_UPLOAD_LINEAGE_INVALID",
+    );
+  }
+  return {
+    ...contract,
+    documentType: "contract",
+    title: requiredString(body, "title"),
+    registryClassification: registryClassificationForPolicy(contract.informationPolicy),
+    ownerDisplayName: strictOptionalString(body, "owner_display_name"),
+    tags: strictStringList(body.context_tags, "context_tags"),
+    metadata: {
+      contract_id: contractId,
+      contract_number: contractNumber,
+      contract_name: contractName,
+      financial_scope_key: financialScopeKey,
+      contract_status: contractStatus as StratosBudgetContractStatus,
+      contract_start_date: contractStartDate,
+      contract_end_date: contractEndDate,
+      lifecycle: lifecycle as "CURRENT" | "ARCHIVED",
+      documentType: documentType as "CONTRACT_PDF" | "CONTRACT_ARCHIVE",
+      document_type: documentTypeAlias as "CONTRACT_PDF" | "CONTRACT_ARCHIVE",
+      ...(batchManifestId ? {
+        batch_manifest_id: batchManifestId,
+        batch_entries_sha256: batchEntriesSha256!,
+        release_revision: releaseRevision!,
+      } : {}),
+    },
+  };
+}
+
+export function parseStratosBudgetConfirmContract(
+  body: Record<string, unknown>,
+): StratosBudgetUploadContract {
+  assertBudgetExactFields(body, STRATOS_BUDGET_CONFIRM_FIELDS, "Budget upload confirmation");
+  return parseStratosBudgetUploadContract(body, "file_hash");
+}
+
+export function stratosBudgetPreflightWorkflow(
+  contract: StratosBudgetPreflightContract,
+  actorAuthorizationPresent: boolean,
+): { mode: StratosBudgetUploadMode; context: Record<string, string> } {
+  const batchLineage = budgetBatchLineage(contract.metadata);
+  const contractContext = {
+    original_file_name: contract.fileName,
+    contract_status: contract.metadata.contract_status,
+    contract_start_date: contract.metadata.contract_start_date,
+    contract_end_date: contract.metadata.contract_end_date,
+  };
+  if (actorAuthorizationPresent) {
+    if (batchLineage) {
+      throw new ApiClientError(
+        "Historical batch upload must use the service-only historical mode.",
+        409,
+        "STRATOS_BUDGET_UPLOAD_MODE_CONFLICT",
+        contract.integrationEnvelope.correlationId,
+      );
+    }
+    return { mode: "interactive", context: contractContext };
+  }
+  if (!batchLineage) {
+    throw new ApiClientError(
+      "A fresh STRATOS actor bearer is required outside a complete historical batch.",
+      401,
+      "STRATOS_BUDGET_ACTOR_AUTH_REQUIRED",
+      contract.integrationEnvelope.correlationId,
+    );
+  }
+  return {
+    mode: "historical_batch",
+    context: { ...contractContext, ...batchLineage },
+  };
+}
+
+export function stratosBudgetVersionLineageFromUploadToken(
+  payload: UploadTokenPayload,
+): StratosBudgetVersionLineage {
+  if (payload.purpose !== STRATOS_BUDGET_UPLOAD_TOKEN_PURPOSE) {
+    throw new ApiClientError(
+      "Upload token is not valid for the Budget document bridge.",
+      401,
+      "UPLOAD_TOKEN_PURPOSE_MISMATCH",
+      "web-stratos-budget-bridge",
+    );
+  }
+  const mode = payload.workflow_mode;
+  if (mode !== "interactive" && mode !== "historical_batch") {
+    budgetUploadTokenContextError("Signed Budget upload mode is invalid.");
+  }
+  const context = payload.workflow_context;
+  if (!context) budgetUploadTokenContextError("Signed Budget upload context is missing.");
+  const contractStatus = context.contract_status;
+  const originalFileName = context.original_file_name;
+  const contractStartDate = context.contract_start_date;
+  const contractEndDate = context.contract_end_date;
+  if (!(["DRAFT", "ACTIVE", "AT_RISK", "EXPIRED", "TERMINATED"] as const).includes(
+    contractStatus as never,
+  )) {
+    budgetUploadTokenContextError("Signed contract status is invalid.");
+  }
+  if (!originalFileName || originalFileName.length > 300) {
+    budgetUploadTokenContextError("Signed original filename is invalid.");
+  }
+  assertIsoDate(contractStartDate, "signed contract_start_date", true);
+  assertIsoDate(contractEndDate, "signed contract_end_date", true);
+  if (contractStartDate > contractEndDate) {
+    budgetUploadTokenContextError("Signed contract period is invalid.");
+  }
+  const baseKeys = [
+    "contract_end_date", "contract_start_date", "contract_status", "original_file_name",
+  ];
+  if (mode === "interactive") {
+    assertExactStringKeys(context, baseKeys);
+    return {
+      upload_mode: mode,
+      original_file_name: originalFileName,
+      contract_status: contractStatus as StratosBudgetContractStatus,
+      contract_start_date: contractStartDate,
+      contract_end_date: contractEndDate,
+      batch_lineage: null,
+    };
+  }
+  const batchKeys = ["batch_entries_sha256", "batch_manifest_id", "release_revision"];
+  assertExactStringKeys(context, [...baseKeys, ...batchKeys]);
+  const batchLineage = {
+    batch_manifest_id: context.batch_manifest_id,
+    batch_entries_sha256: context.batch_entries_sha256,
+    release_revision: context.release_revision,
+  };
+  if (
+    !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(batchLineage.batch_manifest_id)
+    || !/^sha256:[a-f0-9]{64}$/.test(batchLineage.batch_entries_sha256)
+    || !/^[a-f0-9]{40}$/.test(batchLineage.release_revision)
+  ) {
+    budgetUploadTokenContextError("Signed historical batch lineage is invalid.");
+  }
+  return {
+    upload_mode: mode,
+    original_file_name: originalFileName,
+    contract_status: contractStatus as StratosBudgetContractStatus,
+    contract_start_date: contractStartDate,
+    contract_end_date: contractEndDate,
+    batch_lineage: batchLineage,
+  };
+}
+
+export function canonicalStratosBudgetUploadContract(
+  contract: StratosBudgetUploadContract,
+  payload: UploadTokenPayload,
+): StratosBudgetUploadContract {
+  return {
+    ...contract,
+    fileName: payload.file_name,
+    fileType: payload.file_type,
+    fileSize: payload.file_size,
+    fileHash: payload.sha256,
+  };
+}
+
+export async function upsertStratosBudgetExternalDocument(input: {
+  contract: StratosBudgetPreflightContract;
+  serviceContext: ApiRequestContext;
+}): Promise<ExternalDocumentResponse> {
+  const config = requireProductionRegistryBridge();
+  const contract = input.contract;
+  return requestJson<ExternalDocumentResponse>({
+    service: "registry-api",
+    operation: "stratosBudgetExternalDocumentUpsert",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: "/integrations/stratos-budget-upload/external-documents/upsert",
+    method: "POST",
+    context: input.serviceContext,
+    body: {
+      tenant_id: contract.tenantId,
+      external_system: contract.externalSystem,
+      external_ref: contract.externalRef,
+      entity_type: contract.entityType,
+      entity_id: contract.entityId,
+      document_type: contract.documentType,
+      title: contract.title,
+      classification: contract.registryClassification,
+      information_policy: contract.informationPolicy,
+      integration_envelope: contract.integrationEnvelope,
+      owner: {
+        user_id: contract.ownerSubjectId,
+        display_name: contract.ownerDisplayName,
+      },
+      tags: contract.tags,
+      metadata: contract.metadata,
+      source_location: budgetSourceLocation({
+        kind: "uploaded_file",
+        fileName: contract.fileName,
+        fileType: contract.fileType,
+        fileHash: contract.fileHash,
+        externalRef: contract.externalRef,
+      }),
+      governance_scope: contract.governanceScope,
+      parent_governed_resource_id: contract.parentGovernedResourceId,
+    },
+  });
+}
+
+export async function upsertStratosBudgetDocumentVersion(input: {
+  documentId: string;
+  contract: StratosBudgetUploadContract;
+  body: Record<string, unknown>;
+  sourceLocation: SourceLocationInput;
+  versionLineage: StratosBudgetVersionLineage;
+  serviceContext: ApiRequestContext;
+}): Promise<StratosBudgetDocumentVersionUpsertResponse> {
+  const config = requireProductionRegistryBridge();
+  return requestJson<StratosBudgetDocumentVersionUpsertResponse>({
+    service: "registry-api",
+    operation: "stratosBudgetDocumentVersionUpsert",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: `/integrations/stratos-budget-upload/documents/${encodeURIComponent(input.documentId)}/versions`,
+    method: "PUT",
+    context: input.serviceContext,
+    body: buildStratosBudgetDocumentVersionRequest(input),
+  });
+}
+
+export function buildStratosBudgetDocumentVersionRequest(input: {
+  contract: StratosBudgetUploadContract;
+  body: Record<string, unknown>;
+  sourceLocation: SourceLocationInput;
+  versionLineage: StratosBudgetVersionLineage;
+}): Record<string, unknown> {
+  return {
+    external_ref: input.contract.externalRef,
+    version_label: requiredString(input.body, "version_label"),
+    valid_from: optionalString(input.body, "valid_from"),
+    valid_to: optionalString(input.body, "valid_to"),
+    source_file_uri: requiredString(input.body, "source_file_uri"),
+    source_location: input.sourceLocation,
+    file_hash: input.contract.fileHash,
+    change_summary: optionalString(input.body, "change_summary"),
+    upload_mode: input.versionLineage.upload_mode,
+    original_file_name: input.versionLineage.original_file_name,
+    batch_lineage: input.versionLineage.batch_lineage,
+    contract_status: input.versionLineage.contract_status,
+    contract_start_date: input.versionLineage.contract_start_date,
+    contract_end_date: input.versionLineage.contract_end_date,
+    information_policy: input.contract.informationPolicy,
+    integration_envelope: input.contract.integrationEnvelope,
+    governance_scope: input.contract.governanceScope,
+    parent_governed_resource_id: input.contract.parentGovernedResourceId,
+    file: {
+      filename: input.contract.fileName,
+      mime_type: input.contract.fileType,
+      size_bytes: input.contract.fileSize,
+      sha256: input.contract.fileHash,
+    },
+  };
+}
+
+export async function updateStratosBudgetExternalDocumentCurrent(input: {
+  externalDocumentId: string;
+  documentId: string;
+  expectedCurrentDocumentVersionId: string | null;
+  expectedCurrentIngestionJobId: string | null;
+  documentVersionId: string;
+  fileId: string;
+  ingestionJobId: string | null;
+  ingestionStatus: "VERSION_CREATED" | "INGESTING" | "INDEXED" | "FAILED";
+  lineage: StratosBudgetStoredLineage;
+  externalRef: string;
+  serviceContext: ApiRequestContext;
+}): Promise<StratosBudgetExternalCurrentUpdateResponse> {
+  const config = requireProductionRegistryBridge();
+  return requestJson<StratosBudgetExternalCurrentUpdateResponse>({
+    service: "registry-api",
+    operation: "stratosBudgetExternalDocumentCurrentUpdate",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: `/integrations/stratos-budget-upload/external-documents/${encodeURIComponent(input.externalDocumentId)}/current`,
+    method: "PATCH",
+    context: input.serviceContext,
+    body: {
+      document_id: input.documentId,
+      expected_current_document_version_id: input.expectedCurrentDocumentVersionId,
+      expected_current_ingestion_job_id: input.expectedCurrentIngestionJobId,
+      document_version_id: input.documentVersionId,
+      file_id: input.fileId,
+      ingestion_job_id: input.ingestionJobId,
+      ingestion_status: input.ingestionStatus,
+      external_ref: input.externalRef,
+      information_policy: input.lineage.informationPolicy,
+      integration_envelope: input.lineage.integrationEnvelope,
+      governance_scope: input.lineage.governanceScope,
+      parent_governed_resource_id: input.lineage.parentGovernedResourceId,
+    },
+  });
+}
+
+export async function getStratosBudgetDocumentStatus(
+  documentId: string,
+  serviceContext: ApiRequestContext,
+): Promise<StratosBudgetDocumentStatusResponse> {
+  const config = requireProductionRegistryBridge();
+  return requestJson<StratosBudgetDocumentStatusResponse>({
+    service: "registry-api",
+    operation: "stratosBudgetDocumentStatus",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: `/integrations/stratos-budget-upload/documents/${encodeURIComponent(documentId)}/status`,
+    context: serviceContext,
+  });
+}
+
+export function stratosBudgetLineageFromVersion(
+  document: StratosBudgetGovernedDocument,
+  version: DocumentVersion,
+): StratosBudgetStoredLineage {
+  const source = recordValue(version.source_location);
+  const budget = recordValue(source?.stratos_budget_upload);
+  if (!budget) {
+    throw new ApiClientError(
+      "The Budget document version does not contain immutable upload lineage.",
+      409,
+      "STRATOS_BUDGET_LINEAGE_MISSING",
+      "web-stratos-budget-bridge",
+    );
+  }
+  if (version.document_id !== document.document_id) {
+    throw new ApiClientError(
+      "The Budget document version belongs to another document.",
+      409,
+      "STRATOS_BUDGET_LINEAGE_INVALID",
+      "web-stratos-budget-bridge",
+    );
+  }
+  const informationPolicy = parseInformationPolicy(version.policy_summary);
+  if (!equalCanonicalJson(document.policy_summary, version.policy_summary)) {
+    throw new ApiClientError(
+      "The Budget document and version policies differ.",
+      409,
+      "STRATOS_BUDGET_LINEAGE_INVALID",
+      "web-stratos-budget-bridge",
+    );
+  }
+  const governanceScope = {
+    type: version.governance_scope_type,
+    id: version.governance_scope_id,
+  };
+  if (governanceScope.type !== "budget_scope" || !governanceScope.id) {
+    throw new ApiClientError(
+      "The Budget document version does not contain its financial scope.",
+      409,
+      "STRATOS_BUDGET_LINEAGE_INVALID",
+      "web-stratos-budget-bridge",
+    );
+  }
+  const integrationEnvelope = parseStratosBudgetIntegrationEnvelope(
+    budget.integration_envelope,
+    informationPolicy,
+    governanceScope,
+  );
+  const parentGovernedResourceId = document.governed_parent_resource_id;
+  if (
+    !parentGovernedResourceId
+    || integrationEnvelope.payload.fileHash !== version.file_hash
+  ) {
+    throw new ApiClientError(
+      "The Budget document version lineage conflicts with its parent or file hash.",
+      409,
+      "STRATOS_BUDGET_LINEAGE_INVALID",
+      "web-stratos-budget-bridge",
+    );
+  }
+  return {
+    informationPolicy,
+    integrationEnvelope,
+    governanceScope: governanceScope as StratosBudgetGovernanceScope,
+    parentGovernedResourceId,
+  };
+}
+
 export async function updateExternalDocumentCurrent(
   externalDocumentId: string,
   body: ExternalDocumentCurrentUpdateRequest,
@@ -769,6 +1433,197 @@ export function createIngestionRequest(input: {
 
 export function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function parseStratosBudgetUploadContract(
+  body: Record<string, unknown>,
+  hashField: "sha256" | "file_hash",
+): StratosBudgetUploadContract {
+  const informationPolicy = parseInformationPolicy(body.information_policy);
+  const integrationEnvelope = parseStratosBudgetIntegrationEnvelope(
+    body.integration_envelope,
+    informationPolicy,
+    body.governance_scope,
+  );
+  const governanceScope = body.governance_scope as StratosBudgetGovernanceScope;
+  const fileHash = requiredString(body, hashField).toLowerCase();
+  const entityId = requiredString(body, "entity_id");
+  const externalRef = requiredString(body, "external_ref");
+  const parentGovernedResourceId = requiredString(body, "parent_governed_resource_id");
+  const fileSize = Number(body.file_size);
+  if (!Number.isSafeInteger(fileSize) || fileSize <= 0) {
+    budgetContractError("file_size must be a positive JSON integer.");
+  }
+  if (!/^sha256:[a-f0-9]{64}$/.test(fileHash)) {
+    budgetContractError(`${hashField} must use sha256:<64 lowercase hex chars> format.`);
+  }
+  if (
+    requiredString(body, "tenant_id") !== STRATOS_ORGANIZATION_ID
+    || requiredString(body, "external_system") !== "STRATOS_BUDGET"
+    || requiredString(body, "entity_type") !== "Contract"
+    || externalRef !== integrationEnvelope.externalRef
+    || entityId !== integrationEnvelope.payload.contractId
+    || fileHash !== integrationEnvelope.payload.fileHash
+  ) {
+    budgetContractError(
+      "Budget upload identity, file hash and immutable integration envelope must match exactly.",
+      "STRATOS_BUDGET_UPLOAD_LINEAGE_INVALID",
+    );
+  }
+  return {
+    tenantId: STRATOS_ORGANIZATION_ID,
+    externalSystem: "STRATOS_BUDGET",
+    externalRef,
+    entityType: "Contract",
+    entityId,
+    ownerSubjectId: integrationEnvelope.actor.subjectId,
+    fileName: requiredString(body, "file_name"),
+    fileType: requiredString(body, "file_type"),
+    fileSize,
+    fileHash,
+    informationPolicy,
+    governanceScope,
+    parentGovernedResourceId,
+    integrationEnvelope,
+  };
+}
+
+function registryClassificationForPolicy(
+  policy: InformationPolicyBinding,
+): "public" | "internal" | "restricted" {
+  if (policy.handlingClass === "PUBLIC") return "public";
+  if (policy.handlingClass === "RESTRICTED") return "restricted";
+  return "internal";
+}
+
+function budgetSourceLocation(input: {
+  kind: "uploaded_file" | "object_storage";
+  fileName: string;
+  fileType: string;
+  fileHash: string;
+  externalRef: string;
+  sourceFileUri?: string | null;
+  objectKey?: string | null;
+}): SourceLocationInput {
+  return {
+    kind: input.kind,
+    uri: input.sourceFileUri ?? null,
+    file_name: input.fileName,
+    content_type: input.fileType,
+    sha256: input.fileHash,
+    storage_ref: input.objectKey ?? null,
+    captured_at: new Date().toISOString(),
+    repository: "Budget & Contract",
+    path: input.externalRef,
+    version: input.fileHash,
+  };
+}
+
+export function stratosBudgetVersionSourceLocation(input: {
+  contract: StratosBudgetUploadContract;
+  sourceFileUri: string;
+  objectKey: string;
+}): SourceLocationInput {
+  return budgetSourceLocation({
+    kind: "object_storage",
+    fileName: input.contract.fileName,
+    fileType: input.contract.fileType,
+    fileHash: input.contract.fileHash,
+    externalRef: input.contract.externalRef,
+    sourceFileUri: input.sourceFileUri,
+    objectKey: input.objectKey,
+  });
+}
+
+function budgetBatchLineage(
+  metadata: StratosBudgetPreflightContract["metadata"],
+): StratosBudgetBatchLineage | null {
+  if (!metadata.batch_manifest_id) return null;
+  return {
+    batch_manifest_id: metadata.batch_manifest_id,
+    batch_entries_sha256: metadata.batch_entries_sha256!,
+    release_revision: metadata.release_revision!,
+  };
+}
+
+function assertIsoDate(value: string, field: string, signedContext = false): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (signedContext) budgetUploadTokenContextError(`${field} must be an ISO date.`);
+    budgetContractError(`${field} must be an ISO date.`);
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    if (signedContext) budgetUploadTokenContextError(`${field} must be a valid ISO date.`);
+    budgetContractError(`${field} must be a valid ISO date.`);
+  }
+}
+
+function assertExactStringKeys(
+  value: Record<string, string>,
+  expectedKeys: string[],
+): void {
+  const actual = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    budgetUploadTokenContextError("Signed Budget upload context contains unexpected fields.");
+  }
+}
+
+function budgetUploadTokenContextError(message: string): never {
+  throw new ApiClientError(
+    message,
+    409,
+    "STRATOS_BUDGET_UPLOAD_CONTEXT_CONFLICT",
+    "web-stratos-budget-bridge",
+  );
+}
+
+function assertBudgetExactFields(
+  body: Record<string, unknown>,
+  allowedFields: readonly string[],
+  contract: string,
+): void {
+  const unknownFields = Object.keys(body).filter((field) => !allowedFields.includes(field)).sort();
+  if (unknownFields.length > 0) {
+    budgetContractError(`${contract} contains unsupported fields: ${unknownFields.join(", ")}.`);
+  }
+}
+
+function requireProductionRegistryBridge() {
+  const config = getAklConfig();
+  if (config.apiClientMode !== "production") {
+    throw new ApiClientError(
+      "STRATOS Budget document bridge requires AKL_API_CLIENT_MODE=production.",
+      503,
+      "STRATOS_BRIDGE_REQUIRES_REGISTRY",
+      "web-stratos-budget-bridge",
+    );
+  }
+  return config;
+}
+
+function requiredRecordString(
+  record: Record<string, unknown>,
+  field: string,
+  code = "STRATOS_BUDGET_UPLOAD_SCHEMA_INVALID",
+): string {
+  const value = record[field];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ApiClientError(
+      `${field} must be a non-empty string.`,
+      422,
+      code,
+      "web-stratos-budget-bridge",
+    );
+  }
+  return value.trim();
+}
+
+function budgetContractError(
+  message: string,
+  code = "STRATOS_BUDGET_UPLOAD_SCHEMA_INVALID",
+): never {
+  throw new ApiClientError(message, 422, code, "web-stratos-budget-bridge");
 }
 
 function strictStringList(value: unknown, field: string): string[] {

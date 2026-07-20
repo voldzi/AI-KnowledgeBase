@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { persistUploadedObject, verifyUploadToken } from "@/lib/upload/preflight";
+import {
+  assertUploadTokenPurpose,
+  CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
+  persistUploadedObject,
+  verifyUploadToken,
+} from "@/lib/upload/preflight";
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 
 import { uploadErrorResponse } from "../../../errors";
@@ -20,6 +25,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const token = request.headers.get("X-AKL-Upload-Token") ?? "";
     const declaredSha256 = request.headers.get("X-AKL-Content-SHA256") ?? "";
     const payload = verifyUploadToken(token);
+    assertUploadTokenPurpose(payload, CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE);
     const requestContext = await getServerRequestContextForRequest(request);
     const document = await getServerApiClients().registry.getDocument(payload.document_id, requestContext);
     if (

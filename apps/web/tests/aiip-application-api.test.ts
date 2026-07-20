@@ -7,6 +7,9 @@ import { NextRequest } from "next/server";
 import {
   authenticateAiipDocumentServiceJsonRequest,
   authenticateAiipServiceJsonRequest,
+  authenticateStratosDocumentServiceJsonRequest,
+  authenticateStratosDocumentServiceRequest,
+  requireStratosDocumentSourceAllowed,
   handleAiipApplicationRequest
 } from "../src/lib/aiip/application-api";
 import { ApiClientError } from "../src/lib/types";
@@ -190,6 +193,103 @@ describe("AIIP application API bridge", () => {
         error instanceof ApiClientError &&
         error.status === 403 &&
         error.code === "AUTH_FORBIDDEN",
+    );
+  });
+
+  it("binds the Budget document bridge to its exact service identity and source", async () => {
+    state.clientId = "stratos-akb-service";
+    state.roles = ["service_ingestion"];
+    state.audience = ["akl-api"];
+
+    const valid = await authenticateStratosDocumentServiceJsonRequest(
+      request({ external_system: "STRATOS_BUDGET" }, { token: "budget-document-token" }),
+    );
+    assert.equal(valid.principal.clientId, "stratos-akb-service");
+    assert.deepEqual(valid.principal.roles, ["service_ingestion"]);
+    assert.deepEqual(valid.principal.allowedSourceSystems, ["STRATOS_BUDGET"]);
+    assert.equal(
+      requireStratosDocumentSourceAllowed(valid.principal, "STRATOS_BUDGET"),
+      "STRATOS_BUDGET",
+    );
+    assert.throws(
+      () => requireStratosDocumentSourceAllowed(valid.principal, "STRATOS_AIIP"),
+      (error: unknown) =>
+        error instanceof ApiClientError
+        && error.status === 403
+        && error.code === "SOURCE_SYSTEM_NOT_ALLOWED",
+    );
+
+    state.roles = ["service_aiip_document"];
+    await assert.rejects(
+      () => authenticateStratosDocumentServiceJsonRequest(
+        request({ external_system: "STRATOS_BUDGET" }, { token: "budget-wrong-role" }),
+      ),
+      (error: unknown) =>
+        error instanceof ApiClientError
+        && error.status === 403
+        && error.code === "AUTH_ROLE_REQUIRED",
+    );
+
+    state.roles = ["service_ingestion"];
+    state.audience = ["akb-api"];
+    await assert.rejects(
+      () => authenticateStratosDocumentServiceJsonRequest(
+        request({ external_system: "STRATOS_BUDGET" }, { token: "budget-wrong-audience" }),
+      ),
+      (error: unknown) =>
+        error instanceof ApiClientError
+        && error.status === 403
+        && error.code === "AUTH_AUDIENCE_INVALID",
+    );
+  });
+
+  it("uses a bounded dedicated rate window for the historical Budget runner", async () => {
+    state.clientId = "stratos-akb-service";
+    state.roles = ["service_ingestion"];
+    state.audience = ["akl-api"];
+    process.env.AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_LIMIT = "2";
+    process.env.AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_WINDOW_SECONDS = "60";
+    const makeRequest = () => request(
+      { external_system: "STRATOS_BUDGET" },
+      { token: "budget-rate-profile-token" },
+    );
+
+    await authenticateStratosDocumentServiceJsonRequest(
+      makeRequest(),
+      { rateLimitProfile: "stratos-budget-upload" },
+    );
+    await authenticateStratosDocumentServiceJsonRequest(
+      makeRequest(),
+      { rateLimitProfile: "stratos-budget-upload" },
+    );
+    await assert.rejects(
+      () => authenticateStratosDocumentServiceJsonRequest(
+        makeRequest(),
+        { rateLimitProfile: "stratos-budget-upload" },
+      ),
+      (error: unknown) =>
+        error instanceof ApiClientError
+        && error.status === 429
+        && error.code === "RATE_LIMIT_EXCEEDED",
+    );
+  });
+
+  it("rejects caller-authored AKB internal headers on every STRATOS document bridge request", async () => {
+    state.clientId = "stratos-akb-service";
+    state.roles = ["service_ingestion"];
+    state.audience = ["akl-api"];
+
+    await assert.rejects(
+      () => authenticateStratosDocumentServiceRequest(
+        request(
+          { external_system: "STRATOS_BUDGET" },
+          { token: "budget-forged-internal-header", headers: { "X-AKL-Subject": "attacker" } },
+        ),
+      ),
+      (error: unknown) =>
+        error instanceof ApiClientError
+        && error.status === 400
+        && error.code === "INTERNAL_HEADER_FORBIDDEN",
     );
   });
 

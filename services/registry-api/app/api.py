@@ -28,6 +28,7 @@ from app.assistant_observability import (
 )
 from app.access_governance import (
     AiipAkbGovernedResourceRegistration,
+    BudgetAkbGovernedResourceRegistration,
     GovernanceDenied,
     GovernanceInvalidResponse,
     GovernanceUnavailable,
@@ -120,6 +121,11 @@ from app.schemas import (
     AiipExternalDocumentCurrentUpdateResponse,
     AiipExternalDocumentUpsertRequest,
     AiipExternalDocumentUpsertResponse,
+    StratosBudgetUploadDocumentVersionCreate,
+    StratosBudgetUploadDocumentVersionCreateResponse,
+    StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
+    StratosBudgetUploadExternalDocumentCurrentUpdateResponse,
+    StratosBudgetUploadExternalDocumentUpsertRequest,
     AnalystCaseCreate,
     AnalystCaseListResponse,
     AnalystCasePatch,
@@ -191,6 +197,7 @@ from app.schemas import (
     ProfileSettingsResponse,
     PublicDocumentMetadataResponse,
     PublicDocumentSourceResolutionResponse,
+    SourceLocationKind,
     WorkflowTaskActionRequest,
     WorkflowTaskKind,
     WorkflowTaskListResponse,
@@ -3110,6 +3117,1196 @@ def _select_aiip_authoritative_ingestion_attempt(
     return attempt
 
 
+def _require_stratos_budget_upload_service(principal: Principal) -> None:
+    client_id = _require_service_route(principal, "stratos-budget-upload")
+    if client_id != "stratos-akb-service" or "service_ingestion" not in principal.roles:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "stratos_budget_upload_service_required",
+            "The exact stratos-akb-service identity with service_ingestion is required",
+        )
+
+
+def _budget_upload_scope(
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest
+    | StratosBudgetUploadDocumentVersionCreate
+    | StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
+) -> dict[str, str]:
+    return payload.governance_scope.model_dump(
+        mode="json", by_alias=True, exclude_none=True
+    )
+
+
+def _stable_budget_upload_id(prefix: str, *parts: str) -> str:
+    digest = sha256("\x00".join(parts).encode("utf-8")).hexdigest()[:32]
+    return f"{prefix}_budget_{digest}"
+
+
+def _budget_root_source_version(
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest
+    | StratosBudgetUploadDocumentVersionCreate
+    | StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
+) -> str:
+    return "document-v1"
+
+
+def _lock_budget_upload_identity(db: Session, key: str) -> None:
+    bind = db.get_bind()
+    if bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"akb-stratos-budget-upload:{key}"},
+        )
+
+
+def _register_budget_akb_authoritatively(
+    *,
+    resource_type: str,
+    resource_id: str,
+    source_version: str,
+    title: str,
+    parent_resource_id: str,
+    inherited_from_resource_id: str,
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest
+    | StratosBudgetUploadDocumentVersionCreate,
+) -> BudgetAkbGovernedResourceRegistration:
+    settings = get_settings()
+    scope = _budget_upload_scope(payload)
+    if settings.auth_mode == "mock":
+        governed_resource_id = _stable_budget_upload_id(
+            "gres", resource_type, resource_id, source_version
+        )
+        effective_policy = {
+            "policyBindingId": payload.information_policy.policy_binding_id,
+            "policyVersion": payload.information_policy.policy_version,
+            "policyHash": payload.integration_envelope.policy_hash,
+            "originatorId": payload.information_policy.originator_id,
+            "issuedAt": payload.information_policy.issued_at.isoformat(),
+            "reviewAt": (
+                payload.information_policy.review_at.isoformat()
+                if payload.information_policy.review_at is not None
+                else None
+            ),
+        }
+        confirmation = {
+            "id": governed_resource_id,
+            "application": "AKB",
+            "resourceType": resource_type,
+            "resourceId": resource_id,
+            "sourceVersion": source_version,
+            "title": title,
+            "parentId": parent_resource_id,
+            "scope": scope,
+            "isActive": True,
+            "policyAssignment": "INHERITED",
+            "explicitPolicyBindingId": None,
+            "inheritedFromResourceId": inherited_from_resource_id,
+            "effectivePolicy": effective_policy,
+            "registeredBySubjectId": "service:akb",
+            "confirmedBySubjectId": "service:akb",
+            "registeredByName": "AKB service",
+            "reason": "Register immutable STRATOS Budget contract document lineage",
+            "createdAt": utcnow().isoformat(),
+            "updatedAt": utcnow().isoformat(),
+            "correlation_id": payload.integration_envelope.correlation_id,
+            "idempotency_key": payload.integration_envelope.idempotency_key,
+        }
+        return BudgetAkbGovernedResourceRegistration(
+            governed_resource_id=governed_resource_id,
+            resource_type=resource_type,  # type: ignore[arg-type]
+            resource_id=resource_id,
+            source_version=source_version,
+            parent_id=parent_resource_id,
+            scope=scope,
+            inherited_from_resource_id=inherited_from_resource_id,
+            policy_binding_id=payload.information_policy.policy_binding_id,
+            policy_version=payload.information_policy.policy_version,
+            policy_hash=payload.integration_envelope.policy_hash,
+            registered_by_subject_id="service:akb",
+            confirmed_by_subject_id="service:akb",
+            correlation_id=payload.integration_envelope.correlation_id,
+            idempotency_key=payload.integration_envelope.idempotency_key,
+            confirmation=confirmation,
+        )
+    try:
+        return governance_client(settings).register_budget_akb_resource(
+            resource_type=resource_type,  # type: ignore[arg-type]
+            resource_id=resource_id,
+            source_version=source_version,
+            title=title,
+            parent_id=parent_resource_id,
+            inherited_from_resource_id=inherited_from_resource_id,
+            scope=scope,
+            envelope=payload.integration_envelope,
+            binding=payload.information_policy,
+            reason="Register immutable STRATOS Budget contract document lineage",
+        )
+    except GovernanceDenied as exc:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "stratos_budget_upload_governance_denied",
+            "STRATOS denied the immutable Budget upload lineage",
+        ) from exc
+    except (GovernanceInvalidResponse, GovernanceUnavailable) as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "stratos_budget_upload_governance_unavailable",
+            "Authoritative Budget to AKB governance confirmation is unavailable",
+        ) from exc
+
+
+def _budget_governance_columns(
+    registration: BudgetAkbGovernedResourceRegistration,
+) -> dict[str, object]:
+    return {
+        "governed_resource_id": registration.governed_resource_id,
+        "governed_source_version": registration.source_version,
+        "governed_parent_resource_id": registration.parent_id,
+        "governance_scope_type": registration.scope["type"],
+        "governance_scope_id": registration.scope.get("id"),
+        "governance_scope_owner_subject_id": registration.scope.get("ownerSubjectId"),
+        "governance_registration_status": "REGISTERED",
+        "governance_registered_at": utcnow(),
+    }
+
+
+def _budget_normalized_external_payload(
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest,
+) -> ExternalDocumentUpsertRequest:
+    return ExternalDocumentUpsertRequest(
+        tenant_id=payload.tenant_id,
+        external_system=ExternalSourceSystem.stratos_budget,
+        external_ref=payload.external_ref,
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        document_type=DocumentType.contract,
+        title=payload.title,
+        classification=payload.classification,
+        information_policy=payload.information_policy,
+        integration_envelope=None,
+        owner=payload.owner,
+        tags=payload.tags,
+        metadata=payload.metadata.model_dump(mode="json", exclude_none=True),
+        source_location=payload.source_location,
+        citation_base_url=payload.citation_base_url,
+        preview_url=payload.preview_url,
+        governance_scope=payload.governance_scope,
+        parent_governed_resource_id=payload.parent_governed_resource_id,
+    )
+
+
+def _budget_document_metadata(
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest,
+) -> dict[str, object]:
+    stable_source = _budget_document_source_location(payload)
+    return {
+        **payload.metadata.model_dump(mode="json", exclude_none=True),
+        "external": {
+            "tenant_id": payload.tenant_id,
+            "external_system": ExternalSourceSystem.stratos_budget.value,
+            "external_ref": payload.external_ref,
+            "entity_type": payload.entity_type,
+            "entity_id": payload.entity_id,
+            "source_location": stable_source,
+            "akb_source_uri": None,
+            "citation_base_url": payload.citation_base_url,
+            "preview_url": payload.preview_url,
+        },
+        "stratos_budget_upload": {
+            "contract_id": payload.entity_id,
+            "financial_scope_key": str(
+                payload.integration_envelope.payload["financialScopeKey"]
+            ),
+            "owner_subject_id": payload.integration_envelope.actor.subject_id,
+            "governance_scope": payload.governance_scope.model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            ),
+            "parent_governed_resource_id": payload.parent_governed_resource_id,
+        },
+    }
+
+
+_BUDGET_STABLE_METADATA_FIELDS = (
+    "contract_id",
+    "financial_scope_key",
+)
+
+_BUDGET_STABLE_UPLOAD_METADATA_FIELDS = (
+    "contract_id",
+    "financial_scope_key",
+    "governance_scope",
+    "parent_governed_resource_id",
+)
+
+
+def _budget_stable_contract_metadata(
+    metadata: dict[str, object],
+) -> dict[str, object]:
+    return {
+        key: metadata.get(key)
+        for key in _BUDGET_STABLE_METADATA_FIELDS
+    }
+
+
+def _budget_stable_document_metadata(
+    metadata: dict[str, object],
+) -> dict[str, object]:
+    budget_upload = metadata.get("stratos_budget_upload")
+    stable_budget_upload = (
+        {
+            key: budget_upload.get(key)
+            for key in _BUDGET_STABLE_UPLOAD_METADATA_FIELDS
+        }
+        if isinstance(budget_upload, dict)
+        else budget_upload
+    )
+    return {
+        **_budget_stable_contract_metadata(metadata),
+        "external": metadata.get("external"),
+        "stratos_budget_upload": stable_budget_upload,
+    }
+
+
+def _assert_budget_metadata_transition(
+    existing_metadata: dict[str, object],
+    incoming_metadata: dict[str, object],
+) -> None:
+    existing_lifecycle = existing_metadata.get("lifecycle")
+    incoming_lifecycle = incoming_metadata.get("lifecycle")
+    if existing_lifecycle == "ARCHIVED" and incoming_lifecycle != "ARCHIVED":
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_lifecycle_conflict",
+            "An archived Budget contract document cannot return to CURRENT",
+        )
+
+
+def _budget_document_source_location(
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest,
+) -> dict[str, object]:
+    """Return contract-level provenance without binding the document to one file."""
+
+    return {
+        "kind": SourceLocationKind.uploaded_file.value,
+        "repository": payload.source_location.repository,
+        "path": payload.external_ref,
+    }
+
+
+def _budget_version_source_location(
+    payload: StratosBudgetUploadDocumentVersionCreate,
+) -> dict[str, object]:
+    source = payload.source_location.model_dump(mode="json", exclude_none=True)
+    source["stratos_budget_upload"] = {
+        "integration_envelope": payload.integration_envelope.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        ),
+        "upload_mode": payload.upload_mode,
+        "original_file_name": payload.original_file_name,
+        "contract_status": payload.contract_status,
+        "contract_start_date": payload.contract_start_date.isoformat(),
+        "contract_end_date": payload.contract_end_date.isoformat(),
+        **(
+            {
+                "batch_lineage": payload.batch_lineage.model_dump(
+                    mode="json", exclude_none=True
+                )
+            }
+            if payload.batch_lineage is not None
+            else {}
+        ),
+    }
+    return source
+
+
+def _budget_version_integration_envelope(
+    version: DocumentVersion,
+) -> dict[str, object] | None:
+    source = version.source_location or {}
+    budget = source.get("stratos_budget_upload")
+    if not isinstance(budget, dict):
+        return None
+    envelope = budget.get("integration_envelope")
+    return envelope if isinstance(envelope, dict) else None
+
+
+def _budget_replay_source_lineage(
+    source_location: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if source_location is None:
+        return None
+    ephemeral_fields = {"uri", "storage_ref", "captured_at"}
+    return {
+        key: value
+        for key, value in source_location.items()
+        if key not in ephemeral_fields
+    }
+
+
+def _assert_budget_document_matches(
+    external_ref: ExternalDocumentRef,
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest
+    | StratosBudgetUploadDocumentVersionCreate
+    | StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
+) -> None:
+    document = external_ref.document
+    envelope = payload.integration_envelope
+    expected_scope = _budget_upload_scope(payload)
+    actual_scope = document_governance_scope(document)
+    expected_contract_id = str(envelope.payload["contractId"])
+    if (
+        external_ref.tenant_id != "org_stratos"
+        or external_ref.external_system != ExternalSourceSystem.stratos_budget.value
+        or external_ref.external_ref != envelope.external_ref
+        or external_ref.entity_type != "Contract"
+        or external_ref.entity_id != expected_contract_id
+        or document.document_type != DocumentType.contract.value
+        or document.governed_source_version != _budget_root_source_version(payload)
+        or document.governed_parent_resource_id
+        != payload.parent_governed_resource_id
+        or actual_scope != expected_scope
+        or document.policy_binding_id != payload.information_policy.policy_binding_id
+        or document.policy_version != payload.information_policy.policy_version
+        or document.policy_hash != envelope.policy_hash
+        or document.policy_summary
+        != payload.information_policy.model_dump(
+            mode="json", by_alias=True, exclude_none=False
+        )
+        or document.governance_registration_status
+        not in {"REGISTERED", "MOCK_BYPASSED"}
+        or not document.governed_resource_id
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_lineage_conflict",
+            "The existing AKB document does not match the immutable Budget contract lineage",
+        )
+
+
+def _assert_budget_version_matches(
+    version: DocumentVersion,
+    document: Document,
+    payload: StratosBudgetUploadDocumentVersionCreate
+    | StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
+) -> None:
+    expected_scope = _budget_upload_scope(payload)
+    actual_scope: dict[str, str] = {
+        "type": version.governance_scope_type or "organization"
+    }
+    if version.governance_scope_id:
+        actual_scope["id"] = version.governance_scope_id
+    elif version.governance_scope_owner_subject_id:
+        actual_scope["ownerSubjectId"] = version.governance_scope_owner_subject_id
+    if (
+        version.governed_source_version != version.document_version_id
+        or version.file_hash != payload.integration_envelope.payload["fileHash"]
+        or version.governed_parent_resource_id != document.governed_resource_id
+        or document.governed_parent_resource_id != payload.parent_governed_resource_id
+        or actual_scope != expected_scope
+        or version.policy_binding_id != payload.information_policy.policy_binding_id
+        or version.policy_version != payload.information_policy.policy_version
+        or version.policy_hash != payload.integration_envelope.policy_hash
+        or version.policy_summary
+        != payload.information_policy.model_dump(
+            mode="json", by_alias=True, exclude_none=False
+        )
+        or _budget_version_integration_envelope(version)
+        != payload.integration_envelope.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        )
+        or version.governance_registration_status
+        not in {"REGISTERED", "MOCK_BYPASSED"}
+        or not version.governed_resource_id
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_version_lineage_conflict",
+            "The persisted AKB version does not match the immutable Budget contract lineage",
+        )
+
+
+def _activate_budget_version_for_retrieval(
+    db: Session,
+    *,
+    document: Document,
+    version: DocumentVersion,
+    actor_id: str,
+    owner_subject_id: str,
+    allow_supersede: bool,
+) -> None:
+    """Make a confirmed governed Budget version retrievable without public publication."""
+
+    if version.status == DocumentStatus.valid.value:
+        if document.status != DocumentStatus.valid.value:
+            document.status = DocumentStatus.valid.value
+        return
+    if version.status in {
+        DocumentStatus.superseded.value,
+        DocumentStatus.archived.value,
+        DocumentStatus.cancelled.value,
+    }:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_version_not_active",
+            "A superseded or withdrawn Budget version cannot be reactivated by replay",
+        )
+    active_versions = list(
+        db.execute(
+            select(DocumentVersion).where(
+                DocumentVersion.document_id == document.document_id,
+                DocumentVersion.status == DocumentStatus.valid.value,
+                DocumentVersion.document_version_id != version.document_version_id,
+            )
+        ).scalars()
+    )
+    if active_versions and not allow_supersede:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_version_not_current",
+            "A newer confirmed Budget version is already active",
+        )
+    for active_version in active_versions:
+        active_version.status = DocumentStatus.superseded.value
+    version.status = DocumentStatus.valid.value
+    version.published_at = version.published_at or utcnow()
+    document.status = DocumentStatus.valid.value
+    add_audit_event(
+        db,
+        actor_id=actor_id,
+        event_type="document.version.stratos_budget_activated",
+        resource_type="document_version",
+        resource_id=version.document_version_id,
+        metadata={
+            "document_id": document.document_id,
+            "owner_subject_id": owner_subject_id,
+            "activation_basis": "governed_budget_upload_confirmation",
+            "public_publication": False,
+        },
+    )
+
+
+@router.post(
+    "/integrations/stratos-budget-upload/external-documents/upsert",
+    response_model=ExternalDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {
+            "model": ExternalDocumentResponse,
+            "description": "Exact idempotent replay of the registered Budget document",
+        }
+    },
+)
+def upsert_stratos_budget_external_document(
+    payload: StratosBudgetUploadExternalDocumentUpsertRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentResponse:
+    _require_stratos_budget_upload_service(principal)
+    _lock_budget_upload_identity(
+        db,
+        f"document:{payload.tenant_id}:{payload.external_system}:{payload.external_ref}",
+    )
+    existing_ref = db.execute(
+        select(ExternalDocumentRef)
+        .where(
+            ExternalDocumentRef.tenant_id == payload.tenant_id,
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
+            ExternalDocumentRef.external_ref == payload.external_ref,
+        )
+        .options(
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.access_policies
+            ),
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.assignments
+            ),
+        )
+    ).scalar_one_or_none()
+    document_id = (
+        existing_ref.document_id
+        if existing_ref is not None
+        else _stable_budget_upload_id(
+            "doc", payload.tenant_id, payload.external_system, payload.external_ref
+        )
+    )
+    governance_registration = _register_budget_akb_authoritatively(
+        resource_type="document",
+        resource_id=document_id,
+        source_version=_budget_root_source_version(payload),
+        title=payload.title,
+        parent_resource_id=payload.parent_governed_resource_id,
+        inherited_from_resource_id=payload.parent_governed_resource_id,
+        payload=payload,
+    )
+    governance_columns = _budget_governance_columns(governance_registration)
+    if existing_ref is not None:
+        _assert_budget_document_matches(existing_ref, payload)
+        if (
+            existing_ref.document.governed_resource_id
+            != governance_columns["governed_resource_id"]
+            or existing_ref.entity_id != payload.entity_id
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_upload_registration_conflict",
+                "The Budget contract registration conflicts with the persisted document",
+            )
+        normalized = _budget_normalized_external_payload(payload)
+        expected_metadata = payload.metadata.model_dump(
+            mode="json", exclude_none=True
+        )
+        expected_document_metadata = _budget_document_metadata(payload)
+        _assert_budget_metadata_transition(
+            dict(existing_ref.ref_metadata or {}),
+            expected_metadata,
+        )
+        previous_metadata = dict(existing_ref.ref_metadata or {})
+        descriptive_fields_updated = sorted(
+            key
+            for key in ("title", "contract_number", "contract_name")
+            if (
+                existing_ref.document.title if key == "title" else previous_metadata.get(key)
+            )
+            != (payload.title if key == "title" else expected_metadata.get(key))
+        )
+        if (
+            existing_ref.document.classification
+            != legacy_classification(payload.information_policy)
+            or _budget_stable_document_metadata(
+                dict(existing_ref.document.document_metadata or {})
+            )
+            != _budget_stable_document_metadata(expected_document_metadata)
+            or _budget_stable_contract_metadata(
+                dict(existing_ref.ref_metadata or {})
+            )
+            != _budget_stable_contract_metadata(expected_metadata)
+            or existing_ref.citation_base_url != payload.citation_base_url
+            or existing_ref.preview_url != payload.preview_url
+            or len(existing_ref.document.access_policies)
+            != len(_external_document_policies(normalized))
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_upload_payload_conflict",
+                "The persisted Budget contract document differs from the immutable replay",
+            )
+        existing_ref.document.title = payload.title
+        existing_ref.document.tags = sorted(
+            {*payload.tags, "external", "stratos_budget"}
+        )
+        existing_ref.document.document_metadata = expected_document_metadata
+        existing_ref.ref_metadata = expected_metadata
+        add_audit_event(
+            db,
+            actor_id=principal.subject_id,
+            event_type="external_document.stratos_budget_replayed",
+            resource_type="external_document",
+            resource_id=existing_ref.external_document_id,
+            correlation_id=payload.integration_envelope.correlation_id,
+            metadata={
+                "document_id": existing_ref.document_id,
+                "owner_subject_id": payload.integration_envelope.actor.subject_id,
+                "lifecycle": expected_metadata["lifecycle"],
+                "batch_manifest_id": expected_metadata.get("batch_manifest_id"),
+                "descriptive_fields_updated": descriptive_fields_updated,
+            },
+        )
+        _commit_or_conflict(db)
+        db.refresh(existing_ref)
+        response.status_code = status.HTTP_200_OK
+        return _external_document_response(existing_ref, created=False)
+
+    normalized = _budget_normalized_external_payload(payload)
+    document = Document(
+        document_id=document_id,
+        title=payload.title,
+        document_type=DocumentType.contract.value,
+        status=DocumentStatus.draft.value,
+        classification=legacy_classification(payload.information_policy),
+        owner_id=payload.integration_envelope.actor.subject_id,
+        gestor_unit=None,
+        tags=sorted({*payload.tags, "external", "stratos_budget"}),
+        document_metadata=_budget_document_metadata(payload),
+        **policy_columns(payload.information_policy),
+        **governance_columns,
+    )
+    document.access_policies = _external_document_policies(normalized)
+    document.assignments = _assignment_models(
+        document=document,
+        payloads=_default_assignment_payloads(
+            DocumentCreate(
+                title=payload.title,
+                document_type=DocumentType.contract,
+                owner_id=payload.integration_envelope.actor.subject_id,
+                classification=payload.classification,
+                tags=payload.tags,
+            )
+        ),
+        actor_id=principal.subject_id,
+    )
+    _sync_document_assignment_denormalized_fields(document)
+    external_ref = ExternalDocumentRef(
+        external_document_id=_stable_budget_upload_id(
+            "extdoc",
+            payload.tenant_id,
+            payload.external_system,
+            payload.external_ref,
+        ),
+        tenant_id=payload.tenant_id,
+        external_system=ExternalSourceSystem.stratos_budget.value,
+        external_ref=payload.external_ref,
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        document=document,
+        source_location=_budget_document_source_location(payload),
+        citation_base_url=payload.citation_base_url,
+        preview_url=payload.preview_url,
+        ref_metadata=payload.metadata.model_dump(mode="json", exclude_none=True),
+    )
+    db.add(document)
+    db.add(external_ref)
+    audit_event = add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="external_document.stratos_budget_registered",
+        resource_type="external_document",
+        resource_id=external_ref.external_document_id,
+        correlation_id=payload.integration_envelope.correlation_id,
+        metadata={
+            "document_id": document.document_id,
+            "external_ref": payload.external_ref,
+            "owner_subject_id": payload.integration_envelope.actor.subject_id,
+            "governed_resource_id": governance_columns["governed_resource_id"],
+        },
+    )
+    for assignment in document.assignments:
+        assignment.last_audit_event_id = audit_event.audit_event_id
+    _commit_or_conflict(db)
+    db.refresh(external_ref)
+    response.status_code = status.HTTP_201_CREATED
+    return _external_document_response(external_ref, created=True)
+
+
+@router.put(
+    "/integrations/stratos-budget-upload/documents/{document_id}/versions",
+    response_model=StratosBudgetUploadDocumentVersionCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {
+            "model": StratosBudgetUploadDocumentVersionCreateResponse,
+            "description": "Exact idempotent replay of the Budget document version",
+        }
+    },
+)
+def upsert_stratos_budget_document_version(
+    document_id: str,
+    payload: StratosBudgetUploadDocumentVersionCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> StratosBudgetUploadDocumentVersionCreateResponse:
+    _require_stratos_budget_upload_service(principal)
+    _lock_budget_upload_identity(
+        db, f"version:{document_id}:{payload.version_label}"
+    )
+    _lock_budget_upload_identity(db, f"active-version:{document_id}")
+    external_ref = db.execute(
+        select(ExternalDocumentRef)
+        .where(
+            ExternalDocumentRef.document_id == document_id,
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
+            ExternalDocumentRef.external_ref == payload.external_ref,
+        )
+        .options(
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.access_policies
+            ),
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.assignments
+            ),
+            selectinload(ExternalDocumentRef.document)
+            .selectinload(Document.versions)
+            .selectinload(DocumentVersion.files),
+        )
+    ).scalar_one_or_none()
+    if external_ref is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "stratos_budget_upload_document_not_found",
+            "The exact Budget contract document was not found",
+        )
+    _assert_budget_document_matches(external_ref, payload)
+    document = external_ref.document
+    existing = next(
+        (
+            item
+            for item in document.versions
+            if item.version_label == payload.version_label
+        ),
+        None,
+    )
+    if existing is not None and existing.file_hash != payload.file_hash:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_version_hash_conflict",
+            "The Budget version label already belongs to another file hash",
+        )
+    version_id = (
+        existing.document_version_id
+        if existing is not None
+        else _stable_budget_upload_id(
+            "ver", document_id, payload.version_label, payload.file_hash
+        )
+    )
+    document_governance_registration = _register_budget_akb_authoritatively(
+        resource_type="document",
+        resource_id=document.document_id,
+        source_version=_budget_root_source_version(payload),
+        title=document.title,
+        parent_resource_id=payload.parent_governed_resource_id,
+        inherited_from_resource_id=payload.parent_governed_resource_id,
+        payload=payload,
+    )
+    if document_governance_registration.governed_resource_id != document.governed_resource_id:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_document_governance_conflict",
+            "The authoritative Budget document registration changed unexpectedly",
+        )
+    version_governance_registration = _register_budget_akb_authoritatively(
+        resource_type="document-version",
+        resource_id=version_id,
+        source_version=version_id,
+        title=f"{document.title} — {payload.version_label}",
+        parent_resource_id=str(document.governed_resource_id),
+        inherited_from_resource_id=payload.parent_governed_resource_id,
+        payload=payload,
+    )
+    governance_columns = _budget_governance_columns(version_governance_registration)
+    governance_confirmation = {
+        "document": document_governance_registration.confirmation,
+        "version": version_governance_registration.confirmation,
+    }
+    if existing is not None:
+        _assert_budget_version_matches(existing, document, payload)
+        current_file = max(
+            existing.files,
+            key=lambda item: (item.uploaded_at, item.file_id),
+            default=None,
+        )
+        expected_source = _budget_version_source_location(payload)
+        if (
+            existing.governed_resource_id
+            != governance_columns["governed_resource_id"]
+            or current_file is None
+            or len(existing.files) != 1
+            or existing.valid_from != payload.valid_from
+            or existing.valid_to != payload.valid_to
+            or existing.change_summary != payload.change_summary
+            or current_file.uri != existing.source_file_uri
+            or _budget_replay_source_lineage(existing.source_location)
+            != _budget_replay_source_lineage(expected_source)
+            or current_file.filename != payload.file.filename
+            or current_file.mime_type != payload.file.mime_type
+            or current_file.size_bytes != payload.file.size_bytes
+            or current_file.sha256 != payload.file.sha256
+            or current_file.uploaded_by
+            != payload.integration_envelope.actor.subject_id
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_upload_version_payload_conflict",
+                "The persisted Budget contract version differs from the immutable replay",
+            )
+        _activate_budget_version_for_retrieval(
+            db,
+            document=document,
+            version=existing,
+            actor_id=principal.subject_id,
+            owner_subject_id=payload.integration_envelope.actor.subject_id,
+            allow_supersede=False,
+        )
+        add_audit_event(
+            db,
+            actor_id=principal.subject_id,
+            event_type="document.version.stratos_budget_replayed",
+            resource_type="document_version",
+            resource_id=existing.document_version_id,
+            correlation_id=payload.integration_envelope.correlation_id,
+            metadata={"document_id": document_id},
+        )
+        _commit_or_conflict(db)
+        db.refresh(existing)
+        response.status_code = status.HTTP_200_OK
+        return StratosBudgetUploadDocumentVersionCreateResponse(
+            version=_document_version_response(existing),
+            external_document=_external_document_response(
+                external_ref, created=False
+            ),
+            created=False,
+            governance_confirmation=governance_confirmation,
+        )
+
+    version = DocumentVersion(
+        document_version_id=version_id,
+        document_id=document.document_id,
+        version_label=payload.version_label,
+        status=DocumentStatus.draft.value,
+        valid_from=payload.valid_from,
+        valid_to=payload.valid_to,
+        source_file_uri=payload.source_file_uri,
+        source_location=_budget_version_source_location(payload),
+        file_hash=payload.file_hash,
+        change_summary=payload.change_summary,
+        **policy_columns(payload.information_policy),
+        **governance_columns,
+    )
+    file = DocumentFile(
+        file_id=_stable_budget_upload_id(
+            "file",
+            document.document_id,
+            version.document_version_id,
+            payload.file_hash,
+        ),
+        document_id=document.document_id,
+        document_version=version,
+        uri=payload.source_file_uri,
+        filename=payload.file.filename,
+        mime_type=payload.file.mime_type,
+        size_bytes=payload.file.size_bytes,
+        sha256=payload.file.sha256,
+        uploaded_by=payload.integration_envelope.actor.subject_id,
+    )
+    db.add(version)
+    db.add(file)
+    db.flush()
+    _activate_budget_version_for_retrieval(
+        db,
+        document=document,
+        version=version,
+        actor_id=principal.subject_id,
+        owner_subject_id=payload.integration_envelope.actor.subject_id,
+        allow_supersede=True,
+    )
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="document.version.stratos_budget_created",
+        resource_type="document_version",
+        resource_id=version.document_version_id,
+        correlation_id=payload.integration_envelope.correlation_id,
+        metadata={
+            "document_id": document.document_id,
+            "owner_subject_id": payload.integration_envelope.actor.subject_id,
+            "governed_resource_id": governance_columns["governed_resource_id"],
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(version)
+    response.status_code = status.HTTP_201_CREATED
+    return StratosBudgetUploadDocumentVersionCreateResponse(
+        version=_document_version_response(version),
+        external_document=_external_document_response(external_ref, created=False),
+        created=True,
+        governance_confirmation=governance_confirmation,
+    )
+
+
+def _select_budget_authoritative_ingestion_attempt(
+    db: Session,
+    *,
+    document_id: str,
+    document_version_id: str,
+    ingestion_job_id: str,
+    expected_ingestion_job_id: str | None,
+) -> IngestionAttempt:
+    db.execute(
+        select(Document.document_id)
+        .where(Document.document_id == document_id)
+        .with_for_update()
+    ).scalar_one()
+    attempt = db.execute(
+        select(IngestionAttempt)
+        .where(IngestionAttempt.document_id == document_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if attempt is None:
+        if expected_ingestion_job_id is not None:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_ingestion_attempt_cas_conflict",
+                "No prior Budget ingestion attempt matches the requested predecessor",
+            )
+        attempt = IngestionAttempt(
+            document_id=document_id,
+            document_version_id=document_version_id,
+            ingestion_job_id=ingestion_job_id,
+            ingestion_status="QUEUED",
+        )
+        db.add(attempt)
+        db.flush()
+        return attempt
+    if attempt.ingestion_job_id == ingestion_job_id:
+        if attempt.document_version_id != document_version_id:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_ingestion_attempt_version_conflict",
+                "The selected Budget ingestion job belongs to another immutable version",
+            )
+        return attempt
+    if attempt.ingestion_status == "INGESTING":
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_attempt_lease_active",
+            "The current ingestion attempt holds the execution lease",
+        )
+    if attempt.ingestion_job_id != expected_ingestion_job_id:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_ingestion_attempt_cas_conflict",
+            "Another Budget ingestion attempt is already current",
+        )
+    attempt.document_version_id = document_version_id
+    attempt.ingestion_job_id = ingestion_job_id
+    attempt.ingestion_status = "QUEUED"
+    return attempt
+
+
+@router.patch(
+    "/integrations/stratos-budget-upload/external-documents/{external_document_id}/current",
+    response_model=StratosBudgetUploadExternalDocumentCurrentUpdateResponse,
+)
+def update_stratos_budget_external_document_current(
+    external_document_id: str,
+    payload: StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> StratosBudgetUploadExternalDocumentCurrentUpdateResponse:
+    _require_stratos_budget_upload_service(principal)
+    _lock_budget_upload_identity(db, f"current:{external_document_id}")
+    external_ref = db.execute(
+        select(ExternalDocumentRef)
+        .where(
+            ExternalDocumentRef.external_document_id == external_document_id,
+            ExternalDocumentRef.document_id == payload.document_id,
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
+            ExternalDocumentRef.external_ref == payload.external_ref,
+        )
+        .options(
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.access_policies
+            ),
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.assignments
+            ),
+            selectinload(ExternalDocumentRef.document)
+            .selectinload(Document.versions)
+            .selectinload(DocumentVersion.files),
+        )
+    ).scalar_one_or_none()
+    if external_ref is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "stratos_budget_upload_document_not_found",
+            "The exact Budget contract external document was not found",
+        )
+    _assert_budget_document_matches(external_ref, payload)
+    version = next(
+        (
+            item
+            for item in external_ref.document.versions
+            if item.document_version_id == payload.document_version_id
+        ),
+        None,
+    )
+    if version is None or version.file_hash is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "stratos_budget_upload_version_not_found",
+            "The exact immutable Budget contract version was not found",
+        )
+    _assert_budget_version_matches(version, external_ref.document, payload)
+    file = next(
+        (item for item in version.files if item.file_id == payload.file_id), None
+    )
+    if (
+        file is None
+        or file.uri != version.source_file_uri
+        or file.sha256 != version.file_hash
+        or file.uploaded_by != payload.integration_envelope.actor.subject_id
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_file_conflict",
+            "The file does not belong to the immutable Budget contract version",
+        )
+
+    authoritative_status = payload.ingestion_status
+    if payload.ingestion_job_id is not None:
+        attempt = _select_budget_authoritative_ingestion_attempt(
+            db,
+            document_id=payload.document_id,
+            document_version_id=payload.document_version_id,
+            ingestion_job_id=payload.ingestion_job_id,
+            expected_ingestion_job_id=payload.expected_current_ingestion_job_id,
+        )
+        authoritative_status = {
+            "QUEUED": "INGESTING",
+            "INGESTING": "INGESTING",
+            "INDEXED": "INDEXED",
+            "FAILED": "FAILED",
+        }[attempt.ingestion_status]
+        if payload.ingestion_status != authoritative_status:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_ingestion_status_authority_conflict",
+                "Budget current-state status does not match the authoritative ingestion attempt",
+            )
+
+    current_version_id = external_ref.current_document_version_id
+    same_version = current_version_id == version.document_version_id
+    if not same_version and current_version_id != payload.expected_current_document_version_id:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_current_cas_conflict",
+            "The Budget upload was based on a stale current document version",
+        )
+    if same_version and external_ref.current_file_id not in {None, file.file_id}:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_current_replay_conflict",
+            "The selected Budget version has conflicting current file metadata",
+        )
+    existing_job_id = external_ref.current_ingestion_job_id
+    if not same_version and existing_job_id != payload.expected_current_ingestion_job_id:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_upload_current_job_cas_conflict",
+            "The Budget upload was based on a stale current ingestion job",
+        )
+    if payload.ingestion_job_id is not None:
+        if existing_job_id not in {
+            payload.expected_current_ingestion_job_id,
+            payload.ingestion_job_id,
+        }:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_upload_current_job_cas_conflict",
+                "Another Budget ingestion job is already current",
+            )
+
+    updated = not same_version
+    if not same_version:
+        external_ref.current_document_version_id = version.document_version_id
+        external_ref.current_file_id = file.file_id
+        external_ref.akb_source_uri = version.source_file_uri
+        external_ref.source_location = version.source_location
+    elif external_ref.current_file_id is None:
+        external_ref.current_file_id = file.file_id
+        updated = True
+    if payload.ingestion_job_id is not None:
+        if (
+            external_ref.current_ingestion_job_id != payload.ingestion_job_id
+            or external_ref.current_ingestion_status != authoritative_status
+        ):
+            updated = True
+        external_ref.current_ingestion_job_id = payload.ingestion_job_id
+        external_ref.current_ingestion_status = authoritative_status
+    elif not same_version:
+        # A newly selected immutable version must never inherit the ingestion
+        # job or terminal status of its predecessor. The predecessor is still
+        # protected by the job CAS above; service-only historical ingestion
+        # then starts explicitly in VERSION_CREATED without an ingestion job.
+        if (
+            external_ref.current_ingestion_job_id is not None
+            or external_ref.current_ingestion_status != "VERSION_CREATED"
+        ):
+            updated = True
+        external_ref.current_ingestion_job_id = None
+        external_ref.current_ingestion_status = "VERSION_CREATED"
+    elif external_ref.current_ingestion_job_id is None:
+        if external_ref.current_ingestion_status != "VERSION_CREATED":
+            updated = True
+        external_ref.current_ingestion_status = "VERSION_CREATED"
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="external_document.stratos_budget_current_reconciled",
+        resource_type="external_document",
+        resource_id=external_ref.external_document_id,
+        correlation_id=payload.integration_envelope.correlation_id,
+        metadata={
+            "document_id": external_ref.document_id,
+            "document_version_id": version.document_version_id,
+            "ingestion_job_id": external_ref.current_ingestion_job_id,
+            "owner_subject_id": payload.integration_envelope.actor.subject_id,
+            "updated": updated,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(external_ref)
+    return StratosBudgetUploadExternalDocumentCurrentUpdateResponse(
+        external_document=_external_document_response(external_ref, created=False),
+        updated=updated,
+    )
+
+
+@router.get(
+    "/integrations/stratos-budget-upload/documents/{document_id}/status",
+    response_model=ExternalDocumentCurrentListResponse,
+)
+def get_stratos_budget_document_status(
+    document_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalDocumentCurrentListResponse:
+    _require_stratos_budget_upload_service(principal)
+    external_refs = list(
+        db.execute(
+            select(ExternalDocumentRef)
+            .where(
+                ExternalDocumentRef.document_id == document_id,
+                ExternalDocumentRef.external_system
+                == ExternalSourceSystem.stratos_budget.value,
+            )
+            .order_by(ExternalDocumentRef.external_document_id)
+        ).scalars()
+    )
+    if not external_refs:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "stratos_budget_upload_document_not_found",
+            "The Budget contract document was not found",
+        )
+    attempt = db.execute(
+        select(IngestionAttempt).where(IngestionAttempt.document_id == document_id)
+    ).scalar_one_or_none()
+    current_jobs = {
+        (item.current_document_version_id, item.current_ingestion_job_id)
+        for item in external_refs
+        if item.current_ingestion_job_id is not None
+    }
+    if attempt is not None and (
+        attempt.document_version_id,
+        attempt.ingestion_job_id,
+    ) not in current_jobs:
+        attempt = None
+    return ExternalDocumentCurrentListResponse(
+        document_id=document_id,
+        updated=0,
+        items=[
+            ExternalDocumentRefResponse.model_validate(item)
+            for item in external_refs
+        ],
+        ingestion_attempt=attempt,
+    )
+
+
 @router.post(
     "/external-documents/upsert",
     response_model=ExternalDocumentResponse,
@@ -3122,6 +4319,8 @@ def upsert_external_document(
 ) -> ExternalDocumentResponse:
     if payload.external_system == ExternalSourceSystem.stratos_aiip:
         _reject_generic_aiip_write()
+    if payload.external_system == ExternalSourceSystem.stratos_budget:
+        _reject_generic_budget_write()
     _require_v2_policy(principal, payload.information_policy)
     _require_own_scope_owner(
         payload.governance_scope,
@@ -3292,6 +4491,8 @@ def update_external_document_current(
     external_ref = _get_external_document_ref(db, external_document_id)
     if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value:
         _reject_generic_aiip_write()
+    if external_ref.external_system == ExternalSourceSystem.stratos_budget.value:
+        _reject_generic_budget_write()
     if {
         "expected_current_ingestion_job_id",
         "current_ingestion_job_id",
@@ -3341,17 +4542,25 @@ def update_document_external_references_current(
         require_document_action(principal, Action.document_ingest, document, db)
     if payload.current_document_version_id is not None:
         _get_version(db, document_id, payload.current_document_version_id)
+    dedicated_external_system = db.execute(
+        select(ExternalDocumentRef.external_system).where(
+            ExternalDocumentRef.document_id == document_id,
+            ExternalDocumentRef.external_system.in_(
+                [
+                    ExternalSourceSystem.stratos_aiip.value,
+                    ExternalSourceSystem.stratos_budget.value,
+                ]
+            ),
+        ).limit(1)
+    ).scalar_one_or_none()
     if {
         "current_file_id",
         "akb_source_uri",
         "source_location",
-    }.intersection(payload.model_fields_set) and db.execute(
-        select(ExternalDocumentRef.external_document_id).where(
-            ExternalDocumentRef.document_id == document_id,
-            ExternalDocumentRef.external_system == ExternalSourceSystem.stratos_aiip.value,
-        )
-    ).first() is not None:
-        _reject_generic_aiip_write()
+    }.intersection(payload.model_fields_set) and dedicated_external_system is not None:
+        if dedicated_external_system == ExternalSourceSystem.stratos_aiip.value:
+            _reject_generic_aiip_write()
+        _reject_generic_budget_write()
 
     ingestion_attempt = db.execute(
         select(IngestionAttempt)
@@ -3454,6 +4663,17 @@ def _create_authoritative_ingestion_attempt(
         for external_ref in external_refs
     ):
         _reject_generic_aiip_write()
+    if any(
+        external_ref.external_system == ExternalSourceSystem.stratos_budget.value
+        and (
+            external_ref.current_document_version_id
+            != payload.current_document_version_id
+            or external_ref.current_ingestion_job_id
+            != payload.current_ingestion_job_id
+        )
+        for external_ref in external_refs
+    ):
+        _reject_generic_budget_write()
     required_fields = {
         "current_document_version_id",
         "expected_current_ingestion_job_id",
@@ -3561,6 +4781,14 @@ def _reject_generic_aiip_write() -> None:
     )
 
 
+def _reject_generic_budget_write() -> None:
+    raise problem(
+        status.HTTP_409_CONFLICT,
+        "stratos_budget_upload_dedicated_route_required",
+        "STRATOS_BUDGET contract lineage may change only through the dedicated Budget upload route",
+    )
+
+
 def _apply_ingestion_status_cas(
     external_ref: ExternalDocumentRef,
     payload: ExternalDocumentCurrentUpdateRequest,
@@ -3574,6 +4802,10 @@ def _apply_ingestion_status_cas(
         external_ref.current_ingestion_job_id is None or forbidden_fields
     ):
         _reject_generic_aiip_write()
+    if external_ref.external_system == ExternalSourceSystem.stratos_budget.value and (
+        external_ref.current_ingestion_job_id is None or forbidden_fields
+    ):
+        _reject_generic_budget_write()
 
     if (
         forbidden_fields
@@ -4910,6 +6142,15 @@ def create_document_version(
     ).scalar_one_or_none()
     if aiip_external_ref is not None:
         _reject_generic_aiip_write()
+    budget_external_ref = db.execute(
+        select(ExternalDocumentRef.external_document_id).where(
+            ExternalDocumentRef.document_id == document_id,
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
+        ).limit(1)
+    ).scalar_one_or_none()
+    if budget_external_ref is not None:
+        _reject_generic_budget_write()
     subject_context = require_document_action(
         principal, Action.document_version_create, document, db
     )
@@ -5274,6 +6515,146 @@ def _aiip_owner_ingestion_authority(
         ) from exc
 
 
+def _budget_historical_batch_ingestion_authority(
+    *,
+    principal: Principal,
+    payload: IngestionAuthorizationIssueRequest,
+    document: Document,
+    version: DocumentVersion,
+    db: Session,
+) -> tuple[DocumentVersionAuthority, str]:
+    """Authorize only the exact immutable CURRENT or ARCHIVED Budget batch version for indexing."""
+
+    _require_stratos_budget_upload_service(principal)
+    external_ref = db.execute(
+        select(ExternalDocumentRef).where(
+            ExternalDocumentRef.document_id == document.document_id,
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
+        )
+    ).scalar_one_or_none()
+    metadata = document.document_metadata or {}
+    source_location = version.source_location or {}
+    budget_source = source_location.get("stratos_budget_upload")
+    envelope = _budget_version_integration_envelope(version)
+    actor = envelope.get("actor") if isinstance(envelope, dict) else None
+    expected_idempotency_key = (
+        f"confirm:{external_ref.external_document_id}:{version.document_version_id}"
+        if external_ref is not None
+        else None
+    )
+    if (
+        payload.action != Action.document_ingest.value
+        or external_ref is None
+        or metadata.get("lifecycle") not in {"CURRENT", "ARCHIVED"}
+        or not isinstance(budget_source, dict)
+        or budget_source.get("upload_mode") != "historical_batch"
+        or not isinstance(budget_source.get("batch_lineage"), dict)
+        or not isinstance(envelope, dict)
+        or envelope.get("sourceSystem") != "STRATOS_BUDGET"
+        or envelope.get("externalRef") != external_ref.external_ref
+        or envelope.get("correlationId") != payload.correlation_id
+        or payload.idempotency_key != expected_idempotency_key
+        or not isinstance(actor, dict)
+        or actor.get("type") != "person"
+        or actor.get("subjectId") != document.owner_id
+        or version.governed_parent_resource_id != document.governed_resource_id
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "stratos_budget_historical_ingestion_forbidden",
+            "Only an exact signed CURRENT or ARCHIVED Budget batch version may be indexed without a live actor",
+        )
+    try:
+        return resolve_document_version_authority(document, version), document.owner_id
+    except ValueError as exc:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "stratos_budget_historical_ingestion_authority_invalid",
+            "The immutable Budget version governance authority is unavailable or conflicting",
+        ) from exc
+
+
+@router.post(
+    "/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/ingestion-authorization",
+    response_model=IngestionAuthorizationResponse,
+)
+def create_stratos_budget_historical_ingestion_authorization_proof(
+    document_id: str,
+    version_id: str,
+    payload: IngestionAuthorizationIssueRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> IngestionAuthorizationResponse:
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_authorization_correlation_conflict",
+            "The authorization proof must use the current correlation id",
+        )
+    document = _get_document(db, document_id)
+    version = _get_version(db, document_id, version_id)
+    authority, confirmed_subject_id = _budget_historical_batch_ingestion_authority(
+        principal=principal,
+        payload=payload,
+        document=document,
+        version=version,
+        db=db,
+    )
+    token, confirmation = issue_ingestion_authorization(
+        get_settings(),
+        subject_id=confirmed_subject_id,
+        action=payload.action,
+        document_id=document_id,
+        document_version_id=version_id,
+        organization_id=authority.organization_id,
+        governed_resource_id=authority.governed_resource_id,
+        governed_source_version=authority.governed_source_version,
+        governed_parent_resource_id=authority.governed_parent_resource_id,
+        policy_binding_id=authority.policy_binding_id,
+        policy_version=authority.policy_version,
+        policy_hash=authority.policy_hash,
+        governance_scope_hash=authority.governance_scope_hash,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+    )
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="ingestion.authorization.issued",
+        resource_type="document_version",
+        resource_id=version_id,
+        metadata={
+            "authorization_id": confirmation.authorization_id,
+            "document_id": document_id,
+            "action": payload.action,
+            "confirmed_subject_id": confirmed_subject_id,
+            "authorization_basis": "stratos_budget_historical_batch",
+            "governed_resource_id": authority.governed_resource_id,
+            "governed_source_version": authority.governed_source_version,
+            "policy_binding_id": authority.policy_binding_id,
+            "policy_version": authority.policy_version,
+            "policy_hash": authority.policy_hash,
+            "governance_scope_hash": authority.governance_scope_hash,
+            "idempotency_key_hash": sha256(
+                payload.idempotency_key.encode("utf-8")
+            ).hexdigest(),
+        },
+    )
+    db.commit()
+    return IngestionAuthorizationResponse(
+        authorization_token=token,
+        authorization_id=confirmation.authorization_id,
+        confirmed_subject_id=confirmation.subject_id,
+        action=payload.action,
+        document_id=document_id,
+        document_version_id=version_id,
+        correlation_id=payload.correlation_id,
+        idempotency_key=payload.idempotency_key,
+        expires_at=confirmation.expires_at,
+    )
+
+
 @router.post(
     "/documents/{document_id}/versions/{version_id}/ingestion-authorization",
     response_model=IngestionAuthorizationResponse,
@@ -5291,6 +6672,14 @@ def create_ingestion_authorization_proof(
             "ingestion_authorization_actor_required",
             "A current person identity is required to authorize ingestion",
         )
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "ingestion_authorization_correlation_conflict",
+            "The authorization proof must use the current correlation id",
+        )
+    document = _get_document(db, document_id)
+    version = _get_version(db, document_id, version_id)
     if not (
         principal.identity_active
         and principal.membership_active
@@ -5301,14 +6690,6 @@ def create_ingestion_authorization_proof(
             "ingestion_authorization_actor_inactive",
             "The current person identity, membership, and application access must be active",
         )
-    if payload.correlation_id != get_correlation_id():
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "ingestion_authorization_correlation_conflict",
-            "The authorization proof must use the current correlation id",
-        )
-    document = _get_document(db, document_id)
-    version = _get_version(db, document_id, version_id)
     authority = _aiip_owner_ingestion_authority(
         principal=principal,
         action=payload.action,

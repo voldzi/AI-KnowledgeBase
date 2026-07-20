@@ -60,6 +60,25 @@ class AiipAkbGovernedResourceRegistration:
 
 
 @dataclass(frozen=True)
+class BudgetAkbGovernedResourceRegistration:
+    governed_resource_id: str
+    resource_type: Literal["document", "document-version"]
+    resource_id: str
+    source_version: str
+    parent_id: str
+    scope: dict[str, str]
+    inherited_from_resource_id: str
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    registered_by_subject_id: Literal["service:akb"]
+    confirmed_by_subject_id: Literal["service:akb"]
+    correlation_id: str
+    idempotency_key: str
+    confirmation: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class InformationPublicationRegistration:
     publication_id: str
     governed_resource_id: str
@@ -442,6 +461,93 @@ class StratosGovernanceClient:
             confirmed_by_subject_id=confirmed_by,
             correlation_id=envelope.correlation_id,
             idempotency_key=envelope.idempotency_key,
+        )
+
+    def register_budget_akb_resource(
+        self,
+        *,
+        resource_type: Literal["document", "document-version"],
+        resource_id: str,
+        source_version: str,
+        title: str,
+        parent_id: str,
+        inherited_from_resource_id: str,
+        scope: dict[str, str],
+        envelope: IntegrationEnvelope,
+        binding: InformationPolicyBinding,
+        reason: str,
+    ) -> BudgetAkbGovernedResourceRegistration:
+        base_url = self.settings.stratos_budget_akb_resources_url
+        credential = self.settings.stratos_policy_service_token
+        if not base_url or not credential:
+            raise GovernanceUnavailable(
+                "The dedicated Budget to AKB governance route is not configured"
+            )
+        response = self._request(
+            "PUT",
+            (
+                f"{base_url.rstrip('/')}/{quote(resource_type, safe='')}/"
+                f"{quote(resource_id, safe='')}"
+            ),
+            credential,
+            {
+                "sourceVersion": source_version,
+                "title": title,
+                "parentId": parent_id,
+                "scope": scope,
+                "integrationEnvelope": envelope.model_dump(
+                    mode="json", by_alias=True, exclude_none=True
+                ),
+                "reason": reason,
+            },
+            extra_headers={
+                "Idempotency-Key": envelope.idempotency_key,
+                "X-Correlation-ID": envelope.correlation_id,
+            },
+        )
+        effective_policy = response.get("effectivePolicy")
+        if (
+            response.get("application") != "AKB"
+            or response.get("resourceType") != resource_type
+            or response.get("resourceId") != resource_id
+            or response.get("sourceVersion") != source_version
+            or response.get("parentId") != parent_id
+            or response.get("scope") != scope
+            or response.get("isActive") is not True
+            or not isinstance(response.get("id"), str)
+            or not response.get("id")
+            or response.get("policyAssignment") != "INHERITED"
+            or response.get("explicitPolicyBindingId") is not None
+            or response.get("inheritedFromResourceId") != inherited_from_resource_id
+            or not isinstance(effective_policy, dict)
+            or effective_policy.get("policyBindingId") != binding.policy_binding_id
+            or effective_policy.get("policyVersion") != binding.policy_version
+            or effective_policy.get("policyHash") != envelope.policy_hash
+            or not _authoritative_policy_metadata_matches(effective_policy, binding)
+            or response.get("registeredBySubjectId") != "service:akb"
+            or response.get("confirmedBySubjectId") != "service:akb"
+            or response.get("correlation_id") != envelope.correlation_id
+            or response.get("idempotency_key") != envelope.idempotency_key
+        ):
+            raise GovernanceInvalidResponse(
+                "STRATOS returned a conflicting Budget-derived AKB governed resource"
+            )
+        return BudgetAkbGovernedResourceRegistration(
+            governed_resource_id=response["id"],
+            resource_type=resource_type,
+            resource_id=resource_id,
+            source_version=source_version,
+            parent_id=parent_id,
+            scope=scope,
+            inherited_from_resource_id=inherited_from_resource_id,
+            policy_binding_id=binding.policy_binding_id,
+            policy_version=binding.policy_version,
+            policy_hash=envelope.policy_hash,
+            registered_by_subject_id="service:akb",
+            confirmed_by_subject_id="service:akb",
+            correlation_id=envelope.correlation_id,
+            idempotency_key=envelope.idempotency_key,
+            confirmation=dict(response),
         )
 
     def upsert_information_publication(

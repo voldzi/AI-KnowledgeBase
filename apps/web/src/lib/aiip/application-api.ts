@@ -19,17 +19,41 @@ type ExactServiceProfile = {
   role: string;
 };
 
+export type StratosDocumentSourceSystem = "STRATOS_AIIP" | "STRATOS_BUDGET";
+
+type StratosDocumentServiceProfile = ExactServiceProfile & {
+  allowedSourceSystems: readonly StratosDocumentSourceSystem[];
+};
+
+export type StratosDocumentServicePrincipal = AiipPrincipal & {
+  clientId: string;
+  allowedSourceSystems: readonly StratosDocumentSourceSystem[];
+};
+
 const AIIP_APPLICATION_SERVICE: ExactServiceProfile = {
   clientId: "aiip-service",
   audience: "akb-api",
   role: "service_aiip",
 };
 
-const AIIP_DOCUMENT_SERVICE: ExactServiceProfile = {
+const AIIP_DOCUMENT_SERVICE: StratosDocumentServiceProfile = {
   clientId: "aiip-document-service",
   audience: "akl-api",
   role: "service_aiip_document",
+  allowedSourceSystems: ["STRATOS_AIIP"],
 };
+
+const STRATOS_BUDGET_DOCUMENT_SERVICE: StratosDocumentServiceProfile = {
+  clientId: "stratos-akb-service",
+  audience: "akl-api",
+  role: "service_ingestion",
+  allowedSourceSystems: ["STRATOS_BUDGET"],
+};
+
+const STRATOS_DOCUMENT_SERVICES = [
+  AIIP_DOCUMENT_SERVICE,
+  STRATOS_BUDGET_DOCUMENT_SERVICE,
+] as const;
 
 export async function authenticateAiipServiceRequest(
   request: Request,
@@ -101,6 +125,67 @@ export async function authenticateAiipDocumentServiceJsonRequest(
     }
     throw error;
   }
+}
+
+export async function authenticateStratosDocumentServiceRequest(
+  request: Request,
+): Promise<StratosDocumentServicePrincipal> {
+  try {
+    rejectCallerInternalHeaders(request);
+    return await authenticateStratosDocumentService(request);
+  } catch (error) {
+    if (error instanceof AiipBridgeError) {
+      throw new ApiClientError(
+        error.message,
+        error.status,
+        error.code,
+        "web-stratos-document-service-auth",
+      );
+    }
+    throw error;
+  }
+}
+
+export async function authenticateStratosDocumentServiceJsonRequest(
+  request: Request,
+  options: { rateLimitProfile?: "default" | "stratos-budget-upload" } = {},
+): Promise<{ principal: StratosDocumentServicePrincipal; body: Record<string, unknown> }> {
+  try {
+    rejectCallerInternalHeaders(request);
+    const principal = await authenticateStratosDocumentService(request);
+    enforceRateLimit(principal.subjectId, options.rateLimitProfile ?? "default");
+    enforceContentLength(request);
+    const body = await readBoundedJson(request);
+    return { principal, body };
+  } catch (error) {
+    if (error instanceof AiipBridgeError) {
+      throw new ApiClientError(
+        error.message,
+        error.status,
+        error.code,
+        "web-stratos-document-service-auth",
+      );
+    }
+    throw error;
+  }
+}
+
+export function requireStratosDocumentSourceAllowed(
+  principal: StratosDocumentServicePrincipal,
+  sourceSystem: unknown,
+): StratosDocumentSourceSystem {
+  if (
+    (sourceSystem !== "STRATOS_AIIP" && sourceSystem !== "STRATOS_BUDGET")
+    || !principal.allowedSourceSystems.includes(sourceSystem)
+  ) {
+    throw new ApiClientError(
+      "The document service is not authorized for this STRATOS source system.",
+      403,
+      "SOURCE_SYSTEM_NOT_ALLOWED",
+      "web-stratos-document-service-auth",
+    );
+  }
+  return sourceSystem;
 }
 
 type OidcJsonWebKey = JsonWebKey & { kid?: string; alg?: string };
@@ -309,10 +394,40 @@ async function authenticateAiipService(request: Request): Promise<AiipPrincipal>
   return authenticateExactService(request, AIIP_APPLICATION_SERVICE);
 }
 
+async function authenticateStratosDocumentService(
+  request: Request,
+): Promise<StratosDocumentServicePrincipal> {
+  const resolved = await resolveServiceToken(request);
+  const authorizedParty = stringClaim(resolved.claims.azp);
+  const profile = STRATOS_DOCUMENT_SERVICES.find(
+    (candidate) => candidate.clientId === authorizedParty,
+  );
+  if (!profile) {
+    throw new AiipBridgeError(
+      403,
+      "AUTH_FORBIDDEN",
+      "A trusted STRATOS document service identity is required.",
+    );
+  }
+  const principal = authenticateResolvedExactService(resolved, profile);
+  return {
+    ...principal,
+    clientId: profile.clientId,
+    allowedSourceSystems: profile.allowedSourceSystems,
+  };
+}
+
 async function authenticateExactService(
   request: Request,
   profile: ExactServiceProfile,
 ): Promise<AiipPrincipal> {
+  return authenticateResolvedExactService(await resolveServiceToken(request), profile);
+}
+
+async function resolveServiceToken(request: Request): Promise<{
+  accessToken: string;
+  claims: Record<string, unknown>;
+}> {
   const authorization = request.headers.get("authorization") ?? "";
   const [scheme, accessToken] = authorization.trim().split(/\s+/, 2);
   if (scheme?.toLowerCase() !== "bearer" || !accessToken) {
@@ -325,6 +440,14 @@ async function authenticateExactService(
   const claims = config.oidc.clientSecret
     ? await introspectAccessToken(config.oidc.issuer, config.oidc.clientId, config.oidc.clientSecret, accessToken)
     : await validateJwtAccessToken(config.oidc.issuer, accessToken);
+  return { accessToken, claims };
+}
+
+function authenticateResolvedExactService(
+  resolved: { accessToken: string; claims: Record<string, unknown> },
+  profile: ExactServiceProfile,
+): AiipPrincipal {
+  const { accessToken, claims } = resolved;
   const authorizedParty = stringClaim(claims.azp);
   const clientId = stringClaim(claims.client_id);
   if (
@@ -467,15 +590,39 @@ function extractRoles(claims: Record<string, unknown>): string[] {
   return [...roles].sort();
 }
 
-function enforceRateLimit(subjectId: string) {
+function enforceRateLimit(
+  subjectId: string,
+  profile: "default" | "stratos-budget-upload" = "default",
+) {
   const now = Date.now();
-  const active = (rateWindows.get(subjectId) ?? []).filter((timestamp) => timestamp > now - RATE_WINDOW_MS);
-  if (active.length >= RATE_LIMIT) {
-    const retryAfter = Math.max(1, Math.ceil((active[0] + RATE_WINDOW_MS - now) / 1000));
+  const rateLimit = profile === "stratos-budget-upload"
+    ? boundedIntegerEnvironment("AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_LIMIT", 300, 1, 1_000)
+    : RATE_LIMIT;
+  const rateWindowMs = profile === "stratos-budget-upload"
+    ? boundedIntegerEnvironment("AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_WINDOW_SECONDS", 60, 1, 300) * 1_000
+    : RATE_WINDOW_MS;
+  const key = `${profile}:${subjectId}`;
+  const active = (rateWindows.get(key) ?? []).filter((timestamp) => timestamp > now - rateWindowMs);
+  if (active.length >= rateLimit) {
+    const retryAfter = Math.max(1, Math.ceil((active[0] + rateWindowMs - now) / 1000));
     throw new AiipBridgeError(429, "RATE_LIMIT_EXCEEDED", "AIIP request rate limit exceeded.", retryAfter);
   }
   active.push(now);
-  rateWindows.set(subjectId, active);
+  rateWindows.set(key, active);
+}
+
+function boundedIntegerEnvironment(
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum
+    ? parsed
+    : fallback;
 }
 
 function acquireConcurrency(subjectId: string) {

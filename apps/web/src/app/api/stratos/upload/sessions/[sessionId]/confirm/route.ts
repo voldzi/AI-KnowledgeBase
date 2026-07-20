@@ -14,6 +14,7 @@ import {
   optionalString,
   requiredString,
   sourceLocationForUpload,
+  STRATOS_UPLOAD_TOKEN_PURPOSE,
   updateAiipExternalDocumentCurrent,
   upsertAiipDocumentVersion,
   type StratosUploadConfirmResult
@@ -21,6 +22,7 @@ import {
 import { equalAiipGovernanceConfirmation, equalCanonicalJson } from "@/lib/stratos/aiip-governance";
 import {
   assertUploadMatchesIngestionPayload,
+  assertUploadTokenPurpose,
   verifyPersistedUploadedObject,
   verifyUploadReceipt,
 } from "@/lib/upload/preflight";
@@ -184,6 +186,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       },
       uploadSettings
     );
+    assertUploadTokenPurpose(payload, STRATOS_UPLOAD_TOKEN_PURPOSE);
     verifyUploadReceipt(uploadReceipt, uploadToken, payload, uploadSettings);
     await verifyPersistedUploadedObject(payload, uploadSettings);
     const normalizedBody: Record<string, unknown> = {

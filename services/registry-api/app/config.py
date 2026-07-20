@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     stratos_aiip_akb_resources_url: str | None = Field(
         default=None, alias="AKL_STRATOS_AIIP_AKB_RESOURCES_URL"
     )
+    stratos_budget_akb_resources_url: str | None = Field(
+        default=None, alias="AKL_STRATOS_BUDGET_AKB_RESOURCES_URL"
+    )
     stratos_information_publications_url: str | None = Field(
         default=None, alias="AKL_STRATOS_INFORMATION_PUBLICATIONS_URL"
     )
@@ -308,6 +311,7 @@ class Settings(BaseSettings):
                 "profile-read",
                 "profile-write",
                 "aiip-upload",
+                "stratos-budget-upload",
                 "ingestion-status",
             }
         }
@@ -352,6 +356,27 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production aiip-document-service grant must be exactly aiip-upload"
                 )
+            if "stratos-akb-service" not in trusted_service_clients:
+                raise ValueError(
+                    "Production Registry requires trusted client stratos-akb-service"
+                )
+            if route_grants.get("stratos-akb-service") != frozenset(
+                {"stratos-budget-upload"}
+            ):
+                raise ValueError(
+                    "Production stratos-akb-service grant must be exactly "
+                    "stratos-budget-upload"
+                )
+            budget_upload_clients = {
+                client_id
+                for client_id, routes in route_grants.items()
+                if "stratos-budget-upload" in routes
+            }
+            if budget_upload_clients != {"stratos-akb-service"}:
+                raise ValueError(
+                    "Production stratos-budget-upload route must be granted only "
+                    "to stratos-akb-service"
+                )
             missing_governance = [
                 name
                 for name, value in {
@@ -361,6 +386,7 @@ class Settings(BaseSettings):
                     "AKL_STRATOS_SERVICE_POLICY_BINDING_ID": self.stratos_service_policy_binding_id,
                     "AKL_STRATOS_INFORMATION_RESOURCES_URL": self.stratos_information_resources_url,
                     "AKL_STRATOS_AIIP_AKB_RESOURCES_URL": self.stratos_aiip_akb_resources_url,
+                    "AKL_STRATOS_BUDGET_AKB_RESOURCES_URL": self.stratos_budget_akb_resources_url,
                     "AKL_STRATOS_INFORMATION_PUBLICATIONS_URL": self.stratos_information_publications_url,
                     "AKL_STRATOS_PUBLIC_DECISIONS_URL": self.stratos_public_decisions_url,
                     "AKB_POLICY_SERVICE_TOKEN": self.stratos_policy_service_token,

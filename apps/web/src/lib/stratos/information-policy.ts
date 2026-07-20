@@ -20,7 +20,7 @@ const OBLIGATIONS = new Set([
   "NO_EXPORT", "WATERMARK", "ENCRYPT_AT_REST", "RECIPIENT_CONFIRMATION",
   "ORIGINATOR_APPROVAL", "PAP_ENFORCEMENT"
 ]);
-const SCOPE_TYPES = new Set(["organization", "organization_unit", "project", "document", "recipient_set", "public"]);
+const SCOPE_TYPES = new Set(["organization", "organization_unit", "budget_scope", "project", "document", "recipient_set", "public"]);
 
 export interface InformationPolicyBinding {
   schemaVersion: typeof INFORMATION_POLICY_SCHEMA;
@@ -33,7 +33,7 @@ export interface InformationPolicyBinding {
   contentCategories: string[];
   audience: {
     organizationId: typeof STRATOS_ORGANIZATION_ID;
-    scopeType: "organization" | "organization_unit" | "project" | "document" | "recipient_set" | "public";
+    scopeType: "organization" | "organization_unit" | "budget_scope" | "project" | "document" | "recipient_set" | "public";
     scopeIds?: string[];
     recipientSubjectIds?: string[];
   };
@@ -79,6 +79,35 @@ export interface IntegrationEnvelope {
     entityId: string;
     sourceDocumentId: string;
     sha256: string;
+  };
+}
+
+export interface StratosBudgetGovernanceScope {
+  type: "budget_scope";
+  id: string;
+}
+
+export interface StratosBudgetIntegrationEnvelope {
+  schemaVersion: "stratos-integration-envelope-1";
+  organizationId: typeof STRATOS_ORGANIZATION_ID;
+  sourceSystem: "STRATOS_BUDGET";
+  externalRef: string;
+  actor: { type: "person"; subjectId: string };
+  correlationId: string;
+  idempotencyKey: string;
+  policyBindingId: string;
+  policyVersion: typeof INFORMATION_POLICY_VERSION;
+  policyHash: string;
+  classification: {
+    handlingClass: string;
+    legalClassification: "NONE";
+    tlp: string | null;
+    pap: string | null;
+  };
+  payload: {
+    contractId: string;
+    financialScopeKey: string;
+    fileHash: string;
   };
 }
 
@@ -274,6 +303,93 @@ export function parseIntegrationEnvelope(value: unknown, policy: InformationPoli
   };
 }
 
+export function parseStratosBudgetIntegrationEnvelope(
+  value: unknown,
+  policy: InformationPolicyBinding,
+  governanceScopeValue: unknown,
+): StratosBudgetIntegrationEnvelope {
+  const envelope = strictRecord(value, "integration_envelope");
+  assertKeys(envelope, [
+    "schemaVersion", "organizationId", "sourceSystem", "externalRef", "actor", "correlationId",
+    "idempotencyKey", "policyBindingId", "policyVersion", "policyHash", "classification", "payload"
+  ], "integration_envelope");
+  requiredEqual(envelope.schemaVersion, "stratos-integration-envelope-1", "schemaVersion");
+  requiredEqual(envelope.organizationId, STRATOS_ORGANIZATION_ID, "organizationId");
+  requiredEqual(envelope.sourceSystem, "STRATOS_BUDGET", "sourceSystem");
+  requiredEqual(envelope.policyVersion, INFORMATION_POLICY_VERSION, "policyVersion");
+  requiredEqual(envelope.policyBindingId, policy.policyBindingId, "policyBindingId");
+
+  const authoritativePolicyHash = requiredText(envelope.policyHash, "policyHash").toLowerCase();
+  if (!/^sha256:[a-f0-9]{64}$/.test(authoritativePolicyHash)) {
+    fail("POLICY_BINDING_INVALID", "policyHash must be a canonical SHA-256 digest.");
+  }
+  requiredEqual(authoritativePolicyHash, policyHash(policy), "policyHash");
+
+  const classification = strictRecord(envelope.classification, "classification");
+  assertKeys(classification, ["handlingClass", "legalClassification", "tlp", "pap"], "classification");
+  requiredEqual(classification.handlingClass, policy.handlingClass, "classification.handlingClass");
+  requiredEqual(classification.legalClassification, "NONE", "classification.legalClassification");
+  requiredEqual(classification.tlp ?? null, policy.tlp ?? null, "classification.tlp");
+  requiredEqual(classification.pap ?? null, policy.pap ?? null, "classification.pap");
+
+  const actor = strictRecord(envelope.actor, "actor");
+  assertKeys(actor, ["type", "subjectId"], "actor");
+  requiredEqual(actor.type, "person", "actor.type");
+  const actorSubjectId = requiredText(actor.subjectId, "actor.subjectId");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@/-]{1,127}$/.test(actorSubjectId)) {
+    fail("POLICY_BINDING_INVALID", "actor.subjectId is invalid.");
+  }
+
+  const payload = strictRecord(envelope.payload, "payload");
+  assertKeys(payload, ["contractId", "financialScopeKey", "fileHash"], "payload");
+  const contractId = requiredText(payload.contractId, "payload.contractId");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/.test(contractId)) {
+    fail("POLICY_BINDING_INVALID", "payload.contractId is invalid.");
+  }
+  const financialScopeKey = requiredText(payload.financialScopeKey, "payload.financialScopeKey");
+  if (!/^(?:budget-global|budget:[a-z0-9][a-z0-9._-]{0,119})$/.test(financialScopeKey)) {
+    fail("POLICY_BINDING_INVALID", "payload.financialScopeKey must identify a canonical budget scope.");
+  }
+  const fileHash = requiredText(payload.fileHash, "payload.fileHash").toLowerCase();
+  if (!/^sha256:[a-f0-9]{64}$/.test(fileHash)) {
+    fail("POLICY_BINDING_INVALID", "payload.fileHash must use sha256:<64 lowercase hex chars> format.");
+  }
+
+  const externalRef = requiredText(envelope.externalRef, "externalRef");
+  const contractExternalRef = `contract:${contractId}`;
+  if (
+    externalRef !== contractExternalRef
+    && !new RegExp(`^${escapeRegex(contractExternalRef)}:document:[a-z0-9][a-z0-9._-]{0,127}$`).test(externalRef)
+  ) {
+    fail("POLICY_BINDING_INVALID", "externalRef must identify the Budget contract document.");
+  }
+
+  const governanceScope = strictRecord(governanceScopeValue, "governance_scope");
+  assertKeys(governanceScope, ["type", "id"], "governance_scope");
+  requiredEqual(governanceScope.type, "budget_scope", "governance_scope.type");
+  requiredEqual(governanceScope.id, financialScopeKey, "governance_scope.id");
+
+  return {
+    schemaVersion: "stratos-integration-envelope-1",
+    organizationId: STRATOS_ORGANIZATION_ID,
+    sourceSystem: "STRATOS_BUDGET",
+    externalRef,
+    actor: { type: "person", subjectId: actorSubjectId },
+    correlationId: minText(envelope.correlationId, "correlationId", 8),
+    idempotencyKey: minText(envelope.idempotencyKey, "idempotencyKey", 8),
+    policyBindingId: policy.policyBindingId,
+    policyVersion: INFORMATION_POLICY_VERSION,
+    policyHash: authoritativePolicyHash,
+    classification: {
+      handlingClass: policy.handlingClass,
+      legalClassification: "NONE",
+      tlp: policy.tlp ?? null,
+      pap: policy.pap ?? null
+    },
+    payload: { contractId, financialScopeKey, fileHash }
+  };
+}
+
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
@@ -283,6 +399,10 @@ function canonicalJson(value: unknown): string {
     return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function strictRecord(value: unknown, field: string): Record<string, unknown> {

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   parseInformationPolicy,
   parseIntegrationEnvelope,
+  parseStratosBudgetIntegrationEnvelope,
   policyHash
 } from "../src/lib/stratos/information-policy";
 
@@ -104,5 +105,75 @@ describe("STRATOS Information Policy V2", () => {
       ...envelope,
       classification: { ...envelope.classification, legacy: "internal" }
     }, parsed));
+  });
+
+  it("accepts only a canonical, contract-bound STRATOS_BUDGET envelope and budget scope", () => {
+    const parsedPolicy = parseInformationPolicy(policy());
+    const canonicalHash = policyHash(parsedPolicy);
+    const envelope = {
+      schemaVersion: "stratos-integration-envelope-1",
+      organizationId: "org_stratos",
+      sourceSystem: "STRATOS_BUDGET",
+      externalRef: "contract:contract-123:document:dodatek-01",
+      actor: { type: "person", subjectId: "subject-budget-123" },
+      correlationId: "corr-budget-12345678",
+      idempotencyKey: "budget-contract-upload:12345678",
+      policyBindingId: parsedPolicy.policyBindingId,
+      policyVersion: parsedPolicy.policyVersion,
+      policyHash: canonicalHash,
+      classification: {
+        handlingClass: parsedPolicy.handlingClass,
+        legalClassification: "NONE",
+        tlp: parsedPolicy.tlp,
+        pap: parsedPolicy.pap
+      },
+      payload: {
+        contractId: "contract-123",
+        financialScopeKey: "budget:sekce-it",
+        fileHash: `sha256:${"b".repeat(64)}`
+      }
+    };
+    const governanceScope = { type: "budget_scope", id: "budget:sekce-it" };
+
+    const parsedEnvelope = parseStratosBudgetIntegrationEnvelope(
+      envelope,
+      parsedPolicy,
+      governanceScope,
+    );
+    assert.equal(parsedEnvelope.sourceSystem, "STRATOS_BUDGET");
+    assert.equal(parsedEnvelope.payload.contractId, "contract-123");
+    assert.equal(parsedEnvelope.payload.financialScopeKey, "budget:sekce-it");
+    assert.equal(parsedEnvelope.policyHash, canonicalHash);
+
+    assert.throws(() => parseStratosBudgetIntegrationEnvelope(
+      { ...envelope, sourceResource: { application: "AIIP" } },
+      parsedPolicy,
+      governanceScope,
+    ));
+    assert.throws(() => parseStratosBudgetIntegrationEnvelope(
+      { ...envelope, payload: { ...envelope.payload, metadata: {} } },
+      parsedPolicy,
+      governanceScope,
+    ));
+    assert.throws(() => parseStratosBudgetIntegrationEnvelope(
+      { ...envelope, policyHash: `sha256:${"f".repeat(64)}` },
+      parsedPolicy,
+      governanceScope,
+    ));
+    assert.throws(() => parseStratosBudgetIntegrationEnvelope(
+      envelope,
+      parsedPolicy,
+      { type: "organization", id: "org_stratos" },
+    ));
+    assert.throws(() => parseStratosBudgetIntegrationEnvelope(
+      { ...envelope, externalRef: "contract:another-contract" },
+      parsedPolicy,
+      governanceScope,
+    ));
+    assert.throws(() => parseStratosBudgetIntegrationEnvelope(
+      { ...envelope, actor: { type: "service", subjectId: "service-budget" } },
+      parsedPolicy,
+      governanceScope,
+    ));
   });
 });
