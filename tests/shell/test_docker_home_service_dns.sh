@@ -52,7 +52,6 @@ fi
 for expected in \
   'AKL_OPENSEARCH_INGESTION_USERNAME:-akl_ingestion_writer' \
   'AKL_OPENSEARCH_RAG_USERNAME:-akl_rag_reader' \
-  'AKL_INGESTION_MAX_FILE_BYTES:-134217728' \
   '/run/secrets/opensearch-root-ca.pem:ro' \
   '/run/secrets/akl-opensearch-password:ro'
 do

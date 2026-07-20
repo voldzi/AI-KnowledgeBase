@@ -242,7 +242,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_PDF_ENGINE must be one of: auto, pymupdf, pypdf")
 
     try:
-        max_file_bytes = int(_get(source, "AKL_INGESTION_MAX_FILE_BYTES", str(50 * 1024 * 1024)))
+        max_file_bytes = int(_get(source, "AKL_INGESTION_MAX_FILE_BYTES", str(128 * 1024 * 1024)))
         min_extracted_chars_before_ocr = int(_get(source, "AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR", "20"))
         chunk_target_chars = int(_get(source, "AKL_INGESTION_CHUNK_TARGET_CHARS", "1400"))
         chunk_overlap_chars = int(_get(source, "AKL_INGESTION_CHUNK_OVERLAP_CHARS", "160"))

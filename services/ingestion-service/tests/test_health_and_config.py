@@ -18,6 +18,22 @@ def test_health_and_ready(tmp_path) -> None:
     assert ready.json()["checks"]["registry"] == "mock"
 
 
+def test_default_file_limit_covers_trusted_budget_upload_boundary(tmp_path) -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "mock",
+            "AKL_INGESTION_REGISTRY_CLIENT_MODE": "mock",
+            "AKL_INGESTION_OBJECT_STORAGE_MODE": "local",
+            "AKL_OBJECT_STORAGE_ROOT": str(tmp_path / "objects"),
+            "AKL_INGESTION_EMBEDDING_CLIENT_MODE": "mock",
+            "AKL_INGESTION_INDEXER_MODE": "mock",
+        }
+    )
+
+    assert settings.max_file_bytes == 128 * 1024 * 1024
+
+
 def test_ready_returns_503_when_registry_service_identity_is_unavailable(
     tmp_path,
     monkeypatch,
