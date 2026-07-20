@@ -249,6 +249,9 @@ jobs:
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \
             config >/tmp/akl-compose-docker-home.yml
+          grep -F \
+            'AKL_STRATOS_BUDGET_AKB_RESOURCES_URL: http://stratos-api:4000/api/v1/integrations/budget/akb/resources' \
+            /tmp/akl-compose-docker-home.yml
 
       - name: Validate docker.home.cz observability compose config
         run: |
