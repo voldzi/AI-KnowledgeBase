@@ -483,6 +483,16 @@ class StratosGovernanceClient:
             raise GovernanceUnavailable(
                 "The dedicated Budget to AKB governance route is not configured"
             )
+        integration_envelope = envelope.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        )
+        classification = integration_envelope.get("classification")
+        if not isinstance(classification, dict):
+            raise GovernanceInvalidResponse(
+                "Budget integration envelope has no canonical classification"
+            )
+        classification["tlp"] = envelope.classification.tlp
+        classification["pap"] = envelope.classification.pap
         response = self._request(
             "PUT",
             (
@@ -495,9 +505,7 @@ class StratosGovernanceClient:
                 "title": title,
                 "parentId": parent_id,
                 "scope": scope,
-                "integrationEnvelope": envelope.model_dump(
-                    mode="json", by_alias=True, exclude_none=False
-                ),
+                "integrationEnvelope": integration_envelope,
                 "reason": reason,
             },
             extra_headers={
