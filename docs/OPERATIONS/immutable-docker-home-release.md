@@ -880,6 +880,12 @@ deletion, or automatic restore. A destructive or point-in-time database
 recovery is a separate reviewed incident procedure with an outage, ownership,
 and restore validation plan.
 
+The forward-fix service set is the union of the services changed by the reviewed
+fix and every service recorded in the failed runtime marker. This guarantees
+that services quarantined after a failed multi-service verification are rebuilt
+and verified together even when the corrective code change itself is confined
+to a single service.
+
 ## Local And CI Verification
 
 The release scripts, their ShellCheck rules, and the isolated fake-runtime
