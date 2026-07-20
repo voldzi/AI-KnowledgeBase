@@ -1034,6 +1034,9 @@ while [[ $# -gt 0 ]]; do
     --retry|--retry-delay|--noproxy)
       shift 2
       ;;
+    --header)
+      shift 2
+      ;;
     --fail|--silent|--show-error|--retry-all-errors)
       shift
       ;;

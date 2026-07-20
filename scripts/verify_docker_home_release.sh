@@ -321,6 +321,21 @@ curl_json() {
     "$url"
 }
 
+curl_json_with_host() {
+  local url="$1"
+  local output_file="$2"
+  local host="$3"
+  curl --disable --noproxy '*' --fail --silent --show-error \
+    --retry "$RETRY_ATTEMPTS" \
+    --retry-delay "$RETRY_DELAY" \
+    --retry-all-errors \
+    --header "Host: ${host}" \
+    --header "X-Forwarded-Proto: https" \
+    --header "X-Forwarded-Host: ${host}" \
+    --output "$output_file" \
+    "$url"
+}
+
 validate_health() {
   local path="$1"
   python3 - "$path" "$TARGET_SHA" <<'PY'
@@ -384,10 +399,19 @@ for service in "${services[@]}"; do
       ready_url="http://127.0.0.1:${CHAT_WEB_PORT}/api/ready"
       ;;
   esac
-  curl_json "$health_url" "${tmp_dir}/${service}-health.json"
+  if [[ "$service" == "chat-web" ]]; then
+    chat_public_host="${CHAT_PUBLIC_BASE_URL#https://}"
+    chat_public_host="${chat_public_host%%/*}"
+    curl_json_with_host "$health_url" "${tmp_dir}/${service}-health.json" "$chat_public_host"
+  else
+    curl_json "$health_url" "${tmp_dir}/${service}-health.json"
+  fi
   validate_health "${tmp_dir}/${service}-health.json"
   if [[ "$service" == "ingestion-service" ]]; then
     verify_ingestion_readiness
+  elif [[ "$service" == "chat-web" ]]; then
+    curl_json_with_host "$ready_url" "${tmp_dir}/${service}-ready.json" "$chat_public_host"
+    validate_ready "${tmp_dir}/${service}-ready.json"
   else
     curl_json "$ready_url" "${tmp_dir}/${service}-ready.json"
     validate_ready "${tmp_dir}/${service}-ready.json"
