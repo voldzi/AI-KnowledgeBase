@@ -1103,6 +1103,16 @@ else
     esac
   done <<<"$changed_paths"
 fi
+
+if [[ -n "${AKL_FORWARD_FIX_FROM_SHA:-}" ]]; then
+  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web|chat-web)(,(registry-api|ingestion-service|rag-retrieval-service|web|chat-web))*$ ]] \
+    || akl_fail "Failed runtime marker has an invalid service set"
+  IFS=',' read -r -a recovery_services <<<"$RUNTIME_MARKER_SERVICES"
+  for recovery_service in "${recovery_services[@]}"; do
+    add_service "$recovery_service"
+  done
+fi
+
 [[ ${#services[@]} -gt 0 ]] || akl_fail "Release has no deployable registry/ingestion/rag/web/chat-web changes"
 SERVICE_CSV="$(IFS=,; printf '%s' "${services[*]}")"
 if [[ " ${services[*]} " == *" registry-api "* ]]; then
