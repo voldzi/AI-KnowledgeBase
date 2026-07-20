@@ -14,7 +14,10 @@ Implementovany rozsah teto iterace:
 - confidence,
 - no-answer policy,
 - audit eventy pres Registry API klienta,
-- STRATOS contract extraction proposals pro `contract_financial_v1`,
+- STRATOS contract extraction proposals pro `contract_financial_v1` verze `2`,
+  včetně citovaných a fail-closed `payment_rules`,
+- rollout-kompatibilní návrhy profilu `contract_financial_v1` verze `1`
+  bez přepsání výsledků verze `2`,
 - STRATOS ArchFlow goal extraction proposals pro `archflow_goal_extraction_v1`,
 - mock klienti pro Registry API, Qdrant/retrieval a LLM Gateway.
 

@@ -460,9 +460,12 @@ Primary references:
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`
 - `openapi/openapi.json`
 
-Budget & Contract uses `contract_financial_v1` through RAG Retrieval Service
-STRATOS extraction endpoints. AKB returns cited proposed values only; Budget
-owns human confirmation and final writes to its structured contract model.
+Budget & Contract uses `contract_financial_v1` profile version `2` through RAG
+Retrieval Service STRATOS extraction endpoints. AKB returns cited proposed
+values, including independent structured `payment_rules`, only; Budget owns
+human confirmation and final writes to its structured contract model. Profile
+version `1` remains callable during rolling deployments and returns its original
+schedule-shaped proposal; version `2` is the current contract for new callers.
 
 ArchFlow uses `archflow_goal_extraction_v1`, `architecture_package_review_v1`,
 and `architecture_handover_v1` through the same STRATOS extraction lifecycle.

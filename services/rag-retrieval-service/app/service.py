@@ -654,7 +654,10 @@ class RagRetrievalService:
             if chunk.citation.document_id == payload.document_id
             and chunk.citation.document_version_id == payload.document_version_id
         ]
-        proposals, missing_information, extraction_warnings = extract_contract_financial_proposals(chunks=chunks)
+        proposals, missing_information, extraction_warnings = extract_contract_financial_proposals(
+            chunks=chunks,
+            profile_version=payload.profile_version,
+        )
         warnings = [*run.response.warnings, *extraction_warnings]
         if not chunks and "TARGET_DOCUMENT_NOT_RETRIEVED" not in warnings:
             warnings.append("TARGET_DOCUMENT_NOT_RETRIEVED")

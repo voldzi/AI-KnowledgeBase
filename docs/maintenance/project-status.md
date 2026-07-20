@@ -12,8 +12,10 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - Ingestion Service zpracovava zdrojove soubory, parser/chunking/OCR profil a indexing report.
 - RAG Retrieval Service vraci citace a source-context.
 - RAG Retrieval Service obsahuje prvni STRATOS Document AI extraction profil
-  `contract_financial_v1` pro Budget smlouvy; vysledky a feedback se
-  perzistuji v Registry API jako navrhy s citacemi.
+  `contract_financial_v1` ve verzi `2` pro Budget smlouvy; oddelene platebni
+  navrhy jsou typovane, citovane a fail-closed, vysledky a feedback se
+  perzistuji v Registry API jako navrhy s citacemi. Verze `1` zustava
+  dostupna pro rolling deployment a ma oddelenou idempotentni identitu.
 - Web aplikace obsahuje Document Workbench, Intelligence Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Chat Portal.
 - Web shell, zakladni UI primitiva a PDF viewer jsou sladene se STRATOS portfoliem pres lokalni `apps/web/src/components/stratos` adapter.
 - Upload/source opening a native preview jsou rozsirene na bezne Office, PDF, obrazkove, textove a strukturovane typy; stare binarni Office formaty `.doc/.xls/.ppt` zustavaji pro plnohodnotnou ingestion/rendering konverzni backlog.
@@ -51,9 +53,11 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
 - `/chat` je hlavni AKB Assistant plocha s levym seznamem vlaken, chat transcriptem, composerem, pravym panelem zdroju a MVP share dialogem; dotazy jdou pres assistant API a vlákna jsou zatim klientsky/session stav bez serveroveho seznamu nebo backendoveho sdileni.
 - Budget contract extraction je dostupna pres
   `/api/v1/stratos/extractions/contracts/propose`. Profil
-  `contract_financial_v1` vraci pouze navrzene hodnoty s citaci
+  `contract_financial_v1` verze `2` vraci pouze navrzene hodnoty s citaci
   (`document_id`, `document_version_id`, `chunk_id`, page/section,
-  `quoted_text`, `viewer_url`), uklada vysledek do Registry
+  `quoted_text`, `viewer_url`). Platebni ujednani vraci jako samostatna
+  `payment_rules`; nezname casovani, call-off a variabilni cerpani
+  negeneruji cashflow. Profil uklada vysledek do Registry
   `document_extractions` a prijima accepted/rejected/edited feedback pro
   audit a evaluace. Budget zustava jedinym vlastnikem finalniho zapisu do
   strukturovanych smluvnich entit.

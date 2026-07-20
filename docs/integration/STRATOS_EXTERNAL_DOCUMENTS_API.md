@@ -258,7 +258,7 @@ Payload:
   "document_version_id": "ver_...",
   "subject_id": "user-uuid",
   "profile": "contract_financial_v1",
-  "profile_version": "1",
+  "profile_version": "2",
   "classification_max": "internal",
   "context_tags": ["budget-contract:contract-uuid"],
   "max_chunks": 12,
@@ -279,7 +279,7 @@ Odpověď:
   "document_id": "doc_...",
   "document_version_id": "ver_...",
   "profile": "contract_financial_v1",
-  "profile_version": "1",
+  "profile_version": "2",
   "status": "PROPOSED",
   "classification": "internal",
   "requested_by": "user-uuid",
@@ -303,6 +303,83 @@ Odpověď:
         "warnings": []
       },
       "warnings": []
+    },
+    {
+      "field": "payment_rules",
+      "proposed_value": [
+        {
+          "rule_type": "QUARTERLY",
+          "name": "Čtvrtletní platba",
+          "amount": 121000,
+          "amount_basis": "PER_PERIOD",
+          "vat_basis": "WITH_VAT",
+          "currency": "CZK",
+          "periodicity_months": 3,
+          "payment_timing": "ARREARS",
+          "due_date": null,
+          "payment_terms_days": 30,
+          "is_call_off": false,
+          "generates_cashflow": true,
+          "requires_confirmation": true,
+          "citation": {
+            "document_id": "doc_...",
+            "document_version_id": "ver_...",
+            "chunk_id": "chunk_payment_...",
+            "page_number": 7,
+            "section_path": ["Cena a platební podmínky"],
+            "section": "Cena a platební podmínky",
+            "quoted_text": "Čtvrtletně bude zpětně uhrazena částka včetně DPH 121 000 Kč.",
+            "viewer_url": "/akb/documents/doc_...?tab=viewer&chunk_id=chunk_payment_...#page=7",
+            "warnings": []
+          },
+          "payment_terms_citation": null
+        }
+      ],
+      "normalized_value": [
+        {
+          "rule_type": "QUARTERLY",
+          "name": "Čtvrtletní platba",
+          "amount": 121000,
+          "amount_basis": "PER_PERIOD",
+          "vat_basis": "WITH_VAT",
+          "currency": "CZK",
+          "periodicity_months": 3,
+          "payment_timing": "ARREARS",
+          "due_date": null,
+          "payment_terms_days": 30,
+          "is_call_off": false,
+          "generates_cashflow": true,
+          "requires_confirmation": true,
+          "citation": {
+            "document_id": "doc_...",
+            "document_version_id": "ver_...",
+            "chunk_id": "chunk_payment_...",
+            "page_number": 7,
+            "section_path": ["Cena a platební podmínky"],
+            "section": "Cena a platební podmínky",
+            "quoted_text": "Čtvrtletně bude zpětně uhrazena částka včetně DPH 121 000 Kč.",
+            "viewer_url": "/akb/documents/doc_...?tab=viewer&chunk_id=chunk_payment_...#page=7",
+            "warnings": []
+          },
+          "payment_terms_citation": null
+        }
+      ],
+      "unit": null,
+      "confidence": "medium",
+      "status": "proposed",
+      "reason": "Cited payment clauses were normalized into independent proposed rules.",
+      "citation": {
+        "document_id": "doc_...",
+        "document_version_id": "ver_...",
+        "chunk_id": "chunk_payment_...",
+        "page_number": 7,
+        "section_path": ["Cena a platební podmínky"],
+        "section": "Cena a platební podmínky",
+        "quoted_text": "Čtvrtletně bude zpětně uhrazena částka včetně DPH 121 000 Kč.",
+        "viewer_url": "/akb/documents/doc_...?tab=viewer&chunk_id=chunk_payment_...#page=7",
+        "warnings": []
+      },
+      "warnings": ["HUMAN_CONFIRMATION_REQUIRED"]
     }
   ],
   "missing_information": [],
@@ -316,12 +393,40 @@ Podporovaná pole profilu `contract_financial_v1` zahrnují:
 - `contract_number`, `title`, `supplier_name`, `customer_name`,
 - podpis/účinnost/platnost,
 - částky bez/s DPH, DPH, měnu,
-- splatnost, frekvenci plateb, paušály, jednorázové platby a payment schedule,
+- splatnost a strukturovaná `payment_rules`: jednorázová, akceptační, měsíční,
+  čtvrtletní, pololetní, roční, milníková, call-off a time-and-material pravidla,
 - indexaci, sankce, SLA, termíny, povinnosti, rizika,
 - VZ/NEN a kandidáty pro RP/cashflow.
 
 Pokud AKB nenajde citovatelný zdroj, vrátí `PARTIAL` s `missing_information`
 nebo `INSUFFICIENT_CITABLE_CONTRACT_EVIDENCE`. Hodnoty bez citace se nevrací.
+
+`payment_rules` je seznam samostatných návrhů. Každý obsahuje `rule_type`,
+uživatelský `name`, `amount`, význam částky v `amount_basis`, `vat_basis`, měnu,
+periodicitu, časování, případný `due_date`, splatnost, příznak call-off,
+rozhodnutí zda smí po potvrzení generovat cashflow, a vlastní citaci.
+
+`amount_basis` používá pouze `PER_PERIOD`, `ONE_OFF`, `UNIT_PRICE` a
+`VARIABLE_DRAWDOWN`. `vat_basis` je `WITHOUT_VAT`, `WITH_VAT` nebo
+`UNSPECIFIED`; nejistý DPH základ se nikdy nedopočítává. `payment_timing`
+používá pouze `ADVANCE`, `ARREARS`, `FIXED_DATE`, `ON_ACCEPTANCE`,
+`ON_MILESTONE`, `ON_CALL` a `UNSPECIFIED`.
+
+Call-off a time-and-material bez potvrzeného plánovaného čerpání mají
+`generates_cashflow: false`. Stejně bezpečně se chovají pravidla s časováním
+`ON_CALL` nebo `UNSPECIFIED`. `FIXED_DATE`, `ON_ACCEPTANCE` a `ON_MILESTONE`
+smí navrhnout cashflow pouze s citovaným `due_date` ve formátu ISO
+`YYYY-MM-DD`. Všechna pravidla mají `requires_confirmation: true`; AKB je nikdy
+nezapisuje do Budget.
+
+Pro bezpečné postupné nasazení AKB inzeruje a přijímá také
+`profile_version: "1"`. Tato verze zachovává původní pole
+`payment_frequency`, `recurring_amount`, `one_time_amount` a
+`payment_schedule`; nové integrace používají verzi `2`. Verze profilu je
+součástí idempotentní identity extrakce, takže výsledek verze `1` a `2` pro
+stejný dokument jsou dva samostatné záznamy a navzájem se nepřepisují. Během
+rolloutu zůstává vynechané `profile_version` kompatibilně na verzi `1`; nový
+Budget adapter vždy posílá explicitní `"2"`.
 
 ### Načtení výsledku extrakce
 

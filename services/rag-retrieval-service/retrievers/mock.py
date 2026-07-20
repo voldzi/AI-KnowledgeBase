@@ -135,7 +135,8 @@ def _mock_chunks() -> list[dict[str, Any]]:
                 "Smlouva č.: 256-2022-S. Dodavatel: AUTOCONT a.s. Objednatel: Město Železná Lhota. "
                 "Datum podpisu: 1. 6. 2026. Účinnost od: 1. 7. 2026. "
                 "Cena bez DPH činí 1 200 000 Kč, cena včetně DPH činí 1 452 000 Kč. DPH 21 %. "
-                "Splatnost faktur je 30 dnů od doručení. Měsíčně bude hrazen paušál 100 000 Kč. "
+                "Splatnost faktur je 30 dnů od doručení. Jednorázově bude po akceptaci uhrazeno 240 000 Kč. "
+                "Měsíčně bude zpětně hrazen paušál 100 000 Kč. "
                 "Smluvní pokuta za prodlení je 0,05 % denně. SLA dostupnost služby 99,5 %. "
                 "VZ: NEN-2026-001. RP: IT-2026-04."
             ),

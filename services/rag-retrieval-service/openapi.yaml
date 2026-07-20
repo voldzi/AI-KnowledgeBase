@@ -2552,8 +2552,9 @@ components:
           default: contract_financial_v1
         profile_version:
           type: string
-          maxLength: 40
-          minLength: 1
+          enum:
+          - '1'
+          - '2'
           title: Profile Version
           default: '1'
         classification_max:
@@ -2698,10 +2699,28 @@ components:
           type: string
           title: Field
         proposed_value:
+          anyOf:
+          - type: string
+          - type: integer
+          - type: number
+          - items:
+              $ref: '#/components/schemas/ContractPaymentRuleProposal'
+            type: array
+          - items:
+              $ref: '#/components/schemas/ContractPaymentScheduleV1Item'
+            type: array
           title: Proposed Value
         normalized_value:
           anyOf:
-          - {}
+          - type: string
+          - type: integer
+          - type: number
+          - items:
+              $ref: '#/components/schemas/ContractPaymentRuleProposal'
+            type: array
+          - items:
+              $ref: '#/components/schemas/ContractPaymentScheduleV1Item'
+            type: array
           - type: 'null'
           title: Normalized Value
         unit:
@@ -2741,6 +2760,155 @@ components:
       - reason
       - citation
       title: ContractFieldProposal
+    ContractPaymentRuleProposal:
+      properties:
+        rule_type:
+          type: string
+          enum:
+          - MONTHLY
+          - QUARTERLY
+          - HALF_YEARLY
+          - YEARLY
+          - ONE_OFF
+          - ACCEPTANCE
+          - MILESTONE
+          - TIME_AND_MATERIAL
+          - CALL_OFF
+          title: Rule Type
+        name:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Name
+        amount:
+          anyOf:
+          - type: integer
+          - type: number
+          - type: 'null'
+          title: Amount
+        amount_basis:
+          type: string
+          enum:
+          - PER_PERIOD
+          - ONE_OFF
+          - UNIT_PRICE
+          - VARIABLE_DRAWDOWN
+          title: Amount Basis
+        vat_basis:
+          type: string
+          enum:
+          - WITHOUT_VAT
+          - WITH_VAT
+          - UNSPECIFIED
+          title: Vat Basis
+          default: UNSPECIFIED
+        currency:
+          anyOf:
+          - type: string
+            maxLength: 3
+            minLength: 3
+          - type: 'null'
+          title: Currency
+        periodicity_months:
+          anyOf:
+          - type: integer
+            enum:
+            - 1
+            - 3
+            - 6
+            - 12
+          - type: 'null'
+          title: Periodicity Months
+        payment_timing:
+          type: string
+          enum:
+          - ADVANCE
+          - ARREARS
+          - FIXED_DATE
+          - ON_ACCEPTANCE
+          - ON_MILESTONE
+          - ON_CALL
+          - UNSPECIFIED
+          title: Payment Timing
+          default: UNSPECIFIED
+        due_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Due Date
+        payment_terms_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 0.0
+          - type: 'null'
+          title: Payment Terms Days
+        is_call_off:
+          type: boolean
+          title: Is Call Off
+          default: false
+        generates_cashflow:
+          type: boolean
+          title: Generates Cashflow
+          default: false
+        requires_confirmation:
+          type: boolean
+          const: true
+          title: Requires Confirmation
+          default: true
+        citation:
+          $ref: '#/components/schemas/ContractExtractionCitation'
+        payment_terms_citation:
+          anyOf:
+          - $ref: '#/components/schemas/ContractExtractionCitation'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - rule_type
+      - name
+      - amount_basis
+      - citation
+      title: ContractPaymentRuleProposal
+    ContractPaymentScheduleV1Item:
+      properties:
+        frequency:
+          type: string
+          title: Frequency
+        normalized_frequency:
+          type: string
+          enum:
+          - monthly
+          - quarterly
+          - annually
+          title: Normalized Frequency
+        amount:
+          anyOf:
+          - type: integer
+          - type: number
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        chunk_id:
+          type: string
+          title: Chunk Id
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+      additionalProperties: false
+      type: object
+      required:
+      - frequency
+      - normalized_frequency
+      - amount
+      - currency
+      - chunk_id
+      title: ContractPaymentScheduleV1Item
     HTTPValidationError:
       properties:
         detail:

@@ -89,10 +89,17 @@ until an immutable metadata-snapshot export contract exists.
 
 `POST /api/v1/stratos/extractions/contracts/propose` extracts cited proposed
 contract parameters for Budget & Contract. The first supported profile is
-`contract_financial_v1`. It is intentionally conservative:
+`contract_financial_v1`, profile version `2`. It is intentionally conservative:
 
 - it retrieves only authorized chunks through Registry API authz,
 - it returns only `proposed` field values,
+- it returns each cited payment clause as an independent structured
+  `payment_rules` item; call-off and time-and-material clauses without confirmed
+  planned drawdown never request automatic cashflow,
+- it uses adapter-stable amount/VAT bases and timing enums; unknown VAT basis or
+  timing stays explicitly `UNSPECIFIED`,
+- `ON_CALL` and `UNSPECIFIED` rules never request automatic cashflow, and event
+  rules require a cited ISO `due_date` before they may do so,
 - every field proposal includes a citation with `document_id`,
   `document_version_id`, `chunk_id`, page/section where available,
   `quoted_text`, and `viewer_url`,
@@ -100,6 +107,14 @@ contract parameters for Budget & Contract. The first supported profile is
   `missing_information`/`warnings`, not invented values,
 - persistence and feedback are stored through Registry API
   `document_extractions` and `document_extraction_feedback`.
+
+For rolling deployments the endpoint also accepts profile version `1` and
+advertises both versions in `GET /api/v1/stratos/extractions/profiles`.
+Version `1` keeps its original `payment_frequency`, `recurring_amount`,
+`one_time_amount` and `payment_schedule` response. Version `2` is the current
+contract for new Budget callers. Because `profile_version` is part of extraction
+idempotency, requesting both versions for the same document does not overwrite
+either result.
 
 Budget remains the source of truth for structured contract entities. AKB never
 writes Budget tables directly; Budget accepts, edits, or rejects proposals after
