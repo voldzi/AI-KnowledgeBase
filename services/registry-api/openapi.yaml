@@ -175,6 +175,161 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-budget-upload/external-documents/upsert:
+    post:
+      summary: Upsert Stratos Budget External Document
+      operationId: upsert_stratos_budget_external_document_api_v1_integrations_stratos_budget_upload_external_documents_upsert_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StratosBudgetUploadExternalDocumentUpsertRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalDocumentResponse'
+        '200':
+          description: Exact idempotent replay of the registered Budget document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalDocumentResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions:
+    put:
+      summary: Upsert Stratos Budget Document Version
+      operationId: upsert_stratos_budget_document_version_api_v1_integrations_stratos_budget_upload_documents__document_id__versions_put
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StratosBudgetUploadDocumentVersionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StratosBudgetUploadDocumentVersionCreateResponse'
+        '200':
+          description: Exact idempotent replay of the Budget document version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StratosBudgetUploadDocumentVersionCreateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-budget-upload/external-documents/{external_document_id}/current:
+    patch:
+      summary: Update Stratos Budget External Document Current
+      operationId: update_stratos_budget_external_document_current_api_v1_integrations_stratos_budget_upload_external_documents__external_document_id__current_patch
+      parameters:
+      - name: external_document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: External Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StratosBudgetUploadExternalDocumentCurrentUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StratosBudgetUploadExternalDocumentCurrentUpdateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-budget-upload/documents/{document_id}/status:
+    get:
+      summary: Get Stratos Budget Document Status
+      operationId: get_stratos_budget_document_status_api_v1_integrations_stratos_budget_upload_documents__document_id__status_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalDocumentCurrentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/ingestion-authorization:
+    post:
+      summary: Create Stratos Budget Historical Ingestion Authorization Proof
+      operationId: create_stratos_budget_historical_ingestion_authorization_proof_api_v1_integrations_stratos_budget_upload_documents__document_id__versions__version_id__ingestion_authorization_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestionAuthorizationIssueRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionAuthorizationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/external-documents/upsert:
     post:
       summary: Upsert External Document
@@ -2846,6 +3001,12 @@ components:
             maxLength: 160
           - type: 'null'
           title: Version
+        stratos_budget_upload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Stratos Budget Upload
       additionalProperties: false
       type: object
       required:
@@ -6774,6 +6935,7 @@ components:
           enum:
           - organization
           - organization_unit
+          - budget_scope
           - project
           - document
           - recipient_set
@@ -7131,6 +7293,12 @@ components:
             maxLength: 160
           - type: 'null'
           title: Version
+        stratos_budget_upload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Stratos Budget Upload
       type: object
       required:
       - kind
@@ -7144,6 +7312,539 @@ components:
       - generated_text
       - external_repository
       title: SourceLocationKind
+    StratosBudgetBatchLineage:
+      properties:
+        batch_manifest_id:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9._-]{0,127}$
+          title: Batch Manifest Id
+        batch_entries_sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Batch Entries Sha256
+        release_revision:
+          type: string
+          pattern: ^[a-f0-9]{40}$
+          title: Release Revision
+      additionalProperties: false
+      type: object
+      required:
+      - batch_manifest_id
+      - batch_entries_sha256
+      - release_revision
+      title: StratosBudgetBatchLineage
+    StratosBudgetDocumentFileCreate:
+      properties:
+        filename:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Filename
+        mime_type:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Mime Type
+        size_bytes:
+          type: integer
+          minimum: 1.0
+          title: Size Bytes
+        sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - filename
+      - mime_type
+      - size_bytes
+      - sha256
+      title: StratosBudgetDocumentFileCreate
+    StratosBudgetSourceLocation:
+      properties:
+        kind:
+          type: string
+          enum:
+          - uploaded_file
+          - object_storage
+          title: Kind
+        uri:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Uri
+        file_name:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: File Name
+        content_type:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Content Type
+        sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Sha256
+        storage_ref:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Storage Ref
+        captured_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Captured At
+        display_url:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Display Url
+        repository:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Repository
+        path:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Path
+        version:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Version
+        stratos_budget_upload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Stratos Budget Upload
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - sha256
+      - repository
+      - path
+      title: StratosBudgetSourceLocation
+      description: Closed source lineage accepted by the dedicated Budget bridge.
+    StratosBudgetUploadDocumentVersionCreate:
+      properties:
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
+        source_file_uri:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Source File Uri
+        source_location:
+          $ref: '#/components/schemas/StratosBudgetSourceLocation'
+        file_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: File Hash
+        change_summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Change Summary
+        upload_mode:
+          type: string
+          enum:
+          - interactive
+          - historical_batch
+          title: Upload Mode
+        original_file_name:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Original File Name
+        batch_lineage:
+          anyOf:
+          - $ref: '#/components/schemas/StratosBudgetBatchLineage'
+          - type: 'null'
+        contract_status:
+          type: string
+          enum:
+          - DRAFT
+          - ACTIVE
+          - AT_RISK
+          - EXPIRED
+          - TERMINATED
+          title: Contract Status
+        contract_start_date:
+          type: string
+          format: date
+          title: Contract Start Date
+        contract_end_date:
+          type: string
+          format: date
+          title: Contract End Date
+        information_policy:
+          $ref: '#/components/schemas/InformationPolicyBinding'
+        integration_envelope:
+          $ref: '#/components/schemas/IntegrationEnvelope'
+        governance_scope:
+          $ref: '#/components/schemas/GovernanceScope'
+        parent_governed_resource_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Parent Governed Resource Id
+        file:
+          $ref: '#/components/schemas/StratosBudgetDocumentFileCreate'
+      additionalProperties: false
+      type: object
+      required:
+      - external_ref
+      - version_label
+      - source_file_uri
+      - source_location
+      - file_hash
+      - upload_mode
+      - original_file_name
+      - contract_status
+      - contract_start_date
+      - contract_end_date
+      - information_policy
+      - integration_envelope
+      - governance_scope
+      - parent_governed_resource_id
+      - file
+      title: StratosBudgetUploadDocumentVersionCreate
+    StratosBudgetUploadDocumentVersionCreateResponse:
+      properties:
+        version:
+          $ref: '#/components/schemas/DocumentVersionResponse'
+        external_document:
+          $ref: '#/components/schemas/ExternalDocumentResponse'
+        created:
+          type: boolean
+          title: Created
+        governance_confirmation:
+          $ref: '#/components/schemas/StratosBudgetGovernanceConfirmation'
+      additionalProperties: false
+      type: object
+      required:
+      - version
+      - external_document
+      - created
+      - governance_confirmation
+      title: StratosBudgetUploadDocumentVersionCreateResponse
+    StratosBudgetGovernanceConfirmation:
+      properties:
+        document:
+          additionalProperties: true
+          type: object
+          title: Document
+        version:
+          additionalProperties: true
+          type: object
+          title: Version
+      additionalProperties: false
+      type: object
+      required:
+      - document
+      - version
+      title: StratosBudgetGovernanceConfirmation
+    StratosBudgetUploadExternalDocumentCurrentUpdateRequest:
+      properties:
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        expected_current_document_version_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Expected Current Document Version Id
+        expected_current_ingestion_job_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Expected Current Ingestion Job Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+        file_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: File Id
+        ingestion_job_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Ingestion Job Id
+        ingestion_status:
+          type: string
+          enum:
+          - VERSION_CREATED
+          - INGESTING
+          - INDEXED
+          - FAILED
+          title: Ingestion Status
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        information_policy:
+          $ref: '#/components/schemas/InformationPolicyBinding'
+        integration_envelope:
+          $ref: '#/components/schemas/IntegrationEnvelope'
+        governance_scope:
+          $ref: '#/components/schemas/GovernanceScope'
+        parent_governed_resource_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Parent Governed Resource Id
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - file_id
+      - ingestion_status
+      - external_ref
+      - information_policy
+      - integration_envelope
+      - governance_scope
+      - parent_governed_resource_id
+      title: StratosBudgetUploadExternalDocumentCurrentUpdateRequest
+    StratosBudgetUploadExternalDocumentCurrentUpdateResponse:
+      properties:
+        external_document:
+          $ref: '#/components/schemas/ExternalDocumentResponse'
+        updated:
+          type: boolean
+          title: Updated
+      additionalProperties: false
+      type: object
+      required:
+      - external_document
+      - updated
+      title: StratosBudgetUploadExternalDocumentCurrentUpdateResponse
+    StratosBudgetUploadExternalDocumentUpsertRequest:
+      properties:
+        tenant_id:
+          type: string
+          const: org_stratos
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_BUDGET
+          title: External System
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          const: Contract
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        document_type:
+          type: string
+          const: contract
+          title: Document Type
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        classification:
+          $ref: '#/components/schemas/Classification'
+        information_policy:
+          $ref: '#/components/schemas/InformationPolicyBinding'
+        integration_envelope:
+          $ref: '#/components/schemas/IntegrationEnvelope'
+        owner:
+          $ref: '#/components/schemas/ExternalDocumentOwner'
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        metadata:
+          $ref: '#/components/schemas/StratosBudgetUploadMetadata'
+        source_location:
+          $ref: '#/components/schemas/StratosBudgetSourceLocation'
+        citation_base_url:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Citation Base Url
+        preview_url:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Preview Url
+        governance_scope:
+          $ref: '#/components/schemas/GovernanceScope'
+        parent_governed_resource_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Parent Governed Resource Id
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_type
+      - title
+      - classification
+      - information_policy
+      - integration_envelope
+      - owner
+      - metadata
+      - source_location
+      - governance_scope
+      - parent_governed_resource_id
+      title: StratosBudgetUploadExternalDocumentUpsertRequest
+      description: Closed server-to-server contract for governed Budget contract uploads.
+    StratosBudgetUploadMetadata:
+      properties:
+        contract_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Contract Id
+        contract_number:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Contract Number
+        contract_name:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Contract Name
+        financial_scope_key:
+          type: string
+          pattern: ^(?:budget-global|budget:[a-z0-9][a-z0-9._-]{0,119})$
+          title: Financial Scope Key
+        contract_status:
+          type: string
+          enum:
+          - DRAFT
+          - ACTIVE
+          - AT_RISK
+          - EXPIRED
+          - TERMINATED
+          title: Contract Status
+        contract_start_date:
+          type: string
+          format: date
+          title: Contract Start Date
+        contract_end_date:
+          type: string
+          format: date
+          title: Contract End Date
+        lifecycle:
+          type: string
+          enum:
+          - CURRENT
+          - ARCHIVED
+          title: Lifecycle
+        documentType:
+          type: string
+          enum:
+          - CONTRACT_PDF
+          - CONTRACT_ARCHIVE
+          title: Documenttype
+        document_type:
+          type: string
+          enum:
+          - CONTRACT_PDF
+          - CONTRACT_ARCHIVE
+          title: Document Type
+        batch_manifest_id:
+          anyOf:
+          - type: string
+            pattern: ^[a-z0-9][a-z0-9._-]{0,127}$
+          - type: 'null'
+          title: Batch Manifest Id
+        batch_entries_sha256:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+          - type: 'null'
+          title: Batch Entries Sha256
+        release_revision:
+          anyOf:
+          - type: string
+            pattern: ^[a-f0-9]{40}$
+          - type: 'null'
+          title: Release Revision
+      additionalProperties: false
+      type: object
+      required:
+      - contract_id
+      - contract_number
+      - contract_name
+      - financial_scope_key
+      - contract_status
+      - contract_start_date
+      - contract_end_date
+      - lifecycle
+      - documentType
+      - document_type
+      title: StratosBudgetUploadMetadata
+      description: Closed metadata emitted by the server-authoritative Budget caller.
     TlpLabel:
       type: string
       enum:

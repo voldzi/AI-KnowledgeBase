@@ -15,7 +15,12 @@ from app.api import (
     _register_governed_resource,
     _service_action_decision,
 )
-from app.auth import Principal, _oidc_principal
+from app.auth import (
+    Principal,
+    _enforce_service_route,
+    _oidc_principal,
+    _service_route_for_request,
+)
 from app.config import Settings
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 from app.models import Document, DocumentVersion
@@ -537,6 +542,80 @@ def test_rag_service_client_is_default_denied_on_document_registry_routes(client
     )
     assert forged_subject.status_code == 403
     assert forged_subject.json()["error"]["code"] == "untrusted_service_identity"
+
+
+def test_budget_upload_service_is_limited_to_dedicated_route() -> None:
+    settings = _settings(
+        AKL_TRUSTED_SERVICE_CLIENT_IDS=(
+            "akb-rag-service,aiip-document-service,stratos-akb-service,svc-ingestion"
+        ),
+        AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
+            "akb-rag-service=authz|audit|idempotency,"
+            "aiip-document-service=aiip-upload,"
+            "stratos-akb-service=stratos-budget-upload,"
+            "svc-ingestion=authz|audit|documents-read|ingestion-status"
+        ),
+    )
+    principal = Principal(
+        subject_id="service-account-stratos-akb-service",
+        roles={"service_ingestion"},
+        groups=set(),
+        service_identity=True,
+        service_client_id="stratos-akb-service",
+        application_access_active=False,
+    )
+
+    dedicated = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "path": (
+                "/api/v1/integrations/stratos-budget-upload/"
+                "external-documents/upsert"
+            ),
+            "raw_path": b"",
+            "query_string": b"",
+            "headers": [],
+            "client": ("testclient", 50000),
+            "server": ("testserver", 443),
+        }
+    )
+    assert _service_route_for_request(dedicated) == "stratos-budget-upload"
+    _enforce_service_route(principal, dedicated, settings)
+
+    without_required_role = Principal(
+        subject_id="service-account-stratos-akb-service",
+        roles={"stratos_user"},
+        groups=set(),
+        service_identity=True,
+        service_client_id="stratos-akb-service",
+        application_access_active=False,
+    )
+    with pytest.raises(HTTPException) as role_exc:
+        _enforce_service_route(without_required_role, dedicated, settings)
+    assert role_exc.value.status_code == 403
+    assert role_exc.value.detail["error"]["code"] == "service_route_forbidden"
+
+    generic_write = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "path": "/api/v1/documents",
+            "raw_path": b"",
+            "query_string": b"",
+            "headers": [],
+            "client": ("testclient", 50000),
+            "server": ("testserver", 443),
+        }
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        _enforce_service_route(principal, generic_write, settings)
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail["error"]["code"] == "service_route_forbidden"
 
 
 def _policy(scope_id: str = "it") -> InformationPolicyBinding:

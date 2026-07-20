@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from enum import Enum
+import re
 import unicodedata
 from typing import Any, Literal
 
@@ -96,6 +97,7 @@ class SourceLocation(BaseModel):
     repository: str | None = Field(default=None, max_length=200)
     path: str | None = Field(default=None, max_length=1024)
     version: str | None = Field(default=None, max_length=160)
+    stratos_budget_upload: dict[str, Any] | None = None
 
     @field_validator("sha256")
     @classmethod
@@ -688,6 +690,350 @@ class AiipExternalDocumentUpsertResponse(ExternalDocumentResponse):
     model_config = ConfigDict(extra="forbid")
 
     governance_confirmation: AiipGovernanceConfirmation
+
+
+class StratosBudgetSourceLocation(SourceLocation):
+    """Closed source lineage accepted by the dedicated Budget bridge."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[SourceLocationKind.uploaded_file, SourceLocationKind.object_storage]
+    sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    repository: str = Field(min_length=1, max_length=200)
+    path: str = Field(min_length=1, max_length=1024)
+
+    @model_validator(mode="after")
+    def reject_server_managed_lineage(self) -> "StratosBudgetSourceLocation":
+        if self.stratos_budget_upload is not None:
+            raise ValueError(
+                "stratos_budget_upload source lineage is written only by Registry"
+            )
+        return self
+
+
+class StratosBudgetDocumentFileCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str = Field(min_length=1, max_length=300)
+    mime_type: str = Field(min_length=1, max_length=160)
+    size_bytes: int = Field(ge=1)
+    sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class StratosBudgetBatchLineage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batch_manifest_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,127}$")
+    batch_entries_sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    release_revision: str = Field(pattern=r"^[a-f0-9]{40}$")
+
+
+class StratosBudgetUploadMetadata(BaseModel):
+    """Closed metadata emitted by the server-authoritative Budget caller."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract_id: str = Field(min_length=1, max_length=128)
+    contract_number: str = Field(min_length=1, max_length=160)
+    contract_name: str = Field(min_length=1, max_length=300)
+    financial_scope_key: str = Field(
+        pattern=r"^(?:budget-global|budget:[a-z0-9][a-z0-9._-]{0,119})$"
+    )
+    contract_status: Literal["DRAFT", "ACTIVE", "AT_RISK", "EXPIRED", "TERMINATED"]
+    contract_start_date: date
+    contract_end_date: date
+    lifecycle: Literal["CURRENT", "ARCHIVED"]
+    documentType: Literal["CONTRACT_PDF", "CONTRACT_ARCHIVE"]
+    document_type: Literal["CONTRACT_PDF", "CONTRACT_ARCHIVE"]
+    batch_manifest_id: str | None = Field(
+        default=None, pattern=r"^[a-z0-9][a-z0-9._-]{0,127}$"
+    )
+    batch_entries_sha256: str | None = Field(
+        default=None, pattern=r"^sha256:[a-f0-9]{64}$"
+    )
+    release_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{40}$")
+
+    @model_validator(mode="after")
+    def validate_budget_metadata(self) -> "StratosBudgetUploadMetadata":
+        expected_document_type = (
+            "CONTRACT_ARCHIVE" if self.lifecycle == "ARCHIVED" else "CONTRACT_PDF"
+        )
+        if (
+            self.documentType != expected_document_type
+            or self.document_type != expected_document_type
+        ):
+            raise ValueError(
+                "Budget documentType/document_type must match the lifecycle"
+            )
+        batch_values = (
+            self.batch_manifest_id,
+            self.batch_entries_sha256,
+            self.release_revision,
+        )
+        if any(value is not None for value in batch_values) and not all(
+            value is not None for value in batch_values
+        ):
+            raise ValueError(
+                "Budget historical batch metadata must be supplied as one complete set"
+            )
+        if self.contract_start_date > self.contract_end_date:
+            raise ValueError("Budget contract_start_date must not be after contract_end_date")
+        return self
+
+
+class StratosBudgetUploadExternalDocumentUpsertRequest(BaseModel):
+    """Closed server-to-server contract for governed Budget contract uploads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: Literal["org_stratos"]
+    external_system: Literal["STRATOS_BUDGET"]
+    external_ref: str = Field(min_length=1, max_length=240)
+    entity_type: Literal["Contract"]
+    entity_id: str = Field(min_length=1, max_length=128)
+    document_type: Literal["contract"]
+    title: str = Field(min_length=1, max_length=300)
+    classification: Classification
+    information_policy: InformationPolicyBinding
+    integration_envelope: IntegrationEnvelope
+    owner: ExternalDocumentOwner
+    tags: list[str] = Field(default_factory=list)
+    metadata: StratosBudgetUploadMetadata
+    source_location: StratosBudgetSourceLocation
+    citation_base_url: str | None = Field(default=None, max_length=512)
+    preview_url: str | None = Field(default=None, max_length=2048)
+    governance_scope: GovernanceScope
+    parent_governed_resource_id: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_budget_source(self) -> "StratosBudgetUploadExternalDocumentUpsertRequest":
+        _validate_budget_upload_envelope(
+            envelope=self.integration_envelope,
+            policy=self.information_policy,
+            external_ref=self.external_ref,
+            entity_id=self.entity_id,
+            file_hash=self.source_location.sha256,
+        )
+        handling_class = (
+            self.information_policy.handling_class.value
+            if hasattr(self.information_policy.handling_class, "value")
+            else str(self.information_policy.handling_class)
+        )
+        expected_classification = {
+            "PUBLIC": Classification.public,
+            "INTERNAL": Classification.internal,
+            "PROJECT_MANAGEMENT": Classification.internal,
+            "RESTRICTED": Classification.restricted,
+        }[handling_class]
+        if self.classification != expected_classification:
+            raise ValueError("classification does not match information_policy")
+        if self.owner.user_id != self.integration_envelope.actor.subject_id:
+            raise ValueError("owner does not match the STRATOS envelope actor")
+        if (
+            self.metadata.contract_id != self.entity_id
+            or self.metadata.financial_scope_key
+            != self.integration_envelope.payload.get("financialScopeKey")
+        ):
+            raise ValueError("metadata does not match the STRATOS Budget lineage")
+        _validate_budget_upload_scope(
+            self.integration_envelope,
+            self.governance_scope,
+            self.information_policy,
+        )
+        return self
+
+
+class StratosBudgetUploadDocumentVersionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    external_ref: str = Field(min_length=1, max_length=240)
+    version_label: str = Field(min_length=1, max_length=80)
+    valid_from: date | None = None
+    valid_to: date | None = None
+    source_file_uri: str = Field(min_length=1, max_length=1024)
+    source_location: StratosBudgetSourceLocation
+    file_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    change_summary: str | None = None
+    upload_mode: Literal["interactive", "historical_batch"]
+    original_file_name: str = Field(min_length=1, max_length=300)
+    batch_lineage: StratosBudgetBatchLineage | None = None
+    contract_status: Literal["DRAFT", "ACTIVE", "AT_RISK", "EXPIRED", "TERMINATED"]
+    contract_start_date: date
+    contract_end_date: date
+    information_policy: InformationPolicyBinding
+    integration_envelope: IntegrationEnvelope
+    governance_scope: GovernanceScope
+    parent_governed_resource_id: str = Field(min_length=1, max_length=128)
+    file: StratosBudgetDocumentFileCreate
+
+    @model_validator(mode="after")
+    def validate_budget_version(self) -> "StratosBudgetUploadDocumentVersionCreate":
+        _validate_budget_upload_envelope(
+            envelope=self.integration_envelope,
+            policy=self.information_policy,
+            external_ref=self.external_ref,
+            file_hash=self.file_hash,
+        )
+        if self.file.sha256 != self.file_hash:
+            raise ValueError("file.sha256 does not match file_hash")
+        if self.source_location.sha256 != self.file_hash:
+            raise ValueError("source_location.sha256 does not match file_hash")
+        if self.source_location.uri != self.source_file_uri:
+            raise ValueError("source_location.uri does not match source_file_uri")
+        if self.contract_start_date > self.contract_end_date:
+            raise ValueError("contract_start_date must not be after contract_end_date")
+        if self.upload_mode == "historical_batch" and self.batch_lineage is None:
+            raise ValueError("historical_batch upload requires batch_lineage")
+        if self.upload_mode == "interactive" and self.batch_lineage is not None:
+            raise ValueError("interactive upload must not include batch_lineage")
+        _validate_budget_upload_scope(
+            self.integration_envelope,
+            self.governance_scope,
+            self.information_policy,
+        )
+        return self
+
+
+class StratosBudgetGovernanceConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document: dict[str, Any]
+    version: dict[str, Any]
+
+
+class StratosBudgetUploadDocumentVersionCreateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: "DocumentVersionResponse"
+    external_document: ExternalDocumentResponse
+    created: bool
+    governance_confirmation: StratosBudgetGovernanceConfirmation
+
+
+class StratosBudgetUploadExternalDocumentCurrentUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    expected_current_document_version_id: str | None = Field(
+        default=None, min_length=1, max_length=64
+    )
+    expected_current_ingestion_job_id: str | None = Field(
+        default=None, min_length=1, max_length=128
+    )
+    document_version_id: str = Field(min_length=1, max_length=64)
+    file_id: str = Field(min_length=1, max_length=64)
+    ingestion_job_id: str | None = Field(default=None, min_length=1, max_length=128)
+    ingestion_status: Literal["VERSION_CREATED", "INGESTING", "INDEXED", "FAILED"]
+    external_ref: str = Field(min_length=1, max_length=240)
+    information_policy: InformationPolicyBinding
+    integration_envelope: IntegrationEnvelope
+    governance_scope: GovernanceScope
+    parent_governed_resource_id: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_budget_current(self) -> "StratosBudgetUploadExternalDocumentCurrentUpdateRequest":
+        _validate_budget_upload_envelope(
+            envelope=self.integration_envelope,
+            policy=self.information_policy,
+            external_ref=self.external_ref,
+        )
+        if self.ingestion_job_id is None and self.ingestion_status != "VERSION_CREATED":
+            raise ValueError("a current version without an ingestion job must use VERSION_CREATED")
+        if self.ingestion_job_id is not None and self.ingestion_status == "VERSION_CREATED":
+            raise ValueError("VERSION_CREATED must not name an ingestion job")
+        _validate_budget_upload_scope(
+            self.integration_envelope,
+            self.governance_scope,
+            self.information_policy,
+        )
+        return self
+
+
+class StratosBudgetUploadExternalDocumentCurrentUpdateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    external_document: ExternalDocumentResponse
+    updated: bool
+
+
+def _validate_budget_upload_envelope(
+    *,
+    envelope: IntegrationEnvelope,
+    policy: InformationPolicyBinding,
+    external_ref: str,
+    entity_id: str | None = None,
+    file_hash: str | None = None,
+) -> None:
+    if envelope.source_system != "STRATOS_BUDGET":
+        raise ValueError("STRATOS_BUDGET envelope is required")
+    if envelope.actor.type != "person":
+        raise ValueError("STRATOS_BUDGET upload requires a person-authored envelope")
+    if envelope.source_resource is not None:
+        raise ValueError("STRATOS_BUDGET upload must not claim AIIP sourceResource lineage")
+    if envelope.external_ref != external_ref:
+        raise ValueError("integration envelope externalRef does not match external_ref")
+    if envelope.policy_binding_id != policy.policy_binding_id:
+        raise ValueError("integration envelope policyBindingId does not match information_policy")
+    if envelope.policy_hash != canonical_policy_hash(policy):
+        raise ValueError("integration envelope policyHash does not match information_policy")
+    if envelope.classification.handling_class != policy.handling_class:
+        raise ValueError("integration envelope handlingClass does not match information_policy")
+    if envelope.classification.tlp != policy.tlp or envelope.classification.pap != policy.pap:
+        raise ValueError("integration envelope TLP/PAP does not match information_policy")
+    payload = envelope.payload
+    if set(payload) != {"contractId", "financialScopeKey", "fileHash"}:
+        raise ValueError("STRATOS_BUDGET upload payload has unsupported fields")
+    contract_id = payload.get("contractId")
+    financial_scope_key = payload.get("financialScopeKey")
+    payload_file_hash = payload.get("fileHash")
+    if not isinstance(contract_id, str) or not contract_id:
+        raise ValueError("STRATOS_BUDGET payload.contractId is required")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", contract_id):
+        raise ValueError("STRATOS_BUDGET payload.contractId is invalid")
+    canonical_ref = f"contract:{contract_id}"
+    document_prefix = f"{canonical_ref}:document:"
+    if external_ref != canonical_ref and not (
+        external_ref.startswith(document_prefix)
+        and re.fullmatch(
+            r"[a-z0-9][a-z0-9._-]{0,127}",
+            external_ref[len(document_prefix) :],
+        )
+    ):
+        raise ValueError(
+            "STRATOS_BUDGET external_ref must be canonical for payload.contractId"
+        )
+    if not isinstance(financial_scope_key, str) or not re.fullmatch(
+        r"(?:budget-global|budget:[a-z0-9][a-z0-9._-]{0,119})",
+        financial_scope_key,
+    ):
+        raise ValueError("STRATOS_BUDGET payload.financialScopeKey is invalid")
+    if not isinstance(payload_file_hash, str) or not re.fullmatch(
+        r"sha256:[a-f0-9]{64}", payload_file_hash
+    ):
+        raise ValueError("STRATOS_BUDGET payload.fileHash is invalid")
+    if entity_id is not None and contract_id != entity_id:
+        raise ValueError("STRATOS_BUDGET payload.contractId does not match entity_id")
+    if file_hash is not None and payload_file_hash != file_hash:
+        raise ValueError("STRATOS_BUDGET payload.fileHash does not match the uploaded file")
+
+
+def _validate_budget_upload_scope(
+    envelope: IntegrationEnvelope,
+    governance_scope: GovernanceScope,
+    information_policy: InformationPolicyBinding,
+) -> None:
+    scope_key = envelope.payload.get("financialScopeKey")
+    if governance_scope.type != "budget_scope" or governance_scope.id != scope_key:
+        raise ValueError(
+            "STRATOS_BUDGET governance_scope must identify payload.financialScopeKey"
+        )
+    if (
+        information_policy.audience.scope_type != "budget_scope"
+        or information_policy.audience.scope_ids != [scope_key]
+    ):
+        raise ValueError(
+            "STRATOS_BUDGET information_policy audience must identify the exact financial scope"
+        )
 
 
 class DocumentExtractionStoreRequest(BaseModel):

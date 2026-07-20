@@ -287,6 +287,20 @@ export class ProductionRegistryClient implements RegistryApiClient {
     );
   }
 
+  createStratosBudgetHistoricalIngestionAuthorization(
+    documentId: string,
+    versionId: string,
+    request: IngestionAuthorizationRequest,
+    context: ApiRequestContext,
+  ): Promise<IngestionAuthorizationResponse> {
+    return this.post<IngestionAuthorizationResponse>(
+      `/integrations/stratos-budget-upload/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/ingestion-authorization`,
+      request,
+      `createStratosBudgetHistoricalIngestionAuthorization:${documentId}:${versionId}`,
+      context,
+    );
+  }
+
   async getDocumentIngestionAttempt(
     documentId: string,
     context: ApiRequestContext,

@@ -13,6 +13,7 @@ export interface UploadPreflightRequest {
   policy_hash?: string | null;
   external_document_id?: string | null;
   expected_current_document_version_id?: string | null;
+  expected_current_ingestion_job_id?: string | null;
   governed_document_resource_id?: string | null;
   source_governed_resource_id?: string | null;
   source_resource_id?: string | null;
@@ -22,6 +23,9 @@ export interface UploadPreflightRequest {
   governance_registered_by_subject_id?: string | null;
   governance_correlation_id?: string | null;
   governance_idempotency_key?: string | null;
+  purpose?: string | null;
+  workflow_mode?: string | null;
+  workflow_context?: Record<string, string> | null;
 }
 
 export interface UploadPersistenceHooks {
@@ -70,6 +74,7 @@ export interface UploadTokenPayload {
   policy_hash: string | null;
   external_document_id: string | null;
   expected_current_document_version_id: string | null;
+  expected_current_ingestion_job_id?: string | null;
   governed_document_resource_id: string | null;
   source_governed_resource_id: string | null;
   source_resource_id: string | null;
@@ -79,6 +84,9 @@ export interface UploadTokenPayload {
   governance_registered_by_subject_id: string | null;
   governance_correlation_id: string | null;
   governance_idempotency_key: string | null;
+  purpose: string | null;
+  workflow_mode: string | null;
+  workflow_context: Record<string, string> | null;
 }
 
 export interface UploadReceiptPayload {
@@ -133,6 +141,7 @@ export class UploadPreflightError extends Error {
 
 const DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024;
 const DEFAULT_EXPIRES_IN_SECONDS = 15 * 60;
+export const CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE = "controlled-document-upload";
 const SHA256_PATTERN = /^sha256:[a-fA-F0-9]{64}$/;
 
 const ACCEPTED_MIME_TYPES = [
@@ -262,6 +271,12 @@ export function createUploadPreflightDecision(
     policy_hash: request.policy_hash ?? null,
     external_document_id: request.external_document_id ?? null,
     expected_current_document_version_id: request.expected_current_document_version_id ?? null,
+    ...(request.expected_current_ingestion_job_id !== undefined
+      ? {
+          expected_current_ingestion_job_id:
+            request.expected_current_ingestion_job_id ?? null,
+        }
+      : {}),
     governed_document_resource_id: request.governed_document_resource_id ?? null,
     source_governed_resource_id: request.source_governed_resource_id ?? null,
     source_resource_id: request.source_resource_id ?? null,
@@ -271,6 +286,9 @@ export function createUploadPreflightDecision(
     governance_registered_by_subject_id: request.governance_registered_by_subject_id ?? null,
     governance_correlation_id: request.governance_correlation_id ?? null,
     governance_idempotency_key: request.governance_idempotency_key ?? null,
+    purpose: normalizeTokenMarker(request.purpose, "purpose"),
+    workflow_mode: normalizeTokenMarker(request.workflow_mode, "workflow_mode"),
+    workflow_context: normalizeWorkflowContext(request.workflow_context),
   };
   const uploadToken = signUploadToken(payload, settings);
 
@@ -343,6 +361,9 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
   normalizeFileSize(payload.file_size, settings.maxFileBytes);
   normalizeSha256(payload.sha256);
   normalizeMimeType(payload.file_name, payload.file_type);
+  payload.purpose = normalizeTokenMarker(payload.purpose, "purpose", true);
+  payload.workflow_mode = normalizeTokenMarker(payload.workflow_mode, "workflow_mode", true);
+  payload.workflow_context = normalizeWorkflowContext(payload.workflow_context, true);
   if (payload.bucket !== settings.bucket) {
     throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token bucket is not valid.");
   }
@@ -363,6 +384,17 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
       "Upload token expected current version is invalid."
     );
   }
+  if (
+    payload.expected_current_ingestion_job_id != null &&
+    (typeof payload.expected_current_ingestion_job_id !== "string" ||
+      !payload.expected_current_ingestion_job_id)
+  ) {
+    throw new UploadPreflightError(
+      401,
+      "INVALID_UPLOAD_TOKEN",
+      "Upload token expected current ingestion job is invalid."
+    );
+  }
   const governedFields = [
     payload.external_document_id,
     payload.governed_document_resource_id,
@@ -380,6 +412,20 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
   }
 
   return payload;
+}
+
+export function assertUploadTokenPurpose(
+  payload: UploadTokenPayload,
+  expectedPurpose: string,
+): void {
+  const normalizedExpected = normalizeTokenMarker(expectedPurpose, "expected purpose");
+  if (payload.purpose !== normalizedExpected) {
+    throw new UploadPreflightError(
+      401,
+      "UPLOAD_TOKEN_PURPOSE_MISMATCH",
+      "Upload token is not valid for this upload endpoint.",
+    );
+  }
 }
 
 export async function persistUploadedObject(
@@ -807,6 +853,56 @@ function normalizeFilename(value: string): string {
     });
   }
   return filename;
+}
+
+function normalizeTokenMarker(
+  value: unknown,
+  field: string,
+  tokenValidation = false,
+): string | null {
+  if (value === undefined || value === null) return null;
+  if (
+    typeof value !== "string"
+    || !/^[a-z][a-z0-9._-]{0,63}$/.test(value)
+  ) {
+    throw new UploadPreflightError(
+      tokenValidation ? 401 : 400,
+      tokenValidation ? "INVALID_UPLOAD_TOKEN" : "UPLOAD_TOKEN_CONTEXT_INVALID",
+      `${field} is invalid.`,
+    );
+  }
+  return value;
+}
+
+function normalizeWorkflowContext(
+  value: unknown,
+  tokenValidation = false,
+): Record<string, string> | null {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new UploadPreflightError(
+      tokenValidation ? 401 : 400,
+      tokenValidation ? "INVALID_UPLOAD_TOKEN" : "UPLOAD_TOKEN_CONTEXT_INVALID",
+      "workflow_context is invalid.",
+    );
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (
+    entries.length > 16
+    || entries.some(([key, item]) => (
+      !/^[a-z][a-z0-9_]{0,63}$/.test(key)
+      || typeof item !== "string"
+      || item.length < 1
+      || item.length > 300
+    ))
+  ) {
+    throw new UploadPreflightError(
+      tokenValidation ? 401 : 400,
+      tokenValidation ? "INVALID_UPLOAD_TOKEN" : "UPLOAD_TOKEN_CONTEXT_INVALID",
+      "workflow_context is invalid.",
+    );
+  }
+  return Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right))) as Record<string, string>;
 }
 
 function normalizeFileSize(value: number, maxFileBytes: number): number {

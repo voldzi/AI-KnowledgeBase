@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
 import type { CreateIngestionJobRequest } from "@/lib/types";
-import { assertUploadMatchesIngestionPayload, UploadPreflightError } from "@/lib/upload/preflight";
+import {
+  assertUploadMatchesIngestionPayload,
+  assertUploadTokenPurpose,
+  CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
+  UploadPreflightError,
+} from "@/lib/upload/preflight";
 
 import { badRequest, bridgeError } from "../errors";
 import { uploadErrorResponse } from "../upload/errors";
@@ -39,6 +44,7 @@ export async function POST(request: NextRequest) {
         file_size: Number.isFinite(Number(body.file_size)) ? Number(body.file_size) : null,
         file_type: body.file_type ? String(body.file_type).trim() : null
       });
+      assertUploadTokenPurpose(uploadPayload, CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE);
     }
 
     const [document, currentAttempt] = await Promise.all([

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { getAklConfig, type AklConfig } from "@/lib/api/config";
@@ -46,6 +47,22 @@ export async function ingestionServiceRequestContext(
     requestId: correlationId,
     correlationId,
   };
+}
+
+export function ingestionJobIdForIdempotencyKey(idempotencyKey: string): string {
+  const normalized = idempotencyKey.trim();
+  if (!normalized) {
+    throw new ApiClientError(
+      "Ingestion idempotency key is required.",
+      422,
+      "INGESTION_IDEMPOTENCY_KEY_INVALID",
+      "web-ingestion-transport",
+    );
+  }
+  const digest = createHash("sha256")
+    .update(`${TRANSPORT_CLIENT_ID}\0${normalized}`)
+    .digest("hex");
+  return `ing_${digest.slice(0, 32)}`;
 }
 
 export async function ingestionServiceAccessToken(

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import type { AklConfig } from "../src/lib/api/config";
 import {
+  ingestionJobIdForIdempotencyKey,
   ingestionServiceAccessToken,
   resetIngestionServiceTokenCacheForTests,
 } from "../src/lib/ingestion/service-identity";
@@ -17,6 +18,13 @@ afterEach(() => {
 });
 
 describe("web-to-ingestion service identity", () => {
+  it("derives the exact durable ingestion job id from the transport namespace", () => {
+    assert.equal(
+      ingestionJobIdForIdempotencyKey("confirm:extdoc_budget_123:ver_budget_123"),
+      "ing_4e41bbae34394a6768ec51916c656af7",
+    );
+  });
+
   it("isolates concurrent token requests by exact token endpoint and client", async () => {
     const first = deferred<Response>();
     const second = deferred<Response>();

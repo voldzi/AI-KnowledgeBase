@@ -80,6 +80,54 @@ describe("production API clients", () => {
     assert.equal((calls[0][1]?.headers as Headers).get("Authorization"), "Bearer actor-token");
   });
 
+  it("uses the dedicated Budget batch authorization route with only the service transport", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        authorization_token: "registry-budget-proof-token",
+        authorization_id: "iauth_budget_test",
+        confirmed_subject_id: "budget-owner-1",
+        action: "document.ingest",
+        document_id: "doc_budget_1",
+        document_version_id: "ver_budget_1",
+        correlation_id: "corr_budget_test",
+        idempotency_key: "confirm:extdoc_budget_1:ver_budget_1",
+        expires_at: "2026-07-20T12:00:00Z",
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({
+      subjectId: "service-account-stratos-akb-service",
+      roles: ["service_ingestion"],
+      serviceClientId: "stratos-akb-service",
+      accessToken: "budget-service-token",
+      requestId: "corr_budget_test",
+      correlationId: "corr_budget_test",
+    });
+
+    const proof = await clients.registry.createStratosBudgetHistoricalIngestionAuthorization(
+      "doc_budget_1",
+      "ver_budget_1",
+      {
+        action: "document.ingest",
+        correlation_id: "corr_budget_test",
+        idempotency_key: "confirm:extdoc_budget_1:ver_budget_1",
+      },
+      context,
+    );
+
+    assert.equal(proof.confirmed_subject_id, "budget-owner-1");
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/integrations/stratos-budget-upload/documents/doc_budget_1/versions/ver_budget_1/ingestion-authorization",
+    );
+    assert.equal(
+      (calls[0][1]?.headers as Headers).get("Authorization"),
+      "Bearer budget-service-token",
+    );
+  });
+
   it("sends the Registry proof only with the exact delegated ingestion create", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

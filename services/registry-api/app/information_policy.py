@@ -66,7 +66,7 @@ class PolicyAudience(BaseModel):
 
     organization_id: Literal["org_stratos"] = Field(alias="organizationId")
     scope_type: Literal[
-        "organization", "organization_unit", "project", "document", "recipient_set", "public"
+        "organization", "organization_unit", "budget_scope", "project", "document", "recipient_set", "public"
     ] = Field(alias="scopeType")
     scope_ids: list[str] = Field(default_factory=list, alias="scopeIds")
     recipient_subject_ids: list[str] = Field(default_factory=list, alias="recipientSubjectIds")

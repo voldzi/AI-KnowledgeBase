@@ -1,7 +1,7 @@
 def _external_payload(**overrides):
     payload = {
         "tenant_id": "org_stratos",
-        "external_system": "STRATOS_BUDGET",
+        "external_system": "STRATOS_PROJECTFLOW",
         "external_ref": "contract:256-2022-S:main",
         "entity_type": "Contract",
         "entity_id": "contract-uuid",
@@ -97,7 +97,7 @@ def test_external_document_upsert_creates_registry_document(client, admin_header
     body = response.json()
     assert body["created"] is True
     assert body["external_document"]["external_document_id"].startswith("extdoc_")
-    assert body["external_document"]["external_system"] == "STRATOS_BUDGET"
+    assert body["external_document"]["external_system"] == "STRATOS_PROJECTFLOW"
     assert body["external_document"]["external_ref"] == "contract:256-2022-S:main"
     assert body["external_document"]["source_location"]["kind"] == "url"
     assert body["external_document"]["source_location"]["display_url"] == "https://stratos.local/contracts/256-2022-S"
@@ -107,9 +107,9 @@ def test_external_document_upsert_creates_registry_document(client, admin_header
     assert body["external_document"]["metadata"]["contract_number"] == "256-2022-S"
     assert body["document"]["document_id"].startswith("doc_")
     assert body["document"]["document_type"] == "contract"
-    assert body["document"]["metadata"]["external"]["external_system"] == "STRATOS_BUDGET"
+    assert body["document"]["metadata"]["external"]["external_system"] == "STRATOS_PROJECTFLOW"
     assert body["document"]["metadata"]["external"]["source_location"]["file_name"] == "256-2022-S.pdf"
-    assert "stratos_budget" in body["document"]["tags"]
+    assert "stratos_projectflow" in body["document"]["tags"]
 
     audit = client.get("/api/v1/audit/events", headers=admin_headers)
     assert audit.status_code == 200
@@ -200,7 +200,7 @@ def test_document_metadata_summary_filters_external_context(client, admin_header
         "/api/v1/documents/metadata-summary"
         "?topic=smlouva"
         "&tenant_id=tenant-a"
-        "&external_system=STRATOS_BUDGET"
+        "&external_system=STRATOS_PROJECTFLOW"
         "&entity_type=contract"
         "&entity_id=contract-1"
         "&external_ref=contract%3Abudget-context%3Amain"
@@ -249,10 +249,10 @@ def test_document_list_filters_external_context_and_topic(client, admin_headers)
         "/api/v1/documents"
         "?topic=smlouva"
         "&tenant_id=tenant-a"
-        "&external_system=STRATOS_BUDGET"
+        "&external_system=STRATOS_PROJECTFLOW"
         "&entity_type=contract"
         "&entity_id=contract-list-1"
-        "&context_tag=stratos_budget",
+        "&context_tag=stratos_projectflow",
         headers=admin_headers,
     )
 

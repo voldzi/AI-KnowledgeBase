@@ -37,7 +37,7 @@ export interface InformationPolicyBindingSummary {
   contentCategories: string[];
   audience: {
     organizationId: "org_stratos";
-    scopeType: "organization" | "organization_unit" | "project" | "document" | "recipient_set" | "public";
+    scopeType: "organization" | "organization_unit" | "budget_scope" | "project" | "document" | "recipient_set" | "public";
     scopeIds?: string[];
     recipientSubjectIds?: string[];
   };
@@ -204,9 +204,17 @@ export interface DocumentVersion {
   policy_version?: string | null;
   policy_hash?: string | null;
   policy_summary?: InformationPolicyBindingSummary | Record<string, never>;
+  governed_resource_id?: string | null;
+  governed_source_version?: string | null;
+  governed_parent_resource_id?: string | null;
+  governance_scope_type?: string | null;
+  governance_scope_id?: string | null;
+  governance_scope_owner_subject_id?: string | null;
+  governance_registration_status?: string | null;
   valid_from: string | null;
   valid_to: string | null;
   source_file_uri: string;
+  source_location?: Record<string, unknown> | null;
   file_hash: string | null;
   change_summary: string | null;
   created_at: string;

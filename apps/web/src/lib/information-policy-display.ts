@@ -61,7 +61,8 @@ function policyDetails(
     tlp: summary.tlp ?? null,
     pap: summary.pap ?? null,
     contentCategories: summary.contentCategories,
-    audience: summary.audience,
+    // stratos-ui 0.3.33 predates the centrally defined Budget financial scope.
+    audience: summary.audience as InformationPolicyDetails["audience"],
     obligations: summary.obligations,
     inherited: false,
     sourceLabel,
@@ -116,7 +117,7 @@ function isInformationPolicySummary(
     Array.isArray(policy.obligations) &&
     Boolean(policy.audience) &&
     policy.audience?.organizationId === "org_stratos" &&
-    ["organization", "organization_unit", "project", "document", "recipient_set", "public"].includes(
+    ["organization", "organization_unit", "budget_scope", "project", "document", "recipient_set", "public"].includes(
       policy.audience?.scopeType ?? "",
     )
   );

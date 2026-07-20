@@ -23,6 +23,11 @@ import {
 } from "../auth/oidc";
 import { contextFromStratosAccessProjection } from "../auth/access-projection";
 
+export {
+  getStratosActorRequestContext,
+  requireStratosActorSubjectMatch,
+} from "../stratos/actor-authorization";
+
 type RequestLike = Request & {
   cookies?: {
     get(name: string): { value: string } | undefined;

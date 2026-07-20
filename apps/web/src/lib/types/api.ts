@@ -213,6 +213,12 @@ export interface RegistryApiClient {
     request: IngestionAuthorizationRequest,
     context: ApiRequestContext
   ): Promise<IngestionAuthorizationResponse>;
+  createStratosBudgetHistoricalIngestionAuthorization(
+    documentId: string,
+    versionId: string,
+    request: IngestionAuthorizationRequest,
+    context: ApiRequestContext
+  ): Promise<IngestionAuthorizationResponse>;
   getDocumentIngestionAttempt(
     documentId: string,
     context: ApiRequestContext

@@ -537,6 +537,45 @@ export class MockRegistryClient implements RegistryApiClient {
     };
   }
 
+  async createStratosBudgetHistoricalIngestionAuthorization(
+    documentId: string,
+    versionId: string,
+    request: {
+      action: "document.ingest" | "document.read" | "document.reindex";
+      correlation_id: string;
+      idempotency_key: string;
+    },
+    context: ApiRequestContext,
+  ) {
+    const document = this.documents.find(
+      (candidate) => candidate.document_id === documentId,
+    );
+    const version = this.versions.find(
+      (candidate) =>
+        candidate.document_id === documentId
+        && candidate.document_version_id === versionId,
+    );
+    if (!document || !version) {
+      throw new ApiClientError(
+        "Document version not found",
+        404,
+        "VERSION_NOT_FOUND",
+        context.correlationId ?? context.requestId ?? "mock-correlation",
+      );
+    }
+    return {
+      authorization_token: `mock-registry-budget-ingestion-authorization-${documentId}-${versionId}`,
+      authorization_id: `iauth_mock_budget_${versionId}`,
+      confirmed_subject_id: document.owner_id,
+      action: request.action,
+      document_id: documentId,
+      document_version_id: versionId,
+      correlation_id: request.correlation_id,
+      idempotency_key: request.idempotency_key,
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+  }
+
   async getDocumentIngestionAttempt(
     documentId: string,
     context: ApiRequestContext,

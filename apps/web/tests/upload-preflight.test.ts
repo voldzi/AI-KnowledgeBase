@@ -7,6 +7,8 @@ import { describe, it } from "node:test";
 
 import {
   assertUploadMatchesIngestionPayload,
+  assertUploadTokenPurpose,
+  CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
   createUploadReceipt,
   createUploadPreflightDecision,
   persistUploadedObject,
@@ -19,6 +21,50 @@ import {
 } from "../src/lib/upload/preflight";
 
 describe("upload preflight", () => {
+  it("isolates controlled, STRATOS and Budget upload token purposes", () => {
+    const settings = testSettings("/tmp/akl-upload-purpose-test");
+    const purposes = [
+      CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
+      "stratos-upload",
+      "stratos-budget-upload",
+    ];
+    const payloads = purposes.map((purpose) => verifyUploadToken(
+      createUploadPreflightDecision({
+        document_id: `doc_${purpose.replaceAll("-", "_")}`,
+        file_name: "source.pdf",
+        file_size: 128,
+        file_type: "application/pdf",
+        sha256: `sha256:${"a".repeat(64)}`,
+        purpose,
+      }, settings).required_headers["X-AKL-Upload-Token"],
+      settings,
+    ));
+
+    payloads.forEach((payload, index) => {
+      assert.doesNotThrow(() => assertUploadTokenPurpose(payload, purposes[index]));
+      purposes.forEach((purpose, otherIndex) => {
+        if (otherIndex === index) return;
+        assert.throws(
+          () => assertUploadTokenPurpose(payload, purpose),
+          (error: unknown) => error instanceof UploadPreflightError
+            && error.code === "UPLOAD_TOKEN_PURPOSE_MISMATCH",
+        );
+      });
+    });
+
+    const legacyPayload = verifyUploadToken(createUploadPreflightDecision({
+      document_id: "doc_legacy",
+      file_name: "source.pdf",
+      file_size: 128,
+      file_type: "application/pdf",
+      sha256: `sha256:${"b".repeat(64)}`,
+    }, settings).required_headers["X-AKL-Upload-Token"], settings);
+    assert.throws(() => assertUploadTokenPurpose(
+      legacyPayload,
+      CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
+    ));
+  });
+
   it("creates a signed upload decision and persists matching content", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akl-upload-"));
     const settings = testSettings(root);
