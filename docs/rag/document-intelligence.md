@@ -445,9 +445,9 @@ AI-produced insights must start as `proposed`; a human must accept or reject the
 
 ## STRATOS Contract Extraction
 
-`contract_financial_v1` is the first controlled extraction profile for Budget &
-Contract. It extracts proposed field values only when an authorized chunk
-contains citeable evidence. Each proposal includes:
+`contract_financial_v1`, profile version `2`, is the controlled extraction
+profile for Budget & Contract. It extracts proposed field values only when an
+authorized chunk contains citeable evidence. Each proposal includes:
 
 - `field`, `proposed_value`, `normalized_value`, `unit`, `confidence`,
   `status: "proposed"` and a reason,
@@ -456,6 +456,21 @@ contains citeable evidence. Each proposal includes:
 - extraction-level `missing_information`, `warnings`, `source_chunk_ids` and
   status (`PROPOSED`, `PARTIAL`, `SUPERSEDED`, `ACCEPTED_IN_SOURCE_APP`,
   `REJECTED_IN_SOURCE_APP`, etc.).
+
+The `payment_rules` proposal normalizes each independently cited payment clause
+into one rule. Supported types are `ONE_OFF`, `ACCEPTANCE`, `MONTHLY`,
+`QUARTERLY`, `HALF_YEARLY`, `YEARLY`, `MILESTONE`, `CALL_OFF`, and
+`TIME_AND_MATERIAL`. A rule carries its amount basis, currency, periodicity,
+VAT basis, timing, payment terms and its own citation. Every rule remains
+proposed until a Budget user confirms or edits it. Variable call-off and
+time-and-material rules do not generate cashflow without a separately confirmed
+planned drawdown. Unknown timing and VAT basis stay explicitly
+`UNSPECIFIED`; event-driven rules require a cited ISO `due_date` before they can
+request cashflow generation.
+
+Profile version `1` remains available as a rolling-deployment contract and keeps
+its original schedule-shaped proposals. New callers use version `2`; Registry
+idempotency separates results by `profile_version`.
 
 Registry API persists extraction results in `document_extractions` and feedback
 in `document_extraction_feedback` (Alembic migration `0007`). The idempotency

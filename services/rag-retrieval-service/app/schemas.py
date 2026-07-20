@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -367,7 +368,7 @@ class ContractExtractionProposeRequest(BaseModel):
     document_version_id: str = Field(min_length=1, max_length=64)
     subject_id: str = Field(min_length=1, max_length=128)
     profile: Literal["contract_financial_v1"] = "contract_financial_v1"
-    profile_version: str = Field(default="1", min_length=1, max_length=40)
+    profile_version: Literal["1", "2"] = "1"
     classification_max: Classification = "internal"
     context_tags: list[str] = Field(default_factory=list)
     max_chunks: int = Field(default=12, ge=1, le=20)
@@ -480,10 +481,127 @@ class ContractExtractionCitation(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ContractPaymentRuleProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_type: Literal[
+        "MONTHLY",
+        "QUARTERLY",
+        "HALF_YEARLY",
+        "YEARLY",
+        "ONE_OFF",
+        "ACCEPTANCE",
+        "MILESTONE",
+        "TIME_AND_MATERIAL",
+        "CALL_OFF",
+    ]
+    name: str = Field(min_length=1, max_length=160)
+    amount: int | float | None = None
+    amount_basis: Literal["PER_PERIOD", "ONE_OFF", "UNIT_PRICE", "VARIABLE_DRAWDOWN"]
+    vat_basis: Literal["WITHOUT_VAT", "WITH_VAT", "UNSPECIFIED"] = "UNSPECIFIED"
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    periodicity_months: Literal[1, 3, 6, 12] | None = None
+    payment_timing: Literal[
+        "ADVANCE",
+        "ARREARS",
+        "FIXED_DATE",
+        "ON_ACCEPTANCE",
+        "ON_MILESTONE",
+        "ON_CALL",
+        "UNSPECIFIED",
+    ] = "UNSPECIFIED"
+    due_date: date | None = None
+    payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    is_call_off: bool = False
+    generates_cashflow: bool = False
+    requires_confirmation: Literal[True] = True
+    citation: ContractExtractionCitation
+    payment_terms_citation: ContractExtractionCitation | None = None
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, value: int | float | None) -> int | float | None:
+        if value is None:
+            return None
+        if value < 0:
+            raise ValueError("amount must not be negative.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_fail_closed_cashflow(self) -> "ContractPaymentRuleProposal":
+        if self.payment_timing in {"ON_CALL", "UNSPECIFIED"} and self.generates_cashflow:
+            raise ValueError("ON_CALL and UNSPECIFIED payment timing cannot request automatic cashflow.")
+        if self.amount_basis in {"UNIT_PRICE", "VARIABLE_DRAWDOWN"} and self.generates_cashflow:
+            raise ValueError("Variable and unit-price payment rules cannot request automatic cashflow.")
+        if self.generates_cashflow and self.amount is None:
+            raise ValueError("Automatic cashflow requires a cited payment amount.")
+        if self.amount is not None and self.currency is None:
+            raise ValueError("A cited payment amount requires its currency.")
+        if self.payment_timing == "FIXED_DATE" and not self.due_date:
+            raise ValueError("FIXED_DATE payment timing requires due_date.")
+        if (
+            self.payment_timing in {"ON_ACCEPTANCE", "ON_MILESTONE"}
+            and self.generates_cashflow
+            and not self.due_date
+        ):
+            raise ValueError("Event-based automatic cashflow requires a cited due_date.")
+        if self.rule_type == "CALL_OFF" and (
+            not self.is_call_off
+            or self.payment_timing != "ON_CALL"
+            or self.amount_basis != "VARIABLE_DRAWDOWN"
+        ):
+            raise ValueError("CALL_OFF rules must remain variable, explicitly call-off and ON_CALL.")
+        expected_periodicity = {
+            "MONTHLY": 1,
+            "QUARTERLY": 3,
+            "HALF_YEARLY": 6,
+            "YEARLY": 12,
+        }.get(self.rule_type)
+        if expected_periodicity is not None and self.periodicity_months != expected_periodicity:
+            raise ValueError("Recurring rule type and periodicity_months are inconsistent.")
+        if expected_periodicity is not None and self.amount_basis != "PER_PERIOD":
+            raise ValueError("Recurring payment rules must use PER_PERIOD amount basis.")
+        if self.rule_type in {"ONE_OFF", "ACCEPTANCE", "MILESTONE"} and (
+            self.periodicity_months is not None
+            or self.amount_basis != "ONE_OFF"
+        ):
+            raise ValueError("Event and one-off payment rules must use ONE_OFF without periodicity.")
+        if self.rule_type == "ACCEPTANCE" and self.payment_timing != "ON_ACCEPTANCE":
+            raise ValueError("ACCEPTANCE rules must use ON_ACCEPTANCE timing.")
+        if self.rule_type == "MILESTONE" and self.payment_timing not in {"ON_MILESTONE", "FIXED_DATE"}:
+            raise ValueError("MILESTONE rules must use ON_MILESTONE or FIXED_DATE timing.")
+        if self.rule_type == "TIME_AND_MATERIAL" and self.amount_basis not in {
+            "UNIT_PRICE",
+            "VARIABLE_DRAWDOWN",
+        }:
+            raise ValueError("TIME_AND_MATERIAL rules must remain unit-price or variable.")
+        return self
+
+
+class ContractPaymentScheduleV1Item(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    frequency: str
+    normalized_frequency: Literal["monthly", "quarterly", "annually"]
+    amount: int | float
+    currency: str
+    chunk_id: str
+    page_number: int | None = Field(default=None, ge=1)
+
+
+ContractFieldValue = (
+    str
+    | int
+    | float
+    | list[ContractPaymentRuleProposal]
+    | list[ContractPaymentScheduleV1Item]
+)
+
+
 class ContractFieldProposal(BaseModel):
     field: str
-    proposed_value: Any
-    normalized_value: Any | None = None
+    proposed_value: ContractFieldValue
+    normalized_value: ContractFieldValue | None = None
     unit: str | None = None
     confidence: Confidence
     status: ExtractionFieldStatus = "proposed"
