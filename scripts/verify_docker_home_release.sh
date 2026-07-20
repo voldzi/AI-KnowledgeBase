@@ -22,6 +22,7 @@ ENV_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"
 COMPOSE_FILE="${RELEASE_DIR}/infra/docker-compose/docker-compose.docker-home.yml"
 RETRY_ATTEMPTS="${AKL_RELEASE_VERIFY_ATTEMPTS:-12}"
 RETRY_DELAY="${AKL_RELEASE_VERIFY_DELAY_SECONDS:-5}"
+VERIFY_CHAT_PUBLIC="${AKL_RELEASE_VERIFY_CHAT_PUBLIC:-true}"
 
 akl_require_private_env_file "$ENV_FILE"
 akl_assert_expected_env_snapshot "$ENV_FILE"
@@ -56,6 +57,8 @@ akl_assert_no_ambient_compose_overrides \
   || akl_fail "Chat public verification URL must use HTTPS"
 [[ "$RETRY_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || akl_fail "Invalid verification attempt count"
 [[ "$RETRY_DELAY" =~ ^[0-9]+$ ]] || akl_fail "Invalid verification retry delay"
+[[ "$VERIFY_CHAT_PUBLIC" == "true" || "$VERIFY_CHAT_PUBLIC" == "false" ]] \
+  || akl_fail "AKL_RELEASE_VERIFY_CHAT_PUBLIC must be true or false"
 
 export AKL_SERVICE_VERSION="$TARGET_SHA"
 export AKL_RELEASE_COMPOSE_PROJECT="$PROJECT_NAME"
@@ -431,7 +434,7 @@ fi
 curl_json "${PUBLIC_BASE_URL%/}/api/ready" "${tmp_dir}/public-ready.json"
 validate_ready "${tmp_dir}/public-ready.json"
 
-if [[ "$CHAT_WEB_AFFECTED" == "true" ]]; then
+if [[ "$CHAT_WEB_AFFECTED" == "true" && "$VERIFY_CHAT_PUBLIC" == "true" ]]; then
   curl_json "${CHAT_PUBLIC_BASE_URL%/}/api/health" "${tmp_dir}/chat-public-health.json"
   validate_health "${tmp_dir}/chat-public-health.json"
   curl_json "${CHAT_PUBLIC_BASE_URL%/}/manifest.webmanifest" "${tmp_dir}/chat-manifest.json"
@@ -452,6 +455,8 @@ PY
   )"
   [[ "$blocked_status" == "403" ]] \
     || akl_fail "Chat-only API route guard returned HTTP ${blocked_status}, expected 403"
+elif [[ "$CHAT_WEB_AFFECTED" == "true" ]]; then
+  printf 'WARNING: standalone chat public verification was explicitly skipped; local health and readiness remain mandatory.\n' >&2
 fi
 
 smoke_slug="akl-release-smoke-${TARGET_SHA:0:12}"

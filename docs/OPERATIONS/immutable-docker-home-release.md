@@ -586,6 +586,16 @@ The script, in order:
 11. durably records activation intent, atomically changes `/srv/akl/current`,
     fsyncs its parent, and durably records success.
 
+The standalone chat public probe remains mandatory by default. During a
+confirmed outage of the externally owned DMZ route, an operator may set
+`AKL_RELEASE_VERIFY_CHAT_PUBLIC=false` for a single reviewed release. This
+break-glass switch skips only the requests through
+`chat.zeleznalady.cz`; the chat container's host-aware local health and
+readiness probes, the STRATOS AKB public probes, image provenance, and all
+other release gates remain mandatory. Record the external incident and restore
+the public route before closing the deployment. Do not persist this variable in
+the production environment file.
+
 For a Registry release, inspect the generated backup without printing secrets:
 
 ```bash
