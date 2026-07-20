@@ -106,6 +106,7 @@ def test_budget_governance_client_preserves_explicit_null_classification(monkeyp
         "tlp": None,
         "pap": None,
     }
+    assert "sourceResource" not in captured["json"]["integrationEnvelope"]
 
 
 def _policy(scope_id: str = FINANCIAL_SCOPE) -> dict:
