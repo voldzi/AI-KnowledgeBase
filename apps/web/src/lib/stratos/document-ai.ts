@@ -226,6 +226,7 @@ export interface StratosBudgetStoredLineage {
   integrationEnvelope: StratosBudgetIntegrationEnvelope;
   governanceScope: StratosBudgetGovernanceScope;
   parentGovernedResourceId: string;
+  uploadMode: StratosBudgetUploadMode;
 }
 
 export interface ExternalDocumentCurrentUpdateRequest {
@@ -1205,9 +1206,11 @@ export function stratosBudgetLineageFromVersion(
     governanceScope,
   );
   const parentGovernedResourceId = document.governed_parent_resource_id;
+  const uploadMode = requiredString(budget, "upload_mode");
   if (
     !parentGovernedResourceId
     || integrationEnvelope.payload.fileHash !== version.file_hash
+    || (uploadMode !== "interactive" && uploadMode !== "historical_batch")
   ) {
     throw new ApiClientError(
       "The Budget document version lineage conflicts with its parent or file hash.",
@@ -1221,6 +1224,7 @@ export function stratosBudgetLineageFromVersion(
     integrationEnvelope,
     governanceScope: governanceScope as StratosBudgetGovernanceScope,
     parentGovernedResourceId,
+    uploadMode,
   };
 }
 

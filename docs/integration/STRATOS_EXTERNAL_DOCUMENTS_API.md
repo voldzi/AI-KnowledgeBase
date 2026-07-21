@@ -104,8 +104,8 @@ identity. Povolený source system je pouze `STRATOS_BUDGET`.
 Povinná contract-level lineage obsahuje `external_ref`, `contractId`, finanční
 scope `budget-global` nebo `budget:<key>` a nadřazený governed resource
 smlouvy. Každá immutable verze navíc nese svůj hash souboru, Information
-Policy V2 a osobu, která konkrétní verzi vložila. Interaktivní confirm nebo
-retry vyžaduje čerstvé
+Policy V2, režim uploadu a osobu, která konkrétní verzi vložila. Interaktivní
+confirm nebo retry vyžaduje čerstvé
 `X-STRATOS-Actor-Authorization`, jehož canonical subject se přesně rovná
 `integrationEnvelope.actor.subjectId` aktuální verze. Prosté
 `X-STRATOS-Actor` není autorizace. Auditním aktérem service-only registrace je
@@ -122,6 +122,12 @@ Nevytváří obecnou delegaci služby a nelze jej použít pro jiný dokument, r
 nebo zápis do Budget. Interaktivní i historická cesta následně založí běžný
 ingestion job a stav se sleduje přes BFF `ingestion-status` až do `INDEXED` nebo
 `FAILED`.
+
+Retry immutable verze s uloženým režimem `historical_batch` zůstává
+service-only stejně jako její původní confirm. BFF znovu načte přesnou verzi a
+její podepsanou lineage, odmítne přítomnost actor beareru a použije vyhrazenou
+historickou ingestion autorizaci. Verze bez `historical_batch` režimu se touto
+cestou obnovit nedá a nadále vyžaduje čerstvý actor bearer.
 
 Vytvoření dokumentu a verze vrací `201`; přesný idempotentní replay vrací
 `200` a `created=false`. Nová service-only verze CAS-kontroluje předchozí

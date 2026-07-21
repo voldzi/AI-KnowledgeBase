@@ -149,6 +149,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       integrationEnvelope: contract.integrationEnvelope,
       governanceScope: contract.governanceScope,
       parentGovernedResourceId: contract.parentGovernedResourceId,
+      uploadMode: versionLineage.upload_mode,
     };
     const idempotencyKey = `confirm:${externalDocumentId}:${version.document_version_id}`;
     const authorizationContext = actorContext
