@@ -294,6 +294,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/lineage:
+    get:
+      summary: Get Stratos Budget Document Version Lineage
+      operationId: get_stratos_budget_document_version_lineage_api_v1_integrations_stratos_budget_upload_documents__document_id__versions__version_id__lineage_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StratosBudgetUploadDocumentVersionLineageResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/ingestion-authorization:
     post:
       summary: Create Stratos Budget Historical Ingestion Authorization Proof
@@ -7563,6 +7593,18 @@ components:
       - created
       - governance_confirmation
       title: StratosBudgetUploadDocumentVersionCreateResponse
+    StratosBudgetUploadDocumentVersionLineageResponse:
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentResponse'
+        version:
+          $ref: '#/components/schemas/DocumentVersionResponse'
+      additionalProperties: false
+      type: object
+      required:
+      - document
+      - version
+      title: StratosBudgetUploadDocumentVersionLineageResponse
     StratosBudgetGovernanceConfirmation:
       properties:
         document:

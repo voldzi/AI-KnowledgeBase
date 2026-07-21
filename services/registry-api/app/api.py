@@ -123,6 +123,7 @@ from app.schemas import (
     AiipExternalDocumentUpsertResponse,
     StratosBudgetUploadDocumentVersionCreate,
     StratosBudgetUploadDocumentVersionCreateResponse,
+    StratosBudgetUploadDocumentVersionLineageResponse,
     StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
     StratosBudgetUploadExternalDocumentCurrentUpdateResponse,
     StratosBudgetUploadExternalDocumentUpsertRequest,
@@ -4304,6 +4305,63 @@ def get_stratos_budget_document_status(
             for item in external_refs
         ],
         ingestion_attempt=attempt,
+    )
+
+
+@router.get(
+    "/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/lineage",
+    response_model=StratosBudgetUploadDocumentVersionLineageResponse,
+)
+def get_stratos_budget_document_version_lineage(
+    document_id: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> StratosBudgetUploadDocumentVersionLineageResponse:
+    _require_stratos_budget_upload_service(principal)
+    external_ref = db.execute(
+        select(ExternalDocumentRef)
+        .where(
+            ExternalDocumentRef.document_id == document_id,
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
+            ExternalDocumentRef.current_document_version_id == version_id,
+        )
+        .options(
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.access_policies
+            ),
+            selectinload(ExternalDocumentRef.document).selectinload(
+                Document.assignments
+            ),
+            selectinload(ExternalDocumentRef.document)
+            .selectinload(Document.versions)
+            .selectinload(DocumentVersion.files),
+        )
+    ).scalar_one_or_none()
+    if external_ref is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "stratos_budget_upload_version_not_found",
+            "The exact current Budget contract version was not found",
+        )
+    version = next(
+        (
+            item
+            for item in external_ref.document.versions
+            if item.document_version_id == version_id
+        ),
+        None,
+    )
+    if version is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "stratos_budget_upload_version_not_found",
+            "The exact current Budget contract version was not found",
+        )
+    return StratosBudgetUploadDocumentVersionLineageResponse(
+        document=DocumentResponse.model_validate(external_ref.document),
+        version=_document_version_response(version),
     )
 
 
