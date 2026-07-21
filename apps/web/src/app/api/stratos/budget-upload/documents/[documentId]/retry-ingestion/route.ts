@@ -10,7 +10,10 @@ import {
   getStratosActorRequestContext,
   requireStratosActorSubjectMatch,
 } from "@/lib/api/server";
-import { getGovernedIngestionJob } from "@/lib/ingestion/governed-operations";
+import {
+  exactIngestionJobFromAttempt,
+  getGovernedIngestionJob,
+} from "@/lib/ingestion/governed-operations";
 import {
   ingestionJobIdForIdempotencyKey,
   ingestionServiceRequestContext,
@@ -120,18 +123,26 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
     const currentJobId = reference.current_ingestion_job_id;
-    const currentJob = currentJobId
-      ? await getGovernedIngestionJob(
-          clients,
-          actorOperationContext,
-          {
+    const currentAttempt = status.ingestion_attempt;
+    let currentJob = null;
+    if (currentJobId) {
+      currentJob = actorContext
+        ? await getGovernedIngestionJob(
+            clients,
+            actorOperationContext,
+            {
+              documentId,
+              documentVersionId: currentVersionId,
+              jobId: currentJobId,
+              correlationId,
+            },
+          )
+        : exactIngestionJobFromAttempt(currentAttempt, {
             documentId,
             documentVersionId: currentVersionId,
             jobId: currentJobId,
-            correlationId,
-          },
-        )
-      : null;
+          });
+    }
 
     const idempotencyKey = `retry:${documentId}:${currentVersionId}:${operationId}`;
     const authorizationRequest = {

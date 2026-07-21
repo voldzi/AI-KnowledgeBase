@@ -896,6 +896,97 @@ def test_archived_batch_can_mint_only_exact_indexing_proof_without_budget_mutati
     )
     assert arbitrary_key.status_code == 403
 
+    retry_correlation_id = f"corr-budget-akb-retry-{'e' * 32}"
+    retry_idempotency_key = (
+        f"retry:{document['document_id']}:{version['document_version_id']}:"
+        f"batch-retry-{'f' * 64}"
+    )
+    retry_before_failed_current = client.post(
+        "/api/v1/integrations/stratos-budget-upload/documents/"
+        f"{document['document_id']}/versions/{version['document_version_id']}"
+        "/ingestion-authorization",
+        json={
+            "action": "document.ingest",
+            "correlation_id": retry_correlation_id,
+            "idempotency_key": retry_idempotency_key,
+        },
+        headers={
+            **_service_headers(),
+            "X-Correlation-ID": retry_correlation_id,
+        },
+    )
+    assert retry_before_failed_current.status_code == 403
+
+    failed_job_id = "ing_budget_failed_current"
+    stored_external.current_document_version_id = version["document_version_id"]
+    stored_external.current_file_id = version["file_id"]
+    stored_external.current_ingestion_job_id = failed_job_id
+    stored_external.current_ingestion_status = "FAILED"
+    db_session.add(
+        IngestionAttempt(
+            document_id=document["document_id"],
+            document_version_id=version["document_version_id"],
+            ingestion_job_id=failed_job_id,
+            ingestion_status="FAILED",
+        )
+    )
+    db_session.commit()
+
+    retried = client.post(
+        "/api/v1/integrations/stratos-budget-upload/documents/"
+        f"{document['document_id']}/versions/{version['document_version_id']}"
+        "/ingestion-authorization",
+        json={
+            "action": "document.ingest",
+            "correlation_id": retry_correlation_id,
+            "idempotency_key": retry_idempotency_key,
+        },
+        headers={
+            **_service_headers(),
+            "X-Correlation-ID": retry_correlation_id,
+        },
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["confirmed_subject_id"] == ACTOR
+    retry_audit = (
+        db_session.query(AuditEvent)
+        .filter(
+            AuditEvent.event_type == "ingestion.authorization.issued",
+            AuditEvent.resource_id == version["document_version_id"],
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .first()
+    )
+    assert retry_audit is not None
+    assert (
+        retry_audit.event_metadata["authorization_basis"]
+        == "stratos_budget_historical_retry"
+    )
+
+    stored_attempt = (
+        db_session.query(IngestionAttempt)
+        .filter(IngestionAttempt.document_id == document["document_id"])
+        .one()
+    )
+    stored_external.current_ingestion_status = "INDEXED"
+    stored_attempt.ingestion_status = "INDEXED"
+    db_session.commit()
+    retry_after_indexed = client.post(
+        "/api/v1/integrations/stratos-budget-upload/documents/"
+        f"{document['document_id']}/versions/{version['document_version_id']}"
+        "/ingestion-authorization",
+        json={
+            "action": "document.ingest",
+            "correlation_id": retry_correlation_id,
+            "idempotency_key": retry_idempotency_key,
+        },
+        headers={
+            **_service_headers(),
+            "X-Correlation-ID": retry_correlation_id,
+        },
+    )
+    assert retry_after_indexed.status_code == 403
+
 
 def test_current_batch_can_mint_indexing_proof_but_invalid_lifecycle_cannot(
     client, db_session

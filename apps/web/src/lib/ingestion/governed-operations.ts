@@ -381,6 +381,25 @@ export function ingestionJobFromAttempt(attempt: RegistryIngestionAttempt): Inge
   };
 }
 
+export function exactIngestionJobFromAttempt(
+  attempt: RegistryIngestionAttempt | null,
+  coordinate: Omit<ExactIngestionCoordinate, "correlationId">,
+): IngestionJob {
+  if (
+    !attempt
+    || attempt.document_id !== coordinate.documentId
+    || attempt.document_version_id !== coordinate.documentVersionId
+    || attempt.ingestion_job_id !== coordinate.jobId
+  ) {
+    throw conflict(
+      "The Registry current ingestion attempt conflicts with the exact requested coordinate.",
+      "INGESTION_CURRENT_ATTEMPT_CONFLICT",
+      "registry-ingestion-projection",
+    );
+  }
+  return ingestionJobFromAttempt(attempt);
+}
+
 async function authorizeExactOperation(
   clients: IngestionClients,
   actorContext: ApiRequestContext,

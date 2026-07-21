@@ -108,6 +108,13 @@ transportnímu účtu s grantem `stratos-budget-upload`; účet kvůli retry
 nedostává obecné oprávnění `documents-read`. Neexistující, cizí ani již
 neaktuální verze skončí fail-closed odpovědí `404`.
 
+Vyhrazená `ingestion-authorization` vydá potvrzení buď pro prvotní ingest
+podepsané historické verze, nebo pro opakování pouze tehdy, když je tatáž
+immutable verze přesným aktuálním souřadnicovým bodem Registry a její shodný
+ingestion attempt je ve stavu `FAILED`. Retry čte profil z Registry projekce,
+nevyžaduje obecné uživatelské `document.read` a po úspěšném indexování už nové
+potvrzení nevydá.
+
 Povinná contract-level lineage obsahuje `external_ref`, `contractId`, finanční
 scope `budget-global` nebo `budget:<key>` a nadřazený governed resource
 smlouvy. Každá immutable verze navíc nese svůj hash souboru, Information
