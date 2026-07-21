@@ -74,30 +74,14 @@ export async function listVisibleIngestionJobs(
   }
 
   const visible = new Set(visibleDocumentIds);
-  const attempts = await clients.registry.listDocumentIngestionAttempts(actorContext);
+  const attempts = await clients.registry.listDocumentIngestionAttempts(actorContext, {
+    documentIds: visibleDocumentIds,
+  });
   return sortNewestFirst(
     attempts
       .filter((attempt) => visible.has(attempt.document_id))
       .map(ingestionJobFromAttempt),
   );
-}
-
-/**
- * Builds the complete caller-visible job projection without waiting for a
- * separate document-list round trip. Registry applies the same document
- * boundary to the batch response, so production callers cannot widen access.
- */
-export async function listAllVisibleIngestionJobs(
-  clients: IngestionClients,
-  actorContext: ApiRequestContext,
-  options: IngestionProjectionOptions = {},
-): Promise<IngestionJob[]> {
-  const apiClientMode = options.apiClientMode ?? getAklConfig().apiClientMode;
-  if (apiClientMode !== "production") {
-    return sortNewestFirst(await clients.ingestion.listJobs(actorContext));
-  }
-  const attempts = await clients.registry.listDocumentIngestionAttempts(actorContext);
-  return sortNewestFirst(attempts.map(ingestionJobFromAttempt));
 }
 
 export async function getGovernedIngestionJob(

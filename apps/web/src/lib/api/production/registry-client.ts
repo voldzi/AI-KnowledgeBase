@@ -68,6 +68,19 @@ export class ProductionRegistryClient implements RegistryApiClient {
   ) {}
 
   async listDocuments(context: ApiRequestContext, options: DocumentListOptions = {}): Promise<Document[]> {
+    if (options.recentLimit !== undefined) {
+      const recentLimit = Math.max(1, Math.min(50, Math.trunc(options.recentLimit)));
+      const params = registryDocumentParams(options);
+      params.set("recent_limit", String(recentLimit));
+      params.set("limit", String(recentLimit));
+      params.set("offset", "0");
+      const response = await this.get<ListEnvelope<Document>>(
+        `/documents?${params.toString()}`,
+        "listDocuments",
+        context,
+      );
+      return response.items;
+    }
     const documents: Document[] = [];
     for (let page = 0; page < DOCUMENT_PAGE_LIMIT; page += 1) {
       const offset = page * DOCUMENT_PAGE_SIZE;
@@ -353,9 +366,15 @@ export class ProductionRegistryClient implements RegistryApiClient {
 
   async listDocumentIngestionAttempts(
     context: ApiRequestContext,
+    options: { documentIds?: string[] } = {},
   ): Promise<RegistryIngestionAttempt[]> {
+    const params = new URLSearchParams();
+    for (const documentId of options.documentIds ?? []) {
+      if (documentId.trim()) params.append("document_id", documentId.trim());
+    }
+    const query = params.toString();
     const response = await this.get<{ items: RegistryIngestionAttempt[] }>(
-      "/documents/ingestion-attempts/current",
+      `/documents/ingestion-attempts/current${query ? `?${query}` : ""}`,
       "listDocumentIngestionAttempts",
       context,
     );
