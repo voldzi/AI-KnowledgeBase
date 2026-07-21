@@ -345,6 +345,10 @@ Odvozena synchronizace aktivnich tasku zachovava manualni workflow rozhodnuti (`
 ## Limity
 
 - `GET /documents`, `GET /versions`, `GET /workflow/tasks` a `GET /audit/events` mají limit 1-200 záznamů.
+- Seznamy a metadata dokumentů uplatňují stejný lokální i centrální runtime
+  access decision jako detail dokumentu. Sdílené kombinace scope a policy se
+  v rámci jednoho requestu vyhodnotí pouze jednou; centrálně zamítnutý dokument
+  se do seznamu ani dashboardu nedostane.
 - `POST /authz/filter-documents` přijme maximálně 1000 candidate document ids.
 - `DELETE /documents/{document_id}` je logický delete: nastaví `Document.status=cancelled` a archivuje platné verze.
 - `owner_id` a `gestor_unit` zustavaji denormalizovana kompatibilni pole. Cilovy organizacni model je `document_assignments`.

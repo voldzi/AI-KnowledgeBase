@@ -1,3 +1,6 @@
+import app.api as api_module
+
+
 def _create_document(client, headers, **overrides):
     payload = {
         "title": "Směrnice pro správu dokumentů",
@@ -50,6 +53,68 @@ def test_document_crud_and_audit(client, admin_headers):
     cancelled = client.get(f"/api/v1/documents/{document['document_id']}", headers=admin_headers)
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+
+
+def test_document_list_applies_runtime_access(
+    client,
+    admin_headers,
+    monkeypatch,
+):
+    allowed = _create_document(client, admin_headers, title="Runtime allowed")
+    denied = _create_document(client, admin_headers, title="Runtime denied")
+    calls = []
+
+    def runtime_decision(_principal, _action, document, local_decision):
+        calls.append(document.document_id)
+        return api_module.Decision(
+            document.document_id == allowed["document_id"],
+            "runtime test decision",
+            local_decision.constraints,
+            ("RUNTIME_TEST",),
+        )
+
+    monkeypatch.setattr(api_module, "evaluate_runtime_document_access", runtime_decision)
+    monkeypatch.setattr(
+        api_module,
+        "_is_official_public_source_document",
+        lambda document: document.document_id == denied["document_id"],
+    )
+
+    listing = client.get("/api/v1/documents", headers=admin_headers)
+
+    assert listing.status_code == 200, listing.text
+    assert [item["document_id"] for item in listing.json()["items"]] == [allowed["document_id"]]
+    assert set(calls) == {allowed["document_id"], denied["document_id"]}
+
+
+def test_document_list_caches_identical_runtime_policy_coordinates(
+    client,
+    admin_headers,
+    monkeypatch,
+):
+    first = _create_document(client, admin_headers, title="Shared policy one")
+    second = _create_document(client, admin_headers, title="Shared policy two")
+    calls = []
+
+    def runtime_decision(_principal, _action, document, local_decision):
+        calls.append(document.document_id)
+        return api_module.Decision(
+            True,
+            "runtime test allow",
+            local_decision.constraints,
+            ("RUNTIME_TEST",),
+        )
+
+    monkeypatch.setattr(api_module, "evaluate_runtime_document_access", runtime_decision)
+
+    listing = client.get("/api/v1/documents", headers=admin_headers)
+
+    assert listing.status_code == 200, listing.text
+    assert {item["document_id"] for item in listing.json()["items"]} == {
+        first["document_id"],
+        second["document_id"],
+    }
+    assert len(calls) == 1
 
 
 def test_document_metadata_summary_aggregates_authorized_topics(client, admin_headers, reader_headers):

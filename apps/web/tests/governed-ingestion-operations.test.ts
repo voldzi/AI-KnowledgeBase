@@ -125,6 +125,75 @@ describe("Registry-governed ingestion operations", () => {
     assert.ok(calls.every((url) => url.includes("registry.local")));
   });
 
+  it("omits ingestion projections that are protected more narrowly than document metadata", async () => {
+    const fetcher: AklFetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/documents/doc_visible/external-references/current")) {
+        return Response.json({
+          document_id: "doc_visible",
+          updated: 0,
+          items: [],
+          ingestion_attempt: {
+            document_id: "doc_visible",
+            document_version_id: "ver_visible",
+            ingestion_job_id: "ing_visible",
+            ingestion_status: "INDEXED",
+            created_at: "2026-07-14T08:00:00Z",
+            updated_at: "2026-07-14T08:05:00Z",
+          },
+        });
+      }
+      if (url.includes("/documents/doc_metadata_only/external-references/current")) {
+        return Response.json({
+          error: {
+            code: "document_forbidden",
+            message: "The ingestion projection is not visible to this actor.",
+            trace_id: "corr_forbidden",
+          },
+        }, { status: 403 });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    };
+    const clients = createApiClients({ env: productionEnv, fetcher });
+
+    const jobs = await listVisibleIngestionJobs(
+      clients,
+      [
+        { document_id: "doc_visible" },
+        { document_id: "doc_metadata_only" },
+      ],
+      actorContext,
+      { apiClientMode: "production" },
+    );
+
+    assert.deepEqual(jobs.map((job) => job.job_id), ["ing_visible"]);
+  });
+
+  it("does not hide an unavailable Registry ingestion projection", async () => {
+    const clients = createApiClients({
+      env: productionEnv,
+      fetcher: async () => Response.json({
+        error: {
+          code: "registry_unavailable",
+          message: "Registry is unavailable.",
+          trace_id: "corr_unavailable",
+        },
+      }, { status: 503 }),
+    });
+
+    await assert.rejects(
+      () => listVisibleIngestionJobs(
+        clients,
+        [{ document_id: "doc_visible" }],
+        actorContext,
+        { apiClientMode: "production" },
+      ),
+      (error: unknown) => error instanceof ApiClientError
+        && error.status === 503
+        && error.code === "registry_unavailable",
+    );
+  });
+
   it("filters the mock job list to the same visible-document boundary", async () => {
     const clients = createApiClients({
       env: {

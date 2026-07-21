@@ -77,7 +77,20 @@ export async function listVisibleIngestionJobs(
   const attempts = await mapWithConcurrency(
     visibleDocumentIds,
     PROJECTION_CONCURRENCY,
-    (documentId) => clients.registry.getDocumentIngestionAttempt(documentId, actorContext),
+    async (documentId) => {
+      try {
+        return await clients.registry.getDocumentIngestionAttempt(documentId, actorContext);
+      } catch (error) {
+        // Registry document listings may expose metadata that the actor can
+        // discover without granting access to the operational ingestion
+        // projection. Keep the dashboard within that narrower boundary rather
+        // than failing the whole page because one document is protected.
+        if (error instanceof ApiClientError && error.status === 403) {
+          return null;
+        }
+        throw error;
+      }
+    },
   );
   return sortNewestFirst(
     attempts

@@ -5830,14 +5830,36 @@ def _authorized_document_metadata_rows(
         stmt = stmt.where(Document.owner_id == owner_id)
 
     context = context_for_principal(principal, db)
+    runtime_access_cache: dict[str, bool] = {}
     documents: list[Document] = []
     for document in db.execute(stmt).scalars():
         if tag and tag not in document.tags:
             continue
         if context_tags and not all(_document_matches_context_tag(document, candidate) for candidate in context_tags):
             continue
-        decision = evaluate_document_access(context, Action.document_read.value, document)
-        if decision.allowed:
+        local_decision = evaluate_document_access(context, Action.document_read.value, document)
+        if not local_decision.allowed:
+            continue
+        runtime_key = json.dumps(
+            {
+                "scope": document_governance_scope(document),
+                "policy_binding_id": document.policy_binding_id,
+                "policy_hash": document.policy_hash,
+                "policy_summary": document.policy_summary,
+                "official_public_source": _is_official_public_source_document(document),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        if runtime_key not in runtime_access_cache:
+            runtime_access_cache[runtime_key] = evaluate_runtime_document_access(
+                principal,
+                Action.document_read.value,
+                document,
+                local_decision,
+            ).allowed
+        if runtime_access_cache[runtime_key]:
             documents.append(document)
     return documents
 
