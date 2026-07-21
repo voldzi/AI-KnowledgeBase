@@ -94,10 +94,13 @@ Metadata summary endpoint pro chatove inventarni dotazy:
 GET /documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&context_tag=budget-contract:contract-1
 GET /documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
 GET /documents/metadata-summary?topic=smlouva&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract:contract-1
+GET /documents/rag-metadata-summary?document_type=contract
 ```
 
-Endpointy vraci jen dokumenty, na ktere ma volajici `document.read`.
-`/documents/metadata-summary` slouzi pro agregace a pocty.
+`/documents` a `/documents/metadata-summary` vraci jen dokumenty, na ktere ma
+volajici `document.read`. `/documents/rag-metadata-summary` slouzi chatovym
+agregacim a poctum a vraci jen dokumenty povolene stejnym `rag.query`
+rozhodnutim jako retrieval; neuděluje `document.read` ani pristup do dashboardu.
 `/documents` se stejnymi filtry slouzi pro seznamove structured outputy
 z chatu, napr. "seznam smluv do tabulky".
 

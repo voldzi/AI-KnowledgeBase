@@ -100,6 +100,19 @@ export class ProductionRegistryClient implements RegistryApiClient {
     );
   }
 
+  getRagDocumentMetadataSummary(
+    context: ApiRequestContext,
+    options: DocumentMetadataSummaryOptions = {}
+  ): Promise<DocumentMetadataSummary> {
+    const params = registryDocumentParams(options);
+    const query = params.toString();
+    return this.get<DocumentMetadataSummary>(
+      `/documents/rag-metadata-summary${query ? `?${query}` : ""}`,
+      "getRagDocumentMetadataSummary",
+      context
+    );
+  }
+
   getDocumentReadinessReport(
     context: ApiRequestContext,
     options: DocumentReadinessReportOptions = {}

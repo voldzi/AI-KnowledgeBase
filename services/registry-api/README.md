@@ -98,6 +98,7 @@ Verzované endpointy jsou pod `/api/v1`.
 POST   /api/v1/documents
 GET    /api/v1/documents
 GET    /api/v1/documents/metadata-summary
+GET    /api/v1/documents/rag-metadata-summary
 GET    /api/v1/documents/readiness-report
 GET    /api/v1/documents/{document_id}
 PATCH  /api/v1/documents/{document_id}

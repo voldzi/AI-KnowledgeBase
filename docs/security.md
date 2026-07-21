@@ -135,8 +135,11 @@ or a shortcut to `document.read`. It permits only governed `rag.query` over an
 exact active immutable public version after a fresh anonymous central
 `public_read` ALLOW. That exact public-resource decision is authoritative and
 is not reinterpreted by the unrelated generic scope PDP. Full Registry
-`/documents*` views remain unavailable to a public-only subject even if the
-subject also presents `akb:read_document`.
+document views remain unavailable to a public-only subject even if the subject
+also presents `akb:read_document`. The bounded
+`/documents/rag-metadata-summary` aggregate is the only document-metadata
+exception: it applies the same `rag.query` decision as retrieval and returns
+counts/buckets rather than document bodies or storage access.
 
 Anonymous delivery is available through the human page
 `/public/documents/{publicSlug}`, the web metadata/source endpoints under

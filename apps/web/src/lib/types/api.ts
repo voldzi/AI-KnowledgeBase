@@ -163,6 +163,10 @@ export interface RegistryApiClient {
     context: ApiRequestContext,
     options?: DocumentMetadataSummaryOptions
   ): Promise<DocumentMetadataSummary>;
+  getRagDocumentMetadataSummary(
+    context: ApiRequestContext,
+    options?: DocumentMetadataSummaryOptions
+  ): Promise<DocumentMetadataSummary>;
   getDocumentReadinessReport(
     context: ApiRequestContext,
     options?: DocumentReadinessReportOptions

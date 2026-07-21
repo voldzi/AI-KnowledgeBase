@@ -428,6 +428,7 @@ def test_public_only_scope_never_exposes_full_document_registry_views(
     listing = client.get("/api/v1/documents", headers=headers)
     detail = client.get(f"/api/v1/documents/{document.document_id}", headers=headers)
     summary = client.get("/api/v1/documents/metadata-summary", headers=headers)
+    rag_summary = client.get("/api/v1/documents/rag-metadata-summary", headers=headers)
 
     assert listing.status_code == 200
     assert listing.json()["items"] == []
@@ -435,6 +436,8 @@ def test_public_only_scope_never_exposes_full_document_registry_views(
     assert "PUBLIC_PROJECTION_REQUIRED" in detail.json()["error"]["details"]["reason_codes"]
     assert summary.status_code == 200
     assert summary.json()["total_visible_documents"] == 0
+    assert rag_summary.status_code == 200
+    assert rag_summary.json()["total_visible_documents"] == 1
 
 
 def test_public_scope_mixed_with_unrelated_scope_still_uses_exact_public_version(
