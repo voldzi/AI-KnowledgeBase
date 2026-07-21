@@ -2,6 +2,7 @@ import re
 import secrets
 import unicodedata
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 import json
@@ -5924,8 +5925,8 @@ def _authorized_document_metadata_rows(
         stmt = stmt.where(Document.owner_id == owner_id)
 
     context = context_for_principal(principal, db)
-    runtime_access_cache: dict[str, bool] = {}
-    documents: list[Document] = []
+    runtime_candidates: list[tuple[Document, str]] = []
+    runtime_evaluations: dict[str, tuple[Document, Decision]] = {}
     for document in db.execute(stmt).scalars():
         if tag and tag not in document.tags:
             continue
@@ -5946,16 +5947,39 @@ def _authorized_document_metadata_rows(
             separators=(",", ":"),
             default=str,
         )
-        if runtime_key not in runtime_access_cache:
-            runtime_access_cache[runtime_key] = evaluate_runtime_document_access(
+        runtime_candidates.append((document, runtime_key))
+        runtime_evaluations.setdefault(runtime_key, (document, local_decision))
+
+    def evaluate_runtime_candidate(
+        item: tuple[str, tuple[Document, Decision]],
+    ) -> tuple[str, bool]:
+        runtime_key, (document, local_decision) = item
+        return (
+            runtime_key,
+            evaluate_runtime_document_access(
                 principal,
                 authorization_action.value,
                 document,
                 local_decision,
-            ).allowed
-        if runtime_access_cache[runtime_key]:
-            documents.append(document)
-    return documents
+            ).allowed,
+        )
+
+    evaluation_items = list(runtime_evaluations.items())
+    if len(evaluation_items) <= 1:
+        runtime_access = dict(map(evaluate_runtime_candidate, evaluation_items))
+    else:
+        # Distinct scope/policy decisions are independent and the shared
+        # governance client is thread-safe. A bounded pool keeps the central
+        # PDP authoritative while preventing document-list latency from growing
+        # linearly with the number of governed scopes.
+        with ThreadPoolExecutor(max_workers=min(8, len(evaluation_items))) as executor:
+            runtime_access = dict(executor.map(evaluate_runtime_candidate, evaluation_items))
+
+    return [
+        document
+        for document, runtime_key in runtime_candidates
+        if runtime_access.get(runtime_key, False)
+    ]
 
 
 def _document_metadata_topic_summary(
