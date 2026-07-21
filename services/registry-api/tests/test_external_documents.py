@@ -442,6 +442,19 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
     assert by_document.json()["items"][0]["current_ingestion_job_id"] == "job_stratos_456"
     assert by_document.json()["items"][0]["current_ingestion_status"] == "INDEXED"
 
+    current_attempts = client.get(
+        "/api/v1/documents/ingestion-attempts/current",
+        headers=reader_headers,
+    )
+    assert current_attempts.status_code == 200, current_attempts.text
+    projected = {
+        item["document_id"]: item
+        for item in current_attempts.json()["items"]
+    }
+    assert projected[document_id]["document_version_id"] == version.json()["document_version_id"]
+    assert projected[document_id]["ingestion_job_id"] == "job_stratos_456"
+    assert projected[document_id]["ingestion_status"] == "INDEXED"
+
     audit = client.get("/api/v1/audit/events?event_type=external_document.current_updated", headers=admin_headers)
     assert audit.status_code == 200
     assert audit.json()["items"][0]["resource_id"] == external_document_id

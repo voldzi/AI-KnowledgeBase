@@ -494,6 +494,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/ingestion-attempts/current:
+    get:
+      summary: List Document Ingestion Attempts Current
+      description: Returns current ingestion attempts only for documents visible to the caller.
+      operationId: list_document_ingestion_attempts_current_api_v1_documents_ingestion_attempts_current_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionAttemptListResponse'
   /api/v1/document-extractions:
     post:
       summary: Store Document Extraction
@@ -6493,6 +6505,15 @@ components:
       - created_at
       - updated_at
       title: IngestionAttemptResponse
+    IngestionAttemptListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/IngestionAttemptResponse'
+          type: array
+          title: Items
+      type: object
+      title: IngestionAttemptListResponse
     IngestionAuthorizationConfirmRequest:
       properties:
         action:

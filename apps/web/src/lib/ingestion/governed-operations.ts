@@ -17,7 +17,6 @@ import {
   type RegistryIngestionAttempt,
 } from "@/lib/types";
 
-const PROJECTION_CONCURRENCY = 8;
 const REPORT_CONCURRENCY = 6;
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
@@ -74,27 +73,11 @@ export async function listVisibleIngestionJobs(
     return sortNewestFirst(jobs.filter((job) => visible.has(job.document_id)));
   }
 
-  const attempts = await mapWithConcurrency(
-    visibleDocumentIds,
-    PROJECTION_CONCURRENCY,
-    async (documentId) => {
-      try {
-        return await clients.registry.getDocumentIngestionAttempt(documentId, actorContext);
-      } catch (error) {
-        // Registry document listings may expose metadata that the actor can
-        // discover without granting access to the operational ingestion
-        // projection. Keep the dashboard within that narrower boundary rather
-        // than failing the whole page because one document is protected.
-        if (error instanceof ApiClientError && error.status === 403) {
-          return null;
-        }
-        throw error;
-      }
-    },
-  );
+  const visible = new Set(visibleDocumentIds);
+  const attempts = await clients.registry.listDocumentIngestionAttempts(actorContext);
   return sortNewestFirst(
     attempts
-      .filter((attempt): attempt is RegistryIngestionAttempt => attempt !== null)
+      .filter((attempt) => visible.has(attempt.document_id))
       .map(ingestionJobFromAttempt),
   );
 }

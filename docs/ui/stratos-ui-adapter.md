@@ -131,6 +131,8 @@ Adapter je zapojeny na techto plochach:
 - `/documents` registry toolbar: search, select filtry, primarni akce a ikonove akce,
 - `/documents` registry tabulka pres `StratosDataTable`,
 - dashboard poslednich dokumentu pres `StratosDataTable`,
+- chat vyuziva vysku sdileneho shellu; transcript je jediny svisly rolovaci
+  kontejner a musi zustat ovladatelny koleckem mysi, touch gestem i klavesnici,
 - `/documents/[documentId]`: detailove taby, navrat do registru, upload verze, governance akce a generovani insightu,
 - `/documents/[documentId]` Viewer tab: `StratosPdfViewer` pro nativni PDF preview nad podepsanym zdrojem,
 - `/tasks`: search, select filtry, vycisteni filtru, detailove akce,

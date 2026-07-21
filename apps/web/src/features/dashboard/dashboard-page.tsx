@@ -4,7 +4,12 @@ import {
   getServerRequestContextForPath,
 } from "@/lib/api/server";
 import { redirectEmployeeChatOnly } from "@/lib/auth/server-route-guard";
-import { ApiClientError, type AuditEvent, type RegistryWorkflowTask } from "@/lib/types";
+import {
+  ApiClientError,
+  type AuditEvent,
+  type AuthorizationHint,
+  type RegistryWorkflowTask,
+} from "@/lib/types";
 import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
 
 import { DashboardOverview } from "./dashboard-overview";
@@ -22,12 +27,18 @@ export async function DashboardPage({
   const context = await getServerRequestContextForPath(returnTo);
   redirectEmployeeChatOnly(context);
   const documents = await clients.registry.listDocuments(context);
-  const [jobs, auditEvents, registryTasks, authorization] = await Promise.all([
+  const [jobsResult, auditEventsResult, registryTasksResult, authorizationResult] = await Promise.allSettled([
     listVisibleIngestionJobs(clients, documents, context),
     listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
     listVisibleWorkflowTasks(clients.registry.listWorkflowTasks(context)),
     clients.registry.getAuthorizationHints(context)
   ]);
+  const unavailableSources = [
+    jobsResult.status === "rejected" ? "processing" : null,
+    auditEventsResult.status === "rejected" ? "audit" : null,
+    registryTasksResult.status === "rejected" ? "tasks" : null,
+    authorizationResult.status === "rejected" ? "authorization" : null,
+  ].filter((source): source is "processing" | "audit" | "tasks" | "authorization" => source !== null);
 
   return (
     <>
@@ -40,15 +51,25 @@ export async function DashboardPage({
       />
       <DashboardOverview
         documents={documents}
-        jobs={jobs}
-        auditEvents={auditEvents}
-        registryTasks={registryTasks}
-        authorization={authorization}
+        jobs={jobsResult.status === "fulfilled" ? jobsResult.value : []}
+        auditEvents={auditEventsResult.status === "fulfilled" ? auditEventsResult.value : []}
+        registryTasks={registryTasksResult.status === "fulfilled" ? registryTasksResult.value : undefined}
+        authorization={authorizationResult.status === "fulfilled" ? authorizationResult.value : denyAllAuthorization}
+        unavailableSources={unavailableSources}
         nowIso={new Date().toISOString()}
       />
     </>
   );
 }
+
+const denyAllAuthorization: AuthorizationHint = {
+  can_read: false,
+  can_update: false,
+  can_ingest: false,
+  can_publish: false,
+  can_read_audit: false,
+  can_manage_admin: false,
+};
 
 async function listVisibleWorkflowTasks(request: Promise<RegistryWorkflowTask[]>) {
   try {

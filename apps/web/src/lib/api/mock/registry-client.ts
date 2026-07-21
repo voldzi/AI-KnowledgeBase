@@ -598,6 +598,12 @@ export class MockRegistryClient implements RegistryApiClient {
     return null;
   }
 
+  async listDocumentIngestionAttempts(
+    _context: ApiRequestContext,
+  ): Promise<[]> {
+    return [];
+  }
+
   async createIntelligenceScopeAuthorization(
     request: IntelligenceScopeAuthorizationRequest,
     context: ApiRequestContext,

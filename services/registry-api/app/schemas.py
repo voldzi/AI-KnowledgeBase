@@ -538,6 +538,10 @@ class IngestionAttemptResponse(BaseModel):
     updated_at: datetime
 
 
+class IngestionAttemptListResponse(BaseModel):
+    items: list[IngestionAttemptResponse] = Field(default_factory=list)
+
+
 class ExternalDocumentCurrentListResponse(BaseModel):
     document_id: str
     updated: int

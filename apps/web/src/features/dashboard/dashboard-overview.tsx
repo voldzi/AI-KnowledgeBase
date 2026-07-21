@@ -19,6 +19,7 @@ interface DashboardOverviewProps {
   auditEvents: AuditEvent[];
   registryTasks?: RegistryWorkflowTask[];
   authorization: AuthorizationHint;
+  unavailableSources?: Array<"processing" | "audit" | "tasks" | "authorization">;
   nowIso: string;
 }
 
@@ -65,7 +66,12 @@ const dashboardCopy = {
     ragDetail: "Odpovědi musí ukazovat zdrojový dokument, verzi, oddíl, stranu a citovaný úsek.",
     ingestion: "Zpracování",
     ingestionTitle: "Stav zpracování je viditelný",
-    ingestionDetail: "Fronta, běžící úlohy, chyby a varování zůstávají viditelné pro správce dokumentů."
+    ingestionDetail: "Fronta, běžící úlohy, chyby a varování zůstávají viditelné pro správce dokumentů.",
+    partialData: "Část provozních údajů se dočasně nepodařilo načíst. Zobrazený přehled může být neúplný:",
+    processingSource: "zpracování dokumentů",
+    auditSource: "audit",
+    tasksSource: "workflow úkoly",
+    authorizationSource: "dostupné akce"
   },
   en: {
     metricsLabel: "Dashboard metrics",
@@ -109,7 +115,12 @@ const dashboardCopy = {
     ragDetail: "Answers must show source document, version, section, page and cited segment.",
     ingestion: "Processing",
     ingestionTitle: "Processing status is visible",
-    ingestionDetail: "Queued, running, failed and warning states stay visible to document managers."
+    ingestionDetail: "Queued, running, failed and warning states stay visible to document managers.",
+    partialData: "Some operational data could not be loaded temporarily. This overview may be incomplete:",
+    processingSource: "document processing",
+    auditSource: "audit",
+    tasksSource: "workflow tasks",
+    authorizationSource: "available actions"
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
@@ -119,6 +130,7 @@ export function DashboardOverview({
   auditEvents,
   registryTasks,
   authorization,
+  unavailableSources = [],
   nowIso
 }: DashboardOverviewProps) {
   const { language } = useLanguage();
@@ -130,6 +142,16 @@ export function DashboardOverview({
   const activeJobs = jobs.filter((job) => job.status === "queued" || job.status === "running").length;
   const failedJobs = jobs.filter((job) => job.status === "failed").length;
   const workflowTasks = buildWorkflowTasks({ documents, jobs, auditEvents, registryTasks, nowIso });
+  const processingAvailable = !unavailableSources.includes("processing");
+  const workflowAvailable = processingAvailable
+    && !unavailableSources.includes("audit")
+    && !unavailableSources.includes("tasks");
+  const unavailableLabels = unavailableSources.map((source) => ({
+    processing: copy.processingSource,
+    audit: copy.auditSource,
+    tasks: copy.tasksSource,
+    authorization: copy.authorizationSource,
+  })[source]);
   const overdueTasks = workflowTasks.filter((task) => isTaskOverdue(task, nowIso));
   const recentStatusOptions = useMemo(() => Array.from(new Set(documents.slice(0, 12).map((document) => document.status))).sort(), [documents]);
   const recentClassificationOptions = useMemo(
@@ -214,6 +236,12 @@ export function DashboardOverview({
 
   return (
     <div className="stack">
+      {unavailableLabels.length > 0 ? (
+        <div className="notice notice--danger" role="status">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>{copy.partialData} {unavailableLabels.join(", ")}.</span>
+        </div>
+      ) : null}
       <section className="grid grid--metrics" aria-label={copy.metricsLabel}>
         <MetricCard
           detail={`${documents.length} ${copy.totalControlledRecords}`}
@@ -227,21 +255,21 @@ export function DashboardOverview({
           icon={UploadCloud}
           label={copy.activeIngestion}
           tone="attention"
-          value={String(activeJobs)}
+          value={processingAvailable ? String(activeJobs) : "—"}
         />
         <MetricCard
           detail={copy.failedJobsDetail}
           icon={AlertTriangle}
           label={copy.failedJobs}
           tone={failedJobs > 0 ? "danger" : "default"}
-          value={String(failedJobs)}
+          value={processingAvailable ? String(failedJobs) : "—"}
         />
         <MetricCard
           detail={copy.workflowTasksDetail}
           icon={ClipboardList}
           label={copy.workflowTasks}
           tone={workflowTasks.length > 0 ? "attention" : "success"}
-          value={String(workflowTasks.length)}
+          value={workflowAvailable ? String(workflowTasks.length) : "—"}
         />
       </section>
 

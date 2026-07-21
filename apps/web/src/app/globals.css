@@ -113,6 +113,11 @@ button {
   overflow: hidden;
 }
 
+.stratos-akb-shell--chat .akb-chat-app {
+  height: 100%;
+  min-height: 0;
+}
+
 .stratos-user-avatar .akb-topbar-avatar-fill,
 .stratos-user-avatar .akb-topbar-avatar-image {
   border-radius: inherit;
@@ -512,7 +517,12 @@ button {
 
 .akb-employee-portal-shell {
   background: var(--background);
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .akb-standalone-topbar {
@@ -745,7 +755,9 @@ button {
 }
 
 .akb-employee-portal-shell .akb-chat-app {
-  min-height: calc(100vh - 82px);
+  flex: 1;
+  height: auto;
+  min-height: 0;
   padding: clamp(10px, 2vw, 18px);
 }
 
@@ -937,6 +949,7 @@ button {
   display: grid;
   grid-template-areas: "header" "transcript" "status" "composer";
   grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1019,8 +1032,10 @@ button {
   background: #fbfcfc;
   display: grid;
   gap: 14px;
-  min-height: 360px;
-  overflow: auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 18px 20px;
 }
 
