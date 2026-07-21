@@ -1,0 +1,18 @@
+services:
+  web:
+    environment:
+      AKL_DIRECTOR_COPILOT_ENABLED: "true"
+      AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-director-copilot-client-secret
+      AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE: /run/akl-secrets/svc-akb-director-copilot-client-secret
+    volumes:
+      - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:?AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE must be set}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+
+  chat-web:
+    environment:
+      AKL_DIRECTOR_COPILOT_ENABLED: "true"
+      AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-director-copilot-client-secret
+      AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE: /run/akl-secrets/svc-akb-director-copilot-client-secret
+    volumes:
+      - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:?AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE must be set}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+    tmpfs:
+      - /run/akl-secrets:mode=0700,uid=0,gid=0

@@ -3,6 +3,18 @@ export type ApiClientMode = "mock" | "production";
 export type AuthMode = "mock" | "oidc";
 export type WebProfile = "platform" | "chat";
 
+export interface DirectorCopilotConfig {
+  enabled: boolean;
+  tokenUrl?: string;
+  clientId: string;
+  clientSecret?: string;
+  clientSecretFile?: string;
+  budgetBaseUrl?: string;
+  projectflowBaseUrl?: string;
+  timeoutMs: number;
+  maxResponseBytes: number;
+}
+
 export interface AklConfig {
   environment: AklEnvironment;
   apiClientMode: ApiClientMode;
@@ -32,7 +44,17 @@ export interface AklConfig {
     clientSecret?: string;
     clientSecretFile?: string;
   };
+  directorCopilot?: DirectorCopilotConfig;
   devAccessToken?: string;
+}
+
+export function getDirectorCopilotConfig(config: AklConfig): DirectorCopilotConfig {
+  return config.directorCopilot ?? {
+    enabled: false,
+    clientId: "svc-akb-director-copilot",
+    timeoutMs: 8_000,
+    maxResponseBytes: 262_144,
+  };
 }
 
 type EnvSource = Record<string, string | undefined>;
@@ -101,6 +123,13 @@ function positiveNumber(value: string | undefined, fallback: number, name: strin
     throw new Error(`${name} must be ${allowZero ? "zero or a positive number" : "a positive number"}`);
   }
   return parsed;
+}
+
+function strictBoolean(value: string | undefined, fallback: boolean, name: string): boolean {
+  if (value === undefined || value === "") return fallback;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${name} must be true or false`);
 }
 
 export function getAklConfig(env: EnvSource = process.env): AklConfig {
@@ -205,6 +234,56 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     }
   }
 
+  const directorCopilotEnabled = strictBoolean(
+    env.AKL_DIRECTOR_COPILOT_ENABLED,
+    false,
+    "AKL_DIRECTOR_COPILOT_ENABLED",
+  );
+  const directorCopilot = {
+    enabled: directorCopilotEnabled,
+    tokenUrl: env.AKL_DIRECTOR_COPILOT_TOKEN_URL?.replace(/\/+$/, "") || undefined,
+    clientId: env.AKL_DIRECTOR_COPILOT_CLIENT_ID || "svc-akb-director-copilot",
+    clientSecret: env.AKL_DIRECTOR_COPILOT_CLIENT_SECRET || undefined,
+    clientSecretFile: env.AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE || undefined,
+    budgetBaseUrl: env.AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL?.replace(/\/+$/, "") || undefined,
+    projectflowBaseUrl: env.AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL?.replace(/\/+$/, "") || undefined,
+    timeoutMs: positiveNumber(
+      env.AKL_DIRECTOR_COPILOT_TIMEOUT_MS,
+      8_000,
+      "AKL_DIRECTOR_COPILOT_TIMEOUT_MS",
+    ),
+    maxResponseBytes: positiveNumber(
+      env.AKL_DIRECTOR_COPILOT_MAX_RESPONSE_BYTES,
+      262_144,
+      "AKL_DIRECTOR_COPILOT_MAX_RESPONSE_BYTES",
+    ),
+  };
+  if (directorCopilot.clientSecret && directorCopilot.clientSecretFile) {
+    throw new Error(
+      "Configure only one of AKL_DIRECTOR_COPILOT_CLIENT_SECRET or AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE",
+    );
+  }
+  if (directorCopilot.enabled && environment === "production" && directorCopilot.clientSecret) {
+    throw new Error("Production Director Copilot credential must use AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE");
+  }
+  if (directorCopilot.enabled && authMode === "oidc") {
+    if (directorCopilot.clientId !== "svc-akb-director-copilot") {
+      throw new Error("AKL_DIRECTOR_COPILOT_CLIENT_ID must be svc-akb-director-copilot");
+    }
+    if (!directorCopilot.tokenUrl) {
+      throw new Error("AKL_DIRECTOR_COPILOT_TOKEN_URL is required when Director Copilot is enabled");
+    }
+    if (environment === "production" && !directorCopilot.tokenUrl.startsWith("https://")) {
+      throw new Error("AKL_DIRECTOR_COPILOT_TOKEN_URL must use HTTPS in production");
+    }
+    if (!directorCopilot.clientSecret && !directorCopilot.clientSecretFile) {
+      throw new Error("Director Copilot requires a dedicated service credential");
+    }
+    if (!directorCopilot.budgetBaseUrl || !directorCopilot.projectflowBaseUrl) {
+      throw new Error("Director Copilot requires Budget and ProjectFlow base URLs");
+    }
+  }
+
   return {
     environment,
     apiClientMode,
@@ -213,6 +292,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     serviceBaseUrls,
     oidc,
     ingestionTransport,
+    directorCopilot,
     devAccessToken: env.AKL_DEV_ACCESS_TOKEN || undefined
   };
 }

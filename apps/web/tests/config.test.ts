@@ -11,6 +11,8 @@ describe("AKL web config", () => {
     assert.equal(config.apiClientMode, "mock");
     assert.equal(config.authMode, "mock");
     assert.equal(config.webProfile, "platform");
+    assert.equal(config.directorCopilot?.enabled, false);
+    assert.equal(config.directorCopilot?.clientId, "svc-akb-director-copilot");
   });
 
   it("rejects mock API clients in production", () => {
@@ -123,5 +125,66 @@ describe("AKL web config", () => {
       () => getAklConfig({ AKL_WEB_PROFILE: "legacy-chat" }),
       /Unsupported AKL_WEB_PROFILE value/,
     );
+  });
+
+  it("requires the dedicated Director Copilot transport when enabled with OIDC", () => {
+    assert.throws(
+      () => getAklConfig({
+        AKL_ENV: "staging",
+        AKL_API_CLIENT_MODE: "mock",
+        AKL_AUTH_MODE: "oidc",
+        AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
+        AKL_WEB_PUBLIC_BASE_URL: "https://chat.local",
+        AKL_WEB_SESSION_SECRET: "test-session-secret",
+        AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+        AKL_DIRECTOR_COPILOT_ENABLED: "true",
+      }),
+      /AKL_DIRECTOR_COPILOT_TOKEN_URL is required/,
+    );
+  });
+
+  it("accepts complete Director Copilot configuration", () => {
+    const config = getAklConfig({
+      AKL_ENV: "staging",
+      AKL_API_CLIENT_MODE: "mock",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
+      AKL_WEB_PUBLIC_BASE_URL: "https://chat.local",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_DIRECTOR_COPILOT_ENABLED: "true",
+      AKL_DIRECTOR_COPILOT_TOKEN_URL: "https://login.local/realms/stratos/protocol/openid-connect/token",
+      AKL_DIRECTOR_COPILOT_CLIENT_SECRET: "test-only-secret",
+      AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
+    });
+
+    assert.equal(config.directorCopilot?.enabled, true);
+    assert.equal(config.directorCopilot?.budgetBaseUrl, "http://budget-api:4000");
+    assert.equal(config.directorCopilot?.projectflowBaseUrl, "http://projectflow-api:3000");
+  });
+
+  it("requires a file-backed Director Copilot credential in production", () => {
+    assert.throws(() => getAklConfig({
+      AKL_ENV: "production",
+      AKL_API_CLIENT_MODE: "production",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_PROFILE: "chat",
+      AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
+      AKL_WEB_OIDC_CLIENT_ID: "akb-chat-web",
+      AKL_WEB_PUBLIC_BASE_URL: "https://chat.local",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_REGISTRY_API_BASE_URL: "http://registry-api:8000/api/v1",
+      AKL_INGESTION_API_BASE_URL: "http://ingestion-service:8090/api/v1",
+      AKL_RAG_API_BASE_URL: "http://rag-retrieval-service:8080/api/v1",
+      AKL_GOVERNANCE_API_BASE_URL: "http://governance-service:8080/api/v1",
+      AKL_EVALUATION_API_BASE_URL: "http://evaluation-service:8080/api/v1",
+      AKL_DIRECTOR_COPILOT_ENABLED: "true",
+      AKL_DIRECTOR_COPILOT_TOKEN_URL: "https://login.local/realms/stratos/protocol/openid-connect/token",
+      AKL_DIRECTOR_COPILOT_CLIENT_SECRET: "inline-secret-is-not-production-safe",
+      AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
+    }), /must use AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE/);
   });
 });

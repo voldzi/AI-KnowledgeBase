@@ -78,6 +78,7 @@ export async function contextFromStratosAccessProjection(
       return [{
         application: item.application,
         capabilities: stringArray(item.capabilities),
+        scopes: scopeArray(item.effectiveScopes),
         validUntil: typeof item.validUntil === "string" ? item.validUntil : null,
       }];
     });

@@ -132,6 +132,7 @@ export interface ApiRequestContext {
   applicationAccess?: Array<{
     application: string;
     capabilities: string[];
+    scopes?: string[];
     validUntil?: string | null;
   }>;
   authorizationSource?: "mock" | "stratos_projection";

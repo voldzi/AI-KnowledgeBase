@@ -32,3 +32,9 @@ as closed schemas in the generator because they carry two independent
 identities, immutable governance lineage, signed upload headers, and an opaque
 post-persistence receipt. Do not replace those operations with `GenericJson` or
 move `X-AKL-Upload-Token` out of preflight `required_headers`.
+
+`openapi/director-copilot-domain-tools.v1.json` is a separate binding OpenAPI
+contract implemented by Budget and ProjectFlow and consumed by the AKB server.
+It deliberately is not merged into `openapi/openapi.json`: AKB does not host
+that source-application endpoint. Its schemas and conformance fixtures are in
+`contracts/director-copilot/v1/`.

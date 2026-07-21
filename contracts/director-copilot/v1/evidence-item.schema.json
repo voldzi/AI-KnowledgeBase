@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/akb/contracts/director-copilot/v1/evidence-item.schema.json",
+  "title": "AKB Director Copilot EvidenceItem V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evidence_id", "type", "source_system", "entity_type", "entity_id", "canonical_id", "source_version", "as_of", "retrieved_at", "authorized_scope", "deep_link", "policy", "source_hash", "quality"],
+  "properties": {
+    "schema_version": { "const": "director-copilot-evidence-1" },
+    "evidence_id": { "type": "string", "pattern": "^evi_[a-f0-9]{16,64}$" },
+    "type": { "enum": ["structured_fact", "document_finding", "interpretation", "uncertainty"] },
+    "source_system": { "enum": ["STRATOS_AKB", "STRATOS_BUDGET", "STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW", "STRATOS_AIIP", "STRATOS_EXECUTIVE"] },
+    "entity_type": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "entity_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "canonical_id": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "source_version": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "as_of": { "type": "string", "format": "date-time" },
+    "retrieved_at": { "type": "string", "format": "date-time" },
+    "authorized_scope": { "$ref": "domain-tool.schema.json#/$defs/scope" },
+    "deep_link": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "policy": { "$ref": "domain-tool.schema.json#/$defs/policy" },
+    "source_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "quality": { "type": "number", "minimum": 0, "maximum": 1 },
+    "fact": { "$ref": "domain-tool.schema.json#/$defs/fact" },
+    "document_citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["document_id", "document_version_id", "chunk_id", "section_path"],
+      "properties": {
+        "document_id": { "type": "string", "minLength": 1 },
+        "document_version_id": { "type": "string", "minLength": 1 },
+        "chunk_id": { "type": "string", "minLength": 1 },
+        "page_number": { "type": ["integer", "null"], "minimum": 1 },
+        "section_path": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 200 } }
+      }
+    },
+    "statement": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "input_evidence_ids": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "type": "string", "pattern": "^evi_[a-f0-9]{16,64}$" } },
+    "uncertainty_code": { "enum": ["SOURCE_UNAVAILABLE", "NOT_AUTHORIZED", "STALE", "CONFLICT", "MISSING", "AMBIGUOUS_ENTITY", "UNSUPPORTED_POLICY"] }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "structured_fact" } } }, "then": { "required": ["fact"] } },
+    { "if": { "properties": { "type": { "const": "document_finding" } } }, "then": { "required": ["statement", "document_citation"] } },
+    { "if": { "properties": { "type": { "const": "interpretation" } } }, "then": { "required": ["statement", "input_evidence_ids"] } },
+    { "if": { "properties": { "type": { "const": "uncertainty" } } }, "then": { "required": ["statement", "uncertainty_code"] } }
+  ]
+}

@@ -27,6 +27,11 @@ describe("STRATOS access projection", () => {
           capabilities: ["akb:chat"],
           scopes: [{ type: "project", id: "inactive-or-orphaned" }],
           effectiveScopes: [{ type: "organization", id: "org_stratos" }],
+        }, {
+          application: "budget",
+          capabilities: ["budget:read"],
+          scopes: [{ type: "project", id: "raw-and-untrusted" }],
+          effectiveScopes: [{ type: "project", id: "project-001" }],
         }],
       }),
       NOW,
@@ -37,6 +42,17 @@ describe("STRATOS access projection", () => {
     assert.deepEqual(context.groups, []);
     assert.deepEqual(context.capabilities, ["akb:chat"]);
     assert.deepEqual(context.scopes, ["organization:org_stratos"]);
+    assert.deepEqual(context.applicationAccess, [{
+      application: "AKB",
+      capabilities: ["akb:chat"],
+      scopes: ["organization:org_stratos"],
+      validUntil: null,
+    }, {
+      application: "budget",
+      capabilities: ["budget:read"],
+      scopes: ["project:project-001"],
+      validUntil: null,
+    }]);
     assert.equal(context.authorizationSource, "stratos_projection");
     assert.equal(context.applicationAccessActive, true);
   });

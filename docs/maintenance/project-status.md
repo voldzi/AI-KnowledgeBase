@@ -31,6 +31,11 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
   prostredich retired; import prochazi governed aplikacnim UI/API.
 - GitHub je stabilizovany pres chraneny `main`, PR workflow, CI gate a immutable
   release proces. Produkce bezi z presneho commitu uvedeneho vyse.
+- Vyvojova vetev obsahuje vypnuty AKB zaklad Copilota reditele: uzavrene
+  DomainTool/Evidence/QueryPlan/AnalysisSnapshot kontrakty, oddelenou service a
+  actor identitu, paralelni Budget/ProjectFlow orchestraci, scope/policy
+  fail-closed kontroly, zavisly citovany AKB retrieval a ctyrvrstvou odpoved.
+  Nejde o produkcni stav; aktivace ceka na zdrojove endpointy a spolecnou branu.
 
 Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou
 federovane cteni zivych domenovych dat pro Copilota reditele, hlubsi viewer
@@ -167,9 +172,10 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
     dostupny jen pres governed aplikacni UI/API. Host tool je ve vsech profilech
     pouze dry-run a pred mutaci fail-closed. Dokumenty bez raw PDF zustavaji
     Markdown-backed, dokud neni original doplnen.
-12. Management copilot: chat zatim nema federovane read-only domenove nastroje,
-    mezidomenovy plan dotazu, jednotny dukazni snapshot ani tvorbu PPTX/DOCX ze
-    stejne analyticke pravdy.
+12. Management copilot: AKB zaklad prvniho Budget + ProjectFlow rezu existuje za
+    vypnutym flagem, ale zdrojove aplikace a STRATOS identity nejsou prijate a
+    produkcne otestovane. Chybi dalsi domeny, historie s reautorizaci, obecny
+    planner/entity resolver a PPTX/DOCX ze stejne analyticke pravdy.
 13. Intelligence depth: `/intelligence` ma corpus/readiness analytiku,
     OpenSearch entity/search vrstvu, evidence-backed relationship panel a
     perzistentni analyst cases/saved queries/evidence sets, ale jeste nema
@@ -184,9 +190,9 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 4. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
 5. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.
 6. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.
-7. Director Copilot foundation: zavest jednotny `EvidenceItem`, query plan v2,
-   read-only domenove nastroje a strictest-policy vysledny snapshot podle
-   `docs/ARCHITECTURE/director-copilot-implementation-plan.md`.
+7. Director Copilot integration gate: dokoncit STRATOS identitu a source
+   endpointy Budget/ProjectFlow podle `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`,
+   potom spustit spolecne negativni, policy, citation a Docker acceptance testy.
 8. RAG evaluation expansion: rozsirit produkcni gate o mezidomenove scenare,
    aktualnost, konflikty a dostupnost pouze casti zdroju.
 9. Intelligence entity layer: extrahovat entity z chunku, ulozit mentiony s

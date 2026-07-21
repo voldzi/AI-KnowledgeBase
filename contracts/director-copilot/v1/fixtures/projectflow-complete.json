@@ -1,0 +1,38 @@
+{
+  "schema_version": "director-copilot-1",
+  "tool_id": "projectflow.project_delivery_snapshot.v1",
+  "tool_call_id": "call_2222222222222222",
+  "status": "complete",
+  "generated_at": "2026-07-21T10:00:00Z",
+  "as_of": "2026-07-21T09:58:00Z",
+  "source_system": "STRATOS_PROJECTFLOW",
+  "source_version": "projectflow-read-model:91",
+  "items": [
+    {
+      "entity_type": "project",
+      "entity_id": "project-001",
+      "canonical_id": "stratos:project:project-001",
+      "authorized_scope": { "type": "project", "id": "project-001" },
+      "source_version": "project:33",
+      "as_of": "2026-07-21T09:58:00Z",
+      "facts": [
+        { "key": "milestone.max_delay_days", "value": 28, "value_type": "duration_days", "unit": "day", "currency": null, "period_start": null, "period_end": null, "quality": 1 },
+        { "key": "project.status", "value": "active", "value_type": "text", "unit": null, "currency": null, "period_start": null, "period_end": null, "quality": 1 },
+        { "key": "project.schedule_status", "value": "delayed", "value_type": "text", "unit": null, "currency": null, "period_start": null, "period_end": null, "quality": 1 },
+        { "key": "milestone.next_due_date", "value": "2026-08-18", "value_type": "date", "unit": null, "currency": null, "period_start": null, "period_end": null, "quality": 1 }
+      ],
+      "deep_link": "https://stratos.zeleznalady.cz/project/projects/project-001",
+      "document_context_tags": ["project:project-001"],
+      "policy": {
+        "binding_id": "pb_projectflow_director_12345678",
+        "version": "information-policy-2.0.0",
+        "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "classification": { "handling_class": "INTERNAL", "legal_classification": "NONE", "tlp": null, "pap": null },
+        "audience": ["organization:org_stratos"],
+        "obligations": ["AUDIT_ACCESS"]
+      }
+    }
+  ],
+  "warnings": [],
+  "next_cursor": null
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "director-copilot-1",
+  "tool_id": "budget.project_financial_snapshot.v1",
+  "tool_call_id": "call_1111111111111111",
+  "status": "complete",
+  "generated_at": "2026-07-21T10:00:00Z",
+  "as_of": "2026-07-21T09:59:00Z",
+  "source_system": "STRATOS_BUDGET",
+  "source_version": "budget-read-model:42",
+  "items": [
+    {
+      "entity_type": "project",
+      "entity_id": "project-001",
+      "canonical_id": "stratos:project:project-001",
+      "authorized_scope": { "type": "project", "id": "project-001" },
+      "source_version": "budget-project:17",
+      "as_of": "2026-07-21T09:59:00Z",
+      "facts": [
+        { "key": "budget.variance_amount", "value": 1250000, "value_type": "currency", "unit": null, "currency": "CZK", "period_start": "2026-01-01", "period_end": "2026-12-31", "quality": 1 },
+        { "key": "budget.variance_percent", "value": 12.5, "value_type": "percent", "unit": "percent", "currency": null, "period_start": "2026-01-01", "period_end": "2026-12-31", "quality": 1 },
+        { "key": "budget.plan_amount", "value": 10000000, "value_type": "currency", "unit": null, "currency": "CZK", "period_start": "2026-01-01", "period_end": "2026-12-31", "quality": 1 },
+        { "key": "budget.forecast_amount", "value": 11250000, "value_type": "currency", "unit": null, "currency": "CZK", "period_start": "2026-01-01", "period_end": "2026-12-31", "quality": 1 }
+      ],
+      "deep_link": "https://stratos.zeleznalady.cz/budget/projects/project-001",
+      "document_context_tags": ["project:project-001", "contract:contract-001"],
+      "policy": {
+        "binding_id": "pb_budget_director_12345678",
+        "version": "information-policy-2.0.0",
+        "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "classification": { "handling_class": "INTERNAL", "legal_classification": "NONE", "tlp": null, "pap": null },
+        "audience": ["organization:org_stratos"],
+        "obligations": ["AUDIT_ACCESS"]
+      }
+    }
+  ],
+  "warnings": [],
+  "next_cursor": null
+}

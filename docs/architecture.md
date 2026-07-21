@@ -89,6 +89,12 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   replace RAG/citation workflows.
 - Ingestion does not publish document versions or answer RAG queries.
 - RAG does not mutate document registry state except audit events.
+- Director Copilot does not read source databases. The AKB server calls fixed,
+  deterministic and read-only Budget/ProjectFlow application endpoints with
+  separate service and actor credentials. It accepts only closed contracts,
+  normalizes authorized facts into an immutable evidence snapshot and uses the
+  source-provided context tags for dependent AKB retrieval. The feature is
+  disabled until all source conformance and identity tests pass.
 - LLM Gateway does not own retrieval, authorization, document storage, or UI.
 - Web/API bridge mediates browser access; browser clients do not call internal
   storage, Registry, Ingestion, Qdrant, or LLM services directly unless the

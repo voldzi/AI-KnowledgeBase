@@ -24,6 +24,18 @@ DocumentType = Literal[
     "other",
 ]
 Classification = Literal["public", "internal", "restricted", "confidential"]
+PolicyObligation = Literal[
+    "AUDIT_ACCESS",
+    "NO_EXTERNAL_AI",
+    "LOCAL_PROCESSING_ONLY",
+    "NO_PUBLIC_EXPORT",
+    "NO_EXPORT",
+    "WATERMARK",
+    "ENCRYPT_AT_REST",
+    "RECIPIENT_CONFIRMATION",
+    "ORIGINATOR_APPROVAL",
+    "PAP_ENFORCEMENT",
+]
 AnswerMode = Literal[
     "ask",
     "standard_answer",
@@ -116,6 +128,37 @@ class ChunkCitation(BaseModel):
         return self
 
 
+class CitationPolicyAudience(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organizationId: Literal["org_stratos"]
+    scopeType: Literal[
+        "organization",
+        "organization_unit",
+        "budget_scope",
+        "project",
+        "document",
+        "recipient_set",
+        "public",
+    ]
+    scopeIds: list[str] = Field(default_factory=list)
+    recipientSubjectIds: list[str] = Field(default_factory=list)
+
+
+class CitationPolicySummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    policyBindingId: str = Field(min_length=8, max_length=200)
+    policyVersion: Literal["information-policy-2.0.0"]
+    handlingClass: Literal["PUBLIC", "INTERNAL", "PROJECT_MANAGEMENT", "RESTRICTED"]
+    legalClassification: Literal["NONE"]
+    tlp: Literal["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"] | None = None
+    pap: Literal["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"] | None = None
+    obligations: list[PolicyObligation] = Field(default_factory=list)
+    contentCategories: list[str] = Field(default_factory=list)
+    audience: CitationPolicyAudience
+
+
 class Citation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -130,6 +173,15 @@ class Citation(BaseModel):
     policy_binding_id: str | None = None
     policy_version: str | None = None
     policy_hash: str | None = None
+    policy_summary: CitationPolicySummary | None = None
+    document_context_tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("document_context_tags")
+    @classmethod
+    def validate_document_context_tags(cls, value: list[str]) -> list[str]:
+        if any(not item or len(item) > 120 for item in value) or len(set(value)) != len(value):
+            raise ValueError("document_context_tags must be unique bounded strings")
+        return value
 
     @model_validator(mode="after")
     def fill_document_version(self) -> "Citation":
@@ -242,6 +294,7 @@ class AssistantChatRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     mode: AnswerMode = "it_support_answer"
     response_language: ResponseLanguage = "cs"
+    persist_conversation: bool = True
 
 
 class ClarificationQuestion(BaseModel):

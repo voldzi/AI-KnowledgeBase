@@ -1,0 +1,54 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AKB Director Copilot Source Domain Tools",
+    "version": "1.0.0",
+    "description": "Binding read-only contract implemented by STRATOS source applications and consumed only by the AKB server."
+  },
+  "paths": {
+    "/api/v1/integrations/akb/domain-tools/execute": {
+      "post": {
+        "operationId": "executeAkbDirectorCopilotDomainTool",
+        "summary": "Execute one governed read-only domain tool",
+        "security": [{ "serviceBearer": [] }],
+        "parameters": [
+          { "name": "X-STRATOS-Actor-Authorization", "in": "header", "required": true, "schema": { "type": "string", "pattern": "^Bearer .+$" }, "description": "Independent current person bearer. The source must verify it and load a fresh STRATOS projection." },
+          { "name": "X-AKB-Domain-Tool-Contract", "in": "header", "required": true, "schema": { "const": "director-copilot-1" } },
+          { "name": "X-Request-ID", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 200 } },
+          { "name": "X-Correlation-ID", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 200 } },
+          { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "pattern": "^call_[a-f0-9]{16,64}$" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "../contracts/director-copilot/v1/domain-tool.schema.json#/$defs/request" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Complete, partial, unavailable or not-authorized governed result.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "../contracts/director-copilot/v1/domain-tool.schema.json#/$defs/response" }
+              }
+            }
+          },
+          "400": { "description": "Malformed request or headers" },
+          "401": { "description": "Invalid service or actor credential" },
+          "403": { "description": "Wrong service identity/audience or actor denied" },
+          "413": { "description": "Request or response exceeds the contract limit" },
+          "422": { "description": "Contract, scope, entity or policy lineage is invalid" },
+          "429": { "description": "Bounded source rate or concurrency limit exceeded" },
+          "503": { "description": "Source read model, access projection or policy decision unavailable" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    }
+  }
+}

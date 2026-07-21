@@ -9,6 +9,23 @@ export type RagConfidence =
 
 export type ResponseLanguage = "cs" | "en";
 
+export interface CitationPolicySummary {
+  policyBindingId: string;
+  policyVersion: "information-policy-2.0.0";
+  handlingClass: "PUBLIC" | "INTERNAL" | "PROJECT_MANAGEMENT" | "RESTRICTED";
+  legalClassification: "NONE";
+  tlp: "TLP:RED" | "TLP:AMBER+STRICT" | "TLP:AMBER" | "TLP:GREEN" | "TLP:CLEAR" | null;
+  pap: "PAP:RED" | "PAP:AMBER" | "PAP:GREEN" | "PAP:CLEAR" | null;
+  obligations: string[];
+  contentCategories: string[];
+  audience: {
+    organizationId: "org_stratos";
+    scopeType: "organization" | "organization_unit" | "budget_scope" | "project" | "document" | "recipient_set" | "public";
+    scopeIds: string[];
+    recipientSubjectIds: string[];
+  };
+}
+
 export interface Citation {
   document_id: string;
   document_version_id: string;
@@ -18,6 +35,11 @@ export interface Citation {
   section_path: string[];
   page_number: number | null;
   chunk_id: string;
+  policy_binding_id?: string | null;
+  policy_version?: string | null;
+  policy_hash?: string | null;
+  policy_summary?: CitationPolicySummary | null;
+  document_context_tags?: string[];
 }
 
 export interface RagQueryFilters {
@@ -131,6 +153,7 @@ export interface AssistantChatRequest {
   context?: Record<string, unknown>;
   mode?: AnswerMode;
   response_language?: ResponseLanguage;
+  persist_conversation?: boolean;
 }
 
 export interface ClarificationQuestion {

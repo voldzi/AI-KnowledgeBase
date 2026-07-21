@@ -1,6 +1,8 @@
 # AKB Chat jako Copilot ředitele - realizační plán
 
-Stav: schválený návrh k realizaci, bez produktových změn v tomto commitu.
+Stav: AKB základ etapy 0 a první vertikální řez jsou implementovány na vývojové
+větvi, ale zůstávají výchozím stavem vypnuté. Produkční aktivace čeká na
+STRATOS, Budget, ProjectFlow a společné conformance testy.
 
 Baseline: AKB `786bc2bd7c7a964efd3c078d930eebbba06209c7`, produkčně ověřeno
 2026-07-21.
@@ -41,22 +43,38 @@ nikoli jako nová aplikace, druhá historie nebo paralelní AI vrstva.
 - entity a vztahy z dokumentových chunků v Intelligence Workbench;
 - řízené extrakční profily pro Budget a ArchFlow.
 
-### Co dnes chybí
+### Implementováno v AKB, zatím neaktivováno
 
-1. AKB nemá read-only klienty pro živá data AIIP, ArchFlow, Budget,
-   ProjectFlow a Executive Center.
-2. Současný plánovač neumí více nástrojů, závislosti, kanonické entity,
-   paralelní běh, částečný výsledek ani časový snapshot.
-3. Současné reporty rozlišují Registry metadata a dokumentové citace, ale nemají
-   společný důkazní kontrakt pro živé strukturované hodnoty.
+- uzavřené JSON Schema/OpenAPI kontrakty a pozitivní/negativní fixtures;
+- načtení per-application capabilities a efektivních scopes pouze z ověřené
+  STRATOS access projection;
+- oddělená service identity `svc-akb-director-copilot` a actor bearer;
+- QueryPlan v2 pro první pevný intent, paralelní Budget/ProjectFlow fan-out a
+  závislý AKB dokumentový retrieval;
+- validace scope expansion, policy lineage, velikosti a známých obligations;
+- EvidenceItem normalizace, strictest-policy snapshot a čtyřvrstvá odpověď;
+- fail-closed blokace AI pro `RESTRICTED`, `NO_EXTERNAL_AI` a
+  `LOCAL_PROCESSING_ONLY`;
+- ephemerální federované odpovědi bez trvalé historie a feature flag ve stavu
+  `false`.
+
+### Co stále chybí
+
+1. Budget a ProjectFlow ještě musí implementovat a nasadit závazné read-only
+   zdrojové endpointy; STRATOS musí dodat identity, audiences a fixtures access
+   projection. AIIP, ArchFlow a Executive Center jsou až další etapa.
+2. První plánovač pokrývá pouze pevný referenční intent. Obecný entity resolver,
+   bezpečné upřesnění, další typy dotazů a širší DAG zůstávají backlog.
+3. EvidenceItem a AnalysisSnapshot existují pro první řez; chybí jejich obecná
+   persistence, historie s reautorizací a artifact package.
 4. `AnalystEvidenceItem` je dokumentový záznam analytického spisu; není
    neměnným mezidoménovým důkazem a nesmí být bez změny významu použit jako
    kontrakt Copilota.
 5. AKB umí XLSX/PDF tabulku, ale ne jednotný analytický snapshot pro PPTX,
    DOCX, XLSX, PDF a briefing.
-6. RAG assistant má výchozí `classification_max=internal`. Cílový limit musí být
-   serverově odvozen z aktuální access projection a policy každého zdroje, nikdy
-   z browseru nebo statické role.
+6. Dokumentový RAG je v prvním řezu omezen na stávající interní limit a přesné
+   zdrojové tagy. Rozšíření na silnější třídy vyžaduje serverově prokázanou
+   lokální AI cestu a samostatný policy gate; AKB je nyní odmítá fail closed.
 7. Stávající AI endpointy Budgetu a ProjectFlow nelze zpětně použít jako nástroje
    Copilota, protože samy volají AKB a vytvořily by AI/RAG cyklus. Zdrojové
    aplikace musí vystavit čisté deterministické read-modely bez dalšího LLM.
@@ -364,16 +382,17 @@ nahrazovat nedostupný zdroj odhadem ani snižovat bezpečnost kvůli latenci.
 
 ## 9. Bezprostřední pracovní pořadí
 
-1. Schválit tento plán jako architektonický baseline a vytvořit ADR.
-2. Sepsat `DomainTool v1`, `EvidenceItem v1`, `QueryPlan v2` a
-   `AnalysisSnapshot v1` jako JSON Schema/OpenAPI s fixtures.
-3. Předat STRATOS, Budget a ProjectFlow konkrétní handoff pro první vertikální
-   řez včetně OBO a policy požadavků.
-4. Rozšířit cross-domain eval dataset ještě před implementací orchestrátoru.
-5. Implementovat Budget + ProjectFlow + AKB vertikální scénář end-to-end.
-6. Teprve po jeho bezpečnostní a kvalitativní akceptaci přidat další zdroje a
-   UI schopnostní profily.
-7. Artefaktovou továrnu zahájit až nad stabilním AnalysisSnapshot kontraktem;
+1. STRATOS dokončí `DIRECTOR_COPILOT_HANDOFF_STRATOS.md`.
+2. Budget dokončí `DIRECTOR_COPILOT_HANDOFF_BUDGET.md`.
+3. ProjectFlow dokončí `DIRECTOR_COPILOT_HANDOFF_PROJECTFLOW.md`.
+4. V integračním prostředí spustit byte-identical contract, token/audience,
+   scope-revocation, partial/no-answer a citovaný RAG test.
+5. Doplnit verzovaný cross-domain eval dataset a uzamknout SLI baseline.
+6. Po úspěšné aktivační bráně zapnout overlay nejprve v integračním prostředí;
+   produkční feature flag zůstane do release schválení `false`.
+7. Teprve po bezpečnostní a kvalitativní akceptaci přidat další zdroje a UI
+   schopnostní profily.
+8. Artefaktovou továrnu zahájit až nad stabilním AnalysisSnapshot kontraktem;
    negenerovat PPTX/DOCX přímo z volného textu chatu.
 
 ## 10. Mimo první rozsah

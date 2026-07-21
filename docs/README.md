@@ -60,6 +60,11 @@ from the flat standard documents.
    - `qa/access-information-policy-v2-impact-report.md`
 8. Director Copilot target and delivery plan:
    - `ARCHITECTURE/director-copilot-implementation-plan.md`
+   - `qa/director-copilot-akb-foundation.md`
+   - `integration/DIRECTOR_COPILOT_HANDOFF.md`
+   - `integration/DIRECTOR_COPILOT_HANDOFF_STRATOS.md`
+   - `integration/DIRECTOR_COPILOT_HANDOFF_BUDGET.md`
+   - `integration/DIRECTOR_COPILOT_HANDOFF_PROJECTFLOW.md`
 
 ## Active Documentation Homes
 
