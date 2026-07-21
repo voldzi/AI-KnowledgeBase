@@ -6580,8 +6580,8 @@ def _budget_historical_batch_ingestion_authority(
     document: Document,
     version: DocumentVersion,
     db: Session,
-) -> tuple[DocumentVersionAuthority, str]:
-    """Authorize only the exact immutable CURRENT or ARCHIVED Budget batch version for indexing."""
+) -> tuple[DocumentVersionAuthority, str, str]:
+    """Authorize initial indexing or an exact failed-current historical retry."""
 
     _require_stratos_budget_upload_service(principal)
     external_ref = db.execute(
@@ -6596,10 +6596,57 @@ def _budget_historical_batch_ingestion_authority(
     budget_source = source_location.get("stratos_budget_upload")
     envelope = _budget_version_integration_envelope(version)
     actor = envelope.get("actor") if isinstance(envelope, dict) else None
-    expected_idempotency_key = (
+    expected_confirm_idempotency_key = (
         f"confirm:{external_ref.external_document_id}:{version.document_version_id}"
         if external_ref is not None
         else None
+    )
+    retry_idempotency_pattern = re.compile(
+        rf"^retry:{re.escape(document.document_id)}:"
+        rf"{re.escape(version.document_version_id)}:batch-retry-[a-f0-9]{{64}}$"
+    )
+    is_initial_confirmation = (
+        payload.idempotency_key == expected_confirm_idempotency_key
+    )
+    current_version_file_id = (
+        db.execute(
+            select(DocumentFile.file_id).where(
+                DocumentFile.document_id == document.document_id,
+                DocumentFile.document_version_id == version.document_version_id,
+                DocumentFile.file_id == external_ref.current_file_id,
+            )
+        ).scalar_one_or_none()
+        if external_ref is not None and external_ref.current_file_id is not None
+        else None
+    )
+    retry_attempt = db.execute(
+        select(IngestionAttempt).where(
+            IngestionAttempt.document_id == document.document_id,
+            IngestionAttempt.document_version_id == version.document_version_id,
+        )
+    ).scalar_one_or_none()
+    is_exact_failed_retry = bool(
+        external_ref is not None
+        and retry_idempotency_pattern.fullmatch(payload.idempotency_key)
+        and re.fullmatch(r"corr-budget-akb-retry-[a-f0-9]{32}", payload.correlation_id)
+        and external_ref.current_document_version_id == version.document_version_id
+        and current_version_file_id == external_ref.current_file_id
+        and external_ref.current_ingestion_job_id is not None
+        and external_ref.current_ingestion_status == "FAILED"
+        and retry_attempt is not None
+        and retry_attempt.ingestion_job_id == external_ref.current_ingestion_job_id
+        and retry_attempt.ingestion_status == "FAILED"
+    )
+    correlation_matches_mode = (
+        (
+            is_exact_failed_retry
+            or (
+                is_initial_confirmation
+                and envelope.get("correlationId") == payload.correlation_id
+            )
+        )
+        if isinstance(envelope, dict)
+        else False
     )
     if (
         payload.action != Action.document_ingest.value
@@ -6611,8 +6658,8 @@ def _budget_historical_batch_ingestion_authority(
         or not isinstance(envelope, dict)
         or envelope.get("sourceSystem") != "STRATOS_BUDGET"
         or envelope.get("externalRef") != external_ref.external_ref
-        or envelope.get("correlationId") != payload.correlation_id
-        or payload.idempotency_key != expected_idempotency_key
+        or not correlation_matches_mode
+        or not (is_initial_confirmation or is_exact_failed_retry)
         or not isinstance(actor, dict)
         or actor.get("type") != "person"
         or actor.get("subjectId") != document.owner_id
@@ -6624,7 +6671,16 @@ def _budget_historical_batch_ingestion_authority(
             "Only an exact signed CURRENT or ARCHIVED Budget batch version may be indexed without a live actor",
         )
     try:
-        return resolve_document_version_authority(document, version), document.owner_id
+        authorization_basis = (
+            "stratos_budget_historical_retry"
+            if is_exact_failed_retry
+            else "stratos_budget_historical_batch"
+        )
+        return (
+            resolve_document_version_authority(document, version),
+            document.owner_id,
+            authorization_basis,
+        )
     except ValueError as exc:
         raise problem(
             status.HTTP_409_CONFLICT,
@@ -6644,6 +6700,8 @@ def create_stratos_budget_historical_ingestion_authorization_proof(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> IngestionAuthorizationResponse:
+    """Issue an initial proof or retry the exact failed-current historical version."""
+
     if payload.correlation_id != get_correlation_id():
         raise problem(
             status.HTTP_409_CONFLICT,
@@ -6652,12 +6710,14 @@ def create_stratos_budget_historical_ingestion_authorization_proof(
         )
     document = _get_document(db, document_id)
     version = _get_version(db, document_id, version_id)
-    authority, confirmed_subject_id = _budget_historical_batch_ingestion_authority(
-        principal=principal,
-        payload=payload,
-        document=document,
-        version=version,
-        db=db,
+    authority, confirmed_subject_id, authorization_basis = (
+        _budget_historical_batch_ingestion_authority(
+            principal=principal,
+            payload=payload,
+            document=document,
+            version=version,
+            db=db,
+        )
     )
     token, confirmation = issue_ingestion_authorization(
         get_settings(),
@@ -6687,7 +6747,7 @@ def create_stratos_budget_historical_ingestion_authorization_proof(
             "document_id": document_id,
             "action": payload.action,
             "confirmed_subject_id": confirmed_subject_id,
-            "authorization_basis": "stratos_budget_historical_batch",
+            "authorization_basis": authorization_basis,
             "governed_resource_id": authority.governed_resource_id,
             "governed_source_version": authority.governed_source_version,
             "policy_binding_id": authority.policy_binding_id,

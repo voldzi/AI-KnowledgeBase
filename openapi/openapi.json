@@ -853,6 +853,7 @@
     "/api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/ingestion-authorization": {
       "post": {
         "summary": "Create Stratos Budget Historical Ingestion Authorization Proof",
+        "description": "Issues the initial ingestion proof for a signed historical Budget version, or a retry proof only when that same immutable version is the exact current Registry coordinate and its matching ingestion attempt is FAILED.",
         "operationId": "registry_api_create_stratos_budget_historical_ingestion_authorization_proof_api_v1_integrations_stratos_budget_upload_documents__document_id__versions__version_id__ingestion_authorization_post",
         "parameters": [
           {

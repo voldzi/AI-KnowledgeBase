@@ -6,6 +6,7 @@ import { createMockContext } from "../src/lib/api/correlation";
 import type { AklFetch } from "../src/lib/api/http-client";
 import {
   cancelGovernedIngestionJob,
+  exactIngestionJobFromAttempt,
   getGovernedIngestionJob,
   getGovernedIngestionReport,
   listVisibleIngestionJobs,
@@ -42,6 +43,35 @@ const actorContext = createMockContext({
 });
 
 describe("Registry-governed ingestion operations", () => {
+  it("builds a historical retry profile only from the exact Registry current attempt", () => {
+    const attempt = {
+      document_id: "doc_history",
+      document_version_id: "ver_history",
+      ingestion_job_id: "ing_history_failed",
+      ingestion_status: "FAILED" as const,
+      created_at: "2026-07-20T08:00:00Z",
+      updated_at: "2026-07-20T08:05:00Z",
+    };
+    const job = exactIngestionJobFromAttempt(attempt, {
+      documentId: "doc_history",
+      documentVersionId: "ver_history",
+      jobId: "ing_history_failed",
+    });
+    assert.equal(job.status, "failed");
+    assert.equal(job.parser_profile, "controlled_document");
+
+    assert.throws(
+      () => exactIngestionJobFromAttempt(attempt, {
+        documentId: "doc_history",
+        documentVersionId: "ver_other",
+        jobId: "ing_history_failed",
+      }),
+      (error: unknown) => error instanceof ApiClientError
+        && error.status === 502
+        && error.code === "INGESTION_CURRENT_ATTEMPT_CONFLICT",
+    );
+  });
+
   it("projects only current attempts for Registry-visible documents without global listing", async () => {
     const calls: string[] = [];
     const fetcher: AklFetch = async (input) => {
