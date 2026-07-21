@@ -596,6 +596,14 @@ other release gates remain mandatory. Record the external incident and restore
 the public route before closing the deployment. Do not persist this variable in
 the production environment file.
 
+Pass the switch only to the release command environment; adding it to a copied
+or persistent production env file does not configure the release verifier:
+
+```bash
+AKL_RELEASE_VERIFY_CHAT_PUBLIC=false \
+  /srv/akl/current/scripts/deploy_docker_home_release.sh --sha "$RELEASE_SHA"
+```
+
 For a Registry release, inspect the generated backup without printing secrets:
 
 ```bash
