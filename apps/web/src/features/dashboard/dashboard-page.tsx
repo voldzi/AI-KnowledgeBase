@@ -10,7 +10,7 @@ import {
   type AuthorizationHint,
   type RegistryWorkflowTask,
 } from "@/lib/types";
-import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
+import { listAllVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
 
 import { DashboardOverview } from "./dashboard-overview";
 
@@ -26,13 +26,15 @@ export async function DashboardPage({
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath(returnTo);
   redirectEmployeeChatOnly(context);
-  const documents = await clients.registry.listDocuments(context);
-  const [jobsResult, auditEventsResult, registryTasksResult, authorizationResult] = await Promise.allSettled([
-    listVisibleIngestionJobs(clients, documents, context),
+  const [documentsResult, jobsResult, auditEventsResult, registryTasksResult, authorizationResult] = await Promise.allSettled([
+    clients.registry.listDocuments(context),
+    listAllVisibleIngestionJobs(clients, context),
     listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
     listVisibleWorkflowTasks(clients.registry.listWorkflowTasks(context)),
     clients.registry.getAuthorizationHints(context)
   ]);
+  if (documentsResult.status === "rejected") throw documentsResult.reason;
+  const documents = documentsResult.value;
   const unavailableSources = [
     jobsResult.status === "rejected" ? "processing" : null,
     auditEventsResult.status === "rejected" ? "audit" : null,

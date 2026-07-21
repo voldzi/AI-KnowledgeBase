@@ -5972,7 +5972,7 @@ def _authorized_document_metadata_rows(
         # governance client is thread-safe. A bounded pool keeps the central
         # PDP authoritative while preventing document-list latency from growing
         # linearly with the number of governed scopes.
-        with ThreadPoolExecutor(max_workers=min(8, len(evaluation_items))) as executor:
+        with ThreadPoolExecutor(max_workers=min(16, len(evaluation_items))) as executor:
             runtime_access = dict(executor.map(evaluate_runtime_candidate, evaluation_items))
 
     return [
