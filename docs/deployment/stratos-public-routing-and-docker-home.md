@@ -58,7 +58,7 @@ Minimalni routovani:
 Samostatný chatový klient používá vlastní host route bez path prefixu:
 
 ```text
-chat.zeleznalady.cz/ -> AKB chat-web, docker.home.cz:3221
+chat.zeleznalady.cz/ -> AKB chat-web, 192.168.10.116:3221
 ```
 
 Tato instance používá stejný AKB Registry/RAG/datový stack jako hlavní AKB
@@ -75,7 +75,9 @@ server {
     # TLS certifikát a společné bezpečnostní include spravuje DMZ provoz.
 
     location / {
-        proxy_pass http://docker.home.cz:3221;
+        # Pouzij stabilni interni adresu. Verejny DNS zaznam docker.home.cz
+        # nesmi byt pouzit jako DMZ upstream, protoze vytvari hairpin timeout.
+        proxy_pass http://192.168.10.116:3221;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
