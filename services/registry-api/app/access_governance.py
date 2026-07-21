@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from hashlib import sha256
+import json
 import threading
 import time
 from typing import Any, Literal
@@ -148,6 +150,7 @@ class StratosGovernanceClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._cache: dict[str, tuple[float, AccessProjection]] = {}
+        self._decision_flights: dict[str, Future[dict[str, Any]]] = {}
         self._lock = threading.Lock()
         # Runtime authorization can evaluate several distinct governed scopes
         # while building one document projection. Reusing one thread-safe
@@ -155,7 +158,7 @@ class StratosGovernanceClient:
         # TCP/TLS handshake for each scope.
         self._http_client = httpx.Client(
             timeout=self.settings.stratos_access_timeout_seconds,
-            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
         )
 
     def close(self) -> None:
@@ -248,19 +251,52 @@ class StratosGovernanceClient:
         token = credential_token or self.settings.stratos_policy_service_token
         if not url or not token:
             raise GovernanceUnavailable("STRATOS policy decision endpoint is not configured")
-        return self._request(
-            "POST",
-            url,
-            token,
-            {
-                "applicationId": "akb",
-                "capabilityId": capability_id,
-                "operation": operation,
-                "scope": scope,
-                "policyBinding": policy_binding,
-                "policyHash": policy_hash,
-            },
-        )
+        body = {
+            "applicationId": "akb",
+            "capabilityId": capability_id,
+            "operation": operation,
+            "scope": scope,
+            "policyBinding": policy_binding,
+            "policyHash": policy_hash,
+        }
+        decision_key = sha256(
+            json.dumps(
+                {
+                    "url": url,
+                    "tokenHash": sha256(token.encode("utf-8")).hexdigest(),
+                    "body": body,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        with self._lock:
+            flight = self._decision_flights.get(decision_key)
+            owns_flight = flight is None
+            if flight is None:
+                flight = Future()
+                self._decision_flights[decision_key] = flight
+
+        if not owns_flight:
+            try:
+                return flight.result(timeout=self.settings.stratos_access_timeout_seconds + 1)
+            except FutureTimeoutError as exc:
+                raise GovernanceUnavailable(
+                    "STRATOS policy decision did not complete within the configured timeout"
+                ) from exc
+
+        try:
+            response = self._request("POST", url, token, body)
+            flight.set_result(response)
+            return response
+        except BaseException as exc:
+            flight.set_exception(exc)
+            raise
+        finally:
+            with self._lock:
+                if self._decision_flights.get(decision_key) is flight:
+                    self._decision_flights.pop(decision_key, None)
 
     def service_policy_binding(self) -> tuple[dict[str, Any], str]:
         binding_id = self.settings.stratos_service_policy_binding_id

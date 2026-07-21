@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Lock
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -167,6 +170,48 @@ def test_governance_client_reuses_one_http_connection_pool(monkeypatch) -> None:
     assert decision["decision"] == "ALLOW"
     assert len(constructed) == 1
     assert closed == [True]
+
+
+def test_governance_client_coalesces_only_concurrent_identical_decisions(monkeypatch) -> None:
+    request_count = 0
+    request_lock = Lock()
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def request(self, _method, _url, **_kwargs):
+            nonlocal request_count
+            with request_lock:
+                request_count += 1
+            time.sleep(0.05)
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"decision": "ALLOW", "reasonCodes": ["ACCESS_ALLOW"]},
+            )
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    client = StratosGovernanceClient(_settings(
+        AKL_STRATOS_POLICY_DECISIONS_URL="https://stratos.example/api/v1/policy/decisions",
+        AKB_POLICY_SERVICE_TOKEN="runtime-token",
+    ))
+    barrier = Barrier(2)
+
+    def decide():
+        barrier.wait()
+        return client.decide(
+            capability_id="akb:read_document",
+            operation="read",
+            scope={"type": "organization", "id": "org_stratos"},
+            policy_binding=None,
+            policy_hash=None,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: decide(), range(2)))
+
+    assert [result["decision"] for result in results] == ["ALLOW", "ALLOW"]
+    assert request_count == 1
 
 
 def test_user_projection_never_falls_back_to_raw_scope_grants(monkeypatch) -> None:
