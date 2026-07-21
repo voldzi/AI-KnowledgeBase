@@ -17,6 +17,10 @@
     {
       "url": "https://stratos.zeleznalady.cz/akb",
       "description": "Production AKB web frontend"
+    },
+    {
+      "url": "https://chat.zeleznalady.cz",
+      "description": "Production standalone AKB chat frontend"
     }
   ],
   "security": [
@@ -119,6 +123,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -198,6 +206,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -8370,6 +8382,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "post": {
@@ -8420,6 +8436,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -8471,6 +8491,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -8522,6 +8546,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "post": {
@@ -8572,6 +8600,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "put": {
@@ -8640,6 +8672,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -8778,6 +8814,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "put": {
@@ -8838,6 +8878,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -8879,6 +8923,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -8920,6 +8968,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "post": {
@@ -8970,6 +9022,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -9011,6 +9067,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -9052,6 +9112,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -9093,6 +9157,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -9213,6 +9281,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -10231,6 +10303,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -11687,6 +11763,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {
@@ -12767,6 +12847,10 @@
         {
           "url": "https://stratos.zeleznalady.cz/akb",
           "description": "Production AKB web API"
+        },
+        {
+          "url": "https://chat.zeleznalady.cz",
+          "description": "Production standalone AKB chat API"
         }
       ],
       "get": {

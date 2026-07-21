@@ -58,6 +58,8 @@ from the flat standard documents.
 7. Current implementation status:
    - `maintenance/project-status.md`
    - `qa/access-information-policy-v2-impact-report.md`
+8. Director Copilot target and delivery plan:
+   - `ARCHITECTURE/director-copilot-implementation-plan.md`
 
 ## Active Documentation Homes
 

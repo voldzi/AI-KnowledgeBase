@@ -21,14 +21,15 @@ The app shell is a work console, not a landing page. Command Center opens only
 role-available sections and actions. The top-bar status uses dependency-aware
 `/api/ready`, not process liveness alone.
 
-The visual and interaction shell is provided by `@voldzi/stratos-ui@0.3.29`.
+The visual and interaction shell is provided by `@voldzi/stratos-ui@0.3.35`.
 At mobile width the shared topbar trigger and bottom app rail open the workspace
 drawer; at compact tablet width the left rail opens the same overlay; at desktop
 width the sidebar is a persistent column. Close-button, backdrop, Escape, focus
 return and popover layering are shared-library behavior rather than AKB CSS.
 
-Employee chat-only users work in the standalone Employee Chat Portal at
-`/chat`. This portal intentionally has no side menu or workspace submenu. It
+Employee chat-only users work in the standalone Employee Chat Portal at the
+canonical root `https://chat.zeleznalady.cz/`; `/chat` remains the platform
+route. This portal intentionally has no side menu or workspace submenu. It
 keeps only a compact header with AKB identity, settings, and logout, so the
 ordinary employee starts directly in the chat and can reach information through
 natural language instead of navigating administrative modules.

@@ -60,6 +60,7 @@ citation/export -> Registry fresh version/scope/policy decision -> STRATOS polic
 citation/source open -> AKB web bridge/viewer -> signed AKB source endpoint
 intelligence workbench -> AKB web route -> Registry metadata/readiness/case APIs
 intelligence workbench -> AKB web bridge -> Ingestion OpenSearch intelligence endpoints
+director copilot -> AKB orchestrator -> authorized read-only STRATOS domain tools -> evidence snapshot -> answer/artifact
 ```
 
 ## Portable Knowledge Bundles
@@ -126,6 +127,7 @@ Detailed architecture references:
 - `docs/ARCHITECTURE/02_SERVICE_BOUNDARIES.md`
 - `docs/ARCHITECTURE/enterprise-architecture.md`
 - `docs/ARCHITECTURE/professional-knowledge-chat-plan.md`
+- `docs/ARCHITECTURE/director-copilot-implementation-plan.md`
 - `docs/ARCHITECTURE/standalone-chat-pwa.md`
 - `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`

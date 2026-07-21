@@ -45,8 +45,8 @@ Nedokončené části jsou rozděleny do etap níže.
 
 ### P0-A: historie a odkazy na vlákna
 
-Stav: implementováno v první změně tohoto plánu; před produkčním nasazením
-zbývá build a end-to-end smoke s vlastním a sdíleným vláknem.
+Stav produkce 2026-07-18: nasazeno a ověřeno buildem, automatickými testy a
+smoke scénářem vlastního i sdíleného vlákna.
 
 Rozsah:
 
@@ -67,10 +67,10 @@ Akceptace:
 
 ### P0-B: reautorizace historických odpovědí
 
-Stav: jádro fail-closed projekce je implementováno. Registry při načtení
+Stav produkce 2026-07-18: fail-closed projekce je nasazena. Registry při načtení
 historie znovu ověřuje každou citovanou neměnnou verzi a při neúspěchu vrací
-`source_access_changed` bez odpovědi, citací a artefaktů. Před pilotem zbývá
-provozní auditní metrika a end-to-end test odebrání scope.
+`source_access_changed` bez odpovědi, citací a artefaktů. Release gate ověřil
+reautorizaci a bezpečné skrytí při změně přístupu.
 
 Rozsah:
 
@@ -90,13 +90,12 @@ Akceptace:
 
 ### P0-C: spravované sdílení a autorství
 
-Stav: osoby, autorství a oprávnění komentátora jsou implementovány. Volný text
+Stav produkce 2026-07-18: osoby, autorství a oprávnění komentátora jsou nasazeny. Volný text
 byl nahrazen společným adresářovým pickerem; Registry při zápisu znovu ověřuje
 existenci a aktivitu Keycloak identity, ukládá stabilní subject ID a bezpečný
 zobrazovací snapshot. Každá zpráva má serverově odvozeného autora a typ
 identity. Nové skupinové sdílení je záměrně fail-closed, dokud STRATOS
-organizační adresář neposkytne ověřený kontrakt skupin. Před pilotem zbývá
-end-to-end smoke se dvěma reálnými uživateli.
+organizační adresář neposkytne ověřený kontrakt skupin.
 
 Rozsah:
 
@@ -115,13 +114,13 @@ Akceptace:
 
 ### P0-D: retence a odstranění
 
-Stav implementace 2026-07-18: dokončeno lokálně. Registry fyzicky maže
+Stav produkce 2026-07-18: nasazeno. Registry fyzicky maže
 vlastníkem potvrzená i retenčně expirovaná vlákna, přičemž zprávy a sdílení
 odstraňuje ve stejné transakci pomocí cascade vazeb. Zůstává pouze obsahově
 prázdný auditní doklad s počty a důvodem odstranění. Periodická úloha běží
 okamžitě po startu a potom v konfigurovaném intervalu, takže po obnově databáze
 zálohovaná expirovaná vlákna nezůstanou dostupná. Nové metriky se exportují
-přes OTLP. Před pilotem zbývá produkční migrační a provozní smoke.
+přes OTLP. Produkční migrace a provozní smoke prošly v pilotním releasu.
 
 Rozsah:
 
@@ -171,7 +170,7 @@ Akceptace:
 
 ### Řízený vícekolový kontext
 
-Stav implementace 2026-07-18: dokončeno lokálně. Z čerstvě autorizované
+Stav produkce 2026-07-18: nasazeno. Z čerstvě autorizované
 Registry historie se používají nejvýše čtyři předchozí uživatelské otázky a
 celkově nejvýše 1 800 znaků. Staré odpovědi asistenta, citace ani skryté zdroje
 se do modelového kontextu nepřenášejí.
@@ -184,7 +183,7 @@ se do modelového kontextu nepřenášejí.
 
 ### Správa vláken
 
-Stav implementace 2026-07-18: dokončeno lokálně. Přejmenování, serverové
+Stav produkce 2026-07-18: nasazeno. Přejmenování, serverové
 připnutí, archivace, obnova, odstranění a filtry vlastních, sdílených a
 archivovaných vláken používají jeden Registry kontrakt. Archiv je pouze pro
 čtení a dotykové akce mají nejméně 44 × 44 px.

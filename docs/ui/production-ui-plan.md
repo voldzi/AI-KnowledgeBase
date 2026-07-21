@@ -5,8 +5,9 @@ The Web UI is organized as a local production work surface for knowledge and doc
 Phase 04+ uses one employee-facing chat portal and a separate knowledge-management
 workspace:
 
-- Employee Chat Portal for ordinary users at `/chat`.
-- `/assistant` is a legacy compatibility route that redirects to `/chat`.
+- Employee Chat Portal for ordinary users at `/chat` in the platform profile and
+  at the canonical root `https://chat.zeleznalady.cz/` in the standalone profile.
+- `/assistant` and historical standalone `/chat` links are compatibility routes.
 - Knowledge Management/Admin GUI for document managers, knowledge admins, auditors, and IT/admin roles.
 
 ## Implemented Baseline
@@ -31,7 +32,9 @@ workspace:
 - Clicking a citation opens the source-context panel.
 - The document action opens the original signed source document through the assistant citation redirect.
 - For PDF sources, the redirect includes the cited page and a search phrase from the citation text so supported PDF viewers can highlight the cited text; exact bbox/text-layer highlighting remains available in the AKB source-context/native preview.
-- Thread sharing is represented in the UI as session-local working state until a dedicated backend sharing contract is added.
+- Thread state, ownership, pinning, archive, retention and person sharing are
+  persisted through Registry. Group sharing remains fail-closed until STRATOS
+  supplies an authoritative organization group directory.
 - On tablet/mobile breakpoints, the shared shell hamburger is a true open/close toggle. A closed workspace submenu must be visually hidden, non-interactive and not reachable through keyboard focus.
 - The source-context panel shows:
   - document title,
@@ -91,7 +94,7 @@ mode is retired in every environment and fails before writes.
 
 ### STRATOS UI Integration
 
-AKB consumes `@voldzi/stratos-ui@0.3.29` from the public npm registry. The
+AKB consumes `@voldzi/stratos-ui@0.3.35` from the public npm registry. The
 application shell imports `AppShell`, `AppRail`, `GlobalTopbar`,
 `useRailSectionSidebarController`, `WorkspaceSidebar`, `WorkspaceNav`,
 `CommandCenterTrigger`, `GlobalTopbarBreadcrumb` and `TopbarStatusGroup`
