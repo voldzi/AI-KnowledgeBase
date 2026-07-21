@@ -416,6 +416,8 @@ DNS alias bez samostatného aplikačního profilu se nepovažuje za dokončené
 
 - ověřené viewporty minimálně 390, 768, 1024 a 1440 px;
 - bez horizontálního overflow;
+- chat-only profil na mobilu nezobrazuje modulovou spodní navigaci; pracovní tok
+  zůstává v pořadí hlavička, konverzace, stav odpovědi a editor dotazu;
 - editor dotazu zůstává dostupný při zobrazení softwarové klávesnice;
 - seznam konverzací a citace lze ovládat klávesnicí;
 - focus se po zavření panelu nebo dialogu vrací na spouštěcí prvek;
@@ -451,6 +453,9 @@ DNS alias bez samostatného aplikačního profilu se nepovažuje za dokončené
 12. Aktualizace PWA nezanechá starý shell nad novým API kontraktem.
 13. Pokus o otevření administrační route na chatové doméně je zamítnut.
 14. Hlavní AKB web projde regresními chatovými a administračními testy.
+15. Inventurní otázka na typ dokumentu používá strukturovaný filtr
+    `document_type`, nikoliv fulltextovou shodu tématu, a zobrazuje stručný
+    výsledek s rozbalitelnými podrobnostmi namísto vysoké tabulky.
 
 ## Rozdělení Odpovědností
 

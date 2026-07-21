@@ -2210,6 +2210,66 @@ function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifac
     }
   }
 
+  if (isRegistryInventorySummary(report)) {
+    return (
+      <section className="akb-chat-report akb-chat-report--inventory">
+        <div className="akb-chat-report__header">
+          <div>
+            <span className="akb-chat-report__eyebrow">
+              <Table2 size={14} aria-hidden="true" />
+              {report.rows.length} {copy.reportRows}
+            </span>
+            <h4>{report.title}</h4>
+            {report.description ? <p>{report.description}</p> : null}
+          </div>
+        </div>
+        <div className="akb-chat-inventory-grid">
+          {report.rows.map((row) => (
+            <article className="akb-chat-inventory-card" key={row.row_id}>
+              <div className="akb-chat-inventory-card__headline">
+                <div>
+                  <span>{reportColumnLabel(report, "topic")}</span>
+                  <h5>{formatReportCell(row.cells.topic)}</h5>
+                </div>
+                <strong aria-label={reportColumnLabel(report, "document_count")}>
+                  {formatReportCell(row.cells.document_count)}
+                </strong>
+              </div>
+              <dl className="akb-chat-inventory-card__facts">
+                {inventoryFactKeys.map((key) => {
+                  const value = formatReportCell(row.cells[key]);
+                  return value ? (
+                    <div key={key}>
+                      <dt>{reportColumnLabel(report, key)}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ) : null;
+                })}
+              </dl>
+              {inventoryDetailKeys.some((key) => formatReportCell(row.cells[key])) ? (
+                <details className="akb-chat-inventory-card__details">
+                  <summary>{copy.reportDetail}</summary>
+                  <dl>
+                    {inventoryDetailKeys.map((key) => {
+                      const value = formatReportCell(row.cells[key]);
+                      return value ? (
+                        <div key={key}>
+                          <dt>{reportColumnLabel(report, key)}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ) : null;
+                    })}
+                  </dl>
+                </details>
+              ) : null}
+            </article>
+          ))}
+        </div>
+        {visibleWarnings.length ? <div className="akb-chat-report__warnings">{visibleWarnings.join(" ")}</div> : null}
+      </section>
+    );
+  }
+
   return (
     <section className="akb-chat-report">
       <div className="akb-chat-report__header">
@@ -2254,6 +2314,27 @@ function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifac
       {exportError ? <div className="notice">{exportError}</div> : null}
     </section>
   );
+}
+
+const inventoryFactKeys = [
+  "valid_or_approved_count",
+  "document_types",
+  "classifications",
+  "statuses"
+] as const;
+
+const inventoryDetailKeys = ["owners", "example_documents"] as const;
+
+function isRegistryInventorySummary(report: AssistantReportArtifact) {
+  return report.artifact_id.startsWith("rpt_registry_")
+    && !report.artifact_id.startsWith("rpt_registry_list_")
+    && !report.artifact_id.startsWith("rpt_registry_type_count_")
+    && report.columns.some((column) => column.key === "document_count")
+    && report.columns.some((column) => column.key === "topic");
+}
+
+function reportColumnLabel(report: AssistantReportArtifact, key: string) {
+  return report.columns.find((column) => column.key === key)?.label ?? key;
 }
 
 const CHART_COLORS = ["#087f8c", "#2864dc", "#7c3aed", "#d97706"];

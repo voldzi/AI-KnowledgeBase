@@ -9,6 +9,7 @@ import {
   isRegistryDocumentReportQuestion,
   registryTopicsForDocumentListRequest,
   registryReportKindFromMessage,
+  registryDocumentTypeFilterForReport,
   summarizeRegistryReportForAudit
 } from "../src/lib/reporting/assistant-registry-report";
 
@@ -108,6 +109,41 @@ describe("assistant registry report", () => {
     assert.equal(registryReportKindFromMessage("Jakého typu jsou dokumenty, které máš k dispozici?"), "document_type_count");
     assert.equal(registryReportKindFromMessage("Ok vytvoř tedy sestavu, kde bude typ počet"), "document_type_count");
     assert.equal(registryReportKindFromMessage("Kolik máme smluv?"), "document_inventory_summary");
+    assert.equal(registryDocumentTypeFilterForReport("Kolik máme smluv?", "document_inventory_summary"), "contract");
+    assert.equal(registryDocumentTypeFilterForReport("Kolik máme smluv?", "document_type_count"), null);
+    assert.deepEqual(registryTopicsForDocumentListRequest("Kolik máme smluv?", ["smlouvy"], "cs"), []);
+  });
+
+  it("returns an exact and direct permission-scoped contract count", () => {
+    const response = buildRegistryDocumentReportFromSummary({
+      message: "Kolik máme smluv?",
+      conversationId: "conv_contract_count",
+      language: "cs",
+      summary: {
+        total_visible_documents: 142,
+        total_matched_documents: 142,
+        topics: [{
+          topic: "všechny dokumenty",
+          document_count: 142,
+          valid_or_approved_count: 142,
+          document_types: [{ key: "contract", label: "contract", count: 142 }],
+          classifications: [{ key: "internal", label: "internal", count: 142 }],
+          statuses: [{ key: "valid", label: "valid", count: 142 }],
+          owners: [{ key: "Sekce IT", label: "Sekce IT", count: 142 }],
+          example_documents: ["Servisní smlouva"]
+        }],
+        by_document_type: [{ key: "contract", label: "contract", count: 142 }],
+        by_classification: [],
+        by_status: [],
+        by_owner: [],
+        warnings: ["REGISTRY_METADATA_SUMMARY"]
+      }
+    });
+
+    assert.ok(response);
+    assert.equal(response.answer, "V AKB máte v rozsahu svých oprávnění 142 smluv.");
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.topic, "smlouvy");
+    assert.equal(response.report_artifacts[0]?.rows[0]?.cells.document_count, 142);
   });
 
   it("builds a document list artifact for natural language list requests", () => {
