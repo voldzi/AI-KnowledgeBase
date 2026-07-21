@@ -1,3 +1,10 @@
+import time
+from threading import Lock
+
+from app.models import Document
+from app.permissions import Decision
+
+
 def _external_payload(**overrides):
     payload = {
         "tenant_id": "org_stratos",
@@ -114,6 +121,56 @@ def test_external_document_upsert_creates_registry_document(client, admin_header
     audit = client.get("/api/v1/audit/events", headers=admin_headers)
     assert audit.status_code == 200
     assert "external_document.upserted" in {event["event_type"] for event in audit.json()["items"]}
+
+
+def test_document_projection_parallelizes_distinct_runtime_decisions(
+    client,
+    admin_headers,
+    monkeypatch,
+    db_session,
+):
+    first = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_external_payload(),
+    )
+    second = client.post(
+        "/api/v1/external-documents/upsert",
+        headers=admin_headers,
+        json=_external_payload(
+            external_ref="contract:parallel:second",
+            entity_id="contract-parallel-second",
+            title="Parallel authorization second contract",
+            classification="confidential",
+        ),
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    second_document = db_session.get(Document, second.json()["document"]["document_id"])
+    assert second_document is not None
+    second_document.policy_hash = f"sha256:{'f' * 64}"
+    db_session.commit()
+
+    lock = Lock()
+    active = 0
+    maximum_active = 0
+
+    def slow_allow(*_args, **_kwargs):
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.03)
+        with lock:
+            active -= 1
+        return Decision(True, "test allow", {}, ("TEST_ALLOW",))
+
+    monkeypatch.setattr("app.api.evaluate_runtime_document_access", slow_allow)
+
+    response = client.get("/api/v1/documents", headers=admin_headers)
+
+    assert response.status_code == 200, response.text
+    assert maximum_active >= 2
 
 
 def test_external_document_upsert_is_idempotent(client, admin_headers):
