@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         });
       }
       try {
-        const summary = await clients.registry.getDocumentMetadataSummary(context, {
+        const summary = await clients.registry.getRagDocumentMetadataSummary(context, {
           topics: registryTopics,
           ...registrySummaryFilters
         });

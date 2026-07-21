@@ -274,15 +274,18 @@ Registry API exposes the first enterprise metadata aggregate endpoint:
 GET /api/v1/documents?document_type=contract&tenant_id=tenant-a&external_system=STRATOS_BUDGET&context_tag=budget-contract:contract-1
 GET /api/v1/documents/metadata-summary?topic=digitalizace&topic=řízení%20projektů
 GET /api/v1/documents/metadata-summary?topic=smlouva&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract:contract-1
+GET /api/v1/documents/rag-metadata-summary?document_type=contract
 GET /api/v1/documents/readiness-report?topic=digitalizace&max_issues=50
 ```
 
 `/documents/metadata-summary` returns permission-scoped counts and buckets by
-topic, document type, classification, status, and owner/steward. `/documents`
-uses the same tenant/source/entity/topic/document-type filters for list-shaped
-structured outputs such as "seznam smluv do tabulky". The web bridge uses these endpoints
-for chat inventory questions and falls back to paginated `/documents` only when
-an older registry deployment does not yet expose the summary endpoint. STRATOS
+topic, document type, classification, status, and owner/steward and remains
+authorized as a Registry `document.read` view. The chat BFF uses the separate
+`/documents/rag-metadata-summary`, which applies the exact `rag.query` capability,
+scope and Information Policy decision used by retrieval. This lets chat count
+queryable knowledge without widening the Registry dashboard or direct document
+views. `/documents` uses the same tenant/source/entity/topic/document-type filters
+for list-shaped structured outputs such as "seznam smluv do tabulky". STRATOS
 callers may pass tenant/source/entity filters (`tenant_id`, `external_system`,
 `entity_type`, `entity_id`, `external_ref`) and repeated `context_tag` values so
 enterprise chat reports stay scoped to the ProjectFlow, Budget, or other source

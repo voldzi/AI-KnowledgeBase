@@ -312,6 +312,34 @@ describe("production API clients", () => {
     );
   });
 
+  it("loads chat document summaries through the RAG-authorized Registry view", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        total_visible_documents: 142,
+        total_matched_documents: 142,
+        topics: [],
+        by_document_type: [{ key: "contract", label: "contract", count: 142 }],
+        by_classification: [{ key: "internal", label: "internal", count: 142 }],
+        by_status: [{ key: "valid", label: "valid", count: 142 }],
+        by_owner: [],
+        warnings: ["REGISTRY_METADATA_SUMMARY"]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const summary = await clients.registry.getRagDocumentMetadataSummary(createMockContext(), {
+      documentType: "contract"
+    });
+
+    assert.equal(summary.total_visible_documents, 142);
+    assert.equal(
+      calls[0][0],
+      "https://registry.local/api/v1/documents/rag-metadata-summary?document_type=contract"
+    );
+  });
+
   it("loads document readiness reports from the Registry API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

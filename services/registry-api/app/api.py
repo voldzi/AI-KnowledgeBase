@@ -5335,7 +5335,57 @@ def document_metadata_summary(
         external_ref=external_ref,
         context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
     )
-    topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
+    return _document_metadata_summary_response(documents, topic)
+
+
+@router.get("/documents/rag-metadata-summary", response_model=DocumentMetadataSummaryResponse)
+def rag_document_metadata_summary(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+    status_filter: DocumentStatus | None = Query(default=None, alias="status"),
+    classification: Classification | None = None,
+    document_type: DocumentType | None = None,
+    owner_id: str | None = None,
+    tag: str | None = None,
+    topic: list[str] | None = Query(default=None),
+    tenant_id: str | None = None,
+    external_system: ExternalSourceSystem | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    external_ref: str | None = None,
+    context_tag: list[str] | None = Query(default=None),
+) -> DocumentMetadataSummaryResponse:
+    """Summarize only documents that the current user may query through RAG.
+
+    The regular metadata summary remains a Registry/document-read view. Keeping
+    this as a separate endpoint prevents chat access from widening the document
+    dashboard while still applying the same exact scope and Information Policy
+    decision as retrieval.
+    """
+    documents = _authorized_document_metadata_rows(
+        db=db,
+        principal=principal,
+        status_filter=status_filter,
+        classification=classification,
+        document_type=document_type,
+        owner_id=owner_id,
+        tag=tag,
+        tenant_id=tenant_id,
+        external_system=external_system,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        external_ref=external_ref,
+        context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
+        authorization_action=Action.rag_query,
+    )
+    return _document_metadata_summary_response(documents, topic)
+
+
+def _document_metadata_summary_response(
+    documents: list[Document],
+    requested_topics: list[str] | None,
+) -> DocumentMetadataSummaryResponse:
+    topics = [candidate.strip() for candidate in requested_topics or [] if candidate.strip()]
     if not topics:
         topics = ["all documents"]
 
@@ -5796,6 +5846,7 @@ def _authorized_document_metadata_rows(
     entity_id: str | None,
     external_ref: str | None,
     context_tags: list[str],
+    authorization_action: Action = Action.document_read,
 ) -> list[Document]:
     stmt = (
         select(Document)
@@ -5837,7 +5888,7 @@ def _authorized_document_metadata_rows(
             continue
         if context_tags and not all(_document_matches_context_tag(document, candidate) for candidate in context_tags):
             continue
-        local_decision = evaluate_document_access(context, Action.document_read.value, document)
+        local_decision = evaluate_document_access(context, authorization_action.value, document)
         if not local_decision.allowed:
             continue
         runtime_key = json.dumps(
@@ -5855,7 +5906,7 @@ def _authorized_document_metadata_rows(
         if runtime_key not in runtime_access_cache:
             runtime_access_cache[runtime_key] = evaluate_runtime_document_access(
                 principal,
-                Action.document_read.value,
+                authorization_action.value,
                 document,
                 local_decision,
             ).allowed

@@ -117,6 +117,38 @@ def test_document_list_caches_identical_runtime_policy_coordinates(
     assert len(calls) == 1
 
 
+def test_rag_metadata_summary_uses_rag_query_authorization(
+    client,
+    admin_headers,
+    monkeypatch,
+):
+    document = _create_document(client, admin_headers, title="Budget contract")
+    calls: list[tuple[str, str]] = []
+
+    def runtime_decision(_principal, action, resource, local_decision):
+        calls.append((action, resource.document_id))
+        return api_module.Decision(
+            True,
+            "runtime test allow",
+            local_decision.constraints,
+            ("RUNTIME_TEST",),
+        )
+
+    monkeypatch.setattr(api_module, "evaluate_runtime_document_access", runtime_decision)
+
+    registry_summary = client.get("/api/v1/documents/metadata-summary", headers=admin_headers)
+    rag_summary = client.get("/api/v1/documents/rag-metadata-summary", headers=admin_headers)
+
+    assert registry_summary.status_code == 200, registry_summary.text
+    assert rag_summary.status_code == 200, rag_summary.text
+    assert registry_summary.json()["total_visible_documents"] == 1
+    assert rag_summary.json()["total_visible_documents"] == 1
+    assert calls == [
+        ("document.read", document["document_id"]),
+        ("rag.query", document["document_id"]),
+    ]
+
+
 def test_document_metadata_summary_aggregates_authorized_topics(client, admin_headers, reader_headers):
     digital = _create_document(
         client,

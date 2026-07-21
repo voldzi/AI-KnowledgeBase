@@ -140,6 +140,13 @@ export class MockRegistryClient implements RegistryApiClient {
     };
   }
 
+  getRagDocumentMetadataSummary(
+    context: ApiRequestContext,
+    options: DocumentMetadataSummaryOptions = {},
+  ): Promise<DocumentMetadataSummary> {
+    return this.getDocumentMetadataSummary(context, options);
+  }
+
   async getDocumentReadinessReport(
     context: ApiRequestContext,
     options: DocumentReadinessReportOptions = {},
