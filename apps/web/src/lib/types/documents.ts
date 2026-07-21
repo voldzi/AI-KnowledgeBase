@@ -160,7 +160,9 @@ export interface DocumentMetadataSummaryOptions {
   contextTags?: string[];
 }
 
-export interface DocumentListOptions extends DocumentMetadataSummaryOptions {}
+export interface DocumentListOptions extends DocumentMetadataSummaryOptions {
+  recentLimit?: number;
+}
 
 export type DocumentReadinessSeverity = "critical" | "warning" | "info";
 

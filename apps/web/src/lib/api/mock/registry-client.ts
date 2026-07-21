@@ -600,6 +600,7 @@ export class MockRegistryClient implements RegistryApiClient {
 
   async listDocumentIngestionAttempts(
     _context: ApiRequestContext,
+    _options: { documentIds?: string[] } = {},
   ): Promise<[]> {
     return [];
   }

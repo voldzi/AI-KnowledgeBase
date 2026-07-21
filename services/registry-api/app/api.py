@@ -4676,6 +4676,7 @@ def update_document_external_references_current(
 def list_document_ingestion_attempts_current(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
+    document_id: list[str] | None = Query(default=None),
 ) -> IngestionAttemptListResponse:
     """Return current attempts only for documents visible to the caller.
 
@@ -4683,6 +4684,15 @@ def list_document_ingestion_attempts_current(
     authorized request per document makes its latency grow linearly. Resolve
     the document boundary once, then load all matching attempts in one query.
     """
+    requested_document_ids = list(dict.fromkeys(
+        candidate.strip() for candidate in document_id or [] if candidate.strip()
+    ))
+    if len(requested_document_ids) > 50:
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "too_many_document_ids",
+            "At most 50 document ids can be requested.",
+        )
     documents = _authorized_document_metadata_rows(
         db=db,
         principal=principal,
@@ -4697,6 +4707,7 @@ def list_document_ingestion_attempts_current(
         entity_id=None,
         external_ref=None,
         context_tags=[],
+        document_ids=requested_document_ids or None,
     )
     visible_document_ids = [document.document_id for document in documents]
     if not visible_document_ids:
@@ -5318,6 +5329,7 @@ def list_documents(
     entity_id: str | None = None,
     external_ref: str | None = None,
     context_tag: list[str] | None = Query(default=None),
+    recent_limit: int | None = Query(default=None, ge=1, le=50),
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> DocumentListResponse:
@@ -5336,6 +5348,7 @@ def list_documents(
         entity_id=entity_id,
         external_ref=external_ref,
         context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
+        candidate_limit=min(recent_limit * 5, 250) if recent_limit is not None else None,
     )
     if topics:
         documents = [
@@ -5344,6 +5357,8 @@ def list_documents(
             if any(_document_matches_metadata_topic(document, candidate) for candidate in topics)
         ]
 
+    if recent_limit is not None:
+        return DocumentListResponse(items=documents[:recent_limit], limit=recent_limit, offset=0)
     return DocumentListResponse(items=documents[offset : offset + limit], limit=limit, offset=offset)
 
 
@@ -5891,6 +5906,8 @@ def _authorized_document_metadata_rows(
     external_ref: str | None,
     context_tags: list[str],
     authorization_action: Action = Action.document_read,
+    document_ids: list[str] | None = None,
+    candidate_limit: int | None = None,
 ) -> list[Document]:
     stmt = (
         select(Document)
@@ -5923,6 +5940,10 @@ def _authorized_document_metadata_rows(
         stmt = stmt.where(Document.document_type == document_type.value)
     if owner_id:
         stmt = stmt.where(Document.owner_id == owner_id)
+    if document_ids:
+        stmt = stmt.where(Document.document_id.in_(document_ids))
+    if candidate_limit is not None:
+        stmt = stmt.limit(candidate_limit)
 
     context = context_for_principal(principal, db)
     runtime_candidates: list[tuple[Document, str]] = []

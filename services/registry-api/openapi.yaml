@@ -499,6 +499,17 @@ paths:
       summary: List Document Ingestion Attempts Current
       description: Returns current ingestion attempts only for documents visible to the caller.
       operationId: list_document_ingestion_attempts_current_api_v1_documents_ingestion_attempts_current_get
+      parameters:
+      - name: document_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          title: Document Id
       responses:
         '200':
           description: Successful Response
@@ -710,6 +721,16 @@ paths:
               type: string
           - type: 'null'
           title: Context Tag
+      - name: recent_limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 50
+            minimum: 1
+          - type: 'null'
+          title: Recent Limit
       - name: limit
         in: query
         required: false

@@ -237,6 +237,26 @@ describe("production API clients", () => {
     assert.equal(calls[1][0], "https://registry.local/api/v1/documents?limit=200&offset=200");
   });
 
+  it("loads a bounded recent dashboard projection with one Registry request", async () => {
+    const calls: string[] = [];
+    const fetcher: AklFetch = async (input) => {
+      calls.push(String(input));
+      return Response.json({
+        items: Array.from({ length: 12 }, (_, index) => documentFixture(`doc_recent_${index + 1}`)),
+        limit: 12,
+        offset: 0,
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const documents = await clients.registry.listDocuments(createMockContext(), { recentLimit: 12 });
+
+    assert.equal(documents.length, 12);
+    assert.deepEqual(calls, [
+      "https://registry.local/api/v1/documents?recent_limit=12&limit=12&offset=0",
+    ]);
+  });
+
   it("loads filtered document lists from the Registry API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {
@@ -291,6 +311,23 @@ describe("production API clients", () => {
       calls[0]?.[0],
       "https://registry.local/api/v1/documents/ingestion-attempts/current"
     );
+  });
+
+  it("bounds the ingestion projection to explicit visible document ids", async () => {
+    const calls: string[] = [];
+    const fetcher: AklFetch = async (input) => {
+      calls.push(String(input));
+      return Response.json({ items: [] });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    await clients.registry.listDocumentIngestionAttempts(createMockContext(), {
+      documentIds: ["doc_recent_1", "doc_recent_2"],
+    });
+
+    assert.deepEqual(calls, [
+      "https://registry.local/api/v1/documents/ingestion-attempts/current?document_id=doc_recent_1&document_id=doc_recent_2",
+    ]);
   });
 
   it("loads document metadata summary from the Registry API", async () => {

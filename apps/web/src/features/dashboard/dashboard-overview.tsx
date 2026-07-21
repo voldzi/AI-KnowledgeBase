@@ -26,8 +26,8 @@ interface DashboardOverviewProps {
 const dashboardCopy = {
   cs: {
     metricsLabel: "Metriky přehledu",
-    validDocuments: "Platné dokumenty",
-    totalControlledRecords: "celkem řízených záznamů",
+    validDocuments: "Nedávné platné dokumenty",
+    totalControlledRecords: "nedávných viditelných záznamů",
     activeIngestion: "Probíhá zpracování",
     activeIngestionDetail: "Úlohy ve frontě nebo ve zpracování",
     failedJobs: "Selhané úlohy",
@@ -75,8 +75,8 @@ const dashboardCopy = {
   },
   en: {
     metricsLabel: "Dashboard metrics",
-    validDocuments: "Valid documents",
-    totalControlledRecords: "total controlled records",
+    validDocuments: "Recent valid documents",
+    totalControlledRecords: "recent visible records",
     activeIngestion: "Active processing",
     activeIngestionDetail: "Jobs queued or processing",
     failedJobs: "Failed jobs",

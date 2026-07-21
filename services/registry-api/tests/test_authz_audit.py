@@ -298,6 +298,13 @@ def test_document_list_paginates_after_authorization(client, db_session, admin_h
     assert listing.status_code == 200, listing.text
     assert [item["document_id"] for item in listing.json()["items"]] == [accessible_id]
 
+    recent_listing = client.get(
+        "/api/v1/documents?recent_limit=1&limit=1",
+        headers=mapped_headers,
+    )
+    assert recent_listing.status_code == 200, recent_listing.text
+    assert [item["document_id"] for item in recent_listing.json()["items"]] == [accessible_id]
+
 
 def test_reader_metadata_reports_exclude_restricted_and_confidential_documents(client, admin_headers, reader_headers):
     visible = client.post(

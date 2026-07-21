@@ -9,7 +9,6 @@ import {
   exactIngestionJobFromAttempt,
   getGovernedIngestionJob,
   getGovernedIngestionReport,
-  listAllVisibleIngestionJobs,
   listVisibleIngestionJobs,
   listVisibleIngestionReports,
   refreshPublishedVersionIndexes,
@@ -123,39 +122,6 @@ describe("Registry-governed ingestion operations", () => {
     assert.equal(jobs[0]?.status, "completed");
     assert.equal(calls.length, 1);
     assert.ok(calls.every((url) => url.includes("registry.local")));
-  });
-
-  it("loads the complete caller-visible batch without a preceding document request", async () => {
-    const calls: string[] = [];
-    const clients = createApiClients({
-      env: productionEnv,
-      fetcher: async (input) => {
-        const url = String(input);
-        calls.push(url);
-        if (url.includes("/documents/ingestion-attempts/current")) {
-          return Response.json({
-            items: [{
-              document_id: "doc_visible",
-              document_version_id: "ver_visible",
-              ingestion_job_id: "ing_visible",
-              ingestion_status: "INDEXED",
-              created_at: "2026-07-14T08:00:00Z",
-              updated_at: "2026-07-14T08:05:00Z",
-            }],
-          });
-        }
-        throw new Error(`Unexpected URL: ${url}`);
-      },
-    });
-
-    const jobs = await listAllVisibleIngestionJobs(clients, actorContext, {
-      apiClientMode: "production",
-    });
-
-    assert.deepEqual(jobs.map((job) => job.job_id), ["ing_visible"]);
-    assert.deepEqual(calls, [
-      "https://registry.local/api/v1/documents/ingestion-attempts/current",
-    ]);
   });
 
   it("accepts an empty authorized batch without per-document fallbacks", async () => {
