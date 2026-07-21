@@ -72,7 +72,7 @@ describe("Registry-governed ingestion operations", () => {
     );
   });
 
-  it("projects only current attempts for Registry-visible documents without global listing", async () => {
+  it("projects current attempts for Registry-visible documents with one batch request", async () => {
     const calls: string[] = [];
     const fetcher: AklFetch = async (input) => {
       const url = String(input);
@@ -80,27 +80,26 @@ describe("Registry-governed ingestion operations", () => {
       if (url.includes("ingestion.local")) {
         throw new Error("The production projection must never call global listJobs");
       }
-      if (url.includes("/documents/doc_visible_a/external-references/current")) {
+      if (url.includes("/documents/ingestion-attempts/current")) {
         return Response.json({
-          document_id: "doc_visible_a",
-          updated: 0,
-          items: [],
-          ingestion_attempt: {
-            document_id: "doc_visible_a",
-            document_version_id: "ver_visible_a",
-            ingestion_job_id: "ing_visible_a",
-            ingestion_status: "INDEXED",
-            created_at: "2026-07-14T08:00:00Z",
-            updated_at: "2026-07-14T08:05:00Z",
-          },
-        });
-      }
-      if (url.includes("/documents/doc_visible_b/external-references/current")) {
-        return Response.json({
-          document_id: "doc_visible_b",
-          updated: 0,
-          items: [],
-          ingestion_attempt: null,
+          items: [
+            {
+              document_id: "doc_visible_a",
+              document_version_id: "ver_visible_a",
+              ingestion_job_id: "ing_visible_a",
+              ingestion_status: "INDEXED",
+              created_at: "2026-07-14T08:00:00Z",
+              updated_at: "2026-07-14T08:05:00Z",
+            },
+            {
+              document_id: "doc_visible_outside_selection",
+              document_version_id: "ver_outside",
+              ingestion_job_id: "ing_outside",
+              ingestion_status: "FAILED",
+              created_at: "2026-07-14T07:00:00Z",
+              updated_at: "2026-07-14T07:05:00Z",
+            },
+          ],
         });
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -121,36 +120,15 @@ describe("Registry-governed ingestion operations", () => {
     assert.deepEqual(jobs.map((job) => job.job_id), ["ing_visible_a"]);
     assert.equal(jobs[0]?.document_id, "doc_visible_a");
     assert.equal(jobs[0]?.status, "completed");
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 1);
     assert.ok(calls.every((url) => url.includes("registry.local")));
   });
 
-  it("omits ingestion projections that are protected more narrowly than document metadata", async () => {
+  it("accepts an empty authorized batch without per-document fallbacks", async () => {
     const fetcher: AklFetch = async (input) => {
       const url = String(input);
-      if (url.includes("/documents/doc_visible/external-references/current")) {
-        return Response.json({
-          document_id: "doc_visible",
-          updated: 0,
-          items: [],
-          ingestion_attempt: {
-            document_id: "doc_visible",
-            document_version_id: "ver_visible",
-            ingestion_job_id: "ing_visible",
-            ingestion_status: "INDEXED",
-            created_at: "2026-07-14T08:00:00Z",
-            updated_at: "2026-07-14T08:05:00Z",
-          },
-        });
-      }
-      if (url.includes("/documents/doc_metadata_only/external-references/current")) {
-        return Response.json({
-          error: {
-            code: "document_forbidden",
-            message: "The ingestion projection is not visible to this actor.",
-            trace_id: "corr_forbidden",
-          },
-        }, { status: 403 });
+      if (url.includes("/documents/ingestion-attempts/current")) {
+        return Response.json({ items: [] });
       }
       throw new Error(`Unexpected URL: ${url}`);
     };
@@ -166,7 +144,7 @@ describe("Registry-governed ingestion operations", () => {
       { apiClientMode: "production" },
     );
 
-    assert.deepEqual(jobs.map((job) => job.job_id), ["ing_visible"]);
+    assert.deepEqual(jobs, []);
   });
 
   it("does not hide an unavailable Registry ingestion projection", async () => {

@@ -54,6 +54,7 @@ GET    /documents/{document_id}/versions/{version_id}/publication
 PUT    /documents/{document_id}/versions/{version_id}/publication
 PATCH  /documents/{document_id}/external-references/current
 GET    /documents/{document_id}/external-references/current
+GET    /documents/ingestion-attempts/current
 
 GET    /integrations/ingestion/readiness
 POST   /integrations/ingestion/authorizations/confirm
@@ -66,6 +67,11 @@ POST   /authz/check
 POST   /authz/filter-documents
 
 POST   /intelligence/authorization
+
+`GET /documents/ingestion-attempts/current` is the read-only batch projection
+for operational surfaces. It evaluates the caller's document boundary once and
+returns only current authoritative attempts within that boundary; it does not
+grant broader document access.
 
 GET    /intelligence/cases
 POST   /intelligence/cases

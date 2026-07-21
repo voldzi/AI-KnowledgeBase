@@ -1189,6 +1189,38 @@
         }
       ]
     },
+    "/api/v1/documents/ingestion-attempts/current": {
+      "get": {
+        "summary": "List Document Ingestion Attempts Current",
+        "description": "Returns current ingestion attempts only for documents visible to the caller.",
+        "operationId": "registry_api_list_document_ingestion_attempts_current_api_v1_documents_ingestion_attempts_current_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiIngestionAttemptListResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/document-extractions": {
       "post": {
         "summary": "Store Document Extraction",
@@ -20447,6 +20479,19 @@
           "updated_at"
         ],
         "title": "IngestionAttemptResponse"
+      },
+      "RegistryApiIngestionAttemptListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiIngestionAttemptResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "IngestionAttemptListResponse"
       },
       "RegistryApiIngestionAuthorizationConfirmRequest": {
         "properties": {

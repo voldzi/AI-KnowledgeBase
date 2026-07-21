@@ -227,6 +227,9 @@ export interface RegistryApiClient {
     documentId: string,
     context: ApiRequestContext
   ): Promise<RegistryIngestionAttempt | null>;
+  listDocumentIngestionAttempts(
+    context: ApiRequestContext
+  ): Promise<RegistryIngestionAttempt[]>;
   createIntelligenceScopeAuthorization(
     request: IntelligenceScopeAuthorizationRequest,
     context: ApiRequestContext

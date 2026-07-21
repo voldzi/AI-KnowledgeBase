@@ -190,6 +190,7 @@ from app.schemas import (
     IngestionAuthorizationConfirmRequest,
     IngestionAuthorizationIssueRequest,
     IngestionAuthorizationResponse,
+    IngestionAttemptListResponse,
     IntelligenceScopeAuthorizationConfirmRequest,
     IntelligenceScopeAuthorizationIssueRequest,
     IntelligenceScopeAuthorizationResponse,
@@ -4665,6 +4666,48 @@ def update_document_external_references_current(
         items=[ExternalDocumentRefResponse.model_validate(external_ref) for external_ref in external_refs],
         ingestion_attempt=ingestion_attempt,
     )
+
+
+@router.get(
+    "/documents/ingestion-attempts/current",
+    response_model=IngestionAttemptListResponse,
+)
+def list_document_ingestion_attempts_current(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> IngestionAttemptListResponse:
+    """Return current attempts only for documents visible to the caller.
+
+    The dashboard needs a complete operational projection, but issuing one
+    authorized request per document makes its latency grow linearly. Resolve
+    the document boundary once, then load all matching attempts in one query.
+    """
+    documents = _authorized_document_metadata_rows(
+        db=db,
+        principal=principal,
+        status_filter=None,
+        classification=None,
+        document_type=None,
+        owner_id=None,
+        tag=None,
+        tenant_id=None,
+        external_system=None,
+        entity_type=None,
+        entity_id=None,
+        external_ref=None,
+        context_tags=[],
+    )
+    visible_document_ids = [document.document_id for document in documents]
+    if not visible_document_ids:
+        return IngestionAttemptListResponse()
+    attempts = list(
+        db.execute(
+            select(IngestionAttempt)
+            .where(IngestionAttempt.document_id.in_(visible_document_ids))
+            .order_by(desc(IngestionAttempt.updated_at))
+        ).scalars()
+    )
+    return IngestionAttemptListResponse(items=attempts)
 
 
 @router.get(

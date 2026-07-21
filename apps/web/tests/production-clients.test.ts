@@ -265,6 +265,34 @@ describe("production API clients", () => {
     );
   });
 
+  it("loads the authorized ingestion projection with one Registry request", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        items: [{
+          document_id: "doc_1",
+          document_version_id: "ver_1",
+          ingestion_job_id: "ing_1",
+          ingestion_status: "INDEXED",
+          created_at: "2026-07-21T08:00:00Z",
+          updated_at: "2026-07-21T08:01:00Z"
+        }]
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const attempts = await clients.registry.listDocumentIngestionAttempts(createMockContext());
+
+    assert.equal(attempts.length, 1);
+    assert.equal(attempts[0]?.ingestion_job_id, "ing_1");
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0]?.[0],
+      "https://registry.local/api/v1/documents/ingestion-attempts/current"
+    );
+  });
+
   it("loads document metadata summary from the Registry API", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {

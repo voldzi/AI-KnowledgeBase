@@ -351,6 +351,25 @@ export class ProductionRegistryClient implements RegistryApiClient {
     return response.ingestion_attempt;
   }
 
+  async listDocumentIngestionAttempts(
+    context: ApiRequestContext,
+  ): Promise<RegistryIngestionAttempt[]> {
+    const response = await this.get<{ items: RegistryIngestionAttempt[] }>(
+      "/documents/ingestion-attempts/current",
+      "listDocumentIngestionAttempts",
+      context,
+    );
+    if (!Array.isArray(response.items) || response.items.some((attempt) => !isRegistryIngestionAttempt(attempt))) {
+      throw new ApiClientError(
+        "Registry returned an invalid ingestion attempt projection.",
+        502,
+        "INGESTION_ATTEMPT_CONFLICT",
+        context.correlationId ?? context.requestId ?? "registry-ingestion-projection",
+      );
+    }
+    return response.items;
+  }
+
   createIntelligenceScopeAuthorization(
     request: IntelligenceScopeAuthorizationRequest,
     context: ApiRequestContext,

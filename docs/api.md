@@ -190,6 +190,10 @@ job id and `QUEUED|INGESTING|INDEXED|FAILED` state. Compare-and-swap fields
 `current_document_version_id`, and `current_ingestion_status` prevent stale
 retry takeover. Ingestion may report a terminal state through its durable
 outbox; it cannot change source lineage or execute before the Registry claim.
+The operational dashboard reads the same fail-closed projection in one bounded
+request through `GET /api/v1/documents/ingestion-attempts/current`; Registry
+returns attempts only for documents visible to the current principal. The web
+must not rebuild this projection with one request per document.
 
 Ingestion Service also exposes read-only Intelligence endpoints over the
 OpenSearch chunk index:
