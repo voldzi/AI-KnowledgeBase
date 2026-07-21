@@ -93,6 +93,7 @@ POST  /api/v1/integrations/stratos-budget-upload/external-documents/upsert
 PUT   /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions
 PATCH /api/v1/integrations/stratos-budget-upload/external-documents/{external_document_id}/current
 GET   /api/v1/integrations/stratos-budget-upload/documents/{document_id}/status
+GET   /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/lineage
 POST  /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/ingestion-authorization
 ```
 
@@ -100,6 +101,12 @@ Transportní identita je přesně `client_id=stratos-akb-service`, audience
 `akl-api`, role `service_ingestion` a Registry grant pouze
 `stratos-budget-upload`. Hlavičky dodané volajícím jako `X-AKL-*` nejsou zdroj
 identity. Povolený source system je pouze `STRATOS_BUDGET`.
+
+Vyhrazené čtení `lineage` vrací pouze přesnou verzi, která je v Budget
+external reference právě vedena jako aktuální. Je dostupné jen stejnému
+transportnímu účtu s grantem `stratos-budget-upload`; účet kvůli retry
+nedostává obecné oprávnění `documents-read`. Neexistující, cizí ani již
+neaktuální verze skončí fail-closed odpovědí `404`.
 
 Povinná contract-level lineage obsahuje `external_ref`, `contractId`, finanční
 scope `budget-global` nebo `budget:<key>` a nadřazený governed resource

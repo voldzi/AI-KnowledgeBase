@@ -19,6 +19,7 @@ import {
   createIngestionRequest,
   getExactDocumentVersion,
   getStratosBudgetDocumentStatus,
+  getStratosBudgetDocumentVersionLineage,
   mapIngestionStatus,
   requiredString,
   stratosBudgetLineageFromVersion,
@@ -73,9 +74,12 @@ export async function POST(request: Request, context: RouteContext) {
         correlationId,
       );
     }
-    const document = await clients.registry.getDocument(documentId, serviceContext);
-    const version = await getExactDocumentVersion(documentId, currentVersionId, serviceContext);
-    const lineage = stratosBudgetLineageFromVersion(document, version);
+    const stored = await getStratosBudgetDocumentVersionLineage(
+      documentId,
+      currentVersionId,
+      serviceContext,
+    );
+    const lineage = stratosBudgetLineageFromVersion(stored.document, stored.version);
     const actorContext = await retryActorContextForMode(
       request,
       lineage.integrationEnvelope.actor.subjectId,
@@ -85,13 +89,24 @@ export async function POST(request: Request, context: RouteContext) {
     const actorOperationContext = actorContext
       ? { ...actorContext, requestId: correlationId, correlationId }
       : serviceContext;
-    const verifiedDocument = await clients.registry.getDocument(documentId, actorOperationContext);
-    const verifiedVersion = await getExactDocumentVersion(
-      documentId,
-      currentVersionId,
-      actorOperationContext,
+    const verified = actorContext
+      ? {
+          document: await clients.registry.getDocument(documentId, actorOperationContext),
+          version: await getExactDocumentVersion(
+            documentId,
+            currentVersionId,
+            actorOperationContext,
+          ),
+        }
+      : await getStratosBudgetDocumentVersionLineage(
+          documentId,
+          currentVersionId,
+          serviceContext,
+        );
+    const verifiedLineage = stratosBudgetLineageFromVersion(
+      verified.document,
+      verified.version,
     );
-    const verifiedLineage = stratosBudgetLineageFromVersion(verifiedDocument, verifiedVersion);
     if (
       verifiedLineage.uploadMode !== lineage.uploadMode
       || verifiedLineage.integrationEnvelope.actor.subjectId
@@ -192,7 +207,7 @@ export async function POST(request: Request, context: RouteContext) {
       idempotencyKey,
       documentId,
       versionId: currentVersionId,
-      sourceFileUri: version.source_file_uri,
+      sourceFileUri: verified.version.source_file_uri,
       body: currentJob
         ? {
             parser_profile: currentJob.parser_profile,
@@ -240,7 +255,7 @@ export async function POST(request: Request, context: RouteContext) {
         document_id: documentId,
         document_version_id: currentVersionId,
         ingestion_job_id: job.job_id,
-        ingestion_status: mapIngestionStatus({ version, job }),
+        ingestion_status: mapIngestionStatus({ version: verified.version, job }),
       },
       { status: 201 },
     );

@@ -789,6 +789,67 @@
         }
       ]
     },
+    "/api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/lineage": {
+      "get": {
+        "summary": "Get Stratos Budget Document Version Lineage",
+        "operationId": "registry_api_get_stratos_budget_document_version_lineage_api_v1_integrations_stratos_budget_upload_documents__document_id__versions__version_id__lineage_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiStratosBudgetUploadDocumentVersionLineageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions/{version_id}/ingestion-authorization": {
       "post": {
         "summary": "Create Stratos Budget Historical Ingestion Authorization Proof",
@@ -21871,6 +21932,23 @@
           "governance_confirmation"
         ],
         "title": "StratosBudgetUploadDocumentVersionCreateResponse"
+      },
+      "RegistryApiStratosBudgetUploadDocumentVersionLineageResponse": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/RegistryApiDocumentResponse"
+          },
+          "version": {
+            "$ref": "#/components/schemas/RegistryApiDocumentVersionResponse"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document",
+          "version"
+        ],
+        "title": "StratosBudgetUploadDocumentVersionLineageResponse"
       },
       "RegistryApiStratosBudgetGovernanceConfirmation": {
         "properties": {

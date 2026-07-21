@@ -1248,6 +1248,13 @@ class DocumentVersionResponse(BaseModel):
     published_at: datetime | None
 
 
+class StratosBudgetUploadDocumentVersionLineageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document: DocumentResponse
+    version: DocumentVersionResponse
+
+
 class AiipDocumentVersionCreateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

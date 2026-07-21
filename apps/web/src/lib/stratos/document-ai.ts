@@ -181,6 +181,11 @@ export interface StratosBudgetDocumentStatusResponse {
   ingestion_attempt: RegistryIngestionAttempt | null;
 }
 
+export interface StratosBudgetDocumentVersionLineageResponse {
+  document: StratosBudgetGovernedDocument;
+  version: DocumentVersion;
+}
+
 export interface StratosBudgetUploadContract {
   tenantId: typeof STRATOS_ORGANIZATION_ID;
   externalSystem: "STRATOS_BUDGET";
@@ -1153,6 +1158,21 @@ export async function getStratosBudgetDocumentStatus(
     operation: "stratosBudgetDocumentStatus",
     baseUrl: config.serviceBaseUrls.registry,
     path: `/integrations/stratos-budget-upload/documents/${encodeURIComponent(documentId)}/status`,
+    context: serviceContext,
+  });
+}
+
+export async function getStratosBudgetDocumentVersionLineage(
+  documentId: string,
+  versionId: string,
+  serviceContext: ApiRequestContext,
+): Promise<StratosBudgetDocumentVersionLineageResponse> {
+  const config = requireProductionRegistryBridge();
+  return requestJson<StratosBudgetDocumentVersionLineageResponse>({
+    service: "registry-api",
+    operation: "stratosBudgetDocumentVersionLineage",
+    baseUrl: config.serviceBaseUrls.registry,
+    path: `/integrations/stratos-budget-upload/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/lineage`,
     context: serviceContext,
   });
 }

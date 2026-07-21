@@ -281,6 +281,71 @@ def _create_document_and_version(client) -> tuple[dict, dict]:
     return created.json(), version.json()
 
 
+def _select_current_version(client, created: dict, version_created: dict) -> None:
+    document = created["document"]
+    external = created["external_document"]
+    version = version_created["version"]
+    response = client.patch(
+        "/api/v1/integrations/stratos-budget-upload/external-documents/"
+        f"{external['external_document_id']}/current",
+        json={
+            "document_id": document["document_id"],
+            "expected_current_document_version_id": None,
+            "expected_current_ingestion_job_id": None,
+            "document_version_id": version["document_version_id"],
+            "file_id": version["file_id"],
+            "ingestion_job_id": None,
+            "ingestion_status": "VERSION_CREATED",
+            "external_ref": EXTERNAL_REF,
+            "information_policy": _policy(),
+            "integration_envelope": _envelope(),
+            "governance_scope": {"type": "budget_scope", "id": FINANCIAL_SCOPE},
+            "parent_governed_resource_id": PARENT_RESOURCE,
+        },
+        headers=_service_headers(),
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_budget_bridge_exposes_exact_current_lineage_only_to_upload_service(client) -> None:
+    created, version_created = _create_document_and_version(client)
+    document = created["document"]
+    version = version_created["version"]
+    path = (
+        "/api/v1/integrations/stratos-budget-upload/documents/"
+        f"{document['document_id']}/versions/{version['document_version_id']}/lineage"
+    )
+
+    before_current = client.get(path, headers=_service_headers())
+    assert before_current.status_code == 404
+    assert (
+        before_current.json()["error"]["code"]
+        == "stratos_budget_upload_version_not_found"
+    )
+
+    _select_current_version(client, created, version_created)
+    response = client.get(path, headers=_service_headers())
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["document"]["document_id"] == document["document_id"]
+    assert payload["version"]["document_version_id"] == version["document_version_id"]
+    assert (
+        payload["version"]["source_location"]["stratos_budget_upload"]["upload_mode"]
+        == "historical_batch"
+    )
+    assert payload["document"]["governed_parent_resource_id"] == PARENT_RESOURCE
+
+    forbidden = client.get(path, headers=_service_headers(roles="reader"))
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["code"] == "service_route_forbidden"
+
+    wrong_version = client.get(
+        path.replace(version["document_version_id"], "version-does-not-exist"),
+        headers=_service_headers(),
+    )
+    assert wrong_version.status_code == 404
+
+
 def test_budget_bridge_is_exact_idempotent_and_service_audited(
     client, db_session, admin_headers
 ) -> None:
