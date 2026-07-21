@@ -118,6 +118,57 @@ def test_user_projection_fails_closed_when_stratos_is_unavailable(monkeypatch) -
         pass
 
 
+def test_governance_client_reuses_one_http_connection_pool(monkeypatch) -> None:
+    constructed: list[object] = []
+    closed: list[bool] = []
+
+    class Client:
+        def __init__(self, **_kwargs):
+            constructed.append(self)
+
+        def get(self, _url, **_kwargs):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "tenantId": "org_stratos",
+                    "applicationAccess": [{
+                        "application": "AKB",
+                        "capabilities": ["akb:read_document"],
+                        "effectiveScopes": [{"type": "organization", "id": "org_stratos"}],
+                    }],
+                },
+            )
+
+        def request(self, _method, _url, **_kwargs):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"decision": "ALLOW", "reasonCodes": ["ACCESS_ALLOW"]},
+            )
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    client = StratosGovernanceClient(_settings(
+        AKL_STRATOS_POLICY_DECISIONS_URL="https://stratos.example/api/v1/policy/decisions",
+        AKB_POLICY_SERVICE_TOKEN="runtime-token",
+    ))
+
+    client.user_projection("user-token", token_expires_at=None)
+    decision = client.decide(
+        capability_id="akb:read_document",
+        operation="read",
+        scope={"type": "organization", "id": "org_stratos"},
+        policy_binding=None,
+        policy_hash=None,
+    )
+    client.close()
+
+    assert decision["decision"] == "ALLOW"
+    assert len(constructed) == 1
+    assert closed == [True]
+
+
 def test_user_projection_never_falls_back_to_raw_scope_grants(monkeypatch) -> None:
     class Client:
         def __init__(self, **_kwargs):

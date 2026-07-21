@@ -149,6 +149,19 @@ class StratosGovernanceClient:
         self.settings = settings
         self._cache: dict[str, tuple[float, AccessProjection]] = {}
         self._lock = threading.Lock()
+        # Runtime authorization can evaluate several distinct governed scopes
+        # while building one document projection. Reusing one thread-safe
+        # client preserves every fail-closed PDP decision while avoiding a new
+        # TCP/TLS handshake for each scope.
+        self._http_client = httpx.Client(
+            timeout=self.settings.stratos_access_timeout_seconds,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+
+    def close(self) -> None:
+        close = getattr(self._http_client, "close", None)
+        if callable(close):
+            close()
 
     def user_projection(self, token: str, *, token_expires_at: float | None) -> AccessProjection:
         if not self.settings.stratos_auth_me_url:
@@ -160,11 +173,10 @@ class StratosGovernanceClient:
             if cached and cached[0] > now:
                 return cached[1]
         try:
-            with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
-                response = client.get(
-                    self.settings.stratos_auth_me_url,
-                    headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
-                )
+            response = self._http_client.get(
+                self.settings.stratos_auth_me_url,
+                headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
+            )
         except httpx.HTTPError as exc:
             raise GovernanceUnavailable("STRATOS access projection is unavailable") from exc
         if response.status_code in {401, 403}:
@@ -657,13 +669,12 @@ class StratosGovernanceClient:
         }
         headers["Authorization"] = f"Bearer {token}"
         try:
-            with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
-                response = client.request(
-                    method,
-                    url,
-                    headers=headers,
-                    json=body,
-                )
+            response = self._http_client.request(
+                method,
+                url,
+                headers=headers,
+                json=body,
+            )
         except httpx.HTTPError as exc:
             raise GovernanceUnavailable("STRATOS access governance is unavailable") from exc
         if response.status_code in {401, 403}:
@@ -682,11 +693,10 @@ class StratosGovernanceClient:
 
     def _get(self, url: str, token: str) -> dict[str, Any]:
         try:
-            with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
-                response = client.get(
-                    url,
-                    headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
-                )
+            response = self._http_client.get(
+                url,
+                headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
+            )
         except httpx.HTTPError as exc:
             raise GovernanceUnavailable("STRATOS access governance is unavailable") from exc
         if response.status_code in {401, 403}:
@@ -705,13 +715,12 @@ class StratosGovernanceClient:
 
     def _anonymous_request(self, method: str, url: str, body: dict[str, Any]) -> dict[str, Any]:
         try:
-            with httpx.Client(timeout=self.settings.stratos_access_timeout_seconds) as client:
-                response = client.request(
-                    method,
-                    url,
-                    headers={"Accept": "application/json", "Content-Type": "application/json"},
-                    json=body,
-                )
+            response = self._http_client.request(
+                method,
+                url,
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+                json=body,
+            )
         except httpx.HTTPError as exc:
             raise GovernanceUnavailable("STRATOS public access governance is unavailable") from exc
         if response.status_code >= 400:
@@ -783,6 +792,8 @@ def governance_client(settings: Settings) -> StratosGovernanceClient:
 
 def reset_governance_clients_for_tests() -> None:
     with _CLIENT_LOCK:
+        for client in _CLIENTS.values():
+            client.close()
         _CLIENTS.clear()
 
 
