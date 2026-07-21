@@ -60,8 +60,6 @@ export async function POST(request: Request, context: RouteContext) {
 
     const correlationId = request.headers.get("X-Correlation-ID")?.trim() || crypto.randomUUID();
     const serviceContext = budgetServiceContext(service, correlationId);
-    const actorContext = await getStratosActorRequestContext(request);
-    const actorOperationContext = { ...actorContext, requestId: correlationId, correlationId };
     const clients = getServerApiClients();
     const status = await getStratosBudgetDocumentStatus(documentId, serviceContext);
     const reference = exactBudgetReference(status.items, documentId);
@@ -75,10 +73,37 @@ export async function POST(request: Request, context: RouteContext) {
         correlationId,
       );
     }
-    const document = await clients.registry.getDocument(documentId, actorOperationContext);
-    const version = await getExactDocumentVersion(documentId, currentVersionId, actorOperationContext);
+    const document = await clients.registry.getDocument(documentId, serviceContext);
+    const version = await getExactDocumentVersion(documentId, currentVersionId, serviceContext);
     const lineage = stratosBudgetLineageFromVersion(document, version);
-    requireStratosActorSubjectMatch(actorContext, lineage.integrationEnvelope.actor.subjectId);
+    const actorContext = await retryActorContextForMode(
+      request,
+      lineage.integrationEnvelope.actor.subjectId,
+      lineage.uploadMode,
+      correlationId,
+    );
+    const actorOperationContext = actorContext
+      ? { ...actorContext, requestId: correlationId, correlationId }
+      : serviceContext;
+    const verifiedDocument = await clients.registry.getDocument(documentId, actorOperationContext);
+    const verifiedVersion = await getExactDocumentVersion(
+      documentId,
+      currentVersionId,
+      actorOperationContext,
+    );
+    const verifiedLineage = stratosBudgetLineageFromVersion(verifiedDocument, verifiedVersion);
+    if (
+      verifiedLineage.uploadMode !== lineage.uploadMode
+      || verifiedLineage.integrationEnvelope.actor.subjectId
+        !== lineage.integrationEnvelope.actor.subjectId
+    ) {
+      throw new ApiClientError(
+        "The retry lineage changed between service and actor verification.",
+        409,
+        "STRATOS_BUDGET_RETRY_LINEAGE_CONFLICT",
+        correlationId,
+      );
+    }
     const currentJobId = reference.current_ingestion_job_id;
     const currentJob = currentJobId
       ? await getGovernedIngestionJob(
@@ -94,18 +119,26 @@ export async function POST(request: Request, context: RouteContext) {
       : null;
 
     const idempotencyKey = `retry:${documentId}:${currentVersionId}:${operationId}`;
-    const authorization = await clients.registry.createIngestionAuthorization(
-      documentId,
-      currentVersionId,
-      {
-        action: "document.ingest",
-        correlation_id: correlationId,
-        idempotency_key: idempotencyKey,
-      },
-      actorOperationContext,
-    );
+    const authorizationRequest = {
+      action: "document.ingest" as const,
+      correlation_id: correlationId,
+      idempotency_key: idempotencyKey,
+    };
+    const authorization = actorContext
+      ? await clients.registry.createIngestionAuthorization(
+          documentId,
+          currentVersionId,
+          authorizationRequest,
+          actorOperationContext,
+        )
+      : await clients.registry.createStratosBudgetHistoricalIngestionAuthorization(
+          documentId,
+          currentVersionId,
+          authorizationRequest,
+          actorOperationContext,
+        );
     if (
-      authorization.confirmed_subject_id !== actorContext.subjectId
+      authorization.confirmed_subject_id !== lineage.integrationEnvelope.actor.subjectId
       || authorization.document_id !== documentId
       || authorization.document_version_id !== currentVersionId
       || authorization.correlation_id !== correlationId
@@ -214,6 +247,37 @@ export async function POST(request: Request, context: RouteContext) {
   } catch (error) {
     return stratosBridgeError(error);
   }
+}
+
+async function retryActorContextForMode(
+  request: Request,
+  expectedSubjectId: string,
+  mode: "interactive" | "historical_batch",
+  correlationId: string,
+): Promise<ApiRequestContext | null> {
+  const actorHeaderPresent = request.headers.get("X-STRATOS-Actor-Authorization") !== null;
+  if (mode === "historical_batch") {
+    if (actorHeaderPresent) {
+      throw new ApiClientError(
+        "Historical batch retry must remain service-only.",
+        409,
+        "STRATOS_BUDGET_RETRY_MODE_CONFLICT",
+        correlationId,
+      );
+    }
+    return null;
+  }
+  if (!actorHeaderPresent) {
+    throw new ApiClientError(
+      "A fresh STRATOS actor bearer is required for interactive retry.",
+      401,
+      "STRATOS_BUDGET_ACTOR_AUTH_REQUIRED",
+      correlationId,
+    );
+  }
+  const actorContext = await getStratosActorRequestContext(request);
+  requireStratosActorSubjectMatch(actorContext, expectedSubjectId);
+  return actorContext;
 }
 
 function exactBudgetReference(

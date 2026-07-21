@@ -393,6 +393,7 @@ describe("STRATOS Budget document bridge contract", () => {
       source_location: {
         stratos_budget_upload: {
           integration_envelope: envelope(secondHash, versionActor),
+          upload_mode: "historical_batch",
         },
       },
     } as never);
@@ -401,6 +402,7 @@ describe("STRATOS Budget document bridge contract", () => {
     assert.equal(parsed.integrationEnvelope.payload.fileHash, secondHash);
     assert.equal(parsed.integrationEnvelope.actor.subjectId, versionActor);
     assert.equal(parsed.integrationEnvelope.policyHash, policyHash(informationPolicy));
+    assert.equal(parsed.uploadMode, "historical_batch");
   });
 
   it("rejects drift in the external reference and unknown fields", () => {

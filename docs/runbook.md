@@ -115,6 +115,10 @@ terminal `FAILED` job. Po retry ověřte nejen webový status, ale také Registr
 `current_ingestion_job_id` a `current_ingestion_status`; ingestion je nyní
 synchronizuje auditovaně přes autoritativní Registry attempt/CAS ve stavech
 `QUEUED`, `INGESTING`, `INDEXED` a `FAILED`.
+Interaktivní retry vyžaduje čerstvý actor bearer. Retry verze vytvořené
+serverovým `historical_batch` naopak zůstává service-only a je povolen jen po
+opětovném ověření uloženého režimu, immutable lineage a vyhrazené Registry
+autorizace.
 
 ### `REGISTRY_SERVICE_AUTH_UNAVAILABLE` Or Ingestion Registry `not_ready`
 
