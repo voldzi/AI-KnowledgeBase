@@ -300,6 +300,13 @@ export function extractRegistryDocumentTypeFilter(message: string): Document["do
   return matchedTypes.size === 1 ? [...matchedTypes][0] ?? null : null;
 }
 
+export function registryDocumentTypeFilterForReport(
+  message: string,
+  kind: RegistryReportKind
+): Document["document_type"] | null {
+  return kind === "document_type_count" ? null : extractRegistryDocumentTypeFilter(message);
+}
+
 export function registryTopicsForDocumentListRequest(
   message: string,
   topics: string[],
@@ -330,6 +337,7 @@ export function buildRegistryDocumentReportFromSummary(
   }
 
   const language = input.language ?? "cs";
+  const documentType = registryDocumentTypeFilterForReport(input.message, kind);
   const artifact = kind === "document_type_count"
     ? buildDocumentTypeCountArtifactFromSummary({
         language,
@@ -337,7 +345,8 @@ export function buildRegistryDocumentReportFromSummary(
       })
     : buildArtifactFromSummary({
         language,
-        summary: input.summary
+        summary: input.summary,
+        documentType
       });
   const warnings = [...artifact.warnings];
   const topicLabels = kind === "document_type_count"
@@ -355,7 +364,8 @@ export function buildRegistryDocumentReportFromSummary(
     topicLabels,
     warnings,
     reportSource: "registry_metadata_summary",
-    reportKind: kind
+    reportKind: kind,
+    documentType
   });
 }
 
@@ -367,6 +377,7 @@ export function buildRegistryDocumentReport(input: RegistryReportBuildInput): As
   const language = input.language ?? "cs";
   const topics = extractTopics(input.message);
   const kind = input.kind ?? registryReportKindFromMessage(input.message, input.context);
+  const documentType = registryDocumentTypeFilterForReport(input.message, kind);
   const matchedDocuments = kind === "document_list" ? documentsMatchingAnyTopic(input.documents, topics) : input.documents;
   const artifact = kind === "document_type_count"
     ? buildDocumentTypeCountArtifact({
@@ -406,7 +417,8 @@ export function buildRegistryDocumentReport(input: RegistryReportBuildInput): As
     topicLabels,
     warnings,
     reportSource: "registry_metadata",
-    reportKind: kind
+    reportKind: kind,
+    documentType
   });
 }
 
@@ -421,6 +433,7 @@ function buildRegistryResponse(input: {
   warnings: string[];
   reportSource: "registry_metadata" | "registry_metadata_summary";
   reportKind: RegistryReportKind;
+  documentType: Document["document_type"] | null;
 }): AssistantChatResponse {
   return {
     response_type: "answer",
@@ -431,6 +444,7 @@ function buildRegistryResponse(input: {
       totalMatched: input.totalMatched,
       topicLabels: input.topicLabels,
       reportKind: input.reportKind,
+      documentType: input.documentType,
       rowCount: input.artifact.rows.length,
       warnings: input.warnings
     }),
@@ -609,9 +623,18 @@ function buildDocumentTypeCountArtifact(input: {
 function buildArtifactFromSummary(input: {
   language: ResponseLanguage;
   summary: DocumentMetadataSummary;
+  documentType: Document["document_type"] | null;
 }): AssistantReportArtifact {
   const title = input.language === "en" ? "Document Inventory by Topic" : "Inventura dokumentů podle témat";
-  const rows = input.summary.topics.map((topic, index) => summaryTopicRow(topic, input.language, index));
+  const subjectLabel = input.documentType
+    ? documentTypeSubjectLabel(input.documentType, input.language)
+    : null;
+  const rows = input.summary.topics.map((topic, index) => summaryTopicRow(
+    topic,
+    input.language,
+    index,
+    input.summary.topics.length === 1 ? subjectLabel : null
+  ));
   const warnings = ["REGISTRY_METADATA_REPORT", ...input.summary.warnings];
 
   return {
@@ -746,12 +769,13 @@ function documentTypeCountColumns(language: ResponseLanguage): AssistantReportAr
 function summaryTopicRow(
   topic: DocumentMetadataSummary["topics"][number],
   language: ResponseLanguage,
-  index: number
+  index: number,
+  subjectLabel: string | null = null
 ): AssistantReportRow {
   return {
     row_id: `topic_${index + 1}_${slugify(topic.topic) || "summary"}`,
     cells: {
-      topic: topic.topic,
+      topic: subjectLabel ?? topic.topic,
       document_count: topic.document_count,
       valid_or_approved_count: topic.valid_or_approved_count,
       document_types: formatSummaryBuckets(
@@ -810,6 +834,7 @@ function buildAnswer(input: {
   totalMatched: number;
   topicLabels: string[];
   reportKind: RegistryReportKind;
+  documentType: Document["document_type"] | null;
   rowCount: number;
   warnings: string[];
 }) {
@@ -836,6 +861,9 @@ function buildAnswer(input: {
     }
     return `Připravil jsem seznam ${input.totalMatched} dokumentů viditelných podle oprávnění aktuálního uživatele pro: ${topics}. Tabulka je z metadat registru, ne z citovaného výkladu obsahu dokumentů.${truncated}`;
   }
+  if (input.documentType) {
+    return documentTypeCountAnswer(input.documentType, input.totalMatched, input.language);
+  }
   if (input.language === "en") {
     const capWarning = input.warnings.includes("REGISTRY_SCAN_LIMIT_REACHED")
       ? " The registry scan reached the current web paging ceiling, so this should be moved to a server-side aggregate endpoint for exact enterprise-wide totals."
@@ -846,6 +874,47 @@ function buildAnswer(input: {
     ? " Načtení dosáhlo aktuálního stránkovacího stropu web vrstvy, takže pro přesné celopodnikové součty je vhodné doplnit serverovou agregační službu."
     : "";
   return `Zkontroloval jsem ${input.scannedDocumentCount} dokumentů viditelných podle oprávnění aktuálního uživatele a našel ${input.totalMatched} odpovídajících dokumentů pro témata: ${topics}. Tabulka níže je metadatová inventura, ne citovaný výklad obsahu dokumentů.${capWarning}`;
+}
+
+function documentTypeSubjectLabel(
+  documentType: Document["document_type"],
+  language: ResponseLanguage
+): string {
+  if (language === "en") {
+    const singular = DOCUMENT_TYPE_LABELS_EN[documentType] ?? documentType;
+    return documentType === "policy" ? "policies" : `${singular}s`;
+  }
+  const pluralLabels: Partial<Record<Document["document_type"], string>> = {
+    contract: "smlouvy",
+    methodology: "metodiky",
+    regulation: "regulace",
+    policy: "politiky",
+    directive: "směrnice",
+    procedure: "postupy",
+    manual: "manuály",
+    attachment: "přílohy",
+    project_documentation: "projektové dokumentace",
+    meeting_record: "záznamy z jednání",
+    knowledge_base_article: "znalostní články",
+    ai_intake: "AI podněty",
+    ai_requirement_card: "karty AI požadavků"
+  };
+  return pluralLabels[documentType] ?? `dokumenty typu „${DOCUMENT_TYPE_LABELS_CS[documentType] ?? documentType}“`;
+}
+
+function documentTypeCountAnswer(
+  documentType: Document["document_type"],
+  count: number,
+  language: ResponseLanguage
+): string {
+  if (language === "en") {
+    return `You can access ${count} ${documentTypeSubjectLabel(documentType, language)} in AKB.`;
+  }
+  if (documentType === "contract") {
+    const noun = count === 1 ? "smlouvu" : count >= 2 && count <= 4 ? "smlouvy" : "smluv";
+    return `V AKB máte v rozsahu svých oprávnění ${count} ${noun}.`;
+  }
+  return `V AKB máte v rozsahu svých oprávnění ${count} dokumentů typu „${DOCUMENT_TYPE_LABELS_CS[documentType] ?? documentType}“.`;
 }
 
 function registryFollowUpQuestions(language: ResponseLanguage, reportKind: RegistryReportKind): string[] {

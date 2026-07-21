@@ -343,6 +343,7 @@ function AppShellContent({
     pathname.startsWith("/embed/") ||
     pathname === "/akb/embed" ||
     pathname.startsWith("/akb/embed/");
+  const isChatPath = pathname === "/chat" || pathname === "/akb/chat";
   const copy = shellCopy[language];
   const apiModeLabel =
     apiMode === "mock" ? copy.apiModeMock : copy.apiModeProduction;
@@ -1054,7 +1055,7 @@ function AppShellContent({
 
   return (
     <StratosUiAppShell
-      className="stratos-akb-shell"
+      className={`stratos-akb-shell${isChatPath ? " stratos-akb-shell--chat" : ""}`}
       sidebarOpen={shellSidebarOpen}
       sidebarCloseLabel={copy.closeSidebar}
       showSidebarClose={false}
@@ -1069,7 +1070,7 @@ function AppShellContent({
           }
           activeItemId={activeModule}
           panelOpen={shellSidebarOpen}
-          mobileFallback="bottom"
+          mobileFallback={isChatPath ? "none" : "bottom"}
           mobileAriaLabel={
             language === "cs" ? "Moduly AKB" : "AKB modules"
           }

@@ -7,7 +7,7 @@ import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
   buildRegistryDocumentReportFromSummary,
-  extractRegistryDocumentTypeFilter,
+  registryDocumentTypeFilterForReport,
   registryTopicsForDocumentListRequest,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
@@ -43,11 +43,11 @@ export async function POST(request: NextRequest) {
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
     const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
     const registryReportKind = assistantRoute.registryReportKind ?? "document_inventory_summary";
-    const inferredDocumentType = registryReportKind === "document_list" ? extractRegistryDocumentTypeFilter(message) : null;
+    const inferredDocumentType = registryDocumentTypeFilterForReport(message, registryReportKind);
     if (!registrySummaryFilters.documentType && inferredDocumentType) {
       registrySummaryFilters.documentType = inferredDocumentType;
     }
-    const registryTopics = registryReportKind === "document_list"
+    const registryTopics = inferredDocumentType
       ? registryTopicsForDocumentListRequest(message, assistantRoute.registryTopics, responseLanguage)
       : assistantRoute.registryTopics;
     const buildRegistryResponseFromMetadata = async () => {
