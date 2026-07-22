@@ -82,6 +82,28 @@ def test_complex_answer_mode_uses_high_quality_chat_model() -> None:
     assert llm.metadata[0]["chat_model_tier"] == "high_quality"
 
 
+def test_bounded_manager_brief_uses_standard_chat_model() -> None:
+    llm = CaptureLLMClient()
+    settings = _settings()
+    composer = AnswerComposer(settings, llm)
+
+    asyncio.run(
+        composer.compose(
+            query_id="query-manager-brief",
+            query="Shrn smluvni riziko.",
+            chunks=[_chunk("chunk_1"), _chunk("chunk_2"), _chunk("chunk_3")],
+            confidence="high",
+            warnings=[],
+            max_chunks=3,
+            answer_mode="manager_brief",
+        )
+    )
+
+    assert llm.models == [None]
+    assert llm.metadata[0]["chat_model"] == "gemma4:12b-mlx"
+    assert llm.metadata[0]["chat_model_tier"] == "standard"
+
+
 def test_large_context_uses_high_quality_chat_model() -> None:
     llm = CaptureLLMClient()
     settings = _settings()

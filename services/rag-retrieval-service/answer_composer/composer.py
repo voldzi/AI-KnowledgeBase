@@ -249,6 +249,12 @@ class AnswerComposer:
         high_quality_model = self._settings.high_quality_chat_model
         if not high_quality_model:
             return None
+        # Director Copilot already supplies verified structured facts and asks
+        # RAG only for a short cited contract finding.  With a deliberately
+        # bounded context the standard model is both sufficient and materially
+        # faster for the synchronous management workflow.
+        if answer_mode == "manager_brief" and not truncated and len(selected_chunks) <= 3:
+            return None
         if answer_mode in HIGH_QUALITY_ANSWER_MODES:
             return high_quality_model
         if truncated:
