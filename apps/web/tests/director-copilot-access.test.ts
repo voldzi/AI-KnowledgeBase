@@ -13,6 +13,42 @@ describe("Director Copilot projected access", () => {
     assert.deepEqual(access.scopes, [{ type: "project", id: "project-001" }]);
   });
 
+  it("sends only scope types accepted by each source contract", () => {
+    const context = projectedContext();
+    context.applicationAccess = [{
+      application: "budget",
+      capabilities: ["budget:read"],
+      scopes: [
+        ...Array.from({ length: 150 }, (_, index) => `document:doc-${index}`),
+        "budget_scope:budget-global",
+        "budget_scope:budget:it",
+      ],
+    }];
+
+    const access = domainAccessFor(context, "budget");
+
+    assert.equal(access.authorized, true);
+    assert.deepEqual(access.scopes, [
+      { type: "budget_scope", id: "budget-global" },
+      { type: "budget_scope", id: "budget:it" },
+    ]);
+  });
+
+  it("fails closed instead of violating the source scope limit", () => {
+    const context = projectedContext();
+    context.applicationAccess = [{
+      application: "projectflow",
+      capabilities: ["projectflow:read"],
+      scopes: Array.from({ length: 101 }, (_, index) => `project:project-${index}`),
+    }];
+
+    const access = domainAccessFor(context, "projectflow");
+
+    assert.equal(access.authorized, false);
+    assert.equal(access.reason, "scope_limit_exceeded");
+    assert.deepEqual(access.scopes, []);
+  });
+
   it("fails closed for mock projection, missing capability and expired access", () => {
     assert.equal(domainAccessFor({ ...projectedContext(), authorizationSource: "mock" }, "budget").authorized, false);
     assert.equal(domainAccessFor({

@@ -2,15 +2,23 @@
 
 Datum ověření: 2026-07-22
 
-Stav: AKB implementace a produkční aktivační cesta jsou ověřeny lokálně a v
-Docker Desktopu. STRATOS, Budget a ProjectFlow dodaly produkční kontrakt v
-release `c8f2ea522f55dadbb448577e5c7ababdbe8861a1`; před tímto release kandidátem
-AKB zůstává funkce v produkci vypnutá.
+Stav: STRATOS, Budget a ProjectFlow dodaly produkční kontrakt v release
+`c8f2ea522f55dadbb448577e5c7ababdbe8861a1`. AKB produkční aktivační verze
+`04907c3a801f1b4f3c0d55305d33aa107e4bef30` je nasazena se zapnutou funkcí,
+read-only service secretem a úspěšnými health kontrolami. První živý dotaz
+odhalil překročení zdrojového limitu nerelevantními scopes; oprava a regresní
+testy jsou součástí tohoto navazujícího release kandidáta.
 
 ## Ověřený rozsah AKB
 
 - uzavřené DomainTool, EvidenceItem, QueryPlan v2 a AnalysisSnapshot kontrakty;
 - per-application capabilities a scopes pouze z ověřené STRATOS projection;
+- zdrojové požadavky obsahují jen scope typy podporované cílem: Budget přijímá
+  `organization`, `budget_scope`, `project`; ProjectFlow přijímá
+  `organization`, `portfolio`, `project`; nerelevantní `document` scopes se do
+  federovaného volání nekopírují;
+- více než 100 relevantních scopes selže uzavřeně jako
+  `ACCESS_SCOPE_LIMIT_EXCEEDED`; AKB autorizační množinu tiše nezkracuje;
 - oddělený service bearer `svc-akb-director-copilot` a actor bearer;
 - paralelní Budget/ProjectFlow fan-out bez přímého čtení databází;
 - přesná korelace `canonical_id`, scope bounds, policy lineage a response limity;
@@ -35,7 +43,7 @@ AKB zůstává funkce v produkci vypnutá.
 | Kontrola | Výsledek |
 | --- | --- |
 | web TypeScript typecheck | prošel |
-| web unit/contract suite | 304 testů prošlo |
+| web unit/contract suite | 306 testů prošlo |
 | RAG flow suite | 36 testů prošlo; 1 známé Starlette deprecation warning |
 | Next.js production build | prošel, 34 statických/dynamických route skupin v build výpisu |
 | skeleton + OpenAPI freshness | prošlo |
@@ -50,6 +58,19 @@ AKB zůstává funkce v produkci vypnutá.
 | start Copilota bez service secretu | správně odmítnut, exit 1 |
 | read-only secret mount -> tmpfs | čitelný pouze runtime uživatelem, režim `0400` |
 
+## Produkční aktivační zjištění
+
+První produkční dotaz 2026-07-22 aktivoval federovanou větev a správně selhal
+uzavřeně. Auditní metadata odhalila, že AKB předalo Budgetu také rozsáhlou
+množinu nerelevantních `document` scopes a překročilo limit 100 položek.
+Regrese je kryta testem a odstraněna filtrováním na závazný scope katalog
+každého zdroje.
+
+Současně aktuální access projection testovacího `stratos_admin` neobsahuje
+`projectflow:read` ani podporovaný `organization`/`portfolio`/`project` scope
+pro ProjectFlow. AKB tento nedostatek záměrně neobchází; pozitivní celý průchod
+zůstává závislý na opraveném centrálním grantu reálného testovacího uživatele.
+
 Dočasné smoke kontejnery, sítě a prázdné svazky byly po testu odstraněny.
 Lokální Chroma kontejner nebyl změněn.
 
@@ -58,9 +79,9 @@ Lokální Chroma kontejner nebyl změněn.
 Externí dodávka je převzata. End-to-end dotaz nad skutečnými živými daty lze
 označit jako přijatý až po:
 
-1. nasazení tohoto AKB release kandidáta přes immutable workflow s read-only
-   secretem v obou webových profilech;
-2. pozitivním dotazu reálného oprávněného uživatele a ověření Budget,
+1. nasazení navazující opravy scope filtru přes immutable workflow;
+2. doplnění čtecího ProjectFlow grantu a pozitivní dotaz reálného oprávněného
+   uživatele s ověřením Budget,
    ProjectFlow, dokumentové citace a auditního záznamu;
 3. společném partial/no-answer testu a opakování deny po odebrání scope;
 4. verzovaném `director_copilot_v1` eval datasetu a schválených SLI prazích.
