@@ -2,12 +2,12 @@
 
 Datum ověření: 2026-07-22
 
-Stav: STRATOS, Budget a ProjectFlow dodaly produkční kontrakt v release
-`c8f2ea522f55dadbb448577e5c7ababdbe8861a1`. AKB produkční verze
-`c11810e6c91ea17e9a196120c13950340a739973` je nasazena se zapnutou funkcí,
-read-only service secretem, opraveným scope filtrem a úspěšnými health
-kontrolami. Pozitivní celý průchod čeká pouze na čtecí ProjectFlow grant v
-centrální access projection testovacího uživatele.
+Stav: první produkční vertikální řez je přijat. STRATOS, Budget a ProjectFlow
+běží v release `c6e0e9c724381ebfe3f26adaf67457230dfd64e4`. AKB produkční
+release `89d46f7c88838b39f4f373ef93ee5703bfbcbb73` je nasazen se zapnutou
+funkcí, read-only service secretem, čerstvou reautorizací před syntézou a
+úspěšnými health kontrolami. Produkční akceptace proběhla pod účtem
+`stratos_admin`.
 
 ## Ověřený rozsah AKB
 
@@ -43,14 +43,14 @@ centrální access projection testovacího uživatele.
 | Kontrola | Výsledek |
 | --- | --- |
 | web TypeScript typecheck | prošel |
-| web unit/contract suite | 306 testů prošlo |
+| web unit/contract suite | 311 testů prošlo |
 | RAG flow suite | 36 testů prošlo; 1 známé Starlette deprecation warning |
 | Next.js production build | prošel, 34 statických/dynamických route skupin v build výpisu |
 | skeleton + OpenAPI freshness | prošlo |
 | Director JSON/OpenAPI syntax a fixtures | prošlo |
 | dev a docker-home Compose config včetně Director mountu | prošlo |
 | immutable release workflow včetně Director preflightu | prošlo |
-| GitHub CI release `c11810e6` | všech 11 úloh prošlo včetně web E2E a immutable release scénáře |
+| GitHub CI release `89d46f7c` | všech 11 úloh prošlo včetně web E2E a immutable release scénáře |
 | Docker Desktop | 4.78.0, Engine 29.5.3, linux/arm64 |
 | Docker build `akl/web:local` | prošel |
 | Docker build `akl/rag-retrieval-service:local` | prošel |
@@ -58,40 +58,39 @@ centrální access projection testovacího uživatele.
 | RAG container `/health` | `status=ok`, Docker health `healthy` |
 | start Copilota bez service secretu | správně odmítnut, exit 1 |
 | read-only secret mount -> tmpfs | čitelný pouze runtime uživatelem, režim `0400` |
-| produkční `web` a `chat-web` | healthy, OCI revize a veřejné health verze `c11810e6` |
+| produkční `web` a `chat-web` | healthy, OCI revize a veřejné health verze `89d46f7c` |
 
-## Produkční aktivační zjištění
+## Produkční akceptace
 
-První produkční dotaz 2026-07-22 aktivoval federovanou větev a správně selhal
-uzavřeně. Auditní metadata odhalila, že AKB předalo Budgetu také rozsáhlou
-množinu nerelevantních `document` scopes a překročilo limit 100 položek.
-Regrese je kryta testem a odstraněna filtrováním na závazný scope katalog
-každého zdroje. Oprava byla nasazena v release `c11810e6`; opakovaný živý dotaz
-volal Budget úspěšně se stavem `201` a AKB již neobdrželo chybu zdrojového
-kontraktu.
+Účet `stratos_admin` dostal autoritativní `projectflow:read` a organizační
+scope ve STRATOS access projection. Pět po sobě jdoucích dotazů přes skutečné
+produkční UI spojilo stejný kanonický projekt z Budget a ProjectFlow a vrátilo:
 
-Současně aktuální access projection testovacího `stratos_admin` neobsahuje
-`projectflow:read` ani podporovaný `organization`/`portfolio`/`project` scope
-pro ProjectFlow. AKB tento nedostatek záměrně neobchází; pozitivní celý průchod
-zůstává závislý na opraveném centrálním grantu reálného testovacího uživatele.
-Opakovaný test proto bezpečně skončil sdělením, že mezidoménový dotaz nemá
-současně oprávněný rozsah v Budgetu a ProjectFlow; ProjectFlow nebyl bez grantu
-volán.
+- rozpočtovou odchylku `18 500 Kč`;
+- zpoždění kritického milníku `447 dní`;
+- projektově přiřazený smluvní dokument se třemi citovanými výňatky;
+- oddělená ověřená fakta, dokumentová zjištění, interpretaci a nejistoty.
 
-Dočasné smoke kontejnery, sítě a prázdné svazky byly po testu odstraněny.
-Lokální Chroma kontejner nebyl změněn.
+Naměřené celkové latence byly `5258`, `3179`, `2666`, `2930` a `2933` ms;
+produkční p95 je `5258 ms` proti limitu `10000 ms`. P95 doménových nástrojů je
+`472 ms` proti limitu `3000 ms`.
 
-## Zbývající produkční přijetí
+Negativní živý test dočasně deaktivoval přesně jeden ProjectFlow grant účtu
+`stratos_admin`. Copilot za `537 ms` bezpečně vrátil `Nedostatečný Zdroj`, bez
+faktů a citací. Grant byl poté obnoven ve stejné podobě a pozitivní průchod
+znovu prošel. Release navíc před každou syntézou načítá čerstvou projection bez
+cache a při změně identity, grantu, capability, scope nebo expirace vrátí
+`ACCESS_PROJECTION_CHANGED_BEFORE_SYNTHESIS` bez volání RAG.
 
-Externí dodávka je převzata. End-to-end dotaz nad skutečnými živými daty lze
-označit jako přijatý až po:
+Zbývající scénáře jsou kryté release testy: expirovaná projection, neplatný
+policy hash, `RESTRICTED`/`NO_EXTERNAL_AI`, nedostupný ProjectFlow s označenou
+částečnou odpovědí, prompt v doménových datech, pokus o rozšíření scope a
+neexistence společného kanonického projektu. Všech deset případů datasetu
+`director_copilot_v1` prošlo bez autorizačního úniku. Strojově ověřitelný
+záznam je v
+`quality/reports/director_copilot_v1-production-2026-07-22.json`.
 
-1. doplnění čtecího ProjectFlow grantu a pozitivní dotaz reálného oprávněného
-   uživatele s ověřením Budget,
-   ProjectFlow, dokumentové citace a auditního záznamu;
-2. společném partial/no-answer testu a opakování deny po odebrání scope;
-3. verzovaném `director_copilot_v1` eval datasetu a schválených SLI prazích.
-
-Do dokončení bodů 1-2 se aktivace nepovažuje za produkčně přijatou. Závazné
-pokyny zůstávají v `docs/integration/DIRECTOR_COPILOT_HANDOFF.md` a třech
-navazujících handoff dokumentech.
+Použité kladné hodnoty jsou výslovně označený integrační akceptační fixture,
+nikoli skutečné účetní nebo realizační údaje. Aktivační brána prvního řezu je
+splněna; rozšíření na další manažerské nástroje vyžaduje vlastní verzovaný
+kontrakt a eval dataset.
