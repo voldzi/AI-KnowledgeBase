@@ -8,12 +8,19 @@ const REQUIRED_CAPABILITY = {
   projectflow: "projectflow:read",
 } as const;
 
+const SOURCE_SCOPE_TYPES: Record<DomainApplication, ReadonlySet<ScopeCoordinate["type"]>> = {
+  budget: new Set(["organization", "budget_scope", "project"]),
+  projectflow: new Set(["organization", "portfolio", "project"]),
+};
+
+const MAX_SOURCE_SCOPES = 100;
+
 export interface DomainAccess {
   application: DomainApplication;
   authorized: boolean;
   requiredCapability: (typeof REQUIRED_CAPABILITY)[DomainApplication];
   scopes: ScopeCoordinate[];
-  reason: "allowed" | "projection_required" | "organization_invalid" | "application_inactive" | "capability_missing" | "scope_missing";
+  reason: "allowed" | "projection_required" | "organization_invalid" | "application_inactive" | "capability_missing" | "scope_missing" | "scope_limit_exceeded";
 }
 
 export function domainAccessFor(
@@ -43,11 +50,16 @@ export function domainAccessFor(
   const scopes = [...new Map(
     (access.scopes ?? [])
       .map(parseScopeString)
-      .filter((scope): scope is ScopeCoordinate => Boolean(scope))
+      .filter((scope): scope is ScopeCoordinate => (
+        scope !== null && SOURCE_SCOPE_TYPES[application].has(scope.type)
+      ))
       .map((scope) => [`${scope.type}:${scope.id ?? ""}`, scope]),
   ).values()];
   if (!scopes.length) {
     return { application, authorized: false, requiredCapability, scopes: [], reason: "scope_missing" };
+  }
+  if (scopes.length > MAX_SOURCE_SCOPES) {
+    return { application, authorized: false, requiredCapability, scopes: [], reason: "scope_limit_exceeded" };
   }
   return { application, authorized: true, requiredCapability, scopes, reason: "allowed" };
 }
