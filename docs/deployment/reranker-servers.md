@@ -8,7 +8,7 @@ generation or standalone embeddings.
 
 | Runtime | Target | Model | Endpoint |
 | --- | --- | --- | --- |
-| Qwen | MacBook `192.168.200.3` | `Qwen3-Reranker-0.6B` Q8_0 | `:11435/v1/rerank` |
+| Qwen | MacBook VPN address | `Qwen3-Reranker-0.6B` Q8_0 | `:11435/v1/rerank` |
 | BGE | `docker.home.cz` | `BAAI/bge-reranker-v2-m3` F32 | Docker-only `bge-reranker:3000/rerank` |
 
 The Qwen llama.cpp image is pinned to OCI index digest
@@ -45,10 +45,25 @@ Mount the client copy read-only when AKB retrieval is connected to this
 runtime; do not pass its value through Compose environment variables.
 
 Docker Desktop does not expose Apple Metal acceleration to Linux containers.
-The current Qwen Q8 runtime nevertheless meets the shadow latency target on
-the MacBook CPU; if future candidate sizes exceed that target, move this same
-contract to a native macOS `llama-server` before considering a longer timeout.
-Do not move the BGE F32 image to Docker Desktop expecting GPU acceleration.
+The production Qwen Q8 runtime therefore uses native macOS `llama-server`
+with Metal on port `11436`. A pinned, read-only `alpine/socat` container from
+`docker-compose.qwen-native-proxy-mac.yml` exposes the existing authenticated
+port `11435`; authentication is still enforced by `llama-server`. Do not move
+the BGE F32 image to Docker Desktop expecting GPU acceleration.
+
+The native process is an operator-owned LaunchAgent named
+`cz.zeleznalady.akb-qwen-reranker`. It uses the model and key under
+`$HOME/.cache/akb-reranker` and `$HOME/.config/akb-reranker`, both outside Git.
+The Docker-only Qwen service remains a rollback option but must stay stopped
+while the proxy owns port `11435`.
+
+Start or reconcile the proxy after the native `/health` endpoint is ready:
+
+```bash
+docker compose \
+  -f infra/rerankers/docker-compose.qwen-native-proxy-mac.yml \
+  up -d
+```
 
 Verification:
 
@@ -102,4 +117,6 @@ before that point is not sufficient deployment evidence.
   file path. A missing or unreadable endpoint in `shadow` uses the lexical
   fallback and must never block an answer.
 - The private VPN address is runtime configuration, not a source-code
-  constant. Verify `/health` from `docker.home.cz` before every rollout.
+  constant. Production uses `AKL_RAG_RERANKER_BASE_URLS` with the approved
+  `.3`, `.2` and `.176` addresses. Verify at least one `/health` response from
+  `docker.home.cz` before every rollout.

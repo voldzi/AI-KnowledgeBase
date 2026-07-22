@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | V2 dual-write | `AKL_RAG_V2_INDEX_MODE` | `AKL_QDRANT_V2_COLLECTION` |
 | V2 dense read | `AKL_RAG_V2_RETRIEVAL_MODE` | `AKL_QDRANT_V2_COLLECTION` |
-| Cross-encoder | `AKL_RAG_RERANKER_MODE` | provider, URL, model, revision, timeout, batch, min score |
+| Cross-encoder | `AKL_RAG_RERANKER_MODE` | provider, URL list, model, revision, timeout, batch, min score |
 | Adaptivní retrieval | `AKL_RAG_ADAPTIVE_RETRIEVAL_MODE` | profil, candidate limit, dense/BM25 váha |
 | Parent retrieval | `AKL_RAG_PARENT_RETRIEVAL_MODE` | window, max chunks per document |
 | Evidence gate | `AKL_RAG_EVIDENCE_GATE_MODE` | minimum overlap |
@@ -48,6 +48,9 @@ Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
 
 - TEI kontrakt: `POST /rerank` s `query`, `texts`, `raw_scores=false`.
 - Llama/Qwen kontrakt: `POST /v1/rerank` s `model`, `query`, `documents`, `top_n`.
+- `AKL_RAG_RERANKER_BASE_URLS` obsahuje seřazený seznam interních endpointů.
+  AKB si pamatuje poslední funkční endpoint a při síťové nebo HTTP chybě zkusí
+  další; obsah dotazu ani dokumentů se neloguje.
 - Výsledek ukládá score, model, revision a latenci do interní metadata vrstvy.
 - Při chybě v `shadow` se použije lexical fallback a warning
   `RERANKER_FALLBACK_LEXICAL`; v `enforce` skončí dotaz bezpečným no-answer s

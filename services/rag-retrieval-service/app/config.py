@@ -158,6 +158,7 @@ class Settings:
     reranker_mode: str
     reranker_provider: str
     reranker_base_url: str
+    reranker_base_urls: tuple[str, ...]
     reranker_model: str
     reranker_model_revision: str
     reranker_api_key: str | None
@@ -366,12 +367,24 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "AKL_RAG_RERANKER_API_KEY",
         "AKL_RAG_RERANKER_API_KEY_FILE",
     )
-    if reranker_mode != "off" and not _get(source, "AKL_RAG_RERANKER_BASE_URL", "").strip():
-        raise ConfigError("AKL_RAG_RERANKER_BASE_URL is required when reranker is enabled")
-    if reranker_mode != "off" and not _is_internal_url(
-        _get(source, "AKL_RAG_RERANKER_BASE_URL", "")
+    reranker_base_url = _get(source, "AKL_RAG_RERANKER_BASE_URL", "").rstrip("/")
+    reranker_base_urls = tuple(
+        dict.fromkeys(
+            url.rstrip("/")
+            for url in _parse_csv(
+                _get(source, "AKL_RAG_RERANKER_BASE_URLS", reranker_base_url)
+            )
+        )
+    )
+    if reranker_mode != "off" and not reranker_base_urls:
+        raise ConfigError(
+            "AKL_RAG_RERANKER_BASE_URL or AKL_RAG_RERANKER_BASE_URLS is required "
+            "when reranker is enabled"
+        )
+    if reranker_mode != "off" and any(
+        not _is_internal_url(url) for url in reranker_base_urls
     ):
-        raise ConfigError("AKL_RAG_RERANKER_BASE_URL must be an internal endpoint")
+        raise ConfigError("AKL_RAG_RERANKER_BASE_URLS must contain only internal endpoints")
     if reranker_mode == "enforce" and reranker_provider == "llama" and not reranker_api_key:
         raise ConfigError("Enforced llama reranker requires AKL_RAG_RERANKER_API_KEY_FILE")
     colbert_base_url = _get(source, "AKL_RAG_COLBERT_BASE_URL", "").rstrip("/")
@@ -483,7 +496,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         enable_reranking=_parse_bool(_get(source, "AKL_RAG_ENABLE_RERANKING", "true")),
         reranker_mode=reranker_mode,
         reranker_provider=reranker_provider,
-        reranker_base_url=_get(source, "AKL_RAG_RERANKER_BASE_URL", "").rstrip("/"),
+        reranker_base_url=reranker_base_url or (reranker_base_urls[0] if reranker_base_urls else ""),
+        reranker_base_urls=reranker_base_urls,
         reranker_model=_get(source, "AKL_RAG_RERANKER_MODEL", "bge-reranker-v2-m3"),
         reranker_model_revision=_get(source, "AKL_RAG_RERANKER_MODEL_REVISION", "unknown"),
         reranker_api_key=reranker_api_key,

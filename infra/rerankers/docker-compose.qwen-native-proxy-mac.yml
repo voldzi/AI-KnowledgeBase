@@ -1,0 +1,25 @@
+name: akb-qwen-reranker-proxy
+
+services:
+  qwen-reranker-proxy:
+    image: alpine/socat@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
+    restart: unless-stopped
+    command:
+      - TCP-LISTEN:11435,fork,reuseaddr
+      - TCP:host.docker.internal:11436
+    ports:
+      - "${QWEN_RERANKER_BIND_ADDRESS:-0.0.0.0}:${QWEN_RERANKER_PORT:-11435}:11435"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD-SHELL", "socat -T 2 -u /dev/null TCP:host.docker.internal:11436"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
