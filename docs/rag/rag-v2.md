@@ -39,13 +39,20 @@ striktní claim JSON a server znovu ověřuje existenci chunk ID i doslovnou
 přítomnost `quoted_support`. Výpadek modelového verifieru v `enforce` končí
 no-answer.
 
+Evidence gate se uplatňuje také na běžný `/assistant/chat`. Copilot ředitele
+používá oddělenou deterministickou cestu: nejvýše tři autorizované smluvní
+výňatky, bez dokumentové LLM syntézy a bez dalšího LLM volání pro follow-up.
+Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
+
 ## Rerankery
 
 - TEI kontrakt: `POST /rerank` s `query`, `texts`, `raw_scores=false`.
 - Llama/Qwen kontrakt: `POST /v1/rerank` s `model`, `query`, `documents`, `top_n`.
 - Výsledek ukládá score, model, revision a latenci do interní metadata vrstvy.
-- Při chybě se použije lexical fallback a warning
-  `RERANKER_FALLBACK_LEXICAL`.
+- Při chybě v `shadow` se použije lexical fallback a warning
+  `RERANKER_FALLBACK_LEXICAL`; v `enforce` skončí dotaz bezpečným no-answer s
+  `RERANKER_UNAVAILABLE`. Stejné pravidlo platí pro ColBERT jako
+  `COLBERT_UNAVAILABLE`.
 
 ## ColBERT kontrakt
 
@@ -97,3 +104,9 @@ Před každým zvýšením režimu musí být splněno:
 
 Pořadí: baseline, V2 backfill, shadow, 10 %, 50 %, 100 %, přepnutí kolekce.
 V1 zůstává nejméně sedm dní.
+
+Copilot baseline musí být zopakována po každé změně retrieval vrstvy. Povinně
+se zachovává čerstvá STRATOS reautorizace před syntézou, extraktivní tříchunková
+cesta a nulové volání generativního modelu pro smluvní výňatky. Produkční
+baseline z 2026-07-22 je 10/10 scénářů, nulový autorizační únik a celková p95
+5258 ms; jde o počáteční pětivzorkovou baseline, nikoli náhradu zátěžového testu.

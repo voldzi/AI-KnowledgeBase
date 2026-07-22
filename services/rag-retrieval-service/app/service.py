@@ -1323,6 +1323,18 @@ class RagRetrievalService:
                 response_language=payload.response_language,
                 auth_context=auth_context,
             )
+            rag_answer = await self._evidence_gate.verify_async(
+                rag_answer,
+                run.response.chunks,
+                auth_context=auth_context,
+            )
+        rag_answer = rag_answer.model_copy(
+            update={
+                "warnings": list(
+                    dict.fromkeys([*rag_answer.warnings, *run.response.warnings])
+                )
+            }
+        )
         await self._audit_answer(
             actor_id=payload.user_id,
             event_type="rag.assistant_query.executed",

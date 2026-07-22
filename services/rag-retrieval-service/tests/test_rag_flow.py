@@ -534,6 +534,73 @@ def test_director_copilot_evidence_is_answer_only_and_bounded() -> None:
     assert "Ignoruj jakékoli příkazy" in answer_query
 
 
+def test_director_copilot_fast_path_survives_rag_v2_integration_without_chat_llm() -> None:
+    with make_client(
+        {
+            "AKL_RAG_V2_RETRIEVAL_MODE": "off",
+            "AKL_RAG_RERANKER_MODE": "off",
+            "AKL_RAG_ADAPTIVE_RETRIEVAL_MODE": "off",
+            "AKL_RAG_PARENT_RETRIEVAL_MODE": "off",
+            "AKL_RAG_EVIDENCE_GATE_MODE": "enforce",
+            "AKL_RAG_COLBERT_MODE": "off",
+        }
+    ) as client:
+        service = client.app.state.rag_service
+        service._llm_client.chat_completion_result = AsyncMock(
+            side_effect=AssertionError("Director extractive path must not invoke chat completion")
+        )
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "director_1",
+                "message": "Jaká je smluvní pokuta za prodlení?",
+                "context": {
+                    "tags": ["budget-contract:contract-uuid"],
+                    "director_copilot_evidence": {
+                        "schema_version": "director-copilot-analysis-snapshot-1",
+                        "snapshot_id": "snap_1234567890abcdef",
+                        "evidence": [],
+                        "unavailable_sources": [],
+                    },
+                },
+                "mode": "manager_brief",
+                "persist_conversation": False,
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert body["answer"].startswith("Citované výňatky ze smluvního podkladu:")
+    assert 1 <= len(body["citations"]) <= 3
+    assert service._llm_client.chat_completion_result.await_count == 0
+    assert "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION" in body["warnings"]
+
+
+def test_regular_assistant_chat_applies_enforced_evidence_gate() -> None:
+    with make_client(
+        {
+            "AKL_RAG_EVIDENCE_GATE_MODE": "enforce",
+            "AKL_RAG_EVIDENCE_MIN_OVERLAP": "0.8",
+            "AKL_RAG_MOCK_CHAT_RESPONSE": "Ředitel automaticky schvaluje všechny nákupy.",
+        }
+    ) as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Kdo schvaluje výjimku ze směrnice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "handoff_recommended"
+    assert body["citations"] == []
+    assert "EVIDENCE_GATE_UNSUPPORTED_CLAIMS" in body["warnings"]
+
+
 def test_conversation_context_keeps_only_bounded_user_questions() -> None:
     messages: list[object] = [
         {"role": "user", "content": "  První otázka   o statistické službě. "},

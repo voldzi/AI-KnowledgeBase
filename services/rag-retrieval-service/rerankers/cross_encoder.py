@@ -84,6 +84,8 @@ class CrossEncoderReranker:
                     return candidates[:limit], warnings
             except Exception as exc:
                 logger.warning("colbert_fallback reason=%s content_logged=false", exc.__class__.__name__)
+                if self._settings.colbert_mode == "enforce":
+                    return [], [*warnings, "COLBERT_UNAVAILABLE"]
                 warnings.append("COLBERT_FALLBACK")
 
         if self._settings.reranker_mode == "off":
@@ -94,9 +96,10 @@ class CrossEncoderReranker:
             scores = await self._score(query=query, chunks=candidates)
         except Exception as exc:
             logger.warning("reranker_fallback reason=%s content_logged=false", exc.__class__.__name__)
-            warning = "RERANKER_FALLBACK_LEXICAL"
+            if self._settings.reranker_mode == "enforce":
+                return [], [*warnings, "RERANKER_UNAVAILABLE"]
             fallback = candidates if self._settings.colbert_mode == "enforce" else lexical
-            return fallback[:limit], [*warnings, warning]
+            return fallback[:limit], [*warnings, "RERANKER_FALLBACK_LEXICAL"]
 
         latency_ms = max(0, int((time.perf_counter() - started) * 1000))
         scored: list[RetrievedChunk] = []

@@ -106,6 +106,56 @@ async def test_cross_encoder_enforce_orders_candidates_and_records_provenance(mo
     assert warnings == []
 
 
+@pytest.mark.asyncio
+async def test_cross_encoder_enforce_fails_closed_when_model_is_unavailable(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "enforce",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:3000",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+
+    async def unavailable(*, query, chunks):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(reranker, "_score", unavailable)
+    result, warnings = await reranker.rerank(
+        query="schválení",
+        chunks=[_chunk("a", "doc_a", "první")],
+        limit=1,
+    )
+
+    assert result == []
+    assert warnings == ["RERANKER_UNAVAILABLE"]
+
+
+@pytest.mark.asyncio
+async def test_colbert_enforce_fails_closed_when_model_is_unavailable(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_STRATEGY": "colbert",
+            "AKL_RAG_COLBERT_MODE": "enforce",
+            "AKL_RAG_COLBERT_BASE_URL": "http://colbert:8080",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+
+    async def unavailable(*, query, chunks):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(reranker, "_colbert_score", unavailable)
+    result, warnings = await reranker.rerank(
+        query="schválení",
+        chunks=[_chunk("a", "doc_a", "první")],
+        limit=1,
+    )
+
+    assert result == []
+    assert warnings == ["COLBERT_UNAVAILABLE"]
+
+
 def test_evidence_gate_enforce_rejects_unsupported_main_claim() -> None:
     settings = load_settings(
         {"AKL_RAG_EVIDENCE_GATE_MODE": "enforce", "AKL_RAG_EVIDENCE_MIN_OVERLAP": "0.3"}
