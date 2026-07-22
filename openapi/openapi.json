@@ -25489,12 +25489,6 @@
             ],
             "title": "Response Language",
             "default": "cs"
-          },
-          "persist_conversation": {
-            "type": "boolean",
-            "title": "Persist Conversation",
-            "description": "Set to false for governed federated answers until every non-document evidence source supports history reauthorization.",
-            "default": true
           }
         },
         "additionalProperties": false,
@@ -26519,6 +26513,11 @@
             ],
             "title": "Response Language",
             "default": "cs"
+          },
+          "persist_conversation": {
+            "type": "boolean",
+            "title": "Persist Conversation",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -27226,153 +27225,6 @@
         ],
         "title": "ChunkCitation"
       },
-      "RagRetrievalServiceCitationPolicyAudience": {
-        "properties": {
-          "organizationId": {
-            "type": "string",
-            "const": "org_stratos",
-            "title": "Organizationid"
-          },
-          "scopeType": {
-            "type": "string",
-            "enum": [
-              "organization",
-              "organization_unit",
-              "budget_scope",
-              "project",
-              "document",
-              "recipient_set",
-              "public"
-            ],
-            "title": "Scopetype"
-          },
-          "scopeIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Scopeids"
-          },
-          "recipientSubjectIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Recipientsubjectids"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "organizationId",
-          "scopeType"
-        ],
-        "title": "CitationPolicyAudience"
-      },
-      "RagRetrievalServiceCitationPolicySummary": {
-        "properties": {
-          "policyBindingId": {
-            "type": "string",
-            "minLength": 8,
-            "maxLength": 200,
-            "title": "Policybindingid"
-          },
-          "policyVersion": {
-            "type": "string",
-            "const": "information-policy-2.0.0",
-            "title": "Policyversion"
-          },
-          "handlingClass": {
-            "type": "string",
-            "enum": [
-              "PUBLIC",
-              "INTERNAL",
-              "PROJECT_MANAGEMENT",
-              "RESTRICTED"
-            ],
-            "title": "Handlingclass"
-          },
-          "legalClassification": {
-            "type": "string",
-            "const": "NONE",
-            "title": "Legalclassification"
-          },
-          "tlp": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "TLP:RED",
-                  "TLP:AMBER+STRICT",
-                  "TLP:AMBER",
-                  "TLP:GREEN",
-                  "TLP:CLEAR"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tlp"
-          },
-          "pap": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "PAP:RED",
-                  "PAP:AMBER",
-                  "PAP:GREEN",
-                  "PAP:CLEAR"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pap"
-          },
-          "obligations": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "AUDIT_ACCESS",
-                "NO_EXTERNAL_AI",
-                "LOCAL_PROCESSING_ONLY",
-                "NO_PUBLIC_EXPORT",
-                "NO_EXPORT",
-                "WATERMARK",
-                "ENCRYPT_AT_REST",
-                "RECIPIENT_CONFIRMATION",
-                "ORIGINATOR_APPROVAL",
-                "PAP_ENFORCEMENT"
-              ]
-            },
-            "type": "array",
-            "title": "Obligations"
-          },
-          "contentCategories": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Contentcategories"
-          },
-          "audience": {
-            "$ref": "#/components/schemas/RagRetrievalServiceCitationPolicyAudience"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "policyBindingId",
-          "policyVersion",
-          "handlingClass",
-          "legalClassification",
-          "audience"
-        ],
-        "title": "CitationPolicySummary"
-      },
       "RagRetrievalServiceCitation": {
         "properties": {
           "document_id": {
@@ -27488,13 +27340,10 @@
           },
           "document_context_tags": {
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 120
+              "type": "string"
             },
             "type": "array",
             "maxItems": 20,
-            "uniqueItems": true,
             "title": "Document Context Tags"
           }
         },
@@ -27508,6 +27357,153 @@
           "chunk_id"
         ],
         "title": "Citation"
+      },
+      "RagRetrievalServiceCitationPolicyAudience": {
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "const": "org_stratos",
+            "title": "Organizationid"
+          },
+          "scopeType": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "organization_unit",
+              "budget_scope",
+              "project",
+              "document",
+              "recipient_set",
+              "public"
+            ],
+            "title": "Scopetype"
+          },
+          "scopeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopeids"
+          },
+          "recipientSubjectIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recipientsubjectids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "organizationId",
+          "scopeType"
+        ],
+        "title": "CitationPolicyAudience"
+      },
+      "RagRetrievalServiceCitationPolicySummary": {
+        "properties": {
+          "policyBindingId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Policybindingid"
+          },
+          "policyVersion": {
+            "type": "string",
+            "const": "information-policy-2.0.0",
+            "title": "Policyversion"
+          },
+          "handlingClass": {
+            "type": "string",
+            "enum": [
+              "PUBLIC",
+              "INTERNAL",
+              "PROJECT_MANAGEMENT",
+              "RESTRICTED"
+            ],
+            "title": "Handlingclass"
+          },
+          "legalClassification": {
+            "type": "string",
+            "const": "NONE",
+            "title": "Legalclassification"
+          },
+          "tlp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "TLP:RED",
+                  "TLP:AMBER+STRICT",
+                  "TLP:AMBER",
+                  "TLP:GREEN",
+                  "TLP:CLEAR"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tlp"
+          },
+          "pap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "PAP:RED",
+                  "PAP:AMBER",
+                  "PAP:GREEN",
+                  "PAP:CLEAR"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pap"
+          },
+          "obligations": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "AUDIT_ACCESS",
+                "NO_EXTERNAL_AI",
+                "LOCAL_PROCESSING_ONLY",
+                "NO_PUBLIC_EXPORT",
+                "NO_EXPORT",
+                "WATERMARK",
+                "ENCRYPT_AT_REST",
+                "RECIPIENT_CONFIRMATION",
+                "ORIGINATOR_APPROVAL",
+                "PAP_ENFORCEMENT"
+              ]
+            },
+            "type": "array",
+            "title": "Obligations"
+          },
+          "contentCategories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Contentcategories"
+          },
+          "audience": {
+            "$ref": "#/components/schemas/RagRetrievalServiceCitationPolicyAudience"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "policyBindingId",
+          "policyVersion",
+          "handlingClass",
+          "legalClassification",
+          "audience"
+        ],
+        "title": "CitationPolicySummary"
       },
       "RagRetrievalServiceClarificationQuestion": {
         "properties": {
@@ -28360,6 +28356,44 @@
             },
             "type": "array",
             "title": "Obligations"
+          },
+          "claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "evidence_status": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "partial",
+              "unsupported",
+              "not_checked"
+            ],
+            "title": "Evidence Status",
+            "default": "not_checked"
+          },
+          "verification_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Model"
+          },
+          "conflicts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Conflicts"
           }
         },
         "type": "object",
@@ -28619,6 +28653,22 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "retrieval_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Profile"
+          },
+          "retrieval_diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Retrieval Diagnostics"
           }
         },
         "type": "object",

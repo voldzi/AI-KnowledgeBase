@@ -49,6 +49,19 @@ remain in `docs/deployment/` and `docs/OPERATIONS/`.
    follow the documented reindex path. Do not mix mock embeddings with the real
    `bge-m3` collection.
 
+### RAG V2 rollback nebo neúplný backfill
+
+1. Zkontrolujte Qdrant `1.18.2`, kolekce V1/V2 a počet pointů bez výpisu textu.
+2. Pokud V2 count, version ID nebo hash nesouhlasí, ponechte
+   `AKL_RAG_V2_RETRIEVAL_MODE=off` a spusťte nejdřív dry-run
+   `scripts/backfill_qdrant_v2.py`.
+3. Selhání cross-encoderu v `shadow`/`enforce` musí vrátit lexical fallback a
+   warning. Selhání nesmí obejít Registry autorizaci.
+4. ColBERT nezapínejte, pokud V2 pointy nemají `colbert_status=indexed` a není
+   dokončen benchmark. `pending_backfill` není produkčně použitelný ColBERT.
+5. Při regresi přepněte jednotlivou vrstvu na `off`. V1 kolekci nemažte nejméně
+   sedm dní po plném přepnutí.
+
 ## Central OpenSearch Unavailable Or Unauthorized
 
 1. Check Ingestion and RAG `/ready`; both must validate TLS and authenticate

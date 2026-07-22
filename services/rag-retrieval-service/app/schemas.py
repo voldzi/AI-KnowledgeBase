@@ -226,6 +226,8 @@ class RetrieveResponse(BaseModel):
     query_id: str
     chunks: list[RetrievedChunk]
     warnings: list[str] = Field(default_factory=list)
+    retrieval_profile: str | None = None
+    retrieval_diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class AnswerRequest(BaseModel):
@@ -249,6 +251,10 @@ class RagAnswer(BaseModel):
     missing_information: str | None = None
     policy_bindings: list[dict[str, str]] = Field(default_factory=list)
     obligations: list[str] = Field(default_factory=list)
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_status: Literal["supported", "partial", "unsupported", "not_checked"] = "not_checked"
+    verification_model: str | None = None
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SourceLocation(BaseModel):

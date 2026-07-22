@@ -28,9 +28,13 @@ Sluzba nezodpovida za ingestion, parsing dokumentu, registry metadata ani zmenu 
 4. Metadata filtr omezi dokument typ, klasifikaci, tagy a validitu.
 5. Sluzba posle kandidatni `document_id` do Registry API `/authz/filter-documents`.
 6. Neautorizovane chunky se zahodi pred rerankingem a pred LLM.
-7. Dense a lexical ranking se spoji pres Reciprocal Rank Fusion; lexical reranker
-   jeste upravi score podle prekryvu tokenu dotazu a textu.
-8. Answer composer pouzije pouze chunky nad `AKL_RAG_NO_ANSWER_MIN_SCORE`.
+7. Dense a lexical ranking se spoji pres Reciprocal Rank Fusion. Podle režimu
+   následuje ColBERT, cross-encoder nebo cascade; lexical reranker je fallback.
+8. Parent expansion znovu autorizuje sousední chunky stejné verze.
+9. Answer composer použije pouze povolené chunky nad prahem relevance.
+10. Evidence gate ověří tvrzení proti použitým chunkům.
+
+Detail RAG V2 je v `docs/rag/rag-v2.md`.
 
 ## Hybrid score
 
@@ -101,12 +105,14 @@ dokumenty, například `RMO` -> `rozkaz ministra obrany`, `gestor` ->
 typu `RMO 12/2024`, `cl. 4` a `odst. 2` dostávají samostatné phrase/wildcard
 boosty, aby přesné citace porážely obecné textové shody.
 
-Filtry na `classification`, `document_type`, `tags`, `status` a `valid_from` se
+Filtry na `classification`, `document_type`, `tags`, `status`, `valid_from` a `valid_to` se
 aplikují už v OpenSearch dotazu. Registry authorization zůstává samostatná
 povinná brána po získání kandidátů a před předáním kontextu LLM.
 
 ## Limity
 
 - Sparse/fulltext cast je produkčnější při `AKL_RAG_FULLTEXT_MODE=opensearch`; Qdrant payload lexical fallback zustava kompatibilni rezim pro prostredi bez OpenSearch.
-- Validity filtr pro Qdrant predpoklada payload `status=valid` a `valid_from <= today`.
-- Konfliktni zdroje a compliance logika nejsou soucasti teto iterace.
+- Validity filtr pro Qdrant předpokládá `status=valid`, `valid_from <= today`
+  a `valid_to >= today`, pokud jsou data vyplněna.
+- Produkční aktivace V2 vrstev je podmíněna gold benchmarkem; samotná přítomnost
+  kódu není důkazem dosažení cílových metrik.

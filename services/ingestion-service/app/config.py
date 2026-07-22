@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import ipaddress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlparse
 
 KNOWN_AUTH_MODES = {"disabled", "bearer", "mock", "oidc"}
 KNOWN_REGISTRY_MODES = {"http", "mock"}
@@ -13,6 +15,7 @@ KNOWN_EMBEDDING_MODES = {"http", "mock"}
 KNOWN_INDEXER_TARGETS = {"qdrant", "opensearch", "mock"}
 KNOWN_OCR_PROVIDERS = {"disabled", "sidecar", "tesseract", "ocrmypdf"}
 KNOWN_PDF_ENGINES = {"auto", "pymupdf", "pypdf"}
+RAG_V2_MODES = {"off", "shadow", "enforce"}
 
 
 class ConfigError(ValueError):
@@ -24,6 +27,20 @@ def _get(env: Mapping[str, str], key: str, default: str) -> str:
     if value is None or value == "":
         return default
     return value
+
+
+def _is_internal_url(value: str) -> bool:
+    hostname = urlparse(value).hostname
+    if not hostname:
+        return False
+    if hostname in {"localhost", "host.docker.internal"} or "." not in hostname:
+        return True
+    if hostname.endswith((".home.cz", ".internal", ".local")):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_private
+    except ValueError:
+        return False
 
 
 def _parse_bool(value: str) -> bool:
@@ -201,6 +218,15 @@ class Settings:
     qdrant_vector_size: int
     qdrant_distance: str
     qdrant_delete_existing_version: bool
+    rag_v2_mode: str
+    qdrant_v2_collection: str
+    qdrant_colbert_vector_size: int
+    colbert_index_mode: str
+    colbert_base_url: str
+    colbert_model: str
+    colbert_token: str | None
+    colbert_timeout_seconds: float
+    colbert_batch_size: int
     opensearch_base_url: str
     opensearch_index: str
     opensearch_username: str | None
@@ -255,6 +281,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             _get(source, "AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS", "")
         )
         qdrant_vector_size = int(_get(source, "AKL_QDRANT_VECTOR_SIZE", "1024"))
+        qdrant_colbert_vector_size = int(_get(source, "AKL_QDRANT_COLBERT_VECTOR_SIZE", "128"))
+        colbert_timeout_seconds = float(_get(source, "AKL_RAG_COLBERT_TIMEOUT_SECONDS", "30"))
+        colbert_batch_size = int(_get(source, "AKL_RAG_COLBERT_BATCH_SIZE", "8"))
         request_timeout_seconds = float(_get(source, "AKL_INGESTION_REQUEST_TIMEOUT_SECONDS", "30"))
         ocr_timeout_seconds = float(_get(source, "AKL_INGESTION_OCR_TIMEOUT_SECONDS", "300"))
     except ValueError as exc:
@@ -284,12 +313,31 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS must be greater than zero")
     if qdrant_vector_size <= 0:
         raise ConfigError("AKL_QDRANT_VECTOR_SIZE must be greater than zero")
+    if qdrant_colbert_vector_size <= 0:
+        raise ConfigError("AKL_QDRANT_COLBERT_VECTOR_SIZE must be greater than zero")
+    if colbert_timeout_seconds <= 0:
+        raise ConfigError("AKL_RAG_COLBERT_TIMEOUT_SECONDS must be greater than zero")
+    if colbert_batch_size <= 0 or colbert_batch_size > 64:
+        raise ConfigError("AKL_RAG_COLBERT_BATCH_SIZE must be between 1 and 64")
     if request_timeout_seconds <= 0:
         raise ConfigError("AKL_INGESTION_REQUEST_TIMEOUT_SECONDS must be greater than zero")
     if ocr_timeout_seconds <= 0:
         raise ConfigError("AKL_INGESTION_OCR_TIMEOUT_SECONDS must be greater than zero")
 
     service_token = source.get("AKL_SERVICE_TOKEN") or None
+    rag_v2_mode = _get(source, "AKL_RAG_V2_INDEX_MODE", "off").strip().lower()
+    if rag_v2_mode not in RAG_V2_MODES:
+        raise ConfigError("AKL_RAG_V2_INDEX_MODE must be one of: off, shadow, enforce")
+    colbert_index_mode = _get(source, "AKL_RAG_COLBERT_INDEX_MODE", "off").strip().lower()
+    if colbert_index_mode not in RAG_V2_MODES:
+        raise ConfigError("AKL_RAG_COLBERT_INDEX_MODE must be one of: off, shadow, enforce")
+    colbert_base_url = _get(source, "AKL_RAG_COLBERT_BASE_URL", "").rstrip("/")
+    if colbert_index_mode != "off" and not colbert_base_url:
+        raise ConfigError("AKL_RAG_COLBERT_BASE_URL is required when ColBERT indexing is enabled")
+    if colbert_index_mode != "off" and not _is_internal_url(colbert_base_url):
+        raise ConfigError("AKL_RAG_COLBERT_BASE_URL must be an internal endpoint")
+    if colbert_index_mode != "off" and rag_v2_mode == "off":
+        raise ConfigError("AKL_RAG_COLBERT_INDEX_MODE requires AKL_RAG_V2_INDEX_MODE")
     service_account_subject = _get(source, "AKL_SERVICE_ACCOUNT_SUBJECT", "svc-ingestion")
     web_ingestion_client_id = _get(
         source,
@@ -489,6 +537,19 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         qdrant_delete_existing_version=_parse_bool(
             _get(source, "AKL_QDRANT_DELETE_EXISTING_VERSION", "true")
         ),
+        rag_v2_mode=rag_v2_mode,
+        qdrant_v2_collection=_get(source, "AKL_QDRANT_V2_COLLECTION", "document_chunks_v2"),
+        qdrant_colbert_vector_size=qdrant_colbert_vector_size,
+        colbert_index_mode=colbert_index_mode,
+        colbert_base_url=colbert_base_url,
+        colbert_model=_get(source, "AKL_RAG_COLBERT_MODEL", "colbert-multilingual-v2"),
+        colbert_token=_secret_value(
+            source,
+            "AKL_RAG_COLBERT_TOKEN",
+            "AKL_RAG_COLBERT_TOKEN_FILE",
+        ),
+        colbert_timeout_seconds=colbert_timeout_seconds,
+        colbert_batch_size=colbert_batch_size,
         opensearch_base_url=opensearch_base_url,
         opensearch_index=_get(source, "AKL_OPENSEARCH_INDEX", "akl_document_chunks"),
         opensearch_username=opensearch_username,

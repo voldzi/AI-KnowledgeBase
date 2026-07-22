@@ -25,6 +25,7 @@ class MockHybridRetriever:
         filters: RagQueryFilters,
         limit: int,
         query_vector: list[float] | None = None,
+        dense_weight: float | None = None,
     ) -> list[RetrievedChunk]:
         dense_query = query_vector or deterministic_embedding(query)
         results: list[RetrievedChunk] = []
@@ -35,7 +36,11 @@ class MockHybridRetriever:
 
             dense = cosine_similarity(dense_query, deterministic_embedding(chunk["text"]))
             sparse = sparse_score(query, chunk["text"])
-            score = hybrid_score(dense, sparse, self._settings.hybrid_dense_weight)
+            score = hybrid_score(
+                dense,
+                sparse,
+                self._settings.hybrid_dense_weight if dense_weight is None else dense_weight,
+            )
             results.append(
                 _to_retrieved_chunk(
                     chunk,
@@ -76,6 +81,9 @@ class MockHybridRetriever:
                     sparse_score=1.0,
                 )
         return None
+
+    async def get_context_chunks(self, chunk: RetrievedChunk, *, window: int) -> list[RetrievedChunk]:
+        return [chunk]
 
 
 def _to_retrieved_chunk(

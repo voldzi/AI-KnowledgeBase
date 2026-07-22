@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlparse
 
 
 class ConfigError(ValueError):
@@ -15,6 +17,9 @@ RETRIEVER_MODES = {"mock", "http", "qdrant"}
 FULLTEXT_MODES = {"qdrant", "opensearch"}
 AUTH_MODES = {"disabled", "bearer", "mock", "oidc"}
 AUTHZ_MODES = {"dev", "registry"}
+RAG_LAYER_MODES = {"off", "shadow", "enforce"}
+RERANKER_PROVIDERS = {"llama", "tei"}
+RERANKER_STRATEGIES = {"cross_encoder", "colbert", "cascade"}
 
 
 def _get(env: Mapping[str, str], key: str, default: str) -> str:
@@ -63,6 +68,20 @@ def _normalize_api_base_url(value: str) -> str:
     if normalized.endswith("/api/v1"):
         return normalized
     return f"{normalized}/api/v1"
+
+
+def _is_internal_url(value: str) -> bool:
+    hostname = urlparse(value).hostname
+    if not hostname:
+        return False
+    if hostname in {"localhost", "host.docker.internal"} or "." not in hostname:
+        return True
+    if hostname.endswith((".home.cz", ".internal", ".local")):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_private
+    except ValueError:
+        return False
 
 
 def _secret_value(source: Mapping[str, str], value_key: str, file_key: str) -> str | None:
@@ -136,6 +155,31 @@ class Settings:
     authz_mode: str
     require_citations: bool
     enable_reranking: bool
+    reranker_mode: str
+    reranker_provider: str
+    reranker_base_url: str
+    reranker_model: str
+    reranker_model_revision: str
+    reranker_api_key: str | None
+    reranker_timeout_seconds: float
+    reranker_batch_size: int
+    reranker_min_score: float
+    reranker_strategy: str
+    adaptive_retrieval_mode: str
+    parent_retrieval_mode: str
+    parent_window: int
+    max_chunks_per_document: int
+    evidence_gate_mode: str
+    evidence_min_overlap: float
+    evidence_verifier_model: str | None
+    colbert_mode: str
+    colbert_base_url: str
+    colbert_model: str
+    colbert_token: str | None
+    colbert_timeout_seconds: float
+    colbert_candidate_limit: int
+    v2_retrieval_mode: str
+    qdrant_v2_collection: str
 
     registry_base_url: str
     registry_service_token_url: str | None
@@ -240,6 +284,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         confidence_medium_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_MEDIUM_THRESHOLD", "0.5"))
         embedding_dimensions = _parse_optional_int(_get(source, "AKL_RAG_EMBEDDING_DIMENSIONS", ""))
         high_quality_min_context_chunks = int(_get(source, "AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS", "6"))
+        reranker_timeout_seconds = float(_get(source, "AKL_RAG_RERANKER_TIMEOUT_SECONDS", "8"))
+        reranker_batch_size = int(_get(source, "AKL_RAG_RERANKER_BATCH_SIZE", "32"))
+        reranker_min_score = float(_get(source, "AKL_RAG_RERANKER_MIN_SCORE", "0"))
+        parent_window = int(_get(source, "AKL_RAG_PARENT_WINDOW", "1"))
+        max_chunks_per_document = int(_get(source, "AKL_RAG_MAX_CHUNKS_PER_DOCUMENT", "3"))
+        evidence_min_overlap = float(_get(source, "AKL_RAG_EVIDENCE_MIN_OVERLAP", "0.18"))
+        colbert_timeout_seconds = float(_get(source, "AKL_RAG_COLBERT_TIMEOUT_SECONDS", "8"))
+        colbert_candidate_limit = int(_get(source, "AKL_RAG_COLBERT_CANDIDATE_LIMIT", "24"))
     except ValueError as exc:
         raise ConfigError("Numeric AKL_RAG_* configuration value is invalid") from exc
 
@@ -269,6 +321,74 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_EMBEDDING_DIMENSIONS must be greater than zero")
     if high_quality_min_context_chunks <= 0:
         raise ConfigError("AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS must be greater than zero")
+    if reranker_timeout_seconds <= 0:
+        raise ConfigError("AKL_RAG_RERANKER_TIMEOUT_SECONDS must be greater than zero")
+    if reranker_batch_size <= 0 or reranker_batch_size > 100:
+        raise ConfigError("AKL_RAG_RERANKER_BATCH_SIZE must be between 1 and 100")
+    if not 0 <= reranker_min_score <= 1:
+        raise ConfigError("AKL_RAG_RERANKER_MIN_SCORE must be between 0 and 1")
+    if parent_window < 0 or parent_window > 5:
+        raise ConfigError("AKL_RAG_PARENT_WINDOW must be between 0 and 5")
+    if max_chunks_per_document <= 0 or max_chunks_per_document > 20:
+        raise ConfigError("AKL_RAG_MAX_CHUNKS_PER_DOCUMENT must be between 1 and 20")
+    if not 0 <= evidence_min_overlap <= 1:
+        raise ConfigError("AKL_RAG_EVIDENCE_MIN_OVERLAP must be between 0 and 1")
+    if colbert_timeout_seconds <= 0:
+        raise ConfigError("AKL_RAG_COLBERT_TIMEOUT_SECONDS must be greater than zero")
+    if colbert_candidate_limit <= 0 or colbert_candidate_limit > 100:
+        raise ConfigError("AKL_RAG_COLBERT_CANDIDATE_LIMIT must be between 1 and 100")
+
+    reranker_mode = _get(source, "AKL_RAG_RERANKER_MODE", "off").strip().lower()
+    reranker_provider = _get(source, "AKL_RAG_RERANKER_PROVIDER", "tei").strip().lower()
+    reranker_strategy = _get(source, "AKL_RAG_RERANKER_STRATEGY", "cross_encoder").strip().lower()
+    parent_retrieval_mode = _get(source, "AKL_RAG_PARENT_RETRIEVAL_MODE", "off").strip().lower()
+    adaptive_retrieval_mode = _get(source, "AKL_RAG_ADAPTIVE_RETRIEVAL_MODE", "off").strip().lower()
+    evidence_gate_mode = _get(source, "AKL_RAG_EVIDENCE_GATE_MODE", "off").strip().lower()
+    colbert_mode = _get(source, "AKL_RAG_COLBERT_MODE", "off").strip().lower()
+    v2_retrieval_mode = _get(source, "AKL_RAG_V2_RETRIEVAL_MODE", "off").strip().lower()
+    for key, mode in (
+        ("AKL_RAG_RERANKER_MODE", reranker_mode),
+        ("AKL_RAG_ADAPTIVE_RETRIEVAL_MODE", adaptive_retrieval_mode),
+        ("AKL_RAG_PARENT_RETRIEVAL_MODE", parent_retrieval_mode),
+        ("AKL_RAG_EVIDENCE_GATE_MODE", evidence_gate_mode),
+        ("AKL_RAG_COLBERT_MODE", colbert_mode),
+        ("AKL_RAG_V2_RETRIEVAL_MODE", v2_retrieval_mode),
+    ):
+        if mode not in RAG_LAYER_MODES:
+            raise ConfigError(f"{key} must be one of: off, shadow, enforce")
+    if reranker_provider not in RERANKER_PROVIDERS:
+        raise ConfigError("AKL_RAG_RERANKER_PROVIDER must be one of: llama, tei")
+    if reranker_strategy not in RERANKER_STRATEGIES:
+        raise ConfigError("AKL_RAG_RERANKER_STRATEGY must be one of: cross_encoder, colbert, cascade")
+
+    reranker_api_key = _file_preferred_secret_value(
+        source,
+        "AKL_RAG_RERANKER_API_KEY",
+        "AKL_RAG_RERANKER_API_KEY_FILE",
+    )
+    if reranker_mode != "off" and not _get(source, "AKL_RAG_RERANKER_BASE_URL", "").strip():
+        raise ConfigError("AKL_RAG_RERANKER_BASE_URL is required when reranker is enabled")
+    if reranker_mode != "off" and not _is_internal_url(
+        _get(source, "AKL_RAG_RERANKER_BASE_URL", "")
+    ):
+        raise ConfigError("AKL_RAG_RERANKER_BASE_URL must be an internal endpoint")
+    if reranker_mode == "enforce" and reranker_provider == "llama" and not reranker_api_key:
+        raise ConfigError("Enforced llama reranker requires AKL_RAG_RERANKER_API_KEY_FILE")
+    colbert_base_url = _get(source, "AKL_RAG_COLBERT_BASE_URL", "").rstrip("/")
+    if colbert_mode != "off" and not colbert_base_url:
+        raise ConfigError("AKL_RAG_COLBERT_BASE_URL is required when ColBERT is enabled")
+    if colbert_mode != "off" and not _is_internal_url(colbert_base_url):
+        raise ConfigError("AKL_RAG_COLBERT_BASE_URL must be an internal endpoint")
+    if colbert_mode != "off" and reranker_strategy == "cross_encoder":
+        raise ConfigError(
+            "AKL_RAG_COLBERT_MODE requires AKL_RAG_RERANKER_STRATEGY=colbert or cascade"
+        )
+    if reranker_strategy == "colbert" and colbert_mode == "off" and reranker_mode != "off":
+        raise ConfigError("ColBERT reranker strategy requires AKL_RAG_COLBERT_MODE")
+    if reranker_strategy == "cascade" and (
+        colbert_mode == "off" or reranker_mode == "off"
+    ):
+        raise ConfigError("Cascade reranker strategy requires both ColBERT and cross-encoder")
 
     opensearch_base_url = _get(
         source,
@@ -361,6 +481,37 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         authz_mode=authz_mode,
         require_citations=_parse_bool(_get(source, "AKL_RAG_REQUIRE_CITATIONS", "true")),
         enable_reranking=_parse_bool(_get(source, "AKL_RAG_ENABLE_RERANKING", "true")),
+        reranker_mode=reranker_mode,
+        reranker_provider=reranker_provider,
+        reranker_base_url=_get(source, "AKL_RAG_RERANKER_BASE_URL", "").rstrip("/"),
+        reranker_model=_get(source, "AKL_RAG_RERANKER_MODEL", "bge-reranker-v2-m3"),
+        reranker_model_revision=_get(source, "AKL_RAG_RERANKER_MODEL_REVISION", "unknown"),
+        reranker_api_key=reranker_api_key,
+        reranker_timeout_seconds=reranker_timeout_seconds,
+        reranker_batch_size=reranker_batch_size,
+        reranker_min_score=reranker_min_score,
+        reranker_strategy=reranker_strategy,
+        adaptive_retrieval_mode=adaptive_retrieval_mode,
+        parent_retrieval_mode=parent_retrieval_mode,
+        parent_window=parent_window,
+        max_chunks_per_document=max_chunks_per_document,
+        evidence_gate_mode=evidence_gate_mode,
+        evidence_min_overlap=evidence_min_overlap,
+        evidence_verifier_model=_parse_optional_str(
+            _get(source, "AKL_RAG_EVIDENCE_VERIFIER_MODEL", "")
+        ),
+        colbert_mode=colbert_mode,
+        colbert_base_url=colbert_base_url,
+        colbert_model=_get(source, "AKL_RAG_COLBERT_MODEL", "colbert-multilingual-v2"),
+        colbert_token=_file_preferred_secret_value(
+            source,
+            "AKL_RAG_COLBERT_TOKEN",
+            "AKL_RAG_COLBERT_TOKEN_FILE",
+        ),
+        colbert_timeout_seconds=colbert_timeout_seconds,
+        colbert_candidate_limit=colbert_candidate_limit,
+        v2_retrieval_mode=v2_retrieval_mode,
+        qdrant_v2_collection=_get(source, "AKL_QDRANT_V2_COLLECTION", "document_chunks_v2"),
         registry_base_url=_normalize_api_base_url(
             _get(source, "AKL_REGISTRY_BASE_URL", "http://localhost:8001/api/v1")
         ),

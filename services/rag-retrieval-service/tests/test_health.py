@@ -21,4 +21,5 @@ def test_ready_reports_mock_dependencies() -> None:
         "registry-api": "ready",
         "retriever": "ready",
         "llm-gateway": "ready",
+        "reranker": "ready",
     }

@@ -54,8 +54,9 @@ from app.schemas import (
 from app.security import AuthContext, auth_context_for_request, require_service_auth
 from app.service import RagRetrievalService
 from app.telemetry import configure_telemetry
+from policies.evidence import EvidenceGate
 from policies.no_answer import NoAnswerPolicy
-from rerankers.lexical import LexicalReranker
+from rerankers.cross_encoder import CrossEncoderReranker
 from retrievers.qdrant import create_retriever
 
 logger = logging.getLogger(__name__)
@@ -75,10 +76,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings=resolved_settings,
             registry_client=registry_client,
             retriever=retriever,
-            reranker=LexicalReranker(),
+            reranker=CrossEncoderReranker(resolved_settings),
             llm_client=llm_client,
             no_answer_policy=NoAnswerPolicy(resolved_settings),
             answer_composer=AnswerComposer(resolved_settings, llm_client),
+            evidence_gate=EvidenceGate(resolved_settings, llm_client),
         )
         yield
 

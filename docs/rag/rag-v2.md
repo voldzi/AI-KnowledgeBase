@@ -1,0 +1,99 @@
+# RAG V2
+
+## Implementovaný tok
+
+1. Query analyzer volí profil `exact`, `document_scoped`, `semantic`,
+   `temporal`, `cross_document` nebo `copilot_live_data`.
+2. Profil nastaví candidate limit, poměr dense/BM25 a maximální počet dokumentů.
+3. Qdrant a OpenSearch vrátí kandidáty. Běžný dotaz používá jen platné verze;
+   explicitní version filter nebo časový profil může pracovat s historií.
+4. Registry autorizuje document ID, version ID a policy hash.
+5. Deduplikace odstraní shodné a téměř shodné chunky stejné verze.
+6. Volitelný ColBERT pracuje jen s autorizovanými point ID. Cross-encoder dostane
+   pouze autorizované texty. Lexical reranker je fallback.
+7. Diverzifikace omezuje počet chunků jednoho dokumentu.
+8. Parent expansion načte sousedy stejné verze, znovu je autorizuje a sloučí
+   překryvy. Citace zůstává na původním konkrétním chunku.
+9. Evidence gate po generování mapuje tvrzení na chunk ID. V `enforce` odstraní
+   nepodložená vedlejší tvrzení a nepodložené hlavní tvrzení změní na no-answer.
+
+## Režimy a konfigurace
+
+| Vrstva | Režim | Hlavní proměnné |
+| --- | --- | --- |
+| V2 dual-write | `AKL_RAG_V2_INDEX_MODE` | `AKL_QDRANT_V2_COLLECTION` |
+| V2 dense read | `AKL_RAG_V2_RETRIEVAL_MODE` | `AKL_QDRANT_V2_COLLECTION` |
+| Cross-encoder | `AKL_RAG_RERANKER_MODE` | provider, URL, model, revision, timeout, batch, min score |
+| Adaptivní retrieval | `AKL_RAG_ADAPTIVE_RETRIEVAL_MODE` | profil, candidate limit, dense/BM25 váha |
+| Parent retrieval | `AKL_RAG_PARENT_RETRIEVAL_MODE` | window, max chunks per document |
+| Evidence gate | `AKL_RAG_EVIDENCE_GATE_MODE` | minimum overlap |
+| ColBERT ingestion | `AKL_RAG_COLBERT_INDEX_MODE` | encoder URL, model, token, vector size |
+| ColBERT query | `AKL_RAG_COLBERT_MODE` | encoder URL, model, candidate limit |
+
+Všechny režimy mají hodnoty `off`, `shadow`, `enforce`. Produkční výchozí stav
+je `off`. `shadow` nesmí změnit finální pořadí ani odpověď.
+
+Evidence gate používá deterministický verifier, pokud není nastaven
+`AKL_RAG_EVIDENCE_VERIFIER_MODEL`. Při nastaveném interním modelu vyžaduje
+striktní claim JSON a server znovu ověřuje existenci chunk ID i doslovnou
+přítomnost `quoted_support`. Výpadek modelového verifieru v `enforce` končí
+no-answer.
+
+## Rerankery
+
+- TEI kontrakt: `POST /rerank` s `query`, `texts`, `raw_scores=false`.
+- Llama/Qwen kontrakt: `POST /v1/rerank` s `model`, `query`, `documents`, `top_n`.
+- Výsledek ukládá score, model, revision a latenci do interní metadata vrstvy.
+- Při chybě se použije lexical fallback a warning
+  `RERANKER_FALLBACK_LEXICAL`.
+
+## ColBERT kontrakt
+
+Encoder poskytuje `POST /encode`:
+
+```json
+{
+  "model": "colbert-multilingual-v2",
+  "texts": ["text"],
+  "input_type": "document"
+}
+```
+
+Odpověď obsahuje `vectors`, jeden tokenový multivector na vstup. Ingestion
+validuje počet výsledků a velikost každého tokenového vektoru. Query cesta
+pošle encoderu pouze dotaz a Qdrant omezuje MaxSim na autorizovaná point ID.
+
+## V2 backfill
+
+Nejdřív spusťte pouze kontrolu:
+
+```bash
+python3 scripts/backfill_qdrant_v2.py --dry-run --dense-size 1024
+```
+
+Zápis do nové kolekce:
+
+```bash
+python3 scripts/backfill_qdrant_v2.py --recreate --dense-size 1024 --colbert-size 128
+```
+
+Skript zachovává payload, ověřuje `chunk_id`, `document_id`,
+`document_version_id`, `text_hash`, používá deterministické UUID a porovná
+počet validních zdrojových a cílových pointů. Dense backfill nenahrazuje ColBERT
+backfill; pointy jsou do jeho dokončení označené `pending_backfill`.
+
+## Promotion gate
+
+Před každým zvýšením režimu musí být splněno:
+
+- recall@50 alespoň 0,98,
+- recall@8 alespoň 0,92,
+- nDCG@8 alespoň 0,85,
+- authorization leak rate 0,
+- claim support alespoň 0,98,
+- false-answer rate nejvýše 0,02,
+- router accuracy alespoň 0,95,
+- ColBERT/cascade nezhorší retrieval p95 o více než 30 %.
+
+Pořadí: baseline, V2 backfill, shadow, 10 %, 50 %, 100 %, přepnutí kolekce.
+V1 zůstává nejméně sedm dní.

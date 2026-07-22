@@ -4,6 +4,7 @@ import asyncio
 from hashlib import sha256
 import json
 import hashlib
+import inspect
 import logging
 import re
 import time
@@ -70,9 +71,10 @@ from app.schemas import (
     ViewerMode,
 )
 from app.security import AuthContext
-from policies.no_answer import NoAnswerPolicy
-from rerankers.lexical import LexicalReranker
+from policies.no_answer import NoAnswerPolicy, PolicyDecision
+from policies.evidence import EvidenceGate
 from retrievers.base import Retriever
+from retrievers.query_analysis import RetrievalPlan, analyze_query
 
 logger = logging.getLogger(__name__)
 
@@ -109,10 +111,11 @@ class RagRetrievalService:
         settings: Settings,
         registry_client: RegistryClient,
         retriever: Retriever,
-        reranker: LexicalReranker,
+        reranker: object,
         llm_client: LLMGatewayClient,
         no_answer_policy: NoAnswerPolicy,
         answer_composer: AnswerComposer,
+        evidence_gate: EvidenceGate | None = None,
     ) -> None:
         self._settings = settings
         self._registry_client = registry_client
@@ -121,6 +124,7 @@ class RagRetrievalService:
         self._llm_client = llm_client
         self._no_answer_policy = no_answer_policy
         self._answer_composer = answer_composer
+        self._evidence_gate = evidence_gate or EvidenceGate(settings)
 
     async def aiip_harmonize(
         self,
@@ -354,13 +358,6 @@ class RagRetrievalService:
         *,
         auth_context: AuthContext | None = None,
     ) -> RagAnswer:
-        if payload.answer_mode == "compare":
-            raise RetrievalError(
-                "NOT_IMPLEMENTED",
-                "Document comparison is outside this retrieval-only implementation.",
-                status_code=501,
-            )
-
         query_id = _query_id()
         run = await self._retrieve_authorized(
             payload=RetrieveRequest(
@@ -403,6 +400,46 @@ class RagRetrievalService:
                 response_language=payload.response_language,
                 auth_context=auth_context,
             )
+            answer = await self._evidence_gate.verify_async(
+                answer,
+                run.response.chunks,
+                auth_context=auth_context,
+            )
+
+        answer = answer.model_copy(
+            update={
+                "warnings": list(dict.fromkeys([*answer.warnings, *run.response.warnings]))
+            }
+        )
+
+        if payload.answer_mode in {"compare", "compare_documents", "find_conflicts"}:
+            document_ids = {chunk.citation.document_id for chunk in run.response.chunks}
+            if len(document_ids) < 2:
+                answer = self._no_answer_policy.no_answer(
+                    query_id=query_id,
+                    decision=PolicyDecision(
+                        can_answer=False,
+                        confidence="insufficient_source",
+                        warnings=[
+                            *decision.warnings,
+                            *run.response.warnings,
+                            "MULTIPLE_DOCUMENTS_REQUIRED",
+                        ],
+                        missing_information="Porovnání vyžaduje alespoň dva povolené dokumenty.",
+                    ),
+                    response_language=payload.response_language,
+                )
+            elif payload.answer_mode == "find_conflicts":
+                conflicts = _detect_conflicts(run.response.chunks)
+                if conflicts:
+                    answer = answer.model_copy(
+                        update={
+                            "answer": _conflict_summary(payload.response_language),
+                            "confidence": "conflicting_sources",
+                            "conflicts": conflicts,
+                            "warnings": list(dict.fromkeys([*answer.warnings, "CONFLICTING_SOURCES"])),
+                        }
+                    )
 
         await self._audit_answer(
             actor_id=payload.subject_id,
@@ -425,12 +462,13 @@ class RagRetrievalService:
         *,
         auth_context: AuthContext | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        if payload.answer_mode == "compare":
-            raise RetrievalError(
-                "NOT_IMPLEMENTED",
-                "Document comparison is outside this retrieval-only implementation.",
-                status_code=501,
-            )
+        if (
+            self._settings.evidence_gate_mode != "off"
+            or payload.answer_mode in {"compare", "compare_documents", "find_conflicts"}
+        ):
+            answer = await self.query(payload, auth_context=auth_context)
+            yield StreamEvent(kind="done", answer=answer)
+            return
 
         query_id = _query_id()
         run = await self._retrieve_authorized(
@@ -454,6 +492,11 @@ class RagRetrievalService:
                 decision=decision,
                 response_language=payload.response_language,
             )
+            answer = answer.model_copy(
+                update={
+                    "warnings": list(dict.fromkeys([*answer.warnings, *run.response.warnings]))
+                }
+            )
             await self._audit_answer(
                 actor_id=payload.subject_id,
                 event_type="rag.query_stream.executed",
@@ -468,7 +511,7 @@ class RagRetrievalService:
                 query_id=query_id,
                 chunks=run.response.chunks,
                 confidence=decision.confidence,
-                warnings=decision.warnings,
+                warnings=[*decision.warnings, *run.response.warnings],
                 response_language=payload.response_language,
             )
             await self._audit_answer(
@@ -486,7 +529,7 @@ class RagRetrievalService:
             query=payload.query,
             chunks=run.response.chunks,
             confidence=decision.confidence,
-            warnings=decision.warnings,
+            warnings=[*decision.warnings, *run.response.warnings],
             max_chunks=payload.max_chunks,
             answer_mode=payload.answer_mode,
             response_language=payload.response_language,
@@ -515,23 +558,21 @@ class RagRetrievalService:
         *,
         auth_context: AuthContext | None = None,
     ) -> RagAnswer:
-        if payload.answer_mode == "compare":
-            raise RetrievalError(
-                "NOT_IMPLEMENTED",
-                "Document comparison is outside this retrieval-only implementation.",
-                status_code=501,
-            )
-
         query_id = _query_id()
         chunks, denied_document_ids = await self._filter_authorized_chunks(
             subject_id=payload.subject_id,
             chunks=payload.chunks,
             auth_context=auth_context,
         )
-        reranked = (
-            self._reranker.rerank(query=payload.query, chunks=chunks, limit=payload.max_chunks)
-            if self._settings.enable_reranking
-            else chunks[: payload.max_chunks]
+        reranking_active = (
+            self._settings.enable_reranking
+            or self._settings.reranker_mode != "off"
+            or self._settings.colbert_mode != "off"
+        )
+        reranked, rerank_warnings = (
+            await self._rerank_chunks(query=payload.query, chunks=chunks, limit=payload.max_chunks)
+            if reranking_active
+            else (chunks[: payload.max_chunks], [])
         )
         decision = self._no_answer_policy.evaluate(
             chunks=reranked,
@@ -550,12 +591,42 @@ class RagRetrievalService:
                 query=payload.query,
                 chunks=reranked,
                 confidence=decision.confidence,
-                warnings=decision.warnings,
+                warnings=[*decision.warnings, *rerank_warnings],
                 max_chunks=payload.max_chunks,
                 answer_mode=payload.answer_mode,
                 response_language=payload.response_language,
                 auth_context=auth_context,
             )
+            answer = await self._evidence_gate.verify_async(
+                answer,
+                reranked,
+                auth_context=auth_context,
+            )
+
+        if payload.answer_mode in {"compare", "compare_documents", "find_conflicts"}:
+            document_ids = {chunk.citation.document_id for chunk in reranked}
+            if len(document_ids) < 2:
+                answer = self._no_answer_policy.no_answer(
+                    query_id=query_id,
+                    decision=PolicyDecision(
+                        can_answer=False,
+                        confidence="insufficient_source",
+                        warnings=[*decision.warnings, "MULTIPLE_DOCUMENTS_REQUIRED"],
+                        missing_information="Porovnání vyžaduje alespoň dva povolené dokumenty.",
+                    ),
+                    response_language=payload.response_language,
+                )
+            elif payload.answer_mode == "find_conflicts":
+                conflicts = _detect_conflicts(reranked)
+                if conflicts:
+                    answer = answer.model_copy(
+                        update={
+                            "answer": _conflict_summary(payload.response_language),
+                            "confidence": "conflicting_sources",
+                            "conflicts": conflicts,
+                            "warnings": list(dict.fromkeys([*answer.warnings, "CONFLICTING_SOURCES"])),
+                        }
+                    )
 
         await self._audit_answer(
             actor_id=payload.subject_id,
@@ -566,15 +637,17 @@ class RagRetrievalService:
         return answer
 
     async def readiness(self) -> dict[str, str]:
-        registry, retriever, llm_gateway = await asyncio.gather(
+        registry, retriever, llm_gateway, reranker = await asyncio.gather(
             _bounded_readiness(self._registry_client.readiness()),
             _bounded_readiness(self._retriever.readiness()),
             _bounded_readiness(self._llm_client.readiness()),
+            _bounded_readiness(self._reranker_readiness()),
         )
         return {
             "registry-api": registry,
             "retriever": retriever,
             "llm-gateway": llm_gateway,
+            "reranker": reranker,
         }
 
     async def extraction_profiles(self) -> ContractExtractionProfilesResponse:
@@ -1615,14 +1688,42 @@ class RagRetrievalService:
         query_id: str,
         auth_context: AuthContext | None = None,
     ) -> RetrievalRun:
+        analyzed_plan = analyze_query(
+            payload.query,
+            payload.filters,
+            default_candidate_limit=self._settings.retrieval_candidate_limit,
+            default_dense_weight=self._settings.hybrid_dense_weight,
+        )
+        plan = analyzed_plan
+        if self._settings.adaptive_retrieval_mode != "enforce":
+            plan = RetrievalPlan(
+                profile="legacy",
+                candidate_limit=self._settings.retrieval_candidate_limit,
+                dense_weight=self._settings.hybrid_dense_weight,
+                max_documents=100,
+            )
         query_vectors = await self._llm_client.embeddings([payload.query], auth_context=auth_context)
         query_vector = query_vectors[0] if query_vectors else None
-        candidates = await self._retriever.retrieve(
-            query=payload.query,
-            filters=payload.filters,
-            limit=max(self._settings.retrieval_candidate_limit, payload.max_chunks * 3),
-            query_vector=query_vector,
-        )
+        retrieval_filters = payload.filters
+        if (
+            self._settings.adaptive_retrieval_mode == "enforce"
+            and plan.profile == "temporal"
+            and not payload.filters.document_version_ids
+        ):
+            retrieval_filters = payload.filters.model_copy(update={"only_valid": False})
+        retrieve = self._retriever.retrieve
+        retrieve_kwargs = {
+            "query": payload.query,
+            "filters": retrieval_filters,
+            "limit": max(plan.candidate_limit, payload.max_chunks * 3),
+            "query_vector": query_vector,
+        }
+        if (
+            self._settings.adaptive_retrieval_mode == "enforce"
+            and "dense_weight" in inspect.signature(retrieve).parameters
+        ):
+            retrieve_kwargs["dense_weight"] = plan.dense_weight
+        candidates = await retrieve(**retrieve_kwargs)
         authorized, denied_document_ids = await self._filter_authorized_chunks(
             subject_id=payload.subject_id,
             chunks=candidates,
@@ -1633,10 +1734,37 @@ class RagRetrievalService:
             if self._settings.authz_mode == "registry" and denied_document_ids
             else []
         )
-        if self._settings.enable_reranking:
-            chunks = self._reranker.rerank(query=payload.query, chunks=authorized, limit=payload.max_chunks)
+        authorized, duplicate_count = _deduplicate_chunks(authorized)
+        if duplicate_count:
+            warnings.append("DUPLICATE_CHUNKS_REMOVED")
+        if (
+            self._settings.enable_reranking
+            or self._settings.reranker_mode != "off"
+            or self._settings.colbert_mode != "off"
+        ):
+            chunks, rerank_warnings = await self._rerank_chunks(
+                query=payload.query,
+                chunks=authorized,
+                limit=max(payload.max_chunks * 2, payload.max_chunks),
+            )
+            warnings.extend(rerank_warnings)
         else:
-            chunks = authorized[: payload.max_chunks]
+            chunks = authorized[: payload.max_chunks * 2]
+        chunks = _diversify_chunks(
+            chunks,
+            limit=payload.max_chunks,
+            max_per_document=self._settings.max_chunks_per_document,
+            max_documents=plan.max_documents,
+        )
+        if self._settings.parent_retrieval_mode != "off" and chunks:
+            expanded, expansion_warnings = await self._expand_authorized_context(
+                subject_id=payload.subject_id,
+                chunks=chunks,
+                auth_context=auth_context,
+            )
+            warnings.extend(expansion_warnings)
+            if self._settings.parent_retrieval_mode == "enforce":
+                chunks = expanded
         logger.info(
             "rag_retrieval_candidates query_id=%s retriever_mode=%s authz_mode=%s "
             "candidates_before_authz=%s candidates_after_authz=%s applied_filters=%s",
@@ -1648,10 +1776,105 @@ class RagRetrievalService:
             payload.filters.model_dump(),
         )
         return RetrievalRun(
-            response=RetrieveResponse(query_id=query_id, chunks=chunks, warnings=warnings),
+            response=RetrieveResponse(
+                query_id=query_id,
+                chunks=chunks,
+                warnings=list(dict.fromkeys(warnings)),
+                retrieval_profile=(
+                    analyzed_plan.profile
+                    if self._settings.adaptive_retrieval_mode != "off"
+                    else plan.profile
+                ),
+                retrieval_diagnostics={
+                    "candidate_limit": plan.candidate_limit,
+                    "dense_weight": plan.dense_weight,
+                    "only_valid": retrieval_filters.only_valid,
+                    "candidates_before_authz": len(candidates),
+                    "candidates_after_authz": len(authorized),
+                    "duplicates_removed": duplicate_count,
+                    "reranker_mode": self._settings.reranker_mode,
+                    "parent_retrieval_mode": self._settings.parent_retrieval_mode,
+                    "colbert_mode": self._settings.colbert_mode,
+                    "v2_retrieval_mode": self._settings.v2_retrieval_mode,
+                    "adaptive_retrieval_mode": self._settings.adaptive_retrieval_mode,
+                    "shadow_candidate_limit": (
+                        analyzed_plan.candidate_limit
+                        if self._settings.adaptive_retrieval_mode == "shadow"
+                        else None
+                    ),
+                    "shadow_dense_weight": (
+                        analyzed_plan.dense_weight
+                        if self._settings.adaptive_retrieval_mode == "shadow"
+                        else None
+                    ),
+                },
+            ),
             had_candidates=bool(candidates),
             denied_document_ids=denied_document_ids,
         )
+
+    async def _rerank_chunks(
+        self,
+        *,
+        query: str,
+        chunks: list[RetrievedChunk],
+        limit: int,
+    ) -> tuple[list[RetrievedChunk], list[str]]:
+        rerank = getattr(self._reranker, "rerank")
+        result = rerank(query=query, chunks=chunks, limit=limit)
+        if inspect.isawaitable(result):
+            result = await result
+        if isinstance(result, tuple) and len(result) == 2:
+            return result
+        return list(result), []
+
+    async def _reranker_readiness(self) -> str:
+        readiness = getattr(self._reranker, "readiness", None)
+        if readiness is None:
+            return "ready"
+        result = readiness()
+        if inspect.isawaitable(result):
+            return await result
+        return str(result)
+
+    async def _expand_authorized_context(
+        self,
+        *,
+        subject_id: str,
+        chunks: list[RetrievedChunk],
+        auth_context: AuthContext | None,
+    ) -> tuple[list[RetrievedChunk], list[str]]:
+        getter = getattr(self._retriever, "get_context_chunks", None)
+        if getter is None:
+            return chunks, ["PARENT_RETRIEVAL_UNAVAILABLE"]
+        expanded: list[RetrievedChunk] = []
+        for seed in chunks:
+            related = await getter(seed, window=self._settings.parent_window)
+            authorized_related, _ = await self._filter_authorized_chunks(
+                subject_id=subject_id,
+                chunks=related,
+                auth_context=auth_context,
+            )
+            same_version = [
+                item
+                for item in authorized_related
+                if item.citation.document_id == seed.citation.document_id
+                and item.citation.document_version_id == seed.citation.document_version_id
+            ]
+            merged_text, source_ids = _merge_context(seed, same_version, self._settings.max_context_chars)
+            expanded.append(
+                seed.model_copy(
+                    update={
+                        "text": merged_text,
+                        "metadata": {
+                            **seed.metadata,
+                            "parent_context_applied": len(source_ids) > 1,
+                            "expanded_chunk_ids": source_ids,
+                        },
+                    }
+                )
+            )
+        return expanded, ["PARENT_RETRIEVAL_SHADOW"] if self._settings.parent_retrieval_mode == "shadow" else []
 
     async def _filter_authorized_chunks(
         self,
@@ -2043,6 +2266,173 @@ def _aiip_index_version(settings: Settings) -> str:
 
 def _query_id() -> str:
     return f"query_{uuid.uuid4().hex[:12]}"
+
+
+def _deduplicate_chunks(chunks: list[RetrievedChunk]) -> tuple[list[RetrievedChunk], int]:
+    selected: list[RetrievedChunk] = []
+    signatures: dict[tuple[str, str], set[str]] = {}
+    removed = 0
+    for chunk in chunks:
+        text_hash = _metadata_string(chunk.metadata, "text_hash") or hashlib.sha256(
+            re.sub(r"\s+", " ", chunk.text).strip().lower().encode("utf-8")
+        ).hexdigest()
+        coordinate = (chunk.citation.document_version_id, text_hash)
+        if coordinate in signatures:
+            removed += 1
+            continue
+        tokens = set(re.findall(r"[a-z0-9]{3,}", chunk.text.lower()))
+        near_duplicate = any(
+            version_id == chunk.citation.document_version_id and _jaccard(tokens, existing) >= 0.94
+            for (version_id, _), existing in signatures.items()
+        )
+        if near_duplicate:
+            removed += 1
+            continue
+        signatures[coordinate] = tokens
+        selected.append(chunk)
+    return selected, removed
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    union = left | right
+    return len(left & right) / len(union) if union else 1.0
+
+
+def _diversify_chunks(
+    chunks: list[RetrievedChunk],
+    *,
+    limit: int,
+    max_per_document: int,
+    max_documents: int,
+) -> list[RetrievedChunk]:
+    selected: list[RetrievedChunk] = []
+    counts: dict[str, int] = {}
+    documents: set[str] = set()
+    for chunk in chunks:
+        document_id = chunk.citation.document_id
+        if counts.get(document_id, 0) >= max_per_document:
+            continue
+        if document_id not in documents and len(documents) >= max_documents:
+            continue
+        selected.append(chunk)
+        counts[document_id] = counts.get(document_id, 0) + 1
+        documents.add(document_id)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _merge_context(
+    seed: RetrievedChunk,
+    related: list[RetrievedChunk],
+    max_chars: int,
+) -> tuple[str, list[str]]:
+    unique = {item.chunk_id: item for item in [*related, seed]}
+    ordered = sorted(
+        unique.values(),
+        key=lambda item: (
+            int(item.metadata.get("chunk_index", 0))
+            if isinstance(item.metadata.get("chunk_index"), int)
+            else 0,
+            item.chunk_id,
+        ),
+    )
+    parts: list[str] = []
+    source_ids: list[str] = []
+    seen_paragraphs: set[str] = set()
+    total = 0
+    for item in ordered:
+        added = False
+        for paragraph in re.split(r"\n\s*\n", item.text):
+            normalized = re.sub(r"\s+", " ", paragraph).strip()
+            if not normalized or normalized in seen_paragraphs:
+                continue
+            if total + len(normalized) > max_chars and parts:
+                break
+            seen_paragraphs.add(normalized)
+            parts.append(normalized)
+            total += len(normalized)
+            added = True
+        if added:
+            source_ids.append(item.chunk_id)
+        if total >= max_chars:
+            break
+    return "\n\n".join(parts) or seed.text, source_ids or [seed.chunk_id]
+
+
+_CONFLICT_NEGATIVE = re.compile(
+    r"\b(nesmí|není povinen|neplatí|zakazuje|je zakázán|must not|may not|prohibited)\b",
+    re.I,
+)
+_CONFLICT_POSITIVE = re.compile(
+    r"\b(musí|je povinen|platí|povoluje|je povolen|must|required|is allowed)\b",
+    re.I,
+)
+
+
+def _detect_conflicts(chunks: list[RetrievedChunk]) -> list[dict[str, object]]:
+    findings: list[dict[str, object]] = []
+    for left_index, left in enumerate(chunks):
+        left_polarity = _normative_polarity(left.text)
+        if left_polarity == 0:
+            continue
+        left_tokens = _conflict_tokens(left.text)
+        for right in chunks[left_index + 1 :]:
+            if left.citation.document_id == right.citation.document_id:
+                continue
+            right_polarity = _normative_polarity(right.text)
+            if right_polarity == 0 or right_polarity == left_polarity:
+                continue
+            right_tokens = _conflict_tokens(right.text)
+            shared = left_tokens & right_tokens
+            denominator = max(1, min(len(left_tokens), len(right_tokens)))
+            if len(shared) < 3 or len(shared) / denominator < 0.25:
+                continue
+            findings.append(
+                {
+                    "topic_terms": sorted(shared)[:12],
+                    "left_chunk_id": left.chunk_id,
+                    "left_document_id": left.citation.document_id,
+                    "left_quote": left.text[:320],
+                    "right_chunk_id": right.chunk_id,
+                    "right_document_id": right.citation.document_id,
+                    "right_quote": right.text[:320],
+                    "detector": "deterministic-normative-polarity-v1",
+                }
+            )
+    return findings[:10]
+
+
+def _conflict_summary(response_language: ResponseLanguage) -> str:
+    if response_language == "en":
+        return (
+            "The allowed sources contain conflicting statements. "
+            "AKB presents both variants without deciding which one prevails."
+        )
+    return (
+        "Povolené zdroje obsahují protichůdná tvrzení. "
+        "AKB uvádí obě varianty bez rozhodnutí, která z nich má přednost."
+    )
+
+
+def _normative_polarity(text: str) -> int:
+    negative = bool(_CONFLICT_NEGATIVE.search(text))
+    positive = bool(_CONFLICT_POSITIVE.search(text))
+    if negative == positive:
+        return 0
+    return -1 if negative else 1
+
+
+def _conflict_tokens(text: str) -> set[str]:
+    stop = {
+        "který", "která", "které", "tento", "tato", "jsou", "bude", "musí",
+        "nesmí", "povinen", "platí", "the", "and", "must", "not", "required",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-zá-ž0-9]{3,}", text.casefold())
+        if token not in stop
+    }
 
 
 def _contract_extraction_query(payload: ContractExtractionProposeRequest) -> str:

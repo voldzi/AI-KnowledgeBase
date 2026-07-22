@@ -34,13 +34,63 @@ class QdrantHybridRetriever:
         filters: RagQueryFilters,
         limit: int,
         query_vector: list[float] | None = None,
+        dense_weight: float | None = None,
     ) -> list[RetrievedChunk]:
         vector = query_vector or deterministic_embedding(query)
+        effective_dense_weight = (
+            self._settings.hybrid_dense_weight if dense_weight is None else dense_weight
+        )
+        if self._settings.v2_retrieval_mode == "shadow":
+            vector_chunks, lexical_chunks, v2_chunks = await asyncio.gather(
+                self._retrieve_vector_candidates(
+                    query=query,
+                    filters=filters,
+                    limit=limit,
+                    vector=vector,
+                    dense_weight=effective_dense_weight,
+                ),
+                self._retrieve_lexical_candidates(query=query, filters=filters, limit=max(limit * 3, 50)),
+                self._retrieve_vector_candidates(
+                    query=query,
+                    filters=filters,
+                    limit=limit,
+                    vector=vector,
+                    collection=self._settings.qdrant_v2_collection,
+                    vector_name="dense_bge_m3",
+                    dense_weight=effective_dense_weight,
+                ),
+            )
+            shadow_rank = {chunk.chunk_id: rank for rank, chunk in enumerate(v2_chunks, start=1)}
+            fused = _fuse_ranked_chunks(
+                vector_chunks,
+                lexical_chunks,
+                dense_weight=dense_weight,
+            )[:limit]
+            return [
+                chunk.model_copy(
+                    update={"metadata": {**chunk.metadata, "v2_dense_shadow_rank": shadow_rank.get(chunk.chunk_id)}}
+                )
+                for chunk in fused
+            ]
+
+        use_v2 = self._settings.v2_retrieval_mode == "enforce"
         vector_chunks, lexical_chunks = await asyncio.gather(
-            self._retrieve_vector_candidates(query=query, filters=filters, limit=limit, vector=vector),
+            self._retrieve_vector_candidates(
+                query=query,
+                filters=filters,
+                limit=limit,
+                vector=vector,
+                collection=self._settings.qdrant_v2_collection if use_v2 else None,
+                vector_name="dense_bge_m3" if use_v2 else None,
+                dense_weight=effective_dense_weight,
+            ),
             self._retrieve_lexical_candidates(query=query, filters=filters, limit=max(limit * 3, 50)),
         )
-        return _fuse_ranked_chunks(vector_chunks, lexical_chunks)[:limit]
+        return _fuse_ranked_chunks(
+            vector_chunks,
+            lexical_chunks,
+            dense_weight=dense_weight,
+        )[:limit]
 
     async def _retrieve_vector_candidates(
         self,
@@ -49,9 +99,15 @@ class QdrantHybridRetriever:
         filters: RagQueryFilters,
         limit: int,
         vector: list[float],
+        collection: str | None = None,
+        vector_name: str | None = None,
+        dense_weight: float | None = None,
     ) -> list[RetrievedChunk]:
+        vector_payload: Any = vector
+        if vector_name:
+            vector_payload = {"name": vector_name, "vector": vector}
         body = {
-            "vector": vector,
+            "vector": vector_payload,
             "limit": limit,
             "with_payload": True,
             "with_vector": False,
@@ -60,13 +116,18 @@ class QdrantHybridRetriever:
         payload = await _request_qdrant_json_allow_missing(
             settings=self._settings,
             method="POST",
-            url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/search",
+            url=(
+                f"{self._settings.qdrant_base_url}/collections/"
+                f"{collection or self._settings.qdrant_collection}/points/search"
+            ),
             json_body=body,
         )
         return _points_to_hybrid_chunks(
             query=query,
             points=payload.get("result", []),
-            dense_weight=self._settings.hybrid_dense_weight,
+            dense_weight=(
+                self._settings.hybrid_dense_weight if dense_weight is None else dense_weight
+            ),
         )
 
     async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
@@ -148,6 +209,40 @@ class QdrantHybridRetriever:
         before_text = "\n\n".join(text for _, text in sorted(before))
         after_text = "\n\n".join(text for _, text in sorted(after))
         return before_text, after_text
+
+    async def get_context_chunks(self, chunk: RetrievedChunk, *, window: int) -> list[RetrievedChunk]:
+        chunk_index = chunk.metadata.get("chunk_index")
+        if not isinstance(chunk_index, int):
+            return [chunk]
+        must: list[dict[str, Any]] = [
+            {
+                "key": "document_version_id",
+                "match": {"value": chunk.citation.document_version_id},
+            },
+            {
+                "key": "metadata.chunk_index",
+                "range": {"gte": max(0, chunk_index - window), "lte": chunk_index + window},
+            },
+        ]
+        payload = await _request_qdrant_json_allow_missing(
+            settings=self._settings,
+            method="POST",
+            url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
+            json_body={
+                "limit": max(4, window * 2 + 1),
+                "with_payload": True,
+                "with_vector": False,
+                "filter": {"must": must},
+            },
+        )
+        result = payload.get("result", {})
+        points = result.get("points", []) if isinstance(result, dict) else []
+        context: list[RetrievedChunk] = []
+        for point in points:
+            point_payload = point.get("payload") if isinstance(point, dict) else None
+            if isinstance(point_payload, dict) and point_payload.get("text"):
+                context.append(_point_to_chunk(point_payload, score=chunk.score, dense_score=0.0, sparse_score=0.0))
+        return context or [chunk]
 
     async def list_document_titles(self, *, limit: int = 64) -> list[dict[str, str]]:
         """Return distinct documents present in the index as
@@ -425,6 +520,8 @@ RRF_K = 60
 def _fuse_ranked_chunks(
     vector_chunks: list[RetrievedChunk],
     lexical_chunks: list[RetrievedChunk],
+    *,
+    dense_weight: float | None = None,
 ) -> list[RetrievedChunk]:
     """Reciprocal Rank Fusion across the dense and lexical rankings.
 
@@ -437,9 +534,16 @@ def _fuse_ranked_chunks(
     lexical_ranked = sorted(lexical_chunks, key=lambda item: item.metadata.get("sparse_score", 0.0), reverse=True)
 
     rrf_scores: dict[str, float] = {}
-    for ranking in (dense_ranked, lexical_ranked):
+    ranking_weights = (
+        (1.0, 1.0)
+        if dense_weight is None
+        else (dense_weight, 1.0 - dense_weight)
+    )
+    for ranking, weight in zip((dense_ranked, lexical_ranked), ranking_weights, strict=True):
         for rank, chunk in enumerate(ranking):
-            rrf_scores[chunk.chunk_id] = rrf_scores.get(chunk.chunk_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+            rrf_scores[chunk.chunk_id] = (
+                rrf_scores.get(chunk.chunk_id, 0.0) + weight / (RRF_K + rank + 1)
+            )
 
     best_by_chunk_id: dict[str, RetrievedChunk] = {}
     for chunk in [*vector_chunks, *lexical_chunks]:
@@ -515,6 +619,10 @@ def _point_to_chunk(
             "char_start": payload.get("char_start"),
             "char_end": payload.get("char_end"),
             "chunk_index": chunk_metadata.get("chunk_index"),
+            "section_id": chunk_metadata.get("section_id"),
+            "parent_section_id": chunk_metadata.get("parent_section_id"),
+            "section_chunk_index": chunk_metadata.get("section_chunk_index"),
+            "text_hash": payload.get("text_hash"),
             "parser_name": payload.get("parser_name") or chunk_metadata.get("parser_name"),
             "parser_engine": payload.get("parser_engine") or chunk_metadata.get("parser_engine"),
             "ocr_used": payload.get("ocr_used", chunk_metadata.get("ocr_used")),
@@ -561,6 +669,17 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
                     "conditions": [
                         {"key": "valid_from", "range": {"lte": today}},
                         {"is_empty": {"key": "valid_from"}},
+                    ],
+                    "min_count": 1,
+                }
+            }
+        )
+        must.append(
+            {
+                "min_should": {
+                    "conditions": [
+                        {"key": "valid_to", "range": {"gte": today}},
+                        {"is_empty": {"key": "valid_to"}},
                     ],
                     "min_count": 1,
                 }
@@ -659,6 +778,17 @@ def _opensearch_filter(filters: RagQueryFilters) -> list[dict[str, Any]]:
                     "should": [
                         {"range": {"valid_from": {"lte": today}}},
                         {"bool": {"must_not": {"exists": {"field": "valid_from"}}}},
+                    ],
+                    "minimum_should_match": 1,
+                }
+            }
+        )
+        filter_clauses.append(
+            {
+                "bool": {
+                    "should": [
+                        {"range": {"valid_to": {"gte": today}}},
+                        {"bool": {"must_not": {"exists": {"field": "valid_to"}}}},
                     ],
                     "minimum_should_match": 1,
                 }

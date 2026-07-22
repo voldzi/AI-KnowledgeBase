@@ -399,12 +399,23 @@ def test_qdrant_valid_filter_allows_missing_valid_from_for_valid_documents() -> 
 
     assert {"key": "status", "match": {"value": "valid"}} in qdrant_filter["must"]
     min_should = [condition["min_should"] for condition in qdrant_filter["must"] if "min_should" in condition]
-    assert len(min_should) == 1
-    assert min_should[0]["min_count"] == 1
-    assert {"is_empty": {"key": "valid_from"}} in min_should[0]["conditions"]
+    assert len(min_should) == 2
+    assert all(condition["min_count"] == 1 for condition in min_should)
+    valid_from = next(
+        condition for condition in min_should
+        if {"is_empty": {"key": "valid_from"}} in condition["conditions"]
+    )
+    valid_to = next(
+        condition for condition in min_should
+        if {"is_empty": {"key": "valid_to"}} in condition["conditions"]
+    )
     assert any(
         condition.get("key") == "valid_from" and "lte" in condition.get("range", {})
-        for condition in min_should[0]["conditions"]
+        for condition in valid_from["conditions"]
+    )
+    assert any(
+        condition.get("key") == "valid_to" and "gte" in condition.get("range", {})
+        for condition in valid_to["conditions"]
     )
 
 

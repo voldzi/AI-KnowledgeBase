@@ -15,7 +15,7 @@ from indexers.opensearch import (
     _authorized_policy_filter,
     _index_definition,
 )
-from indexers.qdrant import QdrantIndexer
+from indexers.qdrant import QdrantIndexer, _colbert_vectors, _v2_collection_vector_config
 
 
 def _settings(tmp_path, extra: dict[str, str] | None = None):
@@ -122,6 +122,69 @@ def test_indexer_promotes_rag_filter_and_citation_fields(tmp_path) -> None:
     assert payload["entity_types"] == ["document_number", "email"]
     assert payload["entity_values"] == ["RMO12/2024", "ops@example.cz"]
     assert payload["entity_pairs"] == ["document_number:RMO12/2024", "email:ops@example.cz"]
+
+
+def test_v2_point_uses_named_dense_vector_and_preserves_hashes(tmp_path) -> None:
+    settings = _settings(tmp_path, {"AKL_RAG_V2_INDEX_MODE": "shadow"})
+    point = QdrantIndexer(settings)._v2_point(
+        _chunk(),
+        [0.1, 0.2],
+        embedding_model="bge-m3",
+    )
+
+    assert point["vector"] == {"dense_bge_m3": [0.1, 0.2]}
+    assert point["payload"]["rag_index_version"] == "v2"
+    assert point["payload"]["colbert_status"] == "pending_backfill"
+    assert point["payload"]["text_hash"] == "sha256:" + "a" * 64
+
+
+def test_v2_point_accepts_valid_colbert_multivector(tmp_path) -> None:
+    settings = _settings(
+        tmp_path,
+        {
+            "AKL_RAG_V2_INDEX_MODE": "shadow",
+            "AKL_QDRANT_COLBERT_VECTOR_SIZE": "2",
+        },
+    )
+    point = QdrantIndexer(settings)._v2_point(
+        _chunk(),
+        [0.1, 0.2],
+        embedding_model="bge-m3",
+        colbert_vector=[[0.1, 0.2], [0.3, 0.4]],
+    )
+
+    assert point["vector"]["colbert"] == [[0.1, 0.2], [0.3, 0.4]]
+    assert point["payload"]["colbert_status"] == "indexed"
+
+
+def test_colbert_response_requires_one_multivector_per_text() -> None:
+    assert _colbert_vectors(
+        {"vectors": [[[0.1, 0.2]], [[0.3, 0.4]]]},
+        expected_count=2,
+    ) == [[[0.1, 0.2]], [[0.3, 0.4]]]
+    with pytest.raises(IngestionError, match="invalid batch"):
+        _colbert_vectors({"vectors": [[[0.1, 0.2]]]}, expected_count=2)
+
+
+def test_v2_collection_config_reads_named_vectors() -> None:
+    assert _v2_collection_vector_config(
+        {
+            "result": {
+                "config": {
+                    "params": {
+                        "vectors": {
+                            "dense_bge_m3": {"size": 1024, "distance": "Cosine"},
+                            "colbert": {
+                                "size": 128,
+                                "distance": "Cosine",
+                                "multivector_config": {"comparator": "max_sim"},
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    ) == ((1024, "cosine"), (128, "cosine", "max_sim"))
 
 
 def test_dual_indexer_mode_builds_composite_indexer(tmp_path) -> None:
