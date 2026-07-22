@@ -64,6 +64,7 @@ done
 
 for expected in \
   'AKL_RAG_RERANKER_API_KEY_FILE: /run/secrets/akl-rag-reranker-api-key' \
+  'AKL_RAG_RERANKER_BASE_URLS:' \
   'AKL_RAG_RERANKER_TIMEOUT_SECONDS:' \
   'AKL_RAG_RERANKER_BATCH_SIZE:' \
   'AKL_RAG_RERANKER_MIN_SCORE:' \

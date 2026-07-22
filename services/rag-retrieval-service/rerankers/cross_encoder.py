@@ -18,13 +18,16 @@ class CrossEncoderReranker:
     def __init__(self, settings: Settings, lexical: LexicalReranker | None = None) -> None:
         self._settings = settings
         self._lexical = lexical or LexicalReranker()
+        self._active_base_url: str | None = None
 
     async def readiness(self) -> str:
         dependencies: list[tuple[str, str, dict[str, str]]] = []
         if self._settings.reranker_mode != "off":
-            dependencies.append(
-                (self._settings.reranker_mode, self._settings.reranker_base_url, self._headers())
-            )
+            reranker_available = await self._resolve_reranker_base_url() is not None
+            if not reranker_available and self._settings.reranker_mode == "enforce":
+                return "not_ready"
+            if not reranker_available:
+                logger.warning("reranker_shadow_unavailable content_logged=false")
         if self._settings.colbert_mode != "off":
             dependencies.append(
                 (
@@ -191,15 +194,55 @@ class CrossEncoderReranker:
             batch = chunks[start : start + self._settings.reranker_batch_size]
             payload = self._payload(query, batch)
             endpoint = "/v1/rerank" if self._settings.reranker_provider == "llama" else "/rerank"
-            async with httpx.AsyncClient(timeout=self._settings.reranker_timeout_seconds) as client:
-                response = await client.post(
-                    f"{self._settings.reranker_base_url}{endpoint}",
-                    headers=self._headers(),
-                    json=payload,
-                )
-            response.raise_for_status()
+            response = await self._post_with_endpoint_fallback(endpoint=endpoint, payload=payload)
             results.extend(_ordered_scores(response.json(), len(batch)))
         return results
+
+    async def _post_with_endpoint_fallback(
+        self,
+        *,
+        endpoint: str,
+        payload: dict[str, Any],
+    ) -> httpx.Response:
+        last_error: Exception | None = None
+        for base_url in self._ordered_reranker_base_urls():
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self._settings.reranker_timeout_seconds
+                ) as client:
+                    response = await client.post(
+                        f"{base_url}{endpoint}", headers=self._headers(), json=payload
+                    )
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                last_error = exc
+                continue
+            self._active_base_url = base_url
+            return response
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("reranker has no configured endpoint")
+
+    async def _resolve_reranker_base_url(self) -> str | None:
+        for base_url in self._ordered_reranker_base_urls():
+            try:
+                async with httpx.AsyncClient(timeout=2.0) as client:
+                    response = await client.get(f"{base_url}/health", headers=self._headers())
+                if response.status_code < 400:
+                    self._active_base_url = base_url
+                    return base_url
+            except httpx.HTTPError:
+                continue
+        return None
+
+    def _ordered_reranker_base_urls(self) -> tuple[str, ...]:
+        candidates = self._settings.reranker_base_urls
+        if self._active_base_url not in candidates:
+            return candidates
+        return (
+            self._active_base_url,
+            *(url for url in candidates if url != self._active_base_url),
+        )
 
     def _payload(self, query: str, chunks: list[RetrievedChunk]) -> dict[str, Any]:
         documents = [chunk.text for chunk in chunks]

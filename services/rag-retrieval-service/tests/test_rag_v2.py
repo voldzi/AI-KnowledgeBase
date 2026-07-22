@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from app.config import ConfigError, load_settings
@@ -9,6 +10,7 @@ from app.registry_client import AuthzFilterResult
 from app.schemas import ChunkCitation, RagAnswer, RagQueryFilters, RetrievedChunk
 from app.service import RagRetrievalService, _detect_conflicts
 from policies.evidence import EvidenceGate, _model_assessment
+import rerankers.cross_encoder as cross_encoder_module
 from rerankers.cross_encoder import CrossEncoderReranker, _first_multivector, _ordered_scores
 from retrievers.query_analysis import analyze_query
 from tests.conftest import make_client
@@ -65,6 +67,24 @@ def test_rag_v2_modes_require_explicit_internal_endpoints() -> None:
         )
 
 
+def test_reranker_base_urls_are_normalized_and_deduplicated() -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "shadow",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker-a:3000",
+            "AKL_RAG_RERANKER_BASE_URLS": (
+                "http://reranker-a:3000/,http://192.168.200.3:11435,"
+                "http://reranker-a:3000"
+            ),
+        }
+    )
+
+    assert settings.reranker_base_urls == (
+        "http://reranker-a:3000",
+        "http://192.168.200.3:11435",
+    )
+
+
 def test_reranker_response_and_colbert_multivector_validation() -> None:
     assert _ordered_scores(
         {"results": [{"index": 1, "relevance_score": 0.9}, {"index": 0, "relevance_score": 0.2}]},
@@ -104,6 +124,59 @@ async def test_cross_encoder_enforce_orders_candidates_and_records_provenance(mo
     assert result[0].metadata["cross_encoder_model"] == "bge-reranker-v2-m3"
     assert result[0].metadata["cross_encoder_revision"] == "revision-1"
     assert warnings == []
+
+
+@pytest.mark.asyncio
+async def test_cross_encoder_fails_over_to_next_internal_endpoint(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "shadow",
+            "AKL_RAG_RERANKER_PROVIDER": "llama",
+            "AKL_RAG_RERANKER_BASE_URL": "http://192.168.200.2:11435",
+            "AKL_RAG_RERANKER_BASE_URLS": (
+                "http://192.168.200.2:11435,http://192.168.200.3:11435"
+            ),
+        }
+    )
+    requested_urls: list[str] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {"results": [{"index": 0, "relevance_score": 0.9}]}
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, url, *, headers, json):
+            requested_urls.append(url)
+            if "192.168.200.2" in url:
+                raise httpx.ConnectError("unavailable", request=httpx.Request("POST", url))
+            return FakeResponse()
+
+    monkeypatch.setattr(cross_encoder_module.httpx, "AsyncClient", FakeClient)
+    reranker = CrossEncoderReranker(settings)
+
+    scores = await reranker._score(
+        query="schválení", chunks=[_chunk("a", "doc_a", "první")]
+    )
+
+    assert scores == [0.9]
+    assert requested_urls == [
+        "http://192.168.200.2:11435/v1/rerank",
+        "http://192.168.200.3:11435/v1/rerank",
+    ]
 
 
 @pytest.mark.asyncio
