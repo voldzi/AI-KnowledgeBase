@@ -35,10 +35,12 @@ The root contract explicitly publishes Information Policy V2 binding fields on
 STRATOS upload preflight/confirm, Registry document/version responses,
 OpenSearch analytical hits, RAG answers, source context, and citations. The
 accepted schemas are snapshotted under `contracts/stratos/`.
-RAG citations additionally carry the validated policy summary used by the
-Director Copilot to bind document evidence into its final tamper-evident
-analysis snapshot. A missing or hash-inconsistent summary is not accepted as
-Director Copilot evidence.
+RAG citations additionally carry the validated policy summary and its
+`policy_summary_hash`, used by the Director Copilot to bind document evidence
+into its final tamper-evident analysis snapshot. The authoritative
+`policy_hash` remains the digest of the complete Information Policy V2. A
+missing or hash-inconsistent summary is not accepted as Director Copilot
+evidence.
 
 Policy-bearing document and version writes also register immutable central
 `GovernedInformationResource` coordinates. Normal writes use a verified user

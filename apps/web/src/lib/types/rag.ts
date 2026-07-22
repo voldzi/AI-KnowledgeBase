@@ -39,6 +39,7 @@ export interface Citation {
   policy_version?: string | null;
   policy_hash?: string | null;
   policy_summary?: CitationPolicySummary | null;
+  policy_summary_hash?: string | null;
   document_context_tags?: string[];
 }
 

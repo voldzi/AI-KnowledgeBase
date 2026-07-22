@@ -59,6 +59,7 @@ def test_query_returns_answer_with_citation_from_authorized_chunk() -> None:
                 "policy_version": None,
                 "policy_hash": None,
                 "policy_summary": None,
+                "policy_summary_hash": None,
                 "document_context_tags": ["smernice", "vyjimky", "schvalovani"],
         }
     ]
@@ -295,6 +296,7 @@ def test_citation_carries_validated_information_policy_summary() -> None:
     assert citation.policy_binding_id == "pol_contract01"
     assert citation.policy_hash == chunk.metadata["policy_hash"]
     assert citation.policy_summary is not None
+    assert citation.policy_summary_hash == chunk.metadata["policy_hash"]
     assert citation.policy_summary.handlingClass == "INTERNAL"
     assert citation.policy_summary.audience.organizationId == "org_stratos"
     assert citation.document_context_tags == ["project:doc_contract"]

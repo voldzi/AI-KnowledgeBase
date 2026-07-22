@@ -108,14 +108,66 @@ describe("Director Copilot orchestrator", () => {
       chunk_id: "chunk-contract-001",
       policy_binding_id: policySummary.policyBindingId,
       policy_version: policySummary.policyVersion,
-      policy_hash: stableSha256(policySummary),
+      policy_hash: `sha256:${"b".repeat(64)}`,
       policy_summary: policySummary,
+      policy_summary_hash: stableSha256(policySummary),
       document_context_tags: ["project:project-999"],
     }]);
 
     assert.equal(finalized.acceptedChunkIds.size, 0);
     assert.equal(finalized.snapshot.evidence.some((item) => item.type === "document_finding"), false);
     assert.deepEqual(finalized.warnings, ["DIRECTOR_COPILOT_DOCUMENT_SCOPE_MISMATCH"]);
+  });
+
+  it("rejects a citation whose summary hash does not match its policy summary", async () => {
+    const result = await orchestrateDirectorCopilot({
+      message: "Rozpočet, zpožděný projekt a smluvní riziko",
+      language: "cs",
+      context: projectedContext(),
+      now: new Date("2026-07-21T10:00:00Z"),
+      client: {
+        execute: async (application, request) => ({
+          ...(application === "budget" ? budgetFixture : projectFixture),
+          tool_call_id: request.tool_call_id,
+        }),
+      },
+    });
+    const policySummary = {
+      policyBindingId: "pol_contract_document01",
+      policyVersion: "information-policy-2.0.0" as const,
+      handlingClass: "INTERNAL" as const,
+      legalClassification: "NONE" as const,
+      tlp: null,
+      pap: null,
+      obligations: ["AUDIT_ACCESS"],
+      contentCategories: ["CONTRACTUAL"],
+      audience: {
+        organizationId: "org_stratos" as const,
+        scopeType: "organization" as const,
+        scopeIds: [],
+        recipientSubjectIds: [],
+      },
+    };
+
+    const finalized = finalizeDirectorSnapshot(result.snapshot!, [{
+      document_id: "doc-contract-001",
+      document_version_id: "ver-contract-001",
+      document_title: "Smlouva projektu",
+      version_label: "1.0",
+      document_version: "1.0",
+      section_path: ["Rizika"],
+      page_number: 7,
+      chunk_id: "chunk-contract-001",
+      policy_binding_id: policySummary.policyBindingId,
+      policy_version: policySummary.policyVersion,
+      policy_hash: `sha256:${"b".repeat(64)}`,
+      policy_summary: policySummary,
+      policy_summary_hash: `sha256:${"f".repeat(64)}`,
+      document_context_tags: ["contract:contract-001"],
+    }]);
+
+    assert.equal(finalized.acceptedChunkIds.size, 0);
+    assert.deepEqual(finalized.warnings, ["DIRECTOR_COPILOT_DOCUMENT_POLICY_MISSING"]);
   });
 
   it("does not call a source when projected capabilities or scopes are missing", async () => {
