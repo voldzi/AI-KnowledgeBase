@@ -1,0 +1,33 @@
+name: akb-qwen-docker-home-proxy
+
+x-proxy: &proxy
+  image: alpine/socat@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
+  restart: unless-stopped
+  network_mode: host
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 64
+  mem_limit: 64m
+  cpus: 0.25
+
+services:
+  qwen-proxy-vpn-3:
+    <<: *proxy
+    command:
+      - TCP-LISTEN:11435,fork,reuseaddr
+      - TCP:192.168.200.3:11435
+
+  qwen-proxy-vpn-2:
+    <<: *proxy
+    command:
+      - TCP-LISTEN:11436,fork,reuseaddr
+      - TCP:192.168.200.2:11435
+
+  qwen-proxy-lan-176:
+    <<: *proxy
+    command:
+      - TCP-LISTEN:11437,fork,reuseaddr
+      - TCP:192.168.1.176:11435
