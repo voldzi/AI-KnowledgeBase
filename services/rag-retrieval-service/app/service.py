@@ -1229,6 +1229,15 @@ class RagRetrievalService:
                 warnings=decision.warnings,
                 response_language=payload.response_language,
             )
+        elif director_copilot_request:
+            rag_answer = self._answer_composer.compose_director_findings(
+                query_id=query_id,
+                chunks=run.response.chunks,
+                confidence=decision.confidence,
+                warnings=decision.warnings,
+                max_chunks=max_chunks,
+                response_language=payload.response_language,
+            )
         else:
             rag_answer = await self._answer_composer.compose(
                 query_id=query_id,
