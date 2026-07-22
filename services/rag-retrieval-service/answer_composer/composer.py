@@ -433,8 +433,27 @@ def _citation_policy_summary(metadata: dict[str, object]) -> CitationPolicySumma
     summary = metadata.get("policy_summary")
     if not isinstance(summary, dict):
         return None
+    # Indexed chunks carry the complete Information Policy V2 envelope.  A
+    # citation deliberately exposes only the bounded, non-sensitive subset
+    # required by the Director Copilot finalizer.  Validate that projection
+    # instead of rejecting an otherwise valid policy because the authoritative
+    # envelope also contains fields such as issuedAt or originatorId.
+    projection = {
+        key: summary.get(key)
+        for key in (
+            "policyBindingId",
+            "policyVersion",
+            "handlingClass",
+            "legalClassification",
+            "tlp",
+            "pap",
+            "obligations",
+            "contentCategories",
+            "audience",
+        )
+    }
     try:
-        parsed = CitationPolicySummary.model_validate(summary)
+        parsed = CitationPolicySummary.model_validate(projection)
     except ValueError:
         return None
     if (

@@ -302,6 +302,30 @@ def test_citation_carries_validated_information_policy_summary() -> None:
     assert citation.document_context_tags == ["project:doc_contract"]
 
 
+def test_citation_projects_complete_information_policy_envelope() -> None:
+    chunk = _policy_chunk(
+        chunk_id="chunk_contract_full_policy",
+        document_id="doc_contract_full_policy",
+        binding_id="pol_contractfull01",
+        handling_class="INTERNAL",
+        obligations=["AUDIT_ACCESS", "NO_PUBLIC_EXPORT"],
+    )
+    chunk.metadata["policy_summary"] = {
+        **chunk.metadata["policy_summary"],
+        "schemaVersion": "stratos-information-policy-2",
+        "issuedAt": "2026-07-22T12:00:00Z",
+        "reviewAt": None,
+        "originatorId": "service:budget-contract-upload",
+    }
+
+    citation = _citations([chunk])[0]
+
+    assert citation.policy_summary is not None
+    assert citation.policy_summary.policyBindingId == "pol_contractfull01"
+    assert citation.policy_summary.obligations == ["AUDIT_ACCESS", "NO_PUBLIC_EXPORT"]
+    assert citation.policy_summary_hash is not None
+
+
 def test_retrieve_returns_authorized_reranked_chunks() -> None:
     payload = _query_payload("Kdo schvaluje vyjimku?")
     payload.pop("answer_mode")
