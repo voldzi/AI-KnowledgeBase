@@ -2497,6 +2497,12 @@ components:
           anyOf:
           - $ref: '#/components/schemas/CitationPolicySummary'
           - type: 'null'
+        policy_summary_hash:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+          - type: 'null'
+          title: Policy Summary Hash
         document_context_tags:
           items:
             type: string

@@ -174,6 +174,7 @@ class Citation(BaseModel):
     policy_version: str | None = None
     policy_hash: str | None = None
     policy_summary: CitationPolicySummary | None = None
+    policy_summary_hash: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     document_context_tags: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("document_context_tags")

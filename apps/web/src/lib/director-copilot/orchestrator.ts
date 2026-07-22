@@ -377,9 +377,10 @@ function citationPolicy(citation: Citation): EvidenceItem["policy"] | null {
     || !citation.policy_binding_id
     || citation.policy_version !== "information-policy-2.0.0"
     || !citation.policy_hash
+    || !citation.policy_summary_hash
     || summary.policyBindingId !== citation.policy_binding_id
     || summary.policyVersion !== citation.policy_version
-    || stableSha256(summary) !== citation.policy_hash
+    || stableSha256(summary) !== citation.policy_summary_hash
   ) {
     return null;
   }
