@@ -4,7 +4,8 @@ Phase 04 keeps security centralized. Clients do not hold privileged service cred
 
 ## Authentication
 
-Local development can use dev auth. Enterprise pilot and production must use OIDC/SSO.
+Local development can use dev auth. Enterprise pilot and production use the
+shared STRATOS OIDC/SSO realm and dynamic access projection.
 
 Expected identity inputs:
 
@@ -65,7 +66,9 @@ Local real RAG profile uses:
 AKL_RAG_AUTHZ_MODE=dev
 ```
 
-Enterprise pilot should move to Registry/OIDC backed authorization before employee rollout.
+Enterprise production uses Registry authorization backed by the current STRATOS
+access projection. Static compatibility roles and browser-provided headers are
+not authorization authorities.
 
 ## Classification
 
@@ -97,9 +100,12 @@ Audit metadata may include hashes, counts, ids, confidence, warnings, and cited 
 
 ## Production Hardening Backlog
 
-- Replace dev auth with OIDC in pilot.
-- Add service credentials and audience-bound tokens for backend calls.
-- Add audit review dashboards for no-answer, handoff, and source-opening events.
+- Add the authoritative STRATOS organization group directory before enabling new
+  group shares.
+- Expand audit review dashboards for no-answer, handoff, source-opening and
+  cross-domain tool failures.
+- Automate periodic rotation and expiry evidence for audience-bound service
+  credentials without exposing secret values to application logs.
 
 ## Implemented Chat Security Controls
 

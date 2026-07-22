@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/akb/contracts/director-copilot/v1/domain-tool.schema.json",
+  "title": "AKB Director Copilot DomainTool V1",
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["own", "public", "organization", "organization_unit", "budget_scope", "portfolio", "project", "document", "recipient_set"]
+        },
+        "id": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handling_class", "legal_classification", "tlp", "pap"],
+      "properties": {
+        "handling_class": { "enum": ["PUBLIC", "INTERNAL", "PROJECT_MANAGEMENT", "RESTRICTED"] },
+        "legal_classification": { "const": "NONE" },
+        "tlp": { "type": ["string", "null"], "enum": [null, "TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"] },
+        "pap": { "type": ["string", "null"], "enum": [null, "PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"] }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binding_id", "version", "hash", "classification", "audience", "obligations"],
+      "properties": {
+        "binding_id": { "type": "string", "minLength": 8, "maxLength": 200 },
+        "version": { "const": "information-policy-2.0.0" },
+        "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "classification": { "$ref": "#/$defs/classification" },
+        "audience": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+        },
+        "obligations": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "enum": ["AUDIT_ACCESS", "NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY", "NO_PUBLIC_EXPORT", "NO_EXPORT", "WATERMARK", "ENCRYPT_AT_REST", "RECIPIENT_CONFIRMATION", "ORIGINATOR_APPROVAL", "PAP_ENFORCEMENT"] }
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value", "value_type"],
+      "properties": {
+        "key": { "enum": ["budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount", "milestone.max_delay_days", "project.status", "project.schedule_status", "milestone.next_due_date"] },
+        "value": { "type": ["string", "number", "integer", "boolean", "null"], "maxLength": 1000 },
+        "value_type": { "enum": ["text", "number", "integer", "boolean", "date", "datetime", "currency", "percent", "duration_days"] },
+        "unit": { "type": ["string", "null"], "maxLength": 40 },
+        "currency": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" },
+        "period_start": { "type": ["string", "null"], "format": "date" },
+        "period_end": { "type": ["string", "null"], "format": "date" },
+        "quality": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "allOf": [
+        { "if": { "properties": { "value_type": { "const": "text" } }, "required": ["value_type"] }, "then": { "properties": { "value": { "type": ["string", "null"] } } } },
+        { "if": { "properties": { "value_type": { "const": "boolean" } }, "required": ["value_type"] }, "then": { "properties": { "value": { "type": ["boolean", "null"] } } } },
+        { "if": { "properties": { "value_type": { "const": "integer" } }, "required": ["value_type"] }, "then": { "properties": { "value": { "type": ["integer", "null"] } } } },
+        { "if": { "properties": { "value_type": { "enum": ["number", "percent", "duration_days"] } }, "required": ["value_type"] }, "then": { "properties": { "value": { "type": ["number", "null"] } } } },
+        { "if": { "properties": { "value_type": { "const": "currency" } }, "required": ["value_type"] }, "then": { "required": ["currency"], "properties": { "value": { "type": ["number", "null"] }, "currency": { "type": "string", "pattern": "^[A-Z]{3}$" } } } },
+        { "if": { "properties": { "value_type": { "const": "date" } }, "required": ["value_type"] }, "then": { "properties": { "value": { "type": ["string", "null"], "format": "date" } } } },
+        { "if": { "properties": { "value_type": { "const": "datetime" } }, "required": ["value_type"] }, "then": { "properties": { "value": { "type": ["string", "null"], "format": "date-time" } } } },
+        { "if": { "properties": { "key": { "enum": ["budget.variance_amount", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount"] } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "currency" } } } },
+        { "if": { "properties": { "key": { "const": "budget.variance_percent" } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "percent" } } } },
+        { "if": { "properties": { "key": { "const": "milestone.max_delay_days" } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "duration_days" } } } },
+        { "if": { "properties": { "key": { "enum": ["project.status", "project.schedule_status"] } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "text" } } } },
+        { "if": { "properties": { "key": { "const": "milestone.next_due_date" } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "date" } } } }
+      ]
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "entity_id", "canonical_id", "authorized_scope", "source_version", "as_of", "facts", "deep_link", "document_context_tags", "policy"],
+      "properties": {
+        "entity_type": { "const": "project" },
+        "entity_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "canonical_id": { "type": "string", "pattern": "^stratos:project:[A-Za-z0-9._:/-]+$", "maxLength": 300 },
+        "authorized_scope": { "$ref": "#/$defs/scope" },
+        "source_version": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "as_of": { "type": "string", "format": "date-time" },
+        "facts": { "type": "array", "minItems": 1, "maxItems": 40, "items": { "$ref": "#/$defs/fact" } },
+        "deep_link": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "document_context_tags": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "contains": { "type": "string", "pattern": "^project:[A-Za-z0-9._:/-]+$" },
+          "minContains": 1
+        },
+        "policy": { "$ref": "#/$defs/policy" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "tool_id", "tool_call_id", "plan_id", "organization_id", "actor", "requested_at", "requested_scopes", "parameters"],
+      "properties": {
+        "schema_version": { "const": "director-copilot-1" },
+        "tool_id": { "enum": ["budget.project_financial_snapshot.v1", "projectflow.project_delivery_snapshot.v1"] },
+        "tool_call_id": { "type": "string", "pattern": "^call_[a-f0-9]{16,64}$" },
+        "plan_id": { "type": "string", "pattern": "^plan_[a-f0-9]{16,64}$" },
+        "organization_id": { "const": "org_stratos" },
+        "actor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "subject_id"],
+          "properties": {
+            "type": { "const": "person" },
+            "subject_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        },
+        "requested_at": { "type": "string", "format": "date-time" },
+        "requested_scopes": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/scope" } },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "as_of": { "type": "string", "format": "date-time" },
+            "project_ids": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 160 } },
+            "portfolio_ids": { "type": "array", "maxItems": 50, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 160 } },
+            "cursor": { "type": ["string", "null"], "maxLength": 500 },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "tool_id", "tool_call_id", "status", "generated_at", "as_of", "source_system", "source_version", "items", "warnings", "next_cursor"],
+      "properties": {
+        "schema_version": { "const": "director-copilot-1" },
+        "tool_id": { "enum": ["budget.project_financial_snapshot.v1", "projectflow.project_delivery_snapshot.v1"] },
+        "tool_call_id": { "type": "string", "pattern": "^call_[a-f0-9]{16,64}$" },
+        "status": { "enum": ["complete", "partial", "unavailable", "not_authorized"] },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "as_of": { "type": "string", "format": "date-time" },
+        "source_system": { "enum": ["STRATOS_BUDGET", "STRATOS_PROJECTFLOW"] },
+        "source_version": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/item" } },
+        "warnings": { "type": "array", "maxItems": 20, "items": { "type": "string", "minLength": 1, "maxLength": 300 } },
+        "next_cursor": { "type": ["string", "null"], "maxLength": 500 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["unavailable", "not_authorized"] } } },
+          "then": { "properties": { "items": { "maxItems": 0 } } }
+        },
+        {
+          "if": { "properties": { "tool_id": { "const": "budget.project_financial_snapshot.v1" } }, "required": ["tool_id"] },
+          "then": {
+            "properties": {
+              "source_system": { "const": "STRATOS_BUDGET" },
+              "items": {
+                "items": {
+                  "properties": {
+                    "facts": { "items": { "properties": { "key": { "enum": ["budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount"] } } } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "tool_id": { "const": "projectflow.project_delivery_snapshot.v1" } }, "required": ["tool_id"] },
+          "then": {
+            "properties": {
+              "source_system": { "const": "STRATOS_PROJECTFLOW" },
+              "items": {
+                "items": {
+                  "properties": {
+                    "facts": { "items": { "properties": { "key": { "enum": ["milestone.max_delay_days", "project.status", "project.schedule_status", "milestone.next_due_date"] } } } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" }
+  ]
+}

@@ -1,8 +1,11 @@
-# AKL Project Status
+# AKB Project Status
 
-Validated: 2026-06-15.
+Validated: 2026-07-21 against immutable production commit
+`786bc2bd7c7a964efd3c078d930eebbba06209c7`.
 
-Tento dokument je konsolidovany stav praci pro AKB Platform. Slouzi jako jedna startovni pravda pro navazujici vyvoj, PR review a predani mezi Codex vlakny.
+Tento dokument je konsolidovany rozcestnik aktualniho stavu AKB Platform. Detailni
+kontrakty a provozni pravda zustavaji v odkazovanych architektonickych, API,
+security, deployment a QA dokumentech; tento souhrn je nenahrazuje.
 
 ## Executive Summary
 
@@ -17,26 +20,38 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
   perzistuji v Registry API jako navrhy s citacemi. Verze `1` zustava
   dostupna pro rolling deployment a ma oddelenou idempotentni identitu.
 - Web aplikace obsahuje Document Workbench, Intelligence Workbench, workflow inbox, upload preflight, napovedu v aplikaci a Employee Chat Portal.
-- Web shell, zakladni UI primitiva a PDF viewer jsou sladene se STRATOS portfoliem pres lokalni `apps/web/src/components/stratos` adapter.
+- Web shell, zakladni UI primitiva a PDF viewer pouzivaji publikovany
+  `@voldzi/stratos-ui`; lokalni kod zustava jen u AKB domenovych adapteru a
+  routingu.
 - Upload/source opening a native preview jsou rozsirene na bezne Office, PDF, obrazkove, textove a strukturovane typy; stare binarni Office formaty `.doc/.xls/.ppt` zustavaji pro plnohodnotnou ingestion/rendering konverzni backlog.
 - Produkcni audit 2026-06-11 potvrdil, ze stavajici importovane dokumenty maji
   jako aktualni zdroj Markdown derivaty; 20 dostupnych raw PDF originalu lze
   inventarizovat dry-runem `tools/import_original_pdf_versions.py`, 3 dokumenty
   cekaji na doplneni originalniho PDF. Host-side `--apply` je ve vsech
   prostredich retired; import prochazi governed aplikacnim UI/API.
-- GitHub je stabilizovany pres chraneny `main`, PR workflow, CI gate a release proces.
+- GitHub je stabilizovany pres chraneny `main`, PR workflow, CI gate a immutable
+  release proces. Produkce bezi z presneho commitu uvedeneho vyse.
+- Vyvojova vetev obsahuje vypnuty AKB zaklad Copilota reditele: uzavrene
+  DomainTool/Evidence/QueryPlan/AnalysisSnapshot kontrakty, oddelenou service a
+  actor identitu, paralelni Budget/ProjectFlow orchestraci, scope/policy
+  fail-closed kontroly, zavisly citovany AKB retrieval a ctyrvrstvou odpoved.
+  Nejde o produkcni stav; aktivace ceka na zdrojove endpointy a spolecnou branu.
 
-Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hlubsi viewer fidelity pro komplexni Office/PDF dokumenty, persistovane AI insighty, vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu mimo web bridge.
+Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou
+federovane cteni zivych domenovych dat pro Copilota reditele, hlubsi viewer
+fidelity pro komplexni Office/PDF dokumenty, obecne schvalovane AI insighty,
+vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu
+mimo web bridge.
 
 ## Current GitHub Baseline
 
-- Stable release tag: `v0.1.0-local-platform`.
-- Post-release main obsahuje:
-  - release proces,
-  - Document Workbench QA gate,
-  - Playwright E2E testy,
-  - Registry `document_assignments`.
-- `main` je chraneny pres PR gate a povinne CI checks.
+- Autoritativni baseline je commit `786bc2bd7c7a964efd3c078d930eebbba06209c7`
+  na `main`, stejny jako aktivni produkcni release k datu validace.
+- CI pokryva repository standardy, OpenAPI, tajemstvi, Docker Compose profily,
+  web typecheck/test/build/Playwright a Python sluzby vcetne databazovych smoke
+  testu.
+- `main` je chraneny pres PR gate a povinne CI checks; historicky tag
+  `v0.1.0-local-platform` uz neni definici aktualni produkcni verze.
 
 ## Implemented Product Surface
 
@@ -50,7 +65,10 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
 - Detail dokumentu obsahuje Insights tab, ktery umi pres `/api/documents/{documentId}/insights/propose` vytvorit pracovni `proposed` insighty pro povinnosti, role, lhuty a rizika ze zdrojoveho textu aktualni verze. Vystup ma confidence, citaci a source warnings; autoritativni Registry perzistence a schvalovani jeste nejsou hotove.
 - Detail dokumentu spousti Governance Service pres web bridge pro compare versions, compliance check a conflict detection; bridge predava extrahovany text ze zdrojoveho objektu pro text/Markdown/CSV a DOCX/XLSX/PPTX, pri nedostupnem nebo nepodporovanem zdroji explicitne spadne na Registry metadata fallback. Vysledek ukazuje result ID, confidence, warnings, citace a zdrojova omezeni.
 - Detail dokumentu ve Viewer tabu otevre auditovany RAG source-context chunk pres `/api/documents/{documentId}/source-context` a zobrazi zdroj, verzi, stranu, sekci a citovatelny text.
-- `/chat` je hlavni AKB Assistant plocha s levym seznamem vlaken, chat transcriptem, composerem, pravym panelem zdroju a MVP share dialogem; dotazy jdou pres assistant API a vlákna jsou zatim klientsky/session stav bez serveroveho seznamu nebo backendoveho sdileni.
+- AKB Assistant ma serverove perzistentni vlakna, zpravy, pripnuti, archivaci,
+  retenci, odstraneni a sdileni s overenymi osobami. Platformni trasy `/chat` a
+  `/assistant` zustavaji kompatibilni; samostatny chat-only profil je produkcne
+  dostupny na kanonicke adrese `https://chat.zeleznalady.cz/`.
 - Budget contract extraction je dostupna pres
   `/api/v1/stratos/extractions/contracts/propose`. Profil
   `contract_financial_v1` verze `2` vraci pouze navrzene hodnoty s citaci
@@ -68,7 +86,9 @@ Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou hl
 - Lokální dev/test fixtures pro pozitivni signed source tok jsou v `object-storage/akl-documents/doc_103`, `doc_105`, `doc_106`, `doc_107` a `doc_108`; mock metadata pouzivaji plny SHA-256 a content endpoint hash overuje.
 - `/upload` pouziva browser file preflight, SHA-256, podepsanou upload session a PUT upload do aplikacniho upload endpointu.
 - `/help` obsahuje napovedu pro dokumentove role, upload, viewer/citace, workflow, governance a troubleshooting.
-- UI zaklad pouziva STRATOS kompatibilni shell, rail, button, search, view tab a PDF viewer komponenty. Lokalni adapter zustava nahraditelny sdilenym `@stratos/ui` balickem, az bude dostupny v AKL build contextu.
+- UI zaklad pouziva sdileny `@voldzi/stratos-ui` shell, rail, topbar, navigaci,
+  datove a formularove komponenty i PDF viewer. AKB nevlastni kopie shellu,
+  mobilniho draweru, backdropu ani jejich opravne CSS.
 
 ### Intelligence Workbench
 
@@ -141,14 +161,23 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 6. SLA escalation runtime: SLA a eskalacni metadata existuji, ale chybi scheduler/notifikace a automaticke eskalacni udalosti.
 7. Ingestion-owned task contract: ingestion warningy jsou v UI doplnene mimo Registry-owned task publikaci.
 8. Object storage contract: upload session zatim vlastni web bridge; cilovy stav je backend/Object Storage service kontrakt se signed upload/download a auditem.
-9. RAG quality: hybrid retrieval, reranking evaluation, citation accuracy a no-answer metriky potrebuji produkcni eval dataset.
-10. Security/compliance hardening: OIDC a dokumentova authz musi projit negativnimi testy na urovni dokumentu, chunku a source opening.
+9. RAG quality: produkcni verzovany dataset a fail-closed quality gate existuji;
+   backlogem je rozsirovani gold pripadu pro nove domeny, mezidomenove dotazy,
+   konflikty, casovou aktualnost a pravidelne sledovani provozniho driftu.
+10. Directory governance: sdileni s osobami je serverove overene; nove skupinove
+    sdileni zustava fail-closed do doby, nez STRATOS poskytne autoritativni
+    organizacni skupinovy adresar.
 11. Source originality: dostupne originalni PDF zdroje lze inventarizovat
     dry-runem `tools/import_original_pdf_versions.py`; produkcni prevod je
     dostupny jen pres governed aplikacni UI/API. Host tool je ve vsech profilech
     pouze dry-run a pred mutaci fail-closed. Dokumenty bez raw PDF zustavaji
     Markdown-backed, dokud neni original doplnen.
-12. STRATOS package integration: lokalni UI adapter je kompatibilni mezikrok vcetne `StratosPdfViewer`; primy import `@stratos/ui` ceka na sjednoceny workspace nebo publikovany balicek dostupny pro Docker build.
+12. Management copilot: AKB zaklad prvniho Budget + ProjectFlow rezu je
+    implementovany; STRATOS identita, Budget a ProjectFlow read-only nastroje
+    byly dodany v release `c8f2ea522f55dadbb448577e5c7ababdbe8861a1`.
+    Zbyva produkcni aktivace AKB, spolecny live acceptance a pote dalsi domeny,
+    historie s reautorizaci, obecny planner/entity resolver a PPTX/DOCX ze
+    stejne analyticke pravdy.
 13. Intelligence depth: `/intelligence` ma corpus/readiness analytiku,
     OpenSearch entity/search vrstvu, evidence-backed relationship panel a
     perzistentni analyst cases/saved queries/evidence sets, ale jeste nema
@@ -163,8 +192,12 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 4. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
 5. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.
 6. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.
-7. RAG evaluation: eval dataset pro citace, no-answer rate, retrieval precision a regression gate.
-8. STRATOS UI package switch: po sjednoceni repozitaru/build contextu nahradit lokalni adapter primym `@stratos/ui`.
+7. Director Copilot integration gate: nasadit AKB aktivacni release s
+   read-only secretem, spustit pozitivni live dotaz a spolecne partial,
+   scope-revocation, policy, citation a audit acceptance testy podle
+   `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`.
+8. RAG evaluation expansion: rozsirit produkcni gate o mezidomenove scenare,
+   aktualnost, konflikty a dostupnost pouze casti zdroju.
 9. Intelligence entity layer: extrahovat entity z chunku, ulozit mentiony s
    citacemi, pridat deduplikaci aliasu a zobrazit detail entity.
 10. Intelligence graph/cases: ulozit evidence-backed vztahy, pridat graf,

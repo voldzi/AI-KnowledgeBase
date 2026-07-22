@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/akb/contracts/director-copilot/v1/query-plan.schema.json",
+  "title": "AKB Director Copilot QueryPlan V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "intent", "language", "created_at", "as_of", "projection_hash", "nodes", "output", "quality_gates"],
+  "properties": {
+    "schema_version": { "const": "director-copilot-query-plan-2" },
+    "plan_id": { "type": "string", "pattern": "^plan_[a-f0-9]{16,64}$" },
+    "intent": { "const": "portfolio_risk_correlation" },
+    "language": { "enum": ["cs", "en"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "as_of": { "type": "string", "format": "date-time" },
+    "projection_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "nodes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_id", "tool_id", "source_application", "required_capability", "requested_scopes", "depends_on", "timeout_ms"],
+        "properties": {
+          "node_id": { "type": "string", "pattern": "^node_[a-z0-9_]+$" },
+          "tool_id": { "enum": ["budget.project_financial_snapshot.v1", "projectflow.project_delivery_snapshot.v1", "akb.contract_risk_retrieval.v1"] },
+          "source_application": { "enum": ["budget", "projectflow", "akb"] },
+          "required_capability": { "enum": ["budget:read", "projectflow:read", "akb:chat"] },
+          "requested_scopes": { "type": "array", "maxItems": 100, "items": { "$ref": "domain-tool.schema.json#/$defs/scope" } },
+          "depends_on": { "type": "array", "maxItems": 2, "uniqueItems": true, "items": { "type": "string", "pattern": "^node_[a-z0-9_]+$" } },
+          "timeout_ms": { "type": "integer", "minimum": 500, "maximum": 30000 }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "four_layer_answer", "artifact_contract_version"],
+      "properties": {
+        "kind": { "const": "answer" },
+        "four_layer_answer": { "const": true },
+        "artifact_contract_version": { "const": "report.v2" }
+      }
+    },
+    "quality_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structured_facts_required", "document_citations_required", "partial_must_be_visible", "no_scope_expansion"],
+      "properties": {
+        "structured_facts_required": { "const": true },
+        "document_citations_required": { "const": true },
+        "partial_must_be_visible": { "const": true },
+        "no_scope_expansion": { "const": true }
+      }
+    }
+  }
+}

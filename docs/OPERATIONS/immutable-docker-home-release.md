@@ -252,14 +252,16 @@ sudo install -m 0600 /dev/null /srv/akl/env/ingestion-authorization.secret
 sudo install -m 0600 /dev/null /srv/akl/env/svc-ingestion.client-secret
 sudo install -m 0600 /dev/null /srv/akl/env/akb-rag-service.client-secret
 sudo install -m 0600 /dev/null /srv/akl/env/svc-akb-web-ingestion.client-secret
+sudo install -m 0600 /dev/null /srv/akl/env/svc-akb-director-copilot.client-secret
 ```
 
 Replace every placeholder in the copied file through the approved secret
 handling path and populate each empty private file through the approved
 Keycloak/secret workflow. Do not print any completed file or secret. The
 Registry signing secret is an independent random value of at least 32 bytes;
-the other three files contain the corresponding exact confidential-client
-secrets. At minimum, keep these release controls explicit:
+the other files contain the corresponding exact confidential-client secrets.
+The Director Copilot file is required only when its feature flag is enabled.
+At minimum, keep these release controls explicit:
 
 ```dotenv
 AKL_RELEASE_GIT_URL=https://github.com/voldzi/AI-KnowledgeBase.git
@@ -274,6 +276,8 @@ AKL_INGESTION_AUTHORIZATION_SECRET_FILE=/srv/akl/env/ingestion-authorization.sec
 AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE=/srv/akl/env/svc-ingestion.client-secret
 AKL_RAG_REGISTRY_CLIENT_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret
 AKL_WEB_INGESTION_CLIENT_SECRET_FILE=/srv/akl/env/svc-akb-web-ingestion.client-secret
+AKL_DIRECTOR_COPILOT_ENABLED=false
+AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE=/srv/akl/env/svc-akb-director-copilot.client-secret
 ```
 
 `AKL_RELEASE_POSTGRES_TOOL_IMAGE` may instead be an exact local

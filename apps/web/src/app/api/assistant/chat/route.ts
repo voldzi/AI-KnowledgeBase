@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
+import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
+import { runDirectorCopilotChat } from "@/lib/director-copilot/chat";
+import { isDirectorCopilotRiskQuery } from "@/lib/director-copilot/planner";
 import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
@@ -40,6 +43,18 @@ export async function POST(request: NextRequest) {
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
+    const config = getAklConfig();
+    if (getDirectorCopilotConfig(config).enabled && isDirectorCopilotRiskQuery(message)) {
+      const response = await runDirectorCopilotChat({
+        message,
+        conversationId,
+        responseLanguage,
+        actorContext: context,
+        clients,
+        config,
+      });
+      return NextResponse.json({ response, message_id: null });
+    }
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
     const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
     const registryReportKind = assistantRoute.registryReportKind ?? "document_inventory_summary";

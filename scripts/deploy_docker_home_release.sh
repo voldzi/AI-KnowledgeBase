@@ -223,6 +223,17 @@ WEB_INGESTION_CLIENT_SECRET_FILE="$(
     AKL_WEB_INGESTION_CLIENT_SECRET_FILE \
     "${RELEASE_ROOT}/env/svc-akb-web-ingestion.client-secret"
 )"
+DIRECTOR_COPILOT_ENABLED="$(
+  akl_env_value "$ENV_FILE" AKL_DIRECTOR_COPILOT_ENABLED false
+)"
+DIRECTOR_COPILOT_CLIENT_SECRET_FILE="$(
+  akl_env_value \
+    "$ENV_FILE" \
+    AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE \
+    "${RELEASE_ROOT}/env/svc-akb-director-copilot.client-secret"
+)"
+[[ "$DIRECTOR_COPILOT_ENABLED" == "true" || "$DIRECTOR_COPILOT_ENABLED" == "false" ]] \
+  || akl_fail "AKL_DIRECTOR_COPILOT_ENABLED must be true or false"
 akl_validate_project_name "$PROJECT_NAME"
 [[ "$TRUSTED_REF" == refs/remotes/origin/* ]] \
   || akl_fail "Trusted release ref must be an origin remote-tracking ref"
@@ -1134,6 +1145,13 @@ if [[ " ${services[*]} " == *" web "* ]]; then
   [[ "$WEB_INGESTION_CLIENT_SECRET_FILE" == /* ]] \
     || akl_fail "AKL_WEB_INGESTION_CLIENT_SECRET_FILE must be an absolute path"
   akl_require_private_secret_file "$WEB_INGESTION_CLIENT_SECRET_FILE"
+fi
+if [[ "$DIRECTOR_COPILOT_ENABLED" == "true" ]]; then
+  if [[ " ${services[*]} " == *" web "* || " ${services[*]} " == *" chat-web "* ]]; then
+    [[ "$DIRECTOR_COPILOT_CLIENT_SECRET_FILE" == /* ]] \
+      || akl_fail "AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE must be an absolute path"
+    akl_require_private_secret_file "$DIRECTOR_COPILOT_CLIENT_SECRET_FILE"
+  fi
 fi
 if ! akl_assert_release_sha_not_burned "$RELEASE_ROOT" "$TARGET_SHA"; then
   TARGET_BUILD_MAY_HAVE_STARTED="true"

@@ -16,6 +16,14 @@ This section contains current integration-facing runbooks and contracts.
   - portable Open Knowledge Format profile for importing governed STRATOS concepts into AKB
 - `STRATOS_IT_MANAGEMENT_PROFILE.md`
   - IT management knowledge profile for service catalog, ITIL, CMDB, SLA, runbook, security, supplier, metrics, and automation concepts
+- `DIRECTOR_COPILOT_HANDOFF.md`
+  - activation gate and common contract for the first Budget + ProjectFlow + AKB read-only federation
+- `DIRECTOR_COPILOT_HANDOFF_STRATOS.md`
+  - service identity, audience and current access-projection requirements owned by STRATOS
+- `DIRECTOR_COPILOT_HANDOFF_BUDGET.md`
+  - deterministic governed Budget project-financial read-model
+- `DIRECTOR_COPILOT_HANDOFF_PROJECTFLOW.md`
+  - deterministic governed ProjectFlow project-delivery read-model
 
 ## Preserved Phase Material
 

@@ -84,6 +84,20 @@ WEB_SERVERS = [
   { "url" => "http://localhost:3002", "description" => "Local AKB web API" },
   { "url" => "https://stratos.zeleznalady.cz/akb", "description" => "Production AKB web API" }
 ].freeze
+CHAT_WEB_SERVER = {
+  "url" => "https://chat.zeleznalady.cz",
+  "description" => "Production standalone AKB chat API"
+}.freeze
+CHAT_WEB_API_PREFIXES = [
+  "/api/assistant",
+  "/api/auth/callback",
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/session",
+  "/api/health",
+  "/api/ready",
+  "/api/v1/profile/settings"
+].freeze
 
 METHOD_RE = /^export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b/.freeze
 
@@ -557,7 +571,7 @@ def web_operation(method, path)
 end
 
 def add_common_system_paths(spec)
-  all_servers = SERVICES.flat_map { |service| service[:servers] } + WEB_SERVERS
+  all_servers = SERVICES.flat_map { |service| service[:servers] } + WEB_SERVERS + [CHAT_WEB_SERVER]
   spec["paths"]["/health"] = {
     "servers" => all_servers,
     "get" => {
@@ -602,6 +616,13 @@ def add_common_system_paths(spec)
       }
     }
   }
+end
+
+def web_servers_for(path)
+  available_on_chat = CHAT_WEB_API_PREFIXES.any? do |prefix|
+    path == prefix || path.start_with?("#{prefix}/")
+  end
+  available_on_chat ? WEB_SERVERS + [CHAT_WEB_SERVER] : WEB_SERVERS
 end
 
 def referenced_schema_names(value)
@@ -757,7 +778,8 @@ spec = {
   "servers" => [
     { "url" => "http://localhost:8080", "description" => "Local reverse proxy" },
     { "url" => "http://localhost:3002", "description" => "Local AKB web frontend" },
-    { "url" => "https://stratos.zeleznalady.cz/akb", "description" => "Production AKB web frontend" }
+    { "url" => "https://stratos.zeleznalady.cz/akb", "description" => "Production AKB web frontend" },
+    { "url" => "https://chat.zeleznalady.cz", "description" => "Production standalone AKB chat frontend" }
   ],
   "security" => [
     { "bearerAuth" => [] },
@@ -1358,8 +1380,8 @@ Dir.glob(File.join(WEB_API_ROOT, "**", "route.ts")).sort.each do |route_file|
   end.compact.uniq
   next if methods.empty?
 
-  item = spec["paths"][path] ||= { "servers" => WEB_SERVERS }
-  item["servers"] ||= WEB_SERVERS
+  item = spec["paths"][path] ||= { "servers" => web_servers_for(path) }
+  item["servers"] ||= web_servers_for(path)
   methods.each do |method|
     key = method.downcase
     raise "Duplicate web operation in merged OpenAPI: #{method} #{path}" if item.key?(key)

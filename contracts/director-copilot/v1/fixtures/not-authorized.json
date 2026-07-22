@@ -1,0 +1,13 @@
+{
+  "schema_version": "director-copilot-1",
+  "tool_id": "budget.project_financial_snapshot.v1",
+  "tool_call_id": "call_3333333333333333",
+  "status": "not_authorized",
+  "generated_at": "2026-07-21T10:00:00Z",
+  "as_of": "2026-07-21T10:00:00Z",
+  "source_system": "STRATOS_BUDGET",
+  "source_version": "budget-read-model:42",
+  "items": [],
+  "warnings": ["The current actor has no authorized Budget scope for this query."],
+  "next_cursor": null
+}

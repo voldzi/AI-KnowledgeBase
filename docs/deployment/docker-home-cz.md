@@ -197,10 +197,12 @@ Tento dočasný model zachová současné lokální mapování `s3://akl-documen
 
 ## 4. Keycloak: STRATOS Realm A Theme
 
-Inspirace COP:
+Aktuální STRATOS konfigurace:
 
-- COP theme používá `parent=keycloak`, `locales=cs,en` a vlastní CSS v `infra/keycloak/themes/cop`.
-- AKL má dnes export `infra/keycloak/realm-akl.json`; pro STRATOS cílový stav má být společný realm pro aplikace STRATOS.
+- Sdílený theme používá `parent=keycloak`, `locales=cs,en` a vlastní CSS v
+  `infra/keycloak/themes/stratos`.
+- Produkce používá společný STRATOS realm; historický samostatný AKL realm není
+  autoritou pro aktuální nasazení.
 
 Cílový realm:
 

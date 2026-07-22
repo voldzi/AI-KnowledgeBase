@@ -5,7 +5,15 @@ from typing import AsyncIterator
 
 from app.config import Settings
 from app.llm_client import LLMGatewayClient
-from app.schemas import AnswerMode, Citation, Confidence, RagAnswer, ResponseLanguage, RetrievedChunk
+from app.schemas import (
+    AnswerMode,
+    Citation,
+    CitationPolicySummary,
+    Confidence,
+    RagAnswer,
+    ResponseLanguage,
+    RetrievedChunk,
+)
 from app.security import AuthContext
 from policies.no_answer import NO_ANSWER_TEXT
 
@@ -406,6 +414,8 @@ def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:
                 policy_binding_id=_metadata_text(chunk.metadata, "policy_binding_id"),
                 policy_version=_metadata_text(chunk.metadata, "policy_version"),
                 policy_hash=_metadata_text(chunk.metadata, "policy_hash"),
+                policy_summary=_citation_policy_summary(chunk.metadata),
+                document_context_tags=_citation_context_tags(chunk.metadata),
             )
         )
     return citations
@@ -416,8 +426,38 @@ def _metadata_text(metadata: dict[str, object], key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _citation_policy_summary(metadata: dict[str, object]) -> CitationPolicySummary | None:
+    summary = metadata.get("policy_summary")
+    if not isinstance(summary, dict):
+        return None
+    try:
+        parsed = CitationPolicySummary.model_validate(summary)
+    except ValueError:
+        return None
+    if (
+        parsed.policyBindingId != _metadata_text(metadata, "policy_binding_id")
+        or parsed.policyVersion != _metadata_text(metadata, "policy_version")
+    ):
+        return None
+    return parsed
+
+
+def _citation_context_tags(metadata: dict[str, object]) -> list[str]:
+    value = metadata.get("tags")
+    if not isinstance(value, list):
+        return []
+    tags: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item or len(item) > 120 or item in tags:
+            continue
+        tags.append(item)
+        if len(tags) == 20:
+            break
+    return tags
+
+
 def _policy_metadata(chunks: list[RetrievedChunk]) -> dict[str, object]:
-    rank = {"PUBLIC": 0, "INTERNAL": 1, "RESTRICTED": 2}
+    rank = {"PUBLIC": 0, "INTERNAL": 1, "PROJECT_MANAGEMENT": 2, "RESTRICTED": 3}
     handling_class = "PUBLIC"
     obligations: set[str] = set()
     binding_ids: set[str] = set()

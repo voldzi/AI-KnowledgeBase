@@ -1,0 +1,11 @@
+{
+  "schema_version": "director-copilot-1",
+  "tool_id": "budget.project_financial_snapshot.v1",
+  "tool_call_id": "call_1111111111111111",
+  "plan_id": "plan_1111111111111111",
+  "organization_id": "org_stratos",
+  "actor": { "type": "person", "subject_id": "user-001" },
+  "requested_at": "2026-07-21T10:00:00Z",
+  "requested_scopes": [{ "type": "project", "id": "project-001" }],
+  "parameters": { "as_of": "2026-07-21T10:00:00Z", "project_ids": ["project-001"], "limit": 100 }
+}
