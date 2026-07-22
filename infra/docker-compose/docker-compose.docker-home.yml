@@ -583,7 +583,7 @@ services:
     logging: *json-logging
 
   qdrant:
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:1.18.2}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
     restart: unless-stopped
     volumes:
       - qdrant-data:/qdrant/storage
