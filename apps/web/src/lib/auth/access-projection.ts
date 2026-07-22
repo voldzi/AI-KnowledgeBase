@@ -25,6 +25,7 @@ export async function contextFromStratosAccessProjection(
   config: AklConfig,
   fetcher: typeof fetch = fetch,
   nowMs = Date.now(),
+  bypassCache = false,
 ): Promise<ApiRequestContext> {
   const oidc = config.oidc;
   if (!oidc) throw projectionUnavailable("OIDC access projection is not configured.");
@@ -35,7 +36,7 @@ export async function contextFromStratosAccessProjection(
   }
   const key = crypto.createHash("sha256").update(accessToken).digest("hex");
   const cached = projectionCache.get(key);
-  if (cached && cached.expiresAt > nowMs) return cached.context;
+  if (!bypassCache && cached && cached.expiresAt > nowMs) return cached.context;
 
   let response: Response;
   try {

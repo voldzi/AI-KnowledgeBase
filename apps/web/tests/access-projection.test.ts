@@ -76,6 +76,33 @@ describe("STRATOS access projection", () => {
     assert.deepEqual(second.capabilities, []);
   });
 
+  it("bypasses the projection cache for pre-synthesis reauthorization", async () => {
+    const token = jwt({ sub: "user-123", exp: 2_000 });
+    const cachedConfig = config();
+    cachedConfig.oidc!.accessProjectionCacheTtlMs = 60_000;
+    let active = true;
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return Response.json({
+        tenantId: "org_stratos",
+        applicationAccess: active
+          ? [{ application: "akb", capabilities: ["akb:chat"], effectiveScopes: [] }]
+          : [],
+      });
+    };
+
+    const first = await contextFromStratosAccessProjection(token, cachedConfig, fetcher, NOW);
+    active = false;
+    const cached = await contextFromStratosAccessProjection(token, cachedConfig, fetcher, NOW + 1);
+    const refreshed = await contextFromStratosAccessProjection(token, cachedConfig, fetcher, NOW + 2, true);
+
+    assert.equal(first.applicationAccessActive, true);
+    assert.equal(cached.applicationAccessActive, true);
+    assert.equal(refreshed.applicationAccessActive, false);
+    assert.equal(calls, 2);
+  });
+
   it("never falls back to raw administrative scope grants", async () => {
     const token = jwt({ sub: "user-123", exp: 2_000 });
     const context = await contextFromStratosAccessProjection(
