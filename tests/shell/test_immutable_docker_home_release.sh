@@ -119,6 +119,7 @@ INGESTION_AUTHORIZATION_SECRET_FILE="${AKL_RELEASE_ROOT}/env/ingestion-authoriza
 INGESTION_REGISTRY_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/svc-ingestion.client-secret"
 RAG_REGISTRY_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/akb-rag-service.client-secret"
 WEB_INGESTION_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/svc-akb-web-ingestion.client-secret"
+DIRECTOR_COPILOT_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/svc-akb-director-copilot.client-secret"
 export CALL_LOG FAKE_ALEMBIC_STATE FAKE_WEB_STATE FAKE_RUNTIME_DIR
 export FAKE_POSTGRES_TOOL_IMAGE FAKE_POSTGRES_TOOL_IMAGE_ID FAKE_POSTGRES_TOOL_REPO_DIGEST REAL_PYTHON3
 export AKL_RELEASE_ROOT AKL_PROD_ENV_FILE FAKE_PERSISTENT_ENV_FILE
@@ -207,6 +208,8 @@ AKL_INGESTION_AUTHORIZATION_SECRET_FILE=${INGESTION_AUTHORIZATION_SECRET_FILE}
 AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE=${INGESTION_REGISTRY_CLIENT_SECRET_FILE}
 AKL_RAG_REGISTRY_CLIENT_SECRET_FILE=${RAG_REGISTRY_CLIENT_SECRET_FILE}
 AKL_WEB_INGESTION_CLIENT_SECRET_FILE=${WEB_INGESTION_CLIENT_SECRET_FILE}
+AKL_DIRECTOR_COPILOT_ENABLED=false
+AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE=${DIRECTOR_COPILOT_CLIENT_SECRET_FILE}
 AKL_WEB_PUBLIC_BASE_URL=https://stratos.example.invalid/akb
 AKL_CHAT_WEB_PUBLIC_BASE_URL=https://chat.example.invalid
 AKL_CHAT_WEB_HTTP_PORT=18221
@@ -221,11 +224,14 @@ printf 'fixture-akb-rag-registry-client-secret\n' \
   >"$RAG_REGISTRY_CLIENT_SECRET_FILE"
 printf 'fixture-akb-web-ingestion-client-secret\n' \
   >"$WEB_INGESTION_CLIENT_SECRET_FILE"
+printf 'fixture-akb-director-copilot-client-secret\n' \
+  >"$DIRECTOR_COPILOT_CLIENT_SECRET_FILE"
 chmod 0600 \
   "$INGESTION_AUTHORIZATION_SECRET_FILE" \
   "$INGESTION_REGISTRY_CLIENT_SECRET_FILE" \
   "$RAG_REGISTRY_CLIENT_SECRET_FILE" \
-  "$WEB_INGESTION_CLIENT_SECRET_FILE"
+  "$WEB_INGESTION_CLIENT_SECRET_FILE" \
+  "$DIRECTOR_COPILOT_CLIENT_SECRET_FILE"
 printf 'must remain untouched\n' >"${AKL_RELEASE_ROOT}/repo/sentinel"
 
 set_env_value() {
@@ -3334,6 +3340,28 @@ if grep -q '^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$web_secret_preflig
 fi
 [[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${WEB_SECRET_PREFLIGHT_SHA}" ]] \
   || fail 'web secret preflight failure burned the target SHA'
+
+printf 'director-secret-preflight\n' >"$WORK_REPO/apps/web/release.txt"
+git -C "$WORK_REPO" add apps/web/release.txt
+git -C "$WORK_REPO" commit --quiet -m 'director copilot secret preflight fixture'
+DIRECTOR_SECRET_PREFLIGHT_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+set_env_value AKL_DIRECTOR_COPILOT_ENABLED true
+chmod 0640 "$DIRECTOR_COPILOT_CLIENT_SECRET_FILE"
+printf 'MARK director-secret-preflight\n' >>"$CALL_LOG"
+if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$DIRECTOR_SECRET_PREFLIGHT_SHA"; then
+  fail 'Director Copilot release accepted a non-private service client secret'
+fi
+chmod 0600 "$DIRECTOR_COPILOT_CLIENT_SECRET_FILE"
+set_env_value AKL_DIRECTOR_COPILOT_ENABLED false
+assert_current_sha "$POWER_LOSS_SHA"
+assert_runtime_marker "$POWER_LOSS_SHA" verified
+director_secret_preflight_log="$(awk '/^MARK director-secret-preflight$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$director_secret_preflight_log"; then
+  fail 'Director Copilot secret preflight failure crossed the build or migration boundary'
+fi
+[[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${DIRECTOR_SECRET_PREFLIGHT_SHA}" ]] \
+  || fail 'Director Copilot secret preflight failure burned the target SHA'
 
 printf 'ingestion-secret-preflight\n' >"$WORK_REPO/services/ingestion-service/release.txt"
 git -C "$WORK_REPO" add services/ingestion-service/release.txt

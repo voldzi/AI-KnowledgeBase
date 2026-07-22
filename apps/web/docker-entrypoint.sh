@@ -43,11 +43,10 @@ if [ "${AKL_DIRECTOR_COPILOT_ENABLED:-false}" = "true" ]; then
     echo "director copilot client secret paths are not configured" >&2
     exit 1
   fi
+  install_secret \
+    "director copilot" \
+    "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE:-}" \
+    "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-}"
 fi
-
-install_secret \
-  "director copilot" \
-  "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE:-}" \
-  "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-}"
 
 exec su-exec nextjs "$@"

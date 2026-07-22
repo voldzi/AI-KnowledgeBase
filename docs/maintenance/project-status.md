@@ -172,10 +172,12 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
     dostupny jen pres governed aplikacni UI/API. Host tool je ve vsech profilech
     pouze dry-run a pred mutaci fail-closed. Dokumenty bez raw PDF zustavaji
     Markdown-backed, dokud neni original doplnen.
-12. Management copilot: AKB zaklad prvniho Budget + ProjectFlow rezu existuje za
-    vypnutym flagem, ale zdrojove aplikace a STRATOS identity nejsou prijate a
-    produkcne otestovane. Chybi dalsi domeny, historie s reautorizaci, obecny
-    planner/entity resolver a PPTX/DOCX ze stejne analyticke pravdy.
+12. Management copilot: AKB zaklad prvniho Budget + ProjectFlow rezu je
+    implementovany; STRATOS identita, Budget a ProjectFlow read-only nastroje
+    byly dodany v release `c8f2ea522f55dadbb448577e5c7ababdbe8861a1`.
+    Zbyva produkcni aktivace AKB, spolecny live acceptance a pote dalsi domeny,
+    historie s reautorizaci, obecny planner/entity resolver a PPTX/DOCX ze
+    stejne analyticke pravdy.
 13. Intelligence depth: `/intelligence` ma corpus/readiness analytiku,
     OpenSearch entity/search vrstvu, evidence-backed relationship panel a
     perzistentni analyst cases/saved queries/evidence sets, ale jeste nema
@@ -190,9 +192,10 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 4. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
 5. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.
 6. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.
-7. Director Copilot integration gate: dokoncit STRATOS identitu a source
-   endpointy Budget/ProjectFlow podle `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`,
-   potom spustit spolecne negativni, policy, citation a Docker acceptance testy.
+7. Director Copilot integration gate: nasadit AKB aktivacni release s
+   read-only secretem, spustit pozitivni live dotaz a spolecne partial,
+   scope-revocation, policy, citation a audit acceptance testy podle
+   `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`.
 8. RAG evaluation expansion: rozsirit produkcni gate o mezidomenove scenare,
    aktualnost, konflikty a dostupnost pouze casti zdroju.
 9. Intelligence entity layer: extrahovat entity z chunku, ulozit mentiony s

@@ -127,24 +127,29 @@ The first Budget + ProjectFlow federation is disabled by default:
 AKL_DIRECTOR_COPILOT_ENABLED=false
 ```
 
-Do not enable it in the base production Compose file. After STRATOS, Budget and
-ProjectFlow complete `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`, activate
-both web profiles with the dedicated overlay:
+After STRATOS, Budget and ProjectFlow complete
+`docs/integration/DIRECTOR_COPILOT_HANDOFF.md`, set the governed source URLs,
+token URL, exact client ID and host secret path in the private production env,
+then deploy an approved descendant SHA through the immutable release workflow:
 
-```bash
-docker compose --env-file <production-env> \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  -f infra/docker-compose/docker-compose.director-copilot.yml \
-  config --quiet
+```text
+AKL_DIRECTOR_COPILOT_ENABLED=true
+AKL_DIRECTOR_COPILOT_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token
+AKL_DIRECTOR_COPILOT_CLIENT_ID=svc-akb-director-copilot
+AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE=/srv/akl/env/svc-akb-director-copilot.client-secret
+AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL=http://stratos-api:4000
+AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL=http://projectflow-api:4010
 ```
 
-The overlay mounts the host file named by
-`AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE` read-only and the entrypoint copies it
-to a private in-container tmpfs before dropping privileges. The identity must
-be exactly `svc-akb-director-copilot`; never reuse the actor, web-ingestion,
-RAG, AIIP or broad AKB policy credential. Keep the feature disabled if either
-source URL, token audience, current actor projection or source PEP cannot be
-verified.
+The production Compose mounts the host file named by
+`AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE` read-only into both web profiles and
+the entrypoint copies it to a private in-container tmpfs before dropping
+privileges. When enabled, immutable release preflight requires an absolute,
+operator-owned, single-link regular file with exact mode `0600` before the
+build boundary. The identity must be exactly `svc-akb-director-copilot`; never
+reuse the actor, web-ingestion, RAG, AIIP or broad AKB policy credential. Keep
+the feature disabled if either source URL, token audience, current actor
+projection or source PEP cannot be verified.
 
 Assistant conversation retention is enforced by Registry, not by the browser.
 Production Compose enables the worker with these bounded settings:

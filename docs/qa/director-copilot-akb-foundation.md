@@ -1,9 +1,11 @@
 # Director Copilot: AKB foundation acceptance evidence
 
-Datum ověření: 2026-07-21
+Datum ověření: 2026-07-22
 
-Stav: AKB implementace ověřena lokálně a v Docker Desktopu, funkce zůstává
-výchozím stavem vypnutá a nebyla nasazena do produkce.
+Stav: AKB implementace a produkční aktivační cesta jsou ověřeny lokálně a v
+Docker Desktopu. STRATOS, Budget a ProjectFlow dodaly produkční kontrakt v
+release `c8f2ea522f55dadbb448577e5c7ababdbe8861a1`; před tímto release kandidátem
+AKB zůstává funkce v produkci vypnutá.
 
 ## Ověřený rozsah AKB
 
@@ -25,7 +27,8 @@ výchozím stavem vypnutá a nebyla nasazena do produkce.
 - fail-closed AI pro `RESTRICTED`, `NO_EXTERNAL_AI`,
   `LOCAL_PROCESSING_ONLY`, recipient/originator a PAP obligations;
 - ephemerální federované odpovědi bez persistence historie;
-- samostatný produkční aktivační Compose overlay a privátní secret tmpfs.
+- podporovaný produkční Compose mount, release preflight a privátní secret
+  tmpfs pro oba webové profily.
 
 ## Výsledky ověření
 
@@ -37,7 +40,8 @@ výchozím stavem vypnutá a nebyla nasazena do produkce.
 | Next.js production build | prošel, 34 statických/dynamických route skupin v build výpisu |
 | skeleton + OpenAPI freshness | prošlo |
 | Director JSON/OpenAPI syntax a fixtures | prošlo |
-| dev, docker-home a aktivační overlay Compose config | prošlo |
+| dev a docker-home Compose config včetně Director mountu | prošlo |
+| immutable release workflow včetně Director preflightu | prošlo |
 | Docker Desktop | 4.78.0, Engine 29.5.3, linux/arm64 |
 | Docker build `akl/web:local` | prošel |
 | Docker build `akl/rag-retrieval-service:local` | prošel |
@@ -49,21 +53,18 @@ výchozím stavem vypnutá a nebyla nasazena do produkce.
 Dočasné smoke kontejnery, sítě a prázdné svazky byly po testu odstraněny.
 Lokální Chroma kontejner nebyl změněn.
 
-## Co záměrně není uzavřeno
+## Zbývající produkční přijetí
 
-End-to-end dotaz nad skutečnými živými daty nelze označit jako přijatý, dokud
-externí vlastníci nedodají:
+Externí dodávka je převzata. End-to-end dotaz nad skutečnými živými daty lze
+označit jako přijatý až po:
 
-1. STRATOS service identity, obě source audiences a autoritativní
-   per-application projection fixtures;
-2. Budget `budget.project_financial_snapshot.v1` endpoint a conformance testy;
-3. ProjectFlow `projectflow.project_delivery_snapshot.v1` endpoint, lokální PEP
-   a conformance testy;
-4. společný test odebrání scope během toku, partial/no-answer, citovaného
-   smluvního zjištění a auditního výpadku;
-5. verzovaný `director_copilot_v1` eval dataset a schválené SLI prahy.
+1. nasazení tohoto AKB release kandidáta přes immutable workflow s read-only
+   secretem v obou webových profilech;
+2. pozitivním dotazu reálného oprávněného uživatele a ověření Budget,
+   ProjectFlow, dokumentové citace a auditního záznamu;
+3. společném partial/no-answer testu a opakování deny po odebrání scope;
+4. verzovaném `director_copilot_v1` eval datasetu a schválených SLI prazích.
 
-Do splnění těchto bodů musí zůstat
-`AKL_DIRECTOR_COPILOT_ENABLED=false`. Závazné pokyny jsou v
-`docs/integration/DIRECTOR_COPILOT_HANDOFF.md` a třech navazujících handoff
-dokumentech.
+Do dokončení bodů 1-3 se aktivace nepovažuje za produkčně přijatou. Závazné
+pokyny zůstávají v `docs/integration/DIRECTOR_COPILOT_HANDOFF.md` a třech
+navazujících handoff dokumentech.
