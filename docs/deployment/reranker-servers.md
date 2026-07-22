@@ -44,6 +44,12 @@ The deployed MacBook key is stored at
 Mount the client copy read-only when AKB retrieval is connected to this
 runtime; do not pass its value through Compose environment variables.
 
+Docker Desktop does not expose Apple Metal acceleration to Linux containers.
+The current Qwen Q8 runtime nevertheless meets the shadow latency target on
+the MacBook CPU; if future candidate sizes exceed that target, move this same
+contract to a native macOS `llama-server` before considering a longer timeout.
+Do not move the BGE F32 image to Docker Desktop expecting GPU acceleration.
+
 Verification:
 
 ```bash
@@ -91,3 +97,9 @@ before that point is not sufficient deployment evidence.
   gates approve either model.
 - A model or runtime upgrade requires a new pinned digest/revision, Czech
   benchmark evidence and rollback verification.
+- Production AKB mounts `/srv/akl/secrets/qwen-reranker-api-key` read-only as
+  `/run/secrets/akl-rag-reranker-api-key`. The environment contains only the
+  file path. A missing or unreadable endpoint in `shadow` uses the lexical
+  fallback and must never block an answer.
+- The private VPN address is runtime configuration, not a source-code
+  constant. Verify `/health` from `docker.home.cz` before every rollout.
