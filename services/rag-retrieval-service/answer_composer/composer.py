@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from hashlib import sha256
+import json
 from typing import AsyncIterator
 
 from app.config import Settings
@@ -415,6 +417,7 @@ def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:
                 policy_version=_metadata_text(chunk.metadata, "policy_version"),
                 policy_hash=_metadata_text(chunk.metadata, "policy_hash"),
                 policy_summary=_citation_policy_summary(chunk.metadata),
+                policy_summary_hash=_citation_policy_summary_hash(chunk.metadata),
                 document_context_tags=_citation_context_tags(chunk.metadata),
             )
         )
@@ -440,6 +443,19 @@ def _citation_policy_summary(metadata: dict[str, object]) -> CitationPolicySumma
     ):
         return None
     return parsed
+
+
+def _citation_policy_summary_hash(metadata: dict[str, object]) -> str | None:
+    summary = _citation_policy_summary(metadata)
+    if summary is None:
+        return None
+    encoded = json.dumps(
+        summary.model_dump(mode="json"),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return f"sha256:{sha256(encoded).hexdigest()}"
 
 
 def _citation_context_tags(metadata: dict[str, object]) -> list[str]:

@@ -66,8 +66,11 @@ a viditelný důvod blokace. Kontrakt přijímá úplný katalog Information Pol
 V2; recipient/originator/PAP obligations rovněž blokují AI, dokud je AKB neumí
 explicitně splnit. Federovaný výsledek se bez úspěšného auditu nevrátí.
 Dokumentová citace se do finálního `AnalysisSnapshot` přijme pouze s úplným
-`policy_binding_id`, `policy_version`, `policy_hash` a `policy_summary`, jejichž
-souřadnice i hash souhlasí. Jinak AKB citaci zahodí a výstup označí jako
+`policy_binding_id`, `policy_version`, autoritativním `policy_hash`,
+`policy_summary` a jejím samostatným `policy_summary_hash`. Souřadnice policy a
+hash zkrácené citační reprezentace musí souhlasit; autoritativní `policy_hash`
+zůstává otiskem celé Information Policy V2 a nesmí se zaměňovat s otiskem
+souhrnu. Jinak AKB citaci zahodí a výstup označí jako
 chybějící dokumentový důkaz. Citace navíc musí nést `document_context_tags`
 s alespoň jedním přesným tagem z projektového `document_context_bindings`,
 například `project:<id>` nebo `contract:<id>`. Vazbu vytváří pouze tag vrácený
