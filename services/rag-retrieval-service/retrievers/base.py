@@ -13,6 +13,7 @@ class Retriever(Protocol):
         filters: RagQueryFilters,
         limit: int,
         query_vector: list[float] | None = None,
+        dense_weight: float | None = None,
     ) -> list[RetrievedChunk]:
         ...
 

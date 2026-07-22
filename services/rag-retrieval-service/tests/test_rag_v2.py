@@ -1,0 +1,297 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from app.config import ConfigError, load_settings
+from app.registry_client import AuthzFilterResult
+from app.schemas import ChunkCitation, RagAnswer, RagQueryFilters, RetrievedChunk
+from app.service import RagRetrievalService, _detect_conflicts
+from policies.evidence import EvidenceGate, _model_assessment
+from rerankers.cross_encoder import CrossEncoderReranker, _first_multivector, _ordered_scores
+from retrievers.query_analysis import analyze_query
+from tests.conftest import make_client
+
+
+def _chunk(chunk_id: str, document_id: str, text: str, *, version: str = "ver_1") -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=chunk_id,
+        score=0.8,
+        retrieval_method="hybrid",
+        text=text,
+        citation=ChunkCitation(
+            document_id=document_id,
+            document_version_id=version,
+            document_title=document_id,
+            version_label="1.0",
+        ),
+        metadata={"chunk_index": 1, "text_hash": f"sha256:{chunk_id}"},
+    )
+
+
+def test_query_analyzer_routes_exact_temporal_comparison_and_live_data() -> None:
+    filters = RagQueryFilters()
+    defaults = {"default_candidate_limit": 64, "default_dense_weight": 0.35}
+
+    assert analyze_query("Najdi ORBDIG-IT-2026-072", filters, **defaults).profile == "exact"
+    assert analyze_query("Jak znělo pravidlo v roce 2024?", filters, **defaults).profile == "temporal"
+    comparison = analyze_query("Porovnej obě smlouvy", filters, **defaults)
+    assert comparison.profile == "cross_document"
+    assert comparison.require_multiple_documents is True
+    assert analyze_query("Jaké je aktuální čerpání?", filters, **defaults).profile == "copilot_live_data"
+
+
+def test_rag_v2_modes_require_explicit_internal_endpoints() -> None:
+    with pytest.raises(ConfigError, match="AKL_RAG_RERANKER_BASE_URL"):
+        load_settings({"AKL_RAG_RERANKER_MODE": "shadow"})
+    with pytest.raises(ConfigError, match="AKL_RAG_COLBERT_BASE_URL"):
+        load_settings({"AKL_RAG_COLBERT_MODE": "shadow"})
+    with pytest.raises(ConfigError, match="AKL_RAG_PARENT_RETRIEVAL_MODE"):
+        load_settings({"AKL_RAG_PARENT_RETRIEVAL_MODE": "invalid"})
+    with pytest.raises(ConfigError, match="internal endpoint"):
+        load_settings(
+            {
+                "AKL_RAG_RERANKER_MODE": "shadow",
+                "AKL_RAG_RERANKER_BASE_URL": "https://api.example.com",
+            }
+        )
+    with pytest.raises(ConfigError, match="RERANKER_STRATEGY"):
+        load_settings(
+            {
+                "AKL_RAG_COLBERT_MODE": "shadow",
+                "AKL_RAG_COLBERT_BASE_URL": "http://colbert:8080",
+            }
+        )
+
+
+def test_reranker_response_and_colbert_multivector_validation() -> None:
+    assert _ordered_scores(
+        {"results": [{"index": 1, "relevance_score": 0.9}, {"index": 0, "relevance_score": 0.2}]},
+        2,
+    ) == [0.2, 0.9]
+    assert _first_multivector({"vectors": [[[0.1, 0.2], [0.3, 0.4]]]}) == [
+        [0.1, 0.2],
+        [0.3, 0.4],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cross_encoder_enforce_orders_candidates_and_records_provenance(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "enforce",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:3000",
+            "AKL_RAG_RERANKER_MODEL": "bge-reranker-v2-m3",
+            "AKL_RAG_RERANKER_MODEL_REVISION": "revision-1",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+
+    async def score(*, query, chunks):
+        assert query == "schválení"
+        return [0.2, 0.95]
+
+    monkeypatch.setattr(reranker, "_score", score)
+    result, warnings = await reranker.rerank(
+        query="schválení",
+        chunks=[_chunk("a", "doc_a", "první"), _chunk("b", "doc_b", "druhý")],
+        limit=2,
+    )
+
+    assert [item.chunk_id for item in result] == ["b", "a"]
+    assert result[0].metadata["cross_encoder_model"] == "bge-reranker-v2-m3"
+    assert result[0].metadata["cross_encoder_revision"] == "revision-1"
+    assert warnings == []
+
+
+@pytest.mark.asyncio
+async def test_cross_encoder_enforce_fails_closed_when_model_is_unavailable(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "enforce",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:3000",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+
+    async def unavailable(*, query, chunks):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(reranker, "_score", unavailable)
+    result, warnings = await reranker.rerank(
+        query="schválení",
+        chunks=[_chunk("a", "doc_a", "první")],
+        limit=1,
+    )
+
+    assert result == []
+    assert warnings == ["RERANKER_UNAVAILABLE"]
+
+
+@pytest.mark.asyncio
+async def test_colbert_enforce_fails_closed_when_model_is_unavailable(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_STRATEGY": "colbert",
+            "AKL_RAG_COLBERT_MODE": "enforce",
+            "AKL_RAG_COLBERT_BASE_URL": "http://colbert:8080",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+
+    async def unavailable(*, query, chunks):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(reranker, "_colbert_score", unavailable)
+    result, warnings = await reranker.rerank(
+        query="schválení",
+        chunks=[_chunk("a", "doc_a", "první")],
+        limit=1,
+    )
+
+    assert result == []
+    assert warnings == ["COLBERT_UNAVAILABLE"]
+
+
+def test_evidence_gate_enforce_rejects_unsupported_main_claim() -> None:
+    settings = load_settings(
+        {"AKL_RAG_EVIDENCE_GATE_MODE": "enforce", "AKL_RAG_EVIDENCE_MIN_OVERLAP": "0.3"}
+    )
+    chunk = _chunk("chunk_a", "doc_a", "Gestor dokumentu schvaluje výjimku ze směrnice.")
+    answer = RagAnswer(
+        query_id="query_1",
+        answer="Ředitel automaticky schvaluje všechny nákupy.",
+        confidence="high",
+        citations=[],
+        used_chunks=[chunk.chunk_id],
+    )
+
+    verified = EvidenceGate(settings).verify(answer, [chunk])
+
+    assert verified.confidence == "insufficient_source"
+    assert verified.evidence_status == "unsupported"
+    assert verified.citations == []
+    assert "EVIDENCE_GATE_UNSUPPORTED_CLAIMS" in verified.warnings
+
+
+def test_evidence_gate_removes_unsupported_secondary_claim() -> None:
+    settings = load_settings(
+        {"AKL_RAG_EVIDENCE_GATE_MODE": "enforce", "AKL_RAG_EVIDENCE_MIN_OVERLAP": "0.3"}
+    )
+    chunk = _chunk("chunk_a", "doc_a", "Gestor dokumentu schvaluje výjimku ze směrnice.")
+    answer = RagAnswer(
+        query_id="query_1",
+        answer=(
+            "Gestor dokumentu schvaluje výjimku ze směrnice. "
+            "Ředitel automaticky schvaluje všechny nákupy."
+        ),
+        confidence="high",
+        citations=[],
+        used_chunks=[chunk.chunk_id],
+    )
+
+    verified = EvidenceGate(settings).verify(answer, [chunk])
+
+    assert verified.evidence_status == "partial"
+    assert "nákupy" not in verified.answer
+    assert "UNSUPPORTED_SECONDARY_CLAIMS_REMOVED" in verified.warnings
+
+
+def test_model_evidence_contract_rejects_unknown_chunk_and_omitted_claim() -> None:
+    chunk = _chunk("chunk_a", "doc_a", "Gestor dokumentu schvaluje výjimku ze směrnice.")
+    assessment = _model_assessment(
+        '{"claims":[{"claim":"Gestor schvaluje výjimku.","claim_type":"main",'
+        '"chunk_ids":["unknown"],"quoted_support":"Gestor dokumentu"}]}',
+        [chunk],
+        answer="Gestor schvaluje výjimku. Ředitel schvaluje všechny nákupy.",
+    )
+
+    assert assessment.status == "unsupported"
+    assert assessment.unsupported_main_claim is True
+    assert all(not bool(item["supported"]) for item in assessment.claims)
+
+
+def test_registry_authorization_precedes_cross_encoder(monkeypatch) -> None:
+    seen_documents: list[str] = []
+
+    async def score(self, *, query, chunks):
+        seen_documents.extend(item.citation.document_id for item in chunks)
+        return [0.9 for _ in chunks]
+
+    monkeypatch.setattr(CrossEncoderReranker, "_score", score)
+    with make_client(
+        {
+            "AKL_RAG_AUTHZ_MODE": "registry",
+            "AKL_RAG_REGISTRY_CLIENT_MODE": "mock",
+            "AKL_RAG_RERANKER_MODE": "enforce",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:3000",
+        }
+    ) as client:
+        response = client.post(
+            "/api/v1/rag/query",
+            json={
+                "subject_id": "user_123",
+                "query": "Kdo schvaluje výjimky a jaké je tajné pravidlo?",
+                "filters": {"classification_max": "confidential"},
+                "max_chunks": 8,
+            },
+        )
+
+    assert response.status_code == 200
+    assert "doc_denied" not in seen_documents
+    assert seen_documents
+
+
+@pytest.mark.asyncio
+async def test_parent_expansion_reauthorizes_related_chunks() -> None:
+    seed = _chunk("seed", "doc_allowed", "Povolený odstavec.")
+    denied = _chunk("secret", "doc_denied", "Zakázaný tajný odstavec.")
+
+    class Retriever:
+        async def get_context_chunks(self, chunk, *, window):
+            return [chunk, denied]
+
+    class Registry:
+        async def filter_allowed_documents(self, **kwargs):
+            return AuthzFilterResult(
+                allowed_document_ids={"doc_allowed"},
+                denied_document_ids={"doc_denied"},
+            )
+
+    service = object.__new__(RagRetrievalService)
+    service._settings = SimpleNamespace(
+        parent_window=1,
+        max_context_chars=1000,
+        parent_retrieval_mode="enforce",
+        authz_mode="registry",
+        registry_client_mode="mock",
+    )
+    service._retriever = Retriever()
+    service._registry_client = Registry()
+
+    expanded, _ = await service._expand_authorized_context(
+        subject_id="user_123",
+        chunks=[seed],
+        auth_context=None,
+    )
+
+    assert expanded[0].text == "Povolený odstavec."
+    assert "secret" not in expanded[0].metadata["expanded_chunk_ids"]
+
+
+def test_conflict_detector_returns_both_sources_without_selecting_winner() -> None:
+    findings = _detect_conflicts(
+        [
+            _chunk("left", "doc_left", "Dodavatel musí předat bezpečnostní protokol před nasazením."),
+            _chunk("right", "doc_right", "Dodavatel nesmí předat bezpečnostní protokol před nasazením."),
+        ]
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["left_document_id"] == "doc_left"
+    assert findings[0]["right_document_id"] == "doc_right"
+    assert "winner" not in findings[0]

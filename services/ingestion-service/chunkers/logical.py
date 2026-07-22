@@ -109,7 +109,32 @@ class LogicalStructureChunker:
                 )
             )
 
-        return ChunkingResult(chunks=chunks, warnings=warnings)
+        section_counts: dict[str, int] = {}
+        structured_chunks: list[DocumentChunk] = []
+        for chunk in chunks:
+            section_id = _section_id(chunk.document_version_id, chunk.section_path)
+            parent_section_id = (
+                _section_id(chunk.document_version_id, chunk.section_path[:-1])
+                if chunk.section_path
+                else None
+            )
+            section_chunk_index = section_counts.get(section_id, 0)
+            section_counts[section_id] = section_chunk_index + 1
+            structured_chunks.append(
+                chunk.model_copy(
+                    update={
+                        "metadata": {
+                            **chunk.metadata,
+                            "section_id": section_id,
+                            "parent_section_id": parent_section_id,
+                            "section_chunk_index": section_chunk_index,
+                            "section_order": chunk.metadata.get("chunk_index"),
+                        }
+                    }
+                )
+            )
+
+        return ChunkingResult(chunks=structured_chunks, warnings=warnings)
 
     def _make_chunk(
         self,
@@ -248,3 +273,9 @@ def _text_length(blocks: list[ParsedBlock]) -> int:
 def _chunk_id(document_version_id: str, chunk_index: int, text_hash: str) -> str:
     digest = hashlib.sha256(f"{document_version_id}:{chunk_index}:{text_hash}".encode("utf-8")).hexdigest()
     return f"chunk_{digest[:32]}"
+
+
+def _section_id(document_version_id: str, section_path: list[str]) -> str:
+    normalized_path = "/".join(normalize_text(item) for item in section_path) or "root"
+    digest = hashlib.sha256(f"{document_version_id}:{normalized_path}".encode("utf-8")).hexdigest()
+    return f"section_{digest[:24]}"
