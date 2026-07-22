@@ -62,4 +62,19 @@ do
     }
 done
 
+for expected in \
+  'AKL_RAG_RERANKER_API_KEY_FILE: /run/secrets/akl-rag-reranker-api-key' \
+  'AKL_RAG_RERANKER_TIMEOUT_SECONDS:' \
+  'AKL_RAG_RERANKER_BATCH_SIZE:' \
+  'AKL_RAG_RERANKER_MIN_SCORE:' \
+  'AKL_RAG_RERANKER_API_KEY_SOURCE_FILE:-/dev/null' \
+  '/run/secrets/akl-rag-reranker-api-key:ro'
+do
+  grep -Fq "$expected" "$COMPOSE_FILE" \
+    || {
+      printf 'Docker Home RAG reranker contract is missing %s.\n' "$expected" >&2
+      exit 1
+    }
+done
+
 printf 'Docker Home service-DNS regression checks passed.\n'

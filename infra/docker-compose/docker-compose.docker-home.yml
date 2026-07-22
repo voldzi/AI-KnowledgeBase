@@ -448,6 +448,10 @@ services:
       AKL_RAG_RERANKER_BASE_URL: ${AKL_RAG_RERANKER_BASE_URL:-}
       AKL_RAG_RERANKER_MODEL: ${AKL_RAG_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
       AKL_RAG_RERANKER_MODEL_REVISION: ${AKL_RAG_RERANKER_MODEL_REVISION:-unknown}
+      AKL_RAG_RERANKER_API_KEY_FILE: /run/secrets/akl-rag-reranker-api-key
+      AKL_RAG_RERANKER_TIMEOUT_SECONDS: ${AKL_RAG_RERANKER_TIMEOUT_SECONDS:-8}
+      AKL_RAG_RERANKER_BATCH_SIZE: ${AKL_RAG_RERANKER_BATCH_SIZE:-32}
+      AKL_RAG_RERANKER_MIN_SCORE: ${AKL_RAG_RERANKER_MIN_SCORE:-0}
       AKL_RAG_RERANKER_STRATEGY: ${AKL_RAG_RERANKER_STRATEGY:-cross_encoder}
       AKL_RAG_ADAPTIVE_RETRIEVAL_MODE: ${AKL_RAG_ADAPTIVE_RETRIEVAL_MODE:-off}
       AKL_RAG_PARENT_RETRIEVAL_MODE: ${AKL_RAG_PARENT_RETRIEVAL_MODE:-off}
@@ -464,6 +468,7 @@ services:
       - ${AKL_RAG_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/akb-rag-service.client-secret}:/run/secrets/akb-rag-service-client-secret:ro
       - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
       - ${AKL_OPENSEARCH_RAG_PASSWORD_SOURCE_FILE:-/srv/akl/env/akl-opensearch-rag.password}:/run/secrets/akl-opensearch-password:ro
+      - ${AKL_RAG_RERANKER_API_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akl-rag-reranker-api-key:ro
     depends_on:
       registry-api:
         condition: service_healthy
