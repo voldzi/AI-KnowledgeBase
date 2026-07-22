@@ -1,0 +1,53 @@
+name: akb-qwen-reranker
+
+services:
+  qwen3-reranker:
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:6c9257ee7187fd01bb479a9a3142e59c3d4f37bb6c3fc4c12326bcffcbfcf2ba
+    restart: unless-stopped
+    command:
+      - --model
+      - /root/.cache/llama.cpp/qwen3-reranker-0.6b-q8_0.gguf
+      - --model-url
+      - https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/resolve/a02f48bb4f057028298c21fa033da2b30d7742d5/qwen3-reranker-0.6b-q8_0.gguf
+      - --alias
+      - qwen3-reranker-0.6b
+      - --reranking
+      - --pooling
+      - rank
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - "8192"
+      - --parallel
+      - "1"
+      - --batch-size
+      - "2048"
+      - --ubatch-size
+      - "512"
+      - --api-key-file
+      - /run/secrets/reranker_api_keys
+      - --metrics
+      - --no-webui
+    ports:
+      - "${QWEN_RERANKER_BIND_ADDRESS:-0.0.0.0}:${QWEN_RERANKER_PORT:-11435}:8080"
+    volumes:
+      - qwen3_reranker_cache:/root/.cache/llama.cpp
+      - type: bind
+        source: ${QWEN_RERANKER_API_KEY_FILE:?set QWEN_RERANKER_API_KEY_FILE}
+        target: /run/secrets/reranker_api_keys
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 6.0
+
+volumes:
+  qwen3_reranker_cache:
