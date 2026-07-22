@@ -82,6 +82,49 @@ def test_complex_answer_mode_uses_high_quality_chat_model() -> None:
     assert llm.metadata[0]["chat_model_tier"] == "high_quality"
 
 
+def test_bounded_manager_brief_uses_standard_chat_model() -> None:
+    llm = CaptureLLMClient()
+    settings = _settings()
+    composer = AnswerComposer(settings, llm)
+
+    asyncio.run(
+        composer.compose(
+            query_id="query-manager-brief",
+            query="Shrn smluvni riziko.",
+            chunks=[_chunk("chunk_1"), _chunk("chunk_2"), _chunk("chunk_3")],
+            confidence="high",
+            warnings=[],
+            max_chunks=3,
+            answer_mode="manager_brief",
+        )
+    )
+
+    assert llm.models == [None]
+    assert llm.metadata[0]["chat_model"] == "gemma4:12b-mlx"
+    assert llm.metadata[0]["chat_model_tier"] == "standard"
+
+
+def test_director_findings_are_bounded_cited_and_do_not_call_llm() -> None:
+    llm = CaptureLLMClient()
+    composer = AnswerComposer(_settings(), llm)
+    source = "Smluvni ustanoveni s overenym terminem. " * 30
+
+    answer = composer.compose_director_findings(
+        query_id="query-director-extractive",
+        chunks=[_chunk("chunk_director").model_copy(update={"text": source})],
+        confidence="high",
+        warnings=[],
+        max_chunks=3,
+        response_language="cs",
+    )
+
+    assert llm.models == []
+    assert answer.answer.startswith("Citované výňatky ze smluvního podkladu:")
+    assert "[chunk_director]" in answer.answer
+    assert len(answer.answer) < 600
+    assert [citation.chunk_id for citation in answer.citations] == ["chunk_director"]
+
+
 def test_large_context_uses_high_quality_chat_model() -> None:
     llm = CaptureLLMClient()
     settings = _settings()

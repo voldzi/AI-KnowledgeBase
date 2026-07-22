@@ -186,6 +186,46 @@ describe("Director Copilot chat policy enforcement", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("revalidates the STRATOS projection and fails closed before synthesis", async () => {
+    const originalFetch = globalThis.fetch;
+    let ragCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      const request = JSON.parse(String(init?.body)) as DomainToolRequest;
+      const source = structuredClone(String(input).includes("budget") ? budgetFixture : projectFixture);
+      source.tool_call_id = request.tool_call_id;
+      return Response.json(source);
+    };
+    try {
+      const response = await runDirectorCopilotChat({
+        message: "Které projekty mají rozpočtovou odchylku, zpožděný milník a smluvní riziko?",
+        conversationId: null,
+        responseLanguage: "cs",
+        actorContext: context(),
+        refreshActorContext: async () => ({
+          ...context(),
+          applicationAccess: context().applicationAccess?.filter((access) => access.application !== "projectflow"),
+        }),
+        clients: {
+          rag: {
+            assistantChat: async () => {
+              ragCalls += 1;
+              throw new Error("RAG must not receive evidence after access revocation");
+            },
+          },
+          registry: { createAuditEvent: async () => ({}) },
+        } as unknown as ApiClients,
+        config: config(),
+      });
+
+      assert.equal(ragCalls, 0);
+      assert.equal(response.response_type, "restricted");
+      assert.equal(response.warnings.includes("ACCESS_PROJECTION_CHANGED_BEFORE_SYNTHESIS"), true);
+      assert.equal(JSON.stringify(response.current_context).includes("director_copilot_snapshot"), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 function fixture(name: string): DomainToolResponse {

@@ -70,7 +70,7 @@ export async function orchestrateDirectorCopilot(input: {
     ...(outcome.code ? [outcome.code] : []),
   ]);
   const availableResponses = outcomes.flatMap((outcome) => outcome.response ? [outcome.response] : []);
-  const correlatedIds = correlatedProjectIds(availableResponses);
+  const correlatedIds = correlatedProjectIds(availableResponses, outcomes);
   const evidence = normalizeStructuredEvidence(availableResponses, correlatedIds, now.toISOString());
   if (!evidence.length) {
     const failed = outcomes.some((outcome) => outcome.status !== "complete");
@@ -292,7 +292,10 @@ async function executeSource(
   }
 }
 
-function correlatedProjectIds(responses: DomainToolResponse[]): Set<string> {
+function correlatedProjectIds(
+  responses: DomainToolResponse[],
+  outcomes: SourceOutcome[],
+): Set<string> {
   const budget = new Set(
     responses
       .filter((response) => response.source_system === "STRATOS_BUDGET")
@@ -307,6 +310,10 @@ function correlatedProjectIds(responses: DomainToolResponse[]): Set<string> {
       .filter((item) => item.facts.some(isDelayedMilestone))
       .map((item) => item.canonical_id),
   );
+  const budgetResponded = outcomes.some((outcome) => outcome.application === "budget" && outcome.response);
+  const projectflowResponded = outcomes.some((outcome) => outcome.application === "projectflow" && outcome.response);
+  if (budgetResponded && !projectflowResponded) return budget;
+  if (projectflowResponded && !budgetResponded) return delivery;
   return new Set([...budget].filter((canonicalId) => delivery.has(canonicalId)));
 }
 

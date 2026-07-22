@@ -8,6 +8,7 @@ import { ragContextForAssistantRoute, routeAssistantMessageForRag } from "@/lib/
 import type { ApiClients, ApiRequestContext, AssistantChatResponse, ResponseLanguage } from "@/lib/types";
 
 import type { AnalysisSnapshot, DirectorQueryPlan, EvidenceItem } from "./contracts";
+import { accessProjectionHash, domainAccessFor } from "./access";
 import { DirectorDomainToolClient } from "./domain-tool-client";
 import { directorCopilotPromptEvidence, finalizeDirectorSnapshot, orchestrateDirectorCopilot } from "./orchestrator";
 
@@ -18,6 +19,7 @@ export async function runDirectorCopilotChat(input: {
   actorContext: ApiRequestContext;
   clients: ApiClients;
   config: AklConfig;
+  refreshActorContext?: () => Promise<ApiRequestContext>;
 }): Promise<AssistantChatResponse> {
   const domainClient = new DirectorDomainToolClient({ config: input.config });
   const directorConfig = getDirectorCopilotConfig(input.config);
@@ -40,6 +42,24 @@ export async function runDirectorCopilotChat(input: {
     return response;
   }
   const snapshot = orchestration.snapshot;
+  if (input.refreshActorContext) {
+    const refreshedContext = await input.refreshActorContext();
+    const projectionChanged = refreshedContext.subjectId !== input.actorContext.subjectId
+      || accessProjectionHash(refreshedContext) !== snapshot.projection_hash
+      || !domainAccessFor(refreshedContext, "budget").authorized
+      || !domainAccessFor(refreshedContext, "projectflow").authorized;
+    if (projectionChanged) {
+      const response = emptyDirectorResponse(
+        input.conversationId,
+        "not_authorized",
+        input.responseLanguage,
+        [...orchestration.warnings, "ACCESS_PROJECTION_CHANGED_BEFORE_SYNTHESIS"],
+        orchestration.plan,
+      );
+      await auditDirectorResult(input, response, orchestration.plan, null, "not_authorized");
+      return response;
+    }
+  }
   if (blocksAiProcessing(snapshot)) {
     const response = composeFourLayerResponse(
       policyBlockedDocumentResponse(input.conversationId, input.responseLanguage),

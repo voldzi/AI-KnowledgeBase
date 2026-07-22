@@ -126,6 +126,50 @@ class AnswerComposer:
             obligations=list(_policy_metadata(selected).get("obligations", [])),
         )
 
+    def compose_director_findings(
+        self,
+        *,
+        query_id: str,
+        chunks: list[RetrievedChunk],
+        confidence: Confidence,
+        warnings: list[str],
+        max_chunks: int,
+        response_language: ResponseLanguage = "cs",
+    ) -> RagAnswer:
+        """Build a bounded, cited document extract for governed federation.
+
+        Director Copilot already receives verified structured facts from the
+        domain tools.  RAG contributes only authorized contract evidence.  An
+        extractive response is deterministic, keeps source wording visibly
+        separate from the structured facts and avoids putting retrieved text
+        through another model invocation on the synchronous request path.
+        """
+        selected, truncated = self._select_context(chunks[:max_chunks])
+        response_warnings = _merge_warnings(warnings, _source_quality_warnings(selected))
+        if truncated:
+            response_warnings = _merge_warnings(response_warnings, ["CONTEXT_TRUNCATED"])
+
+        heading = (
+            "Citované výňatky ze smluvního podkladu:"
+            if response_language == "cs"
+            else "Cited excerpts from the contract source:"
+        )
+        findings = [
+            f"- {_bounded_source_excerpt(chunk.text)} [{chunk.chunk_id}]"
+            for chunk in selected
+        ]
+        return RagAnswer(
+            query_id=query_id,
+            answer="\n".join([heading, *findings]),
+            confidence=confidence,
+            citations=_citations(selected),
+            warnings=response_warnings,
+            used_chunks=[chunk.chunk_id for chunk in selected],
+            missing_information=None,
+            policy_bindings=_answer_policy_bindings(selected),
+            obligations=list(_policy_metadata(selected).get("obligations", [])),
+        )
+
     async def compose_stream(
         self,
         *,
@@ -249,6 +293,12 @@ class AnswerComposer:
         high_quality_model = self._settings.high_quality_chat_model
         if not high_quality_model:
             return None
+        # Director Copilot already supplies verified structured facts and asks
+        # RAG only for a short cited contract finding.  With a deliberately
+        # bounded context the standard model is both sufficient and materially
+        # faster for the synchronous management workflow.
+        if answer_mode == "manager_brief" and not truncated and len(selected_chunks) <= 3:
+            return None
         if answer_mode in HIGH_QUALITY_ANSWER_MODES:
             return high_quality_model
         if truncated:
@@ -314,6 +364,17 @@ def _source_quality_warnings(chunks: list[RetrievedChunk]) -> list[str]:
         if quality_tier == "review" or _truthy(requires_review):
             warnings.append("SOURCE_QUALITY_REVIEW_REQUIRED")
     return _merge_warnings([], warnings)
+
+
+def _bounded_source_excerpt(text: str, *, max_chars: int = 480) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_chars:
+        return normalized
+    candidate = normalized[: max_chars + 1]
+    boundary = max(candidate.rfind(". "), candidate.rfind("; "), candidate.rfind(": "))
+    if boundary >= max_chars // 2:
+        return candidate[: boundary + 1].rstrip()
+    return f"{normalized[: max_chars - 1].rstrip()}…"
 
 
 def _truthy(value: object) -> bool:

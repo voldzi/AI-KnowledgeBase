@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import { stableSha256, type DomainToolRequest, type DomainToolResponse } from "../src/lib/director-copilot/contracts";
 import { directorCopilotPromptEvidence, finalizeDirectorSnapshot, orchestrateDirectorCopilot } from "../src/lib/director-copilot/orchestrator";
 import { isDirectorCopilotRiskQuery } from "../src/lib/director-copilot/planner";
+import { DirectorCopilotTransportError } from "../src/lib/director-copilot/transport-error";
 import type { ApiRequestContext } from "../src/lib/types";
 
 const budgetFixture = fixture("budget-complete.json");
@@ -188,6 +189,57 @@ describe("Director Copilot orchestrator", () => {
     assert.equal(result.status, "not_authorized");
     assert.equal(result.snapshot, null);
     assert.deepEqual(result.warnings, ["ACCESS_APPLICATION_INACTIVE"]);
+  });
+
+  it("returns a marked partial snapshot with Budget facts when ProjectFlow is unavailable", async () => {
+    const result = await orchestrateDirectorCopilot({
+      message: "Rozpočet, zpožděný projekt a smluvní riziko",
+      language: "cs",
+      context: projectedContext(),
+      now: new Date("2026-07-21T10:00:00Z"),
+      client: {
+        execute: async (application, request) => {
+          if (application === "projectflow") {
+            throw new DirectorCopilotTransportError(
+              "DIRECTOR_COPILOT_SOURCE_UNAVAILABLE",
+              "ProjectFlow unavailable",
+              "unavailable",
+              503,
+            );
+          }
+          return { ...structuredClone(budgetFixture), tool_call_id: request.tool_call_id };
+        },
+      },
+    });
+
+    assert.equal(result.status, "partial");
+    assert.equal(result.snapshot?.evidence.some((item) => item.fact?.key === "budget.variance_amount"), true);
+    assert.deepEqual(result.snapshot?.unavailable_sources, [{
+      source: "STRATOS_PROJECTFLOW",
+      status: "unavailable",
+      code: "DIRECTOR_COPILOT_SOURCE_UNAVAILABLE",
+    }]);
+  });
+
+  it("returns no match when complete sources have no shared canonical project", async () => {
+    const unrelatedProjectFlow = structuredClone(projectFixture);
+    unrelatedProjectFlow.items[0]!.canonical_id = "stratos:project:project-999";
+    unrelatedProjectFlow.items[0]!.entity_id = "project-999";
+    const result = await orchestrateDirectorCopilot({
+      message: "Rozpočet, zpožděný projekt a smluvní riziko",
+      language: "cs",
+      context: projectedContext(),
+      now: new Date("2026-07-21T10:00:00Z"),
+      client: {
+        execute: async (application, request) => ({
+          ...(application === "budget" ? structuredClone(budgetFixture) : unrelatedProjectFlow),
+          tool_call_id: request.tool_call_id,
+        }),
+      },
+    });
+
+    assert.equal(result.status, "no_match");
+    assert.equal(result.snapshot, null);
   });
 
   it("recognizes only questions containing finance, delivery and contract signals", () => {

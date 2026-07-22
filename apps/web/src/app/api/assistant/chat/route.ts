@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
+import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
 import { runDirectorCopilotChat } from "@/lib/director-copilot/chat";
@@ -52,6 +53,9 @@ export async function POST(request: NextRequest) {
         actorContext: context,
         clients,
         config,
+        refreshActorContext: context.accessToken
+          ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
+          : undefined,
       });
       return NextResponse.json({ response, message_id: null });
     }

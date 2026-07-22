@@ -1,0 +1,100 @@
+{
+  "dataset_id": "director_copilot_v1",
+  "status": "completed",
+  "run_id": "director-copilot-production-2026-07-22-89d46f7c",
+  "executed_at": "2026-07-22T17:23:00+02:00",
+  "stratos_release": "c6e0e9c724381ebfe3f26adaf67457230dfd64e4",
+  "akb_release": "89d46f7c88838b39f4f373ef93ee5703bfbcbb73",
+  "actor_subject": "stratos_admin",
+  "environment": "production",
+  "fixture_notice": "The positive cross-domain values are an explicitly labelled acceptance fixture, not real accounting or delivery data.",
+  "cases": [
+    {
+      "case_id": "dc_complete_budget_projectflow_contract",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "live_production",
+      "evidence": "Five consecutive authenticated browser runs returned one byte-identical canonical project with budget variance 18,500 CZK, critical-milestone delay 447 days and three governed contract citations."
+    },
+    {
+      "case_id": "dc_missing_projectflow_scope",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "live_production",
+      "evidence": "The exact stratos_admin ProjectFlow application grant was temporarily deactivated; the request failed closed as Nedostatecny Zdroj in 537 ms and returned no domain facts. The same grant was restored exactly and the positive flow passed again."
+    },
+    {
+      "case_id": "dc_scope_revoked_before_synthesis",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "director-copilot-chat.test.ts revalidates the authoritative STRATOS projection immediately before synthesis, returns ACCESS_PROJECTION_CHANGED_BEFORE_SYNTHESIS and does not call RAG."
+    },
+    {
+      "case_id": "dc_expired_projection",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "director-copilot-access.test.ts fails closed for expired application access and inactive identity; pre-synthesis refresh bypasses the projection cache."
+    },
+    {
+      "case_id": "dc_invalid_policy_hash",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "director-copilot-orchestrator.test.ts rejects a governed citation whose policy summary hash does not match and exposes no document finding."
+    },
+    {
+      "case_id": "dc_restricted_no_external_ai",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "director-copilot-chat.test.ts blocks RESTRICTED and NO_EXTERNAL_AI evidence before model synthesis and records no protected content in the response."
+    },
+    {
+      "case_id": "dc_projectflow_unavailable_partial",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "director-copilot-orchestrator.test.ts preserves a marked partial Budget snapshot when ProjectFlow returns a 503, with unavailable source metadata and no invented delivery facts."
+    },
+    {
+      "case_id": "dc_prompt_in_project_name",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "The STRATOS ProjectFlow domain-tool contract returns only the closed fact catalogue and canonical identifier; its response contains no prompt or project-name text."
+    },
+    {
+      "case_id": "dc_entity_outside_scope",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "director-copilot-contracts.test.ts rejects source responses that expand requested scope; ProjectFlow separately requires active local project membership after central scope authorization."
+    },
+    {
+      "case_id": "dc_no_correlated_project",
+      "passed": true,
+      "authorization_leak": false,
+      "evidence_type": "automated_release_test",
+      "evidence": "director-copilot-orchestrator.test.ts returns no_match and no snapshot when complete Budget and ProjectFlow sources have no shared canonical project."
+    }
+  ],
+  "metrics": {
+    "case_pass_rate": 1.0,
+    "tool_selection_accuracy": 1.0,
+    "entity_resolution_precision": 1.0,
+    "evidence_coverage": 1.0,
+    "temporal_accuracy": 1.0,
+    "no_answer_precision": 1.0,
+    "authorization_leak_rate": 0.0,
+    "total_latency_p95_ms": 5258,
+    "domain_tool_latency_p95_ms": 472
+  },
+  "latency_samples_ms": [5258, 3179, 2666, 2930, 2933],
+  "baseline": {
+    "approved": true,
+    "kind": "initial_production_baseline",
+    "regressions": []
+  }
+}
