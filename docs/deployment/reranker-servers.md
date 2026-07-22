@@ -65,6 +65,28 @@ docker compose \
   up -d
 ```
 
+`docker.home.cz` reaches the MacBook VPN addresses from its host namespace,
+while containers in `akl_app_zone` deliberately have no direct VPN route.
+Run the pinned host-network proxy set on `docker.home.cz`:
+
+```bash
+docker compose \
+  -f infra/rerankers/docker-compose.qwen-docker-home-proxy.yml \
+  up -d
+```
+
+The stable AKB-side endpoints are:
+
+```text
+http://10.246.241.1:11435  -> 192.168.200.3:11435
+http://10.246.241.1:11436  -> 192.168.200.2:11435
+http://10.246.241.1:11437  -> 192.168.1.176:11435
+```
+
+`10.246.241.1` is the gateway of the explicitly configured
+`AKL_APP_ZONE_SUBNET` (`10.246.241.0/24` by default), not an incidental Docker
+bridge address. Keep the URL order aligned with the preferred VPN address.
+
 Verification:
 
 ```bash
