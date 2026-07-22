@@ -62,12 +62,31 @@ from retrievers.qdrant import create_retriever
 logger = logging.getLogger(__name__)
 
 
+def _log_runtime_profile(settings: Settings) -> None:
+    logger.info(
+        "rag_runtime_profile reranker_mode=%s reranker_provider=%s "
+        "reranker_endpoint_count=%d reranker_strategy=%s v2_retrieval_mode=%s "
+        "adaptive_retrieval_mode=%s parent_retrieval_mode=%s evidence_gate_mode=%s "
+        "colbert_mode=%s content_logged=false",
+        settings.reranker_mode,
+        settings.reranker_provider,
+        len(settings.reranker_base_urls),
+        settings.reranker_strategy,
+        settings.v2_retrieval_mode,
+        settings.adaptive_retrieval_mode,
+        settings.parent_retrieval_mode,
+        settings.evidence_gate_mode,
+        settings.colbert_mode,
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or load_settings()
     configure_logging(resolved_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
+        _log_runtime_profile(resolved_settings)
         registry_client = create_registry_client(resolved_settings)
         llm_client = create_llm_client(resolved_settings)
         retriever = create_retriever(resolved_settings)

@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from app.config import ConfigError, load_settings
+from app.main import _log_runtime_profile
 from app.registry_client import AuthzFilterResult
 from app.schemas import ChunkCitation, RagAnswer, RagQueryFilters, RetrievedChunk
 from app.service import RagRetrievalService, _detect_conflicts
@@ -83,6 +84,30 @@ def test_reranker_base_urls_are_normalized_and_deduplicated() -> None:
         "http://reranker-a:3000",
         "http://192.168.200.3:11435",
     )
+
+
+def test_runtime_profile_logs_modes_without_endpoint_values_or_credentials(caplog) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "shadow",
+            "AKL_RAG_RERANKER_PROVIDER": "llama",
+            "AKL_RAG_RERANKER_BASE_URLS": "http://reranker-a:3000,http://reranker-b:3000",
+            "AKL_RAG_RERANKER_API_KEY": "must-not-be-logged",
+            "AKL_RAG_V2_RETRIEVAL_MODE": "shadow",
+            "AKL_RAG_ADAPTIVE_RETRIEVAL_MODE": "shadow",
+            "AKL_RAG_PARENT_RETRIEVAL_MODE": "shadow",
+            "AKL_RAG_EVIDENCE_GATE_MODE": "shadow",
+        }
+    )
+
+    _log_runtime_profile(settings)
+
+    message = caplog.records[-1].getMessage()
+    assert "reranker_mode=shadow" in message
+    assert "reranker_endpoint_count=2" in message
+    assert "v2_retrieval_mode=shadow" in message
+    assert "http://reranker-a:3000" not in message
+    assert "must-not-be-logged" not in message
 
 
 def test_reranker_response_and_colbert_multivector_validation() -> None:
