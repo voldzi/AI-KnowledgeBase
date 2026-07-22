@@ -1196,12 +1196,16 @@ class RagRetrievalService:
         query_id = _query_id()
         retrieval_query = _assistant_query(payload.message, query_context)
         answer_query = _assistant_answer_query(payload.message, query_context)
+        director_copilot_request = _director_copilot_evidence_context(
+            payload.context.get("director_copilot_evidence")
+        ) is not None
+        max_chunks = 3 if director_copilot_request else 6
         run = await self._retrieve_authorized(
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
                 query=retrieval_query,
                 filters=_assistant_filters(payload.context),
-                max_chunks=6,
+                max_chunks=max_chunks,
             ),
             query_id=query_id,
             auth_context=auth_context,
@@ -1232,7 +1236,7 @@ class RagRetrievalService:
                 chunks=run.response.chunks,
                 confidence=decision.confidence,
                 warnings=decision.warnings,
-                max_chunks=6,
+                max_chunks=max_chunks,
                 answer_mode=payload.mode,
                 response_language=payload.response_language,
                 auth_context=auth_context,
@@ -1312,12 +1316,16 @@ class RagRetrievalService:
                 conversation_id=conversation_id,
                 answer=_employee_answer(rag_answer.answer, payload.response_language),
                 citations=rag_answer.citations,
-                follow_up_questions=await self._follow_up_questions(
-                    message=payload.message,
-                    answer=rag_answer.answer,
-                    citations=rag_answer.citations,
-                    response_language=payload.response_language,
-                    auth_context=auth_context,
+                follow_up_questions=(
+                    _fallback_follow_up_questions(payload.message, payload.response_language)
+                    if not payload.persist_conversation
+                    else await self._follow_up_questions(
+                        message=payload.message,
+                        answer=rag_answer.answer,
+                        citations=rag_answer.citations,
+                        response_language=payload.response_language,
+                        auth_context=auth_context,
+                    )
                 ),
                 suggested_actions=suggested_actions,
                 report_artifacts=report_artifacts,
