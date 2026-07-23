@@ -6,6 +6,15 @@ from app.schemas import RagQueryFilters, RetrievedChunk
 
 
 class Retriever(Protocol):
+    async def resolve_exact_candidates(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+    ) -> list[RetrievedChunk]:
+        ...
+
     async def retrieve(
         self,
         *,

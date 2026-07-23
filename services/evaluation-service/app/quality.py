@@ -32,28 +32,39 @@ def quality_thresholds(settings: Settings) -> QualityThresholds:
 def evaluate_quality_gate(run: EvaluationRun, settings: Settings) -> QualityGateResult:
     eligible = [case for case in run.cases if case.judgment_status != "draft" and case.status != "error"]
     answerable = [case for case in eligible if not case.expected_no_answer]
+    relevance_cases = [
+        case
+        for case in eligible
+        if (
+            case.retrieval_metrics.expected_relevant_count
+            + case.retrieval_metrics.expected_relevant_document_count
+        )
+        > 0
+    ]
     full_answer = [case for case in eligible if not case.retrieval_only]
     authorization_cases = [case for case in eligible if case.query_category == "authorization"]
     recall_at_50_cases = [
-        case for case in eligible if "50" in case.retrieval_metrics.recall_at_k
+        case for case in relevance_cases if "50" in case.retrieval_metrics.recall_at_k
     ]
     claim_cases = [
-        case for case in full_answer if case.answer_metrics.total_claim_count > 0
+        case
+        for case in full_answer
+        if not case.expected_no_answer and case.answer_metrics.total_claim_count > 0
     ]
     no_answer_cases = [case for case in full_answer if case.expected_no_answer]
     router_cases = [case for case in eligible if case.router_correct is not None]
     checks = [
         _minimum_check(
             "retrieval_recall",
-            _average([case.retrieval_metrics.recall for case in eligible]),
+            _average([case.retrieval_metrics.recall for case in relevance_cases]),
             settings.gate_retrieval_recall_min,
-            eligible=bool(eligible),
+            eligible=bool(relevance_cases),
         ),
         _minimum_check(
             "retrieval_ndcg",
-            _average([case.retrieval_metrics.ndcg for case in eligible]),
+            _average([case.retrieval_metrics.ndcg for case in relevance_cases]),
             settings.gate_retrieval_ndcg_min,
-            eligible=bool(eligible),
+            eligible=bool(relevance_cases),
         ),
         _maximum_check(
             "false_zero_result_rate",

@@ -5,16 +5,25 @@
 1. Query analyzer volí profil `exact`, `document_scoped`, `semantic`,
    `temporal`, `cross_document` nebo `copilot_live_data`.
 2. Profil nastaví candidate limit, poměr dense/BM25 a maximální počet dokumentů.
-3. Qdrant a OpenSearch vrátí kandidáty. Běžný dotaz používá jen platné verze;
+   Nákladné stupně mají samostatný profilový rozpočet; výstupní `max_chunks`
+   proto automaticky nenásobí počet vstupů cross-encoderu.
+3. Profil `exact` nejprve použije lexikální resolver nad identifikátorem,
+   názvem a zdrojovými metadaty. Jednoznačný dokument se autorizuje a další
+   retrieval se omezí na jeho ID ještě před embeddingem a corpus-wide fusion.
+   Nejednoznačný nebo nenalezený identifikátor bezpečně pokračuje standardní
+   hybridní cestou.
+4. Qdrant a OpenSearch vrátí kandidáty. Běžný dotaz používá jen platné verze;
    explicitní version filter nebo časový profil může pracovat s historií.
-4. Registry autorizuje document ID, version ID a policy hash.
-5. Deduplikace odstraní shodné a téměř shodné chunky stejné verze.
-6. Volitelný ColBERT pracuje jen s autorizovanými point ID. Cross-encoder dostane
+5. Registry autorizuje document ID, version ID a policy hash.
+6. Deduplikace odstraní shodné a téměř shodné chunky stejné verze.
+7. Volitelný ColBERT pracuje jen s autorizovanými point ID. Cross-encoder dostane
    pouze autorizované texty. Lexical reranker je fallback.
-7. Diverzifikace omezuje počet chunků jednoho dokumentu.
-8. Parent expansion načte sousedy stejné verze, znovu je autorizuje a sloučí
+8. Diverzifikace omezuje počet chunků jednoho dokumentu.
+9. Parent expansion načte sousedy stejné verze, znovu je autorizuje a sloučí
    překryvy. Citace zůstává na původním konkrétním chunku.
-9. Evidence gate po generování mapuje tvrzení na chunk ID. V `enforce` odstraní
+   Pro `retrieve_only` se parent expansion nespouští, protože nemění evaluační
+   výsledek a pouze zvyšuje latenci.
+10. Evidence gate po generování mapuje tvrzení na chunk ID. V `enforce` odstraní
    nepodložená vedlejší tvrzení a nepodložené hlavní tvrzení změní na no-answer.
 
 ## Režimy a konfigurace
@@ -114,6 +123,13 @@ Před každým zvýšením režimu musí být splněno:
 - false-answer rate nejvýše 0,02,
 - router accuracy alespoň 0,95,
 - ColBERT/cascade nezhorší retrieval p95 o více než 30 %.
+
+Recall a nDCG se vyhodnocují pouze nad případy, které deklarují očekávaný
+relevantní chunk nebo dokument. Negativní no-answer kontroly mají vlastní
+false-answer metriku a nesnižují retrieval recall jen proto, že záměrně nemají
+relevantní zdroj. Supported-claim rate se počítá pouze pro zodpověditelné
+odpovědi; odmítnuté interní návrhy tvrzení z výsledného no-answer se do něj
+nezahrnují.
 
 Pořadí: baseline, V2 backfill, shadow, 10 %, 50 %, 100 %, přepnutí kolekce.
 V1 zůstává nejméně sedm dní.

@@ -341,6 +341,7 @@ class RagRetrievalService:
             payload=payload,
             query_id=query_id,
             auth_context=auth_context,
+            expand_parent=False,
         )
         await self._audit_retrieval(
             actor_id=payload.subject_id,
@@ -368,6 +369,7 @@ class RagRetrievalService:
             ),
             query_id=query_id,
             auth_context=auth_context,
+            expand_parent=payload.answer_mode != "retrieve_only",
         )
         decision = self._no_answer_policy.evaluate(
             chunks=run.response.chunks,
@@ -1716,6 +1718,7 @@ class RagRetrievalService:
         payload: RetrieveRequest,
         query_id: str,
         auth_context: AuthContext | None = None,
+        expand_parent: bool = True,
     ) -> RetrievalRun:
         retrieval_started = time.perf_counter()
         stage_timings_ms: dict[str, float] = {}
@@ -1735,10 +1738,6 @@ class RagRetrievalService:
                 dense_weight=self._settings.hybrid_dense_weight,
                 max_documents=100,
             )
-        stage_started = time.perf_counter()
-        query_vectors = await self._llm_client.embeddings([payload.query], auth_context=auth_context)
-        stage_timings_ms["embedding"] = _elapsed_stage_ms(stage_started)
-        query_vector = query_vectors[0] if query_vectors else None
         retrieval_filters = payload.filters
         if (
             self._settings.adaptive_retrieval_mode == "enforce"
@@ -1746,13 +1745,79 @@ class RagRetrievalService:
             and not payload.filters.document_version_ids
         ):
             retrieval_filters = payload.filters.model_copy(update={"only_valid": False})
-        retrieve = self._retriever.retrieve
+        exact_document_id = None
+        exact_resolver_candidates = 0
+        exact_resolver_authorized = 0
+        denied_document_ids: set[str] = set()
+        exact_resolver = None
+        if (
+            analyzed_plan.profile == "exact"
+            and not payload.filters.document_ids
+            and not payload.filters.document_version_ids
+        ):
+            exact_resolver = getattr(self._retriever, "resolve_exact_candidates", None)
+            if exact_resolver is not None:
+                stage_started = time.perf_counter()
+                resolved_candidates = await exact_resolver(
+                    query=payload.query,
+                    filters=retrieval_filters,
+                    limit=_exact_resolver_limit(payload.max_chunks),
+                )
+                stage_timings_ms["exact_resolution"] = _elapsed_stage_ms(stage_started)
+                exact_resolver_candidates = len(resolved_candidates)
+                scoped_candidates, resolved_document_id = _apply_exact_identifier_scope(
+                    payload.query,
+                    resolved_candidates,
+                )
+                if resolved_document_id:
+                    stage_started = time.perf_counter()
+                    resolved_authorized, resolved_denied = await self._filter_authorized_chunks(
+                        subject_id=payload.subject_id,
+                        chunks=scoped_candidates,
+                        auth_context=auth_context,
+                    )
+                    stage_timings_ms["exact_resolution_authorization"] = _elapsed_stage_ms(
+                        stage_started
+                    )
+                    exact_resolver_authorized = len(resolved_authorized)
+                    denied_document_ids.update(resolved_denied)
+                    exact_document_id = resolved_document_id
+                    retrieval_filters = retrieval_filters.model_copy(
+                        update={"document_ids": [resolved_document_id]}
+                    )
+            else:
+                stage_timings_ms["exact_resolution"] = 0.0
+        else:
+            stage_timings_ms["exact_resolution"] = 0.0
+
+        if exact_document_id:
+            query_vector = None
+            stage_timings_ms["embedding"] = 0.0
+        else:
+            stage_started = time.perf_counter()
+            query_vectors = await self._llm_client.embeddings(
+                [payload.query],
+                auth_context=auth_context,
+            )
+            stage_timings_ms["embedding"] = _elapsed_stage_ms(stage_started)
+            query_vector = query_vectors[0] if query_vectors else None
+        retrieve = (
+            exact_resolver
+            if exact_document_id and exact_resolver
+            else self._retriever.retrieve
+        )
+        candidate_limit = _candidate_budget(
+            analyzed_plan.profile,
+            requested_chunks=payload.max_chunks,
+            planned_limit=analyzed_plan.candidate_limit,
+        )
         retrieve_kwargs = {
             "query": payload.query,
             "filters": retrieval_filters,
-            "limit": max(plan.candidate_limit, payload.max_chunks * 3),
-            "query_vector": query_vector,
+            "limit": candidate_limit,
         }
+        if not exact_document_id:
+            retrieve_kwargs["query_vector"] = query_vector
         if (
             self._settings.adaptive_retrieval_mode == "enforce"
             and "dense_weight" in inspect.signature(retrieve).parameters
@@ -1762,11 +1827,12 @@ class RagRetrievalService:
         candidates = await retrieve(**retrieve_kwargs)
         stage_timings_ms["candidate_retrieval"] = _elapsed_stage_ms(stage_started)
         stage_started = time.perf_counter()
-        authorized, denied_document_ids = await self._filter_authorized_chunks(
+        authorized, candidate_denied_document_ids = await self._filter_authorized_chunks(
             subject_id=payload.subject_id,
             chunks=candidates,
             auth_context=auth_context,
         )
+        denied_document_ids.update(candidate_denied_document_ids)
         stage_timings_ms["authorization"] = _elapsed_stage_ms(stage_started)
         warnings = (
             ["AUTHZ_FILTERED_SOURCES"]
@@ -1776,9 +1842,9 @@ class RagRetrievalService:
         authorized, duplicate_count = _deduplicate_chunks(authorized)
         if duplicate_count:
             warnings.append("DUPLICATE_CHUNKS_REMOVED")
-        exact_document_id = None
         if (
-            analyzed_plan.profile == "exact"
+            not exact_document_id
+            and analyzed_plan.profile == "exact"
             and not payload.filters.document_ids
             and not payload.filters.document_version_ids
         ):
@@ -1794,11 +1860,16 @@ class RagRetrievalService:
             or self._settings.colbert_mode != "off"
         ):
             stage_started = time.perf_counter()
-            chunks, rerank_warnings = await self._rerank_chunks(
-                query=payload.query,
-                chunks=authorized,
-                limit=max(payload.max_chunks * 2, payload.max_chunks),
+            rerank_budget = _reranker_budget(
+                analyzed_plan.profile,
+                available=len(authorized),
             )
+            reranked, rerank_warnings = await self._rerank_chunks(
+                query=payload.query,
+                chunks=authorized[:rerank_budget],
+                limit=min(max(payload.max_chunks * 2, payload.max_chunks), rerank_budget),
+            )
+            chunks = reranked + authorized[rerank_budget:]
             stage_timings_ms["reranking"] = _elapsed_stage_ms(stage_started)
             warnings.extend(rerank_warnings)
         else:
@@ -1810,7 +1881,11 @@ class RagRetrievalService:
             max_per_document=self._settings.max_chunks_per_document,
             max_documents=plan.max_documents,
         )
-        if self._settings.parent_retrieval_mode != "off" and chunks:
+        if (
+            self._settings.parent_retrieval_mode != "off"
+            and expand_parent
+            and chunks
+        ):
             stage_started = time.perf_counter()
             expanded, expansion_warnings = await self._expand_authorized_context(
                 subject_id=payload.subject_id,
@@ -1845,13 +1920,15 @@ class RagRetrievalService:
                     else plan.profile
                 ),
                 retrieval_diagnostics={
-                    "candidate_limit": plan.candidate_limit,
+                    "candidate_limit": candidate_limit,
                     "dense_weight": plan.dense_weight,
                     "only_valid": retrieval_filters.only_valid,
                     "candidates_before_authz": len(candidates),
                     "candidates_after_authz": len(authorized),
                     "duplicates_removed": duplicate_count,
                     "exact_document_scope_applied": bool(exact_document_id),
+                    "exact_resolver_candidates": exact_resolver_candidates,
+                    "exact_resolver_authorized": exact_resolver_authorized,
                     "reranker_mode": self._settings.reranker_mode,
                     "parent_retrieval_mode": self._settings.parent_retrieval_mode,
                     "colbert_mode": self._settings.colbert_mode,
@@ -2958,6 +3035,39 @@ def _normalized_reference(value: str) -> str:
 
 def _elapsed_stage_ms(started: float) -> float:
     return round(max(0.0, (time.perf_counter() - started) * 1000), 2)
+
+
+def _exact_resolver_limit(requested_chunks: int) -> int:
+    return max(16, min(32, requested_chunks))
+
+
+def _candidate_budget(
+    profile: str,
+    *,
+    requested_chunks: int,
+    planned_limit: int,
+) -> int:
+    profile_cap = {
+        "exact": 50,
+        "document_scoped": 64,
+        "semantic": 64,
+        "temporal": 80,
+        "copilot_live_data": 64,
+        "cross_document": 96,
+    }.get(profile, 64)
+    return max(requested_chunks, min(planned_limit, profile_cap))
+
+
+def _reranker_budget(profile: str, *, available: int) -> int:
+    profile_cap = {
+        "exact": 24,
+        "document_scoped": 32,
+        "semantic": 64,
+        "temporal": 64,
+        "copilot_live_data": 48,
+        "cross_document": 96,
+    }.get(profile, 64)
+    return min(available, profile_cap)
 
 
 ASSISTANT_INTERNAL_CONTEXT_KEYS = {

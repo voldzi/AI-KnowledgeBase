@@ -18,6 +18,35 @@ class MockHybridRetriever:
         self._settings = settings
         self._chunks = _mock_chunks()
 
+    async def resolve_exact_candidates(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+    ) -> list[RetrievedChunk]:
+        results: list[RetrievedChunk] = []
+        for chunk in self._chunks:
+            if not payload_matches_filters(chunk["payload"], filters):
+                continue
+            searchable_text = " ".join(
+                (
+                    str(chunk["payload"].get("document_title") or ""),
+                    str(chunk["payload"].get("external_ref") or ""),
+                    str(chunk["payload"].get("source_file_name") or ""),
+                    chunk["text"],
+                )
+            )
+            sparse = sparse_score(query, searchable_text)
+            item = _to_retrieved_chunk(
+                chunk,
+                score=sparse,
+                dense_score=0.0,
+                sparse_score=sparse,
+            )
+            results.append(item)
+        return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+
     async def retrieve(
         self,
         *,
