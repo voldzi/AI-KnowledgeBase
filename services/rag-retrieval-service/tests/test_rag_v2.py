@@ -463,7 +463,9 @@ def test_registry_authorization_precedes_cross_encoder(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_parent_expansion_reauthorizes_related_chunks() -> None:
     seed = _chunk("seed", "doc_allowed", "Povolený odstavec.")
+    second_seed = _chunk("second", "doc_allowed", "Druhý povolený odstavec.")
     denied = _chunk("secret", "doc_denied", "Zakázaný tajný odstavec.")
+    registry_calls = 0
 
     class Retriever:
         async def get_context_chunks(self, chunk, *, window):
@@ -471,6 +473,8 @@ async def test_parent_expansion_reauthorizes_related_chunks() -> None:
 
     class Registry:
         async def filter_allowed_documents(self, **kwargs):
+            nonlocal registry_calls
+            registry_calls += 1
             return AuthzFilterResult(
                 allowed_document_ids={"doc_allowed"},
                 denied_document_ids={"doc_denied"},
@@ -489,12 +493,61 @@ async def test_parent_expansion_reauthorizes_related_chunks() -> None:
 
     expanded, _ = await service._expand_authorized_context(
         subject_id="user_123",
-        chunks=[seed],
+        chunks=[seed, second_seed],
         auth_context=None,
     )
 
     assert expanded[0].text == "Povolený odstavec."
     assert "secret" not in expanded[0].metadata["expanded_chunk_ids"]
+    assert expanded[1].text == "Druhý povolený odstavec."
+    assert registry_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_parent_expansion_bounds_context_fetch_concurrency() -> None:
+    seeds = [
+        _chunk(f"seed-{index}", "doc_allowed", f"Povolený odstavec {index}.")
+        for index in range(50)
+    ]
+    active = 0
+    peak = 0
+
+    class Retriever:
+        async def get_context_chunks(self, chunk, *, window):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(0)
+            active -= 1
+            return [chunk]
+
+    class Registry:
+        async def filter_allowed_documents(self, **kwargs):
+            return AuthzFilterResult(
+                allowed_document_ids={"doc_allowed"},
+                denied_document_ids=set(),
+            )
+
+    service = object.__new__(RagRetrievalService)
+    service._settings = SimpleNamespace(
+        parent_window=1,
+        max_context_chars=1000,
+        parent_retrieval_mode="shadow",
+        authz_mode="registry",
+        registry_client_mode="mock",
+    )
+    service._retriever = Retriever()
+    service._registry_client = Registry()
+
+    expanded, warnings = await service._expand_authorized_context(
+        subject_id="user_123",
+        chunks=seeds,
+        auth_context=None,
+    )
+
+    assert len(expanded) == 50
+    assert peak == 8
+    assert warnings == ["PARENT_RETRIEVAL_SHADOW"]
 
 
 def test_conflict_detector_returns_both_sources_without_selecting_winner() -> None:

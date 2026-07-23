@@ -1908,17 +1908,31 @@ class RagRetrievalService:
         getter = getattr(self._retriever, "get_context_chunks", None)
         if getter is None:
             return chunks, ["PARENT_RETRIEVAL_UNAVAILABLE"]
+        concurrency = asyncio.Semaphore(min(8, max(1, len(chunks))))
+
+        async def get_related(seed: RetrievedChunk) -> list[RetrievedChunk]:
+            async with concurrency:
+                return await getter(seed, window=self._settings.parent_window)
+
+        related_by_seed = await asyncio.gather(*(get_related(seed) for seed in chunks))
+        unique_related = {
+            item.chunk_id: item
+            for related in related_by_seed
+            for item in related
+        }
+        authorized_related, _ = await self._filter_authorized_chunks(
+            subject_id=subject_id,
+            chunks=list(unique_related.values()),
+            auth_context=auth_context,
+        )
+        authorized_chunk_ids = {item.chunk_id for item in authorized_related}
+
         expanded: list[RetrievedChunk] = []
-        for seed in chunks:
-            related = await getter(seed, window=self._settings.parent_window)
-            authorized_related, _ = await self._filter_authorized_chunks(
-                subject_id=subject_id,
-                chunks=related,
-                auth_context=auth_context,
-            )
+        for seed, related in zip(chunks, related_by_seed, strict=True):
             same_version = [
                 item
-                for item in authorized_related
+                for item in related
+                if item.chunk_id in authorized_chunk_ids
                 if item.citation.document_id == seed.citation.document_id
                 and item.citation.document_version_id == seed.citation.document_version_id
             ]

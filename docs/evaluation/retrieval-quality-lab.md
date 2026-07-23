@@ -99,6 +99,13 @@ Draft případy jsou z gate vyloučeny. Autorizační kontrola je aktivní pouze
 datasetu s kategorií `authorization`; citační kontrola pouze u full-answer
 případů. Gate je `not_evaluated`, pokud nemá žádný způsobilý signál.
 
+Produkční běh vyžaduje při zahájení nejméně 240 sekund zbývající platnosti
+uživatelského access tokenu. Evaluation Service po `ReadTimeout` neopakuje
+stejný retrieval POST, protože původní serverové zpracování může stále běžet
+a opakování by vytvořilo skrytou souběžnou zátěž. Parent expansion načítá
+kontext s omezenou souběžností a autorizuje sjednocenou množinu souvisejících
+chunků jedním Registry požadavkem.
+
 Prahy se konfigurují přes `AKL_EVAL_GATE_*`. Každý nový běh se automaticky
 porovná s posledním plně změřeným během stejného datasetu; běhy s chybami nebo
 bez vyhodnotitelného gate se jako baseline nepoužijí. Report označí regresi skóre,

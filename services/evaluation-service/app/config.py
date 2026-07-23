@@ -132,7 +132,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             _get(source, "AKL_STRATOS_ACCESS_TIMEOUT_SECONDS", "3")
         )
         min_run_token_ttl_seconds = int(
-            _get(source, "AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS", "120")
+            _get(source, "AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS", "240")
         )
     except ValueError as exc:
         raise ConfigError("Numeric AKL_EVAL_* configuration value is invalid") from exc
