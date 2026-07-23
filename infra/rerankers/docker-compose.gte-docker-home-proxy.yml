@@ -1,0 +1,38 @@
+name: akb-gte-reranker-proxy
+
+services:
+  gte-vpn-200-3:
+    image: alpine/socat@sha256:fb7a2a3d502c29f635ef6ead369b250b080d4cd31519d319b467217387073d49
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - TCP-LISTEN:11438,fork,reuseaddr,bind=10.246.241.1
+      - TCP:192.168.200.3:11438,connect-timeout=3
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+
+  gte-vpn-200-2:
+    image: alpine/socat@sha256:fb7a2a3d502c29f635ef6ead369b250b080d4cd31519d319b467217387073d49
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - TCP-LISTEN:11439,fork,reuseaddr,bind=10.246.241.1
+      - TCP:192.168.200.2:11438,connect-timeout=3
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+
+  gte-lan-1-176:
+    image: alpine/socat@sha256:fb7a2a3d502c29f635ef6ead369b250b080d4cd31519d319b467217387073d49
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - TCP-LISTEN:11440,fork,reuseaddr,bind=10.246.241.1
+      - TCP:192.168.1.176:11438,connect-timeout=3
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128

@@ -1,0 +1,52 @@
+name: akb-gte-reranker
+
+services:
+  gte-reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9@sha256:ad950d30878eceb72aaf32024d26fa2b1d04a75304fa0b4776b49aa1941fea07
+    restart: unless-stopped
+    command:
+      - --model-id
+      - Alibaba-NLP/gte-multilingual-reranker-base
+      - --revision
+      - 8215cf04918ba6f7b6a62bb44238ce2953d8831c
+      - --served-model-name
+      - gte-multilingual-reranker-base
+      - --port
+      - "3000"
+      - --dtype
+      - float32
+      - --max-concurrent-requests
+      - "16"
+      - --max-client-batch-size
+      - "50"
+      - --max-batch-tokens
+      - "2048"
+      - --tokenization-workers
+      - "2"
+      - --payload-limit
+      - "2000000"
+      - --json-output
+    volumes:
+      - gte_reranker_cache:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 6g
+    cpus: 4.0
+    networks:
+      app_zone:
+        aliases:
+          - gte-reranker
+
+volumes:
+  gte_reranker_cache:
+
+networks:
+  app_zone:
+    external: true
+    name: akl_app_zone

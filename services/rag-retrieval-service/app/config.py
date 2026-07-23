@@ -526,7 +526,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         reranker_provider=reranker_provider,
         reranker_base_url=reranker_base_url or (reranker_base_urls[0] if reranker_base_urls else ""),
         reranker_base_urls=reranker_base_urls,
-        reranker_model=_get(source, "AKL_RAG_RERANKER_MODEL", "bge-reranker-v2-m3"),
+        reranker_model=_get(
+            source,
+            "AKL_RAG_RERANKER_MODEL",
+            "Alibaba-NLP/gte-multilingual-reranker-base",
+        ),
         reranker_model_revision=_get(source, "AKL_RAG_RERANKER_MODEL_REVISION", "unknown"),
         reranker_api_key=reranker_api_key,
         reranker_timeout_seconds=reranker_timeout_seconds,
