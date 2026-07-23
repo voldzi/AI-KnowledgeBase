@@ -9,6 +9,7 @@ generation or standalone embeddings.
 | Runtime | Target | Model | Endpoint |
 | --- | --- | --- | --- |
 | Qwen | MacBook VPN address | `Qwen3-Reranker-0.6B` Q8_0 | `:11435/v1/rerank` |
+| GTE | MacBook VPN address | `Alibaba-NLP/gte-multilingual-reranker-base` F32 | `:11438/rerank` |
 | BGE | `docker.home.cz` | `BAAI/bge-reranker-v2-m3` F32 | Docker-only `bge-reranker:3000/rerank` |
 
 The Qwen llama.cpp image is pinned to OCI index digest
@@ -21,6 +22,10 @@ The BGE TEI image is pinned to OCI index digest
 `sha256:ad950d30878eceb72aaf32024d26fa2b1d04a75304fa0b4776b49aa1941fea07`
 and the BAAI model revision is pinned to
 `953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e`.
+GTE uses the same pinned TEI image and pins the Alibaba model revision to
+`8215cf04918ba6f7b6a62bb44238ce2953d8831c`.
+The preferred native MPS runtime additionally pins the remote model
+implementation to `40ced75c3017eb27626c9d4ea981bde21a2662f4`.
 
 ## MacBook Qwen deployment
 
@@ -114,40 +119,101 @@ python3 scripts/reranker_smoke.py \
   --api-key "$(head -n 1 "$QWEN_RERANKER_API_KEY_FILE")"
 ```
 
-## docker.home.cz BGE deployment
+## MacBook GTE deployment
 
-The service joins the existing `akl_app_zone` and publishes no host port. Only
-AKB application containers on that Docker network can reach it.
+GTE runs natively on Apple MPS. Docker Desktop does not expose Metal to Linux
+containers. Install the pinned dependencies into an isolated environment and
+keep the model cache and bearer key outside Git:
 
 ```bash
-docker compose -f infra/rerankers/docker-compose.bge-docker-home.yml up -d
+python3.11 -m venv "$HOME/.cache/akb-gte-reranker/venv"
+"$HOME/.cache/akb-gte-reranker/venv/bin/pip" install \
+  -r infra/rerankers/gte-native-requirements.txt
+install -d -m 0700 "$HOME/.config/akb-reranker"
+openssl rand -hex 32 > "$HOME/.config/akb-reranker/gte-api-key"
+chmod 0600 "$HOME/.config/akb-reranker/gte-api-key"
+HF_HOME="$HOME/.cache/akb-gte-reranker/huggingface" \
+HF_HUB_DISABLE_XET=1 \
+"$HOME/.cache/akb-gte-reranker/venv/bin/python" \
+  tools/gte_reranker_server.py \
+  --api-key-file "$HOME/.config/akb-reranker/gte-api-key"
 ```
 
-Verification runs inside the application network without exposing BGE to the
+Operate the command as a user LaunchAgent named
+`cz.zeleznalady.akb-gte-reranker`. The service binds port `11438`, requires a
+bearer token for `/rerank`, exposes only content-free `/health`, bounds payload
+and text sizes, serializes MPS inference and never logs queries or documents.
+After the first pinned model download, set `HF_HUB_OFFLINE=1` and
+`TRANSFORMERS_OFFLINE=1` in the LaunchAgent so startup cannot resolve moving
+remote artifacts.
+
+Run the host-network proxy set on `docker.home.cz`:
+
+```bash
+docker compose \
+  -f infra/rerankers/docker-compose.gte-docker-home-proxy.yml \
+  up -d
+```
+
+The stable AKB-side endpoints are:
+
+```text
+http://10.246.241.1:11438  -> 192.168.200.3:11438
+http://10.246.241.1:11439  -> 192.168.200.2:11438
+http://10.246.241.1:11440  -> 192.168.1.176:11438
+```
+
+Use the same active-route and cooldown semantics as Qwen. The three endpoints
+are alternate network paths to one physical MPS runtime, not a load-balanced
+pool. Production keeps `AKL_RAG_RERANKER_MAX_CONCURRENCY=1`.
+
+The production-sized benchmark of 32 Czech query-document pairs completed in
+approximately 0.98 seconds on an M4 Max after warm-up. The corresponding
+docker.home.cz CPU runtime needed approximately 60 seconds and must not be
+selected for the production latency path.
+
+## docker.home.cz GTE CPU rollback
+
+The service joins the existing `akl_app_zone` and publishes no host port. Only
+AKB application containers on that Docker network can reach it. This profile
+is retained for compatibility and disaster recovery; it is not a performant
+production target. Qwen and BGE also remain rollback options until the
+production evaluation gate approves native GTE.
+
+```bash
+docker compose -f infra/rerankers/docker-compose.gte-docker-home.yml up -d
+```
+
+Verification runs inside the application network without exposing GTE to the
 host network:
 
 ```bash
 docker run --rm --network akl_app_zone \
   -v "$PWD:/work:ro" -w /work python:3.11-alpine \
   python3 scripts/reranker_smoke.py \
-  --provider tei --base-url http://bge-reranker:3000
+  --provider tei --base-url http://gte-reranker:3000
 ```
 
 The first CPU start can spend approximately one minute warming the F32 model.
 Readiness is reached only after the log reports `Ready`; a running container
 before that point is not sufficient deployment evidence.
 
+The BGE runtime remains available through
+`docker-compose.bge-docker-home.yml`. Do not run GTE and BGE under the same
+service alias.
+
 ## Security and operations
 
 - Neither runtime logs query or document bodies in AKB. Runtime access logs are
   kept at the minimum supported verbosity and must not be exported as content
   telemetry.
-- Qwen requires a bearer key because it is reachable over the private LAN.
-- BGE is isolated on the internal application Docker network.
-- Both services have bounded CPU, memory, process count, request batch size and
-  concurrency. BGE deliberately uses a 2,048-token server batch on the CPU
-  host and admits at most 16 queued pair requests; this changes throughput,
-  not scores.
+- Qwen and native GTE require separate bearer keys because they are reachable
+  over the private LAN.
+- GTE and the BGE rollback runtime are isolated on the internal application
+  Docker network.
+- All services have bounded CPU, memory, process count, request batch size and
+  concurrency. GTE and BGE use a 2,048-token server batch on the CPU host and
+  admit at most 16 queued pair requests; this changes throughput, not scores.
 - The current lexical reranker remains the fail-safe path until RAG V2 quality
   gates approve either model.
 - A model or runtime upgrade requires a new pinned digest/revision, Czech
