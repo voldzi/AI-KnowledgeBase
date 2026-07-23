@@ -11,6 +11,7 @@ from app.schemas import Classification, RagQueryFilters
 CLASSIFICATION_ORDER: tuple[Classification, ...] = ("public", "internal", "restricted", "confidential")
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 IDENTIFIER_PATTERNS = (
+    re.compile(r"\b\d{1,4}\s*/\s*\d{4}\s+sb\b"),
     re.compile(r"\b[a-z]{2,8}\s*(?:c\.?\s*)?\d{1,4}\s*/\s*\d{2,4}\b"),
     re.compile(r"\b(?:cl|clanek|article)\.?\s*\d+[a-z]?\b"),
     re.compile(r"\b(?:odst|odstavec|paragraph)\.?\s*\d+[a-z]?\b"),
@@ -131,6 +132,8 @@ def _normalize_identifier(value: str) -> str:
     collapsed = re.sub(r"^([a-z]{2,8})\s+c\.?\s+(\d)", r"\1 \2", collapsed)
     collapsed = re.sub(r"\.", "", collapsed)
     collapsed = re.sub(r"\s+", " ", collapsed)
+    if re.match(r"^zakon(?:a|u|em)?\s+\d", collapsed):
+        return ""
     return collapsed.strip()
 
 

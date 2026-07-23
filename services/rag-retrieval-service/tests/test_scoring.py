@@ -29,6 +29,12 @@ def test_extract_query_identifiers_normalizes_document_and_citation_references()
     assert identifiers == ["rmo 12/2024", "cl 4", "odst 2"]
 
 
+def test_extract_query_identifiers_recognizes_czech_statute_number() -> None:
+    assert extract_query_identifiers("Jaký je obsah zákona 365/2000 Sb.?") == [
+        "365/2000 sb"
+    ]
+
+
 def test_reranker_prefers_exact_source_title_over_semantic_noise() -> None:
     exact_title = RetrievedChunk(
         chunk_id="chunk_exact_title",

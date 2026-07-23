@@ -341,7 +341,11 @@ def _citation_metrics(case: EvalCase, answer: RagAnswer) -> CitationMetrics:
     matched = _matched_citations(expected, actual)
 
     if expected:
-        precision = matched / len(actual) if actual else 0.0
+        matched_actual = sum(
+            any(_citation_matches(item, citation) for item in expected)
+            for citation in actual
+        )
+        precision = matched_actual / len(actual) if actual else 0.0
         recall = matched / len(expected)
     else:
         precision = 1.0 if not actual else 0.0

@@ -162,7 +162,7 @@ class EvidenceGate:
             best_chunk: RetrievedChunk | None = None
             best_overlap = 0.0
             for chunk in chunks:
-                overlap = _overlap(sentence_tokens, _tokens(chunk.text))
+                overlap = _overlap(sentence_tokens, _evidence_tokens(chunk))
                 if overlap > best_overlap:
                     best_overlap = overlap
                     best_chunk = chunk
@@ -200,9 +200,31 @@ def _overlap(claim: set[str], evidence: set[str]) -> float:
     return len(claim & evidence) / len(claim)
 
 
+def _evidence_text(chunk: RetrievedChunk) -> str:
+    citation = chunk.citation
+    return "\n".join(
+        value
+        for value in (
+            citation.document_title,
+            " > ".join(citation.section_path),
+            chunk.text,
+        )
+        if value
+    )
+
+
+def _evidence_tokens(chunk: RetrievedChunk) -> set[str]:
+    return _tokens(_evidence_text(chunk))
+
+
 def _verification_messages(answer: str, chunks: list[RetrievedChunk]) -> list[dict[str, str]]:
     context = [
-        {"chunk_id": chunk.chunk_id, "text": chunk.text}
+        {
+            "chunk_id": chunk.chunk_id,
+            "document_title": chunk.citation.document_title,
+            "section_path": chunk.citation.section_path,
+            "text": chunk.text,
+        }
         for chunk in chunks
     ]
     return [
@@ -261,7 +283,7 @@ def _model_assessment(
         supported = (
             isinstance(quote, str)
             and bool(quote.strip())
-            and any(quote.strip() in by_id[chunk_id].text for chunk_id in valid_ids)
+            and any(quote.strip() in _evidence_text(by_id[chunk_id]) for chunk_id in valid_ids)
             and _overlap(_tokens(claim), _tokens(quote)) >= min_overlap
         )
         if claim_type == "main" and not supported:
