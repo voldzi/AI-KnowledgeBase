@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from app.schemas import (
+    Citation,
     ChunkCitation,
     EvalCase,
+    ExpectedCitation,
     RagAnswer,
     RetrieveResponse,
     RetrievedChunk,
 )
-from runners.evaluator import _evaluate_success, _summarize
+from runners.evaluator import _citation_metrics, _evaluate_success, _summarize
 
 
 def _chunk(index: int, document_id: str) -> RetrievedChunk:
@@ -103,3 +105,35 @@ def test_supported_claim_and_false_answer_rates_are_reported() -> None:
     assert summary.false_answer_rate == 1.0
     assert summary.claim_evaluated_cases == 1
     assert summary.no_answer_evaluated_cases == 1
+
+
+def test_multiple_chunk_citations_from_expected_document_keep_full_purity() -> None:
+    case = EvalCase(
+        case_id="document_citation_purity",
+        query="Co upravuje zákon?",
+        expected_citations=[
+            ExpectedCitation(document_id="doc_law", document_version_id="ver_law")
+        ],
+    )
+    answer = RagAnswer(
+        query_id="query_law",
+        answer="Podložená odpověď.",
+        confidence="high",
+        citations=[
+            Citation(
+                document_id="doc_law",
+                document_version_id="ver_law",
+                document_title="Zákon",
+                version_label="1",
+                chunk_id=f"chunk_{index}",
+            )
+            for index in range(3)
+        ],
+    )
+
+    metrics = _citation_metrics(case, answer)
+
+    assert metrics.matched_citation_count == 1
+    assert metrics.precision == 1.0
+    assert metrics.recall == 1.0
+    assert metrics.correctness == 1.0

@@ -40,6 +40,14 @@ class QdrantHybridRetriever:
         effective_dense_weight = (
             self._settings.hybrid_dense_weight if dense_weight is None else dense_weight
         )
+        # Exact legal/document identifiers are authoritative lexical signals.
+        # Equal-weight RRF can otherwise bury a title-only exact hit behind
+        # chunks that happen to occur in both dense and lexical rankings.
+        fusion_dense_weight = (
+            dense_weight
+            if dense_weight is not None
+            else (0.15 if extract_query_identifiers(query) else None)
+        )
         if self._settings.v2_retrieval_mode == "shadow":
             vector_chunks, lexical_chunks, v2_chunks = await asyncio.gather(
                 self._retrieve_vector_candidates(
@@ -64,7 +72,7 @@ class QdrantHybridRetriever:
             fused = _fuse_ranked_chunks(
                 vector_chunks,
                 lexical_chunks,
-                dense_weight=dense_weight,
+                dense_weight=fusion_dense_weight,
             )[:limit]
             return [
                 chunk.model_copy(
@@ -89,7 +97,7 @@ class QdrantHybridRetriever:
         return _fuse_ranked_chunks(
             vector_chunks,
             lexical_chunks,
-            dense_weight=dense_weight,
+            dense_weight=fusion_dense_weight,
         )[:limit]
 
     async def _retrieve_vector_candidates(

@@ -173,6 +173,35 @@ def test_exact_czech_law_scope_keeps_only_matching_document() -> None:
     assert {chunk.citation.document_id for chunk in scoped} == {"doc_law"}
 
 
+def test_deterministic_evidence_accepts_claim_supported_by_document_title() -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_EVIDENCE_GATE_MODE": "enforce",
+            "AKL_RAG_EVIDENCE_MIN_OVERLAP": "0.18",
+        }
+    )
+    chunk = _chunk(
+        "law",
+        "doc_law",
+        "Tento zákon stanoví další práva a povinnosti.",
+    )
+    chunk.citation.document_title = (
+        "365/2000 Sb. - Zákon o informačních systémech veřejné správy"
+    )
+    answer = RagAnswer(
+        query_id="query_law",
+        answer="Zákon č. 365/2000 Sb. upravuje informační systémy veřejné správy.",
+        confidence="high",
+        citations=[],
+    )
+
+    verified = EvidenceGate(settings).verify(answer, [chunk])
+
+    assert verified.evidence_status == "supported"
+    assert verified.confidence == "high"
+    assert verified.claims[0]["supported"] is True
+
+
 @pytest.mark.asyncio
 async def test_cross_encoder_enforce_orders_candidates_and_records_provenance(monkeypatch) -> None:
     settings = load_settings(

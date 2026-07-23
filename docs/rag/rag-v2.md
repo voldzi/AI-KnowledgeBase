@@ -30,14 +30,19 @@
 | ColBERT ingestion | `AKL_RAG_COLBERT_INDEX_MODE` | encoder URL, model, token, vector size |
 | ColBERT query | `AKL_RAG_COLBERT_MODE` | encoder URL, model, candidate limit |
 
-Všechny režimy mají hodnoty `off`, `shadow`, `enforce`. Produkční výchozí stav
-je `off`. `shadow` nesmí změnit finální pořadí ani odpověď.
+Všechny režimy mají hodnoty `off`, `shadow`, `enforce`. `shadow` nesmí změnit
+finální pořadí ani odpověď. Docker Home produkční profil používá pro evidence
+gate výchozí režim `enforce`; ostatní experimentální RAG V2 vrstvy zůstávají
+ve výchozím stavu `off`.
 
 Evidence gate používá deterministický verifier, pokud není nastaven
 `AKL_RAG_EVIDENCE_VERIFIER_MODEL`. Při nastaveném interním modelu vyžaduje
 striktní claim JSON a server znovu ověřuje existenci chunk ID i doslovnou
 přítomnost `quoted_support`. Výpadek modelového verifieru v `enforce` končí
-no-answer.
+no-answer. Do autorizovaného evidence envelope patří vedle textu také název
+dokumentu a cesta sekce. Přesná odpověď založená na názvu předpisu proto může
+projít verifikací bez oslabení chunkové autorizace. Nepodložené hlavní tvrzení
+končí standardním no-answer bez citací a bez `used_chunks`.
 
 Evidence gate se uplatňuje také na běžný `/assistant/chat`. Copilot ředitele
 používá oddělenou deterministickou cestu: nejvýše tři autorizované smluvní
