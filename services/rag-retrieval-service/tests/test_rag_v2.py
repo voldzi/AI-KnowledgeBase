@@ -476,6 +476,44 @@ async def test_cross_encoder_cools_down_failed_active_address(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_cross_encoder_route_discovery_returns_without_waiting_for_slow_paths(
+    monkeypatch,
+) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "shadow",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URLS": (
+                "http://slow-a:3000,http://slow-b:3000,http://active:3000"
+            ),
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+    cancelled: set[str] = set()
+
+    async def endpoint_is_healthy(base_url):
+        try:
+            if base_url == "http://active:3000":
+                await asyncio.sleep(0)
+                return True
+            await asyncio.sleep(10)
+            return False
+        except asyncio.CancelledError:
+            cancelled.add(base_url)
+            raise
+
+    monkeypatch.setattr(reranker, "_endpoint_is_healthy", endpoint_is_healthy)
+
+    selected = await asyncio.wait_for(
+        reranker._first_healthy_endpoint(settings.reranker_base_urls),
+        timeout=0.1,
+    )
+
+    assert selected == "http://active:3000"
+    assert cancelled == {"http://slow-a:3000", "http://slow-b:3000"}
+
+
+@pytest.mark.asyncio
 async def test_cross_encoder_serializes_single_runtime_inference(monkeypatch) -> None:
     settings = load_settings(
         {

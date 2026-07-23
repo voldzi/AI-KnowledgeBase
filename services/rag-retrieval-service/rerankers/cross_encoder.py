@@ -272,11 +272,28 @@ class CrossEncoderReranker:
             )
             if not candidates:
                 return None
-            for base_url in candidates:
-                if await self._endpoint_is_healthy(base_url):
-                    self._active_base_url = base_url
+            self._active_base_url = await self._first_healthy_endpoint(candidates)
+            return self._active_base_url
+
+    async def _first_healthy_endpoint(
+        self,
+        candidates: tuple[str, ...],
+    ) -> str | None:
+        async def probe(base_url: str) -> tuple[str, bool]:
+            return base_url, await self._endpoint_is_healthy(base_url)
+
+        tasks = [asyncio.create_task(probe(base_url)) for base_url in candidates]
+        try:
+            for completed in asyncio.as_completed(tasks):
+                base_url, available = await completed
+                if available:
                     return base_url
             return None
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _endpoint_is_healthy(self, base_url: str) -> bool:
         try:
