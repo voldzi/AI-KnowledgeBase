@@ -12,6 +12,13 @@ coverage of the mandatory gates. Repeat the same dataset after AKB reports the
 remediation release hash. Do not replace failed cases or change their expected
 evidence between runs.
 
+After the AKB exact-resolver remediation, first replay only
+`public_information_systems_law` and `digital_services_law` with a fresh user
+session. Continue with one non-overlapping full ten-case run only when both
+complete without timeout, report `exact_document_scope_applied=true` and return
+the expected document in top 8. This focused replay is diagnostic evidence; it
+does not replace the complete promotion run.
+
 AKB now owns the machine-enforced promotion contract:
 
 - retrieval and answer dataset:
@@ -67,6 +74,12 @@ all dependencies ready.
 - adaptive-router accuracy: at least `0.95`;
 - p95 latency regression against the accepted baseline: at most `30%`;
 - no `reranker_fallback` for successful acceptance requests.
+
+Recall/nDCG denominators contain only cases with declared relevant documents or
+chunks. Negative no-answer controls remain mandatory, but are evaluated by
+false-answer and no-answer correctness instead of being counted as retrieval
+misses. Supported-claim rate similarly excludes expected no-answer cases. The
+report must include the eligible case count for each of these metrics.
 
 Failure of any gate leaves AKB RAG V2 in shadow. Do not request promotion to
 `enforce` and do not enable ColBERT.

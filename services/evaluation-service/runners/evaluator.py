@@ -377,7 +377,11 @@ def _answer_metrics(case: EvalCase, retrieve_response: RetrieveResponse, answer:
         answer_correctness = max(0.0, term_coverage - penalty)
 
     faithfulness = _faithfulness(case, retrieve_response, answer, no_answer_correctness)
-    claims = [claim for claim in answer.claims if isinstance(claim, dict)]
+    claims = (
+        []
+        if case.expected_no_answer
+        else [claim for claim in answer.claims if isinstance(claim, dict)]
+    )
     supported_claim_count = sum(claim.get("supported") is True for claim in claims)
     supported_claim_rate = supported_claim_count / len(claims) if claims else 0.0
     return AnswerMetrics(
@@ -483,17 +487,28 @@ def _citation_matches(expected: ExpectedCitation, actual: Citation) -> bool:
 
 def _summarize(results: list[EvaluationCaseResult]) -> EvaluationSummary:
     answerable_results = [result for result in results if not result.expected_no_answer]
+    relevance_results = [
+        result
+        for result in results
+        if (
+            result.retrieval_metrics.expected_relevant_count
+            + result.retrieval_metrics.expected_relevant_document_count
+        )
+        > 0
+    ]
     full_answer_results = [result for result in results if not result.retrieval_only]
     claim_results = [
-        result for result in full_answer_results if result.answer_metrics.total_claim_count > 0
+        result
+        for result in full_answer_results
+        if not result.expected_no_answer and result.answer_metrics.total_claim_count > 0
     ]
     no_answer_results = [result for result in full_answer_results if result.expected_no_answer]
     router_results = [result for result in results if result.router_correct is not None]
     recall_at_8_results = [
-        result for result in results if "8" in result.retrieval_metrics.recall_at_k
+        result for result in relevance_results if "8" in result.retrieval_metrics.recall_at_k
     ]
     recall_at_50_results = [
-        result for result in results if "50" in result.retrieval_metrics.recall_at_k
+        result for result in relevance_results if "50" in result.retrieval_metrics.recall_at_k
     ]
     failures = Counter(result.failure_stage for result in results if result.failure_stage != "none")
     return EvaluationSummary(
@@ -503,15 +518,21 @@ def _summarize(results: list[EvaluationCaseResult]) -> EvaluationSummary:
         error_cases=sum(1 for result in results if result.status == "error"),
         average_score=_average([result.overall_score for result in results]),
         average_latency_ms=_average([result.latency_ms for result in results]),
-        retrieval_precision=_average([result.retrieval_metrics.precision for result in results]),
-        retrieval_recall=_average([result.retrieval_metrics.recall for result in results]),
+        retrieval_precision=_average(
+            [result.retrieval_metrics.precision for result in relevance_results]
+        ),
+        retrieval_recall=_average(
+            [result.retrieval_metrics.recall for result in relevance_results]
+        ),
         citation_correctness=_average([result.citation_metrics.correctness for result in results]),
         answer_correctness=_average([result.answer_metrics.answer_correctness for result in results]),
         faithfulness=_average([result.answer_metrics.faithfulness for result in results]),
         no_answer_correctness=_average([result.answer_metrics.no_answer_correctness for result in results]),
         retrieval_hit_rate=_average([result.retrieval_metrics.hit_rate for result in results]),
         retrieval_mrr=_average([result.retrieval_metrics.mrr for result in results]),
-        retrieval_ndcg=_average([result.retrieval_metrics.ndcg for result in results]),
+        retrieval_ndcg=_average(
+            [result.retrieval_metrics.ndcg for result in relevance_results]
+        ),
         zero_result_rate=_rate(sum(result.retrieval_metrics.zero_result for result in results), len(results)),
         false_zero_result_rate=_rate(
             sum(result.retrieval_metrics.false_zero_result for result in answerable_results),

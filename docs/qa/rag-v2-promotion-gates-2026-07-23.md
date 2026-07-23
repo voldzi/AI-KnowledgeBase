@@ -45,3 +45,22 @@ These changes do not promote RAG V2 automatically. RAG V2 remains in `shadow`
 and ColBERT remains `off` until the complete version 2 dataset, all ten live
 authorization mutations and the latency comparison pass the AKB release
 checker.
+
+## Second remediation after release 20568fcb
+
+The subsequent production run completed eight of ten cases. The remaining
+exact-law miss happened before the existing post-retrieval exact scope, while
+the second law request exceeded the evaluator timeout during reranking.
+
+AKB therefore adds:
+
+- a lexical exact-source resolver before embedding and corpus-wide fusion;
+- authorization of the resolved document before document-scoped retrieval;
+- profile-specific candidate and reranker budgets instead of
+  `max_chunks * 3`;
+- no parent expansion for `retrieve_only`;
+- metric eligibility that excludes no-answer controls from Recall/nDCG and
+  supported-claim calculations.
+
+The change remains a shadow remediation. It does not change the RAG V2,
+reranker or ColBERT production feature modes.

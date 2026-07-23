@@ -99,12 +99,13 @@ def test_supported_claim_and_false_answer_rates_are_reported() -> None:
     )
     summary = _summarize([result])
 
-    assert result.answer_metrics.supported_claim_rate == 1.0
+    assert result.answer_metrics.supported_claim_rate == 0.0
     assert result.answer_metrics.no_answer_correctness == 0.0
-    assert summary.supported_claim_rate == 1.0
+    assert summary.supported_claim_rate == 0.0
     assert summary.false_answer_rate == 1.0
-    assert summary.claim_evaluated_cases == 1
+    assert summary.claim_evaluated_cases == 0
     assert summary.no_answer_evaluated_cases == 1
+    assert summary.recall_at_50_evaluated_cases == 0
 
 
 def test_multiple_chunk_citations_from_expected_document_keep_full_purity() -> None:
