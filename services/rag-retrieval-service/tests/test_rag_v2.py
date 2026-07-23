@@ -9,11 +9,16 @@ from app.config import ConfigError, load_settings
 from app.main import _log_runtime_profile
 from app.registry_client import AuthzFilterResult
 from app.schemas import ChunkCitation, RagAnswer, RagQueryFilters, RetrievedChunk
-from app.service import RagRetrievalService, _detect_conflicts
+from app.service import RagRetrievalService, _apply_exact_identifier_scope, _detect_conflicts
 from policies.evidence import EvidenceGate, _model_assessment
 import rerankers.cross_encoder as cross_encoder_module
-from rerankers.cross_encoder import CrossEncoderReranker, _first_multivector, _ordered_scores
-from retrievers.query_analysis import analyze_query
+from rerankers.cross_encoder import (
+    CrossEncoderReranker,
+    _bounded_reranker_text,
+    _first_multivector,
+    _ordered_scores,
+)
+from retrievers.query_analysis import analyze_query, extract_identifiers
 from tests.conftest import make_client
 
 
@@ -43,6 +48,8 @@ def test_query_analyzer_routes_exact_temporal_comparison_and_live_data() -> None
     assert comparison.profile == "cross_document"
     assert comparison.require_multiple_documents is True
     assert analyze_query("Jaké je aktuální čerpání?", filters, **defaults).profile == "copilot_live_data"
+    assert analyze_query("Smlouva 120-2022-S", filters, **defaults).profile == "exact"
+    assert extract_identifiers("Smlouva 120-2022-S") == ("120-2022-S",)
 
 
 def test_rag_v2_modes_require_explicit_internal_endpoints() -> None:
@@ -119,6 +126,32 @@ def test_reranker_response_and_colbert_multivector_validation() -> None:
         [0.1, 0.2],
         [0.3, 0.4],
     ]
+
+
+def test_reranker_document_input_is_bounded_without_logging_or_mutating_source() -> None:
+    original = "A" * 700
+
+    assert _bounded_reranker_text(original, max_chars=512) == "A" * 512
+    assert original == "A" * 700
+
+
+def test_exact_identifier_scope_keeps_only_the_single_matching_document() -> None:
+    chunks = [
+        _chunk("target-a", "doc_target", "Povinnost."),
+        _chunk("target-b", "doc_target", "Sankce."),
+        _chunk("other", "doc_other", "Nesouvisející text."),
+    ]
+    chunks[0].citation.document_title = "Smlouva 120-2022-S"
+    chunks[1].citation.document_title = "Smlouva 120-2022-S"
+    chunks[2].citation.document_title = "Smlouva 071-2025-X"
+
+    scoped, document_id = _apply_exact_identifier_scope(
+        "Jaké jsou povinnosti ve smlouvě 120-2022-S?",
+        chunks,
+    )
+
+    assert document_id == "doc_target"
+    assert {chunk.citation.document_id for chunk in scoped} == {"doc_target"}
 
 
 @pytest.mark.asyncio

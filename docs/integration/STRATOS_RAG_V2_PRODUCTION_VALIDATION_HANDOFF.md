@@ -6,6 +6,12 @@ STRATOS must validate the Director Copilot against the AKB RAG V2 shadow
 pipeline. This handoff authorizes testing only. It does not authorize STRATOS
 to change AKB feature flags, retrieval contracts, infrastructure or source.
 
+The first production run on 2026-07-23 failed correctly because of reranker
+fallback, exact-document citation contamination, latency and incomplete
+coverage of the mandatory gates. Repeat the same dataset after AKB reports the
+remediation release hash. Do not replace failed cases or change their expected
+evidence between runs.
+
 Before the run, record the exact AKB version returned by
 `https://stratos.zeleznalady.cz/akb/api/health`. Require `/api/ready` to report
 all dependencies ready.
@@ -28,6 +34,11 @@ all dependencies ready.
 7. Collect at least 30 representative requests for latency comparison. Preserve
    the earlier accepted baseline of 5.258 seconds total p95 and 472 ms domain
    service p95 as comparison evidence.
+8. Confirm that the reranker completes without lexical fallback for the exact
+   contract request and every successful evaluation request. Record reranking
+   latency separately.
+9. Confirm that `120-2022-S` is routed as an exact-document request. A
+   cross-document, temporal or generic semantic route is a failure.
 
 ## Acceptance gates
 
@@ -44,6 +55,9 @@ all dependencies ready.
 
 Failure of any gate leaves AKB RAG V2 in shadow. Do not request promotion to
 `enforce` and do not enable ColBERT.
+
+An improved reranker and exact-document result do not waive an unmeasured
+gate. Report such a run as remediation verified but promotion blocked.
 
 ## Evidence to return to AKB
 

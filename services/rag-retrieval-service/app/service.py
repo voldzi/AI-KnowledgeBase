@@ -74,7 +74,7 @@ from app.security import AuthContext
 from policies.no_answer import NoAnswerPolicy, PolicyDecision
 from policies.evidence import EvidenceGate
 from retrievers.base import Retriever
-from retrievers.query_analysis import RetrievalPlan, analyze_query
+from retrievers.query_analysis import RetrievalPlan, analyze_query, extract_identifiers
 
 logger = logging.getLogger(__name__)
 
@@ -1766,6 +1766,18 @@ class RagRetrievalService:
         authorized, duplicate_count = _deduplicate_chunks(authorized)
         if duplicate_count:
             warnings.append("DUPLICATE_CHUNKS_REMOVED")
+        exact_document_id = None
+        if (
+            analyzed_plan.profile == "exact"
+            and not payload.filters.document_ids
+            and not payload.filters.document_version_ids
+        ):
+            authorized, exact_document_id = _apply_exact_identifier_scope(
+                payload.query,
+                authorized,
+            )
+        if exact_document_id:
+            warnings.append("EXACT_DOCUMENT_SCOPE_APPLIED")
         if (
             self._settings.enable_reranking
             or self._settings.reranker_mode != "off"
@@ -1821,6 +1833,7 @@ class RagRetrievalService:
                     "candidates_before_authz": len(candidates),
                     "candidates_after_authz": len(authorized),
                     "duplicates_removed": duplicate_count,
+                    "exact_document_scope_applied": bool(exact_document_id),
                     "reranker_mode": self._settings.reranker_mode,
                     "parent_retrieval_mode": self._settings.parent_retrieval_mode,
                     "colbert_mode": self._settings.colbert_mode,
@@ -2813,6 +2826,20 @@ def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
     context_tags = context.get("tags")
     if isinstance(context_tags, list):
         tags.extend(str(tag).strip() for tag in context_tags if str(tag).strip())
+    document_ids = _assistant_context_values(
+        context,
+        "document_id",
+        "document_ids",
+        "documentId",
+        "documentIds",
+    )
+    document_version_ids = _assistant_context_values(
+        context,
+        "document_version_id",
+        "document_version_ids",
+        "documentVersionId",
+        "documentVersionIds",
+    )
     return RagQueryFilters(
         document_types=[
             "directive",
@@ -2828,10 +2855,72 @@ def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
             "attachment",
             "other",
         ],
-        only_valid=True,
+        only_valid=not bool(document_version_ids),
         classification_max="internal",
         tags=tags,
+        document_ids=document_ids,
+        document_version_ids=document_version_ids,
     )
+
+
+def _assistant_context_values(
+    context: dict[str, object],
+    *keys: str,
+) -> list[str]:
+    values: list[str] = []
+    sources = [context]
+    for nested_key in ("stratos", "akb", "document", "entity"):
+        nested = context.get(nested_key)
+        if isinstance(nested, dict):
+            sources.append(nested)
+    for source in sources:
+        for key in keys:
+            raw = source.get(key)
+            candidates = raw if isinstance(raw, list) else [raw]
+            for candidate in candidates:
+                if isinstance(candidate, str) and candidate.strip():
+                    values.append(candidate.strip())
+    return list(dict.fromkeys(values))
+
+
+def _apply_exact_identifier_scope(
+    query: str,
+    chunks: list[RetrievedChunk],
+) -> tuple[list[RetrievedChunk], str | None]:
+    identifiers = {
+        _normalized_reference(identifier) for identifier in extract_identifiers(query)
+    }
+    identifiers.discard("")
+    if not identifiers:
+        return chunks, None
+    matched_document_ids: set[str] = set()
+    for chunk in chunks:
+        metadata_values = [
+            chunk.citation.document_title,
+            *(
+                str(chunk.metadata.get(key, ""))
+                for key in (
+                    "external_ref",
+                    "source_file_uri",
+                    "source_uri",
+                    "file_name",
+                    "filename",
+                )
+            ),
+        ]
+        haystack = _normalized_reference(" ".join(metadata_values))
+        if any(identifier in haystack for identifier in identifiers):
+            matched_document_ids.add(chunk.citation.document_id)
+    if len(matched_document_ids) != 1:
+        return chunks, None
+    document_id = next(iter(matched_document_ids))
+    return [
+        chunk for chunk in chunks if chunk.citation.document_id == document_id
+    ], document_id
+
+
+def _normalized_reference(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
 
 
 ASSISTANT_INTERNAL_CONTEXT_KEYS = {

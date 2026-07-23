@@ -245,7 +245,13 @@ class CrossEncoderReranker:
         )
 
     def _payload(self, query: str, chunks: list[RetrievedChunk]) -> dict[str, Any]:
-        documents = [chunk.text for chunk in chunks]
+        documents = [
+            _bounded_reranker_text(
+                chunk.text,
+                max_chars=self._settings.reranker_max_document_chars,
+            )
+            for chunk in chunks
+        ]
         if self._settings.reranker_provider == "llama":
             return {
                 "model": self._settings.reranker_model,
@@ -266,6 +272,13 @@ class CrossEncoderReranker:
         if self._settings.colbert_token:
             headers["Authorization"] = f"Bearer {self._settings.colbert_token}"
         return headers
+
+
+def _bounded_reranker_text(text: str, *, max_chars: int) -> str:
+    normalized = text.strip()
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[:max_chars].rstrip()
 
 
 def _ordered_scores(payload: Any, size: int) -> list[float]:

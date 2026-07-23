@@ -54,6 +54,9 @@ the BGE F32 image to Docker Desktop expecting GPU acceleration.
 The native process is an operator-owned LaunchAgent named
 `cz.zeleznalady.akb-qwen-reranker`. It uses the model and key under
 `$HOME/.cache/akb-reranker` and `$HOME/.config/akb-reranker`, both outside Git.
+Configure both `--batch-size` and `--ubatch-size` to `2048`. `llama-server`
+reduces the physical batch to the smaller value; an `ubatch` of `512` rejects
+ordinary AKB chunks above 512 tokens with HTTP 500.
 The Docker-only Qwen service remains a rollback option but must stay stopped
 while the proxy owns port `11435`.
 

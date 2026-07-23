@@ -164,6 +164,7 @@ class Settings:
     reranker_api_key: str | None
     reranker_timeout_seconds: float
     reranker_batch_size: int
+    reranker_max_document_chars: int
     reranker_min_score: float
     reranker_strategy: str
     adaptive_retrieval_mode: str
@@ -287,6 +288,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         high_quality_min_context_chunks = int(_get(source, "AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS", "6"))
         reranker_timeout_seconds = float(_get(source, "AKL_RAG_RERANKER_TIMEOUT_SECONDS", "8"))
         reranker_batch_size = int(_get(source, "AKL_RAG_RERANKER_BATCH_SIZE", "32"))
+        reranker_max_document_chars = int(
+            _get(source, "AKL_RAG_RERANKER_MAX_DOCUMENT_CHARS", "4000")
+        )
         reranker_min_score = float(_get(source, "AKL_RAG_RERANKER_MIN_SCORE", "0"))
         parent_window = int(_get(source, "AKL_RAG_PARENT_WINDOW", "1"))
         max_chunks_per_document = int(_get(source, "AKL_RAG_MAX_CHUNKS_PER_DOCUMENT", "3"))
@@ -326,6 +330,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_RERANKER_TIMEOUT_SECONDS must be greater than zero")
     if reranker_batch_size <= 0 or reranker_batch_size > 100:
         raise ConfigError("AKL_RAG_RERANKER_BATCH_SIZE must be between 1 and 100")
+    if reranker_max_document_chars < 512 or reranker_max_document_chars > 20000:
+        raise ConfigError(
+            "AKL_RAG_RERANKER_MAX_DOCUMENT_CHARS must be between 512 and 20000"
+        )
     if not 0 <= reranker_min_score <= 1:
         raise ConfigError("AKL_RAG_RERANKER_MIN_SCORE must be between 0 and 1")
     if parent_window < 0 or parent_window > 5:
@@ -503,6 +511,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         reranker_api_key=reranker_api_key,
         reranker_timeout_seconds=reranker_timeout_seconds,
         reranker_batch_size=reranker_batch_size,
+        reranker_max_document_chars=reranker_max_document_chars,
         reranker_min_score=reranker_min_score,
         reranker_strategy=reranker_strategy,
         adaptive_retrieval_mode=adaptive_retrieval_mode,

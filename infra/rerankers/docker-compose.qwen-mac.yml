@@ -25,7 +25,7 @@ services:
       - --batch-size
       - "2048"
       - --ubatch-size
-      - "512"
+      - "2048"
       - --api-key-file
       - /run/secrets/reranker_api_keys
       - --metrics

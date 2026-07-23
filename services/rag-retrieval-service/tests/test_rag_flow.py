@@ -682,6 +682,21 @@ def test_assistant_filters_include_pdf_corpus_document_types() -> None:
     assert "other" in filters.document_types
 
 
+def test_assistant_filters_preserve_explicit_document_and_version_scope() -> None:
+    filters = _assistant_filters(
+        {
+            "document": {
+                "document_id": "doc_contract",
+                "document_version_id": "ver_contract_2",
+            }
+        }
+    )
+
+    assert filters.document_ids == ["doc_contract"]
+    assert filters.document_version_ids == ["ver_contract_2"]
+    assert filters.only_valid is False
+
+
 def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:
     raw = (
         "Architektura je **distribuovaná sada služeb** [chunk_abc123, chunk_def456].\n\n"
