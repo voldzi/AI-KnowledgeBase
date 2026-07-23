@@ -16,9 +16,21 @@ class RetrievalPlan:
 
 
 _DATE_RE = re.compile(r"\b(?:19|20)\d{2}(?:[-/.]\d{1,2}(?:[-/.]\d{1,2})?)?\b")
-_IDENTIFIER_RE = re.compile(r"\b(?:[A-Z]{2,}[A-Z0-9_-]*[-/]\d{2,}|doc_[a-z0-9]+|ver_[a-z0-9]+)\b", re.I)
+_IDENTIFIER_RE = re.compile(
+    r"\b(?:"
+    r"[A-Z]{2,}[A-Z0-9_-]*[-/]\d{2,}"
+    r"|doc_[a-z0-9]+"
+    r"|ver_[a-z0-9]+"
+    r"|\d{1,6}[-/](?:19|20)\d{2}[-/][A-Z0-9][A-Z0-9_-]*"
+    r")\b",
+    re.I,
+)
 _COMPARE_RE = re.compile(r"\b(porovnej|porovnání|rozdíl|oproti|compare|difference|konflikt|rozpor)\b", re.I)
 _LIVE_RE = re.compile(r"\b(aktuální rozpočet|čerpání|stav projektu|milník|úkol|live data|dnes)\b", re.I)
+
+
+def extract_identifiers(query: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(match.group(0) for match in _IDENTIFIER_RE.finditer(query)))
 
 
 def analyze_query(
@@ -29,7 +41,7 @@ def analyze_query(
     default_dense_weight: float,
 ) -> RetrievalPlan:
     explicit_documents = bool(filters.document_ids or filters.document_version_ids)
-    has_identifier = bool(_IDENTIFIER_RE.search(query))
+    has_identifier = bool(extract_identifiers(query))
     has_date = bool(_DATE_RE.search(query))
     is_comparison = bool(_COMPARE_RE.search(query))
 
