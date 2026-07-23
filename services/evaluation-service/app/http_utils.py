@@ -64,6 +64,19 @@ async def request_json_with_retry(
             return response.json()
         except EvaluationError:
             raise
+        except httpx.ReadTimeout as exc:
+            logger.warning(
+                "upstream_request_failed dependency=%s attempt=%s reason=%s retry=false",
+                dependency,
+                attempt + 1,
+                exc.__class__.__name__,
+            )
+            raise EvaluationError(
+                "UPSTREAM_TIMEOUT",
+                f"{dependency} did not respond before the request deadline",
+                status_code=504,
+                details={"dependency": dependency, "reason": exc.__class__.__name__},
+            ) from exc
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             last_error = exc
             logger.warning(

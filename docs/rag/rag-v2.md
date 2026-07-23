@@ -54,6 +54,9 @@ Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
   AKB si pamatuje poslední funkční endpoint a při síťové nebo HTTP chybě zkusí
   další; obsah dotazu ani dokumentů se neloguje.
 - Výsledek ukládá score, model, revision a latenci do interní metadata vrstvy.
+- Parent/section expansion načítá okolní chunky s omezenou souběžností a před
+  použitím je hromadně znovu autorizuje v Registry. Tím zachovává bezpečnostní
+  hranici bez sériového požadavku pro každý výsledný chunk.
 - Při chybě v `shadow` se použije lexical fallback a warning
   `RERANKER_FALLBACK_LEXICAL`; v `enforce` skončí dotaz bezpečným no-answer s
   `RERANKER_UNAVAILABLE`. Stejné pravidlo platí pro ColBERT jako

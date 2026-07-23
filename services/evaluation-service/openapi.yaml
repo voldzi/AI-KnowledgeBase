@@ -359,6 +359,37 @@ components:
           type: string
           minLength: 1
           title: Chunk Id
+        policy_binding_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Binding Id
+        policy_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Version
+        policy_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Hash
+        policy_summary:
+          anyOf:
+          - $ref: '#/components/schemas/CitationPolicySummary'
+          - type: 'null'
+        policy_summary_hash:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+          - type: 'null'
+          title: Policy Summary Hash
+        document_context_tags:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          title: Document Context Tags
       additionalProperties: false
       type: object
       required:
@@ -368,6 +399,115 @@ components:
       - version_label
       - chunk_id
       title: Citation
+    CitationPolicyAudience:
+      properties:
+        organizationId:
+          type: string
+          const: org_stratos
+          title: Organizationid
+        scopeType:
+          type: string
+          enum:
+          - organization
+          - organization_unit
+          - budget_scope
+          - project
+          - document
+          - recipient_set
+          - public
+          title: Scopetype
+        scopeIds:
+          items:
+            type: string
+          type: array
+          title: Scopeids
+        recipientSubjectIds:
+          items:
+            type: string
+          type: array
+          title: Recipientsubjectids
+      additionalProperties: false
+      type: object
+      required:
+      - organizationId
+      - scopeType
+      title: CitationPolicyAudience
+    CitationPolicySummary:
+      properties:
+        policyBindingId:
+          type: string
+          maxLength: 200
+          minLength: 8
+          title: Policybindingid
+        policyVersion:
+          type: string
+          const: information-policy-2.0.0
+          title: Policyversion
+        handlingClass:
+          type: string
+          enum:
+          - PUBLIC
+          - INTERNAL
+          - PROJECT_MANAGEMENT
+          - RESTRICTED
+          title: Handlingclass
+        legalClassification:
+          type: string
+          const: NONE
+          title: Legalclassification
+        tlp:
+          anyOf:
+          - type: string
+            enum:
+            - TLP:RED
+            - TLP:AMBER+STRICT
+            - TLP:AMBER
+            - TLP:GREEN
+            - TLP:CLEAR
+          - type: 'null'
+          title: Tlp
+        pap:
+          anyOf:
+          - type: string
+            enum:
+            - PAP:RED
+            - PAP:AMBER
+            - PAP:GREEN
+            - PAP:CLEAR
+          - type: 'null'
+          title: Pap
+        obligations:
+          items:
+            type: string
+            enum:
+            - AUDIT_ACCESS
+            - NO_EXTERNAL_AI
+            - LOCAL_PROCESSING_ONLY
+            - NO_PUBLIC_EXPORT
+            - NO_EXPORT
+            - WATERMARK
+            - ENCRYPT_AT_REST
+            - RECIPIENT_CONFIRMATION
+            - ORIGINATOR_APPROVAL
+            - PAP_ENFORCEMENT
+          type: array
+          title: Obligations
+        contentCategories:
+          items:
+            type: string
+          type: array
+          title: Contentcategories
+        audience:
+          $ref: '#/components/schemas/CitationPolicyAudience'
+      additionalProperties: false
+      type: object
+      required:
+      - policyBindingId
+      - policyVersion
+      - handlingClass
+      - legalClassification
+      - audience
+      title: CitationPolicySummary
     CitationMetrics:
       properties:
         expected_citation_count:
