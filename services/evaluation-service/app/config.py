@@ -46,6 +46,7 @@ class Settings:
     oidc_jwks_url: str | None
     stratos_auth_me_url: str | None
     stratos_access_timeout_seconds: float
+    min_run_token_ttl_seconds: int
 
     rag_client_mode: str
     registry_client_mode: str
@@ -130,6 +131,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         stratos_access_timeout_seconds = float(
             _get(source, "AKL_STRATOS_ACCESS_TIMEOUT_SECONDS", "3")
         )
+        min_run_token_ttl_seconds = int(
+            _get(source, "AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS", "120")
+        )
     except ValueError as exc:
         raise ConfigError("Numeric AKL_EVAL_* configuration value is invalid") from exc
 
@@ -165,6 +169,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_EVAL_GATE_RETRIEVAL_LATENCY_P95_MS_MAX must be greater than zero")
     if stratos_access_timeout_seconds <= 0:
         raise ConfigError("AKL_STRATOS_ACCESS_TIMEOUT_SECONDS must be greater than zero")
+    if min_run_token_ttl_seconds < 0 or min_run_token_ttl_seconds > 3600:
+        raise ConfigError("AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS must be between 0 and 3600")
 
     audit_enabled = _parse_bool(_get(source, "AKL_EVAL_AUDIT_ENABLED", "true"))
     oidc_issuer = source.get("AKL_OIDC_ISSUER") or None
@@ -200,6 +206,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         oidc_jwks_url=oidc_jwks_url,
         stratos_auth_me_url=stratos_auth_me_url,
         stratos_access_timeout_seconds=stratos_access_timeout_seconds,
+        min_run_token_ttl_seconds=min_run_token_ttl_seconds,
         rag_client_mode=rag_client_mode,
         registry_client_mode=registry_client_mode,
         rag_base_url=_get(source, "AKL_RAG_BASE_URL", "http://localhost:8002/api/v1").rstrip("/"),

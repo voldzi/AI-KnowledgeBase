@@ -89,6 +89,10 @@ http://10.246.241.1:11437  -> 192.168.1.176:11435
 `10.246.241.1` is the gateway of the explicitly configured
 `AKL_APP_ZONE_SUBNET` (`10.246.241.0/24` by default), not an incidental Docker
 bridge address. Keep the URL order aligned with the preferred VPN address.
+Production must list the currently healthy proxy first. For the documented
+three-address topology the preferred order is `11436` (`192.168.200.2`),
+`11435` (`192.168.200.3`), then `11437` (`192.168.1.176`). A dead proxy must
+not remain the sole `AKL_RAG_RERANKER_BASE_URLS` value.
 
 Verification:
 

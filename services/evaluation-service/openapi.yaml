@@ -157,6 +157,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvaluationRun'
+        '409':
+          description: The user token must be refreshed before a long evaluation run.
         '422':
           description: Validation Error
           content:

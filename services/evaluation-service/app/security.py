@@ -31,6 +31,7 @@ class EvaluationPrincipal:
     capabilities: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()
     trusted_service: bool = False
+    token_expires_at: int | None = None
 
 
 def require_service_auth(request: Request, settings: Settings) -> EvaluationPrincipal:
@@ -121,6 +122,7 @@ def _oidc_principal(token: str, settings: Settings) -> EvaluationPrincipal:
         bearer_token=token,
         capabilities=capabilities,
         scopes=scopes,
+        token_expires_at=int(claims["exp"]) if isinstance(claims.get("exp"), (int, float)) else None,
     )
 
 

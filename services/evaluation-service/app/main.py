@@ -146,7 +146,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             limit=limit,
         )
 
-    @app.post("/api/v1/evaluations/runs", response_model=EvaluationRun, tags=["evaluations"])
+    @app.post(
+        "/api/v1/evaluations/runs",
+        response_model=EvaluationRun,
+        tags=["evaluations"],
+        responses={
+            409: {
+                "description": "The user token must be refreshed before a long evaluation run."
+            }
+        },
+    )
     async def create_run(payload: EvaluationRunRequest, request: Request) -> EvaluationRun:
         principal = _guard_request(request)
         logger.info(
