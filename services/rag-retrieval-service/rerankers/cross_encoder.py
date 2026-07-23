@@ -22,13 +22,11 @@ class CrossEncoderReranker:
 
     async def readiness(self) -> str:
         dependencies: list[tuple[str, str, dict[str, str]]] = []
-        if self._settings.reranker_mode != "off":
+        if self._settings.reranker_mode == "enforce":
             reranker_available = await self._resolve_reranker_base_url() is not None
-            if not reranker_available and self._settings.reranker_mode == "enforce":
-                return "not_ready"
             if not reranker_available:
-                logger.warning("reranker_shadow_unavailable content_logged=false")
-        if self._settings.colbert_mode != "off":
+                return "not_ready"
+        if self._settings.colbert_mode == "enforce":
             dependencies.append(
                 (
                     self._settings.colbert_mode,
@@ -43,10 +41,8 @@ class CrossEncoderReranker:
                 available = response.status_code < 400
             except httpx.HTTPError:
                 available = False
-            if not available and mode == "enforce":
-                return "not_ready"
             if not available:
-                logger.warning("reranker_shadow_unavailable content_logged=false")
+                return "not_ready"
         return "ready"
 
     async def rerank(

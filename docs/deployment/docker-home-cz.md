@@ -66,6 +66,12 @@ Ingestion kontejner používá Docker healthcheck pouze jako liveness kontrolu
 indexeru, úložiště a workeru, zůstává povinnou součástí immutable release
 verifikace po stabilizaci všech závislostí. Souběžný restart služeb se tak
 nezamění za pád ingestion procesu, aniž by se oslabila finální readiness brána.
+
+RAG readiness blokují pouze povinné AI závislosti v režimu `enforce`.
+Experimentální reranker nebo ColBERT v režimu `shadow` nesmí zabránit startu
+služby; jejich nedostupnost se vyhodnocuje jako fallback v diagnostice
+jednotlivých dotazů. Přepnutí na `enforce` z nich znovu udělá fail-closed
+readiness podmínku.
 Produkční env se před deployem nesourcuje. Pokud okolní shell exportuje
 libovolný stejnojmenný klíč jako `/srv/akl/env/akl.prod.env`, workflow skončí
 ještě před lockem, DB gate, buildem a stopem writeru; tím se eliminuje Compose
