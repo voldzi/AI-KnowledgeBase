@@ -48,7 +48,9 @@ Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
 
 - TEI kontrakt: `POST /rerank` s `query`, `texts`, `raw_scores=false`.
 - Llama/Qwen kontrakt: `POST /v1/rerank` s `model`, `query`, `documents`, `top_n`.
-- `AKL_RAG_RERANKER_BASE_URLS` obsahuje seřazený seznam interních endpointů.
+- `AKL_RAG_RERANKER_BASE_URLS` obsahuje alternativní interní cesty ke stejnému
+  runtime. AKB je nepoužívá jako load-balancing pool: vybere zdravou cestu,
+  drží ji aktivní a po chybě ji dočasně vyřadí.
   AKB si pamatuje poslední funkční endpoint a při síťové nebo HTTP chybě zkusí
   další; obsah dotazu ani dokumentů se neloguje.
 - Výsledek ukládá score, model, revision a latenci do interní metadata vrstvy.

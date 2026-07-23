@@ -89,10 +89,21 @@ http://10.246.241.1:11437  -> 192.168.1.176:11435
 `10.246.241.1` is the gateway of the explicitly configured
 `AKL_APP_ZONE_SUBNET` (`10.246.241.0/24` by default), not an incidental Docker
 bridge address. Keep the URL order aligned with the preferred VPN address.
-Production must list the currently healthy proxy first. For the documented
-three-address topology the preferred order is `11436` (`192.168.200.2`),
-`11435` (`192.168.200.3`), then `11437` (`192.168.1.176`). A dead proxy must
-not remain the sole `AKL_RAG_RERANKER_BASE_URLS` value.
+The three proxy URLs are alternative addresses of one MacBook, not a
+load-balanced pool. AKB probes them concurrently when it has no active route,
+sticks to the first healthy address, serializes inference for that single
+runtime, and temporarily cools down a route after an inference failure.
+Address order is only a deterministic tie-breaker when multiple paths are
+healthy.
+
+The Qwen production profile uses batches of up to 32 documents, truncates each
+reranker input to 1,500 characters and admits one inference request at a time.
+Do not raise the text bound without a production-sized benchmark:
+`32 x 1,500` completed in approximately 3.1 seconds while `32 x 4,000`
+exceeded 90 seconds and left the single-worker runtime blocked until restart.
+Production retrieval-quality evaluation also runs one case at a time so it
+measures this single physical runtime instead of creating artificial
+intra-run contention.
 
 Verification:
 

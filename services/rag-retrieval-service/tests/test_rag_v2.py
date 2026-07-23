@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import httpx
@@ -215,6 +216,7 @@ async def test_cross_encoder_fails_over_to_next_internal_endpoint(monkeypatch) -
         }
     )
     requested_urls: list[str] = []
+    health_urls: list[str] = []
 
     class FakeResponse:
         status_code = 200
@@ -237,8 +239,12 @@ async def test_cross_encoder_fails_over_to_next_internal_endpoint(monkeypatch) -
 
         async def post(self, url, *, headers, json):
             requested_urls.append(url)
+            return FakeResponse()
+
+        async def get(self, url, *, headers):
+            health_urls.append(url)
             if "192.168.200.2" in url:
-                raise httpx.ConnectError("unavailable", request=httpx.Request("POST", url))
+                raise httpx.ConnectError("unavailable", request=httpx.Request("GET", url))
             return FakeResponse()
 
     monkeypatch.setattr(cross_encoder_module.httpx, "AsyncClient", FakeClient)
@@ -249,10 +255,69 @@ async def test_cross_encoder_fails_over_to_next_internal_endpoint(monkeypatch) -
     )
 
     assert scores == [0.9]
+    assert set(health_urls) == {
+        "http://192.168.200.2:11435/health",
+        "http://192.168.200.3:11435/health",
+    }
     assert requested_urls == [
-        "http://192.168.200.2:11435/v1/rerank",
         "http://192.168.200.3:11435/v1/rerank",
     ]
+
+
+@pytest.mark.asyncio
+async def test_cross_encoder_cools_down_failed_active_address(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "shadow",
+            "AKL_RAG_RERANKER_PROVIDER": "llama",
+            "AKL_RAG_RERANKER_BASE_URLS": (
+                "http://192.168.200.2:11435,http://192.168.200.3:11435"
+            ),
+            "AKL_RAG_RERANKER_FAILURE_COOLDOWN_SECONDS": "30",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+    reranker._active_base_url = "http://192.168.200.2:11435"
+
+    reranker._mark_endpoint_failed("http://192.168.200.2:11435")
+
+    assert reranker._active_base_url is None
+    assert reranker._endpoint_is_cooling_down("http://192.168.200.2:11435")
+    assert not reranker._endpoint_is_cooling_down("http://192.168.200.3:11435")
+
+
+@pytest.mark.asyncio
+async def test_cross_encoder_serializes_single_runtime_inference(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "shadow",
+            "AKL_RAG_RERANKER_PROVIDER": "llama",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:11435",
+            "AKL_RAG_RERANKER_MAX_CONCURRENCY": "1",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+    active = 0
+    peak = 0
+
+    async def post_to_selected_endpoint(*, endpoint, payload):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0)
+        active -= 1
+        return SimpleNamespace()
+
+    monkeypatch.setattr(reranker, "_post_to_selected_endpoint", post_to_selected_endpoint)
+
+    await asyncio.gather(
+        *(
+            reranker._post_with_endpoint_fallback(endpoint="/v1/rerank", payload={})
+            for _ in range(4)
+        )
+    )
+
+    assert peak == 1
 
 
 @pytest.mark.asyncio
