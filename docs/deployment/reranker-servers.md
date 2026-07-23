@@ -140,9 +140,19 @@ HF_HUB_DISABLE_XET=1 \
 ```
 
 Operate the command as a user LaunchAgent named
-`cz.zeleznalady.akb-gte-reranker`. The service binds port `11438`, requires a
-bearer token for `/rerank`, exposes only content-free `/health`, bounds payload
-and text sizes, serializes MPS inference and never logs queries or documents.
+`cz.zeleznalady.akb-gte-reranker`. The native service binds localhost port
+`11441`, requires a bearer token for `/rerank`, exposes only content-free
+`/health`, bounds payload and text sizes, serializes MPS inference and never
+logs queries or documents. Docker Desktop publishes private port `11438`:
+
+```bash
+docker compose \
+  -f infra/rerankers/docker-compose.gte-native-proxy-mac.yml \
+  up -d
+```
+
+This mirrors the verified Qwen pattern and avoids opening a native Python
+listener through the macOS firewall.
 After the first pinned model download, set `HF_HUB_OFFLINE=1` and
 `TRANSFORMERS_OFFLINE=1` in the LaunchAgent so startup cannot resolve moving
 remote artifacts.
