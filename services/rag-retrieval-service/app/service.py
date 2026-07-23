@@ -1722,6 +1722,7 @@ class RagRetrievalService:
     ) -> RetrievalRun:
         retrieval_started = time.perf_counter()
         stage_timings_ms: dict[str, float] = {}
+        reranker_diagnostics: dict[str, object] = {}
         stage_started = retrieval_started
         analyzed_plan = analyze_query(
             payload.query,
@@ -1871,6 +1872,7 @@ class RagRetrievalService:
             )
             chunks = reranked + authorized[rerank_budget:]
             stage_timings_ms["reranking"] = _elapsed_stage_ms(stage_started)
+            reranker_diagnostics = _reranker_diagnostics(reranked)
             warnings.extend(rerank_warnings)
         else:
             chunks = authorized[: payload.max_chunks * 2]
@@ -1930,6 +1932,7 @@ class RagRetrievalService:
                     "exact_resolver_candidates": exact_resolver_candidates,
                     "exact_resolver_authorized": exact_resolver_authorized,
                     "reranker_mode": self._settings.reranker_mode,
+                    "reranker_diagnostics": reranker_diagnostics,
                     "parent_retrieval_mode": self._settings.parent_retrieval_mode,
                     "colbert_mode": self._settings.colbert_mode,
                     "v2_retrieval_mode": self._settings.v2_retrieval_mode,
@@ -3056,6 +3059,26 @@ def _candidate_budget(
         "cross_document": 96,
     }.get(profile, 64)
     return max(requested_chunks, min(planned_limit, profile_cap))
+
+
+def _reranker_diagnostics(chunks: list[RetrievedChunk]) -> dict[str, object]:
+    if not chunks:
+        return {}
+    metadata = chunks[0].metadata
+    keys = (
+        "cross_encoder_device",
+        "cross_encoder_endpoint_slot",
+        "cross_encoder_batch_count",
+        "cross_encoder_queue_ms",
+        "cross_encoder_inference_ms",
+        "cross_encoder_server_total_ms",
+        "cross_encoder_transport_ms",
+    )
+    return {
+        key.removeprefix("cross_encoder_"): metadata[key]
+        for key in keys
+        if metadata.get(key) is not None
+    }
 
 
 def _reranker_budget(profile: str, *, available: int) -> int:

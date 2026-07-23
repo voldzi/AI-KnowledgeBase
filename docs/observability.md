@@ -58,6 +58,14 @@ Important platform metrics:
 - privacy-safe assistant response feedback grouped only by rating and bounded
   reason code.
 
+RAG V2 retrieval responses include bounded `stage_timings_ms` for query
+analysis, exact resolution, embeddings, candidate retrieval, authorization,
+reranking, parent expansion and total retrieval. When the native GTE runtime
+is used, `reranker_diagnostics` further separates MPS queue, inference, server
+total and transport latency and identifies the pinned device and endpoint.
+These diagnostics contain no query, document text, prompt, answer, token or
+credential and are retained by the evaluation service with each case result.
+
 Registry exports the assistant-retention counters through OpenTelemetry using
 the `akb.assistant.*` metric namespace. Every purge cycle also writes one
 content-free structured summary log containing only aggregate counts. It never

@@ -177,6 +177,14 @@ Use the same active-route and cooldown semantics as Qwen. The three endpoints
 are alternate network paths to one physical MPS runtime, not a load-balanced
 pool. Production keeps `AKL_RAG_RERANKER_MAX_CONCURRENCY=1`.
 
+`/health` reports the pinned model, model revision, code revision and
+`device=mps`, without probing document content. Successful `/rerank` responses
+also expose content-free timing headers for MPS queue, inference, server total
+and text count. AKB propagates their aggregate into
+`retrieval_diagnostics.reranker_diagnostics`; operators can therefore separate
+network, queue and inference latency from `docker.home.cz` without access to
+queries, document text or private endpoint URLs.
+
 The production-sized benchmark of 32 Czech query-document pairs completed in
 approximately 0.98 seconds on an M4 Max after warm-up. The corresponding
 docker.home.cz CPU runtime needed approximately 60 seconds and must not be

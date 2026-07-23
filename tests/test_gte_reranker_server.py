@@ -38,6 +38,23 @@ class GteRerankerRequestValidationTests(unittest.TestCase):
                 max_text_chars=5,
             )
 
+    def test_diagnostic_headers_expose_runtime_without_content(self) -> None:
+        headers = MODULE._diagnostic_headers(
+            {
+                "device": "mps",
+                "queue_ms": 1.25,
+                "inference_ms": 18.5,
+                "total_ms": 19.75,
+                "text_count": 8,
+            }
+        )
+
+        self.assertEqual(headers["X-AKB-Reranker-Device"], "mps")
+        self.assertEqual(headers["X-AKB-Reranker-Queue-Ms"], "1.25")
+        self.assertEqual(headers["X-AKB-Reranker-Inference-Ms"], "18.5")
+        self.assertEqual(headers["X-AKB-Reranker-Text-Count"], "8")
+        self.assertNotIn("query", " ".join(headers).lower())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ from app.service import (
     _detect_conflicts,
     _exact_resolver_limit,
     _reranker_budget,
+    _reranker_diagnostics,
 )
 from policies.evidence import EvidenceGate, _model_assessment
 import rerankers.cross_encoder as cross_encoder_module
@@ -66,6 +67,35 @@ def test_query_analyzer_routes_exact_temporal_comparison_and_live_data() -> None
     assert extract_identifiers("Smlouva 120-2022-S") == ("120-2022-S",)
     assert analyze_query("365/2000 Sb.", filters, **defaults).profile == "exact"
     assert extract_identifiers("zákon č. 365/2000 Sb.") == ("365/2000 Sb.",)
+
+
+def test_reranker_diagnostics_contains_only_operational_metadata() -> None:
+    chunk = _chunk("a", "doc_a", "citlivý obsah")
+    chunk = chunk.model_copy(
+        update={
+            "metadata": {
+                **chunk.metadata,
+                "cross_encoder_device": "mps",
+                "cross_encoder_endpoint_slot": 1,
+                "cross_encoder_batch_count": 1,
+                "cross_encoder_queue_ms": 2.5,
+                "cross_encoder_inference_ms": 20.0,
+                "cross_encoder_server_total_ms": 22.5,
+                "cross_encoder_transport_ms": 3.0,
+                "unrelated_content": "must-not-escape",
+            }
+        }
+    )
+
+    assert _reranker_diagnostics([chunk]) == {
+        "device": "mps",
+        "endpoint_slot": 1,
+        "batch_count": 1,
+        "queue_ms": 2.5,
+        "inference_ms": 20.0,
+        "server_total_ms": 22.5,
+        "transport_ms": 3.0,
+    }
 
 
 def test_rag_v2_modes_require_explicit_internal_endpoints() -> None:
@@ -353,7 +383,8 @@ async def test_cross_encoder_fails_over_to_next_internal_endpoint(monkeypatch) -
             requested_urls.append(url)
             return FakeResponse()
 
-        async def get(self, url, *, headers):
+        async def get(self, url, *, headers, timeout):
+            assert timeout == settings.reranker_health_timeout_seconds
             health_urls.append(url)
             if "192.168.200.2" in url:
                 raise httpx.ConnectError("unavailable", request=httpx.Request("GET", url))
@@ -374,6 +405,52 @@ async def test_cross_encoder_fails_over_to_next_internal_endpoint(monkeypatch) -
     assert requested_urls == [
         "http://192.168.200.3:11435/v1/rerank",
     ]
+
+
+@pytest.mark.asyncio
+async def test_cross_encoder_records_server_and_transport_timings(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "enforce",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:3000",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+
+    async def post_with_endpoint_fallback(*, endpoint, payload):
+        request = httpx.Request("POST", f"http://reranker:3000{endpoint}")
+        return httpx.Response(
+            200,
+            request=request,
+            headers={
+                "X-AKB-Reranker-Device": "mps",
+                "X-AKB-Reranker-Queue-Ms": "2.5",
+                "X-AKB-Reranker-Inference-Ms": "20",
+                "X-AKB-Reranker-Total-Ms": "22.5",
+            },
+            json=[{"index": 0, "score": 0.9}],
+        )
+
+    monkeypatch.setattr(
+        reranker,
+        "_post_with_endpoint_fallback",
+        post_with_endpoint_fallback,
+    )
+
+    result, warnings = await reranker.rerank(
+        query="schválení",
+        chunks=[_chunk("a", "doc_a", "první")],
+        limit=1,
+    )
+
+    assert warnings == []
+    assert result[0].metadata["cross_encoder_device"] == "mps"
+    assert result[0].metadata["cross_encoder_endpoint_slot"] == 1
+    assert result[0].metadata["cross_encoder_queue_ms"] == 2.5
+    assert result[0].metadata["cross_encoder_inference_ms"] == 20.0
+    assert result[0].metadata["cross_encoder_server_total_ms"] == 22.5
+    assert result[0].metadata["cross_encoder_transport_ms"] is not None
 
 
 @pytest.mark.asyncio
