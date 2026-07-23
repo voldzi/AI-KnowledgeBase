@@ -90,18 +90,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         registry_client = create_registry_client(resolved_settings)
         llm_client = create_llm_client(resolved_settings)
         retriever = create_retriever(resolved_settings)
+        reranker = CrossEncoderReranker(resolved_settings)
         app.state.settings = resolved_settings
         app.state.rag_service = RagRetrievalService(
             settings=resolved_settings,
             registry_client=registry_client,
             retriever=retriever,
-            reranker=CrossEncoderReranker(resolved_settings),
+            reranker=reranker,
             llm_client=llm_client,
             no_answer_policy=NoAnswerPolicy(resolved_settings),
             answer_composer=AnswerComposer(resolved_settings, llm_client),
             evidence_gate=EvidenceGate(resolved_settings, llm_client),
         )
-        yield
+        try:
+            yield
+        finally:
+            await reranker.close()
 
     app = FastAPI(
         title="AKL RAG Retrieval Service",

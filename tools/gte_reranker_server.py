@@ -9,6 +9,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
+import time
 from typing import Any, Protocol
 
 
@@ -43,14 +44,31 @@ class MpsBackend:
         self._lock = threading.Lock()
 
     def rerank(self, query: str, texts: list[str]) -> list[float]:
+        scores, _ = self.rerank_with_diagnostics(query, texts)
+        return scores
+
+    def rerank_with_diagnostics(
+        self,
+        query: str,
+        texts: list[str],
+    ) -> tuple[list[float], dict[str, float | int | str]]:
+        started = time.perf_counter()
         with self._lock:
+            acquired = time.perf_counter()
             scores = self._model.predict(
                 [(query, text) for text in texts],
                 batch_size=self._batch_size,
                 show_progress_bar=False,
             )
             self._torch.mps.synchronize()
-        return [float(score) for score in scores]
+            completed = time.perf_counter()
+        return [float(score) for score in scores], {
+            "device": "mps",
+            "queue_ms": _elapsed_ms(started, acquired),
+            "inference_ms": _elapsed_ms(acquired, completed),
+            "total_ms": _elapsed_ms(started, completed),
+            "text_count": len(texts),
+        }
 
 
 def create_handler(
@@ -66,7 +84,16 @@ def create_handler(
 
         def do_GET(self) -> None:
             if self.path == "/health":
-                self._json(HTTPStatus.OK, {"status": "ok", "device": "mps"})
+                self._json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "ok",
+                        "device": "mps",
+                        "model": MODEL_ID,
+                        "revision": MODEL_REVISION,
+                        "code_revision": CODE_REVISION,
+                    },
+                )
                 return
             self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
@@ -88,7 +115,12 @@ def create_handler(
                     max_texts=max_texts,
                     max_text_chars=max_text_chars,
                 )
-                scores = backend.rerank(query, texts)
+                rerank_with_diagnostics = getattr(backend, "rerank_with_diagnostics", None)
+                if rerank_with_diagnostics is None:
+                    scores = backend.rerank(query, texts)
+                    diagnostics: dict[str, float | int | str] = {}
+                else:
+                    scores, diagnostics = rerank_with_diagnostics(query, texts)
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                 return
@@ -107,7 +139,11 @@ def create_handler(
                 for index, score in enumerate(scores)
             ]
             results.sort(key=lambda item: item["score"], reverse=True)
-            self._json(HTTPStatus.OK, results)
+            self._json(
+                HTTPStatus.OK,
+                results,
+                headers=_diagnostic_headers(diagnostics),
+            )
 
         def log_message(self, format: str, *args: Any) -> None:
             LOGGER.info("request method=%s status=%s content_logged=false", self.command, args[1])
@@ -124,15 +160,45 @@ def create_handler(
                 return None
             return value if value >= 0 else None
 
-        def _json(self, status: HTTPStatus, payload: object) -> None:
+        def _json(
+            self,
+            status: HTTPStatus,
+            payload: object,
+            *,
+            headers: dict[str, str] | None = None,
+        ) -> None:
             body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
     return Handler
+
+
+def _diagnostic_headers(diagnostics: dict[str, float | int | str]) -> dict[str, str]:
+    headers = {
+        "X-AKB-Reranker-Device": str(diagnostics.get("device", "unknown")),
+        "X-AKB-Reranker-Model": MODEL_ID,
+        "X-AKB-Reranker-Revision": MODEL_REVISION,
+    }
+    for key, header in (
+        ("queue_ms", "X-AKB-Reranker-Queue-Ms"),
+        ("inference_ms", "X-AKB-Reranker-Inference-Ms"),
+        ("total_ms", "X-AKB-Reranker-Total-Ms"),
+        ("text_count", "X-AKB-Reranker-Text-Count"),
+    ):
+        value = diagnostics.get(key)
+        if isinstance(value, (int, float)):
+            headers[header] = str(value)
+    return headers
+
+
+def _elapsed_ms(started: float, completed: float) -> float:
+    return round(max(0.0, (completed - started) * 1000), 2)
 
 
 def _validate_request(

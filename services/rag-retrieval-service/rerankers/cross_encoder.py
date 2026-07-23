@@ -15,6 +15,12 @@ from rerankers.lexical import LexicalReranker
 logger = logging.getLogger(__name__)
 
 
+class ScoredValues(list[float]):
+    def __init__(self, values: list[float], diagnostics: dict[str, Any]) -> None:
+        super().__init__(values)
+        self.diagnostics = diagnostics
+
+
 class CrossEncoderReranker:
     def __init__(self, settings: Settings, lexical: LexicalReranker | None = None) -> None:
         self._settings = settings
@@ -23,6 +29,12 @@ class CrossEncoderReranker:
         self._endpoint_lock = asyncio.Lock()
         self._inference_semaphore = asyncio.Semaphore(settings.reranker_max_concurrency)
         self._failed_until: dict[str, float] = {}
+        self._http_client: httpx.AsyncClient | None = None
+
+    async def close(self) -> None:
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     async def readiness(self) -> str:
         dependencies: list[tuple[str, str, dict[str, str]]] = []
@@ -105,6 +117,7 @@ class CrossEncoderReranker:
             return fallback[:limit], [*warnings, "RERANKER_FALLBACK_LEXICAL"]
 
         latency_ms = max(0, int((time.perf_counter() - started) * 1000))
+        score_diagnostics = getattr(scores, "diagnostics", {})
         scored: list[RetrievedChunk] = []
         for chunk, score in zip(candidates, scores, strict=True):
             metadata = {
@@ -113,6 +126,7 @@ class CrossEncoderReranker:
                 "cross_encoder_model": self._settings.reranker_model,
                 "cross_encoder_revision": self._settings.reranker_model_revision,
                 "cross_encoder_latency_ms": latency_ms,
+                **score_diagnostics,
             }
             scored.append(chunk.model_copy(update={"score": score, "metadata": metadata}))
         scored.sort(key=lambda item: item.score, reverse=True)
@@ -188,15 +202,25 @@ class CrossEncoderReranker:
         ]
         return sorted(scored, key=lambda item: item.score, reverse=True)
 
-    async def _score(self, *, query: str, chunks: list[RetrievedChunk]) -> list[float]:
+    async def _score(self, *, query: str, chunks: list[RetrievedChunk]) -> ScoredValues:
         results: list[float] = []
+        batch_diagnostics: list[dict[str, Any]] = []
         for start in range(0, len(chunks), self._settings.reranker_batch_size):
             batch = chunks[start : start + self._settings.reranker_batch_size]
             payload = self._payload(query, batch)
             endpoint = "/v1/rerank" if self._settings.reranker_provider == "llama" else "/rerank"
+            request_started = time.perf_counter()
             response = await self._post_with_endpoint_fallback(endpoint=endpoint, payload=payload)
+            request_ms = max(0.0, (time.perf_counter() - request_started) * 1000)
             results.extend(_ordered_scores(response.json(), len(batch)))
-        return results
+            batch_diagnostics.append(
+                _response_diagnostics(
+                    response,
+                    request_ms=request_ms,
+                    base_urls=self._settings.reranker_base_urls,
+                )
+            )
+        return ScoredValues(results, _aggregate_diagnostics(batch_diagnostics))
 
     async def _post_with_endpoint_fallback(
         self,
@@ -221,12 +245,9 @@ class CrossEncoderReranker:
                 break
             attempted.add(base_url)
             try:
-                async with httpx.AsyncClient(
-                    timeout=self._settings.reranker_timeout_seconds
-                ) as client:
-                    response = await client.post(
-                        f"{base_url}{endpoint}", headers=self._headers(), json=payload
-                    )
+                response = await self._client().post(
+                    f"{base_url}{endpoint}", headers=self._headers(), json=payload
+                )
                 response.raise_for_status()
             except httpx.HTTPError as exc:
                 last_error = exc
@@ -251,24 +272,29 @@ class CrossEncoderReranker:
             )
             if not candidates:
                 return None
-            availability = await asyncio.gather(
-                *(self._endpoint_is_healthy(base_url) for base_url in candidates)
-            )
-            for base_url, available in zip(candidates, availability, strict=True):
-                if available:
+            for base_url in candidates:
+                if await self._endpoint_is_healthy(base_url):
                     self._active_base_url = base_url
                     return base_url
             return None
 
     async def _endpoint_is_healthy(self, base_url: str) -> bool:
         try:
-            async with httpx.AsyncClient(
-                timeout=self._settings.reranker_health_timeout_seconds
-            ) as client:
-                response = await client.get(f"{base_url}/health", headers=self._headers())
+            response = await self._client().get(
+                f"{base_url}/health",
+                headers=self._headers(),
+                timeout=self._settings.reranker_health_timeout_seconds,
+            )
             return response.status_code < 400
         except httpx.HTTPError:
             return False
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(
+                timeout=self._settings.reranker_timeout_seconds,
+            )
+        return self._http_client
 
     def _mark_endpoint_failed(self, base_url: str) -> None:
         self._failed_until[base_url] = (
@@ -340,6 +366,66 @@ def _ordered_scores(payload: Any, size: int) -> list[float]:
     if any(score is None for score in scores):
         raise ValueError("reranker response is incomplete")
     return [float(score) for score in scores if score is not None]
+
+
+def _response_diagnostics(
+    response: httpx.Response,
+    *,
+    request_ms: float,
+    base_urls: tuple[str, ...],
+) -> dict[str, Any]:
+    server_total_ms = _float_header(response, "X-AKB-Reranker-Total-Ms")
+    request = getattr(response, "request", None)
+    request_url = str(request.url) if request is not None else "unknown"
+    return {
+        "device": getattr(response, "headers", {}).get("X-AKB-Reranker-Device"),
+        "endpoint_slot": _endpoint_slot(request_url, base_urls),
+        "queue_ms": _float_header(response, "X-AKB-Reranker-Queue-Ms"),
+        "inference_ms": _float_header(response, "X-AKB-Reranker-Inference-Ms"),
+        "server_total_ms": server_total_ms,
+        "transport_ms": (
+            round(max(0.0, request_ms - server_total_ms), 2)
+            if server_total_ms is not None
+            else round(request_ms, 2)
+        ),
+    }
+
+
+def _aggregate_diagnostics(batches: list[dict[str, Any]]) -> dict[str, Any]:
+    if not batches:
+        return {}
+    return {
+        "cross_encoder_device": next(
+            (item["device"] for item in batches if item.get("device")),
+            None,
+        ),
+        "cross_encoder_endpoint_slot": batches[-1]["endpoint_slot"],
+        "cross_encoder_batch_count": len(batches),
+        "cross_encoder_queue_ms": _sum_metric(batches, "queue_ms"),
+        "cross_encoder_inference_ms": _sum_metric(batches, "inference_ms"),
+        "cross_encoder_server_total_ms": _sum_metric(batches, "server_total_ms"),
+        "cross_encoder_transport_ms": _sum_metric(batches, "transport_ms"),
+    }
+
+
+def _float_header(response: httpx.Response, name: str) -> float | None:
+    try:
+        value = float(getattr(response, "headers", {})[name])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return round(max(0.0, value), 2)
+
+
+def _endpoint_slot(request_url: str, base_urls: tuple[str, ...]) -> int | None:
+    for index, base_url in enumerate(base_urls, start=1):
+        if request_url.startswith(f"{base_url}/"):
+            return index
+    return None
+
+
+def _sum_metric(items: list[dict[str, Any]], key: str) -> float | None:
+    values = [item[key] for item in items if isinstance(item.get(key), (int, float))]
+    return round(sum(values), 2) if values else None
 
 
 def _first_multivector(payload: Any) -> list[list[float]]:
