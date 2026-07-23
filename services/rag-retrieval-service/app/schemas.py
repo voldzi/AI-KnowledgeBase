@@ -219,7 +219,7 @@ class RetrieveRequest(BaseModel):
     subject_id: str = Field(min_length=1)
     query: str = Field(min_length=1, max_length=4000)
     filters: RagQueryFilters = Field(default_factory=RagQueryFilters)
-    max_chunks: int = Field(default=8, ge=1, le=20)
+    max_chunks: int = Field(default=8, ge=1, le=50)
 
 
 class RetrieveResponse(BaseModel):

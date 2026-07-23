@@ -49,6 +49,7 @@ akl_assert_no_ambient_compose_overrides \
   REGISTRY_API_IMAGE \
   INGESTION_SERVICE_IMAGE \
   RAG_RETRIEVAL_SERVICE_IMAGE \
+  EVALUATION_SERVICE_IMAGE \
   WEB_IMAGE \
   CHAT_WEB_IMAGE
 [[ "$PUBLIC_BASE_URL" == https://* ]] \
@@ -65,6 +66,7 @@ export AKL_RELEASE_COMPOSE_PROJECT="$PROJECT_NAME"
 export REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
 export INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
 export RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
+export EVALUATION_SERVICE_IMAGE="akl/evaluation-service:${TARGET_SHA}"
 export WEB_IMAGE="akl/web:${TARGET_SHA}"
 export CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
 COMPOSE=(
@@ -81,7 +83,7 @@ CHAT_WEB_AFFECTED="false"
 INGESTION_AFFECTED="false"
 for service in "${services[@]}"; do
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|web|chat-web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web) ;;
     *) akl_fail "Unsupported verification service: $service" ;;
   esac
   [[ "$service" != "web" ]] || WEB_AFFECTED="true"
@@ -94,6 +96,7 @@ expected_image_for_service() {
     registry-api) printf '%s\n' "$REGISTRY_API_IMAGE" ;;
     ingestion-service) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) printf '%s\n' "$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
+    evaluation-service) printf '%s\n' "$EVALUATION_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
     chat-web) printf '%s\n' "$CHAT_WEB_IMAGE" ;;
     *) akl_fail "Unsupported image identity service: $1" ;;
@@ -105,6 +108,7 @@ expected_image_id_for_service() {
     registry-api) printf '%s\n' "${AKL_RELEASE_EXPECTED_REGISTRY_IMAGE_ID:-}" ;;
     ingestion-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_INGESTION_IMAGE_ID:-}" ;;
     rag-retrieval-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_RAG_IMAGE_ID:-}" ;;
+    evaluation-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_EVALUATION_IMAGE_ID:-}" ;;
     web) printf '%s\n' "${AKL_RELEASE_EXPECTED_WEB_IMAGE_ID:-}" ;;
     chat-web) printf '%s\n' "${AKL_RELEASE_EXPECTED_CHAT_WEB_IMAGE_ID:-}" ;;
     *) akl_fail "Unsupported durable image identity service: $1" ;;
@@ -392,6 +396,10 @@ for service in "${services[@]}"; do
     rag-retrieval-service)
       health_url="${local_base}/rag/health"
       ready_url="${local_base}/rag/ready"
+      ;;
+    evaluation-service)
+      health_url="${local_base}/evaluation/health"
+      ready_url="${local_base}/evaluation/ready"
       ;;
     web)
       health_url="${local_base}/akb/api/health"

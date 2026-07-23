@@ -356,6 +356,12 @@ and forwards that identity to RAG/Registry. The legacy evaluation service token
 remains only for explicit bearer-mode automation. Persist and back up both
 `evaluation-datasets` and `evaluation-reports` volumes.
 
+Evaluation Service is an immutable-release managed runtime service. Changes
+under `services/evaluation-service/` build a SHA-labelled image, restart only
+the affected service and require both `/evaluation/health` and
+`/evaluation/ready` to identify the target release. Its persistent dataset and
+report volumes are retained across image replacement.
+
 Compose profil pro `docker.home.cz` má pro web build i runtime bezpečný fallback
 `/akb`, aby se Next.js image při chybějící env hodnotě nepostavil pro root `/`.
 Produkční env má ale explicitní `AKL_WEB_BASE_PATH=/akb` dál obsahovat kvůli

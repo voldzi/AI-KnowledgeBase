@@ -93,7 +93,7 @@ class EvaluationRunner:
             subject_id=subject_id,
             query=case.query,
             filters=case.filters,
-            max_chunks=case.max_chunks,
+            max_chunks=max(case.max_chunks, *case.retrieval_cutoffs),
         )
         query_payload = RagQueryRequest(
             subject_id=subject_id,
@@ -229,6 +229,14 @@ def _evaluate_success(
         expected_no_answer=case.expected_no_answer,
         retrieval_only=retrieval_only,
         failure_stage=failure_stage,
+        expected_retrieval_profile=case.expected_retrieval_profile,
+        actual_retrieval_profile=retrieve_response.retrieval_profile,
+        router_correct=(
+            retrieve_response.retrieval_profile == case.expected_retrieval_profile
+            if case.expected_retrieval_profile is not None
+            else None
+        ),
+        retrieval_diagnostics=retrieve_response.retrieval_diagnostics,
     )
 
 
@@ -238,8 +246,9 @@ def _retrieval_metrics(case: EvalCase, retrieve_response: RetrieveResponse) -> R
         chunk_id for chunk_id, relevance in judged_relevance.items() if relevance > 0
     }
     expected_documents = set(case.expected_relevant_document_ids)
-    retrieved = [chunk.chunk_id for chunk in retrieve_response.chunks]
-    retrieved_documents = [chunk.citation.document_id for chunk in retrieve_response.chunks]
+    primary_chunks = retrieve_response.chunks[: case.max_chunks]
+    retrieved = [chunk.chunk_id for chunk in primary_chunks]
+    retrieved_documents = [chunk.citation.document_id for chunk in primary_chunks]
     retrieved_set = set(retrieved)
     retrieved_document_set = set(retrieved_documents)
     matched_chunks = expected_chunks & retrieved_set
@@ -250,7 +259,7 @@ def _retrieval_metrics(case: EvalCase, retrieve_response: RetrieveResponse) -> R
             3 if chunk.chunk_id in expected_chunks else 0,
             3 if chunk.citation.document_id in expected_documents else 0,
         )
-        for chunk in retrieve_response.chunks
+        for chunk in primary_chunks
     ]
     relevant_retrieved_count = sum(1 for relevance in relevance_by_rank if relevance > 0)
     expected_count = len(expected_chunks) + len(expected_documents)
@@ -280,6 +289,31 @@ def _retrieval_metrics(case: EvalCase, retrieve_response: RetrieveResponse) -> R
         else 0.0
     )
     zero_result = not retrieved
+    recall_at_k: dict[str, float] = {}
+    ndcg_at_k: dict[str, float] = {}
+    for cutoff in case.retrieval_cutoffs:
+        cutoff_chunks = retrieve_response.chunks[:cutoff]
+        cutoff_chunk_ids = {chunk.chunk_id for chunk in cutoff_chunks}
+        cutoff_document_ids = {chunk.citation.document_id for chunk in cutoff_chunks}
+        cutoff_relevance = [
+            max(
+                judged_relevance.get(chunk.chunk_id, 0),
+                3 if chunk.chunk_id in expected_chunks else 0,
+                3 if chunk.citation.document_id in expected_documents else 0,
+            )
+            for chunk in cutoff_chunks
+        ]
+        if expected_count:
+            cutoff_recall = (
+                len(expected_chunks & cutoff_chunk_ids)
+                + len(expected_documents & cutoff_document_ids)
+            ) / expected_count
+            cutoff_ndcg = _ndcg(cutoff_relevance, ideal_relevances)
+        else:
+            cutoff_recall = 1.0 if not cutoff_chunks else 0.0
+            cutoff_ndcg = 1.0 if not cutoff_chunks else 0.0
+        recall_at_k[str(cutoff)] = _round(cutoff_recall)
+        ndcg_at_k[str(cutoff)] = _round(cutoff_ndcg)
 
     return RetrievalMetrics(
         expected_relevant_count=len(expected_chunks),
@@ -296,6 +330,8 @@ def _retrieval_metrics(case: EvalCase, retrieve_response: RetrieveResponse) -> R
         false_zero_result=zero_result and not case.expected_no_answer,
         forbidden_retrieved_count=len(forbidden_retrieved),
         authorization_leak_rate=_round(authorization_leak_rate),
+        recall_at_k=recall_at_k,
+        ndcg_at_k=ndcg_at_k,
     )
 
 
@@ -337,6 +373,9 @@ def _answer_metrics(case: EvalCase, retrieve_response: RetrieveResponse, answer:
         answer_correctness = max(0.0, term_coverage - penalty)
 
     faithfulness = _faithfulness(case, retrieve_response, answer, no_answer_correctness)
+    claims = [claim for claim in answer.claims if isinstance(claim, dict)]
+    supported_claim_count = sum(claim.get("supported") is True for claim in claims)
+    supported_claim_rate = supported_claim_count / len(claims) if claims else 0.0
     return AnswerMetrics(
         expected_term_count=len(case.expected_answer_terms),
         matched_term_count=len(matched_terms),
@@ -345,6 +384,9 @@ def _answer_metrics(case: EvalCase, retrieve_response: RetrieveResponse, answer:
         answer_correctness=_round(answer_correctness),
         faithfulness=_round(faithfulness),
         no_answer_correctness=_round(no_answer_correctness),
+        total_claim_count=len(claims),
+        supported_claim_count=supported_claim_count,
+        supported_claim_rate=_round(supported_claim_rate),
     )
 
 
@@ -438,6 +480,17 @@ def _citation_matches(expected: ExpectedCitation, actual: Citation) -> bool:
 def _summarize(results: list[EvaluationCaseResult]) -> EvaluationSummary:
     answerable_results = [result for result in results if not result.expected_no_answer]
     full_answer_results = [result for result in results if not result.retrieval_only]
+    claim_results = [
+        result for result in full_answer_results if result.answer_metrics.total_claim_count > 0
+    ]
+    no_answer_results = [result for result in full_answer_results if result.expected_no_answer]
+    router_results = [result for result in results if result.router_correct is not None]
+    recall_at_8_results = [
+        result for result in results if "8" in result.retrieval_metrics.recall_at_k
+    ]
+    recall_at_50_results = [
+        result for result in results if "50" in result.retrieval_metrics.recall_at_k
+    ]
     failures = Counter(result.failure_stage for result in results if result.failure_stage != "none")
     return EvaluationSummary(
         total_cases=len(results),
@@ -483,6 +536,27 @@ def _summarize(results: list[EvaluationCaseResult]) -> EvaluationSummary:
         failure_counts=dict(sorted(failures.items())),
         role_slices=_slice_summaries(results, key_name="role"),
         query_category_slices=_slice_summaries(results, key_name="query_category"),
+        retrieval_recall_at_8=_average(
+            [result.retrieval_metrics.recall_at_k["8"] for result in recall_at_8_results]
+        ),
+        retrieval_recall_at_50=_average(
+            [result.retrieval_metrics.recall_at_k["50"] for result in recall_at_50_results]
+        ),
+        supported_claim_rate=_average(
+            [result.answer_metrics.supported_claim_rate for result in claim_results]
+        ),
+        false_answer_rate=_rate(
+            sum(result.answer_metrics.no_answer_correctness < 1 for result in no_answer_results),
+            len(no_answer_results),
+        ),
+        router_accuracy=_rate(
+            sum(result.router_correct is True for result in router_results),
+            len(router_results),
+        ),
+        claim_evaluated_cases=len(claim_results),
+        no_answer_evaluated_cases=len(no_answer_results),
+        router_evaluated_cases=len(router_results),
+        recall_at_50_evaluated_cases=len(recall_at_50_results),
     )
 
 
@@ -535,6 +609,7 @@ def _error_result(*, case: EvalCase, started: float, code: str, message: str) ->
         expected_no_answer=case.expected_no_answer,
         retrieval_only=case.answer_mode == "retrieve_only",
         failure_stage="error",
+        expected_retrieval_profile=case.expected_retrieval_profile,
     )
 
 

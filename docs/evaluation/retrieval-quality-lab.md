@@ -63,13 +63,18 @@ verze, OCR a metadata se zobrazují samostatně v části Připravenost korpusu.
 Evaluation Service počítá:
 
 - precision, recall a hit rate,
+- explicitní recall a nDCG v řezech definovaných datasetem, včetně `@8` a `@50`,
 - MRR prvního relevantního výsledku,
 - nDCG pro graded relevance `0..3`,
 - zero-result rate a false-zero-result rate,
 - authorization leak rate pro explicitní negativní chunky,
 - citation correctness a citation traceability,
 - answer correctness, faithfulness a no-answer correctness,
+- podíl tvrzení označených evidence gate jako podložená a false-answer rate,
+- přesnost adaptivního routeru proti očekávanému retrieval profilu,
 - retrieval p50/p95 a celkovou p95 latenci,
+- strukturované časy analýzy dotazu, embeddingu, retrievalu kandidátů,
+  autorizace, rerankingu a parent expansion,
 - řezy podle role a kategorie dotazu,
 - diagnostickou fázi selhání: retrieval, autorizace, citace, odpověď nebo no-answer.
 
@@ -85,6 +90,10 @@ Výchozí produkční prahy:
 | Authorization leak rate | `<= 0` |
 | Citation traceability | `>= 1.0` |
 | Retrieval p95 | `<= 3000 ms` |
+| Retrieval recall@50 | `>= 0.98` |
+| Supported-claim rate | `>= 0.98` |
+| False-answer rate | `<= 0.02` |
+| Router accuracy | `>= 0.95` |
 
 Draft případy jsou z gate vyloučeny. Autorizační kontrola je aktivní pouze v
 datasetu s kategorií `authorization`; citační kontrola pouze u full-answer
@@ -94,6 +103,14 @@ Prahy se konfigurují přes `AKL_EVAL_GATE_*`. Každý nový běh se automaticky
 porovná s posledním plně změřeným během stejného datasetu; běhy s chybami nebo
 bez vyhodnotitelného gate se jako baseline nepoužijí. Report označí regresi skóre,
 recallu, nDCG, citací, falešných nul nebo p95 latence.
+
+Promotion dataset `professional_czech_knowledge_v2` žádá retrieval až do
+`top 50`, ale provozní precision a celkové skóre nadále počítá nad `top 8`.
+Tím rozlišuje recall kandidátů od kvality finálního pořadí. Nové prahy používají
+proměnné `AKL_EVAL_GATE_RETRIEVAL_RECALL_AT_50_MIN`,
+`AKL_EVAL_GATE_SUPPORTED_CLAIM_RATE_MIN`,
+`AKL_EVAL_GATE_FALSE_ANSWER_RATE_MAX` a
+`AKL_EVAL_GATE_ROUTER_ACCURACY_MIN`.
 
 ## Role a identita
 

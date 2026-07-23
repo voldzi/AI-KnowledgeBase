@@ -12,6 +12,18 @@ coverage of the mandatory gates. Repeat the same dataset after AKB reports the
 remediation release hash. Do not replace failed cases or change their expected
 evidence between runs.
 
+AKB now owns the machine-enforced promotion contract:
+
+- retrieval and answer dataset:
+  `quality/datasets/professional_czech_knowledge_v2.json`;
+- live authorization mutation contract:
+  `quality/datasets/rag_v2_authorization_v1.json`;
+- fail-closed evidence validator: `scripts/check_rag_v2_release.py`.
+
+STRATOS must not reimplement metric thresholds. It must execute the ten access
+projection mutations, attach non-sensitive outcomes and latency comparison to
+the AKB evaluation report, then run the AKB validator.
+
 Before the run, record the exact AKB version returned by
 `https://stratos.zeleznalady.cz/akb/api/health`. Require `/api/ready` to report
 all dependencies ready.
@@ -39,6 +51,9 @@ all dependencies ready.
    latency separately.
 9. Confirm that `120-2022-S` is routed as an exact-document request. A
    cross-document, temporal or generic semantic route is a failure.
+10. Confirm that Czech Collection of Laws references such as `365/2000 Sb.`
+    are routed as `exact` and report `exact_document_scope_applied=true` when
+    one authorized document matches.
 
 ## Acceptance gates
 
@@ -77,3 +92,13 @@ Return one machine-readable report and one concise operator summary containing:
 
 Do not include bearer tokens, service credentials, prompts, generated answers
 or document text in the evidence package.
+
+Validate the returned package from the AKB repository root:
+
+```bash
+python3 scripts/check_rag_v2_release.py \
+  quality/datasets/professional_czech_knowledge_v2.json \
+  /path/to/evaluation-report.json \
+  quality/datasets/rag_v2_authorization_v1.json \
+  /path/to/authorization-report.json
+```

@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+LABEL cz.zeleznalady.akl.service="evaluation-service"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     AKL_SERVICE_NAME=evaluation-service

@@ -3315,7 +3315,7 @@ components:
           "$ref": "#/components/schemas/RagQueryFilters"
         max_chunks:
           type: integer
-          maximum: 20.0
+          maximum: 50.0
           minimum: 1.0
           title: Max Chunks
           default: 8
