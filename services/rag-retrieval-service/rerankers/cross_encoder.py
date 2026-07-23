@@ -134,13 +134,13 @@ class CrossEncoderReranker:
 
         if self._settings.reranker_mode == "shadow":
             shadow_rank = {item.chunk_id: rank for rank, item in enumerate(scored, start=1)}
-            candidate_metadata = {item.chunk_id: item.metadata for item in candidates}
+            scored_metadata = {item.chunk_id: item.metadata for item in scored}
             return [
                 item.model_copy(
                     update={
                         "metadata": {
                             **item.metadata,
-                            **candidate_metadata.get(item.chunk_id, {}),
+                            **scored_metadata.get(item.chunk_id, {}),
                             "cross_encoder_shadow_rank": shadow_rank.get(item.chunk_id),
                         }
                     }

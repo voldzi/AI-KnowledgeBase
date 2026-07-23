@@ -454,6 +454,47 @@ async def test_cross_encoder_records_server_and_transport_timings(monkeypatch) -
 
 
 @pytest.mark.asyncio
+async def test_cross_encoder_shadow_preserves_timing_diagnostics(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "shadow",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:3000",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+
+    async def score(*, query, chunks):
+        return cross_encoder_module.ScoredValues(
+            [0.2, 0.95],
+            {
+                "cross_encoder_device": "mps",
+                "cross_encoder_endpoint_slot": 1,
+                "cross_encoder_batch_count": 1,
+                "cross_encoder_queue_ms": 0.0,
+                "cross_encoder_inference_ms": 20.0,
+                "cross_encoder_server_total_ms": 20.0,
+                "cross_encoder_transport_ms": 2.0,
+            },
+        )
+
+    monkeypatch.setattr(reranker, "_score", score)
+    result, warnings = await reranker.rerank(
+        query="schválení",
+        chunks=[
+            _chunk("a", "doc_a", "schválení"),
+            _chunk("b", "doc_b", "jiný obsah"),
+        ],
+        limit=2,
+    )
+
+    assert warnings == ["RERANKER_SHADOW"]
+    assert result[0].metadata["cross_encoder_device"] == "mps"
+    assert result[0].metadata["cross_encoder_inference_ms"] == 20.0
+    assert result[0].metadata["cross_encoder_shadow_rank"] in {1, 2}
+
+
+@pytest.mark.asyncio
 async def test_cross_encoder_cools_down_failed_active_address(monkeypatch) -> None:
     settings = load_settings(
         {
