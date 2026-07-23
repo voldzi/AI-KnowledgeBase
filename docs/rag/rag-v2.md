@@ -66,8 +66,9 @@ Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
   runtime. AKB je nepoužívá jako load-balancing pool: vybere zdravou cestu,
   drží ji aktivní a po chybě ji dočasně vyřadí.
   AKB si pamatuje poslední funkční endpoint a při síťové nebo HTTP chybě zkusí
-  další. Kontrola probíhá v deklarovaném pořadí a po nalezení zdravé cesty se
-  ostatní alternativy neprobouzejí; obsah dotazu ani dokumentů se neloguje.
+  další. Při cold startu proběhnou krátké probe alternativ souběžně; první
+  zdravá cesta vyhraje a zbývající probe se okamžitě zruší. Obsah dotazu ani
+  dokumentů se neloguje.
 - HTTP klient drží spojení k aktivní cestě otevřené mezi požadavky. Výsledek
   ukládá score, model, revision a latenci do interní metadata vrstvy.
 - `retrieval_diagnostics.reranker_diagnostics` poskytuje pouze provozní údaje:
