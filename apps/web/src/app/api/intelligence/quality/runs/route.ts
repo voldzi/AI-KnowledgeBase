@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
+import { parseEvaluationCaseIds } from "@/lib/evaluation-run-request";
 import { ApiClientError } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -16,6 +17,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const parsedCaseIds = parseEvaluationCaseIds(body.case_ids);
+    if (!parsedCaseIds.ok) {
+      return NextResponse.json(
+        { error: { code: parsedCaseIds.code, message: parsedCaseIds.message } },
+        { status: 400 }
+      );
+    }
 
     const context = await getServerRequestContextForRequest(request);
     const forbidden = requireApiAccess(context, "intelligence");
@@ -25,7 +33,8 @@ export async function POST(request: NextRequest) {
       {
         dataset_id: datasetId,
         subject_id_override: context.subjectId,
-        max_cases: clampMaxCases(body.max_cases)
+        max_cases: clampMaxCases(body.max_cases),
+        case_ids: parsedCaseIds.caseIds
       },
       context
     );

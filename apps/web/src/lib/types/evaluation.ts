@@ -216,4 +216,5 @@ export interface EvaluationRunRequest {
   dataset_id: string;
   subject_id_override?: string;
   max_cases?: number;
+  case_ids?: string[];
 }

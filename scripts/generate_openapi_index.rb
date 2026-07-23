@@ -567,6 +567,12 @@ def web_operation(method, path)
       }
     }
   } if %w[POST PUT PATCH].include?(method)
+  if method == "POST" && path == "/api/intelligence/quality/runs"
+    operation["requestBody"]["required"] = true
+    operation["requestBody"]["content"]["application/json"]["schema"] = {
+      "$ref" => "#/components/schemas/WebEvaluationRunRequest"
+    }
+  end
   operation
 end
 
@@ -830,6 +836,33 @@ spec = {
         "description" => "Route-specific schema is defined by the service-local contract or handler documentation.",
         "type" => "object",
         "additionalProperties" => true
+      },
+      "WebEvaluationRunRequest" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => ["dataset_id"],
+        "properties" => {
+          "dataset_id" => {
+            "type" => "string",
+            "minLength" => 1,
+            "pattern" => "^[A-Za-z0-9_.:-]+$"
+          },
+          "case_ids" => {
+            "type" => "array",
+            "maxItems" => 200,
+            "uniqueItems" => true,
+            "items" => {
+              "type" => "string",
+              "minLength" => 1,
+              "pattern" => "^[A-Za-z0-9_.:-]+$"
+            }
+          },
+          "max_cases" => {
+            "type" => "integer",
+            "minimum" => 1,
+            "maximum" => 200
+          }
+        }
       },
       "HealthResponse" => {
         "type" => "object",
