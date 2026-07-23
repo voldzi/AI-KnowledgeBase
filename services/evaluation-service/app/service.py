@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 
 from app.config import Settings
@@ -75,6 +76,7 @@ class EvaluationService:
         payload: EvaluationRunRequest,
         principal: EvaluationPrincipal,
     ) -> EvaluationRun:
+        _require_token_valid_for_run(principal, self._settings.min_run_token_ttl_seconds)
         effective_payload = _effective_run_request(payload, principal)
         dataset = self._resolve_dataset(effective_payload, principal)
         selected_count = _selected_case_count(dataset, effective_payload)
@@ -242,6 +244,31 @@ def _can_manage_all(principal: EvaluationPrincipal) -> bool:
     if principal.trusted_service:
         return True
     return "akb:manage_access" in principal.capabilities
+
+
+def _require_token_valid_for_run(
+    principal: EvaluationPrincipal,
+    min_ttl_seconds: int,
+) -> None:
+    if principal.trusted_service or min_ttl_seconds == 0:
+        return
+    if principal.token_expires_at is None:
+        raise EvaluationError(
+            "ACCESS_TOKEN_REFRESH_REQUIRED",
+            "A fresh user access token is required before starting an evaluation run",
+            status_code=409,
+        )
+    remaining_seconds = principal.token_expires_at - int(time.time())
+    if remaining_seconds < min_ttl_seconds:
+        raise EvaluationError(
+            "ACCESS_TOKEN_REFRESH_REQUIRED",
+            "Refresh the user session before starting this evaluation run",
+            status_code=409,
+            details={
+                "minimum_remaining_seconds": min_ttl_seconds,
+                "remaining_seconds": max(0, remaining_seconds),
+            },
+        )
 
 
 def _dataset_visible(dataset: DatasetSummary, principal: EvaluationPrincipal) -> bool:

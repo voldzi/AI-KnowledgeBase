@@ -28,3 +28,8 @@ def test_production_rejects_mock_rag_client() -> None:
 def test_invalid_pass_threshold_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_EVAL_PASS_THRESHOLD"):
         load_settings({"AKL_EVAL_PASS_THRESHOLD": "2"})
+
+
+def test_invalid_minimum_run_token_ttl_is_rejected() -> None:
+    with pytest.raises(ConfigError, match="AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS"):
+        load_settings({"AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS": "3601"})

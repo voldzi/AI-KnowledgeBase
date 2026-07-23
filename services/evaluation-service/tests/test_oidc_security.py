@@ -4,11 +4,15 @@ import time
 from types import SimpleNamespace
 
 import jwt
+import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
 from app.config import load_settings
+from app.errors import EvaluationError
 from app.main import create_app
+from app.security import EvaluationPrincipal
+from app.service import _require_token_valid_for_run
 
 
 def test_oidc_uses_stratos_projection_and_ignores_static_roles_and_headers(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -120,13 +124,41 @@ def test_oidc_rejects_wrong_audience(monkeypatch, tmp_path) -> None:  # type: ig
     assert response.json()["error"]["code"] == "AUTH_FORBIDDEN"
 
 
-def _token(private_key, *, roles: list[str]) -> str:  # type: ignore[no-untyped-def]
+def test_evaluation_run_requires_sufficient_user_token_lifetime() -> None:
+    principal = EvaluationPrincipal(
+        subject_id="user_1",
+        roles=(),
+        groups=(),
+        bearer_token="redacted",
+        token_expires_at=int(time.time()) + 30,
+    )
+
+    with pytest.raises(EvaluationError, match="Refresh the user session") as exc_info:
+        _require_token_valid_for_run(principal, 120)
+
+    assert exc_info.value.code == "ACCESS_TOKEN_REFRESH_REQUIRED"
+    assert exc_info.value.status_code == 409
+
+
+def test_evaluation_run_accepts_fresh_user_token() -> None:
+    principal = EvaluationPrincipal(
+        subject_id="user_1",
+        roles=(),
+        groups=(),
+        bearer_token="redacted",
+        token_expires_at=int(time.time()) + 300,
+    )
+
+    _require_token_valid_for_run(principal, 120)
+
+
+def _token(private_key, *, roles: list[str], expires_in: int = 300) -> str:  # type: ignore[no-untyped-def]
     return jwt.encode(
         {
             "sub": "user_1",
             "iss": "https://login.test/realms/stratos",
             "aud": "akl-api",
-            "exp": int(time.time()) + 300,
+            "exp": int(time.time()) + expires_in,
             "realm_access": {"roles": roles},
         },
         private_key,
