@@ -60,6 +60,12 @@ Produkční hodnoty patří mimo Git do `/srv/akl/env/akl.prod.env` s oprávněn
 `/srv/akl/repo` nesmí spustit `git pull`, `git checkout` ani `git switch` a z
 tohoto pracovního stromu se nesmí buildovat. Bare mirror spravuje workflow
 samostatně.
+
+Ingestion kontejner používá Docker healthcheck pouze jako liveness kontrolu
+`/health`. Plná autentizovaná kontrola `/ready`, včetně Registry, embeddings,
+indexeru, úložiště a workeru, zůstává povinnou součástí immutable release
+verifikace po stabilizaci všech závislostí. Souběžný restart služeb se tak
+nezamění za pád ingestion procesu, aniž by se oslabila finální readiness brána.
 Produkční env se před deployem nesourcuje. Pokud okolní shell exportuje
 libovolný stejnojmenný klíč jako `/srv/akl/env/akl.prod.env`, workflow skončí
 ještě před lockem, DB gate, buildem a stopem writeru; tím se eliminuje Compose
