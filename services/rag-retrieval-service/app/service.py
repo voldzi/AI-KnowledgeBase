@@ -1717,12 +1717,16 @@ class RagRetrievalService:
         query_id: str,
         auth_context: AuthContext | None = None,
     ) -> RetrievalRun:
+        retrieval_started = time.perf_counter()
+        stage_timings_ms: dict[str, float] = {}
+        stage_started = retrieval_started
         analyzed_plan = analyze_query(
             payload.query,
             payload.filters,
             default_candidate_limit=self._settings.retrieval_candidate_limit,
             default_dense_weight=self._settings.hybrid_dense_weight,
         )
+        stage_timings_ms["query_analysis"] = _elapsed_stage_ms(stage_started)
         plan = analyzed_plan
         if self._settings.adaptive_retrieval_mode != "enforce":
             plan = RetrievalPlan(
@@ -1731,7 +1735,9 @@ class RagRetrievalService:
                 dense_weight=self._settings.hybrid_dense_weight,
                 max_documents=100,
             )
+        stage_started = time.perf_counter()
         query_vectors = await self._llm_client.embeddings([payload.query], auth_context=auth_context)
+        stage_timings_ms["embedding"] = _elapsed_stage_ms(stage_started)
         query_vector = query_vectors[0] if query_vectors else None
         retrieval_filters = payload.filters
         if (
@@ -1752,12 +1758,16 @@ class RagRetrievalService:
             and "dense_weight" in inspect.signature(retrieve).parameters
         ):
             retrieve_kwargs["dense_weight"] = plan.dense_weight
+        stage_started = time.perf_counter()
         candidates = await retrieve(**retrieve_kwargs)
+        stage_timings_ms["candidate_retrieval"] = _elapsed_stage_ms(stage_started)
+        stage_started = time.perf_counter()
         authorized, denied_document_ids = await self._filter_authorized_chunks(
             subject_id=payload.subject_id,
             chunks=candidates,
             auth_context=auth_context,
         )
+        stage_timings_ms["authorization"] = _elapsed_stage_ms(stage_started)
         warnings = (
             ["AUTHZ_FILTERED_SOURCES"]
             if self._settings.authz_mode == "registry" and denied_document_ids
@@ -1783,14 +1793,17 @@ class RagRetrievalService:
             or self._settings.reranker_mode != "off"
             or self._settings.colbert_mode != "off"
         ):
+            stage_started = time.perf_counter()
             chunks, rerank_warnings = await self._rerank_chunks(
                 query=payload.query,
                 chunks=authorized,
                 limit=max(payload.max_chunks * 2, payload.max_chunks),
             )
+            stage_timings_ms["reranking"] = _elapsed_stage_ms(stage_started)
             warnings.extend(rerank_warnings)
         else:
             chunks = authorized[: payload.max_chunks * 2]
+            stage_timings_ms["reranking"] = 0.0
         chunks = _diversify_chunks(
             chunks,
             limit=payload.max_chunks,
@@ -1798,14 +1811,19 @@ class RagRetrievalService:
             max_documents=plan.max_documents,
         )
         if self._settings.parent_retrieval_mode != "off" and chunks:
+            stage_started = time.perf_counter()
             expanded, expansion_warnings = await self._expand_authorized_context(
                 subject_id=payload.subject_id,
                 chunks=chunks,
                 auth_context=auth_context,
             )
+            stage_timings_ms["parent_expansion"] = _elapsed_stage_ms(stage_started)
             warnings.extend(expansion_warnings)
             if self._settings.parent_retrieval_mode == "enforce":
                 chunks = expanded
+        else:
+            stage_timings_ms["parent_expansion"] = 0.0
+        stage_timings_ms["total_retrieval"] = _elapsed_stage_ms(retrieval_started)
         logger.info(
             "rag_retrieval_candidates query_id=%s retriever_mode=%s authz_mode=%s "
             "candidates_before_authz=%s candidates_after_authz=%s applied_filters=%s",
@@ -1839,6 +1857,7 @@ class RagRetrievalService:
                     "colbert_mode": self._settings.colbert_mode,
                     "v2_retrieval_mode": self._settings.v2_retrieval_mode,
                     "adaptive_retrieval_mode": self._settings.adaptive_retrieval_mode,
+                    "stage_timings_ms": stage_timings_ms,
                     "shadow_candidate_limit": (
                         analyzed_plan.candidate_limit
                         if self._settings.adaptive_retrieval_mode == "shadow"
@@ -2921,6 +2940,10 @@ def _apply_exact_identifier_scope(
 
 def _normalized_reference(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+
+
+def _elapsed_stage_ms(started: float) -> float:
+    return round(max(0.0, (time.perf_counter() - started) * 1000), 2)
 
 
 ASSISTANT_INTERNAL_CONTEXT_KEYS = {

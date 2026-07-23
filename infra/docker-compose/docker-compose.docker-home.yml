@@ -522,8 +522,10 @@ services:
   evaluation-service:
     build:
       context: ../../services/evaluation-service
+      labels: *immutable-release-labels
     image: ${EVALUATION_SERVICE_IMAGE:-akl/evaluation-service:docker-home}
     restart: unless-stopped
+    labels: *immutable-release-labels
     environment:
       AKL_ENV: production
       AKL_SERVICE_NAME: evaluation-service
@@ -551,6 +553,10 @@ services:
       AKL_EVAL_GATE_AUTHORIZATION_LEAK_RATE_MAX: ${AKL_EVAL_GATE_AUTHORIZATION_LEAK_RATE_MAX:-0}
       AKL_EVAL_GATE_CITATION_TRACEABILITY_MIN: ${AKL_EVAL_GATE_CITATION_TRACEABILITY_MIN:-1}
       AKL_EVAL_GATE_RETRIEVAL_LATENCY_P95_MS_MAX: ${AKL_EVAL_GATE_RETRIEVAL_LATENCY_P95_MS_MAX:-3000}
+      AKL_EVAL_GATE_RETRIEVAL_RECALL_AT_50_MIN: ${AKL_EVAL_GATE_RETRIEVAL_RECALL_AT_50_MIN:-0.98}
+      AKL_EVAL_GATE_SUPPORTED_CLAIM_RATE_MIN: ${AKL_EVAL_GATE_SUPPORTED_CLAIM_RATE_MIN:-0.98}
+      AKL_EVAL_GATE_FALSE_ANSWER_RATE_MAX: ${AKL_EVAL_GATE_FALSE_ANSWER_RATE_MAX:-0.02}
+      AKL_EVAL_GATE_ROUTER_ACCURACY_MIN: ${AKL_EVAL_GATE_ROUTER_ACCURACY_MIN:-0.95}
     volumes:
       - evaluation-datasets:/data/evaluation-datasets
       - evaluation-reports:/data/evaluation-reports

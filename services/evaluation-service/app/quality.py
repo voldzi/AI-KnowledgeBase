@@ -22,6 +22,10 @@ def quality_thresholds(settings: Settings) -> QualityThresholds:
         authorization_leak_rate_max=settings.gate_authorization_leak_rate_max,
         citation_traceability_min=settings.gate_citation_traceability_min,
         retrieval_latency_p95_ms_max=settings.gate_retrieval_latency_p95_ms_max,
+        retrieval_recall_at_50_min=settings.gate_retrieval_recall_at_50_min,
+        supported_claim_rate_min=settings.gate_supported_claim_rate_min,
+        false_answer_rate_max=settings.gate_false_answer_rate_max,
+        router_accuracy_min=settings.gate_router_accuracy_min,
     )
 
 
@@ -30,6 +34,14 @@ def evaluate_quality_gate(run: EvaluationRun, settings: Settings) -> QualityGate
     answerable = [case for case in eligible if not case.expected_no_answer]
     full_answer = [case for case in eligible if not case.retrieval_only]
     authorization_cases = [case for case in eligible if case.query_category == "authorization"]
+    recall_at_50_cases = [
+        case for case in eligible if "50" in case.retrieval_metrics.recall_at_k
+    ]
+    claim_cases = [
+        case for case in full_answer if case.answer_metrics.total_claim_count > 0
+    ]
+    no_answer_cases = [case for case in full_answer if case.expected_no_answer]
+    router_cases = [case for case in eligible if case.router_correct is not None]
     checks = [
         _minimum_check(
             "retrieval_recall",
@@ -69,6 +81,35 @@ def evaluate_quality_gate(run: EvaluationRun, settings: Settings) -> QualityGate
             _percentile([case.retrieval_latency_ms for case in eligible], 0.95),
             settings.gate_retrieval_latency_p95_ms_max,
             eligible=bool(eligible),
+        ),
+        _minimum_check(
+            "retrieval_recall_at_50",
+            _average(
+                [case.retrieval_metrics.recall_at_k["50"] for case in recall_at_50_cases]
+            ),
+            settings.gate_retrieval_recall_at_50_min,
+            eligible=bool(recall_at_50_cases),
+        ),
+        _minimum_check(
+            "supported_claim_rate",
+            _average([case.answer_metrics.supported_claim_rate for case in claim_cases]),
+            settings.gate_supported_claim_rate_min,
+            eligible=bool(claim_cases),
+        ),
+        _maximum_check(
+            "false_answer_rate",
+            _rate(
+                sum(case.answer_metrics.no_answer_correctness < 1 for case in no_answer_cases),
+                len(no_answer_cases),
+            ),
+            settings.gate_false_answer_rate_max,
+            eligible=bool(no_answer_cases),
+        ),
+        _minimum_check(
+            "router_accuracy",
+            _rate(sum(case.router_correct is True for case in router_cases), len(router_cases)),
+            settings.gate_router_accuracy_min,
+            eligible=bool(router_cases),
         ),
     ]
     evaluated = [check for check in checks if check.eligible]

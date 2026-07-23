@@ -134,13 +134,15 @@ class RetrieveRequest(BaseModel):
     subject_id: str = Field(min_length=1)
     query: str = Field(min_length=1, max_length=4000)
     filters: RagQueryFilters = Field(default_factory=RagQueryFilters)
-    max_chunks: int = Field(default=8, ge=1, le=20)
+    max_chunks: int = Field(default=8, ge=1, le=50)
 
 
 class RetrieveResponse(BaseModel):
     query_id: str
     chunks: list[RetrievedChunk]
     warnings: list[str] = Field(default_factory=list)
+    retrieval_profile: str | None = None
+    retrieval_diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class RagAnswer(BaseModel):
@@ -151,6 +153,8 @@ class RagAnswer(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     used_chunks: list[str] = Field(default_factory=list)
     missing_information: str | None = None
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_status: Literal["supported", "partial", "unsupported", "not_checked"] = "not_checked"
 
 
 class ExpectedCitation(BaseModel):
@@ -185,6 +189,8 @@ class EvalCase(BaseModel):
     filters: RagQueryFilters = Field(default_factory=RagQueryFilters)
     answer_mode: AnswerMode = "normative_with_citations"
     max_chunks: int = Field(default=8, ge=1, le=20)
+    retrieval_cutoffs: list[int] = Field(default_factory=lambda: [8], min_length=1, max_length=4)
+    expected_retrieval_profile: str | None = Field(default=None, min_length=1, max_length=64)
     expected_answer_terms: list[str] = Field(default_factory=list)
     forbidden_answer_terms: list[str] = Field(default_factory=list)
     expected_citations: list[ExpectedCitation] = Field(default_factory=list)
@@ -204,6 +210,11 @@ class EvalCase(BaseModel):
         judged_ids = [judgment.chunk_id for judgment in self.relevance_judgments]
         if len(judged_ids) != len(set(judged_ids)):
             raise ValueError("Relevance judgments must contain unique chunk ids")
+        if any(cutoff < 1 or cutoff > 50 for cutoff in self.retrieval_cutoffs):
+            raise ValueError("Retrieval cutoffs must be between 1 and 50")
+        if len(self.retrieval_cutoffs) != len(set(self.retrieval_cutoffs)):
+            raise ValueError("Retrieval cutoffs must be unique")
+        self.retrieval_cutoffs.sort()
         return self
 
 
@@ -280,6 +291,8 @@ class RetrievalMetrics(BaseModel):
     false_zero_result: bool = False
     forbidden_retrieved_count: int = 0
     authorization_leak_rate: float = 0
+    recall_at_k: dict[str, float] = Field(default_factory=dict)
+    ndcg_at_k: dict[str, float] = Field(default_factory=dict)
 
 
 class CitationMetrics(BaseModel):
@@ -299,6 +312,9 @@ class AnswerMetrics(BaseModel):
     answer_correctness: float
     faithfulness: float
     no_answer_correctness: float
+    total_claim_count: int = 0
+    supported_claim_count: int = 0
+    supported_claim_rate: float = 0
 
 
 class EvaluationCaseResult(BaseModel):
@@ -327,6 +343,10 @@ class EvaluationCaseResult(BaseModel):
     expected_no_answer: bool = False
     retrieval_only: bool = False
     failure_stage: FailureStage = "none"
+    expected_retrieval_profile: str | None = None
+    actual_retrieval_profile: str | None = None
+    router_correct: bool | None = None
+    retrieval_diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvaluationSummary(BaseModel):
@@ -360,6 +380,15 @@ class EvaluationSummary(BaseModel):
     failure_counts: dict[str, int] = Field(default_factory=dict)
     role_slices: list["EvaluationSliceSummary"] = Field(default_factory=list)
     query_category_slices: list["EvaluationSliceSummary"] = Field(default_factory=list)
+    retrieval_recall_at_8: float = 0
+    retrieval_recall_at_50: float = 0
+    supported_claim_rate: float = 0
+    false_answer_rate: float = 0
+    router_accuracy: float = 0
+    claim_evaluated_cases: int = 0
+    no_answer_evaluated_cases: int = 0
+    router_evaluated_cases: int = 0
+    recall_at_50_evaluated_cases: int = 0
 
 
 class EvaluationSliceSummary(BaseModel):
@@ -436,6 +465,10 @@ class QualityThresholds(BaseModel):
     authorization_leak_rate_max: float
     citation_traceability_min: float
     retrieval_latency_p95_ms_max: float
+    retrieval_recall_at_50_min: float = 0.98
+    supported_claim_rate_min: float = 0.98
+    false_answer_rate_max: float = 0.02
+    router_accuracy_min: float = 0.95
 
 
 class QualityOverview(BaseModel):

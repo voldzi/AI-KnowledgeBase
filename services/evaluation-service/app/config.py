@@ -71,6 +71,10 @@ class Settings:
     gate_authorization_leak_rate_max: float
     gate_citation_traceability_min: float
     gate_retrieval_latency_p95_ms_max: float
+    gate_retrieval_recall_at_50_min: float
+    gate_supported_claim_rate_min: float
+    gate_false_answer_rate_max: float
+    gate_router_accuracy_min: float
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -111,6 +115,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         gate_retrieval_latency_p95_ms_max = float(
             _get(source, "AKL_EVAL_GATE_RETRIEVAL_LATENCY_P95_MS_MAX", "3000")
         )
+        gate_retrieval_recall_at_50_min = float(
+            _get(source, "AKL_EVAL_GATE_RETRIEVAL_RECALL_AT_50_MIN", "0.98")
+        )
+        gate_supported_claim_rate_min = float(
+            _get(source, "AKL_EVAL_GATE_SUPPORTED_CLAIM_RATE_MIN", "0.98")
+        )
+        gate_false_answer_rate_max = float(
+            _get(source, "AKL_EVAL_GATE_FALSE_ANSWER_RATE_MAX", "0.02")
+        )
+        gate_router_accuracy_min = float(
+            _get(source, "AKL_EVAL_GATE_ROUTER_ACCURACY_MIN", "0.95")
+        )
         stratos_access_timeout_seconds = float(
             _get(source, "AKL_STRATOS_ACCESS_TIMEOUT_SECONDS", "3")
         )
@@ -137,6 +153,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "AKL_EVAL_GATE_FALSE_ZERO_RESULT_RATE_MAX": gate_false_zero_result_rate_max,
         "AKL_EVAL_GATE_AUTHORIZATION_LEAK_RATE_MAX": gate_authorization_leak_rate_max,
         "AKL_EVAL_GATE_CITATION_TRACEABILITY_MIN": gate_citation_traceability_min,
+        "AKL_EVAL_GATE_RETRIEVAL_RECALL_AT_50_MIN": gate_retrieval_recall_at_50_min,
+        "AKL_EVAL_GATE_SUPPORTED_CLAIM_RATE_MIN": gate_supported_claim_rate_min,
+        "AKL_EVAL_GATE_FALSE_ANSWER_RATE_MAX": gate_false_answer_rate_max,
+        "AKL_EVAL_GATE_ROUTER_ACCURACY_MIN": gate_router_accuracy_min,
     }
     for key, value in unit_interval_values.items():
         if not 0 <= value <= 1:
@@ -202,4 +222,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         gate_authorization_leak_rate_max=gate_authorization_leak_rate_max,
         gate_citation_traceability_min=gate_citation_traceability_min,
         gate_retrieval_latency_p95_ms_max=gate_retrieval_latency_p95_ms_max,
+        gate_retrieval_recall_at_50_min=gate_retrieval_recall_at_50_min,
+        gate_supported_claim_rate_min=gate_supported_claim_rate_min,
+        gate_false_answer_rate_max=gate_false_answer_rate_max,
+        gate_router_accuracy_min=gate_router_accuracy_min,
     )

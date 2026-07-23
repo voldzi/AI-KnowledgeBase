@@ -21,8 +21,9 @@ _IDENTIFIER_RE = re.compile(
     r"[A-Z]{2,}[A-Z0-9_-]*[-/]\d{2,}"
     r"|doc_[a-z0-9]+"
     r"|ver_[a-z0-9]+"
+    r"|\d{1,4}/(?:19|20)\d{2}\s*Sb\.?"
     r"|\d{1,6}[-/](?:19|20)\d{2}[-/][A-Z0-9][A-Z0-9_-]*"
-    r")\b",
+    r")",
     re.I,
 )
 _COMPARE_RE = re.compile(r"\b(porovnej|porovnání|rozdíl|oproti|compare|difference|konflikt|rozpor)\b", re.I)

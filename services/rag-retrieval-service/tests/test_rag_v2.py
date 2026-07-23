@@ -50,6 +50,8 @@ def test_query_analyzer_routes_exact_temporal_comparison_and_live_data() -> None
     assert analyze_query("Jaké je aktuální čerpání?", filters, **defaults).profile == "copilot_live_data"
     assert analyze_query("Smlouva 120-2022-S", filters, **defaults).profile == "exact"
     assert extract_identifiers("Smlouva 120-2022-S") == ("120-2022-S",)
+    assert analyze_query("365/2000 Sb.", filters, **defaults).profile == "exact"
+    assert extract_identifiers("zákon č. 365/2000 Sb.") == ("365/2000 Sb.",)
 
 
 def test_rag_v2_modes_require_explicit_internal_endpoints() -> None:
@@ -152,6 +154,22 @@ def test_exact_identifier_scope_keeps_only_the_single_matching_document() -> Non
 
     assert document_id == "doc_target"
     assert {chunk.citation.document_id for chunk in scoped} == {"doc_target"}
+
+
+def test_exact_czech_law_scope_keeps_only_matching_document() -> None:
+    chunks = [
+        _chunk("law-a", "doc_law", "Působnost zákona."),
+        _chunk("law-b", "doc_law", "Správa informačních systémů."),
+        _chunk("noise", "doc_noise", "Historické údaje."),
+    ]
+    chunks[0].citation.document_title = "365/2000 Sb. - Zákon o informačních systémech"
+    chunks[1].citation.document_title = "365/2000 Sb. - Zákon o informačních systémech"
+    chunks[2].citation.document_title = "Výroční zpráva 2000"
+
+    scoped, document_id = _apply_exact_identifier_scope("365/2000 Sb.", chunks)
+
+    assert document_id == "doc_law"
+    assert {chunk.citation.document_id for chunk in scoped} == {"doc_law"}
 
 
 @pytest.mark.asyncio

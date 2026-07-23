@@ -473,6 +473,7 @@ SUPPORTED = (
     "registry-api",
     "ingestion-service",
     "rag-retrieval-service",
+    "evaluation-service",
     "web",
     "chat-web",
 )
@@ -1713,7 +1714,7 @@ if values["phase"] not in {
     "verified",
 }:
     raise SystemExit("runtime marker phase is invalid")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web))*)", values["services"]):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web))*)", values["services"]):
     raise SystemExit("runtime marker services are invalid")
 if values["migration_started"] not in {"true", "false"}:
     raise SystemExit("runtime marker migration flag is invalid")
@@ -1755,7 +1756,7 @@ if state not in {"applying", "failed", "verified"}:
     raise SystemExit("invalid runtime marker state")
 if phase not in {"seeded", "migrating", "migrated", "restarting", "verifying", "verified"}:
     raise SystemExit("invalid runtime marker phase")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|web|chat-web))*)", services):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web))*)", services):
     raise SystemExit("invalid runtime marker services")
 if migration_started not in {"true", "false"}:
     raise SystemExit("invalid runtime marker migration flag")
@@ -2624,7 +2625,7 @@ akl_quarantine_unverified_compose_service() {
   local -a container_ids=()
 
   akl_validate_project_name "$project_name"
-  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web|chat-web)$ ]] \
+  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web)$ ]] \
     || akl_fail "Unverified Compose service name is invalid"
   [[ "$target_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || akl_fail "Unverified durable target image ID is invalid"

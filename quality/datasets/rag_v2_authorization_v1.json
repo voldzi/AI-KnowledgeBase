@@ -1,0 +1,47 @@
+{
+  "dataset_id": "rag_v2_authorization_v1",
+  "version": "1.0.0",
+  "description": "Live authorization mutation contract for the AKB RAG V2 promotion gate. STRATOS owns projection mutations; AKB owns fail-closed retrieval assertions.",
+  "cases": [
+    {
+      "case_id": "authorized_baseline",
+      "expected_outcome": "target_retrieved"
+    },
+    {
+      "case_id": "document_grant_revoked",
+      "expected_outcome": "target_not_retrieved"
+    },
+    {
+      "case_id": "document_grant_restored",
+      "expected_outcome": "target_retrieved"
+    },
+    {
+      "case_id": "expired_projection",
+      "expected_outcome": "forbidden"
+    },
+    {
+      "case_id": "inactive_grant",
+      "expected_outcome": "target_not_retrieved"
+    },
+    {
+      "case_id": "wrong_scope",
+      "expected_outcome": "target_not_retrieved"
+    },
+    {
+      "case_id": "unknown_policy_binding",
+      "expected_outcome": "forbidden"
+    },
+    {
+      "case_id": "forbidden_classification",
+      "expected_outcome": "target_not_retrieved"
+    },
+    {
+      "case_id": "forged_access_headers",
+      "expected_outcome": "forbidden"
+    },
+    {
+      "case_id": "access_projection_unavailable",
+      "expected_outcome": "unavailable"
+    }
+  ]
+}

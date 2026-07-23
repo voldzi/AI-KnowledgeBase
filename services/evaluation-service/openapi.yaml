@@ -3,7 +3,7 @@ info:
   title: AKL Evaluation Service
   description: Evaluation runs, datasets, and reports for AKL RAG answer, citation,
     and retrieval quality.
-  version: 0.2.0
+  version: dev
 paths:
   /health:
     get:
@@ -296,6 +296,18 @@ components:
         no_answer_correctness:
           type: number
           title: No Answer Correctness
+        total_claim_count:
+          type: integer
+          title: Total Claim Count
+          default: 0
+        supported_claim_count:
+          type: integer
+          title: Supported Claim Count
+          default: 0
+        supported_claim_rate:
+          type: number
+          title: Supported Claim Rate
+          default: 0
       type: object
       required:
       - expected_term_count
@@ -499,6 +511,20 @@ components:
           minimum: 1.0
           title: Max Chunks
           default: 8
+        retrieval_cutoffs:
+          items:
+            type: integer
+          type: array
+          maxItems: 4
+          minItems: 1
+          title: Retrieval Cutoffs
+        expected_retrieval_profile:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Expected Retrieval Profile
         expected_answer_terms:
           items:
             type: string
@@ -725,6 +751,25 @@ components:
           - error
           title: Failure Stage
           default: none
+        expected_retrieval_profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expected Retrieval Profile
+        actual_retrieval_profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actual Retrieval Profile
+        router_correct:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Router Correct
+        retrieval_diagnostics:
+          additionalProperties: true
+          type: object
+          title: Retrieval Diagnostics
       type: object
       required:
       - case_id
@@ -1139,6 +1184,42 @@ components:
             $ref: '#/components/schemas/EvaluationSliceSummary'
           type: array
           title: Query Category Slices
+        retrieval_recall_at_8:
+          type: number
+          title: Retrieval Recall At 8
+          default: 0
+        retrieval_recall_at_50:
+          type: number
+          title: Retrieval Recall At 50
+          default: 0
+        supported_claim_rate:
+          type: number
+          title: Supported Claim Rate
+          default: 0
+        false_answer_rate:
+          type: number
+          title: False Answer Rate
+          default: 0
+        router_accuracy:
+          type: number
+          title: Router Accuracy
+          default: 0
+        claim_evaluated_cases:
+          type: integer
+          title: Claim Evaluated Cases
+          default: 0
+        no_answer_evaluated_cases:
+          type: integer
+          title: No Answer Evaluated Cases
+          default: 0
+        router_evaluated_cases:
+          type: integer
+          title: Router Evaluated Cases
+          default: 0
+        recall_at_50_evaluated_cases:
+          type: integer
+          title: Recall At 50 Evaluated Cases
+          default: 0
       type: object
       required:
       - total_cases
@@ -1323,6 +1404,22 @@ components:
         retrieval_latency_p95_ms_max:
           type: number
           title: Retrieval Latency P95 Ms Max
+        retrieval_recall_at_50_min:
+          type: number
+          title: Retrieval Recall At 50 Min
+          default: 0.98
+        supported_claim_rate_min:
+          type: number
+          title: Supported Claim Rate Min
+          default: 0.98
+        false_answer_rate_max:
+          type: number
+          title: False Answer Rate Max
+          default: 0.02
+        router_accuracy_min:
+          type: number
+          title: Router Accuracy Min
+          default: 0.95
       type: object
       required:
       - retrieval_recall_min
@@ -1463,6 +1560,16 @@ components:
           type: number
           title: Authorization Leak Rate
           default: 0
+        recall_at_k:
+          additionalProperties:
+            type: number
+          type: object
+          title: Recall At K
+        ndcg_at_k:
+          additionalProperties:
+            type: number
+          type: object
+          title: Ndcg At K
       type: object
       required:
       - expected_relevant_count

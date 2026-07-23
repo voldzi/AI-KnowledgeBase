@@ -73,6 +73,7 @@ RETRY_REQUIRES_DESCENDANT_SHA="false"
 TARGET_REGISTRY_IMAGE_ID="not-affected"
 TARGET_INGESTION_IMAGE_ID="not-affected"
 TARGET_RAG_IMAGE_ID="not-affected"
+TARGET_EVALUATION_IMAGE_ID="not-affected"
 TARGET_WEB_IMAGE_ID="not-affected"
 TARGET_CHAT_WEB_IMAGE_ID="not-affected"
 TARGET_SERVICES_START_MAY_HAVE_STARTED="false"
@@ -82,6 +83,8 @@ TARGET_INGESTION_QUARANTINED="false"
 TARGET_INGESTION_QUARANTINE_FAILED="false"
 TARGET_RAG_QUARANTINED="false"
 TARGET_RAG_QUARANTINE_FAILED="false"
+TARGET_EVALUATION_QUARANTINED="false"
+TARGET_EVALUATION_QUARANTINE_FAILED="false"
 TARGET_WEB_QUARANTINED="false"
 TARGET_WEB_QUARANTINE_FAILED="false"
 TARGET_CHAT_WEB_QUARANTINED="false"
@@ -298,6 +301,7 @@ write_deployment_record() {
     printf 'target_registry_image_id=%s\n' "$TARGET_REGISTRY_IMAGE_ID"
     printf 'target_ingestion_image_id=%s\n' "$TARGET_INGESTION_IMAGE_ID"
     printf 'target_rag_image_id=%s\n' "$TARGET_RAG_IMAGE_ID"
+    printf 'target_evaluation_image_id=%s\n' "$TARGET_EVALUATION_IMAGE_ID"
     printf 'target_web_image_id=%s\n' "$TARGET_WEB_IMAGE_ID"
     printf 'target_chat_web_image_id=%s\n' "$TARGET_CHAT_WEB_IMAGE_ID"
     printf 'target_services_start_may_have_started=%s\n' "$TARGET_SERVICES_START_MAY_HAVE_STARTED"
@@ -307,6 +311,8 @@ write_deployment_record() {
     printf 'target_ingestion_quarantine_failed=%s\n' "$TARGET_INGESTION_QUARANTINE_FAILED"
     printf 'target_rag_quarantined=%s\n' "$TARGET_RAG_QUARANTINED"
     printf 'target_rag_quarantine_failed=%s\n' "$TARGET_RAG_QUARANTINE_FAILED"
+    printf 'target_evaluation_quarantined=%s\n' "$TARGET_EVALUATION_QUARANTINED"
+    printf 'target_evaluation_quarantine_failed=%s\n' "$TARGET_EVALUATION_QUARANTINE_FAILED"
     printf 'target_web_quarantined=%s\n' "$TARGET_WEB_QUARANTINED"
     printf 'target_web_quarantine_failed=%s\n' "$TARGET_WEB_QUARANTINE_FAILED"
     printf 'target_chat_web_quarantined=%s\n' "$TARGET_CHAT_WEB_QUARANTINED"
@@ -395,6 +401,7 @@ expected_keys = [
     "target_registry_image_id",
     "target_ingestion_image_id",
     "target_rag_image_id",
+    "target_evaluation_image_id",
     "target_web_image_id",
     "target_chat_web_image_id",
     "target_services_start_may_have_started",
@@ -404,6 +411,8 @@ expected_keys = [
     "target_ingestion_quarantine_failed",
     "target_rag_quarantined",
     "target_rag_quarantine_failed",
+    "target_evaluation_quarantined",
+    "target_evaluation_quarantine_failed",
     "target_web_quarantined",
     "target_web_quarantine_failed",
     "target_chat_web_quarantined",
@@ -440,6 +449,7 @@ image_fields = {
     "registry-api": "target_registry_image_id",
     "ingestion-service": "target_ingestion_image_id",
     "rag-retrieval-service": "target_rag_image_id",
+    "evaluation-service": "target_evaluation_image_id",
     "web": "target_web_image_id",
     "chat-web": "target_chat_web_image_id",
 }
@@ -460,6 +470,8 @@ for field in {
     "target_ingestion_quarantine_failed",
     "target_rag_quarantined",
     "target_rag_quarantine_failed",
+    "target_evaluation_quarantined",
+    "target_evaluation_quarantine_failed",
     "target_web_quarantined",
     "target_web_quarantine_failed",
     "target_chat_web_quarantined",
@@ -474,6 +486,7 @@ print(
             values["target_registry_image_id"],
             values["target_ingestion_image_id"],
             values["target_rag_image_id"],
+            values["target_evaluation_image_id"],
             values["target_web_image_id"],
             values["target_chat_web_image_id"],
         ]
@@ -487,6 +500,7 @@ expected_image_for_service() {
     registry-api) printf '%s\n' "$REGISTRY_API_IMAGE" ;;
     ingestion-service) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) printf '%s\n' "$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
+    evaluation-service) printf '%s\n' "$EVALUATION_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
     chat-web) printf '%s\n' "$CHAT_WEB_IMAGE" ;;
     *) akl_fail "Unsupported immutable image service: $1" ;;
@@ -506,6 +520,7 @@ verify_target_image_identity() {
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
       "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
+      "EVALUATION_SERVICE_IMAGE=${EVALUATION_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
       docker image inspect --format '{{.Id}}' "$target_image"
@@ -519,6 +534,7 @@ verify_target_image_identity() {
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
       "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
+      "EVALUATION_SERVICE_IMAGE=${EVALUATION_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
       docker image inspect --format '{{json .RepoTags}}' "$target_image"
@@ -539,6 +555,7 @@ PY
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
       "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
+      "EVALUATION_SERVICE_IMAGE=${EVALUATION_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$target_image"
@@ -550,6 +567,7 @@ PY
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
       "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
+      "EVALUATION_SERVICE_IMAGE=${EVALUATION_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$target_image"
@@ -561,6 +579,7 @@ PY
       "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}" \
       "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
       "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}" \
+      "EVALUATION_SERVICE_IMAGE=${EVALUATION_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$target_image"
@@ -717,6 +736,7 @@ quarantine_unverified_target_services() {
       registry-api) target_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
       ingestion-service) target_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
       rag-retrieval-service) target_image_id="$TARGET_RAG_IMAGE_ID" ;;
+      evaluation-service) target_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
       web) target_image_id="$TARGET_WEB_IMAGE_ID" ;;
       chat-web) target_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
       *) akl_fail "Unsupported target service during quarantine" ;;
@@ -733,6 +753,7 @@ quarantine_unverified_target_services() {
         registry-api) TARGET_REGISTRY_QUARANTINED="true" ;;
         ingestion-service) TARGET_INGESTION_QUARANTINED="true" ;;
         rag-retrieval-service) TARGET_RAG_QUARANTINED="true" ;;
+        evaluation-service) TARGET_EVALUATION_QUARANTINED="true" ;;
         web) TARGET_WEB_QUARANTINED="true" ;;
         chat-web) TARGET_CHAT_WEB_QUARANTINED="true" ;;
       esac
@@ -743,6 +764,7 @@ quarantine_unverified_target_services() {
         registry-api) TARGET_REGISTRY_QUARANTINE_FAILED="true" ;;
         ingestion-service) TARGET_INGESTION_QUARANTINE_FAILED="true" ;;
         rag-retrieval-service) TARGET_RAG_QUARANTINE_FAILED="true" ;;
+        evaluation-service) TARGET_EVALUATION_QUARANTINE_FAILED="true" ;;
         web) TARGET_WEB_QUARANTINE_FAILED="true" ;;
         chat-web) TARGET_CHAT_WEB_QUARANTINE_FAILED="true" ;;
       esac
@@ -863,12 +885,14 @@ akl_assert_no_ambient_compose_overrides \
   REGISTRY_API_IMAGE \
   INGESTION_SERVICE_IMAGE \
   RAG_RETRIEVAL_SERVICE_IMAGE \
+  EVALUATION_SERVICE_IMAGE \
   WEB_IMAGE \
   CHAT_WEB_IMAGE
 AKL_SERVICE_VERSION="$TARGET_SHA"
 REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
 INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
 RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
+EVALUATION_SERVICE_IMAGE="akl/evaluation-service:${TARGET_SHA}"
 WEB_IMAGE="akl/web:${TARGET_SHA}"
 CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
 COMPOSE=(
@@ -877,6 +901,7 @@ COMPOSE=(
   "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}"
   "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}"
   "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}"
+  "EVALUATION_SERVICE_IMAGE=${EVALUATION_SERVICE_IMAGE}"
   "WEB_IMAGE=${WEB_IMAGE}"
   "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}"
   "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}"
@@ -947,13 +972,14 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   && "$RUNTIME_MARKER_PHASE" == "verified" ]]; then
   [[ -z "${AKL_FORWARD_FIX_FROM_SHA:-}" ]] \
     || akl_fail "Forward-fix context is invalid for verified-release reconciliation"
-  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web|chat-web)(,(registry-api|ingestion-service|rag-retrieval-service|web|chat-web))*$ ]] \
+  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web)(,(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web))*$ ]] \
     || akl_fail "Verified runtime marker has an invalid service set"
   SERVICE_CSV="$RUNTIME_MARKER_SERVICES"
   IFS='|' read -r \
     TARGET_REGISTRY_IMAGE_ID \
     TARGET_INGESTION_IMAGE_ID \
     TARGET_RAG_IMAGE_ID \
+    TARGET_EVALUATION_IMAGE_ID \
     TARGET_WEB_IMAGE_ID \
     TARGET_CHAT_WEB_IMAGE_ID \
     <<<"$(load_reconciliation_image_ids \
@@ -965,6 +991,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
       registry-api) reconciled_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
       ingestion-service) reconciled_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
       rag-retrieval-service) reconciled_image_id="$TARGET_RAG_IMAGE_ID" ;;
+      evaluation-service) reconciled_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
       web) reconciled_image_id="$TARGET_WEB_IMAGE_ID" ;;
       chat-web) reconciled_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
       *) akl_fail "Verified reconciliation contains an unsupported service" ;;
@@ -984,6 +1011,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   AKL_RELEASE_EXPECTED_REGISTRY_IMAGE_ID="$TARGET_REGISTRY_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_INGESTION_IMAGE_ID="$TARGET_INGESTION_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_RAG_IMAGE_ID="$TARGET_RAG_IMAGE_ID" \
+  AKL_RELEASE_EXPECTED_EVALUATION_IMAGE_ID="$TARGET_EVALUATION_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_WEB_IMAGE_ID="$TARGET_WEB_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_CHAT_WEB_IMAGE_ID="$TARGET_CHAT_WEB_IMAGE_ID" \
     "${release_dir}/scripts/verify_docker_home_release.sh" \
@@ -993,6 +1021,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
       registry-api) reconciled_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
       ingestion-service) reconciled_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
       rag-retrieval-service) reconciled_image_id="$TARGET_RAG_IMAGE_ID" ;;
+      evaluation-service) reconciled_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
       web) reconciled_image_id="$TARGET_WEB_IMAGE_ID" ;;
       chat-web) reconciled_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
       *) akl_fail "Verified reconciliation contains an unsupported service" ;;
@@ -1047,7 +1076,7 @@ add_service() {
 }
 
 if [[ -z "$current_sha" ]]; then
-  services=(registry-api ingestion-service rag-retrieval-service web chat-web)
+  services=(registry-api ingestion-service rag-retrieval-service evaluation-service web chat-web)
 else
   current_compose_file="${current_release_dir}/infra/docker-compose/docker-compose.docker-home.yml"
   current_compose_sha256="$(sha256sum "$current_compose_file" | awk '{print $1}')"
@@ -1077,6 +1106,7 @@ else
         add_service registry-api
         add_service ingestion-service
         add_service rag-retrieval-service
+        add_service evaluation-service
         add_service web
         add_service chat-web
         ;;
@@ -1093,9 +1123,11 @@ else
       services/rag-retrieval-service/*)
         add_service rag-retrieval-service
         ;;
-      services/evaluation-service/README.md|services/evaluation-service/datasets/*|services/evaluation-service/tests/*)
-        # Evaluation documentation, curated datasets, and tests do not alter
-        # a production runtime service managed by this release workflow.
+      services/evaluation-service/README.md|services/evaluation-service/tests/*)
+        # Evaluation documentation and tests do not alter runtime behavior.
+        ;;
+      services/evaluation-service/*)
+        add_service evaluation-service
         ;;
       apps/web/*)
         add_service web
@@ -1116,7 +1148,7 @@ else
 fi
 
 if [[ -n "${AKL_FORWARD_FIX_FROM_SHA:-}" ]]; then
-  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|web|chat-web)(,(registry-api|ingestion-service|rag-retrieval-service|web|chat-web))*$ ]] \
+  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web)(,(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|web|chat-web))*$ ]] \
     || akl_fail "Failed runtime marker has an invalid service set"
   IFS=',' read -r -a recovery_services <<<"$RUNTIME_MARKER_SERVICES"
   for recovery_service in "${recovery_services[@]}"; do
@@ -1182,6 +1214,7 @@ for service in "${services[@]}"; do
     registry-api) target_image="$REGISTRY_API_IMAGE" ;;
     ingestion-service) target_image="$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) target_image="$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
+    evaluation-service) target_image="$EVALUATION_SERVICE_IMAGE" ;;
     web) target_image="$WEB_IMAGE" ;;
     chat-web) target_image="$CHAT_WEB_IMAGE" ;;
   esac
@@ -1230,6 +1263,7 @@ for service in "${services[@]}"; do
     registry-api) TARGET_REGISTRY_IMAGE_ID="$verified_image_id" ;;
     ingestion-service) TARGET_INGESTION_IMAGE_ID="$verified_image_id" ;;
     rag-retrieval-service) TARGET_RAG_IMAGE_ID="$verified_image_id" ;;
+    evaluation-service) TARGET_EVALUATION_IMAGE_ID="$verified_image_id" ;;
     web) TARGET_WEB_IMAGE_ID="$verified_image_id" ;;
     chat-web) TARGET_CHAT_WEB_IMAGE_ID="$verified_image_id" ;;
   esac
@@ -1239,6 +1273,7 @@ write_deployment_record target_images_verified
 PINNED_REGISTRY_API_IMAGE="$REGISTRY_API_IMAGE"
 PINNED_INGESTION_SERVICE_IMAGE="$INGESTION_SERVICE_IMAGE"
 PINNED_RAG_RETRIEVAL_SERVICE_IMAGE="$RAG_RETRIEVAL_SERVICE_IMAGE"
+PINNED_EVALUATION_SERVICE_IMAGE="$EVALUATION_SERVICE_IMAGE"
 PINNED_WEB_IMAGE="$WEB_IMAGE"
 PINNED_CHAT_WEB_IMAGE="$CHAT_WEB_IMAGE"
 [[ "$TARGET_REGISTRY_IMAGE_ID" == "not-affected" ]] \
@@ -1247,6 +1282,8 @@ PINNED_CHAT_WEB_IMAGE="$CHAT_WEB_IMAGE"
   || PINNED_INGESTION_SERVICE_IMAGE="$TARGET_INGESTION_IMAGE_ID"
 [[ "$TARGET_RAG_IMAGE_ID" == "not-affected" ]] \
   || PINNED_RAG_RETRIEVAL_SERVICE_IMAGE="$TARGET_RAG_IMAGE_ID"
+[[ "$TARGET_EVALUATION_IMAGE_ID" == "not-affected" ]] \
+  || PINNED_EVALUATION_SERVICE_IMAGE="$TARGET_EVALUATION_IMAGE_ID"
 [[ "$TARGET_WEB_IMAGE_ID" == "not-affected" ]] \
   || PINNED_WEB_IMAGE="$TARGET_WEB_IMAGE_ID"
 [[ "$TARGET_CHAT_WEB_IMAGE_ID" == "not-affected" ]] \
@@ -1257,6 +1294,7 @@ PINNED_COMPOSE=(
   "REGISTRY_API_IMAGE=${PINNED_REGISTRY_API_IMAGE}"
   "INGESTION_SERVICE_IMAGE=${PINNED_INGESTION_SERVICE_IMAGE}"
   "RAG_RETRIEVAL_SERVICE_IMAGE=${PINNED_RAG_RETRIEVAL_SERVICE_IMAGE}"
+  "EVALUATION_SERVICE_IMAGE=${PINNED_EVALUATION_SERVICE_IMAGE}"
   "WEB_IMAGE=${PINNED_WEB_IMAGE}"
   "CHAT_WEB_IMAGE=${PINNED_CHAT_WEB_IMAGE}"
   "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}"
@@ -1424,6 +1462,7 @@ for service in "${services[@]}"; do
     registry-api) expected_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
     ingestion-service) expected_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
     rag-retrieval-service) expected_image_id="$TARGET_RAG_IMAGE_ID" ;;
+    evaluation-service) expected_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
     chat-web) expected_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
   esac
@@ -1445,6 +1484,7 @@ for service in "${services[@]}"; do
     registry-api) expected_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
     ingestion-service) expected_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
     rag-retrieval-service) expected_image_id="$TARGET_RAG_IMAGE_ID" ;;
+    evaluation-service) expected_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
     chat-web) expected_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
   esac
@@ -1458,6 +1498,7 @@ AKL_PROD_ENV_FILE="$ENV_FILE" \
 AKL_RELEASE_EXPECTED_REGISTRY_IMAGE_ID="$TARGET_REGISTRY_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_INGESTION_IMAGE_ID="$TARGET_INGESTION_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_RAG_IMAGE_ID="$TARGET_RAG_IMAGE_ID" \
+AKL_RELEASE_EXPECTED_EVALUATION_IMAGE_ID="$TARGET_EVALUATION_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_WEB_IMAGE_ID="$TARGET_WEB_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_CHAT_WEB_IMAGE_ID="$TARGET_CHAT_WEB_IMAGE_ID" \
   "${release_dir}/scripts/verify_docker_home_release.sh" \
@@ -1468,6 +1509,7 @@ for service in "${services[@]}"; do
     registry-api) expected_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
     ingestion-service) expected_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
     rag-retrieval-service) expected_image_id="$TARGET_RAG_IMAGE_ID" ;;
+    evaluation-service) expected_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
     chat-web) expected_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
   esac
