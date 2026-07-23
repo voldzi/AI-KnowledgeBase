@@ -163,6 +163,9 @@ class Settings:
     reranker_model_revision: str
     reranker_api_key: str | None
     reranker_timeout_seconds: float
+    reranker_health_timeout_seconds: float
+    reranker_failure_cooldown_seconds: float
+    reranker_max_concurrency: int
     reranker_batch_size: int
     reranker_max_document_chars: int
     reranker_min_score: float
@@ -287,6 +290,15 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         embedding_dimensions = _parse_optional_int(_get(source, "AKL_RAG_EMBEDDING_DIMENSIONS", ""))
         high_quality_min_context_chunks = int(_get(source, "AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS", "6"))
         reranker_timeout_seconds = float(_get(source, "AKL_RAG_RERANKER_TIMEOUT_SECONDS", "8"))
+        reranker_health_timeout_seconds = float(
+            _get(source, "AKL_RAG_RERANKER_HEALTH_TIMEOUT_SECONDS", "1.5")
+        )
+        reranker_failure_cooldown_seconds = float(
+            _get(source, "AKL_RAG_RERANKER_FAILURE_COOLDOWN_SECONDS", "30")
+        )
+        reranker_max_concurrency = int(
+            _get(source, "AKL_RAG_RERANKER_MAX_CONCURRENCY", "1")
+        )
         reranker_batch_size = int(_get(source, "AKL_RAG_RERANKER_BATCH_SIZE", "32"))
         reranker_max_document_chars = int(
             _get(source, "AKL_RAG_RERANKER_MAX_DOCUMENT_CHARS", "4000")
@@ -328,6 +340,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS must be greater than zero")
     if reranker_timeout_seconds <= 0:
         raise ConfigError("AKL_RAG_RERANKER_TIMEOUT_SECONDS must be greater than zero")
+    if reranker_health_timeout_seconds <= 0 or reranker_health_timeout_seconds > 10:
+        raise ConfigError("AKL_RAG_RERANKER_HEALTH_TIMEOUT_SECONDS must be between 0 and 10")
+    if reranker_failure_cooldown_seconds < 0 or reranker_failure_cooldown_seconds > 300:
+        raise ConfigError(
+            "AKL_RAG_RERANKER_FAILURE_COOLDOWN_SECONDS must be between 0 and 300"
+        )
+    if reranker_max_concurrency <= 0 or reranker_max_concurrency > 16:
+        raise ConfigError("AKL_RAG_RERANKER_MAX_CONCURRENCY must be between 1 and 16")
     if reranker_batch_size <= 0 or reranker_batch_size > 100:
         raise ConfigError("AKL_RAG_RERANKER_BATCH_SIZE must be between 1 and 100")
     if reranker_max_document_chars < 512 or reranker_max_document_chars > 20000:
@@ -510,6 +530,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         reranker_model_revision=_get(source, "AKL_RAG_RERANKER_MODEL_REVISION", "unknown"),
         reranker_api_key=reranker_api_key,
         reranker_timeout_seconds=reranker_timeout_seconds,
+        reranker_health_timeout_seconds=reranker_health_timeout_seconds,
+        reranker_failure_cooldown_seconds=reranker_failure_cooldown_seconds,
+        reranker_max_concurrency=reranker_max_concurrency,
         reranker_batch_size=reranker_batch_size,
         reranker_max_document_chars=reranker_max_document_chars,
         reranker_min_score=reranker_min_score,

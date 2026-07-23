@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -19,6 +20,9 @@ class CrossEncoderReranker:
         self._settings = settings
         self._lexical = lexical or LexicalReranker()
         self._active_base_url: str | None = None
+        self._endpoint_lock = asyncio.Lock()
+        self._inference_semaphore = asyncio.Semaphore(settings.reranker_max_concurrency)
+        self._failed_until: dict[str, float] = {}
 
     async def readiness(self) -> str:
         dependencies: list[tuple[str, str, dict[str, str]]] = []
@@ -200,8 +204,22 @@ class CrossEncoderReranker:
         endpoint: str,
         payload: dict[str, Any],
     ) -> httpx.Response:
+        async with self._inference_semaphore:
+            return await self._post_to_selected_endpoint(endpoint=endpoint, payload=payload)
+
+    async def _post_to_selected_endpoint(
+        self,
+        *,
+        endpoint: str,
+        payload: dict[str, Any],
+    ) -> httpx.Response:
         last_error: Exception | None = None
-        for base_url in self._ordered_reranker_base_urls():
+        attempted: set[str] = set()
+        for _ in range(2):
+            base_url = await self._resolve_reranker_base_url()
+            if base_url is None or base_url in attempted:
+                break
+            attempted.add(base_url)
             try:
                 async with httpx.AsyncClient(
                     timeout=self._settings.reranker_timeout_seconds
@@ -212,6 +230,7 @@ class CrossEncoderReranker:
                 response.raise_for_status()
             except httpx.HTTPError as exc:
                 last_error = exc
+                self._mark_endpoint_failed(base_url)
                 continue
             self._active_base_url = base_url
             return response
@@ -220,25 +239,54 @@ class CrossEncoderReranker:
         raise RuntimeError("reranker has no configured endpoint")
 
     async def _resolve_reranker_base_url(self) -> str | None:
-        for base_url in self._ordered_reranker_base_urls():
-            try:
-                async with httpx.AsyncClient(timeout=2.0) as client:
-                    response = await client.get(f"{base_url}/health", headers=self._headers())
-                if response.status_code < 400:
+        if self._endpoint_is_eligible(self._active_base_url):
+            return self._active_base_url
+        async with self._endpoint_lock:
+            if self._endpoint_is_eligible(self._active_base_url):
+                return self._active_base_url
+            candidates = tuple(
+                base_url
+                for base_url in self._settings.reranker_base_urls
+                if not self._endpoint_is_cooling_down(base_url)
+            )
+            if not candidates:
+                return None
+            availability = await asyncio.gather(
+                *(self._endpoint_is_healthy(base_url) for base_url in candidates)
+            )
+            for base_url, available in zip(candidates, availability, strict=True):
+                if available:
                     self._active_base_url = base_url
                     return base_url
-            except httpx.HTTPError:
-                continue
-        return None
+            return None
 
-    def _ordered_reranker_base_urls(self) -> tuple[str, ...]:
-        candidates = self._settings.reranker_base_urls
-        if self._active_base_url not in candidates:
-            return candidates
-        return (
-            self._active_base_url,
-            *(url for url in candidates if url != self._active_base_url),
+    async def _endpoint_is_healthy(self, base_url: str) -> bool:
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._settings.reranker_health_timeout_seconds
+            ) as client:
+                response = await client.get(f"{base_url}/health", headers=self._headers())
+            return response.status_code < 400
+        except httpx.HTTPError:
+            return False
+
+    def _mark_endpoint_failed(self, base_url: str) -> None:
+        self._failed_until[base_url] = (
+            time.monotonic() + self._settings.reranker_failure_cooldown_seconds
         )
+        if self._active_base_url == base_url:
+            self._active_base_url = None
+
+    def _endpoint_is_eligible(self, base_url: str | None) -> bool:
+        return (
+            base_url in self._settings.reranker_base_urls
+            and not self._endpoint_is_cooling_down(base_url)
+        )
+
+    def _endpoint_is_cooling_down(self, base_url: str | None) -> bool:
+        if base_url is None:
+            return False
+        return time.monotonic() < self._failed_until.get(base_url, 0)
 
     def _payload(self, query: str, chunks: list[RetrievedChunk]) -> dict[str, Any]:
         documents = [
