@@ -10,7 +10,7 @@ const NOW = 1_000_000;
 describe("STRATOS access projection", () => {
   beforeEach(() => resetAccessProjectionCacheForTests());
 
-  it("uses only AKB capabilities and effective scopes returned by STRATOS", async () => {
+  it("preserves explicit application grants separately from the effective closure", async () => {
     const token = jwt({
       sub: "user-123",
       exp: 2_000,
@@ -45,12 +45,14 @@ describe("STRATOS access projection", () => {
     assert.deepEqual(context.applicationAccess, [{
       application: "AKB",
       capabilities: ["akb:chat"],
-      scopes: ["organization:org_stratos"],
+      scopes: ["project:inactive-or-orphaned"],
+      effectiveScopes: ["organization:org_stratos"],
       validUntil: null,
     }, {
       application: "budget",
       capabilities: ["budget:read"],
-      scopes: ["project:project-001"],
+      scopes: ["project:raw-and-untrusted"],
+      effectiveScopes: ["project:project-001"],
       validUntil: null,
     }]);
     assert.equal(context.authorizationSource, "stratos_projection");

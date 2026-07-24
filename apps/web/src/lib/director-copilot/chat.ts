@@ -389,7 +389,9 @@ function emptyDirectorResponse(
   const partial = status === "partial";
   const projectOnly = plan.intent !== "portfolio_risk_correlation";
   const answer = denied
-    ? localized(language, projectOnly ? "project_not_authorized" : "not_authorized")
+    ? projectOnly
+      ? projectAuthorizationMessage(language, warnings)
+      : localized(language, "not_authorized")
     : partial
       ? localized(language, projectOnly ? "project_source_unavailable" : "sources_unavailable")
       : localized(language, projectOnly ? "project_no_match" : "no_match");
@@ -414,6 +416,55 @@ function emptyDirectorResponse(
     missing_information: answer,
     recommended_action: null,
   };
+}
+
+function projectAuthorizationMessage(language: ResponseLanguage, warnings: string[]): string {
+  const codes = new Set(warnings);
+  if (
+    codes.has("PROJECTFLOW_ACCESS_CAPABILITY_MISSING")
+    || codes.has("PROJECTFLOW_APPLICATION_ACCESS_INACTIVE")
+  ) {
+    return language === "en"
+      ? "You do not have the ProjectFlow application access capability."
+      : "Nemáte oprávnění pro vstup do ProjectFlow.";
+  }
+  if (
+    codes.has("PROJECTFLOW_READ_CAPABILITY_MISSING")
+    || codes.has("PROJECTFLOW_CAPABILITY_DENIED")
+  ) {
+    return language === "en"
+      ? "You do not have permission to read ProjectFlow projects."
+      : "Nemáte oprávnění ke čtení projektů v ProjectFlow.";
+  }
+  if (
+    codes.has("PROJECTFLOW_SCOPE_MISSING")
+    || codes.has("PROJECTFLOW_SCOPE_LIMIT_EXCEEDED")
+  ) {
+    return language === "en"
+      ? "Your ProjectFlow access does not contain a usable organization, portfolio, or project scope."
+      : "Vaše oprávnění ProjectFlow neobsahuje použitelný rozsah organizace, portfolia nebo projektu.";
+  }
+  if (
+    codes.has("PROJECTFLOW_LOCAL_MEMBERSHIP_REQUIRED")
+    || codes.has("LOCAL_PROJECT_MEMBERSHIP_REQUIRED")
+  ) {
+    return language === "en"
+      ? "This direct project scope requires an active local ProjectFlow membership."
+      : "Tento přímý projektový rozsah vyžaduje aktivní lokální členství v ProjectFlow.";
+  }
+  if ([...codes].some((code) => code.includes("POLICY"))) {
+    return language === "en"
+      ? "Project information is not available under the applicable Information Policy."
+      : "Projektové informace nejsou dostupné podle platné Information Policy.";
+  }
+  if (codes.has("PROJECTFLOW_BROAD_SCOPE_UPSTREAM_DENIED_WITHOUT_REASON")) {
+    return language === "en"
+      ? "ProjectFlow did not return projects for the authorized organization or portfolio scope and did not provide a specific denial reason."
+      : "ProjectFlow nevrátil projekty pro oprávněný organizační nebo portfolio rozsah a neposkytl konkrétní důvod odmítnutí.";
+  }
+  return language === "en"
+    ? "ProjectFlow denied the request without confirming that local project membership was the reason."
+    : "ProjectFlow dotaz odmítl, ale nepotvrdil, že důvodem bylo chybějící lokální projektové členství.";
 }
 
 function factsTable(evidence: EvidenceItem[], language: ResponseLanguage): string {
@@ -543,6 +594,19 @@ async function auditDirectorResult(
     applicationAccess: [],
     serviceClientId: DIRECTOR_COPILOT_SERVICE_CLIENT_ID,
   };
+  const authorizedScopeTypes = [...new Set(
+    plan.nodes.flatMap((node) => node.requested_scopes.map((scope) => scope.type)),
+  )].sort();
+  const requestedCapabilities = [...new Set(
+    plan.nodes.map((node) => node.required_capability),
+  )].sort();
+  const returnedItemCount = snapshot
+    ? new Set(
+        snapshot.evidence
+          .filter((item) => item.type === "structured_fact")
+          .map((item) => `${item.source_system}:${item.canonical_id}`),
+      ).size
+    : 0;
   await input.clients.registry.createAuditEvent({
     actor_id: input.actorContext.subjectId,
     event_type: "assistant.director_copilot_returned",
@@ -557,6 +621,9 @@ async function auditDirectorResult(
       source_refs_json: JSON.stringify(sourceRefs.slice(0, 10)),
       policy_refs_json: JSON.stringify(snapshot?.strictest_policy.source_policies.slice(0, 10) ?? []),
       evidence_count: snapshot?.evidence.length ?? 0,
+      returned_item_count: returnedItemCount,
+      requested_capabilities_json: JSON.stringify(requestedCapabilities),
+      authorized_scope_types_json: JSON.stringify(authorizedScopeTypes),
       unavailable_source_count: snapshot?.unavailable_sources.length ?? 0,
       citation_count: response.citations.length,
       status,

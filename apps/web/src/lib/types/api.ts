@@ -132,7 +132,10 @@ export interface ApiRequestContext {
   applicationAccess?: Array<{
     application: string;
     capabilities: string[];
+    /** Explicit active grants returned by STRATOS. Preserve their original breadth. */
     scopes?: string[];
+    /** Authoritative descendant closure used to validate that an explicit grant is effective. */
+    effectiveScopes?: string[];
     validUntil?: string | null;
   }>;
   authorizationSource?: "mock" | "stratos_projection";

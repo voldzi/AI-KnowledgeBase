@@ -19,6 +19,7 @@ describe("Director Copilot chat policy enforcement", () => {
     let ragCalls = 0;
     let auditCalls = 0;
     let auditContext: ApiRequestContext | undefined;
+    let auditPayload: unknown;
     globalThis.fetch = async (_input, init) => {
       const request = JSON.parse(String(init?.body)) as DomainToolRequest;
       return Response.json({
@@ -41,9 +42,10 @@ describe("Director Copilot chat policy enforcement", () => {
             },
           },
           registry: {
-            createAuditEvent: async (_payload: unknown, context: ApiRequestContext) => {
+            createAuditEvent: async (payload: unknown, context: ApiRequestContext) => {
               auditCalls += 1;
               auditContext = context;
+              auditPayload = payload;
               return {};
             },
           },
@@ -58,6 +60,9 @@ describe("Director Copilot chat policy enforcement", () => {
       assert.equal(auditContext?.accessToken, "mock-director-copilot-service-token");
       assert.deepEqual(auditContext?.capabilities, []);
       assert.deepEqual(auditContext?.scopes, []);
+      assert.match(JSON.stringify(auditPayload), /"returned_item_count":1/);
+      assert.match(JSON.stringify(auditPayload), /projectflow:read/);
+      assert.match(JSON.stringify(auditPayload), /project/);
       assert.equal(response.response_type, "answer");
       assert.equal(response.current_context.answer_source, "director_copilot_projectflow");
       assert.match(response.answer ?? "", /ProjectFlow v aktuálně oprávněném rozsahu/);
@@ -104,8 +109,66 @@ describe("Director Copilot chat policy enforcement", () => {
 
     assert.equal(ragCalls, 0);
     assert.equal(response.response_type, "restricted");
-    assert.match(response.answer ?? "", /Nemáte aktivní oprávnění ProjectFlow/);
+    assert.match(response.answer ?? "", /Nemáte oprávnění pro vstup do ProjectFlow/);
     assert.equal(response.citations.length, 0);
+  });
+
+  it("does not invent a local-membership denial for an organization-wide grant", async () => {
+    const originalFetch = globalThis.fetch;
+    let ragCalls = 0;
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as DomainToolRequest;
+      return Response.json({
+        ...structuredClone(projectFixture),
+        tool_call_id: request.tool_call_id,
+        status: "not_authorized",
+        items: [],
+        warnings: [],
+      });
+    };
+    try {
+      const actorContext = context();
+      actorContext.applicationAccess = actorContext.applicationAccess?.map((access) => (
+        access.application === "projectflow"
+          ? {
+              ...access,
+              scopes: ["organization:org_stratos"],
+              effectiveScopes: ["organization:org_stratos", "project:project-001"],
+            }
+          : access
+      ));
+
+      const response = await runDirectorCopilotChat({
+        message: "Jaký je stav projektů?",
+        conversationId: null,
+        responseLanguage: "cs",
+        intent: "project_portfolio_status",
+        actorContext,
+        clients: {
+          rag: {
+            assistantChat: async () => {
+              ragCalls += 1;
+              throw new Error("Denied live-data questions must not use RAG");
+            },
+          },
+          registry: {
+            createAuditEvent: async () => ({}),
+          },
+        } as unknown as ApiClients,
+        config: config(),
+      });
+
+      assert.equal(ragCalls, 0);
+      assert.equal(response.response_type, "restricted");
+      assert.match(response.answer ?? "", /neposkytl konkrétní důvod odmítnutí/);
+      assert.equal((response.answer ?? "").includes("lokální projektové členství"), false);
+      assert.equal(
+        response.warnings.includes("PROJECTFLOW_BROAD_SCOPE_UPSTREAM_DENIED_WITHOUT_REASON"),
+        true,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("returns an explicit live-source state when the feature is disabled", () => {
@@ -381,10 +444,12 @@ function context(): ApiRequestContext {
       application: "budget",
       capabilities: ["budget:read"],
       scopes: ["project:project-001"],
+      effectiveScopes: ["project:project-001"],
     }, {
       application: "projectflow",
-      capabilities: ["projectflow:read"],
+      capabilities: ["projectflow:access", "projectflow:read"],
       scopes: ["project:project-001"],
+      effectiveScopes: ["project:project-001"],
     }],
   };
 }

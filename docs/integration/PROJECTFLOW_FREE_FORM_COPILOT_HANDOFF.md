@@ -33,22 +33,24 @@ The contract must retain:
 
 ProjectFlow should expose an authorized, bounded entity lookup for project
 code, display name and approved aliases. AKB uses it only for entity
-resolution; the lookup must not reveal projects outside the actor's effective
-scope and local membership.
+resolution; the lookup must not reveal projects outside the actor's explicit
+grant, effective closure and Information Policy.
 
 ## Access requirement
 
-An organization or portfolio scope does not currently replace local project
-membership. If leadership must see all current and future projects, STRATOS
-and ProjectFlow should implement a managed portfolio-observer group or another
-explicit policy-backed membership mechanism. AKB must not synthesize this
-access.
+An explicit organization or portfolio scope provides read-only coverage for
+current and future projects in that scope without redundant local reader
+membership. A direct project scope may still require active local membership.
+All three paths remain constrained by the current ProjectFlow endpoint and
+Information Policy; AKB never expands authority from the prompt or
+`requested_scopes`.
 
 ## Acceptance fixtures
 
 Provide fixtures for:
 
-- organization-wide portfolio observer;
+- organization-wide read-only coverage;
+- portfolio-wide read-only coverage;
 - one-project reader;
 - ambiguous project alias;
 - project outside scope;

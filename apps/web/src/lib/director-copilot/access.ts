@@ -8,6 +8,11 @@ const REQUIRED_CAPABILITY = {
   projectflow: "projectflow:read",
 } as const;
 
+const ACCESS_CAPABILITY = {
+  budget: null,
+  projectflow: "projectflow:access",
+} as const;
+
 const SOURCE_SCOPE_TYPES: Record<DomainApplication, ReadonlySet<ScopeCoordinate["type"]>> = {
   budget: new Set(["organization", "budget_scope", "project"]),
   projectflow: new Set(["organization", "portfolio", "project"]),
@@ -20,7 +25,15 @@ export interface DomainAccess {
   authorized: boolean;
   requiredCapability: (typeof REQUIRED_CAPABILITY)[DomainApplication];
   scopes: ScopeCoordinate[];
-  reason: "allowed" | "projection_required" | "organization_invalid" | "application_inactive" | "capability_missing" | "scope_missing" | "scope_limit_exceeded";
+  reason:
+    | "allowed"
+    | "projection_required"
+    | "organization_invalid"
+    | "application_inactive"
+    | "access_capability_missing"
+    | "read_capability_missing"
+    | "scope_missing"
+    | "scope_limit_exceeded";
 }
 
 export function domainAccessFor(
@@ -44,16 +57,28 @@ export function domainAccessFor(
   if (!access || !validAt(access.validUntil, nowMs)) {
     return { application, authorized: false, requiredCapability, scopes: [], reason: "application_inactive" };
   }
-  if (!access.capabilities.includes(requiredCapability)) {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "capability_missing" };
+  const accessCapability = ACCESS_CAPABILITY[application];
+  if (accessCapability && !access.capabilities.includes(accessCapability)) {
+    return { application, authorized: false, requiredCapability, scopes: [], reason: "access_capability_missing" };
   }
+  if (!access.capabilities.includes(requiredCapability)) {
+    return { application, authorized: false, requiredCapability, scopes: [], reason: "read_capability_missing" };
+  }
+  const effectiveScopeKeys = new Set(
+    (access.effectiveScopes ?? [])
+      .map(parseScopeString)
+      .filter((scope): scope is ScopeCoordinate => scope !== null)
+      .map(scopeKey),
+  );
   const scopes = [...new Map(
     (access.scopes ?? [])
       .map(parseScopeString)
       .filter((scope): scope is ScopeCoordinate => (
-        scope !== null && SOURCE_SCOPE_TYPES[application].has(scope.type)
+        scope !== null
+        && SOURCE_SCOPE_TYPES[application].has(scope.type)
+        && effectiveScopeKeys.has(scopeKey(scope))
       ))
-      .map((scope) => [`${scope.type}:${scope.id ?? ""}`, scope]),
+      .map((scope) => [scopeKey(scope), scope]),
   ).values()];
   if (!scopes.length) {
     return { application, authorized: false, requiredCapability, scopes: [], reason: "scope_missing" };
@@ -70,6 +95,7 @@ export function accessProjectionHash(context: ApiRequestContext): string {
       application: normalizeApplication(access.application),
       capabilities: [...new Set(access.capabilities)].sort(),
       scopes: [...new Set(access.scopes ?? [])].sort(),
+      effective_scopes: [...new Set(access.effectiveScopes ?? [])].sort(),
       valid_until: access.validUntil ?? null,
     }))
     .sort((left, right) => left.application.localeCompare(right.application));
@@ -89,4 +115,8 @@ function validAt(validUntil: string | null | undefined, nowMs: number): boolean 
   if (!validUntil) return true;
   const parsed = Date.parse(validUntil);
   return !Number.isNaN(parsed) && parsed > nowMs;
+}
+
+function scopeKey(scope: ScopeCoordinate): string {
+  return `${scope.type}:${scope.id ?? ""}`;
 }
