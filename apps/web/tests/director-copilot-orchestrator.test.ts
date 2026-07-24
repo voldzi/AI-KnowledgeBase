@@ -74,6 +74,40 @@ describe("Director Copilot orchestrator", () => {
     );
   });
 
+  it("sends the explicit organization grant instead of its derived project closure", async () => {
+    const context = projectedContext();
+    context.applicationAccess = context.applicationAccess?.map((access) => (
+      access.application === "projectflow"
+        ? {
+            ...access,
+            scopes: ["organization:org_stratos"],
+            effectiveScopes: [
+              "organization:org_stratos",
+              "portfolio:portfolio-it",
+              "project:project-001",
+            ],
+          }
+        : access
+    ));
+    let capturedScopes: DomainToolRequest["requested_scopes"] = [];
+    const result = await orchestrateDirectorCopilot({
+      message: "Jaký je stav projektů?",
+      language: "cs",
+      context,
+      intent: "project_portfolio_status",
+      now: new Date("2026-07-21T10:00:00Z"),
+      client: {
+        execute: async (_application, request) => {
+          capturedScopes = request.requested_scopes;
+          return { ...structuredClone(projectFixture), tool_call_id: request.tool_call_id };
+        },
+      },
+    });
+
+    assert.equal(result.status, "complete");
+    assert.deepEqual(capturedScopes, [{ type: "organization", id: "org_stratos" }]);
+  });
+
   it("keeps every source audience requirement when labels differ", async () => {
     const budget = structuredClone(budgetFixture);
     const projectflow = structuredClone(projectFixture);
@@ -219,7 +253,10 @@ describe("Director Copilot orchestrator", () => {
     assert.equal(calls, 0);
     assert.equal(result.status, "not_authorized");
     assert.equal(result.snapshot, null);
-    assert.deepEqual(result.warnings, ["ACCESS_APPLICATION_INACTIVE"]);
+    assert.deepEqual(result.warnings, [
+      "BUDGET_ACCESS_APPLICATION_INACTIVE",
+      "PROJECTFLOW_APPLICATION_ACCESS_INACTIVE",
+    ]);
   });
 
   it("returns a marked partial snapshot with Budget facts when ProjectFlow is unavailable", async () => {
@@ -332,14 +369,17 @@ function projectedContext(): ApiRequestContext {
       application: "akb",
       capabilities: ["akb:chat"],
       scopes: ["project:project-001"],
+      effectiveScopes: ["project:project-001"],
     }, {
       application: "budget",
       capabilities: ["budget:read"],
       scopes: ["project:project-001"],
+      effectiveScopes: ["project:project-001"],
     }, {
       application: "projectflow",
-      capabilities: ["projectflow:read"],
+      capabilities: ["projectflow:access", "projectflow:read"],
       scopes: ["project:project-001"],
+      effectiveScopes: ["project:project-001"],
     }],
   };
 }

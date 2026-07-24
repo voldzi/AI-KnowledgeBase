@@ -18,11 +18,15 @@ bez LLM nebo zpětného volání AKB.
 - aktér: samostatný ověřený bearer a aktuální STRATOS projection;
 - capability: `projectflow:read`;
 - centrální scope: `project`, `portfolio` nebo `organization`;
-- ProjectFlow musí navíc ověřit lokální členství/viditelnost každého projektu;
+- přímý `project` scope může navíc vyžadovat lokální členství/viditelnost;
+- explicitní `portfolio` a `organization` scope poskytuje read-only coverage
+  bez redundantního lokálního reader membership;
 - Information Policy a stav projektu se aplikují před sestavením response.
 
-Organization nebo portfolio scope nesmí obejít lokální projektové členství,
-pokud je pro čtení projektu závazné.
+Šíře původního explicitního grantu se nesmí odvozovat z potomků v
+`effectiveScopes`. `requested_scopes` jsou pouze zúžení a nikdy autorizační
+tvrzení. Široký scope nenahrazuje Information Policy ani nepovoluje mutace,
+export nebo audit.
 
 ## Datový read-model
 
@@ -66,8 +70,9 @@ a při nesplnitelné AI/recipient/originator/PAP obligation nevolá model.
 1. `projectflow-request.json` vrátí response kompatibilní s
    `projectflow-complete.json`.
 2. Odebrání `projectflow:read` okamžitě deny.
-3. Centrální project scope bez lokálního členství nevrátí projekt.
-4. Portfolio/organization dotaz nevrátí projekt mimo lokálně povolenou množinu.
+3. Centrální project scope bez požadovaného lokálního členství nevrátí projekt.
+4. Portfolio/organization dotaz vrátí policy-povolené projekty v daném širokém
+   rozsahu bez redundantního lokálního reader membership.
 5. `canonical_id` je byte-identical s Budgetem pro stejný projekt.
 6. Změna baseline nebo milníku změní `source_version` a `as_of`.
 7. Neznámá policy, obligation nebo scope skončí fail closed.

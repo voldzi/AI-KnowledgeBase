@@ -66,6 +66,44 @@ describe("Director Copilot domain client", () => {
     );
   });
 
+  it("preserves a bounded upstream authorization reason code", async () => {
+    const client = new DirectorDomainToolClient({
+      config: config(),
+      serviceToken: async () => "service-token",
+      fetcher: async () => Response.json(
+        { error: "PROJECTFLOW_LOCAL_MEMBERSHIP_REQUIRED", message: "detail is not propagated" },
+        { status: 403 },
+      ),
+    });
+
+    await assert.rejects(
+      () => client.execute("projectflow", { ...request(), tool_id: DOMAIN_TOOL_IDS.projectflow }, context()),
+      (error: unknown) => error instanceof DirectorCopilotTransportError
+        && error.code === "PROJECTFLOW_LOCAL_MEMBERSHIP_REQUIRED"
+        && error.outcome === "not_authorized"
+        && error.status === 403,
+    );
+  });
+
+  it("maps an unavailable upstream to a non-authorization outcome", async () => {
+    const client = new DirectorDomainToolClient({
+      config: config(),
+      serviceToken: async () => "service-token",
+      fetcher: async () => Response.json(
+        { error: "PROJECTFLOW_DOMAIN_TOOL_UNAVAILABLE", message: "temporary outage" },
+        { status: 503 },
+      ),
+    });
+
+    await assert.rejects(
+      () => client.execute("projectflow", { ...request(), tool_id: DOMAIN_TOOL_IDS.projectflow }, context()),
+      (error: unknown) => error instanceof DirectorCopilotTransportError
+        && error.code === "PROJECTFLOW_DOMAIN_TOOL_UNAVAILABLE"
+        && error.outcome === "unavailable"
+        && error.status === 503,
+    );
+  });
+
   it("cancels a chunked source response as soon as it exceeds the byte limit", async () => {
     const limitedConfig = config();
     limitedConfig.directorCopilot!.maxResponseBytes = 8;

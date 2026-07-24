@@ -9,6 +9,7 @@ interface ProjectionAccess {
   application?: unknown;
   profileId?: unknown;
   capabilities?: unknown;
+  scopes?: unknown;
   effectiveScopes?: unknown;
   validUntil?: unknown;
 }
@@ -79,7 +80,8 @@ export async function contextFromStratosAccessProjection(
       return [{
         application: item.application,
         capabilities: stringArray(item.capabilities),
-        scopes: scopeArray(item.effectiveScopes),
+        scopes: scopeArray(item.scopes),
+        effectiveScopes: scopeArray(item.effectiveScopes),
         validUntil: typeof item.validUntil === "string" ? item.validUntil : null,
       }];
     });

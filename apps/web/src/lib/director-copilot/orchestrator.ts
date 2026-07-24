@@ -18,6 +18,7 @@ import {
   type EvidenceItem,
   type InformationClassification,
   type PolicyObligation,
+  type ScopeCoordinate,
   type StrictestPolicy,
 } from "./contracts";
 import type { DirectorDomainToolClient } from "./domain-tool-client";
@@ -272,7 +273,7 @@ async function executeSource(
       application,
       response: null,
       status: "not_authorized",
-      code: `ACCESS_${access.reason.toUpperCase()}`,
+      code: localAccessReasonCode(application, access.reason),
     };
   }
   const node = plan.nodes.find((candidate) => candidate.source_application === application);
@@ -300,7 +301,9 @@ async function executeSource(
         ? "SOURCE_RESULT_TRUNCATED"
         : response.status === "partial"
           ? "SOURCE_PARTIAL"
-          : null,
+          : response.status === "not_authorized"
+            ? sourceDenialReasonCode(application, access.scopes, response.warnings)
+            : null,
     };
   } catch (error) {
     if (error instanceof DirectorCopilotTransportError) {
@@ -308,6 +311,44 @@ async function executeSource(
     }
     return { application, response: null, status: "unavailable", code: "SOURCE_CONTRACT_INVALID" };
   }
+}
+
+function localAccessReasonCode(
+  application: DomainApplication,
+  reason: ReturnType<typeof domainAccessFor>["reason"],
+): string {
+  if (application === "projectflow") {
+    const codes = {
+      allowed: "PROJECTFLOW_ACCESS_ALLOWED",
+      projection_required: "PROJECTFLOW_ACCESS_PROJECTION_REQUIRED",
+      organization_invalid: "PROJECTFLOW_ORGANIZATION_INVALID",
+      application_inactive: "PROJECTFLOW_APPLICATION_ACCESS_INACTIVE",
+      access_capability_missing: "PROJECTFLOW_ACCESS_CAPABILITY_MISSING",
+      read_capability_missing: "PROJECTFLOW_READ_CAPABILITY_MISSING",
+      scope_missing: "PROJECTFLOW_SCOPE_MISSING",
+      scope_limit_exceeded: "PROJECTFLOW_SCOPE_LIMIT_EXCEEDED",
+    } as const;
+    return codes[reason];
+  }
+  return `BUDGET_ACCESS_${reason.toUpperCase()}`;
+}
+
+function sourceDenialReasonCode(
+  application: DomainApplication,
+  scopes: ScopeCoordinate[],
+  warnings: string[],
+): string {
+  const upstreamReason = warnings.find((warning) => /^[A-Z][A-Z0-9_]{2,79}$/.test(warning));
+  if (upstreamReason) return upstreamReason;
+  if (
+    application === "projectflow"
+    && scopes.some((scope) => scope.type === "organization" || scope.type === "portfolio")
+  ) {
+    return "PROJECTFLOW_BROAD_SCOPE_UPSTREAM_DENIED_WITHOUT_REASON";
+  }
+  return application === "projectflow"
+    ? "PROJECTFLOW_SCOPE_OR_MEMBERSHIP_DENIED_WITHOUT_REASON"
+    : "BUDGET_SOURCE_NOT_AUTHORIZED_WITHOUT_REASON";
 }
 
 function correlatedProjectIds(

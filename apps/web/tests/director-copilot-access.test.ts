@@ -5,7 +5,7 @@ import { accessProjectionHash, domainAccessFor } from "../src/lib/director-copil
 import type { ApiRequestContext } from "../src/lib/types";
 
 describe("Director Copilot projected access", () => {
-  it("uses only effective per-application capabilities and scopes", () => {
+  it("uses explicit grants that are present in the effective closure", () => {
     const context = projectedContext();
     const access = domainAccessFor(context, "budget", Date.parse("2026-07-21T10:00:00Z"));
 
@@ -20,6 +20,10 @@ describe("Director Copilot projected access", () => {
       capabilities: ["budget:read"],
       scopes: [
         ...Array.from({ length: 150 }, (_, index) => `document:doc-${index}`),
+        "budget_scope:budget-global",
+        "budget_scope:budget:it",
+      ],
+      effectiveScopes: [
         "budget_scope:budget-global",
         "budget_scope:budget:it",
       ],
@@ -38,8 +42,9 @@ describe("Director Copilot projected access", () => {
     const context = projectedContext();
     context.applicationAccess = [{
       application: "projectflow",
-      capabilities: ["projectflow:read"],
+      capabilities: ["projectflow:access", "projectflow:read"],
       scopes: Array.from({ length: 101 }, (_, index) => `project:project-${index}`),
+      effectiveScopes: Array.from({ length: 101 }, (_, index) => `project:project-${index}`),
     }];
 
     const access = domainAccessFor(context, "projectflow");
@@ -53,17 +58,83 @@ describe("Director Copilot projected access", () => {
     assert.equal(domainAccessFor({ ...projectedContext(), authorizationSource: "mock" }, "budget").authorized, false);
     assert.equal(domainAccessFor({
       ...projectedContext(),
-      applicationAccess: [{ application: "budget", capabilities: [], scopes: ["project:project-001"] }],
-    }, "budget").reason, "capability_missing");
+      applicationAccess: [{
+        application: "budget",
+        capabilities: [],
+        scopes: ["project:project-001"],
+        effectiveScopes: ["project:project-001"],
+      }],
+    }, "budget").reason, "read_capability_missing");
     assert.equal(domainAccessFor({
       ...projectedContext(),
       applicationAccess: [{
         application: "budget",
         capabilities: ["budget:read"],
         scopes: ["project:project-001"],
+        effectiveScopes: ["project:project-001"],
         validUntil: "2026-07-20T00:00:00Z",
       }],
     }, "budget", Date.parse("2026-07-21T10:00:00Z")).reason, "application_inactive");
+  });
+
+  it("preserves broad ProjectFlow grants instead of selecting derived project scopes", () => {
+    const organizationContext = projectedContext();
+    organizationContext.applicationAccess = [{
+      application: "projectflow",
+      capabilities: ["projectflow:access", "projectflow:read"],
+      scopes: ["organization:org_stratos"],
+      effectiveScopes: [
+        "organization:org_stratos",
+        "portfolio:portfolio-it",
+        "project:project-001",
+      ],
+    }];
+    assert.deepEqual(domainAccessFor(organizationContext, "projectflow").scopes, [
+      { type: "organization", id: "org_stratos" },
+    ]);
+
+    const portfolioContext = projectedContext();
+    portfolioContext.applicationAccess = [{
+      application: "projectflow",
+      capabilities: ["projectflow:access", "projectflow:read"],
+      scopes: ["portfolio:portfolio-it"],
+      effectiveScopes: ["portfolio:portfolio-it", "project:project-001"],
+    }];
+    assert.deepEqual(domainAccessFor(portfolioContext, "projectflow").scopes, [
+      { type: "portfolio", id: "portfolio-it" },
+    ]);
+  });
+
+  it("distinguishes ProjectFlow application access from read capability", () => {
+    const missingAccess = projectedContext();
+    missingAccess.applicationAccess = [{
+      application: "projectflow",
+      capabilities: ["projectflow:read"],
+      scopes: ["organization:org_stratos"],
+      effectiveScopes: ["organization:org_stratos"],
+    }];
+    assert.equal(domainAccessFor(missingAccess, "projectflow").reason, "access_capability_missing");
+
+    const missingRead = projectedContext();
+    missingRead.applicationAccess = [{
+      application: "projectflow",
+      capabilities: ["projectflow:access"],
+      scopes: ["organization:org_stratos"],
+      effectiveScopes: ["organization:org_stratos"],
+    }];
+    assert.equal(domainAccessFor(missingRead, "projectflow").reason, "read_capability_missing");
+  });
+
+  it("rejects an explicit scope that is absent from the effective closure", () => {
+    const context = projectedContext();
+    context.applicationAccess = [{
+      application: "projectflow",
+      capabilities: ["projectflow:access", "projectflow:read"],
+      scopes: ["project:orphaned-project"],
+      effectiveScopes: ["project:project-001"],
+    }];
+
+    assert.equal(domainAccessFor(context, "projectflow").reason, "scope_missing");
   });
 
   it("fails closed outside the single STRATOS organization or after identity revocation", () => {
@@ -97,6 +168,7 @@ function projectedContext(): ApiRequestContext {
       application: "budget",
       capabilities: ["budget:read"],
       scopes: ["project:project-001"],
+      effectiveScopes: ["project:project-001"],
       validUntil: "2026-07-22T00:00:00Z",
     }],
   };

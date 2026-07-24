@@ -105,9 +105,12 @@ export class DirectorDomainToolClient {
     }
     if (!response.ok) {
       const outcome = response.status === 401 || response.status === 403 ? "not_authorized" : "unavailable";
-      const code = outcome === "not_authorized"
-        ? "DIRECTOR_COPILOT_SOURCE_DENIED"
-        : "DIRECTOR_COPILOT_SOURCE_FAILED";
+      const code = upstreamErrorCode(responseBytes)
+        ?? (outcome === "not_authorized"
+          ? "DIRECTOR_COPILOT_SOURCE_DENIED"
+          : response.status === 503
+            ? "DIRECTOR_COPILOT_SOURCE_UNAVAILABLE"
+            : "DIRECTOR_COPILOT_SOURCE_FAILED");
       this.log("error", application, response.status, startedAt, context, code);
       throw new DirectorCopilotTransportError(
         code,
@@ -183,6 +186,19 @@ export class DirectorDomainToolClient {
       correlationId: context.correlationId,
       errorCode,
     });
+  }
+}
+
+function upstreamErrorCode(responseBytes: Uint8Array): string | null {
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(responseBytes)) as unknown;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const code = (payload as Record<string, unknown>).error;
+    return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,79}$/.test(code)
+      ? code
+      : null;
+  } catch {
+    return null;
   }
 }
 
