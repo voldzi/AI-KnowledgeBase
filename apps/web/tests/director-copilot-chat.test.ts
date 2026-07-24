@@ -18,6 +18,7 @@ describe("Director Copilot chat policy enforcement", () => {
     const originalFetch = globalThis.fetch;
     let ragCalls = 0;
     let auditCalls = 0;
+    let auditContext: ApiRequestContext | undefined;
     globalThis.fetch = async (_input, init) => {
       const request = JSON.parse(String(init?.body)) as DomainToolRequest;
       return Response.json({
@@ -40,8 +41,9 @@ describe("Director Copilot chat policy enforcement", () => {
             },
           },
           registry: {
-            createAuditEvent: async () => {
+            createAuditEvent: async (_payload: unknown, context: ApiRequestContext) => {
               auditCalls += 1;
+              auditContext = context;
               return {};
             },
           },
@@ -51,6 +53,11 @@ describe("Director Copilot chat policy enforcement", () => {
 
       assert.equal(ragCalls, 0);
       assert.equal(auditCalls, 1);
+      assert.equal(auditContext?.subjectId, "svc-akb-director-copilot");
+      assert.equal(auditContext?.serviceClientId, "svc-akb-director-copilot");
+      assert.equal(auditContext?.accessToken, "mock-director-copilot-service-token");
+      assert.deepEqual(auditContext?.capabilities, []);
+      assert.deepEqual(auditContext?.scopes, []);
       assert.equal(response.response_type, "answer");
       assert.equal(response.current_context.answer_source, "director_copilot_projectflow");
       assert.match(response.answer ?? "", /ProjectFlow v aktuálně oprávněném rozsahu/);

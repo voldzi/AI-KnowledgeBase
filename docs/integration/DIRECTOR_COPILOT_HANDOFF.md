@@ -52,6 +52,12 @@ Povinné zabezpečení:
 7. `X-STRATOS-Capabilities`, `X-STRATOS-Scopes`, role nebo browserové hlavičky
    nejsou v produkci autorita.
 
+Stejná servisní identita zapisuje závěrečný audit do AKB Registry. Její token
+proto musí obsahovat také audience `akl-api`; Registry ji vede jako trusted
+service client s jediným route grantem `audit`. Uživatelský bearer se pro tento
+zápis nesmí použít. Registry uloží ověřený servisní subject jako `actor_id` a
+původní osobu pouze jako `reported_actor_id` v metadatech události.
+
 AKB odesílá pouze identifikátory, omezené filtry a aktéra. Neodesílá prompt ani
 volné SQL. Zdrojový endpoint nesmí volat LLM ani AKB RAG.
 

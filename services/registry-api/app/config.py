@@ -367,6 +367,18 @@ class Settings(BaseSettings):
                     "Production stratos-akb-service grant must be exactly "
                     "stratos-budget-upload"
                 )
+            if "svc-akb-director-copilot" not in trusted_service_clients:
+                raise ValueError(
+                    "Production Registry requires trusted client "
+                    "svc-akb-director-copilot"
+                )
+            if route_grants.get("svc-akb-director-copilot") != frozenset(
+                {"audit"}
+            ):
+                raise ValueError(
+                    "Production svc-akb-director-copilot grant must be "
+                    "exactly audit"
+                )
             budget_upload_clients = {
                 client_id
                 for client_id, routes in route_grants.items()

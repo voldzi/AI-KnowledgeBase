@@ -16,6 +16,9 @@ import type {
 import { accessProjectionHash, domainAccessFor } from "./access";
 import { DirectorDomainToolClient } from "./domain-tool-client";
 import { directorCopilotPromptEvidence, finalizeDirectorSnapshot, orchestrateDirectorCopilot } from "./orchestrator";
+import { directorCopilotServiceToken } from "./service-identity";
+
+const DIRECTOR_COPILOT_SERVICE_CLIENT_ID = "svc-akb-director-copilot";
 
 export async function runDirectorCopilotChat(input: {
   message: string;
@@ -515,6 +518,7 @@ async function auditDirectorResult(
   input: {
     actorContext: ApiRequestContext;
     clients: ApiClients;
+    config: AklConfig;
   },
   response: AssistantChatResponse,
   plan: DirectorQueryPlan,
@@ -527,6 +531,18 @@ async function auditDirectorResult(
         { source_system: item.source_system, source_version: item.source_version },
       ])).values()]
     : [];
+  const serviceAccessToken = await directorCopilotServiceToken(input.config);
+  const serviceContext: ApiRequestContext = {
+    ...input.actorContext,
+    subjectId: DIRECTOR_COPILOT_SERVICE_CLIENT_ID,
+    accessToken: serviceAccessToken,
+    roles: [],
+    groups: [],
+    capabilities: [],
+    scopes: [],
+    applicationAccess: [],
+    serviceClientId: DIRECTOR_COPILOT_SERVICE_CLIENT_ID,
+  };
   await input.clients.registry.createAuditEvent({
     actor_id: input.actorContext.subjectId,
     event_type: "assistant.director_copilot_returned",
@@ -546,7 +562,7 @@ async function auditDirectorResult(
       status,
       history_persisted: false,
     },
-  }, input.actorContext);
+  }, serviceContext);
 }
 
 function localized(
