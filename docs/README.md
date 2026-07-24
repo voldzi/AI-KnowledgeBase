@@ -65,6 +65,8 @@ from the flat standard documents.
    - `integration/DIRECTOR_COPILOT_HANDOFF_STRATOS.md`
    - `integration/DIRECTOR_COPILOT_HANDOFF_BUDGET.md`
    - `integration/DIRECTOR_COPILOT_HANDOFF_PROJECTFLOW.md`
+   - `integration/PROJECTFLOW_FREE_FORM_COPILOT_HANDOFF.md`
+   - `qa/projectflow-free-form-copilot.md`
 
 ## Active Documentation Homes
 

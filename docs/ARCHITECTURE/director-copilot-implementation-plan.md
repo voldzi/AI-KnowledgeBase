@@ -1,8 +1,8 @@
 # AKB Chat jako Copilot ředitele - realizační plán
 
-Stav: AKB základ etapy 0 a první vertikální řez jsou implementovány na vývojové
-větvi, ale zůstávají výchozím stavem vypnuté. Produkční aktivace čeká na
-STRATOS, Budget, ProjectFlow a společné conformance testy.
+Stav: AKB základ etapy 0, první mezidoménový vertikální řez a první obecný
+ProjectFlow-only dotaz jsou implementovány. Produkční aktivace zůstává řízena
+feature flagem a společnými conformance testy.
 
 Baseline: AKB `786bc2bd7c7a964efd3c078d930eebbba06209c7`, produkčně ověřeno
 2026-07-21.
@@ -63,8 +63,11 @@ nikoli jako nová aplikace, druhá historie nebo paralelní AI vrstva.
 1. Budget a ProjectFlow ještě musí implementovat a nasadit závazné read-only
    zdrojové endpointy; STRATOS musí dodat identity, audiences a fixtures access
    projection. AIIP, ArchFlow a Executive Center jsou až další etapa.
-2. První plánovač pokrývá pouze pevný referenční intent. Obecný entity resolver,
-   bezpečné upřesnění, další typy dotazů a širší DAG zůstávají backlog.
+2. Plánovač pokrývá pevný referenční mezidoménový intent a obecný
+   ProjectFlow-only stav portfolia včetně dotazu na dostupnost zdroje,
+   kontextového follow-upu a zákazu dokumentového fallbacku. Obecný entity
+   resolver podle názvu/aliasu projektu, další doménové nástroje a širší DAG
+   zůstávají backlog.
 3. EvidenceItem a AnalysisSnapshot existují pro první řez; chybí jejich obecná
    persistence, historie s reautorizací a artifact package.
 4. `AnalystEvidenceItem` je dokumentový záznam analytického spisu; není

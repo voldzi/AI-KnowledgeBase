@@ -7,7 +7,12 @@ import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-respon
 import { ragContextForAssistantRoute, routeAssistantMessageForRag } from "@/lib/assistant/assistant-tool-router";
 import type { ApiClients, ApiRequestContext, AssistantChatResponse, ResponseLanguage } from "@/lib/types";
 
-import type { AnalysisSnapshot, DirectorQueryPlan, EvidenceItem } from "./contracts";
+import type {
+  AnalysisSnapshot,
+  DirectorCopilotIntent,
+  DirectorQueryPlan,
+  EvidenceItem,
+} from "./contracts";
 import { accessProjectionHash, domainAccessFor } from "./access";
 import { DirectorDomainToolClient } from "./domain-tool-client";
 import { directorCopilotPromptEvidence, finalizeDirectorSnapshot, orchestrateDirectorCopilot } from "./orchestrator";
@@ -19,6 +24,7 @@ export async function runDirectorCopilotChat(input: {
   actorContext: ApiRequestContext;
   clients: ApiClients;
   config: AklConfig;
+  intent?: DirectorCopilotIntent;
   refreshActorContext?: () => Promise<ApiRequestContext>;
 }): Promise<AssistantChatResponse> {
   const domainClient = new DirectorDomainToolClient({ config: input.config });
@@ -28,6 +34,7 @@ export async function runDirectorCopilotChat(input: {
     language: input.responseLanguage,
     context: input.actorContext,
     client: domainClient,
+    intent: input.intent,
     timeoutMs: directorConfig.timeoutMs,
   });
   if (!orchestration.snapshot) {
@@ -44,10 +51,18 @@ export async function runDirectorCopilotChat(input: {
   const snapshot = orchestration.snapshot;
   if (input.refreshActorContext) {
     const refreshedContext = await input.refreshActorContext();
+    const requiredApplications = new Set(
+      snapshot.plan.nodes.flatMap((node) => (
+        node.source_application === "budget" || node.source_application === "projectflow"
+          ? [node.source_application]
+          : []
+      )),
+    );
     const projectionChanged = refreshedContext.subjectId !== input.actorContext.subjectId
       || accessProjectionHash(refreshedContext) !== snapshot.projection_hash
-      || !domainAccessFor(refreshedContext, "budget").authorized
-      || !domainAccessFor(refreshedContext, "projectflow").authorized;
+      || [...requiredApplications].some(
+        (application) => !domainAccessFor(refreshedContext, application).authorized,
+      );
     if (projectionChanged) {
       const response = emptyDirectorResponse(
         input.conversationId,
@@ -59,6 +74,16 @@ export async function runDirectorCopilotChat(input: {
       await auditDirectorResult(input, response, orchestration.plan, null, "not_authorized");
       return response;
     }
+  }
+  if (snapshot.plan.intent !== "portfolio_risk_correlation") {
+    const response = composeProjectFlowResponse(
+      input.conversationId,
+      snapshot,
+      input.responseLanguage,
+      orchestration.warnings,
+    );
+    await auditDirectorResult(input, response, orchestration.plan, snapshot, orchestration.status);
+    return response;
   }
   if (blocksAiProcessing(snapshot)) {
     const response = composeFourLayerResponse(
@@ -104,6 +129,160 @@ export async function runDirectorCopilotChat(input: {
   );
   await auditDirectorResult(input, response, orchestration.plan, finalized.snapshot, orchestration.status);
   return response;
+}
+
+export function directorCopilotUnavailableResponse(input: {
+  conversationId: string | null;
+  language: ResponseLanguage;
+  intent: DirectorCopilotIntent;
+}): AssistantChatResponse {
+  const projectOnly = input.intent !== "portfolio_risk_correlation";
+  const answer = projectOnly
+    ? localized(input.language, "project_source_unavailable")
+    : localized(input.language, "sources_unavailable");
+  return {
+    response_type: "no_answer",
+    conversation_id: input.conversationId ?? `conv_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
+    answer,
+    message: null,
+    questions: [],
+    why_needed: null,
+    current_context: {
+      answer_source: projectOnly ? "director_copilot_projectflow" : "director_copilot_federation",
+      requested_director_copilot_intent: input.intent,
+      director_copilot_ephemeral: true,
+    },
+    citations: [],
+    follow_up_questions: [],
+    suggested_actions: [],
+    report_artifacts: [],
+    confidence: "insufficient_source",
+    warnings: ["DIRECTOR_COPILOT_DISABLED", "LIVE_DATA_FALLBACK_BLOCKED"],
+    missing_information: answer,
+    recommended_action: null,
+  };
+}
+
+function composeProjectFlowResponse(
+  conversationId: string | null,
+  snapshot: AnalysisSnapshot,
+  language: ResponseLanguage,
+  orchestrationWarnings: string[],
+): AssistantChatResponse {
+  const projects = [...new Set(
+    snapshot.evidence
+      .filter((item) => item.source_system === "STRATOS_PROJECTFLOW")
+      .map((item) => item.canonical_id),
+  )].map((canonicalId) => {
+    const evidence = snapshot.evidence.filter((item) => item.canonical_id === canonicalId);
+    return {
+      canonicalId,
+      entityId: evidence[0]?.entity_id ?? canonicalId.replace(/^stratos:project:/, ""),
+      deepLink: evidence[0]?.deep_link ?? "",
+      status: factValue(evidence, "project.status"),
+      scheduleStatus: factValue(evidence, "project.schedule_status"),
+      delayDays: factValue(evidence, "milestone.max_delay_days"),
+      nextDueDate: factValue(evidence, "milestone.next_due_date"),
+      asOf: [...new Set(evidence.map((item) => item.as_of))].sort().at(-1) ?? snapshot.created_at,
+    };
+  }).sort((left, right) => {
+    const leftDelay = typeof left.delayDays === "number" ? left.delayDays : 0;
+    const rightDelay = typeof right.delayDays === "number" ? right.delayDays : 0;
+    return rightDelay - leftDelay || left.entityId.localeCompare(right.entityId);
+  });
+  const delayedCount = projects.filter((project) => (
+    project.scheduleStatus === "delayed"
+    || (typeof project.delayDays === "number" && project.delayDays > 0)
+  )).length;
+  const asOf = [...new Set(projects.map((project) => project.asOf))].sort().at(-1) ?? snapshot.created_at;
+  const accessOverview = snapshot.plan.intent === "project_access_overview";
+  const summary = language === "en"
+    ? `${accessOverview ? "ProjectFlow is available to your account. " : ""}ProjectFlow returned ${projects.length} project(s) in your current authorized scope; ${delayedCount} have a delayed schedule. Live data as of ${formatDateTime(asOf, language)}.`
+    : `${accessOverview ? "ProjectFlow je pro váš účet dostupný. " : ""}ProjectFlow v aktuálně oprávněném rozsahu vrátil ${projects.length} projektů; ${delayedCount} má zpožděný harmonogram. Živá data ke ${formatDateTime(asOf, language)}.`;
+  const headers = language === "en"
+    ? ["Project", "Status", "Schedule", "Maximum delay", "Next milestone", "As of"]
+    : ["Projekt", "Stav", "Harmonogram", "Nejvyšší zpoždění", "Nejbližší milník", "Stav k"];
+  const rows = projects.map((project) => [
+    project.deepLink
+      ? `[${markdownCell(project.entityId)}](${project.deepLink})`
+      : markdownCell(project.entityId),
+    localizedFact(project.status, language),
+    localizedFact(project.scheduleStatus, language),
+    typeof project.delayDays === "number"
+      ? language === "en" ? `${project.delayDays} days` : `${project.delayDays} dní`
+      : localizedFact(project.delayDays, language),
+    localizedFact(project.nextDueDate, language),
+    formatDateTime(project.asOf, language),
+  ]);
+  const table = [
+    `| ${headers.join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`),
+  ].join("\n");
+  const warnings = [...new Set([
+    ...orchestrationWarnings,
+    "DIRECTOR_COPILOT_PROJECTFLOW_LIVE_DATA",
+    "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION",
+  ])];
+  return {
+    response_type: "answer",
+    conversation_id: conversationId ?? `conv_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
+    answer: `${summary}\n\n${table}`,
+    message: null,
+    questions: [],
+    why_needed: null,
+    current_context: {
+      answer_source: "director_copilot_projectflow",
+      director_copilot_query_plan: snapshot.plan,
+      director_copilot_snapshot: snapshot,
+      director_copilot_ephemeral: true,
+      active_source_application: "projectflow",
+    },
+    citations: [],
+    follow_up_questions: language === "en"
+      ? ["Which projects are delayed?", "Show the next milestones.", "Open a specific project."]
+      : ["Které projekty jsou zpožděné?", "Ukaž nejbližší milníky.", "Otevři konkrétní projekt."],
+    suggested_actions: [],
+    report_artifacts: [],
+    confidence: "high",
+    warnings,
+    missing_information: null,
+    recommended_action: null,
+  };
+}
+
+function factValue(evidence: EvidenceItem[], key: string): string | number | boolean | null {
+  return evidence.find((item) => item.fact?.key === key)?.fact?.value ?? null;
+}
+
+function localizedFact(value: string | number | boolean | null, language: ResponseLanguage): string {
+  if (value === null || value === "") return language === "en" ? "not available" : "není k dispozici";
+  const translated = {
+    cs: {
+      active: "aktivní",
+      planned: "plánovaný",
+      blocked: "blokovaný",
+      done: "dokončený",
+      delayed: "zpožděný",
+      on_track: "podle plánu",
+      at_risk: "ohrožený",
+    },
+    en: {},
+  } as const;
+  const normalized = String(value).toLowerCase();
+  return language === "cs"
+    ? translated.cs[normalized as keyof typeof translated.cs] ?? String(value)
+    : String(value);
+}
+
+function formatDateTime(value: string, language: ResponseLanguage): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return markdownCell(value);
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "cs-CZ", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Prague",
+  }).format(parsed);
 }
 
 function blocksAiProcessing(snapshot: AnalysisSnapshot): boolean {
@@ -201,15 +380,16 @@ function emptyDirectorResponse(
   status: "complete" | "partial" | "not_authorized" | "no_match",
   language: ResponseLanguage,
   warnings: string[],
-  plan: unknown,
+  plan: DirectorQueryPlan,
 ): AssistantChatResponse {
   const denied = status === "not_authorized";
   const partial = status === "partial";
+  const projectOnly = plan.intent !== "portfolio_risk_correlation";
   const answer = denied
-    ? localized(language, "not_authorized")
+    ? localized(language, projectOnly ? "project_not_authorized" : "not_authorized")
     : partial
-      ? localized(language, "sources_unavailable")
-      : localized(language, "no_match");
+      ? localized(language, projectOnly ? "project_source_unavailable" : "sources_unavailable")
+      : localized(language, projectOnly ? "project_no_match" : "no_match");
   return {
     response_type: denied ? "restricted" : "no_answer",
     conversation_id: conversationId ?? `conv_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
@@ -369,12 +549,27 @@ async function auditDirectorResult(
   }, input.actorContext);
 }
 
-function localized(language: ResponseLanguage, key: "not_authorized" | "sources_unavailable" | "no_match" | "document_unavailable" | "no_uncertainty" | "ai_policy_blocked"): string {
+function localized(
+  language: ResponseLanguage,
+  key:
+    | "not_authorized"
+    | "sources_unavailable"
+    | "no_match"
+    | "project_not_authorized"
+    | "project_source_unavailable"
+    | "project_no_match"
+    | "document_unavailable"
+    | "no_uncertainty"
+    | "ai_policy_blocked",
+): string {
   const values = {
     cs: {
       not_authorized: "Pro tento mezidoménový dotaz nemáte současně oprávněný rozsah v Budgetu a ProjectFlow.",
       sources_unavailable: "Úplný podklad nelze bezpečně sestavit, protože některý povinný zdroj není dostupný nebo jej nelze ověřit.",
       no_match: "V aktuálně oprávněném rozsahu nebyl nalezen projekt se současnou rozpočtovou odchylkou a zpožděným milníkem.",
+      project_not_authorized: "Nemáte aktivní oprávnění ProjectFlow a lokální projektové členství potřebné pro zobrazení projektových dat.",
+      project_source_unavailable: "Aktuální projektová data nelze bezpečně načíst z ProjectFlow. AKB je nenahradilo historickými dokumenty.",
+      project_no_match: "ProjectFlow v aktuálně oprávněném rozsahu nevrátil žádný projekt.",
       document_unavailable: "Nebyl nalezen citovatelný dokumentový podklad pro potvrzení smluvního rizika.",
       no_uncertainty: "Nebyla zjištěna další nejistota nad dostupnými zdroji.",
       ai_policy_blocked: "Dokumentová analýza ani AI interpretace nebyla spuštěna, protože zdrojová politika nepovoluje nakonfigurovanou cestu AI zpracování.",
@@ -383,6 +578,9 @@ function localized(language: ResponseLanguage, key: "not_authorized" | "sources_
       not_authorized: "You do not have an authorized scope in both Budget and ProjectFlow for this cross-domain query.",
       sources_unavailable: "The complete evidence package cannot be assembled safely because a required source is unavailable or cannot be verified.",
       no_match: "No project with both a budget variance and a delayed milestone was found in the currently authorized scope.",
+      project_not_authorized: "You do not have active ProjectFlow access and local project membership required to view project data.",
+      project_source_unavailable: "Current project data could not be loaded safely from ProjectFlow. AKB did not replace it with historical documents.",
+      project_no_match: "ProjectFlow returned no projects in your current authorized scope.",
       document_unavailable: "No citable document evidence was found to confirm contract risk.",
       no_uncertainty: "No additional uncertainty was identified in the available sources.",
       ai_policy_blocked: "Document analysis and AI interpretation were not run because the source policy does not permit the configured AI processing path.",

@@ -12,6 +12,10 @@ export const DOMAIN_TOOL_IDS = {
 
 export type DomainApplication = keyof typeof DOMAIN_TOOL_IDS;
 export type DomainToolId = (typeof DOMAIN_TOOL_IDS)[DomainApplication];
+export type DirectorCopilotIntent =
+  | "portfolio_risk_correlation"
+  | "project_portfolio_status"
+  | "project_access_overview";
 export type DomainSourceSystem = "STRATOS_BUDGET" | "STRATOS_PROJECTFLOW";
 export type EvidenceSourceSystem = DomainSourceSystem | "STRATOS_AKB";
 export type HandlingClass = "PUBLIC" | "INTERNAL" | "PROJECT_MANAGEMENT" | "RESTRICTED";
@@ -147,7 +151,7 @@ export interface DirectorQueryPlanNode {
 export interface DirectorQueryPlan {
   schema_version: typeof DIRECTOR_COPILOT_QUERY_PLAN_VERSION;
   plan_id: string;
-  intent: "portfolio_risk_correlation";
+  intent: DirectorCopilotIntent;
   language: "cs" | "en";
   created_at: string;
   as_of: string;
@@ -155,12 +159,12 @@ export interface DirectorQueryPlan {
   nodes: DirectorQueryPlanNode[];
   output: {
     kind: "answer";
-    four_layer_answer: true;
+    four_layer_answer: boolean;
     artifact_contract_version: "report.v2";
   };
   quality_gates: {
     structured_facts_required: true;
-    document_citations_required: true;
+    document_citations_required: boolean;
     partial_must_be_visible: true;
     no_scope_expansion: true;
   };
