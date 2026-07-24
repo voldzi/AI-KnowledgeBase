@@ -13,7 +13,7 @@ import {
 const BUDGET_SIGNAL = /(rozpoc|budget|finan|odchyl|forecast|plan|skutecnost|cerpan)/i;
 const DELIVERY_SIGNAL = /(projectflow|projekt|project|portfolio|milnik|milestone|harmonogram|zpozd|delay|termin|ukol|realizac|plneni)/i;
 const CONTRACT_SIGNAL = /(smlouv|contract|dodavatel|supplier|rizik|risk)/i;
-const PROJECT_LIVE_SIGNAL = /(stav|prehled|seznam|evid|kolik|ktere|jake|jak je|aktual|zpozd|milnik|harmonogram|termin|ukol|plneni|pokrok|problem|zavislost|kapacit|tym)/i;
+const PROJECT_LIVE_SIGNAL = /(stav|prehled|seznam|evid|kolik|ktere|jake|jak je|aktual|zpozd|milnik|harmonogram|termin|ukol|plneni|pokrok|problem|zavislost|kapacit|tym|otevr|detail|konkret)/i;
 const DOCUMENT_SIGNAL = /(dokument|priloh|smernic|metodik|citac|soubor|pdf)/i;
 const ACCESS_SIGNAL = /(pristup|opravnen|access|permission)/i;
 const ACCESS_MUTATION_SIGNAL = /(pozad|zadat|pridel|nastav|zmen|odebr|zrus|schval|vytvor)/i;

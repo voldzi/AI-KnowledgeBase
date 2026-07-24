@@ -68,6 +68,10 @@ describe("Director Copilot chat policy enforcement", () => {
       assert.match(response.answer ?? "", /ProjectFlow v aktuálně oprávněném rozsahu/);
       assert.match(response.answer ?? "", /project-001/);
       assert.match(response.answer ?? "", /28 dní/);
+      assert.deepEqual(response.follow_up_questions, [
+        "Které projekty jsou zpožděné?",
+        "Ukaž nejbližší milníky.",
+      ]);
       assert.equal(response.citations.length, 0);
       assert.equal(response.warnings.includes("DIRECTOR_COPILOT_PROJECTFLOW_LIVE_DATA"), true);
     } finally {
