@@ -4,7 +4,10 @@ import { describe, it } from "node:test";
 
 import { stableSha256, type DomainToolRequest, type DomainToolResponse } from "../src/lib/director-copilot/contracts";
 import { directorCopilotPromptEvidence, finalizeDirectorSnapshot, orchestrateDirectorCopilot } from "../src/lib/director-copilot/orchestrator";
-import { isDirectorCopilotRiskQuery } from "../src/lib/director-copilot/planner";
+import {
+  classifyDirectorCopilotIntent,
+  isDirectorCopilotRiskQuery,
+} from "../src/lib/director-copilot/planner";
 import { DirectorCopilotTransportError } from "../src/lib/director-copilot/transport-error";
 import type { ApiRequestContext } from "../src/lib/types";
 
@@ -41,6 +44,34 @@ describe("Director Copilot orchestrator", () => {
     assert.equal(result.snapshot?.strictest_policy.audience_mode, "all_source_policies_required");
     assert.equal(JSON.stringify(result.snapshot).includes("actor-token"), false);
     assert.equal(directorCopilotPromptEvidence(result.snapshot!).evidence instanceof Array, true);
+  });
+
+  it("builds a ProjectFlow-only plan for a natural portfolio status question", async () => {
+    const calls: Array<{ application: string; request: DomainToolRequest }> = [];
+    const result = await orchestrateDirectorCopilot({
+      message: "Jaký je stav projektů?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "project_portfolio_status",
+      now: new Date("2026-07-21T10:00:00Z"),
+      client: {
+        execute: async (application, request) => {
+          calls.push({ application, request });
+          return { ...structuredClone(projectFixture), tool_call_id: request.tool_call_id };
+        },
+      },
+    });
+
+    assert.equal(result.status, "complete");
+    assert.equal(result.plan.intent, "project_portfolio_status");
+    assert.equal(result.plan.nodes.length, 1);
+    assert.equal(result.plan.quality_gates.document_citations_required, false);
+    assert.deepEqual(calls.map((call) => call.application), ["projectflow"]);
+    assert.equal(result.snapshot?.evidence.length, 4);
+    assert.equal(
+      result.snapshot?.evidence.every((item) => item.source_system === "STRATOS_PROJECTFLOW"),
+      true,
+    );
   });
 
   it("keeps every source audience requirement when labels differ", async () => {
@@ -245,6 +276,35 @@ describe("Director Copilot orchestrator", () => {
   it("recognizes only questions containing finance, delivery and contract signals", () => {
     assert.equal(isDirectorCopilotRiskQuery("Které projekty mají rozpočtovou odchylku, zpožděný milník a smluvní riziko?"), true);
     assert.equal(isDirectorCopilotRiskQuery("Kdo schvaluje tuto smlouvu?"), false);
+  });
+
+  it("recognizes free-form ProjectFlow questions without treating access inquiries as access changes", () => {
+    assert.equal(
+      classifyDirectorCopilotIntent("Jaký je stav projektů?"),
+      "project_portfolio_status",
+    );
+    assert.equal(
+      classifyDirectorCopilotIntent("Máš přístup do ProjectFlow? Jaké evidujeme projekty?"),
+      "project_portfolio_status",
+    );
+    assert.equal(
+      classifyDirectorCopilotIntent("Mám přístup do ProjectFlow?"),
+      "project_access_overview",
+    );
+    assert.equal(
+      classifyDirectorCopilotIntent("Jak požádám o přístup do ProjectFlow?"),
+      null,
+    );
+    assert.equal(
+      classifyDirectorCopilotIntent("Co je uvedeno v projektové dokumentaci?"),
+      null,
+    );
+    assert.equal(
+      classifyDirectorCopilotIntent("A co jejich nejbližší termíny?", {
+        answer_source: "director_copilot_projectflow",
+      }),
+      "project_portfolio_status",
+    );
   });
 });
 

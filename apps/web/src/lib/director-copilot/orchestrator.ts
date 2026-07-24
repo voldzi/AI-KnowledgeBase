@@ -10,6 +10,7 @@ import {
   stableId,
   stableSha256,
   type AnalysisSnapshot,
+  type DirectorCopilotIntent,
   type DirectorQueryPlan,
   type DomainApplication,
   type DomainToolRequest,
@@ -50,6 +51,7 @@ export async function orchestrateDirectorCopilot(input: {
   language: ResponseLanguage;
   context: ApiRequestContext;
   client: DomainToolExecutor;
+  intent?: DirectorCopilotIntent;
   now?: Date;
   timeoutMs?: number;
 }): Promise<DirectorCopilotOrchestrationResult> {
@@ -58,20 +60,27 @@ export async function orchestrateDirectorCopilot(input: {
     message: input.message,
     language: input.language,
     context: input.context,
+    intent: input.intent,
     now,
     timeoutMs: input.timeoutMs,
   });
-  const outcomes = await Promise.all([
-    executeSource("budget", plan, input.context, input.client, now),
-    executeSource("projectflow", plan, input.context, input.client, now),
-  ]);
+  const applications = [...new Set(
+    plan.nodes
+      .map((node) => node.source_application)
+      .filter((application): application is DomainApplication => application === "budget" || application === "projectflow"),
+  )];
+  const outcomes = await Promise.all(
+    applications.map((application) => executeSource(application, plan, input.context, input.client, now)),
+  );
   const warnings = outcomes.flatMap((outcome) => [
     ...(outcome.response?.warnings ?? []),
     ...(outcome.code ? [outcome.code] : []),
   ]);
   const availableResponses = outcomes.flatMap((outcome) => outcome.response ? [outcome.response] : []);
-  const correlatedIds = correlatedProjectIds(availableResponses, outcomes);
-  const evidence = normalizeStructuredEvidence(availableResponses, correlatedIds, now.toISOString());
+  const selectedProjectIds = plan.intent === "portfolio_risk_correlation"
+    ? correlatedProjectIds(availableResponses, outcomes)
+    : projectFlowProjectIds(availableResponses);
+  const evidence = normalizeStructuredEvidence(availableResponses, selectedProjectIds, now.toISOString());
   if (!evidence.length) {
     const failed = outcomes.some((outcome) => outcome.status !== "complete");
     return {
@@ -100,7 +109,7 @@ export async function orchestrateDirectorCopilot(input: {
     }];
   });
   const documentContextBindings = [...new Map(
-    [...correlatedIds].sort().map((canonicalId) => [canonicalId, {
+    [...selectedProjectIds].sort().map((canonicalId) => [canonicalId, {
       canonical_id: canonicalId,
       tags: boundedDocumentContextTags([...new Set(
         availableResponses.flatMap((response) => response.items)
@@ -134,6 +143,15 @@ export async function orchestrateDirectorCopilot(input: {
     status: unavailableSources.length ? "partial" : "complete",
     warnings: [...new Set(warnings)],
   };
+}
+
+function projectFlowProjectIds(responses: DomainToolResponse[]): Set<string> {
+  return new Set(
+    responses
+      .filter((response) => response.source_system === "STRATOS_PROJECTFLOW")
+      .flatMap((response) => response.items)
+      .map((item) => item.canonical_id),
+  );
 }
 
 export function directorCopilotPromptEvidence(snapshot: AnalysisSnapshot): Record<string, unknown> {

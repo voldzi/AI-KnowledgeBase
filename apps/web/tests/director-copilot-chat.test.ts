@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import type { AklConfig } from "../src/lib/api/config";
-import { runDirectorCopilotChat } from "../src/lib/director-copilot/chat";
+import {
+  directorCopilotUnavailableResponse,
+  runDirectorCopilotChat,
+} from "../src/lib/director-copilot/chat";
 import { stableSha256, type AnalysisSnapshot, type DomainToolRequest, type DomainToolResponse } from "../src/lib/director-copilot/contracts";
 import type { ApiClients, ApiRequestContext } from "../src/lib/types";
 
@@ -11,6 +14,105 @@ const budgetFixture = fixture("budget-complete.json");
 const projectFixture = fixture("projectflow-complete.json");
 
 describe("Director Copilot chat policy enforcement", () => {
+  it("answers a ProjectFlow-only portfolio question from live structured data without RAG", async () => {
+    const originalFetch = globalThis.fetch;
+    let ragCalls = 0;
+    let auditCalls = 0;
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as DomainToolRequest;
+      return Response.json({
+        ...structuredClone(projectFixture),
+        tool_call_id: request.tool_call_id,
+      });
+    };
+    try {
+      const response = await runDirectorCopilotChat({
+        message: "Jaký je stav projektů?",
+        conversationId: null,
+        responseLanguage: "cs",
+        intent: "project_portfolio_status",
+        actorContext: context(),
+        clients: {
+          rag: {
+            assistantChat: async () => {
+              ragCalls += 1;
+              throw new Error("ProjectFlow-only status must not use document RAG");
+            },
+          },
+          registry: {
+            createAuditEvent: async () => {
+              auditCalls += 1;
+              return {};
+            },
+          },
+        } as unknown as ApiClients,
+        config: config(),
+      });
+
+      assert.equal(ragCalls, 0);
+      assert.equal(auditCalls, 1);
+      assert.equal(response.response_type, "answer");
+      assert.equal(response.current_context.answer_source, "director_copilot_projectflow");
+      assert.match(response.answer ?? "", /ProjectFlow v aktuálně oprávněném rozsahu/);
+      assert.match(response.answer ?? "", /project-001/);
+      assert.match(response.answer ?? "", /28 dní/);
+      assert.equal(response.citations.length, 0);
+      assert.equal(response.warnings.includes("DIRECTOR_COPILOT_PROJECTFLOW_LIVE_DATA"), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not fall back to documents when ProjectFlow access is missing", async () => {
+    let ragCalls = 0;
+    const response = await runDirectorCopilotChat({
+      message: "Jaký je stav projektů?",
+      conversationId: null,
+      responseLanguage: "cs",
+      intent: "project_portfolio_status",
+      actorContext: {
+        ...context(),
+        applicationAccess: context().applicationAccess?.filter(
+          (access) => access.application !== "projectflow",
+        ),
+      },
+      clients: {
+        rag: {
+          assistantChat: async () => {
+            ragCalls += 1;
+            throw new Error("Unauthorized live-data questions must not use RAG");
+          },
+        },
+        registry: {
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: {
+        ...config(),
+        directorCopilot: {
+          ...config().directorCopilot!,
+        },
+      },
+    });
+
+    assert.equal(ragCalls, 0);
+    assert.equal(response.response_type, "restricted");
+    assert.match(response.answer ?? "", /Nemáte aktivní oprávnění ProjectFlow/);
+    assert.equal(response.citations.length, 0);
+  });
+
+  it("returns an explicit live-source state when the feature is disabled", () => {
+    const response = directorCopilotUnavailableResponse({
+      conversationId: null,
+      language: "cs",
+      intent: "project_portfolio_status",
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.match(response.answer ?? "", /nenahradilo historickými dokumenty/);
+    assert.equal(response.warnings.includes("LIVE_DATA_FALLBACK_BLOCKED"), true);
+  });
+
   it("adds governed AKB citations to the final tamper-evident snapshot", async () => {
     const originalFetch = globalThis.fetch;
     let auditPayload: unknown;

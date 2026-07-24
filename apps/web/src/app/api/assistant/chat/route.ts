@@ -5,8 +5,11 @@ import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
-import { runDirectorCopilotChat } from "@/lib/director-copilot/chat";
-import { isDirectorCopilotRiskQuery } from "@/lib/director-copilot/planner";
+import {
+  directorCopilotUnavailableResponse,
+  runDirectorCopilotChat,
+} from "@/lib/director-copilot/chat";
+import { classifyDirectorCopilotIntent } from "@/lib/director-copilot/planner";
 import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
@@ -45,7 +48,8 @@ export async function POST(request: NextRequest) {
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const config = getAklConfig();
-    if (getDirectorCopilotConfig(config).enabled && isDirectorCopilotRiskQuery(message)) {
+    const directorIntent = classifyDirectorCopilotIntent(message, requestContext);
+    if (directorIntent && getDirectorCopilotConfig(config).enabled) {
       const response = await runDirectorCopilotChat({
         message,
         conversationId,
@@ -53,11 +57,22 @@ export async function POST(request: NextRequest) {
         actorContext: context,
         clients,
         config,
+        intent: directorIntent,
         refreshActorContext: context.accessToken
           ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
           : undefined,
       });
       return NextResponse.json({ response, message_id: null });
+    }
+    if (directorIntent) {
+      return NextResponse.json({
+        response: directorCopilotUnavailableResponse({
+          conversationId,
+          language: responseLanguage,
+          intent: directorIntent,
+        }),
+        message_id: null,
+      });
     }
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
     const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
