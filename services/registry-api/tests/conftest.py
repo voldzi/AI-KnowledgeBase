@@ -13,7 +13,7 @@ os.environ.setdefault("AKL_MOCK_ROLES", '["admin"]')
 os.environ.setdefault(
     "AKL_TRUSTED_SERVICE_CLIENT_IDS",
     "aiip-document-service,akb-rag-service,stratos-akb-service,"
-    "svc-ingestion,svc-governance,svc-evaluation",
+    "svc-ingestion,svc-governance,svc-evaluation,svc-akb-director-copilot",
 )
 os.environ.setdefault(
     "AKL_SERVICE_CLIENT_ROUTE_GRANTS",
@@ -22,7 +22,8 @@ os.environ.setdefault(
     "stratos-akb-service=stratos-budget-upload,"
     "svc-ingestion=authz|audit|documents-read|ingestion-status,"
     "svc-governance=authz|audit|workflow-read|workflow-write,"
-    "svc-evaluation=audit|idempotency",
+    "svc-evaluation=audit|idempotency,"
+    "svc-akb-director-copilot=audit",
 )
 os.environ.setdefault(
     "AKL_SERVICE_CLIENT_DELEGATIONS",

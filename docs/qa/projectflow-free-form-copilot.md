@@ -27,11 +27,14 @@ Supported first-cut facts:
 | missing `projectflow:read` | explicit restricted response, zero source/RAG leakage |
 | disabled or unavailable source | explicit no-answer, no document fallback |
 | changed projection before response | fail closed before returning live facts |
+| interactive user lacks `audit.write` | service audit succeeds without broadening user access |
+| service token lacks `akl-api` or exact `audit` grant | fail closed with integration error |
 
 Every ProjectFlow answer carries `answer_source=director_copilot_projectflow`,
 the immutable query plan and analysis snapshot, source timestamps and a
 bounded audit event. The browser never supplies authoritative capabilities or
-scopes.
+scopes. Audit is written by `svc-akb-director-copilot`; the interactive user is
+preserved only as the reported actor.
 
 ## Remaining contract dependency
 

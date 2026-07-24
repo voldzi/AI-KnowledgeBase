@@ -42,6 +42,12 @@ parserových metadat, nikoli binární obsah nebo odvozená data. Produkční
 `aiip-service` zůstává omezený pouze na `aiip-upload` a nesmí získat žádnou z
 těchto generic families.
 
+Produkční `svc-akb-director-copilot` má pouze route grant `audit`. Závěrečný
+audit federované odpovědi používá její bearer s audience `akl-api`; interaktivní
+uživatel není oprávněn zapisovat audit a zůstává pouze deklarovaným
+`reported_actor_id`. Chybějící service audience, route grant nebo centrální
+policy rozhodnutí zůstává fail-closed a připravená odpověď se nevrátí.
+
 Globální service audit rozhodnutí používají registrovaný interní AKB binding
 `pol_akb_internal_source_v1`. Registry jej načte z centrálního Policy Registry,
 ověří jeho kanonický hash a teprve poté požádá o odpovídající `ai`, `read` nebo
