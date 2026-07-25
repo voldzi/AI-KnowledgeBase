@@ -72,7 +72,8 @@ services:
 
   web:
     build:
-      context: ../../apps/web
+      context: ../..
+      dockerfile: apps/web/Dockerfile
       labels: *immutable-release-labels
       args:
         NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
@@ -171,7 +172,8 @@ services:
 
   chat-web:
     build:
-      context: ../../apps/web
+      context: ../..
+      dockerfile: apps/web/Dockerfile
       labels: *immutable-release-labels
       args:
         NEXT_PUBLIC_AKL_BASE_PATH: ""
