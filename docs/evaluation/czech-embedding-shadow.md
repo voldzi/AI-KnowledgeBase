@@ -9,7 +9,7 @@ prepares two isolated candidates:
 - `Seznam/simcse-retromae-small-cs`, Czech specialist, 256 dimensions.
 
 The profile set is versioned in
-`services/evaluation-service/datasets/czech_embedding_shadow_profiles.json`.
+`contracts/embedding-shadow/v1/czech_embedding_shadow_profiles.json`.
 This change does not download a model, create a production endpoint, reindex
 the corpus or affect answers.
 

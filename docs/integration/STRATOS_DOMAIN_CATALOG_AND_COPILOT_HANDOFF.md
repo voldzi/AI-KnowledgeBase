@@ -239,7 +239,7 @@ Seznam/simcse-retromae-small-cs  candidate, 256 dimensions
 
 Each model must use a separate Qdrant collection and service identity. AKB has
 the offline profile set and promotion gates in
-`services/evaluation-service/datasets/czech_embedding_shadow_profiles.json`.
+`contracts/embedding-shadow/v1/czech_embedding_shadow_profiles.json`.
 Candidates must remain invisible to answers until a full immutable-corpus
 backfill and common Czech retrieval evaluation pass. The Seznam model requires
 CC BY 4.0 attribution.

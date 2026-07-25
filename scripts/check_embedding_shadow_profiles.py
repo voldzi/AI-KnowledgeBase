@@ -10,9 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = (
     ROOT
-    / "services"
-    / "evaluation-service"
-    / "datasets"
+    / "contracts"
+    / "embedding-shadow"
+    / "v1"
     / "czech_embedding_shadow_profiles.json"
 )
 EXPECTED_SCHEMA = "akb-embedding-shadow-profile-set-1"
