@@ -14,14 +14,28 @@ interface CachedToken {
   refreshAt: number;
 }
 
-let cachedToken: CachedToken | null = null;
+export interface DirectorCopilotServiceTarget {
+  audience: "budget-api" | "projectflow-api" | "archflow-api" | "aiip-api";
+  scope:
+    | "director-copilot-budget-api"
+    | "director-copilot-projectflow-api"
+    | "director-copilot-archflow-api"
+    | "director-copilot-aiip-api";
+}
+
+const cachedTokens = new Map<string, CachedToken>();
 const pendingTokens = new Map<string, Promise<CachedToken>>();
 
 export async function directorCopilotServiceToken(
   config: AklConfig = getAklConfig(),
   fetcher: typeof fetch = fetch,
+  target?: DirectorCopilotServiceTarget,
 ): Promise<string> {
-  if (config.authMode !== "oidc") return "mock-director-copilot-service-token";
+  if (config.authMode !== "oidc") {
+    return target
+      ? `mock-director-copilot-service-token-${target.audience}`
+      : "mock-director-copilot-service-token";
+  }
   const transport = getDirectorCopilotConfig(config);
   if (!transport.enabled || !transport.tokenUrl || transport.clientId !== CLIENT_ID) {
     throw new DirectorCopilotTransportError(
@@ -30,12 +44,13 @@ export async function directorCopilotServiceToken(
       "unavailable",
     );
   }
-  const cacheKey = `${transport.tokenUrl}|${transport.clientId}`;
+  const cacheKey = `${transport.tokenUrl}|${transport.clientId}|${target?.scope ?? "default"}`;
   const now = Date.now();
-  if (cachedToken?.cacheKey === cacheKey && cachedToken.refreshAt > now) return cachedToken.token;
+  const cachedToken = cachedTokens.get(cacheKey);
+  if (cachedToken?.refreshAt && cachedToken.refreshAt > now) return cachedToken.token;
   let pending = pendingTokens.get(cacheKey);
   if (!pending) {
-    pending = obtainToken(config, cacheKey, fetcher);
+    pending = obtainToken(config, cacheKey, fetcher, target);
     pendingTokens.set(cacheKey, pending);
     const clear = () => {
       if (pendingTokens.get(cacheKey) === pending) pendingTokens.delete(cacheKey);
@@ -43,11 +58,16 @@ export async function directorCopilotServiceToken(
     void pending.then(clear, clear);
   }
   const resolved = await pending;
-  cachedToken = resolved;
+  cachedTokens.set(cacheKey, resolved);
   return resolved.token;
 }
 
-async function obtainToken(config: AklConfig, cacheKey: string, fetcher: typeof fetch): Promise<CachedToken> {
+async function obtainToken(
+  config: AklConfig,
+  cacheKey: string,
+  fetcher: typeof fetch,
+  target?: DirectorCopilotServiceTarget,
+): Promise<CachedToken> {
   const transport = getDirectorCopilotConfig(config);
   const secret = transport.clientSecret
     ?? (transport.clientSecretFile
@@ -69,6 +89,7 @@ async function obtainToken(config: AklConfig, cacheKey: string, fetcher: typeof 
         grant_type: "client_credentials",
         client_id: transport.clientId,
         client_secret: secret,
+        ...(target ? { scope: target.scope } : {}),
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
@@ -98,12 +119,48 @@ async function obtainToken(config: AklConfig, cacheKey: string, fetcher: typeof 
       "unavailable",
     );
   }
+  if (target) {
+    assertExactAudience(token, target.audience);
+  }
   const lifetimeMs = expiresIn * 1_000;
   const marginMs = Math.min(30_000, Math.max(1_000, lifetimeMs * 0.1));
   return { cacheKey, token, refreshAt: Date.now() + Math.max(0, lifetimeMs - marginMs) };
 }
 
 export function resetDirectorCopilotServiceTokenCacheForTests(): void {
-  cachedToken = null;
+  cachedTokens.clear();
   pendingTokens.clear();
+}
+
+function assertExactAudience(
+  token: string,
+  expectedAudience: DirectorCopilotServiceTarget["audience"],
+): void {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    throw new DirectorCopilotTransportError(
+      "DIRECTOR_COPILOT_TRANSPORT_AUTH_INVALID",
+      "Director Copilot target credential is not a JWT.",
+      "unavailable",
+    );
+  }
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1]!, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
+    const audiences = typeof payload.aud === "string"
+      ? [payload.aud]
+      : Array.isArray(payload.aud)
+        ? payload.aud.filter((value): value is string => typeof value === "string")
+        : [];
+    if (audiences.length !== 1 || audiences[0] !== expectedAudience) {
+      throw new Error("audience mismatch");
+    }
+  } catch {
+    throw new DirectorCopilotTransportError(
+      "DIRECTOR_COPILOT_TRANSPORT_AUDIENCE_INVALID",
+      "Director Copilot target credential does not contain the exact required audience.",
+      "unavailable",
+    );
+  }
 }

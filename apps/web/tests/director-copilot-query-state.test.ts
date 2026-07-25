@@ -54,6 +54,34 @@ describe("Director Copilot conversation query state", () => {
     );
   });
 
+  it("preserves a bounded interval and every V2 entity filter across a follow-up", () => {
+    const previous = resolveConversationQuery({
+      message: "Porovnej projekty od 2025-01-01 do 2025-06-30.",
+      now: NOW,
+    }).state;
+    previous.entity_filters = {
+      project_ids: ["project-001"],
+      portfolio_ids: ["portfolio-001"],
+      organization_unit_ids: ["unit-it"],
+      budget_scope_ids: ["budget-it"],
+      need_ids: ["need-001"],
+      idea_ids: ["idea-001"],
+    };
+
+    const resolved = resolveConversationQuery({
+      message: "A které z nich mají nejvyšší odchylku?",
+      context: { stratos_query_state: previous },
+      now: NOW,
+    });
+
+    assert.deepEqual(resolved.state.period.interval, {
+      start: "2025-01-01",
+      end: "2025-06-30",
+    });
+    assert.deepEqual(resolved.state.entity_filters, previous.entity_filters);
+    assert.deepEqual(resolved.state.metrics, ["budget.variance_amount"]);
+  });
+
   it("recognizes a combined financial and delivery question without requiring a contract term", () => {
     assert.equal(
       classifyDirectorCopilotIntent(
@@ -84,11 +112,19 @@ describe("Director Copilot conversation query state", () => {
 
     assert.equal(resolved.recognized, true);
     assert.deepEqual(resolved.pending_sources, ["aiip"]);
+    assert.equal(
+      classifyDirectorCopilotIntent(
+        "Kolik podnětů eviduje AIIP a v jakém jsou stavu?",
+        {},
+        { includeContractReady: true },
+      ),
+      "aiip_idea_overview",
+    );
   });
 
   it("sanitizes untrusted persisted context and never accepts authorization fields", () => {
     const parsed = conversationQueryState({
-      schema_version: "stratos-conversation-query-state-1",
+      schema_version: "stratos-conversation-query-state-2",
       catalog_version: "stratos-semantic-catalog-2",
       sources: ["budget", "unknown", "projectflow"],
       metrics: ["budget.forecast_amount", "admin:all"],
@@ -98,6 +134,10 @@ describe("Director Copilot conversation query state", () => {
       entity_filters: {
         project_ids: ["project-001", "invalid id with spaces"],
         portfolio_ids: [],
+        organization_unit_ids: ["unit-it"],
+        budget_scope_ids: ["budget-it"],
+        need_ids: ["need-001"],
+        idea_ids: ["idea-001"],
       },
       filters: { schedule_status: "delayed" },
       sort: { metric: "budget.forecast_amount", direction: "desc" },
@@ -109,6 +149,7 @@ describe("Director Copilot conversation query state", () => {
     assert.deepEqual(parsed?.sources, ["budget", "projectflow"]);
     assert.deepEqual(parsed?.metrics, ["budget.forecast_amount"]);
     assert.deepEqual(parsed?.entity_filters.project_ids, ["project-001"]);
+    assert.deepEqual(parsed?.entity_filters.organization_unit_ids, ["unit-it"]);
     assert.equal(JSON.stringify(parsed).includes("requested_scopes"), false);
     assert.equal(JSON.stringify(parsed).includes("capabilities"), false);
   });

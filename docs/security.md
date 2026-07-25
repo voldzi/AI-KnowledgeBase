@@ -107,6 +107,15 @@ every source applies its own PEP and Information Policy. Canonical relations
 must be source-declared IDs. Names, embedding similarity, browser state and
 LLM output cannot create a cross-application join.
 
+Director Copilot V2 strengthens this boundary with a separate target-specific
+client-credentials token for each source. AKB rejects a token containing more
+than the one expected audience, obtains requested scopes only from the fresh
+STRATOS access projection, and reauthorizes immediately before synthesis.
+Runtime manifest drift, unknown fact/link/reason keys, changed access, invalid
+policy lineage and unrecognized relationships fail closed. A ProjectFlow link
+to `stratos:document:<id>` is not evidence of document access; AKB authorizes
+that document independently before acknowledging the relation.
+
 The same rule applies to ingestion and Intelligence. Every production job
 create/read/retry/cancel is authorized with a short-lived Registry proof for
 one immutable document version. Production Intelligence queries use a separate

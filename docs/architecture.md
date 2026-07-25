@@ -89,7 +89,7 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   replace RAG/citation workflows.
 - Ingestion does not publish document versions or answer RAG queries.
 - RAG does not mutate document registry state except audit events.
-- Director Copilot does not read source databases. The AKB server calls fixed,
+- Director Copilot does not read source databases. The AKB server calls
   deterministic and read-only source-application endpoints with
   separate service and actor credentials. It accepts only closed contracts,
   normalizes authorized facts into an immutable evidence snapshot and uses the
@@ -97,19 +97,20 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   planner uses a versioned semantic catalog, a closed machine-readable domain
   tool/metric/relation catalog and a bounded
   `ConversationQueryState` for source, metric, period, granularity and narrowing
-  entity filters. It supports governed Budget + ProjectFlow + contract-risk
-  correlation, deterministic Budget + ProjectFlow performance overviews and
-  single-source live questions. The query state never carries authorization;
+  entity filters. V2 discovers the exact source-owned tool surface from
+  schema-validated, revision-pinned manifests for Budget, ProjectFlow, ArchFlow
+  and AIIP. It correlates only byte-identical canonical identities or typed
+  manifest relationships and never calculates source-owned financial totals.
+  The query state never carries authorization;
   every turn reloads the current STRATOS access projection and every source
   applies its local PEP. Explicit live-data questions and contextual follow-ups
   are routed before the document router. Missing source access, an unconnected
   ArchFlow/AIIP tool, disabled federation or source failure is reported
   explicitly; a live-data question is never silently answered from historical
   documents.
-- ArchFlow and AIIP contracts, authorization mapping, fixtures, deterministic
-  renderers and canonical relation handling are implemented in AKB but remain
-  `contract_ready`. Only a source-owner deployment and joint conformance gate
-  may change them to `connected`.
+- V1 source status and V2 activation are separate. V2 can evaluate all four
+  source applications in shadow while V1 remains the user-visible baseline.
+  Only a joint conformance gate may activate V2 responses.
 - The semantic catalog is enriched by an immutable local SSP snapshot with
   source attribution and a content SHA-256. The full imported vocabulary is
   context only. Only separately reviewed concept bindings may influence a

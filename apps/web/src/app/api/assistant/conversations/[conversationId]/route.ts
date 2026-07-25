@@ -5,6 +5,7 @@ import { getAklConfig } from "@/lib/api/config";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { authorizeDirectorCopilotHistory } from "@/lib/director-copilot/history";
 import type {
+  ApiClients,
   AssistantConversationDetail,
   AssistantConversationMessage,
 } from "@/lib/types";
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         conversation,
         authorizationContext.context,
         authorizationContext.available,
+        clients,
       ),
     });
   } catch (error) {
@@ -45,6 +47,7 @@ async function reauthorizeFederatedHistory(
   conversation: AssistantConversationDetail,
   actorContext: Parameters<typeof authorizeDirectorCopilotHistory>[0]["actorContext"],
   authorizationProjectionAvailable = true,
+  clients?: Pick<ApiClients, "registry">,
 ): Promise<AssistantConversationDetail> {
   let previousUserMessage = "";
   const messages: AssistantConversationMessage[] = [];
@@ -70,6 +73,7 @@ async function reauthorizeFederatedHistory(
       previousUserMessage,
       actorContext,
       config: getAklConfig(),
+      clients,
     });
     if (authorization.status === "allowed") {
       messages.push(message);

@@ -24,6 +24,8 @@ This section contains current integration-facing runbooks and contracts.
   - deterministic governed Budget project-financial read-model
 - `DIRECTOR_COPILOT_HANDOFF_PROJECTFLOW.md`
   - deterministic governed ProjectFlow project-delivery read-model
+- `DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`
+  - pinned V2 contract, AKB consumer behavior, runtime modes and joint activation gate
 
 ## Preserved Phase Material
 

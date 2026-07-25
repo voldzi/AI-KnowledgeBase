@@ -10,14 +10,16 @@ import {
 } from "./semantic-catalog";
 import { semanticRegistrySourcesForText } from "./semantic-registry";
 
-export const CONVERSATION_QUERY_STATE_VERSION = "stratos-conversation-query-state-1" as const;
+export const CONVERSATION_QUERY_STATE_VERSION = "stratos-conversation-query-state-2" as const;
+const LEGACY_QUERY_STATE_VERSION = "stratos-conversation-query-state-1";
 
 export type QueryGranularity =
   | "authorized_scope"
   | "organization"
   | "organization_unit"
   | "portfolio"
-  | "project";
+  | "project"
+  | "item";
 
 export interface ConversationQueryState {
   schema_version: typeof CONVERSATION_QUERY_STATE_VERSION;
@@ -28,12 +30,20 @@ export interface ConversationQueryState {
     type: "current" | "fiscal_year";
     fiscal_year: number;
     as_of: string;
+    interval: {
+      start: string;
+      end: string;
+    } | null;
   };
   granularity: QueryGranularity;
   scope_label: string | null;
   entity_filters: {
     project_ids: string[];
     portfolio_ids: string[];
+    organization_unit_ids: string[];
+    budget_scope_ids: string[];
+    need_ids: string[];
+    idea_ids: string[];
   };
   filters: {
     schedule_status: "delayed" | "at_risk" | "on_track" | null;
@@ -98,6 +108,7 @@ const GRANULARITY_VALUES = new Set<QueryGranularity>([
   "organization_unit",
   "portfolio",
   "project",
+  "item",
 ]);
 const LEGACY_CATALOG_VERSIONS = new Set([
   "stratos-semantic-catalog-1",
@@ -135,6 +146,7 @@ export function resolveConversationQuery(input: {
   const documentQuestion = DOCUMENT_SIGNAL.test(normalized);
   const followUp = FOLLOW_UP_SIGNAL.test(normalized)
     || explicitPeriodYear(normalized, now) !== null
+    || explicitDateInterval(normalized) !== null
     || OVERALL_SIGNAL.test(normalized);
   const mayInherit = previous !== null
     && followUp
@@ -154,8 +166,8 @@ export function resolveConversationQuery(input: {
   const granularity = resolveGranularity(normalized, previous?.granularity ?? "authorized_scope");
   const scopeLabel = resolveScopeLabel(normalized, granularity, previous?.scope_label ?? null);
   const entityFilters = OVERALL_SIGNAL.test(normalized)
-    ? { project_ids: [], portfolio_ids: [] }
-    : previous?.entity_filters ?? { project_ids: [], portfolio_ids: [] };
+    ? emptyEntityFilters()
+    : previous?.entity_filters ?? emptyEntityFilters();
   const scheduleStatus = DELAYED_SIGNAL.test(normalized)
     ? "delayed" as const
     : AT_RISK_SIGNAL.test(normalized)
@@ -203,7 +215,10 @@ export function conversationQueryState(
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (
-    record.schema_version !== CONVERSATION_QUERY_STATE_VERSION
+    (
+      record.schema_version !== CONVERSATION_QUERY_STATE_VERSION
+      && record.schema_version !== LEGACY_QUERY_STATE_VERSION
+    )
     || typeof record.catalog_version !== "string"
     || !LEGACY_CATALOG_VERSIONS.has(record.catalog_version)
   ) {
@@ -214,6 +229,7 @@ export function conversationQueryState(
   const metrics = boundedStringArray(record.metrics, 20, 100)
     .filter((metric): metric is StratosSemanticMetric => METRIC_VALUES.has(metric as StratosSemanticMetric));
   const periodRecord = objectValue(record.period);
+  const intervalRecord = objectValue(periodRecord?.interval);
   const fiscalYear = integerValue(periodRecord?.fiscal_year);
   const periodType = periodRecord?.type === "fiscal_year" ? "fiscal_year" : "current";
   const validFiscalYear = fiscalYear !== null && fiscalYear >= 2000 && fiscalYear <= 2200
@@ -242,12 +258,17 @@ export function conversationQueryState(
       as_of: periodType === "current"
         ? now.toISOString()
         : asOfForFiscalYear(validFiscalYear, now),
+      interval: validDateInterval(intervalRecord),
     },
     granularity,
     scope_label: boundedNullableString(record.scope_label, 120),
     entity_filters: {
       project_ids: boundedIds(entityFilters?.project_ids),
       portfolio_ids: boundedIds(entityFilters?.portfolio_ids),
+      organization_unit_ids: boundedIds(entityFilters?.organization_unit_ids),
+      budget_scope_ids: boundedIds(entityFilters?.budget_scope_ids),
+      need_ids: boundedIds(entityFilters?.need_ids),
+      idea_ids: boundedIds(entityFilters?.idea_ids),
     },
     filters: {
       schedule_status:
@@ -315,10 +336,11 @@ function legacyConversationQueryState(
       type: "current",
       fiscal_year: now.getUTCFullYear(),
       as_of: now.toISOString(),
+      interval: null,
     },
     granularity: "authorized_scope",
     scope_label: null,
-    entity_filters: { project_ids: [], portfolio_ids: [] },
+    entity_filters: emptyEntityFilters(),
     filters: { schedule_status: null },
     sort: null,
     document_evidence_requested: false,
@@ -330,7 +352,16 @@ function resolvePeriod(
   previous: ConversationQueryState["period"] | null,
   now: Date,
 ): ConversationQueryState["period"] {
+  const explicitInterval = explicitDateInterval(normalized);
   const explicitYear = explicitPeriodYear(normalized, now);
+  if (explicitInterval) {
+    return {
+      type: "fiscal_year",
+      fiscal_year: Number(explicitInterval.start.slice(0, 4)),
+      as_of: `${explicitInterval.end}T23:59:59.999Z`,
+      interval: explicitInterval,
+    };
+  }
   if (explicitYear !== null) {
     return {
       type: explicitYear === now.getUTCFullYear() ? "current" : "fiscal_year",
@@ -338,6 +369,7 @@ function resolvePeriod(
       as_of: explicitYear === now.getUTCFullYear()
         ? now.toISOString()
         : asOfForFiscalYear(explicitYear, now),
+      interval: null,
     };
   }
   if (previous) {
@@ -346,6 +378,7 @@ function resolvePeriod(
           type: "current",
           fiscal_year: now.getUTCFullYear(),
           as_of: now.toISOString(),
+          interval: null,
         }
       : {
           ...previous,
@@ -356,7 +389,15 @@ function resolvePeriod(
     type: "current",
     fiscal_year: now.getUTCFullYear(),
     as_of: now.toISOString(),
+    interval: null,
   };
+}
+
+function explicitDateInterval(normalized: string): { start: string; end: string } | null {
+  const dates = [...normalized.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)]
+    .map((match) => match[1]!);
+  if (dates.length < 2 || dates[0]! > dates[1]!) return null;
+  return { start: dates[0]!, end: dates[1]! };
 }
 
 function explicitPeriodYear(normalized: string, now: Date): number | null {
@@ -407,6 +448,32 @@ function sortMetricForQuery(
 function asOfForFiscalYear(year: number, now: Date): string {
   if (year === now.getUTCFullYear()) return now.toISOString();
   return new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999)).toISOString();
+}
+
+function validDateInterval(
+  value: Record<string, unknown> | null,
+): ConversationQueryState["period"]["interval"] {
+  const start = typeof value?.start === "string" ? value.start : "";
+  const end = typeof value?.end === "string" ? value.end : "";
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(start)
+    || !/^\d{4}-\d{2}-\d{2}$/.test(end)
+    || start > end
+  ) {
+    return null;
+  }
+  return { start, end };
+}
+
+function emptyEntityFilters(): ConversationQueryState["entity_filters"] {
+  return {
+    project_ids: [],
+    portfolio_ids: [],
+    organization_unit_ids: [],
+    budget_scope_ids: [],
+    need_ids: [],
+    idea_ids: [],
+  };
 }
 
 function boundedIds(value: unknown): string[] {

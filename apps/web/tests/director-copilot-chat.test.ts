@@ -254,7 +254,7 @@ describe("Director Copilot chat policy enforcement", () => {
       assert.match(response.answer ?? "", /11\s?250\s?000/);
       assert.equal(
         (response.current_context.stratos_query_state as { schema_version?: string }).schema_version,
-        "stratos-conversation-query-state-1",
+        "stratos-conversation-query-state-2",
       );
     } finally {
       globalThis.fetch = originalFetch;

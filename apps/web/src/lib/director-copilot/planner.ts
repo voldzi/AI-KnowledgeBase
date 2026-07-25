@@ -31,10 +31,16 @@ export function isDirectorCopilotRiskQuery(message: string): boolean {
 export function classifyDirectorCopilotIntent(
   message: string,
   context: Record<string, unknown> = {},
+  options: { includeContractReady?: boolean } = {},
 ): DirectorCopilotIntent | null {
   const normalized = normalizeForIntent(message);
   const resolved = resolveConversationQuery({ message, context });
-  if (!resolved.recognized || resolved.pending_sources.length) return null;
+  if (
+    !resolved.recognized
+    || (resolved.pending_sources.length && !options.includeContractReady)
+  ) {
+    return null;
+  }
   const explicitProjectFlow = PROJECTFLOW_SIGNAL.test(normalized);
   const documentQuestion = DOCUMENT_SIGNAL.test(normalized);
   const accessQuestion = ACCESS_SIGNAL.test(normalized);

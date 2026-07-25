@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { getAklConfig } from "@/lib/api/config";
+import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
+import { loadDirectorCopilotV2ManifestCatalog } from "@/lib/director-copilot-v2/manifest-catalog";
 
 export const runtime = "nodejs";
 
@@ -17,14 +18,26 @@ export async function GET() {
             ]),
           ),
         );
-    const isReady = Object.values(dependencies).every((status) => status === "ready" || status === "mock");
+    const directorConfig = getDirectorCopilotConfig(config);
+    const directorCopilotV2 = directorConfig.v2Mode === "disabled" || !directorConfig.v2Mode
+      ? "disabled"
+      : await loadDirectorCopilotV2ManifestCatalog({ config })
+          .then(() => "ready" as const)
+          .catch(() => "not_ready" as const);
+    const dependenciesReady = Object.values(dependencies)
+      .every((status) => status === "ready" || status === "mock");
+    const isReady = dependenciesReady
+      && (directorConfig.v2Mode !== "active" || directorCopilotV2 === "ready");
     return NextResponse.json(
       {
         service: "web-frontend",
         status: isReady ? "ready" : "not_ready",
         api_client_mode: config.apiClientMode,
         auth_mode: config.authMode,
-        dependencies
+        dependencies: {
+          ...dependencies,
+          director_copilot_v2: directorCopilotV2,
+        }
       },
       {
         status: isReady ? 200 : 503,
