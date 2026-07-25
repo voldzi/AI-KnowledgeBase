@@ -10,7 +10,7 @@ import {
   type DirectorQueryPlan,
 } from "./contracts";
 
-const BUDGET_SIGNAL = /(rozpoc|budget|finan|odchyl|forecast|plan|skutecnost|cerpan)/i;
+const BUDGET_SIGNAL = /(rozpoc|budget|finan|odchyl|forecast|plan|skutecnost|cerpan|naklad|cen[ay]|vydaj|utrata|investic|castka|kolik stoji)/i;
 const DELIVERY_SIGNAL = /(projectflow|projekt|project|portfolio|milnik|milestone|harmonogram|zpozd|delay|termin|ukol|realizac|plneni)/i;
 const CONTRACT_SIGNAL = /(smlouv|contract|dodavatel|supplier|rizik|risk)/i;
 const PROJECT_LIVE_SIGNAL = /(stav|prehled|seznam|evid|kolik|ktere|jake|jak je|aktual|zpozd|milnik|harmonogram|termin|ukol|plneni|pokrok|problem|zavislost|kapacit|tym|otevr|detail|konkret)/i;
@@ -44,6 +44,11 @@ export function classifyDirectorCopilotIntent(
   const accessOverview = accessQuestion && ACCESS_OVERVIEW_SIGNAL.test(normalized);
   const projectFlowContext = context.answer_source === "director_copilot_projectflow"
     || nestedPlanIntent(context) === "project_portfolio_status";
+
+  // A financial question remains a Budget question even when it follows a ProjectFlow answer.
+  if (hasBudget && (!documentQuestion || explicitProjectFlow)) {
+    return "budget_portfolio_status";
+  }
 
   if (projectDataQuestion && (!documentQuestion || explicitProjectFlow)) {
     return "project_portfolio_status";
@@ -89,7 +94,7 @@ export function buildDirectorQueryPlan(input: {
     as_of: createdAt,
     projection_hash: projectionHash,
     nodes: [
-      ...(intent === "portfolio_risk_correlation" ? [{
+      ...(intent === "portfolio_risk_correlation" || intent === "budget_portfolio_status" ? [{
         node_id: "node_budget",
         tool_id: DOMAIN_TOOL_IDS.budget,
         source_application: "budget" as const,
@@ -98,15 +103,15 @@ export function buildDirectorQueryPlan(input: {
         depends_on: [],
         timeout_ms: timeoutMs,
       }] : []),
-      {
+      ...(intent === "budget_portfolio_status" ? [] : [{
         node_id: "node_projectflow",
         tool_id: DOMAIN_TOOL_IDS.projectflow,
-        source_application: "projectflow",
+        source_application: "projectflow" as const,
         required_capability: "projectflow:read" as const,
         requested_scopes: projectflow.authorized ? projectflow.scopes : [],
         depends_on: [],
         timeout_ms: timeoutMs,
-      },
+      }]),
       ...(intent === "portfolio_risk_correlation" ? [{
         node_id: "node_akb_contracts",
         tool_id: "akb.contract_risk_retrieval.v1" as const,
@@ -155,6 +160,7 @@ function nestedPlanIntent(context: Record<string, unknown>): DirectorCopilotInte
   const intent = (plan as Record<string, unknown>).intent;
   return intent === "portfolio_risk_correlation"
     || intent === "project_portfolio_status"
+    || intent === "budget_portfolio_status"
     || intent === "project_access_overview"
     ? intent
     : null;

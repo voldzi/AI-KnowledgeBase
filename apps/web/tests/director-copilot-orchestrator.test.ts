@@ -34,7 +34,7 @@ describe("Director Copilot orchestrator", () => {
     assert.equal(result.status, "complete");
     assert.equal(calls.length, 2);
     assert.equal(result.plan.nodes.length, 3);
-    assert.equal(result.snapshot?.evidence.length, 8);
+    assert.equal(result.snapshot?.evidence.length, 10);
     assert.deepEqual(result.snapshot?.document_context_tags, ["contract:contract-001", "project:project-001"]);
     assert.deepEqual(result.snapshot?.document_context_bindings, [{
       canonical_id: "stratos:project:project-001",
@@ -67,7 +67,7 @@ describe("Director Copilot orchestrator", () => {
     assert.equal(result.plan.nodes.length, 1);
     assert.equal(result.plan.quality_gates.document_citations_required, false);
     assert.deepEqual(calls.map((call) => call.application), ["projectflow"]);
-    assert.equal(result.snapshot?.evidence.length, 4);
+    assert.equal(result.snapshot?.evidence.length, 5);
     assert.equal(
       result.snapshot?.evidence.every((item) => item.source_system === "STRATOS_PROJECTFLOW"),
       true,
@@ -347,6 +347,12 @@ describe("Director Copilot orchestrator", () => {
         answer_source: "director_copilot_projectflow",
       }),
       "project_portfolio_status",
+    );
+    assert.equal(
+      classifyDirectorCopilotIntent("Jaké má náklady?", {
+        answer_source: "director_copilot_projectflow",
+      }),
+      "budget_portfolio_status",
     );
   });
 });

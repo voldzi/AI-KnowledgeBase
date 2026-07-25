@@ -41,6 +41,7 @@ Povinná minimální fakta:
 
 | Klíč | Typ | Význam |
 | --- | --- | --- |
+| `project.display_name` | `text` | uživatelsky čitelný název projektu; nikdy nepoužívat interní nebo integrační identifikátor jako zobrazovaný název |
 | `milestone.max_delay_days` | `duration_days` | nejvyšší kladné zpoždění aktivního kritického milníku |
 | `project.status` | `text` | kanonický stav projektu |
 | `project.schedule_status` | `text` | stav harmonogramu, například on_track/at_risk/delayed |

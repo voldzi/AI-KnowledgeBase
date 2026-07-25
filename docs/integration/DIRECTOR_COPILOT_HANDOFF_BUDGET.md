@@ -38,6 +38,7 @@ Povinná minimální fakta:
 
 | Klíč | Typ | Význam |
 | --- | --- | --- |
+| `project.display_name` | `text` | uživatelsky čitelný název projektu, shodný s ProjectFlow pro stejný `canonical_id` |
 | `budget.variance_amount` | `currency` | forecast nebo actual proti schválenému plánu; znaménko musí být zdokumentované |
 | `budget.variance_percent` | `percent` | stejná metodika jako částka, pokud je jmenovatel nenulový |
 | `budget.plan_amount` | `currency` | schválený plán pro uvedené období |

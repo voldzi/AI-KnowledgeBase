@@ -54,7 +54,7 @@
       "additionalProperties": false,
       "required": ["key", "value", "value_type"],
       "properties": {
-        "key": { "enum": ["budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount", "milestone.max_delay_days", "project.status", "project.schedule_status", "milestone.next_due_date"] },
+        "key": { "enum": ["project.display_name", "budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount", "milestone.max_delay_days", "project.status", "project.schedule_status", "milestone.next_due_date"] },
         "value": { "type": ["string", "number", "integer", "boolean", "null"], "maxLength": 1000 },
         "value_type": { "enum": ["text", "number", "integer", "boolean", "date", "datetime", "currency", "percent", "duration_days"] },
         "unit": { "type": ["string", "null"], "maxLength": 40 },
@@ -74,7 +74,7 @@
         { "if": { "properties": { "key": { "enum": ["budget.variance_amount", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount"] } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "currency" } } } },
         { "if": { "properties": { "key": { "const": "budget.variance_percent" } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "percent" } } } },
         { "if": { "properties": { "key": { "const": "milestone.max_delay_days" } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "duration_days" } } } },
-        { "if": { "properties": { "key": { "enum": ["project.status", "project.schedule_status"] } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "text" } } } },
+        { "if": { "properties": { "key": { "enum": ["project.display_name", "project.status", "project.schedule_status"] } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "text" } } } },
         { "if": { "properties": { "key": { "const": "milestone.next_due_date" } }, "required": ["key"] }, "then": { "properties": { "value_type": { "const": "date" } } } }
       ]
     },
@@ -167,7 +167,7 @@
               "items": {
                 "items": {
                   "properties": {
-                    "facts": { "items": { "properties": { "key": { "enum": ["budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount"] } } } }
+                    "facts": { "items": { "properties": { "key": { "enum": ["project.display_name", "budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount"] } } } }
                   }
                 }
               }
@@ -182,7 +182,7 @@
               "items": {
                 "items": {
                   "properties": {
-                    "facts": { "items": { "properties": { "key": { "enum": ["milestone.max_delay_days", "project.status", "project.schedule_status", "milestone.next_due_date"] } } } }
+                    "facts": { "items": { "properties": { "key": { "enum": ["project.display_name", "milestone.max_delay_days", "project.status", "project.schedule_status", "milestone.next_due_date"] } } } }
                   }
                 }
               }

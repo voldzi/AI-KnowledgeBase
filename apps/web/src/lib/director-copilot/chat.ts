@@ -78,8 +78,18 @@ export async function runDirectorCopilotChat(input: {
       return response;
     }
   }
-  if (snapshot.plan.intent !== "portfolio_risk_correlation") {
+  if (snapshot.plan.intent === "project_portfolio_status" || snapshot.plan.intent === "project_access_overview") {
     const response = composeProjectFlowResponse(
+      input.conversationId,
+      snapshot,
+      input.responseLanguage,
+      orchestration.warnings,
+    );
+    await auditDirectorResult(input, response, orchestration.plan, snapshot, orchestration.status);
+    return response;
+  }
+  if (snapshot.plan.intent === "budget_portfolio_status") {
+    const response = composeBudgetResponse(
       input.conversationId,
       snapshot,
       input.responseLanguage,
@@ -139,9 +149,12 @@ export function directorCopilotUnavailableResponse(input: {
   language: ResponseLanguage;
   intent: DirectorCopilotIntent;
 }): AssistantChatResponse {
-  const projectOnly = input.intent !== "portfolio_risk_correlation";
+  const projectOnly = input.intent === "project_portfolio_status" || input.intent === "project_access_overview";
+  const budgetOnly = input.intent === "budget_portfolio_status";
   const answer = projectOnly
     ? localized(input.language, "project_source_unavailable")
+    : budgetOnly
+      ? localized(input.language, "budget_source_unavailable")
     : localized(input.language, "sources_unavailable");
   return {
     response_type: "no_answer",
@@ -151,7 +164,7 @@ export function directorCopilotUnavailableResponse(input: {
     questions: [],
     why_needed: null,
     current_context: {
-      answer_source: projectOnly ? "director_copilot_projectflow" : "director_copilot_federation",
+      answer_source: projectOnly ? "director_copilot_projectflow" : budgetOnly ? "director_copilot_budget" : "director_copilot_federation",
       requested_director_copilot_intent: input.intent,
       director_copilot_ephemeral: true,
     },
@@ -181,6 +194,7 @@ function composeProjectFlowResponse(
     return {
       canonicalId,
       entityId: evidence[0]?.entity_id ?? canonicalId.replace(/^stratos:project:/, ""),
+      displayName: factValue(evidence, "project.display_name"),
       deepLink: evidence[0]?.deep_link ?? "",
       status: factValue(evidence, "project.status"),
       scheduleStatus: factValue(evidence, "project.schedule_status"),
@@ -206,9 +220,7 @@ function composeProjectFlowResponse(
     ? ["Project", "Status", "Schedule", "Maximum delay", "Next milestone", "As of"]
     : ["Projekt", "Stav", "Harmonogram", "Nejvyšší zpoždění", "Nejbližší milník", "Stav k"];
   const rows = projects.map((project) => [
-    project.deepLink
-      ? `[${markdownCell(project.entityId)}](${project.deepLink})`
-      : markdownCell(project.entityId),
+    projectLinkLabel(project.displayName, project.deepLink, language),
     localizedFact(project.status, language),
     localizedFact(project.scheduleStatus, language),
     typeof project.delayDays === "number"
@@ -254,8 +266,95 @@ function composeProjectFlowResponse(
   };
 }
 
+function composeBudgetResponse(
+  conversationId: string | null,
+  snapshot: AnalysisSnapshot,
+  language: ResponseLanguage,
+  orchestrationWarnings: string[],
+): AssistantChatResponse {
+  const projects = [...new Set(
+    snapshot.evidence
+      .filter((item) => item.source_system === "STRATOS_BUDGET")
+      .map((item) => item.canonical_id),
+  )].map((canonicalId) => {
+    const evidence = snapshot.evidence.filter((item) => item.canonical_id === canonicalId);
+    return {
+      displayName: factValue(evidence, "project.display_name"),
+      deepLink: evidence[0]?.deep_link ?? "",
+      planAmount: factFor(evidence, "budget.plan_amount"),
+      actualAmount: factFor(evidence, "budget.actual_amount"),
+      forecastAmount: factFor(evidence, "budget.forecast_amount"),
+      varianceAmount: factFor(evidence, "budget.variance_amount"),
+      asOf: [...new Set(evidence.map((item) => item.as_of))].sort().at(-1) ?? snapshot.created_at,
+    };
+  });
+  const headers = language === "en"
+    ? ["Project", "Plan", "Actual", "Forecast", "Variance", "As of"]
+    : ["Projekt", "Plán", "Skutečnost", "Výhled", "Odchylka", "Stav k"];
+  const rows = projects.map((project) => [
+    projectLinkLabel(project.displayName, project.deepLink, language),
+    markdownCell(formatFact(project.planAmount, language)),
+    markdownCell(formatFact(project.actualAmount, language)),
+    markdownCell(formatFact(project.forecastAmount, language)),
+    markdownCell(formatFact(project.varianceAmount, language)),
+    formatDateTime(project.asOf, language),
+  ]);
+  const table = [
+    `| ${headers.join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`),
+  ].join("\n");
+  const summary = language === "en"
+    ? `Budget returned financial data for ${projects.length} project(s) in your authorized scope. Live data as of ${formatDateTime(snapshot.created_at, language)}.`
+    : `Budget v aktuálně oprávněném rozsahu vrátil finanční údaje pro ${projects.length} projektů. Živá data ke ${formatDateTime(snapshot.created_at, language)}.`;
+  return {
+    response_type: "answer",
+    conversation_id: conversationId ?? `conv_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
+    answer: `${summary}\n\n${table}`,
+    message: null,
+    questions: [],
+    why_needed: null,
+    current_context: {
+      answer_source: "director_copilot_budget",
+      director_copilot_query_plan: snapshot.plan,
+      director_copilot_snapshot: snapshot,
+      director_copilot_ephemeral: true,
+      active_source_application: "budget",
+    },
+    citations: [],
+    follow_up_questions: language === "en"
+      ? ["Which projects have the largest variance?"]
+      : ["Které projekty mají nejvyšší odchylku?"],
+    suggested_actions: [],
+    report_artifacts: [],
+    confidence: "high",
+    warnings: [...new Set([
+      ...orchestrationWarnings,
+      "DIRECTOR_COPILOT_BUDGET_LIVE_DATA",
+      "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION",
+    ])],
+    missing_information: null,
+    recommended_action: null,
+  };
+}
+
 function factValue(evidence: EvidenceItem[], key: string): string | number | boolean | null {
   return evidence.find((item) => item.fact?.key === key)?.fact?.value ?? null;
+}
+
+function factFor(evidence: EvidenceItem[], key: string): EvidenceItem["fact"] {
+  return evidence.find((item) => item.fact?.key === key)?.fact;
+}
+
+function projectLinkLabel(
+  displayName: string | number | boolean | null,
+  deepLink: string,
+  language: ResponseLanguage,
+): string {
+  const name = typeof displayName === "string" && displayName.trim()
+    ? markdownCell(displayName)
+    : language === "en" ? "Open project" : "Otevřít projekt";
+  return deepLink ? `[${name}](${deepLink})` : name;
 }
 
 function localizedFact(value: string | number | boolean | null, language: ResponseLanguage): string {
@@ -387,14 +486,17 @@ function emptyDirectorResponse(
 ): AssistantChatResponse {
   const denied = status === "not_authorized";
   const partial = status === "partial";
-  const projectOnly = plan.intent !== "portfolio_risk_correlation";
+  const projectOnly = plan.intent === "project_portfolio_status" || plan.intent === "project_access_overview";
+  const budgetOnly = plan.intent === "budget_portfolio_status";
   const answer = denied
     ? projectOnly
       ? projectAuthorizationMessage(language, warnings)
+      : budgetOnly
+        ? budgetAuthorizationMessage(language, warnings)
       : localized(language, "not_authorized")
     : partial
-      ? localized(language, projectOnly ? "project_source_unavailable" : "sources_unavailable")
-      : localized(language, projectOnly ? "project_no_match" : "no_match");
+      ? localized(language, projectOnly ? "project_source_unavailable" : budgetOnly ? "budget_source_unavailable" : "sources_unavailable")
+      : localized(language, projectOnly ? "project_no_match" : budgetOnly ? "budget_no_match" : "no_match");
   return {
     response_type: denied ? "restricted" : "no_answer",
     conversation_id: conversationId ?? `conv_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
@@ -416,6 +518,28 @@ function emptyDirectorResponse(
     missing_information: answer,
     recommended_action: null,
   };
+}
+
+function budgetAuthorizationMessage(language: ResponseLanguage, warnings: string[]): string {
+  const codes = new Set(warnings);
+  if (codes.has("BUDGET_READ_CAPABILITY_MISSING") || codes.has("BUDGET_CAPABILITY_DENIED")) {
+    return language === "en"
+      ? "You do not have permission to read Budget financial data."
+      : "Nemáte oprávnění ke čtení finančních údajů v Budgetu.";
+  }
+  if (codes.has("BUDGET_SCOPE_MISSING") || codes.has("BUDGET_SCOPE_LIMIT_EXCEEDED")) {
+    return language === "en"
+      ? "Your Budget access does not contain a usable organization, budget, or project scope."
+      : "Vaše oprávnění Budget neobsahuje použitelný organizační, rozpočtový nebo projektový rozsah.";
+  }
+  if ([...codes].some((code) => code.includes("POLICY"))) {
+    return language === "en"
+      ? "Financial data is not available under the applicable Information Policy."
+      : "Finanční údaje nejsou dostupné podle platné Information Policy.";
+  }
+  return language === "en"
+    ? "Budget denied the financial query."
+    : "Budget finanční dotaz odmítl.";
 }
 
 function projectAuthorizationMessage(language: ResponseLanguage, warnings: string[]): string {
@@ -641,6 +765,8 @@ function localized(
     | "project_not_authorized"
     | "project_source_unavailable"
     | "project_no_match"
+    | "budget_source_unavailable"
+    | "budget_no_match"
     | "document_unavailable"
     | "no_uncertainty"
     | "ai_policy_blocked",
@@ -653,6 +779,8 @@ function localized(
       project_not_authorized: "Nemáte aktivní oprávnění ProjectFlow a lokální projektové členství potřebné pro zobrazení projektových dat.",
       project_source_unavailable: "Aktuální projektová data nelze bezpečně načíst z ProjectFlow. AKB je nenahradilo historickými dokumenty.",
       project_no_match: "ProjectFlow v aktuálně oprávněném rozsahu nevrátil žádný projekt.",
+      budget_source_unavailable: "Aktuální finanční údaje nelze bezpečně načíst z Budgetu. AKB je nenahradilo historickými dokumenty.",
+      budget_no_match: "Budget v aktuálně oprávněném rozsahu nevrátil žádná finanční data projektu.",
       document_unavailable: "Nebyl nalezen citovatelný dokumentový podklad pro potvrzení smluvního rizika.",
       no_uncertainty: "Nebyla zjištěna další nejistota nad dostupnými zdroji.",
       ai_policy_blocked: "Dokumentová analýza ani AI interpretace nebyla spuštěna, protože zdrojová politika nepovoluje nakonfigurovanou cestu AI zpracování.",
@@ -664,6 +792,8 @@ function localized(
       project_not_authorized: "You do not have active ProjectFlow access and local project membership required to view project data.",
       project_source_unavailable: "Current project data could not be loaded safely from ProjectFlow. AKB did not replace it with historical documents.",
       project_no_match: "ProjectFlow returned no projects in your current authorized scope.",
+      budget_source_unavailable: "Current financial data could not be loaded safely from Budget. AKB did not replace it with historical documents.",
+      budget_no_match: "Budget returned no project financial data in your current authorized scope.",
       document_unavailable: "No citable document evidence was found to confirm contract risk.",
       no_uncertainty: "No additional uncertainty was identified in the available sources.",
       ai_policy_blocked: "Document analysis and AI interpretation were not run because the source policy does not permit the configured AI processing path.",
