@@ -27,6 +27,7 @@ Supported first-cut facts:
 | `Jaký je stav projektů?` | ProjectFlow-only query plan and live portfolio table |
 | `Máš přístup do ProjectFlow? Jaké evidujeme projekty?` | ProjectFlow-only plan, not access-request clarification |
 | `Mám přístup do ProjectFlow?` | source availability and authorized result |
+| ProjectFlow follow-up `Otevři konkrétní projekt.` | remain on the live ProjectFlow route; never fall back to document RAG |
 | `Jak požádám o přístup do ProjectFlow?` | ordinary access workflow, not Director Copilot |
 | `Co je v projektové dokumentaci?` | document assistant, not live ProjectFlow |
 | missing `projectflow:read` | explicit restricted response, zero source/RAG leakage |
@@ -38,6 +39,11 @@ Supported first-cut facts:
 | changed projection before response | fail closed before returning live facts |
 | interactive user lacks `audit.write` | service audit succeeds without broadening user access |
 | service token lacks `akl-api` or exact `audit` grant | fail closed with integration error |
+
+Generic follow-up chips must describe executable queries. AKB does not offer
+an `Open a specific project` chip without a project identifier. When the
+authorized response contains a deep link, the project identifier in the live
+result table is the navigation control.
 
 Every ProjectFlow answer carries `answer_source=director_copilot_projectflow`,
 the immutable query plan and analysis snapshot, source timestamps and a

@@ -243,8 +243,8 @@ function composeProjectFlowResponse(
     },
     citations: [],
     follow_up_questions: language === "en"
-      ? ["Which projects are delayed?", "Show the next milestones.", "Open a specific project."]
-      : ["Které projekty jsou zpožděné?", "Ukaž nejbližší milníky.", "Otevři konkrétní projekt."],
+      ? ["Which projects are delayed?", "Show the next milestones."]
+      : ["Které projekty jsou zpožděné?", "Ukaž nejbližší milníky."],
     suggested_actions: [],
     report_artifacts: [],
     confidence: "high",

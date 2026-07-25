@@ -342,6 +342,12 @@ describe("Director Copilot orchestrator", () => {
       }),
       "project_portfolio_status",
     );
+    assert.equal(
+      classifyDirectorCopilotIntent("Otevři konkrétní projekt.", {
+        answer_source: "director_copilot_projectflow",
+      }),
+      "project_portfolio_status",
+    );
   });
 });
 
