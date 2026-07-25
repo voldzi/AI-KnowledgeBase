@@ -15,6 +15,7 @@ export type DomainToolId = (typeof DOMAIN_TOOL_IDS)[DomainApplication];
 export type DirectorCopilotIntent =
   | "portfolio_risk_correlation"
   | "project_portfolio_status"
+  | "budget_portfolio_status"
   | "project_access_overview";
 export type DomainSourceSystem = "STRATOS_BUDGET" | "STRATOS_PROJECTFLOW";
 export type EvidenceSourceSystem = DomainSourceSystem | "STRATOS_AKB";
@@ -229,6 +230,7 @@ const SCOPE_TYPES = new Set(["own", "public", "organization", "organization_unit
 const FACT_TYPES = new Set(["text", "number", "integer", "boolean", "date", "datetime", "currency", "percent", "duration_days"]);
 const TOOL_FACT_TYPES: Record<DomainToolId, Readonly<Record<string, DomainFact["value_type"]>>> = {
   [DOMAIN_TOOL_IDS.budget]: {
+    "project.display_name": "text",
     "budget.variance_amount": "currency",
     "budget.variance_percent": "percent",
     "budget.plan_amount": "currency",
@@ -236,6 +238,7 @@ const TOOL_FACT_TYPES: Record<DomainToolId, Readonly<Record<string, DomainFact["
     "budget.forecast_amount": "currency",
   },
   [DOMAIN_TOOL_IDS.projectflow]: {
+    "project.display_name": "text",
     "milestone.max_delay_days": "duration_days",
     "project.status": "text",
     "project.schedule_status": "text",

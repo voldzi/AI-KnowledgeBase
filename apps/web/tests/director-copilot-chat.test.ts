@@ -66,7 +66,8 @@ describe("Director Copilot chat policy enforcement", () => {
       assert.equal(response.response_type, "answer");
       assert.equal(response.current_context.answer_source, "director_copilot_projectflow");
       assert.match(response.answer ?? "", /ProjectFlow v aktuálně oprávněném rozsahu/);
-      assert.match(response.answer ?? "", /project-001/);
+      assert.match(response.answer ?? "", /Disky pro QNAP/);
+      assert.equal((response.answer ?? "").includes("[project-001]"), false);
       assert.match(response.answer ?? "", /28 dní/);
       assert.deepEqual(response.follow_up_questions, [
         "Které projekty jsou zpožděné?",
@@ -115,6 +116,46 @@ describe("Director Copilot chat policy enforcement", () => {
     assert.equal(response.response_type, "restricted");
     assert.match(response.answer ?? "", /Nemáte oprávnění pro vstup do ProjectFlow/);
     assert.equal(response.citations.length, 0);
+  });
+
+  it("answers a financial follow-up from Budget rather than repeating ProjectFlow data", async () => {
+    const originalFetch = globalThis.fetch;
+    let ragCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      const request = JSON.parse(String(init?.body)) as DomainToolRequest;
+      assert.match(String(input), /budget/);
+      return Response.json({
+        ...structuredClone(budgetFixture),
+        tool_call_id: request.tool_call_id,
+      });
+    };
+    try {
+      const response = await runDirectorCopilotChat({
+        message: "Jaké má náklady?",
+        conversationId: null,
+        responseLanguage: "cs",
+        intent: "budget_portfolio_status",
+        actorContext: context(),
+        clients: {
+          rag: {
+            assistantChat: async () => {
+              ragCalls += 1;
+              throw new Error("Financial live-data questions must not use document RAG");
+            },
+          },
+          registry: { createAuditEvent: async () => ({}) },
+        } as unknown as ApiClients,
+        config: config(),
+      });
+
+      assert.equal(ragCalls, 0);
+      assert.equal(response.current_context.answer_source, "director_copilot_budget");
+      assert.match(response.answer ?? "", /Disky pro QNAP/);
+      assert.match(response.answer ?? "", /11\s?250\s?000/);
+      assert.equal(response.warnings.includes("DIRECTOR_COPILOT_BUDGET_LIVE_DATA"), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("does not invent a local-membership denial for an organization-wide grant", async () => {

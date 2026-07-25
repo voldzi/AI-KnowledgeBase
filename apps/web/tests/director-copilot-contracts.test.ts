@@ -101,9 +101,9 @@ describe("Director Copilot DomainTool contract", () => {
 
   it("rejects a fact whose scalar does not match its declared type", () => {
     const mismatched = structuredClone(budgetFixture) as {
-      items: Array<{ facts: Array<{ value: unknown }> }>;
+      items: Array<{ facts: Array<{ key: string; value: unknown }> }>;
     };
-    mismatched.items[0]!.facts[0]!.value = "1250000";
+    mismatched.items[0]!.facts.find((fact) => fact.key === "budget.variance_amount")!.value = "1250000";
     assert.throws(
       () => parseDomainToolResponse(mismatched, {
         toolId: DOMAIN_TOOL_IDS.budget,

@@ -80,7 +80,9 @@ export async function orchestrateDirectorCopilot(input: {
   const availableResponses = outcomes.flatMap((outcome) => outcome.response ? [outcome.response] : []);
   const selectedProjectIds = plan.intent === "portfolio_risk_correlation"
     ? correlatedProjectIds(availableResponses, outcomes)
-    : projectFlowProjectIds(availableResponses);
+    : plan.intent === "budget_portfolio_status"
+      ? budgetProjectIds(availableResponses)
+      : projectFlowProjectIds(availableResponses);
   const evidence = normalizeStructuredEvidence(availableResponses, selectedProjectIds, now.toISOString());
   if (!evidence.length) {
     const failed = outcomes.some((outcome) => outcome.status !== "complete");
@@ -150,6 +152,15 @@ function projectFlowProjectIds(responses: DomainToolResponse[]): Set<string> {
   return new Set(
     responses
       .filter((response) => response.source_system === "STRATOS_PROJECTFLOW")
+      .flatMap((response) => response.items)
+      .map((item) => item.canonical_id),
+  );
+}
+
+function budgetProjectIds(responses: DomainToolResponse[]): Set<string> {
+  return new Set(
+    responses
+      .filter((response) => response.source_system === "STRATOS_BUDGET")
       .flatMap((response) => response.items)
       .map((item) => item.canonical_id),
   );

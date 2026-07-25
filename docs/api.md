@@ -31,8 +31,11 @@ PEP. See `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`.
 The web `POST /api/assistant/chat` bridge classifies a bounded set of typed
 Director Copilot intents before the document assistant router. The current
 ProjectFlow-only intent uses `projectflow.project_delivery_snapshot.v1` and
-returns only source-authorized project status, schedule status, maximum
-milestone delay, next milestone date, source timestamp and deep link. A
+returns only source-authorized project display name, status, schedule status,
+maximum milestone delay, next milestone date, source timestamp and deep link.
+Financial questions such as costs, price, spending, forecast and variance use
+`budget.project_financial_snapshot.v1`; they never fall back to ProjectFlow or
+historical documents. A
 question about whether ProjectFlow is available is distinct from a request to
 grant or change access. If the live source is disabled, unavailable or denied,
 the bridge returns an explicit no-answer/restricted response and does not fall

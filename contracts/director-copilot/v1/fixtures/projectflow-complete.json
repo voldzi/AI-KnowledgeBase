@@ -16,6 +16,7 @@
       "source_version": "project:33",
       "as_of": "2026-07-21T09:58:00Z",
       "facts": [
+        { "key": "project.display_name", "value": "Disky pro QNAP", "value_type": "text", "unit": null, "currency": null, "period_start": null, "period_end": null, "quality": 1 },
         { "key": "milestone.max_delay_days", "value": 28, "value_type": "duration_days", "unit": "day", "currency": null, "period_start": null, "period_end": null, "quality": 1 },
         { "key": "project.status", "value": "active", "value_type": "text", "unit": null, "currency": null, "period_start": null, "period_end": null, "quality": 1 },
         { "key": "project.schedule_status", "value": "delayed", "value_type": "text", "unit": null, "currency": null, "period_start": null, "period_end": null, "quality": 1 },
