@@ -51,6 +51,22 @@ smluvní riziko v tomto scénáři vzniká pouze jako citované zjištění AKB.
 Každá finanční hodnota musí mít ISO měnu, období, `as_of`, `source_version` a
 quality. Rozdílné měny se nesmějí automaticky sčítat.
 
+Pro uzavřený minulý rok položka vrací právě `budget.actual_amount`; pro
+aktuální nebo budoucí rok právě `budget.forecast_amount`. Oba klíče se v jedné
+položce nesmějí objevit současně. `budget.plan_amount` pochází z ročního
+`FinancialSnapshot`, případně z jednoznačné jednoleté schválené projektové
+baseline. `source_version` zahrnuje metodiku, `as_of`, použité zdrojové záznamy,
+jejich časové a finanční hodnoty a policy binding.
+
+Budget používá tyto stabilní strojové důvody:
+
+- `BUDGET_APPROVED_PLAN_MISSING` a `BUDGET_CURRENCY_CONFLICT` jsou datová
+  upozornění dokončené odpovědi; prázdný výsledek není autorizační zamítnutí,
+- `BUDGET_INFORMATION_POLICY_DENIED` a `BUDGET_SCOPE_NOT_COVERED` jsou
+  skutečná fail-closed zamítnutí a používají stav `not_authorized`.
+
+AKB tyto dvě skupiny nesmí sloučit do obecné informace o chybějícím oprávnění.
+
 `document_context_tags` musí obsahovat nejméně `project:<id>` a pro navázané
 smlouvy `contract:<id>`. Do response se neposílají texty smluv ani dokumentová
 těla. `deep_link` vede na bezpečnou Budget stránku projektu nebo rozpočtu.

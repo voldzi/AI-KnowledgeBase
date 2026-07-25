@@ -6,14 +6,14 @@
   "generated_at": "2026-07-21T10:00:00Z",
   "as_of": "2026-07-21T09:59:00Z",
   "source_system": "STRATOS_BUDGET",
-  "source_version": "budget-read-model:42",
+  "source_version": "budget-financial-snapshot:v2:methodology-2026-07:sha256:bbbbbbbbbbbbbbbb",
   "items": [
     {
       "entity_type": "project",
       "entity_id": "project-001",
       "canonical_id": "stratos:project:project-001",
       "authorized_scope": { "type": "project", "id": "project-001" },
-      "source_version": "budget-project:17",
+      "source_version": "budget-project-financial-snapshot:v2:sha256:cccccccccccccccc",
       "as_of": "2026-07-21T09:59:00Z",
       "facts": [
         { "key": "project.display_name", "value": "Disky pro QNAP", "value_type": "text", "unit": null, "currency": null, "period_start": null, "period_end": null, "quality": 1 },

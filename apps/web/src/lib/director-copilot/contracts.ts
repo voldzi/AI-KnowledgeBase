@@ -228,6 +228,14 @@ const OBLIGATIONS = new Set([
 ]);
 const SCOPE_TYPES = new Set(["own", "public", "organization", "organization_unit", "budget_scope", "portfolio", "project", "document", "recipient_set"]);
 const FACT_TYPES = new Set(["text", "number", "integer", "boolean", "date", "datetime", "currency", "percent", "duration_days"]);
+const BUDGET_DATA_WARNING_CODES = new Set([
+  "BUDGET_APPROVED_PLAN_MISSING",
+  "BUDGET_CURRENCY_CONFLICT",
+]);
+const BUDGET_DENIAL_WARNING_CODES = new Set([
+  "BUDGET_INFORMATION_POLICY_DENIED",
+  "BUDGET_SCOPE_NOT_COVERED",
+]);
 const TOOL_FACT_TYPES: Record<DomainToolId, Readonly<Record<string, DomainFact["value_type"]>>> = {
   [DOMAIN_TOOL_IDS.budget]: {
     "project.display_name": "text",
@@ -272,6 +280,7 @@ export function parseDomainToolResponse(
   }
   const items = itemsValue.map((item) => parseItem(item, expected.requestedScopes, expected.toolId));
   const warnings = stringList(body.warnings, "warnings", 20, 300);
+  validateBudgetResponseReasons(expected.toolId, status, warnings);
   const nextCursor = optionalString(body.next_cursor, "next_cursor", 500);
   return {
     schema_version: DIRECTOR_COPILOT_CONTRACT_VERSION,
@@ -306,6 +315,8 @@ function parseItem(value: unknown, requestedScopes: ScopeCoordinate[], toolId: D
   validDateTime(boundedString(item.as_of, "as_of", 80), "item.as_of");
   const factsValue = array(item.facts, "DOMAIN_TOOL_FACTS_INVALID", "Domain tool facts must be an array.");
   if (!factsValue.length || factsValue.length > 40) fail("DOMAIN_TOOL_FACTS_LIMIT", "Domain tool item has an invalid fact count.");
+  const facts = factsValue.map((fact) => parseFact(fact, toolId));
+  validateToolItemFacts(toolId, facts);
   const documentContextTags = requiredStringList(item.document_context_tags, "document_context_tags", 20, 120);
   const expectedProjectTag = `project:${canonicalId.slice("stratos:project:".length)}`;
   if (!documentContextTags.includes(expectedProjectTag)) {
@@ -318,11 +329,79 @@ function parseItem(value: unknown, requestedScopes: ScopeCoordinate[], toolId: D
     authorized_scope: authorizedScope,
     source_version: boundedString(item.source_version, "source_version", 200),
     as_of: requiredString(item, "as_of"),
-    facts: factsValue.map((fact) => parseFact(fact, toolId)),
+    facts,
     deep_link: safeDeepLink(boundedString(item.deep_link, "deep_link", 2000)),
     document_context_tags: documentContextTags,
     policy: parsePolicy(item.policy),
   };
+}
+
+function validateToolItemFacts(
+  toolId: DomainToolId,
+  facts: DomainFact[],
+): void {
+  const keys = facts.map((fact) => fact.key);
+  if (new Set(keys).size !== keys.length) {
+    fail("DOMAIN_TOOL_FACT_DUPLICATE", "Domain tool item contains a duplicate fact key.");
+  }
+  if (toolId !== DOMAIN_TOOL_IDS.budget) {
+    return;
+  }
+  const required = [
+    "project.display_name",
+    "budget.variance_amount",
+    "budget.plan_amount",
+  ];
+  if (required.some((key) => !keys.includes(key))) {
+    fail("BUDGET_FINANCIAL_FACT_MISSING", "Budget item is missing a required financial fact.");
+  }
+  const hasActual = keys.includes("budget.actual_amount");
+  const hasForecast = keys.includes("budget.forecast_amount");
+  if (hasActual === hasForecast) {
+    fail(
+      "BUDGET_ACTUAL_FORECAST_INVALID",
+      "Budget item must contain exactly one of actual_amount or forecast_amount.",
+    );
+  }
+  const currencies = new Set(
+    facts.flatMap((fact) => (
+      fact.value_type === "currency" && fact.currency ? [fact.currency] : []
+    )),
+  );
+  if (currencies.size !== 1) {
+    fail(
+      "BUDGET_CURRENCY_CONFLICT",
+      "Budget item cannot combine financial facts in different currencies.",
+    );
+  }
+}
+
+function validateBudgetResponseReasons(
+  toolId: DomainToolId,
+  status: string,
+  warnings: string[],
+): void {
+  if (toolId !== DOMAIN_TOOL_IDS.budget) {
+    return;
+  }
+  if (
+    warnings.some((warning) => BUDGET_DENIAL_WARNING_CODES.has(warning))
+    && status !== "not_authorized"
+  ) {
+    fail(
+      "BUDGET_DENIAL_STATUS_INVALID",
+      "Budget scope and policy denials must use not_authorized status.",
+    );
+  }
+  if (
+    warnings.some((warning) => BUDGET_DATA_WARNING_CODES.has(warning))
+    && (status === "not_authorized" || status === "unavailable")
+  ) {
+    fail(
+      "BUDGET_DATA_WARNING_STATUS_INVALID",
+      "Missing financial data must not be reported as an authorization denial.",
+    );
+  }
 }
 
 function parseFact(value: unknown, toolId: DomainToolId): DomainFact {

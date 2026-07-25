@@ -489,7 +489,9 @@ function emptyDirectorResponse(
       : localized(language, "not_authorized")
     : partial
       ? localized(language, projectOnly ? "project_source_unavailable" : budgetOnly ? "budget_source_unavailable" : "sources_unavailable")
-      : localized(language, projectOnly ? "project_no_match" : budgetOnly ? "budget_no_match" : "no_match");
+      : budgetOnly
+        ? budgetNoDataMessage(language, warnings)
+        : localized(language, projectOnly ? "project_no_match" : "no_match");
   return {
     response_type: denied ? "restricted" : "no_answer",
     conversation_id: conversationId ?? `conv_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
@@ -498,8 +500,18 @@ function emptyDirectorResponse(
     questions: [],
     why_needed: null,
     current_context: {
-      answer_source: "director_copilot_federation",
+      answer_source: projectOnly
+        ? "director_copilot_projectflow"
+        : budgetOnly
+          ? "director_copilot_budget"
+          : "director_copilot_federation",
       director_copilot_query_plan: plan,
+      requested_director_copilot_intent: plan.intent,
+      active_source_application: projectOnly
+        ? "projectflow"
+        : budgetOnly
+          ? "budget"
+          : null,
     },
     citations: [],
     follow_up_questions: [],
@@ -519,7 +531,11 @@ function budgetAuthorizationMessage(language: ResponseLanguage, warnings: string
       ? "You do not have permission to read Budget financial data."
       : "Nemáte oprávnění ke čtení finančních údajů v Budgetu.";
   }
-  if (codes.has("BUDGET_SCOPE_MISSING") || codes.has("BUDGET_SCOPE_LIMIT_EXCEEDED")) {
+  if (
+    codes.has("BUDGET_SCOPE_MISSING")
+    || codes.has("BUDGET_SCOPE_LIMIT_EXCEEDED")
+    || codes.has("BUDGET_SCOPE_NOT_COVERED")
+  ) {
     return language === "en"
       ? "Your Budget access does not contain a usable organization, budget, or project scope."
       : "Vaše oprávnění Budget neobsahuje použitelný organizační, rozpočtový nebo projektový rozsah.";
@@ -532,6 +548,24 @@ function budgetAuthorizationMessage(language: ResponseLanguage, warnings: string
   return language === "en"
     ? "Budget denied the financial query."
     : "Budget finanční dotaz odmítl.";
+}
+
+function budgetNoDataMessage(
+  language: ResponseLanguage,
+  warnings: string[],
+): string {
+  const codes = new Set(warnings);
+  if (codes.has("BUDGET_APPROVED_PLAN_MISSING")) {
+    return language === "en"
+      ? "Budget found the covered project, but no approved plan is available for a reliable financial comparison."
+      : "Budget nalezl projekt v oprávněném rozsahu, ale pro spolehlivé finanční porovnání není k dispozici schválený plán.";
+  }
+  if (codes.has("BUDGET_CURRENCY_CONFLICT")) {
+    return language === "en"
+      ? "Budget found financial records in different currencies. It did not add them together and therefore did not return a misleading total."
+      : "Budget nalezl finanční záznamy v rozdílných měnách. Nesčítal je a proto nevrátil zavádějící souhrnnou částku.";
+  }
+  return localized(language, "budget_no_match");
 }
 
 function projectAuthorizationMessage(language: ResponseLanguage, warnings: string[]): string {
