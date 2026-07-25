@@ -1,0 +1,151 @@
+{
+  "schema_version": "director-copilot-czech-routing-eval-1",
+  "cases": [
+    {
+      "id": "project-status",
+      "turns": [
+        {"message": "Jaký je stav projektů?", "sources": ["projectflow"], "metrics": ["project.status"], "intent": "project_portfolio_status"}
+      ]
+    },
+    {
+      "id": "project-delay",
+      "turns": [
+        {"message": "Které projekty jsou po termínu?", "sources": ["projectflow"], "metrics": ["project.schedule_status"], "intent": "project_portfolio_status"}
+      ]
+    },
+    {
+      "id": "project-milestones",
+      "turns": [
+        {"message": "Ukaž nejbližší milníky.", "sources": ["projectflow"], "metrics": ["milestone.next_due_date"], "intent": "project_portfolio_status"}
+      ]
+    },
+    {
+      "id": "budget-plan",
+      "turns": [
+        {"message": "Jaký je schválený rozpočet projektů?", "sources": ["budget"], "metrics": ["budget.plan_amount"], "intent": "budget_portfolio_status"}
+      ]
+    },
+    {
+      "id": "budget-forecast",
+      "turns": [
+        {"message": "Jaký je finanční výhled?", "sources": ["budget"], "metrics": ["budget.forecast_amount"], "intent": "budget_portfolio_status"}
+      ]
+    },
+    {
+      "id": "budget-commitments",
+      "turns": [
+        {"message": "Kolik máme otevřených finančních závazků?", "sources": ["budget"], "metrics": ["budget.commitments_amount"], "intent": "budget_portfolio_status"}
+      ]
+    },
+    {
+      "id": "budget-year-follow-up",
+      "turns": [
+        {"message": "Jaké jsou náklady projektů v roce 2025?", "sources": ["budget"], "metrics": [], "intent": "budget_portfolio_status", "fiscal_year": 2025},
+        {"message": "A jaký byl plán?", "sources": ["budget"], "metrics": ["budget.plan_amount"], "intent": "budget_portfolio_status", "fiscal_year": 2025}
+      ]
+    },
+    {
+      "id": "overall-follow-up",
+      "turns": [
+        {"message": "Jaký je rozpočet projektu?", "sources": ["budget"], "metrics": ["budget.plan_amount"], "intent": "budget_portfolio_status"},
+        {"message": "Ne jen pro tento projekt, ale celkově.", "sources": ["budget"], "metrics": ["budget.plan_amount"], "intent": "budget_portfolio_status", "granularity": "organization"}
+      ]
+    },
+    {
+      "id": "cross-performance",
+      "turns": [
+        {"message": "Které projekty mají největší finanční odchylku a zpoždění?", "sources": ["budget", "projectflow"], "metrics": ["budget.variance_amount", "milestone.max_delay_days"], "intent": "portfolio_performance_overview"}
+      ]
+    },
+    {
+      "id": "cross-contract",
+      "turns": [
+        {"message": "Které projekty mají odchylku, zpoždění a smluvní riziko?", "sources": ["budget", "projectflow"], "metrics": ["budget.variance_amount", "milestone.max_delay_days"], "intent": "portfolio_risk_correlation"}
+      ]
+    },
+    {
+      "id": "archflow-status",
+      "turns": [
+        {"message": "Jaký je stav požadavků v ArchFlow?", "sources": ["archflow"], "metrics": ["archflow.need.status"], "pending_sources": ["archflow"], "intent": null}
+      ]
+    },
+    {
+      "id": "archflow-readiness",
+      "turns": [
+        {"message": "Které business potřeby jsou připravené k rozhodnutí?", "sources": ["archflow"], "metrics": ["archflow.need.readiness_score", "archflow.need.decision"], "pending_sources": ["archflow"], "intent": null}
+      ]
+    },
+    {
+      "id": "archflow-budget-handoff",
+      "turns": [
+        {"message": "Co ještě nebylo předáno z ArchFlow do Budgetu?", "sources": ["archflow"], "metrics": ["archflow.need.budget_handoff_status"], "pending_sources": ["archflow"], "intent": null}
+      ]
+    },
+    {
+      "id": "aiip-status",
+      "turns": [
+        {"message": "Jaký je stav AI podnětů v AIIP?", "sources": ["aiip"], "metrics": ["aiip.idea.status"], "pending_sources": ["aiip"], "intent": null}
+      ]
+    },
+    {
+      "id": "aiip-value-risk",
+      "turns": [
+        {"message": "Které AI nápady mají nejvyšší hodnotu a riziko?", "sources": ["aiip"], "metrics": ["aiip.idea.value_score", "aiip.idea.risk_score"], "pending_sources": ["aiip"], "intent": null}
+      ]
+    },
+    {
+      "id": "aiip-handoff",
+      "turns": [
+        {"message": "Které AI podněty ještě nebyly předány do ArchFlow?", "sources": ["aiip"], "metrics": ["aiip.idea.handoff_status"], "pending_sources": ["aiip"], "intent": null}
+      ]
+    },
+    {
+      "id": "innovation-trace",
+      "turns": [
+        {"message": "Jak pokračují AI podněty z AIIP přes ArchFlow?", "sources": ["archflow", "aiip"], "metrics": [], "pending_sources": ["archflow", "aiip"], "intent": null}
+      ]
+    },
+    {
+      "id": "full-chain",
+      "turns": [
+        {"message": "Ukaž cestu AI nápadů přes ArchFlow do Budgetu a realizovaných projektů.", "sources": ["budget", "projectflow", "archflow", "aiip"], "metrics": [], "pending_sources": ["archflow", "aiip"], "intent": null}
+      ]
+    },
+    {
+      "id": "document-only-negative",
+      "turns": [
+        {"message": "Co říká směrnice o řízení projektů?", "sources": [], "metrics": [], "recognized": false, "intent": null}
+      ]
+    },
+    {
+      "id": "ordinary-negative",
+      "turns": [
+        {"message": "Jak se dnes máš?", "sources": [], "metrics": [], "recognized": false, "intent": null}
+      ]
+    },
+    {
+      "id": "access-mutation-negative",
+      "turns": [
+        {"message": "Přidej mi přístup do ProjectFlow.", "sources": ["projectflow"], "metrics": [], "intent": null}
+      ]
+    },
+    {
+      "id": "budget-synonyms",
+      "turns": [
+        {"message": "Co jsme letos utratili a kolik ještě očekáváme?", "sources": ["budget"], "metrics": ["budget.actual_amount", "budget.forecast_amount"], "intent": "budget_portfolio_status"}
+      ]
+    },
+    {
+      "id": "project-synonyms",
+      "turns": [
+        {"message": "Co se realizuje a co je v prodlení?", "sources": ["projectflow"], "metrics": ["project.status", "milestone.max_delay_days"], "intent": "project_portfolio_status"}
+      ]
+    },
+    {
+      "id": "unit-budget",
+      "turns": [
+        {"message": "Jaký je rozpočet odboru informatiky?", "sources": ["budget"], "metrics": ["budget.plan_amount"], "intent": "budget_portfolio_status", "granularity": "organization_unit"}
+      ]
+    }
+  ]
+}

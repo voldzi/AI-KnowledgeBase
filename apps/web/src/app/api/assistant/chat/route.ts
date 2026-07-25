@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
+import { logIntegrationEvent } from "@/lib/api/logger";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
 import {
+  directorCopilotPendingSourcesResponse,
   directorCopilotUnavailableResponse,
   runDirectorCopilotChat,
 } from "@/lib/director-copilot/chat";
@@ -14,6 +16,12 @@ import {
   persistedDirectorCopilotResponse,
 } from "@/lib/director-copilot/history";
 import { classifyDirectorCopilotIntent } from "@/lib/director-copilot/planner";
+import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
+import {
+  auditDirectorCopilotV2Failure,
+  directorCopilotV2FailureResponse,
+  runDirectorCopilotV2Chat,
+} from "@/lib/director-copilot-v2/chat";
 import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
@@ -53,20 +61,127 @@ export async function POST(request: NextRequest) {
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const config = getAklConfig();
-    const directorIntent = classifyDirectorCopilotIntent(message, requestContext);
-    if (directorIntent && getDirectorCopilotConfig(config).enabled) {
-      const directorResponse = await runDirectorCopilotChat({
-        message,
-        conversationId,
-        responseLanguage,
-        actorContext: context,
-        clients,
-        config,
-        intent: directorIntent,
-        refreshActorContext: context.accessToken
-          ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
-          : undefined,
+    const directorConfig = getDirectorCopilotConfig(config);
+    const directorQuery = resolveConversationQuery({
+      message,
+      context: requestContext,
+    });
+    const directorIntent = classifyDirectorCopilotIntent(message, requestContext, {
+      includeContractReady: directorConfig.v2Mode !== "disabled",
+    });
+    if (
+      directorQuery.recognized
+      && directorQuery.pending_sources.length
+      && directorConfig.v2Mode === "disabled"
+    ) {
+      const response = persistedDirectorCopilotResponse(
+        directorCopilotPendingSourcesResponse({
+          conversationId,
+          language: responseLanguage,
+          sources: directorQuery.pending_sources,
+          queryState: directorQuery.state,
+        }),
+      );
+      const persistedConversation = await clients.registry
+        .appendAssistantConversationMessages(
+          response.conversation_id,
+          {
+            user_id: context.subjectId,
+            title: titleFromMessage(message),
+            messages: assistantTurnMessages(
+              message,
+              response,
+              directorCopilotPersistenceMetadata(response, context),
+            ),
+          },
+          context,
+        )
+        .catch(() => undefined);
+      return NextResponse.json({
+        response: persistedConversation
+          ? response
+          : withHistoryPersistenceWarning(response),
+        message_id: latestAssistantMessageId(persistedConversation),
+        persistence_status: persistedConversation ? "persisted" : "failed",
       });
+    }
+    if (directorIntent && directorConfig.enabled) {
+      const refreshActorContext = context.accessToken
+        ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
+        : undefined;
+      const directorResponse = directorConfig.v2Mode === "active"
+        ? await runDirectorCopilotV2Chat({
+            message,
+            conversationId,
+            responseLanguage,
+            actorContext: context,
+            clients,
+            config,
+            intent: directorIntent,
+            queryState: directorQuery.state,
+            refreshActorContext,
+            mode: "active",
+          }).catch(async (error: unknown) => {
+            await auditDirectorCopilotV2Failure({
+              conversationId,
+              actorContext: context,
+              clients,
+              config,
+              mode: "active",
+              error,
+            }).catch(() => undefined);
+            return directorCopilotV2FailureResponse({
+              conversationId,
+              language: responseLanguage,
+              error,
+              queryState: directorQuery.state,
+            });
+          })
+        : await runDirectorCopilotChat({
+            message,
+            conversationId,
+            responseLanguage,
+            actorContext: context,
+            clients,
+            config,
+            intent: directorIntent,
+            queryState: directorQuery.state,
+            refreshActorContext,
+          });
+      if (directorConfig.v2Mode === "shadow") {
+        after(async () => {
+          await runDirectorCopilotV2Chat({
+            message,
+            conversationId: directorResponse.conversation_id,
+            responseLanguage,
+            actorContext: context,
+            clients,
+            config,
+            intent: directorIntent,
+            queryState: directorQuery.state,
+            refreshActorContext,
+            mode: "shadow",
+            baselineResponse: directorResponse,
+          }).catch(async (error: unknown) => {
+            await auditDirectorCopilotV2Failure({
+              conversationId: directorResponse.conversation_id,
+              actorContext: context,
+              clients,
+              config,
+              mode: "shadow",
+              error,
+            }).catch(() => undefined);
+            logIntegrationEvent({
+              level: "error",
+              service: "director-copilot",
+              operation: "v2_shadow",
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              errorCode: "DIRECTOR_COPILOT_V2_SHADOW_FAILED",
+            });
+          });
+        });
+      }
       const response = persistedDirectorCopilotResponse(directorResponse);
       const persistedConversation = await clients.registry
         .appendAssistantConversationMessages(
@@ -96,6 +211,7 @@ export async function POST(request: NextRequest) {
         conversationId,
         language: responseLanguage,
         intent: directorIntent,
+        queryState: directorQuery.state,
       });
       const persistedConversation = await clients.registry
         .appendAssistantConversationMessages(

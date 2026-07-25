@@ -4,14 +4,18 @@ import { describe, it } from "node:test";
 
 import type { AklConfig } from "../src/lib/api/config";
 import {
+  directorCopilotPendingSourcesResponse,
   directorCopilotUnavailableResponse,
   runDirectorCopilotChat,
 } from "../src/lib/director-copilot/chat";
 import { stableSha256, type AnalysisSnapshot, type DomainToolRequest, type DomainToolResponse } from "../src/lib/director-copilot/contracts";
+import { resolveConversationQuery } from "../src/lib/director-copilot/query-state";
 import type { ApiClients, ApiRequestContext } from "../src/lib/types";
 
 const budgetFixture = fixture("budget-complete.json");
 const projectFixture = fixture("projectflow-complete.json");
+const archFlowFixture = fixture("archflow-complete.json");
+const aiipFixture = fixture("aiip-complete.json");
 
 describe("Director Copilot chat policy enforcement", () => {
   it("answers a ProjectFlow-only portfolio question from live structured data without RAG", async () => {
@@ -118,6 +122,55 @@ describe("Director Copilot chat policy enforcement", () => {
     assert.equal(response.citations.length, 0);
   });
 
+  it("renders ArchFlow and AIIP live evidence deterministically when their tools are connected", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const request = JSON.parse(String(init?.body)) as DomainToolRequest;
+      const source = String(input).includes("archflow")
+        ? archFlowFixture
+        : aiipFixture;
+      return Response.json({
+        ...structuredClone(source),
+        tool_call_id: request.tool_call_id,
+      });
+    };
+    try {
+      const archFlow = await runDirectorCopilotChat({
+        message: "Jaký je stav požadavků v ArchFlow?",
+        conversationId: null,
+        responseLanguage: "cs",
+        intent: "archflow_demand_overview",
+        actorContext: context(),
+        clients: {
+          rag: { assistantChat: async () => { throw new Error("Live data must not use RAG"); } },
+          registry: { createAuditEvent: async () => ({}) },
+        } as unknown as ApiClients,
+        config: config(),
+      });
+      assert.equal(archFlow.current_context.answer_source, "director_copilot_archflow");
+      assert.match(archFlow.answer ?? "", /Automatizace kontroly smluv/);
+      assert.match(archFlow.answer ?? "", /Předání do Budgetu/);
+
+      const aiip = await runDirectorCopilotChat({
+        message: "Jaký je stav AI podnětů?",
+        conversationId: null,
+        responseLanguage: "cs",
+        intent: "aiip_idea_overview",
+        actorContext: context(),
+        clients: {
+          rag: { assistantChat: async () => { throw new Error("Live data must not use RAG"); } },
+          registry: { createAuditEvent: async () => ({}) },
+        } as unknown as ApiClients,
+        config: config(),
+      });
+      assert.equal(aiip.current_context.answer_source, "director_copilot_aiip");
+      assert.match(aiip.answer ?? "", /AI kontrola smluv/);
+      assert.match(aiip.answer ?? "", /Očekávaný přínos/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("answers a financial follow-up from Budget rather than repeating ProjectFlow data", async () => {
     const originalFetch = globalThis.fetch;
     let ragCalls = 0;
@@ -153,6 +206,56 @@ describe("Director Copilot chat policy enforcement", () => {
       assert.match(response.answer ?? "", /Disky pro QNAP/);
       assert.match(response.answer ?? "", /11\s?250\s?000/);
       assert.equal(response.warnings.includes("DIRECTOR_COPILOT_BUDGET_LIVE_DATA"), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("joins Budget and ProjectFlow for a general cross-domain performance question", async () => {
+    const originalFetch = globalThis.fetch;
+    let ragCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      const request = JSON.parse(String(init?.body)) as DomainToolRequest;
+      return Response.json({
+        ...structuredClone(String(input).includes("budget") ? budgetFixture : projectFixture),
+        tool_call_id: request.tool_call_id,
+      });
+    };
+    try {
+      const message = "Které projekty mají rozpočtovou odchylku a zpožděný harmonogram?";
+      const queryState = resolveConversationQuery({
+        message,
+        now: new Date("2026-07-25T10:00:00Z"),
+      }).state;
+      const response = await runDirectorCopilotChat({
+        message,
+        conversationId: null,
+        responseLanguage: "cs",
+        intent: "portfolio_performance_overview",
+        queryState,
+        actorContext: context(),
+        clients: {
+          rag: {
+            assistantChat: async () => {
+              ragCalls += 1;
+              throw new Error("Structured cross-domain questions must not use document RAG");
+            },
+          },
+          registry: { createAuditEvent: async () => ({}) },
+        } as unknown as ApiClients,
+        config: config(),
+      });
+
+      assert.equal(ragCalls, 0);
+      assert.equal(response.current_context.answer_source, "director_copilot_federation");
+      assert.match(response.answer ?? "", /společný živý přehled/);
+      assert.match(response.answer ?? "", /Disky pro QNAP/);
+      assert.match(response.answer ?? "", /28 dní/);
+      assert.match(response.answer ?? "", /11\s?250\s?000/);
+      assert.equal(
+        (response.current_context.stratos_query_state as { schema_version?: string }).schema_version,
+        "stratos-conversation-query-state-2",
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -268,6 +371,28 @@ describe("Director Copilot chat policy enforcement", () => {
     assert.equal(response.response_type, "no_answer");
     assert.match(response.answer ?? "", /nenahradilo historickými dokumenty/);
     assert.equal(response.warnings.includes("LIVE_DATA_FALLBACK_BLOCKED"), true);
+  });
+
+  it("does not disguise an unconnected AIIP live source as a document answer", () => {
+    const queryState = resolveConversationQuery({
+      message: "Kolik podnětů eviduje AIIP?",
+      now: new Date("2026-07-25T10:00:00Z"),
+    }).state;
+    const response = directorCopilotPendingSourcesResponse({
+      conversationId: "conv-aiip",
+      language: "cs",
+      sources: ["aiip"],
+      queryState,
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.match(response.answer ?? "", /AI Innovation Portal/);
+    assert.match(response.answer ?? "", /nenahrazuji odpovědí z dokumentů/);
+    assert.equal(response.citations.length, 0);
+    assert.equal(
+      response.warnings.includes("DIRECTOR_COPILOT_AIIP_TOOL_NOT_CONNECTED"),
+      true,
+    );
   });
 
   it("adds governed AKB citations to the final tamper-evident snapshot", async () => {
@@ -544,6 +669,8 @@ function config(): AklConfig {
       clientId: "svc-akb-director-copilot",
       budgetBaseUrl: "https://budget.example",
       projectflowBaseUrl: "https://projectflow.example",
+      archflowBaseUrl: "https://archflow.example",
+      aiipBaseUrl: "https://aiip.example",
       timeoutMs: 1_000,
       maxResponseBytes: 262_144,
     },
@@ -570,6 +697,16 @@ function context(): ApiRequestContext {
       capabilities: ["projectflow:access", "projectflow:read"],
       scopes: ["project:project-001"],
       effectiveScopes: ["project:project-001"],
+    }, {
+      application: "archflow",
+      capabilities: ["archflow:access", "archflow:read_organization"],
+      scopes: ["organization:org_stratos"],
+      effectiveScopes: ["organization:org_stratos"],
+    }, {
+      application: "aiip",
+      capabilities: ["aiip:access", "aiip:read_organization"],
+      scopes: ["organization:org_stratos"],
+      effectiveScopes: ["organization:org_stratos"],
     }],
   };
 }

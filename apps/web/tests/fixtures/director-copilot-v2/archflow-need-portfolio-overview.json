@@ -1,0 +1,456 @@
+{
+  "tool_id": "archflow.need_portfolio_overview.v1",
+  "request": {
+    "schema_version": "director-copilot-2",
+    "tool_id": "archflow.need_portfolio_overview.v1",
+    "tool_call_id": "call_0123456789abcdef",
+    "plan_id": "plan_0123456789abcdef",
+    "organization_id": "org_stratos",
+    "actor": {
+      "type": "person",
+      "subject_id": "fixture-subject"
+    },
+    "requested_at": "2026-07-25T10:00:00.000Z",
+    "requested_scopes": [
+      {
+        "type": "organization_unit",
+        "id": "it"
+      }
+    ],
+    "parameters": {
+      "period": {
+        "type": "fiscal_year",
+        "fiscal_year": 2025
+      },
+      "entity_filters": {
+        "need_ids": [
+          "need-001"
+        ]
+      },
+      "granularity": "item",
+      "group_by": [],
+      "scenario": [],
+      "as_of": "2026-07-25T10:00:00.000Z",
+      "cursor": null,
+      "limit": 100
+    }
+  },
+  "responses": {
+    "complete": {
+      "schema_version": "director-copilot-2",
+      "tool_id": "archflow.need_portfolio_overview.v1",
+      "tool_call_id": "call_0123456789abcdef",
+      "status": "complete",
+      "generated_at": "2026-07-25T10:00:00.000Z",
+      "as_of": "2026-07-25T10:00:00.000Z",
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025
+      },
+      "source_system": "STRATOS_ARCHFLOW",
+      "source_version": "stratos_archflow:fixture:v1",
+      "methodology": {
+        "name": "stratos_archflow-fixture",
+        "version": "1.0.0",
+        "temporal_semantics": "Authoritative state inside the requested period."
+      },
+      "completeness": {
+        "authorized_result_complete": true,
+        "source_coverage": "complete",
+        "missing_reasons": [],
+        "candidate_count": 1
+      },
+      "items": [
+        {
+          "entity_type": "need",
+          "entity_id": "need-001",
+          "canonical_id": "stratos:need:need-001",
+          "source_version": "stratos_archflow:fixture:v1",
+          "as_of": "2026-07-25T10:00:00.000Z",
+          "period": {
+            "start": "2025-01-01",
+            "end": "2025-12-31",
+            "fiscal_year": 2025
+          },
+          "unit": null,
+          "currency": null,
+          "facts": [
+            {
+              "key": "archflow.need.display_name",
+              "value": "Potřeba Alfa",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.organization_unit",
+              "value": "it",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.status",
+              "value": "APPROVED",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.source_idea_id",
+              "value": "stratos:idea:idea-001",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.linked_project_id",
+              "value": "stratos:project:project-001",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            }
+          ],
+          "methodology": {
+            "name": "stratos_archflow-fixture",
+            "version": "1.0.0",
+            "temporal_semantics": "Authoritative state inside the requested period."
+          },
+          "deep_link": "https://stratos.example.test/need/need-001",
+          "document_context_tags": [
+            "need:need-001"
+          ],
+          "policy": {
+            "schema_version": "stratos-information-policy-2",
+            "binding_id": "fixture-binding",
+            "version": "2.0.0",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "classification": {
+              "handling_class": "INTERNAL",
+              "legal_classification": "NONE",
+              "tlp": "TLP:AMBER",
+              "pap": "PAP:AMBER"
+            },
+            "audience": [
+              "organization:org_stratos"
+            ],
+            "obligations": [
+              "AUDIT_ACCESS"
+            ]
+          },
+          "policy_lineage": [
+            {
+              "resource_id": "stratos:need:need-001",
+              "binding_id": "fixture-binding",
+              "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "source_version": "stratos_archflow:fixture:v1"
+            }
+          ],
+          "links": [
+            {
+              "key": "archflow.need.source_idea",
+              "relation_type": "direct",
+              "target_entity_type": "idea",
+              "target_canonical_id": "stratos:idea:idea-001"
+            },
+            {
+              "key": "archflow.need.linked_project",
+              "relation_type": "direct",
+              "target_entity_type": "project",
+              "target_canonical_id": "stratos:project:project-001"
+            }
+          ]
+        }
+      ],
+      "warnings": [],
+      "next_cursor": null
+    },
+    "partial": {
+      "schema_version": "director-copilot-2",
+      "tool_id": "archflow.need_portfolio_overview.v1",
+      "tool_call_id": "call_0123456789abcdef",
+      "status": "partial",
+      "generated_at": "2026-07-25T10:00:00.000Z",
+      "as_of": "2026-07-25T10:00:00.000Z",
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025
+      },
+      "source_system": "STRATOS_ARCHFLOW",
+      "source_version": "stratos_archflow:fixture:v1",
+      "methodology": {
+        "name": "stratos_archflow-fixture",
+        "version": "1.0.0",
+        "temporal_semantics": "Authoritative state inside the requested period."
+      },
+      "completeness": {
+        "authorized_result_complete": false,
+        "source_coverage": "partial",
+        "missing_reasons": [
+          "ARCHFLOW_INFORMATION_POLICY_DENIED"
+        ],
+        "candidate_count": 1
+      },
+      "items": [
+        {
+          "entity_type": "need",
+          "entity_id": "need-001",
+          "canonical_id": "stratos:need:need-001",
+          "source_version": "stratos_archflow:fixture:v1",
+          "as_of": "2026-07-25T10:00:00.000Z",
+          "period": {
+            "start": "2025-01-01",
+            "end": "2025-12-31",
+            "fiscal_year": 2025
+          },
+          "unit": null,
+          "currency": null,
+          "facts": [
+            {
+              "key": "archflow.need.display_name",
+              "value": "Potřeba Alfa",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.organization_unit",
+              "value": "it",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.status",
+              "value": "APPROVED",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.source_idea_id",
+              "value": "stratos:idea:idea-001",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            },
+            {
+              "key": "archflow.need.linked_project_id",
+              "value": "stratos:project:project-001",
+              "value_type": "text",
+              "unit": null,
+              "currency": null,
+              "period_start": "2025-01-01",
+              "period_end": "2025-12-31",
+              "quality": 1
+            }
+          ],
+          "methodology": {
+            "name": "stratos_archflow-fixture",
+            "version": "1.0.0",
+            "temporal_semantics": "Authoritative state inside the requested period."
+          },
+          "deep_link": "https://stratos.example.test/need/need-001",
+          "document_context_tags": [
+            "need:need-001"
+          ],
+          "policy": {
+            "schema_version": "stratos-information-policy-2",
+            "binding_id": "fixture-binding",
+            "version": "2.0.0",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "classification": {
+              "handling_class": "INTERNAL",
+              "legal_classification": "NONE",
+              "tlp": "TLP:AMBER",
+              "pap": "PAP:AMBER"
+            },
+            "audience": [
+              "organization:org_stratos"
+            ],
+            "obligations": [
+              "AUDIT_ACCESS"
+            ]
+          },
+          "policy_lineage": [
+            {
+              "resource_id": "stratos:need:need-001",
+              "binding_id": "fixture-binding",
+              "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "source_version": "stratos_archflow:fixture:v1"
+            }
+          ],
+          "links": [
+            {
+              "key": "archflow.need.source_idea",
+              "relation_type": "direct",
+              "target_entity_type": "idea",
+              "target_canonical_id": "stratos:idea:idea-001"
+            },
+            {
+              "key": "archflow.need.linked_project",
+              "relation_type": "direct",
+              "target_entity_type": "project",
+              "target_canonical_id": "stratos:project:project-001"
+            }
+          ]
+        }
+      ],
+      "warnings": [
+        "ARCHFLOW_INFORMATION_POLICY_DENIED"
+      ],
+      "next_cursor": "fixture-next-cursor"
+    },
+    "no_data": {
+      "schema_version": "director-copilot-2",
+      "tool_id": "archflow.need_portfolio_overview.v1",
+      "tool_call_id": "call_0123456789abcdef",
+      "status": "no_data",
+      "generated_at": "2026-07-25T10:00:00.000Z",
+      "as_of": "2026-07-25T10:00:00.000Z",
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025
+      },
+      "source_system": "STRATOS_ARCHFLOW",
+      "source_version": "stratos_archflow:fixture:v1",
+      "methodology": {
+        "name": "stratos_archflow-fixture",
+        "version": "1.0.0",
+        "temporal_semantics": "Authoritative state inside the requested period."
+      },
+      "completeness": {
+        "authorized_result_complete": true,
+        "source_coverage": "complete",
+        "missing_reasons": [
+          "ARCHFLOW_NO_DATA"
+        ],
+        "candidate_count": 0
+      },
+      "items": [],
+      "warnings": [
+        "ARCHFLOW_NO_DATA"
+      ],
+      "next_cursor": null
+    },
+    "not_authorized": {
+      "schema_version": "director-copilot-2",
+      "tool_id": "archflow.need_portfolio_overview.v1",
+      "tool_call_id": "call_0123456789abcdef",
+      "status": "not_authorized",
+      "generated_at": "2026-07-25T10:00:00.000Z",
+      "as_of": "2026-07-25T10:00:00.000Z",
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025
+      },
+      "source_system": "STRATOS_ARCHFLOW",
+      "source_version": "stratos_archflow:fixture:v1",
+      "methodology": {
+        "name": "stratos_archflow-fixture",
+        "version": "1.0.0",
+        "temporal_semantics": "Authoritative state inside the requested period."
+      },
+      "completeness": {
+        "authorized_result_complete": false,
+        "source_coverage": "denied",
+        "missing_reasons": [
+          "ARCHFLOW_SCOPE_NOT_COVERED"
+        ],
+        "candidate_count": 0
+      },
+      "items": [],
+      "warnings": [
+        "ARCHFLOW_SCOPE_NOT_COVERED"
+      ],
+      "next_cursor": null
+    }
+  },
+  "errors": {
+    "400": {
+      "schema_version": "director-copilot-2",
+      "status": "error",
+      "http_status": 400,
+      "error_code": "DIRECTOR_COPILOT_CONTRACT_INVALID",
+      "message": "Fixture request was rejected.",
+      "retryable": false,
+      "tool_call_id": null
+    },
+    "401": {
+      "schema_version": "director-copilot-2",
+      "status": "error",
+      "http_status": 401,
+      "error_code": "DIRECTOR_COPILOT_AUTHENTICATION_REQUIRED",
+      "message": "Fixture request was rejected.",
+      "retryable": false,
+      "tool_call_id": null
+    },
+    "403": {
+      "schema_version": "director-copilot-2",
+      "status": "error",
+      "http_status": 403,
+      "error_code": "DIRECTOR_COPILOT_IDENTITY_FORBIDDEN",
+      "message": "Fixture request was rejected.",
+      "retryable": false,
+      "tool_call_id": "call_0123456789abcdef"
+    },
+    "413": {
+      "schema_version": "director-copilot-2",
+      "status": "error",
+      "http_status": 413,
+      "error_code": "DIRECTOR_COPILOT_RESPONSE_TOO_LARGE",
+      "message": "Fixture request was rejected.",
+      "retryable": false,
+      "tool_call_id": "call_0123456789abcdef"
+    },
+    "422": {
+      "schema_version": "director-copilot-2",
+      "status": "error",
+      "http_status": 422,
+      "error_code": "DIRECTOR_COPILOT_TOOL_UNSUPPORTED",
+      "message": "Fixture request was rejected.",
+      "retryable": false,
+      "tool_call_id": "call_0123456789abcdef"
+    },
+    "503": {
+      "schema_version": "director-copilot-2",
+      "status": "error",
+      "http_status": 503,
+      "error_code": "ARCHFLOW_DOMAIN_TOOL_UNAVAILABLE",
+      "message": "STRATOS_ARCHFLOW is temporarily unavailable.",
+      "retryable": true,
+      "tool_call_id": "call_0123456789abcdef"
+    }
+  }
+}

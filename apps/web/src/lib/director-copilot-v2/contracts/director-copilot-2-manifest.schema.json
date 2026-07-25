@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/contracts/director-copilot/v2/director-copilot-2-manifest.schema.json",
+  "title": "STRATOS Director Copilot 2 Tool Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_revision",
+    "tool_id",
+    "owner",
+    "audience",
+    "schema_revision",
+    "metrics",
+    "entity_types",
+    "canonical_id_prefixes",
+    "relationships",
+    "link_keys",
+    "periods",
+    "granularities",
+    "group_by",
+    "scenarios",
+    "capability_requirements",
+    "supported_scope_types",
+    "timeout_ms",
+    "limits",
+    "pagination",
+    "reason_codes",
+    "input_schema_ref",
+    "output_schema_ref",
+    "error_schema_ref"
+  ],
+  "properties": {
+    "schema_version": { "const": "director-copilot-2" },
+    "contract_revision": { "const": "2.0.2" },
+    "tool_id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,119}$" },
+    "owner": { "enum": ["BUDGET", "PROJECTFLOW", "ARCHFLOW", "AIIP"] },
+    "audience": { "enum": ["budget-api", "projectflow-api", "archflow-api", "aiip-api"] },
+    "schema_revision": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "metrics": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/metric" }
+    },
+    "entity_types": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,79}$" }
+    },
+    "canonical_id_prefixes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/canonicalPrefix" }
+    },
+    "relationships": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/relationship" }
+    },
+    "link_keys": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/linkKey" }
+    },
+    "periods": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "enum": ["fiscal_year", "interval"] }
+    },
+    "granularities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["organization", "organization_unit", "portfolio", "project", "item"]
+      }
+    },
+    "group_by": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,79}$" }
+    },
+    "scenarios": {
+      "type": "array",
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["plan", "actual", "forecast", "commitments", "variance"]
+      }
+    },
+    "capability_requirements": { "$ref": "#/$defs/capabilityRequirements" },
+    "supported_scope_types": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/scopeType" }
+    },
+    "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 30000 },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_items", "max_response_bytes", "max_candidate_count"],
+      "properties": {
+        "max_items": { "const": 100 },
+        "max_response_bytes": { "const": 262144 },
+        "max_candidate_count": { "const": 100000 }
+      }
+    },
+    "pagination": { "const": "cursor" },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,119}$" }
+    },
+    "input_schema_ref": { "const": "director-copilot-2-request.schema.json" },
+    "output_schema_ref": { "const": "director-copilot-2-response.schema.json" },
+    "error_schema_ref": { "const": "director-copilot-2-error.schema.json" }
+  },
+  "$defs": {
+    "scopeType": {
+      "enum": [
+        "own",
+        "public",
+        "organization",
+        "organization_unit",
+        "budget_scope",
+        "portfolio",
+        "project",
+        "document",
+        "recipient_set"
+      ]
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value_type", "description"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,119}$" },
+        "value_type": {
+          "enum": [
+            "currency",
+            "number",
+            "percent",
+            "duration_days",
+            "date",
+            "text",
+            "boolean"
+          ]
+        },
+        "description": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "canonicalPrefix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "prefix", "aggregate"],
+      "properties": {
+        "entity_type": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,79}$" },
+        "prefix": { "type": "string", "pattern": "^stratos:[a-z][a-z0-9-]*:$", "maxLength": 80 },
+        "aggregate": { "type": "boolean" }
+      }
+    },
+    "linkKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "target_entity_type", "target_canonical_id_prefix", "max_items"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,119}$" },
+        "target_entity_type": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,79}$" },
+        "target_canonical_id_prefix": { "type": "string", "pattern": "^stratos:[a-z][a-z0-9-]*:$" },
+        "max_items": { "type": "integer", "minimum": 1, "maximum": 32 }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "source_entity_type",
+        "target_entity_type",
+        "target_canonical_id_prefix",
+        "cardinality",
+        "derivation",
+        "location"
+      ],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,119}$" },
+        "source_entity_type": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,79}$" },
+        "target_entity_type": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,79}$" },
+        "target_canonical_id_prefix": { "type": "string", "pattern": "^stratos:[a-z][a-z0-9-]*:$" },
+        "cardinality": { "enum": ["one", "zero_or_one", "many"] },
+        "derivation": { "enum": ["direct", "derived", "informational"] },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "key"],
+          "properties": {
+            "kind": { "enum": ["link", "fact"] },
+            "key": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,119}$" }
+          }
+        }
+      }
+    },
+    "capabilityClause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all_of", "any_of"],
+      "properties": {
+        "all_of": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_:-]{1,99}$" }
+        },
+        "any_of": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_:-]{1,99}$" }
+        }
+      }
+    },
+    "conditionalCapabilityClause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["when", "all_of", "any_of"],
+      "properties": {
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scope_types", "granularities"],
+          "properties": {
+            "scope_types": {
+              "type": "array",
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/scopeType" }
+            },
+            "granularities": {
+              "type": "array",
+              "maxItems": 5,
+              "uniqueItems": true,
+              "items": { "enum": ["organization", "organization_unit", "portfolio", "project", "item"] }
+            }
+          }
+        },
+        "all_of": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_:-]{1,99}$" }
+        },
+        "any_of": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_:-]{1,99}$" }
+        }
+      }
+    },
+    "capabilityRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all_of", "any_of", "conditional"],
+      "properties": {
+        "all_of": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_:-]{1,99}$" }
+        },
+        "any_of": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_:-]{1,99}$" }
+        },
+        "conditional": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/conditionalCapabilityClause" }
+        }
+      }
+    }
+  }
+}

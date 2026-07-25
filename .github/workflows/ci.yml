@@ -48,6 +48,9 @@ jobs:
       - name: Validate OpenAPI JSON
         run: python3 -m json.tool openapi/openapi.json >/tmp/akb-openapi.json
 
+      - name: Verify embedding shadow profiles
+        run: python3 scripts/check_embedding_shadow_profiles.py
+
       - name: Lint OpenAPI
         run: npx --yes @redocly/cli lint openapi/openapi.json
 
@@ -99,6 +102,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify local semantic registry
+        run: pnpm semantic-registry:check
 
       - name: Typecheck
         run: pnpm typecheck

@@ -1,7 +1,8 @@
 # AKB Chat jako Copilot ředitele - realizační plán
 
-Stav: AKB základ etapy 0, první mezidoménový vertikální řez a první obecný
-ProjectFlow-only dotaz jsou implementovány. Produkční aktivace zůstává řízena
+Stav: AKB základ etapy 0, první mezidoménový vertikální řez, obecný
+ProjectFlow/Budget routing a bezpečný konverzační QueryState jsou
+implementovány. Produkční aktivace širších zdrojových nástrojů zůstává řízena
 feature flagem a společnými conformance testy.
 
 Baseline: AKB `786bc2bd7c7a964efd3c078d930eebbba06209c7`, produkčně ověřeno
@@ -49,7 +50,14 @@ nikoli jako nová aplikace, druhá historie nebo paralelní AI vrstva.
 - načtení per-application capabilities a efektivních scopes pouze z ověřené
   STRATOS access projection;
 - oddělená service identity `svc-akb-director-copilot` a actor bearer;
-- QueryPlan v2 pro první pevný intent, paralelní Budget/ProjectFlow fan-out a
+- QueryPlan v4 s verzovaným sémantickým a strojově čitelným doménovým katalogem,
+  obdobím, metrikami,
+  granularitou, omezenými entity filtry a paralelním Budget/ProjectFlow fan-out;
+- bezpečný `ConversationQueryState`, který zachová téma, rok a úroveň souhrnu
+  pro navazující otázku, ale nikdy nenese capability ani autorizační scope;
+- deterministický společný Budget/ProjectFlow přehled pro provozní otázky bez
+  zbytečného dokumentového fallbacku;
+- QueryPlan pro první pevný rizikový intent, paralelní Budget/ProjectFlow fan-out a
   závislý AKB dokumentový retrieval;
 - validace scope expansion, policy lineage, velikosti a známých obligations;
 - EvidenceItem normalizace, strictest-policy snapshot a čtyřvrstvá odpověď;
@@ -66,14 +74,14 @@ nikoli jako nová aplikace, druhá historie nebo paralelní AI vrstva.
 
 ### Co stále chybí
 
-1. Budget a ProjectFlow ještě musí implementovat a nasadit závazné read-only
-   zdrojové endpointy; STRATOS musí dodat identity, audiences a fixtures access
-   projection. AIIP, ArchFlow a Executive Center jsou až další etapa.
-2. Plánovač pokrývá pevný referenční mezidoménový intent a obecný
-   ProjectFlow-only stav portfolia včetně dotazu na dostupnost zdroje,
-   kontextového follow-upu a zákazu dokumentového fallbacku. Obecný entity
-   resolver podle názvu/aliasu projektu, další doménové nástroje a širší DAG
-   zůstávají backlog.
+1. Budget a ProjectFlow poskytují první projektové read-only endpointy.
+   AKB má uzavřené kontrakty, plánování, autorizaci, deterministické odpovědi a
+   fixtures pro ArchFlow a AIIP. Jejich katalogový stav je `contract_ready`;
+   aktivace vyžaduje produkční zdrojové nástroje a společnou integrační bránu.
+2. Plánovač pokrývá obecné Budget, ProjectFlow a kombinované provozní otázky,
+   období a kontextové follow-upy. Kanonický entity resolver podle názvu/aliasu,
+   LLM planner s uzavřeným JSON výstupem, intervaly a širší DAG zůstávají další
+   etapou po stabilizaci zdrojových manifestů.
 3. EvidenceItem a AnalysisSnapshot existují pro první řez; historie ukládá
    pouze bezpečný odvozený envelope a při otevření jej reautorizuje. Obecný
    artifact package zůstává backlog.
@@ -97,7 +105,7 @@ AKB Chat / stejné vlákno
         v
 AKB web BFF + Assistant Orchestrator
         |
-        +--> Query Plan v2 + canonical entity resolution
+        +--> Query Plan v4 + semantic/domain catalog + canonical entity resolution
         |
         +--> čerstvá STRATOS access projection + OBO/delegovaný token
         |
@@ -169,7 +177,7 @@ Dokumentový důkaz navíc nese document/version/chunk/page/section. Živý úda
 nesmí vydávat za dokumentovou citaci a historický dokument se nesmí vydávat za
 aktuální hodnotu.
 
-### 4.3 QueryPlan v2
+### 4.3 QueryPlan v4
 
 Plán bude neměnný a auditovatelný. Obsahuje:
 
@@ -183,6 +191,26 @@ Plán bude neměnný a auditovatelný. Obsahuje:
 Plánovač nesmí sám rozšiřovat scope. Nezávislé kroky běží paralelně, závislé až
 po validaci jejich vstupů. Neznámá entita nebo nejednoznačné období vede k
 upřesnění, ne k hádání.
+
+`ConversationQueryState v1` je jediný stav, který se přenáší mezi běžnými
+navazujícími dotazy. Uchovává zdrojovou oblast, metriky, období, granularitu,
+bezpečné entity filtry a řazení. Browserový stav se vždy znovu validuje a smí
+dotaz pouze zúžit. Capability, scopes, Information Policy a identita aktéra se
+pro každý tah znovu načtou z ověřené STRATOS access projection a ve stavu
+konverzace se nepřijímají.
+
+Sémantický katalog obsahuje doménové pojmy a metriky, nikoliv seznam povolených
+vět. Je rozšířen lokálním, verzovaným a atribuovaným snapshotem českého SSP.
+Celý SSP je pouze kontext; zdroj nebo metriku mohou ovlivnit jen samostatně
+schválené vazby s testem. Referenční dotazy a parafráze patří do evaluační
+sady. Explicitní otázka na živá data dosud nepřipojeného ArchFlow nebo AIIP
+nesmí spadnout do dokumentového RAG; AKB vrátí přesný stav nepřipojeného
+zdroje.
+
+Strojově čitelný doménový katalog navíc uzavírá `tool_id`, capabilities,
+scope typy, entity, kanonické prefixy, typované metriky a povolené vztahy.
+Katalog dovoluje pouze shared canonical ID, přesný context tag nebo explicitní
+relation fact. Název ani sémantická podobnost samy nevytvářejí vazbu.
 
 ### 4.4 AnalysisSnapshot v1
 
@@ -246,7 +274,7 @@ Rozsah:
 
 - Budget a ProjectFlow read-only nástroje bez LLM;
 - canonical ID vazby projekt/smlouva/procurement/document;
-- QueryPlan v2 s paralelním načtením;
+- QueryPlan v3 s paralelním načtením a bezpečným konverzačním stavem;
 - EvidenceItem normalizace a strictest policy;
 - čtyřvrstvá chatová odpověď s as-of časem a partial stavem;
 - pouze stávající chat, bez nového menu a bez zápisových akcí.

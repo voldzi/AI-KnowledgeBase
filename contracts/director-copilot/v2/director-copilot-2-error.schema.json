@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/contracts/director-copilot/v2/director-copilot-2-error.schema.json",
+  "title": "STRATOS Director Copilot 2 error envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "http_status",
+    "error_code",
+    "message",
+    "retryable",
+    "tool_call_id"
+  ],
+  "properties": {
+    "schema_version": { "const": "director-copilot-2" },
+    "status": { "const": "error" },
+    "http_status": { "enum": [400, 401, 403, 413, 422, 503] },
+    "error_code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,119}$"
+    },
+    "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "retryable": { "type": "boolean" },
+    "tool_call_id": {
+      "anyOf": [
+        { "type": "string", "pattern": "^call_[a-f0-9]{16,64}$" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

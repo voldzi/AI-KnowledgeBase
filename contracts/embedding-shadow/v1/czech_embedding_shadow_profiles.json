@@ -1,0 +1,53 @@
+{
+  "schema_version": "akb-embedding-shadow-profile-set-1",
+  "profile_set_id": "czech-retrieval-shadow-2026-07-25",
+  "profiles": [
+    {
+      "profile_id": "bge-m3-1024",
+      "role": "baseline",
+      "model_id": "BAAI/bge-m3",
+      "service_model_id": "bge-m3",
+      "dimensions": 1024,
+      "max_input_tokens": 8192,
+      "language_scope": "multilingual",
+      "license": "MIT",
+      "attribution_required": false,
+      "collection_name": "document_chunks_v2",
+      "enabled_for_answers": true
+    },
+    {
+      "profile_id": "qwen3-embedding-0.6b-1024",
+      "role": "candidate",
+      "model_id": "Qwen/Qwen3-Embedding-0.6B",
+      "service_model_id": "Qwen/Qwen3-Embedding-0.6B",
+      "dimensions": 1024,
+      "max_input_tokens": 32768,
+      "language_scope": "multilingual",
+      "license": "Apache-2.0",
+      "attribution_required": false,
+      "collection_name": "document_chunks_shadow_qwen3_0_6b_1024",
+      "enabled_for_answers": false
+    },
+    {
+      "profile_id": "seznam-simcse-retromae-small-cs-256",
+      "role": "candidate",
+      "model_id": "Seznam/simcse-retromae-small-cs",
+      "service_model_id": "Seznam/simcse-retromae-small-cs",
+      "dimensions": 256,
+      "max_input_tokens": 512,
+      "language_scope": "czech",
+      "license": "CC-BY-4.0",
+      "attribution_required": true,
+      "collection_name": "document_chunks_shadow_seznam_simcse_cs_256",
+      "enabled_for_answers": false
+    }
+  ],
+  "promotion_gates": {
+    "recall_at_50_min": 1.0,
+    "ndcg_at_8_min": 0.95,
+    "czech_routing_accuracy_min": 0.98,
+    "citation_traceability_min": 1.0,
+    "false_answer_rate_max": 0.0,
+    "p95_regression_max_percent": 15
+  }
+}

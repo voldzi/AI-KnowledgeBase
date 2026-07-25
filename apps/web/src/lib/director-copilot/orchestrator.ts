@@ -23,6 +23,7 @@ import {
 } from "./contracts";
 import type { DirectorDomainToolClient } from "./domain-tool-client";
 import { buildDirectorQueryPlan, toolCallId } from "./planner";
+import type { ConversationQueryState } from "./query-state";
 import { DirectorCopilotTransportError } from "./transport-error";
 
 export interface DirectorCopilotOrchestrationResult {
@@ -53,6 +54,7 @@ export async function orchestrateDirectorCopilot(input: {
   context: ApiRequestContext;
   client: DomainToolExecutor;
   intent?: DirectorCopilotIntent;
+  queryState?: ConversationQueryState;
   now?: Date;
   timeoutMs?: number;
 }): Promise<DirectorCopilotOrchestrationResult> {
@@ -62,13 +64,19 @@ export async function orchestrateDirectorCopilot(input: {
     language: input.language,
     context: input.context,
     intent: input.intent,
+    queryState: input.queryState,
     now,
     timeoutMs: input.timeoutMs,
   });
   const applications = [...new Set(
     plan.nodes
       .map((node) => node.source_application)
-      .filter((application): application is DomainApplication => application === "budget" || application === "projectflow"),
+      .filter((application): application is DomainApplication => (
+        application === "budget"
+        || application === "projectflow"
+        || application === "archflow"
+        || application === "aiip"
+      )),
   )];
   const outcomes = await Promise.all(
     applications.map((application) => executeSource(application, plan, input.context, input.client, now)),
@@ -82,7 +90,15 @@ export async function orchestrateDirectorCopilot(input: {
     ? correlatedProjectIds(availableResponses, outcomes)
     : plan.intent === "budget_portfolio_status"
       ? budgetProjectIds(availableResponses)
-      : projectFlowProjectIds(availableResponses);
+      : plan.intent === "project_portfolio_status"
+        || plan.intent === "project_access_overview"
+        || plan.intent === "portfolio_performance_overview"
+        ? projectFlowProjectIds(availableResponses)
+        : plan.intent === "archflow_demand_overview"
+          ? sourceCanonicalIds(availableResponses, "STRATOS_ARCHFLOW")
+          : plan.intent === "aiip_idea_overview"
+            ? sourceCanonicalIds(availableResponses, "STRATOS_AIIP")
+            : innovationTraceCanonicalIds(availableResponses);
   const evidence = normalizeStructuredEvidence(availableResponses, selectedProjectIds, now.toISOString());
   if (!evidence.length) {
     const failed = outcomes.some((outcome) => outcome.status !== "complete");
@@ -106,20 +122,25 @@ export async function orchestrateDirectorCopilot(input: {
         ? "not_authorized" as const
         : "unavailable" as const;
     return [{
-      source: outcome.application === "budget" ? "STRATOS_BUDGET" as const : "STRATOS_PROJECTFLOW" as const,
+      source: sourceSystemForApplication(outcome.application),
       status,
       code: outcome.code ?? (outcome.status === "partial" ? "SOURCE_PARTIAL" : "SOURCE_UNAVAILABLE"),
     }];
   });
   const documentContextBindings = [...new Map(
-    [...selectedProjectIds].sort().map((canonicalId) => [canonicalId, {
-      canonical_id: canonicalId,
-      tags: boundedDocumentContextTags([...new Set(
+    [...selectedProjectIds].sort().flatMap((canonicalId) => {
+      const contextTags = boundedDocumentContextTags([...new Set(
         availableResponses.flatMap((response) => response.items)
           .filter((item) => item.canonical_id === canonicalId)
           .flatMap((item) => item.document_context_tags),
-      )]),
-    }]),
+      )]);
+      return contextTags.length
+        ? [[canonicalId, {
+            canonical_id: canonicalId,
+            tags: contextTags,
+          }] as const]
+        : [];
+    }),
   ).values()];
   const tags = [...new Set(documentContextBindings.flatMap((binding) => binding.tags))].sort();
   const snapshotBase = {
@@ -164,6 +185,71 @@ function budgetProjectIds(responses: DomainToolResponse[]): Set<string> {
       .flatMap((response) => response.items)
       .map((item) => item.canonical_id),
   );
+}
+
+function sourceCanonicalIds(
+  responses: DomainToolResponse[],
+  sourceSystem: DomainToolResponse["source_system"],
+): Set<string> {
+  return new Set(
+    responses
+      .filter((response) => response.source_system === sourceSystem)
+      .flatMap((response) => response.items)
+      .map((item) => item.canonical_id),
+  );
+}
+
+function innovationTraceCanonicalIds(
+  responses: DomainToolResponse[],
+): Set<string> {
+  const selected = sourceCanonicalIds(responses, "STRATOS_AIIP");
+  const ideaItems = responses
+    .filter((response) => response.source_system === "STRATOS_AIIP")
+    .flatMap((response) => response.items);
+  const needIds = new Set(
+    ideaItems.flatMap((item) => relationValues(
+      item.facts,
+      "relation.archflow_need_canonical_id",
+    )),
+  );
+  const needItems = responses
+    .filter((response) => response.source_system === "STRATOS_ARCHFLOW")
+    .flatMap((response) => response.items)
+    .filter((item) => (
+      needIds.has(item.canonical_id)
+      || relationValues(item.facts, "relation.aiip_idea_canonical_id")
+        .some((ideaId) => selected.has(ideaId))
+    ));
+  for (const item of needItems) selected.add(item.canonical_id);
+  const projectIds = new Set(
+    needItems.flatMap((item) => relationValues(
+      item.facts,
+      "relation.project_canonical_id",
+    )),
+  );
+  for (const projectId of projectIds) selected.add(projectId);
+  return selected;
+}
+
+function relationValues(
+  facts: Array<{ key: string; value: string | number | boolean | null }>,
+  key: string,
+): string[] {
+  return facts.flatMap((fact) => (
+    fact.key === key && typeof fact.value === "string" ? [fact.value] : []
+  ));
+}
+
+function sourceSystemForApplication(
+  application: DomainApplication,
+): DomainToolResponse["source_system"] {
+  const systems = {
+    budget: "STRATOS_BUDGET",
+    projectflow: "STRATOS_PROJECTFLOW",
+    archflow: "STRATOS_ARCHFLOW",
+    aiip: "STRATOS_AIIP",
+  } as const;
+  return systems[application];
 }
 
 export function directorCopilotPromptEvidence(snapshot: AnalysisSnapshot): Record<string, unknown> {
@@ -300,7 +386,16 @@ async function executeSource(
     actor: { type: "person", subject_id: context.subjectId },
     requested_at: now.toISOString(),
     requested_scopes: node.requested_scopes,
-    parameters: { as_of: plan.as_of, limit: 25 },
+    parameters: {
+      as_of: node.parameters.as_of,
+      ...(node.parameters.project_ids.length
+        ? { project_ids: node.parameters.project_ids }
+        : {}),
+      ...(node.parameters.portfolio_ids.length
+        ? { portfolio_ids: node.parameters.portfolio_ids }
+        : {}),
+      limit: 25,
+    },
   };
   try {
     const response = await client.execute(application, request, context);
@@ -341,7 +436,18 @@ function localAccessReasonCode(
     } as const;
     return codes[reason];
   }
-  return `BUDGET_ACCESS_${reason.toUpperCase()}`;
+  const prefix = application.toUpperCase();
+  const codes = {
+    allowed: `${prefix}_ACCESS_ALLOWED`,
+    projection_required: `${prefix}_ACCESS_PROJECTION_REQUIRED`,
+    organization_invalid: `${prefix}_ORGANIZATION_INVALID`,
+    application_inactive: `${prefix}_APPLICATION_ACCESS_INACTIVE`,
+    access_capability_missing: `${prefix}_ACCESS_CAPABILITY_MISSING`,
+    read_capability_missing: `${prefix}_READ_CAPABILITY_MISSING`,
+    scope_missing: `${prefix}_SCOPE_MISSING`,
+    scope_limit_exceeded: `${prefix}_SCOPE_LIMIT_EXCEEDED`,
+  } as const;
+  return codes[reason];
 }
 
 function sourceDenialReasonCode(
@@ -356,6 +462,12 @@ function sourceDenialReasonCode(
     && scopes.some((scope) => scope.type === "organization" || scope.type === "portfolio")
   ) {
     return "PROJECTFLOW_BROAD_SCOPE_UPSTREAM_DENIED_WITHOUT_REASON";
+  }
+  if (application === "archflow") {
+    return "ARCHFLOW_SOURCE_NOT_AUTHORIZED_WITHOUT_REASON";
+  }
+  if (application === "aiip") {
+    return "AIIP_SOURCE_NOT_AUTHORIZED_WITHOUT_REASON";
   }
   return application === "projectflow"
     ? "PROJECTFLOW_SCOPE_OR_MEMBERSHIP_DENIED_WITHOUT_REASON"

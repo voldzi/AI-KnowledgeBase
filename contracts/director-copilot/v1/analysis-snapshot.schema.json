@@ -21,7 +21,7 @@
         "additionalProperties": false,
         "required": ["source", "status", "code"],
         "properties": {
-          "source": { "enum": ["STRATOS_AKB", "STRATOS_BUDGET", "STRATOS_PROJECTFLOW"] },
+          "source": { "enum": ["STRATOS_AKB", "STRATOS_BUDGET", "STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW", "STRATOS_AIIP"] },
           "status": { "enum": ["partial", "unavailable", "not_authorized"] },
           "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,79}$" }
         }
@@ -45,7 +45,7 @@
             "additionalProperties": false,
             "required": ["source_system", "binding_id", "version", "hash"],
             "properties": {
-              "source_system": { "enum": ["STRATOS_AKB", "STRATOS_BUDGET", "STRATOS_PROJECTFLOW"] },
+              "source_system": { "enum": ["STRATOS_AKB", "STRATOS_BUDGET", "STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW", "STRATOS_AIIP"] },
               "binding_id": { "type": "string", "minLength": 8, "maxLength": 200 },
               "version": { "const": "information-policy-2.0.0" },
               "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
@@ -63,7 +63,7 @@
         "additionalProperties": false,
         "required": ["canonical_id", "tags"],
         "properties": {
-          "canonical_id": { "type": "string", "pattern": "^stratos:project:[A-Za-z0-9._:/-]+$", "maxLength": 300 },
+          "canonical_id": { "type": "string", "pattern": "^stratos:(project|archflow-need|aiip-idea):[A-Za-z0-9._:/-]+$", "maxLength": 300 },
           "tags": { "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 120 } }
         }
       }

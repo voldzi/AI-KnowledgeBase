@@ -1,23 +1,40 @@
 import { createHash } from "node:crypto";
 
+import type { ConversationQueryState } from "./query-state";
+import {
+  domainCatalogToolForApplication,
+  stratosDomainCatalog,
+  type DomainCatalogTool,
+} from "./domain-catalog";
+
 export const DIRECTOR_COPILOT_CONTRACT_VERSION = "director-copilot-1" as const;
-export const DIRECTOR_COPILOT_QUERY_PLAN_VERSION = "director-copilot-query-plan-2" as const;
+export const DIRECTOR_COPILOT_QUERY_PLAN_VERSION = "director-copilot-query-plan-4" as const;
 export const DIRECTOR_COPILOT_EVIDENCE_VERSION = "director-copilot-evidence-1" as const;
 export const DIRECTOR_COPILOT_SNAPSHOT_VERSION = "director-copilot-analysis-snapshot-1" as const;
 
 export const DOMAIN_TOOL_IDS = {
   budget: "budget.project_financial_snapshot.v1",
   projectflow: "projectflow.project_delivery_snapshot.v1",
+  archflow: "archflow.need_portfolio_snapshot.v1",
+  aiip: "aiip.idea_portfolio_snapshot.v1",
 } as const;
 
 export type DomainApplication = keyof typeof DOMAIN_TOOL_IDS;
 export type DomainToolId = (typeof DOMAIN_TOOL_IDS)[DomainApplication];
 export type DirectorCopilotIntent =
   | "portfolio_risk_correlation"
+  | "portfolio_performance_overview"
   | "project_portfolio_status"
   | "budget_portfolio_status"
-  | "project_access_overview";
-export type DomainSourceSystem = "STRATOS_BUDGET" | "STRATOS_PROJECTFLOW";
+  | "project_access_overview"
+  | "archflow_demand_overview"
+  | "aiip_idea_overview"
+  | "innovation_delivery_trace";
+export type DomainSourceSystem =
+  | "STRATOS_BUDGET"
+  | "STRATOS_PROJECTFLOW"
+  | "STRATOS_ARCHFLOW"
+  | "STRATOS_AIIP";
 export type EvidenceSourceSystem = DomainSourceSystem | "STRATOS_AKB";
 export type HandlingClass = "PUBLIC" | "INTERNAL" | "PROJECT_MANAGEMENT" | "RESTRICTED";
 export type PolicyObligation =
@@ -143,8 +160,13 @@ export interface DirectorQueryPlanNode {
   node_id: string;
   tool_id: DomainToolId | "akb.contract_risk_retrieval.v1";
   source_application: DomainApplication | "akb";
-  required_capability: "budget:read" | "projectflow:read" | "akb:chat";
+  required_capabilities: string[];
   requested_scopes: ScopeCoordinate[];
+  parameters: {
+    as_of: string;
+    project_ids: string[];
+    portfolio_ids: string[];
+  };
   depends_on: string[];
   timeout_ms: number;
 }
@@ -157,6 +179,7 @@ export interface DirectorQueryPlan {
   created_at: string;
   as_of: string;
   projection_hash: string;
+  query_state: ConversationQueryState;
   nodes: DirectorQueryPlanNode[];
   output: {
     kind: "answer";
@@ -236,24 +259,6 @@ const BUDGET_DENIAL_WARNING_CODES = new Set([
   "BUDGET_INFORMATION_POLICY_DENIED",
   "BUDGET_SCOPE_NOT_COVERED",
 ]);
-const TOOL_FACT_TYPES: Record<DomainToolId, Readonly<Record<string, DomainFact["value_type"]>>> = {
-  [DOMAIN_TOOL_IDS.budget]: {
-    "project.display_name": "text",
-    "budget.variance_amount": "currency",
-    "budget.variance_percent": "percent",
-    "budget.plan_amount": "currency",
-    "budget.actual_amount": "currency",
-    "budget.forecast_amount": "currency",
-  },
-  [DOMAIN_TOOL_IDS.projectflow]: {
-    "project.display_name": "text",
-    "milestone.max_delay_days": "duration_days",
-    "project.status": "text",
-    "project.schedule_status": "text",
-    "milestone.next_due_date": "date",
-  },
-};
-
 export function parseDomainToolResponse(
   value: unknown,
   expected: { toolId: DomainToolId; toolCallId: string; requestedScopes: ScopeCoordinate[]; maxItems?: number; nowMs?: number },
@@ -269,7 +274,8 @@ export function parseDomainToolResponse(
   validDateTime(requiredString(body, "as_of"), "as_of");
   const nowMs = expected.nowMs ?? Date.now();
   if (generatedAt > nowMs + 5 * 60_000) fail("DOMAIN_TOOL_TIME_INVALID", "Domain tool generated_at is in the future.");
-  const expectedSource = expected.toolId === DOMAIN_TOOL_IDS.budget ? "STRATOS_BUDGET" : "STRATOS_PROJECTFLOW";
+  const toolDefinition = catalogToolForId(expected.toolId);
+  const expectedSource = toolDefinition.source_system as DomainSourceSystem;
   requiredEqual(body, "source_system", expectedSource);
   boundedString(body.source_version, "source_version", 200);
   const itemsValue = array(body.items, "DOMAIN_TOOL_ITEMS_INVALID", "Domain tool items must be an array.");
@@ -278,7 +284,9 @@ export function parseDomainToolResponse(
   if ((status === "unavailable" || status === "not_authorized") && itemsValue.length) {
     fail("DOMAIN_TOOL_STATUS_ITEMS_INVALID", "Unavailable or unauthorized responses cannot contain items.");
   }
-  const items = itemsValue.map((item) => parseItem(item, expected.requestedScopes, expected.toolId));
+  const items = itemsValue.map((item) => (
+    parseItem(item, expected.requestedScopes, expected.toolId, toolDefinition)
+  ));
   const warnings = stringList(body.warnings, "warnings", 20, 300);
   validateBudgetResponseReasons(expected.toolId, status, warnings);
   const nextCursor = optionalString(body.next_cursor, "next_cursor", 500);
@@ -297,7 +305,12 @@ export function parseDomainToolResponse(
   };
 }
 
-function parseItem(value: unknown, requestedScopes: ScopeCoordinate[], toolId: DomainToolId): DomainToolItem {
+function parseItem(
+  value: unknown,
+  requestedScopes: ScopeCoordinate[],
+  toolId: DomainToolId,
+  toolDefinition: DomainCatalogTool,
+): DomainToolItem {
   const item = record(value, "DOMAIN_TOOL_ITEM_INVALID", "Domain tool item must be an object.");
   exactFields(item, ITEM_FIELDS, "DOMAIN_TOOL_ITEM_FIELD_UNKNOWN");
   const authorizedScope = parseScope(item.authorized_scope);
@@ -305,22 +318,32 @@ function parseItem(value: unknown, requestedScopes: ScopeCoordinate[], toolId: D
     fail("DOMAIN_TOOL_SCOPE_EXPANSION", "Domain tool item is outside the requested effective scopes.");
   }
   const entityType = boundedString(item.entity_type, "entity_type", 80);
-  if (entityType !== "project") {
-    fail("DOMAIN_TOOL_ENTITY_TYPE_INVALID", "Domain tool item must represent a project.");
+  if (entityType !== toolDefinition.entity_type) {
+    fail("DOMAIN_TOOL_ENTITY_TYPE_INVALID", "Domain tool item has an unexpected entity type.");
   }
   const canonicalId = boundedString(item.canonical_id, "canonical_id", 300);
-  if (!/^stratos:project:[A-Za-z0-9._:/-]+$/.test(canonicalId)) {
+  const canonicalSuffix = canonicalId.slice(toolDefinition.canonical_id_prefix.length);
+  if (
+    !canonicalId.startsWith(toolDefinition.canonical_id_prefix)
+    || !canonicalSuffix
+    || !/^[A-Za-z0-9._:/-]+$/.test(canonicalSuffix)
+  ) {
     fail("DOMAIN_TOOL_CANONICAL_ID_INVALID", "Domain tool canonical_id is invalid.");
   }
   validDateTime(boundedString(item.as_of, "as_of", 80), "item.as_of");
   const factsValue = array(item.facts, "DOMAIN_TOOL_FACTS_INVALID", "Domain tool facts must be an array.");
   if (!factsValue.length || factsValue.length > 40) fail("DOMAIN_TOOL_FACTS_LIMIT", "Domain tool item has an invalid fact count.");
-  const facts = factsValue.map((fact) => parseFact(fact, toolId));
+  const facts = factsValue.map((fact) => parseFact(fact, toolDefinition));
   validateToolItemFacts(toolId, facts);
   const documentContextTags = requiredStringList(item.document_context_tags, "document_context_tags", 20, 120);
-  const expectedProjectTag = `project:${canonicalId.slice("stratos:project:".length)}`;
-  if (!documentContextTags.includes(expectedProjectTag)) {
-    fail("DOMAIN_TOOL_PROJECT_TAG_MISSING", "Domain tool item must include its exact canonical project context tag.");
+  const expectedContextTag = `${toolDefinition.context_tag_prefix}${canonicalSuffix}`;
+  if (!documentContextTags.includes(expectedContextTag)) {
+    fail(
+      toolDefinition.application === "budget" || toolDefinition.application === "projectflow"
+        ? "DOMAIN_TOOL_PROJECT_TAG_MISSING"
+        : "DOMAIN_TOOL_CONTEXT_TAG_MISSING",
+      "Domain tool item must include its exact canonical context tag.",
+    );
   }
   return {
     entity_type: entityType,
@@ -343,6 +366,30 @@ function validateToolItemFacts(
   const keys = facts.map((fact) => fact.key);
   if (new Set(keys).size !== keys.length) {
     fail("DOMAIN_TOOL_FACT_DUPLICATE", "Domain tool item contains a duplicate fact key.");
+  }
+  if (toolId === DOMAIN_TOOL_IDS.archflow) {
+    if (
+      !keys.includes("archflow.need.display_name")
+      || !keys.includes("archflow.need.status")
+    ) {
+      fail(
+        "ARCHFLOW_REQUIRED_FACT_MISSING",
+        "ArchFlow item is missing its display name or status.",
+      );
+    }
+    return;
+  }
+  if (toolId === DOMAIN_TOOL_IDS.aiip) {
+    if (
+      !keys.includes("aiip.idea.display_name")
+      || !keys.includes("aiip.idea.status")
+    ) {
+      fail(
+        "AIIP_REQUIRED_FACT_MISSING",
+        "AIIP item is missing its display name or status.",
+      );
+    }
+    return;
   }
   if (toolId !== DOMAIN_TOOL_IDS.budget) {
     return;
@@ -404,12 +451,17 @@ function validateBudgetResponseReasons(
   }
 }
 
-function parseFact(value: unknown, toolId: DomainToolId): DomainFact {
+function parseFact(
+  value: unknown,
+  toolDefinition: DomainCatalogTool,
+): DomainFact {
   const fact = record(value, "DOMAIN_TOOL_FACT_INVALID", "Domain tool fact must be an object.");
   exactFields(fact, FACT_FIELDS, "DOMAIN_TOOL_FACT_FIELD_UNKNOWN");
   const key = boundedString(fact.key, "fact.key", 80);
   if (!/^[a-z][a-z0-9_.-]{0,79}$/.test(key)) fail("DOMAIN_TOOL_FACT_KEY_INVALID", "Domain tool fact key is invalid.");
-  const expectedValueType = TOOL_FACT_TYPES[toolId][key];
+  const expectedValueType = toolDefinition.metrics.find(
+    (metric) => metric.key === key,
+  )?.value_type;
   if (!expectedValueType) {
     fail("DOMAIN_TOOL_FACT_KEY_UNSUPPORTED", "Domain tool fact key is not allowed for this tool version.");
   }
@@ -422,6 +474,7 @@ function parseFact(value: unknown, toolId: DomainToolId): DomainFact {
     fail("DOMAIN_TOOL_FACT_VALUE_INVALID", "Domain tool fact value must be scalar.");
   }
   validateFactValue(fact.value, valueType);
+  validateRelationFact(key, fact.value);
   const quality = fact.quality === undefined ? 1 : fact.quality;
   if (typeof quality !== "number" || !Number.isFinite(quality) || quality < 0 || quality > 1) {
     fail("DOMAIN_TOOL_FACT_QUALITY_INVALID", "Domain tool fact quality is invalid.");
@@ -441,6 +494,37 @@ function parseFact(value: unknown, toolId: DomainToolId): DomainFact {
     period_end: optionalDate(fact.period_end, "period_end"),
     quality,
   };
+}
+
+function validateRelationFact(key: string, value: unknown): void {
+  const relationship = stratosDomainCatalog.relationships.find(
+    (candidate) => candidate.relation_metric === key,
+  );
+  if (!relationship || value === null) return;
+  if (
+    typeof value !== "string"
+    || !value.startsWith(relationship.target_canonical_id_prefix)
+    || value.length <= relationship.target_canonical_id_prefix.length
+  ) {
+    fail(
+      "DOMAIN_TOOL_RELATION_INVALID",
+      "Domain tool relation fact does not use the catalog canonical identifier.",
+    );
+  }
+}
+
+function catalogToolForId(toolId: DomainToolId): DomainCatalogTool {
+  const tool = stratosDomainCatalog.tools.find(
+    (candidate) => candidate.tool_id === toolId,
+  );
+  if (!tool || tool.application === "akb") {
+    fail("DOMAIN_TOOL_CATALOG_MISSING", "Domain tool is missing from the STRATOS catalog.");
+  }
+  const expected = domainCatalogToolForApplication(tool.application);
+  if (expected.tool_id !== toolId) {
+    fail("DOMAIN_TOOL_CATALOG_MISMATCH", "Domain tool does not match its catalog application.");
+  }
+  return tool;
 }
 
 function validateFactValue(value: unknown, valueType: string): void {

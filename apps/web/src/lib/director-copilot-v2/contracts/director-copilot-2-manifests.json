@@ -1,0 +1,1017 @@
+{
+  "schema_version": "director-copilot-2",
+  "contract_revision": "2.0.2",
+  "manifests": [
+    {
+      "schema_version": "director-copilot-2",
+      "contract_revision": "2.0.2",
+      "tool_id": "aiip.idea_portfolio_overview.v1",
+      "owner": "AIIP",
+      "audience": "aiip-api",
+      "schema_revision": "aiip-idea-portfolio-overview-1.0.1",
+      "metrics": [
+        {
+          "key": "idea.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název podnětu."
+        },
+        {
+          "key": "aiip.idea.count",
+          "value_type": "number",
+          "description": "Počet autorizovaně viditelných podnětů v dané skupině."
+        },
+        {
+          "key": "aiip.idea.pipeline_status",
+          "value_type": "text",
+          "description": "Aktuální stav podnětu v řízeném AIIP workflow."
+        },
+        {
+          "key": "aiip.idea.category",
+          "value_type": "text",
+          "description": "Kanonická kategorie podnětu."
+        },
+        {
+          "key": "aiip.idea.value_score",
+          "value_type": "number",
+          "description": "Celkové rozhodovací skóre uložené v AIIP."
+        },
+        {
+          "key": "aiip.idea.risk_manageability_score",
+          "value_type": "number",
+          "description": "Skóre zvládnutelnosti bezpečnostního rizika, nikoliv odhad LLM."
+        },
+        {
+          "key": "aiip.idea.expected_benefit",
+          "value_type": "text",
+          "description": "Strukturovaný očekávaný přínos podnětu."
+        },
+        {
+          "key": "aiip.idea.review_status",
+          "value_type": "text",
+          "description": "Stav posledního evidovaného posouzení."
+        },
+        {
+          "key": "aiip.idea.approval_status",
+          "value_type": "text",
+          "description": "Odvozený stav schválení podle kanonického workflow."
+        },
+        {
+          "key": "aiip.idea.similar_visible_count",
+          "value_type": "number",
+          "description": "Počet deterministicky podobných a současně autorizovaně viditelných podnětů."
+        },
+        {
+          "key": "aiip.idea.archflow_handoff_status",
+          "value_type": "text",
+          "description": "Stav předání schváleného podnětu do ArchFlow."
+        },
+        {
+          "key": "aiip.idea.archflow_handoff_count",
+          "value_type": "number",
+          "description": "Počet autorizovaných podnětů předaných do ArchFlow."
+        }
+      ],
+      "entity_types": [
+        "organization",
+        "organization_unit",
+        "idea"
+      ],
+      "canonical_id_prefixes": [
+        {
+          "entity_type": "organization",
+          "prefix": "stratos:aiip-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "organization_unit",
+          "prefix": "stratos:aiip-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "idea",
+          "prefix": "stratos:idea:",
+          "aggregate": false
+        }
+      ],
+      "relationships": [
+        {
+          "key": "aiip.idea.archflow_need",
+          "source_entity_type": "idea",
+          "target_entity_type": "need",
+          "target_canonical_id_prefix": "stratos:need:",
+          "cardinality": "zero_or_one",
+          "derivation": "direct",
+          "location": {
+            "kind": "link",
+            "key": "aiip.idea.archflow_need"
+          }
+        }
+      ],
+      "link_keys": [
+        {
+          "key": "aiip.idea.archflow_need",
+          "target_entity_type": "need",
+          "target_canonical_id_prefix": "stratos:need:",
+          "max_items": 1
+        }
+      ],
+      "periods": [
+        "fiscal_year",
+        "interval"
+      ],
+      "granularities": [
+        "organization",
+        "organization_unit",
+        "item"
+      ],
+      "group_by": [
+        "organization_unit",
+        "category",
+        "pipeline_status",
+        "approval_status"
+      ],
+      "scenarios": [],
+      "capability_requirements": {
+        "all_of": [
+          "aiip:access"
+        ],
+        "any_of": [
+          "aiip:read_own",
+          "aiip:read_unit",
+          "aiip:read_organization"
+        ],
+        "conditional": [
+          {
+            "when": {
+              "scope_types": [
+                "own"
+              ],
+              "granularities": [
+                "item"
+              ]
+            },
+            "all_of": [
+              "aiip:read_own"
+            ],
+            "any_of": []
+          },
+          {
+            "when": {
+              "scope_types": [
+                "organization_unit"
+              ],
+              "granularities": [
+                "organization_unit",
+                "item"
+              ]
+            },
+            "all_of": [],
+            "any_of": [
+              "aiip:read_unit",
+              "aiip:read_organization"
+            ]
+          },
+          {
+            "when": {
+              "scope_types": [
+                "organization"
+              ],
+              "granularities": [
+                "organization",
+                "organization_unit",
+                "item"
+              ]
+            },
+            "all_of": [
+              "aiip:read_organization"
+            ],
+            "any_of": []
+          }
+        ]
+      },
+      "supported_scope_types": [
+        "own",
+        "organization",
+        "organization_unit",
+        "project",
+        "document",
+        "recipient_set"
+      ],
+      "timeout_ms": 5000,
+      "limits": {
+        "max_items": 100,
+        "max_response_bytes": 262144,
+        "max_candidate_count": 100000
+      },
+      "pagination": "cursor",
+      "reason_codes": [
+        "AIIP_SCOPE_NOT_COVERED",
+        "AIIP_INFORMATION_POLICY_DENIED",
+        "AIIP_ENTITY_AMBIGUOUS",
+        "AIIP_NO_DATA",
+        "AIIP_DOMAIN_TOOL_UNAVAILABLE"
+      ],
+      "input_schema_ref": "director-copilot-2-request.schema.json",
+      "output_schema_ref": "director-copilot-2-response.schema.json",
+      "error_schema_ref": "director-copilot-2-error.schema.json"
+    },
+    {
+      "schema_version": "director-copilot-2",
+      "contract_revision": "2.0.2",
+      "tool_id": "archflow.need_portfolio_overview.v1",
+      "owner": "ARCHFLOW",
+      "audience": "archflow-api",
+      "schema_revision": "archflow-need-portfolio-overview-1.0.1",
+      "metrics": [
+        {
+          "key": "archflow.need.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název potřeby."
+        },
+        {
+          "key": "archflow.need.organization_unit",
+          "value_type": "text",
+          "description": "Organizační jednotka potřeby."
+        },
+        {
+          "key": "archflow.need.status",
+          "value_type": "text",
+          "description": "Stav potřeby."
+        },
+        {
+          "key": "archflow.need.readiness_score",
+          "value_type": "number",
+          "description": "Připravenost potřeby."
+        },
+        {
+          "key": "archflow.need.impact_score",
+          "value_type": "number",
+          "description": "Dopadové skóre."
+        },
+        {
+          "key": "archflow.need.decision",
+          "value_type": "text",
+          "description": "Aktuální rozhodnutí."
+        },
+        {
+          "key": "archflow.need.budget_handoff_status",
+          "value_type": "text",
+          "description": "Stav předání do Budgetu."
+        },
+        {
+          "key": "archflow.need.source_system",
+          "value_type": "text",
+          "description": "Zdrojový systém potřeby."
+        },
+        {
+          "key": "archflow.need.source_idea_id",
+          "value_type": "text",
+          "description": "Kanonické ID původního AIIP podnětu."
+        },
+        {
+          "key": "archflow.need.linked_project_id",
+          "value_type": "text",
+          "description": "Kanonické ID navázaného projektu."
+        },
+        {
+          "key": "archflow.need.count",
+          "value_type": "number",
+          "description": "Počet autorizovaných potřeb v agregaci."
+        },
+        {
+          "key": "archflow.need.average_readiness_score",
+          "value_type": "number",
+          "description": "Průměrná připravenost autorizovaných potřeb."
+        },
+        {
+          "key": "archflow.need.average_impact_score",
+          "value_type": "number",
+          "description": "Průměrné dopadové skóre autorizovaných potřeb."
+        },
+        {
+          "key": "archflow.need.budget_handoff_count",
+          "value_type": "number",
+          "description": "Počet autorizovaných potřeb předaných do Budgetu."
+        },
+        {
+          "key": "archflow.group.organization.id",
+          "value_type": "text",
+          "description": "ID organizační dimenze agregace."
+        },
+        {
+          "key": "archflow.group.organization.display_name",
+          "value_type": "text",
+          "description": "Název organizační dimenze agregace."
+        },
+        {
+          "key": "archflow.group.organization_unit.id",
+          "value_type": "text",
+          "description": "ID organizační jednotky agregace."
+        },
+        {
+          "key": "archflow.group.organization_unit.display_name",
+          "value_type": "text",
+          "description": "Název organizační jednotky agregace."
+        },
+        {
+          "key": "archflow.group.strategic_goal.id",
+          "value_type": "text",
+          "description": "ID strategického cíle agregace."
+        },
+        {
+          "key": "archflow.group.strategic_goal.display_name",
+          "value_type": "text",
+          "description": "Název strategického cíle agregace."
+        },
+        {
+          "key": "archflow.group.status.id",
+          "value_type": "text",
+          "description": "ID stavu agregace."
+        },
+        {
+          "key": "archflow.group.status.display_name",
+          "value_type": "text",
+          "description": "Název stavu agregace."
+        },
+        {
+          "key": "archflow.group.decision.id",
+          "value_type": "text",
+          "description": "ID rozhodnutí agregace."
+        },
+        {
+          "key": "archflow.group.decision.display_name",
+          "value_type": "text",
+          "description": "Název rozhodnutí agregace."
+        }
+      ],
+      "entity_types": [
+        "need",
+        "aggregate"
+      ],
+      "canonical_id_prefixes": [
+        {
+          "entity_type": "need",
+          "prefix": "stratos:need:",
+          "aggregate": false
+        },
+        {
+          "entity_type": "aggregate",
+          "prefix": "stratos:archflow-aggregate:",
+          "aggregate": true
+        }
+      ],
+      "relationships": [
+        {
+          "key": "archflow.need.source_idea",
+          "source_entity_type": "need",
+          "target_entity_type": "idea",
+          "target_canonical_id_prefix": "stratos:idea:",
+          "cardinality": "zero_or_one",
+          "derivation": "direct",
+          "location": {
+            "kind": "link",
+            "key": "archflow.need.source_idea"
+          }
+        },
+        {
+          "key": "archflow.need.linked_project",
+          "source_entity_type": "need",
+          "target_entity_type": "project",
+          "target_canonical_id_prefix": "stratos:project:",
+          "cardinality": "zero_or_one",
+          "derivation": "direct",
+          "location": {
+            "kind": "link",
+            "key": "archflow.need.linked_project"
+          }
+        }
+      ],
+      "link_keys": [
+        {
+          "key": "archflow.need.source_idea",
+          "target_entity_type": "idea",
+          "target_canonical_id_prefix": "stratos:idea:",
+          "max_items": 1
+        },
+        {
+          "key": "archflow.need.linked_project",
+          "target_entity_type": "project",
+          "target_canonical_id_prefix": "stratos:project:",
+          "max_items": 1
+        }
+      ],
+      "periods": [
+        "fiscal_year",
+        "interval"
+      ],
+      "granularities": [
+        "organization",
+        "organization_unit",
+        "portfolio",
+        "item"
+      ],
+      "group_by": [
+        "organization_unit",
+        "strategic_goal",
+        "status",
+        "decision"
+      ],
+      "scenarios": [],
+      "capability_requirements": {
+        "all_of": [
+          "archflow:access"
+        ],
+        "any_of": [
+          "archflow:read_own",
+          "archflow:read_unit",
+          "archflow:read_organization"
+        ],
+        "conditional": [
+          {
+            "when": {
+              "scope_types": [
+                "own"
+              ],
+              "granularities": [
+                "item"
+              ]
+            },
+            "all_of": [
+              "archflow:read_own"
+            ],
+            "any_of": []
+          },
+          {
+            "when": {
+              "scope_types": [
+                "organization_unit"
+              ],
+              "granularities": [
+                "organization_unit",
+                "item"
+              ]
+            },
+            "all_of": [],
+            "any_of": [
+              "archflow:read_unit",
+              "archflow:read_organization"
+            ]
+          },
+          {
+            "when": {
+              "scope_types": [
+                "organization"
+              ],
+              "granularities": [
+                "organization",
+                "organization_unit",
+                "portfolio",
+                "item"
+              ]
+            },
+            "all_of": [
+              "archflow:read_organization"
+            ],
+            "any_of": []
+          }
+        ]
+      },
+      "supported_scope_types": [
+        "own",
+        "organization",
+        "organization_unit",
+        "portfolio",
+        "project"
+      ],
+      "timeout_ms": 5000,
+      "limits": {
+        "max_items": 100,
+        "max_response_bytes": 262144,
+        "max_candidate_count": 100000
+      },
+      "pagination": "cursor",
+      "reason_codes": [
+        "ARCHFLOW_SCOPE_NOT_COVERED",
+        "ARCHFLOW_INFORMATION_POLICY_DENIED",
+        "ARCHFLOW_NO_DATA",
+        "ARCHFLOW_DOMAIN_TOOL_UNAVAILABLE"
+      ],
+      "input_schema_ref": "director-copilot-2-request.schema.json",
+      "output_schema_ref": "director-copilot-2-response.schema.json",
+      "error_schema_ref": "director-copilot-2-error.schema.json"
+    },
+    {
+      "schema_version": "director-copilot-2",
+      "contract_revision": "2.0.2",
+      "tool_id": "budget.organization_financial_summary.v1",
+      "owner": "BUDGET",
+      "audience": "budget-api",
+      "schema_revision": "budget-organization-financial-summary-1.0.1",
+      "metrics": [
+        {
+          "key": "organization.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název organizace."
+        },
+        {
+          "key": "organization_unit.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název organizační jednotky."
+        },
+        {
+          "key": "budget_scope.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název finanční oblasti."
+        },
+        {
+          "key": "portfolio.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název portfolia."
+        },
+        {
+          "key": "project.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název projektu."
+        },
+        {
+          "key": "budget_item.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název rozpočtové položky."
+        },
+        {
+          "key": "budget.plan_amount",
+          "value_type": "currency",
+          "description": "Schválený finanční plán."
+        },
+        {
+          "key": "budget.actual_amount",
+          "value_type": "currency",
+          "description": "Zaúčtovaná skutečnost uzavřeného období."
+        },
+        {
+          "key": "budget.forecast_amount",
+          "value_type": "currency",
+          "description": "Výhled aktuálního nebo budoucího období."
+        },
+        {
+          "key": "budget.commitments_amount",
+          "value_type": "currency",
+          "description": "Otevřené závazky a schválené akce."
+        },
+        {
+          "key": "budget.variance_amount",
+          "value_type": "currency",
+          "description": "Odchylka skutečnosti nebo výhledu proti plánu."
+        },
+        {
+          "key": "budget.variance_percent",
+          "value_type": "percent",
+          "description": "Procentní odchylka proti plánu."
+        }
+      ],
+      "entity_types": [
+        "organization",
+        "organization_unit",
+        "budget_scope",
+        "portfolio",
+        "project",
+        "budget_item"
+      ],
+      "canonical_id_prefixes": [
+        {
+          "entity_type": "organization",
+          "prefix": "stratos:budget-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "organization_unit",
+          "prefix": "stratos:budget-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "budget_scope",
+          "prefix": "stratos:budget-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "portfolio",
+          "prefix": "stratos:budget-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "project",
+          "prefix": "stratos:project:",
+          "aggregate": false
+        },
+        {
+          "entity_type": "budget_item",
+          "prefix": "stratos:budget-aggregate:",
+          "aggregate": true
+        }
+      ],
+      "relationships": [],
+      "link_keys": [],
+      "periods": [
+        "fiscal_year",
+        "interval"
+      ],
+      "granularities": [
+        "organization",
+        "organization_unit",
+        "portfolio",
+        "project",
+        "item"
+      ],
+      "group_by": [
+        "organization_unit",
+        "budget_scope",
+        "portfolio",
+        "project",
+        "budget_item"
+      ],
+      "scenarios": [
+        "plan",
+        "actual",
+        "forecast",
+        "commitments",
+        "variance"
+      ],
+      "capability_requirements": {
+        "all_of": [
+          "budget:access",
+          "budget:read"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "supported_scope_types": [
+        "organization",
+        "organization_unit",
+        "budget_scope",
+        "portfolio",
+        "project"
+      ],
+      "timeout_ms": 5000,
+      "limits": {
+        "max_items": 100,
+        "max_response_bytes": 262144,
+        "max_candidate_count": 100000
+      },
+      "pagination": "cursor",
+      "reason_codes": [
+        "BUDGET_SCOPE_NOT_COVERED",
+        "BUDGET_INFORMATION_POLICY_DENIED",
+        "BUDGET_ENTITY_AMBIGUOUS",
+        "BUDGET_APPROVED_PLAN_MISSING",
+        "BUDGET_CURRENCY_CONFLICT",
+        "BUDGET_INFORMATION_POLICY_CONFLICT",
+        "BUDGET_NO_DATA",
+        "BUDGET_DOMAIN_TOOL_UNAVAILABLE"
+      ],
+      "input_schema_ref": "director-copilot-2-request.schema.json",
+      "output_schema_ref": "director-copilot-2-response.schema.json",
+      "error_schema_ref": "director-copilot-2-error.schema.json"
+    },
+    {
+      "schema_version": "director-copilot-2",
+      "contract_revision": "2.0.2",
+      "tool_id": "budget.project_financial_snapshot.v1",
+      "owner": "BUDGET",
+      "audience": "budget-api",
+      "schema_revision": "budget-project-financial-snapshot-2.0.1",
+      "metrics": [
+        {
+          "key": "project.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název projektu."
+        },
+        {
+          "key": "budget.plan_amount",
+          "value_type": "currency",
+          "description": "Schválený projektový plán pro explicitní období."
+        },
+        {
+          "key": "budget.actual_amount",
+          "value_type": "currency",
+          "description": "Skutečnost uzavřeného období."
+        },
+        {
+          "key": "budget.forecast_amount",
+          "value_type": "currency",
+          "description": "Výhled aktuálního nebo budoucího období."
+        },
+        {
+          "key": "budget.commitments_amount",
+          "value_type": "currency",
+          "description": "Otevřené závazky projektu."
+        },
+        {
+          "key": "budget.variance_amount",
+          "value_type": "currency",
+          "description": "Odchylka proti schválenému plánu."
+        }
+      ],
+      "entity_types": [
+        "project"
+      ],
+      "canonical_id_prefixes": [
+        {
+          "entity_type": "project",
+          "prefix": "stratos:project:",
+          "aggregate": false
+        }
+      ],
+      "relationships": [],
+      "link_keys": [],
+      "periods": [
+        "fiscal_year",
+        "interval"
+      ],
+      "granularities": [
+        "project"
+      ],
+      "group_by": [
+        "project"
+      ],
+      "scenarios": [
+        "plan",
+        "actual",
+        "forecast",
+        "commitments",
+        "variance"
+      ],
+      "capability_requirements": {
+        "all_of": [
+          "budget:access",
+          "budget:read"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "supported_scope_types": [
+        "organization",
+        "organization_unit",
+        "budget_scope",
+        "portfolio",
+        "project"
+      ],
+      "timeout_ms": 5000,
+      "limits": {
+        "max_items": 100,
+        "max_response_bytes": 262144,
+        "max_candidate_count": 100000
+      },
+      "pagination": "cursor",
+      "reason_codes": [
+        "BUDGET_SCOPE_NOT_COVERED",
+        "BUDGET_INFORMATION_POLICY_DENIED",
+        "BUDGET_APPROVED_PLAN_MISSING",
+        "BUDGET_CURRENCY_CONFLICT",
+        "BUDGET_NO_DATA",
+        "BUDGET_DOMAIN_TOOL_UNAVAILABLE"
+      ],
+      "input_schema_ref": "director-copilot-2-request.schema.json",
+      "output_schema_ref": "director-copilot-2-response.schema.json",
+      "error_schema_ref": "director-copilot-2-error.schema.json"
+    },
+    {
+      "schema_version": "director-copilot-2",
+      "contract_revision": "2.0.2",
+      "tool_id": "projectflow.portfolio_delivery_overview.v1",
+      "owner": "PROJECTFLOW",
+      "audience": "projectflow-api",
+      "schema_revision": "projectflow-portfolio-delivery-overview-1.0.2",
+      "metrics": [
+        {
+          "key": "organization.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název organizace."
+        },
+        {
+          "key": "organization_unit.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název organizační jednotky."
+        },
+        {
+          "key": "portfolio.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název portfolia."
+        },
+        {
+          "key": "project.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název projektu."
+        },
+        {
+          "key": "status.display_name",
+          "value_type": "text",
+          "description": "Zobrazený stav projektu."
+        },
+        {
+          "key": "schedule_status.display_name",
+          "value_type": "text",
+          "description": "Zobrazený stav harmonogramu."
+        },
+        {
+          "key": "projectflow.project_count",
+          "value_type": "number",
+          "description": "Počet autorizovaných projektů."
+        },
+        {
+          "key": "projectflow.delayed_project_count",
+          "value_type": "number",
+          "description": "Počet autorizovaných zpožděných projektů."
+        },
+        {
+          "key": "projectflow.at_risk_project_count",
+          "value_type": "number",
+          "description": "Počet autorizovaných rizikových projektů."
+        },
+        {
+          "key": "project.status",
+          "value_type": "text",
+          "description": "Aktuální stav projektu."
+        },
+        {
+          "key": "project.schedule_status",
+          "value_type": "text",
+          "description": "Stav harmonogramu vůči schválené baseline."
+        },
+        {
+          "key": "project.progress_percent",
+          "value_type": "percent",
+          "description": "Deterministicky vypočtený postup projektu."
+        },
+        {
+          "key": "milestone.max_delay_days",
+          "value_type": "duration_days",
+          "description": "Nejvyšší zpoždění otevřeného milníku ve dnech."
+        },
+        {
+          "key": "milestone.next_due_date",
+          "value_type": "date",
+          "description": "Nejbližší termín otevřeného kritického milníku."
+        },
+        {
+          "key": "milestone.open_critical_count",
+          "value_type": "number",
+          "description": "Počet otevřených kritických milníků."
+        },
+        {
+          "key": "milestone.overdue_count",
+          "value_type": "number",
+          "description": "Počet milníků po termínu."
+        },
+        {
+          "key": "raid.latest_status",
+          "value_type": "text",
+          "description": "Stav posledního autorizovaného RAID záznamu."
+        },
+        {
+          "key": "raid.blocked_task_count",
+          "value_type": "number",
+          "description": "Počet blokovaných úkolů."
+        },
+        {
+          "key": "raid.projects_with_reported_risk_count",
+          "value_type": "number",
+          "description": "Počet autorizovaných projektů s evidovaným rizikem."
+        },
+        {
+          "key": "capacity.planned_hours",
+          "value_type": "number",
+          "description": "Plánované kapacitní hodiny v období."
+        },
+        {
+          "key": "capacity.unassigned_task_count",
+          "value_type": "number",
+          "description": "Počet úkolů bez přiřazeného řešitele."
+        },
+        {
+          "key": "capacity.risk_level",
+          "value_type": "text",
+          "description": "Deterministický stupeň kapacitního rizika."
+        },
+        {
+          "key": "dependency.count",
+          "value_type": "number",
+          "description": "Počet autorizovaně viditelných projektových závislostí."
+        }
+      ],
+      "entity_types": [
+        "organization",
+        "organization_unit",
+        "portfolio",
+        "project"
+      ],
+      "canonical_id_prefixes": [
+        {
+          "entity_type": "organization",
+          "prefix": "stratos:projectflow-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "organization_unit",
+          "prefix": "stratos:projectflow-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "portfolio",
+          "prefix": "stratos:projectflow-aggregate:",
+          "aggregate": true
+        },
+        {
+          "entity_type": "project",
+          "prefix": "stratos:project:",
+          "aggregate": false
+        }
+      ],
+      "relationships": [
+        {
+          "key": "projectflow.project.document",
+          "source_entity_type": "project",
+          "target_entity_type": "document",
+          "target_canonical_id_prefix": "stratos:document:",
+          "cardinality": "many",
+          "derivation": "direct",
+          "location": {
+            "kind": "link",
+            "key": "projectflow.project.document"
+          }
+        }
+      ],
+      "link_keys": [
+        {
+          "key": "projectflow.project.document",
+          "target_entity_type": "document",
+          "target_canonical_id_prefix": "stratos:document:",
+          "max_items": 32
+        }
+      ],
+      "periods": [
+        "fiscal_year",
+        "interval"
+      ],
+      "granularities": [
+        "organization",
+        "organization_unit",
+        "portfolio",
+        "project"
+      ],
+      "group_by": [
+        "organization_unit",
+        "portfolio",
+        "project",
+        "status",
+        "schedule_status"
+      ],
+      "scenarios": [],
+      "capability_requirements": {
+        "all_of": [
+          "projectflow:access",
+          "projectflow:read"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "when": {
+              "scope_types": [
+                "project"
+              ],
+              "granularities": [
+                "project"
+              ]
+            },
+            "all_of": [],
+            "any_of": []
+          }
+        ]
+      },
+      "supported_scope_types": [
+        "organization",
+        "organization_unit",
+        "portfolio",
+        "project"
+      ],
+      "timeout_ms": 5000,
+      "limits": {
+        "max_items": 100,
+        "max_response_bytes": 262144,
+        "max_candidate_count": 100000
+      },
+      "pagination": "cursor",
+      "reason_codes": [
+        "PROJECTFLOW_SCOPE_NOT_COVERED",
+        "PROJECTFLOW_LOCAL_MEMBERSHIP_REQUIRED",
+        "PROJECTFLOW_INFORMATION_POLICY_DENIED",
+        "PROJECTFLOW_CAPABILITY_DENIED",
+        "PROJECTFLOW_ORGANIZATION_UNIT_MAPPING_MISSING",
+        "PROJECTFLOW_NO_DATA",
+        "PROJECTFLOW_DOMAIN_TOOL_UNAVAILABLE"
+      ],
+      "input_schema_ref": "director-copilot-2-request.schema.json",
+      "output_schema_ref": "director-copilot-2-response.schema.json",
+      "error_schema_ref": "director-copilot-2-error.schema.json"
+    }
+  ]
+}

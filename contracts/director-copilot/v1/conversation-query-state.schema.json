@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/akb/contracts/director-copilot/v1/conversation-query-state.schema.json",
+  "title": "STRATOS Conversation Query State V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_version", "sources", "metrics", "period", "granularity", "scope_label", "entity_filters", "filters", "sort", "document_evidence_requested"],
+  "properties": {
+    "schema_version": { "const": "stratos-conversation-query-state-1" },
+    "catalog_version": { "const": "stratos-semantic-catalog-2" },
+    "sources": {
+      "type": "array",
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": { "enum": ["budget", "projectflow", "archflow", "aiip"] }
+    },
+    "metrics": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "budget.plan_amount",
+          "budget.actual_amount",
+          "budget.forecast_amount",
+          "budget.commitments_amount",
+          "budget.variance_amount",
+          "project.status",
+          "project.schedule_status",
+          "milestone.max_delay_days",
+          "milestone.next_due_date",
+          "archflow.need.status",
+          "archflow.need.readiness_score",
+          "archflow.need.impact_score",
+          "archflow.need.decision",
+          "archflow.need.budget_handoff_status",
+          "aiip.idea.status",
+          "aiip.idea.value_score",
+          "aiip.idea.risk_score",
+          "aiip.idea.expected_benefit",
+          "aiip.idea.handoff_status"
+        ]
+      }
+    },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "fiscal_year", "as_of"],
+      "properties": {
+        "type": { "enum": ["current", "fiscal_year"] },
+        "fiscal_year": { "type": "integer", "minimum": 2000, "maximum": 2200 },
+        "as_of": { "type": "string", "format": "date-time" }
+      }
+    },
+    "granularity": {
+      "enum": ["authorized_scope", "organization", "organization_unit", "portfolio", "project"]
+    },
+    "scope_label": { "type": ["string", "null"], "maxLength": 120 },
+    "entity_filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_ids", "portfolio_ids"],
+      "properties": {
+        "project_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "type": "string", "maxLength": 180, "pattern": "^[A-Za-z0-9._:/-]+$" }
+        },
+        "portfolio_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "type": "string", "maxLength": 180, "pattern": "^[A-Za-z0-9._:/-]+$" }
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schedule_status"],
+      "properties": {
+        "schedule_status": { "enum": ["delayed", "at_risk", "on_track", null] }
+      }
+    },
+    "sort": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metric", "direction"],
+          "properties": {
+            "metric": { "type": "string", "maxLength": 100 },
+            "direction": { "enum": ["asc", "desc"] }
+          }
+        }
+      ]
+    },
+    "document_evidence_requested": { "type": "boolean" }
+  }
+}

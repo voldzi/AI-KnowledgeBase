@@ -12,6 +12,8 @@ const budgetFixture = JSON.parse(readFileSync(
   new URL("../../../contracts/director-copilot/v1/fixtures/budget-complete.json", import.meta.url),
   "utf8",
 )) as Record<string, unknown>;
+const archFlowFixture = fixture("archflow-complete.json");
+const aiipFixture = fixture("aiip-complete.json");
 
 describe("Director Copilot DomainTool contract", () => {
   it("accepts the governed Budget fixture", () => {
@@ -26,6 +28,48 @@ describe("Director Copilot DomainTool contract", () => {
     assert.equal(response.items[0]?.canonical_id, "stratos:project:project-001");
     assert.equal(response.items[0]?.policy.classification.handling_class, "INTERNAL");
     assert.deepEqual(response.items[0]?.policy.obligations, ["AUDIT_ACCESS"]);
+  });
+
+  it("accepts the closed ArchFlow and AIIP contracts with declared relations", () => {
+    const archFlow = parseDomainToolResponse(archFlowFixture, {
+      toolId: DOMAIN_TOOL_IDS.archflow,
+      toolCallId: "call_3333333333333333",
+      requestedScopes: [{ type: "organization", id: "org_stratos" }],
+      nowMs: Date.parse("2026-07-25T10:01:00Z"),
+    });
+    const aiip = parseDomainToolResponse(aiipFixture, {
+      toolId: DOMAIN_TOOL_IDS.aiip,
+      toolCallId: "call_4444444444444444",
+      requestedScopes: [{ type: "organization", id: "org_stratos" }],
+      nowMs: Date.parse("2026-07-25T10:01:00Z"),
+    });
+
+    assert.equal(archFlow.items[0]?.entity_type, "business_need");
+    assert.equal(
+      archFlow.items[0]?.facts.find(
+        (fact) => fact.key === "relation.aiip_idea_canonical_id",
+      )?.value,
+      "stratos:aiip-idea:idea-001",
+    );
+    assert.equal(aiip.items[0]?.entity_type, "ai_idea");
+  });
+
+  it("rejects a relation that does not use the catalog canonical prefix", () => {
+    const invalid = structuredClone(aiipFixture) as {
+      items: Array<{ facts: Array<{ key: string; value: unknown }> }>;
+    };
+    invalid.items[0]!.facts.find(
+      (fact) => fact.key === "relation.archflow_need_canonical_id",
+    )!.value = "need-001";
+    assert.throws(
+      () => parseDomainToolResponse(invalid, {
+        toolId: DOMAIN_TOOL_IDS.aiip,
+        toolCallId: "call_4444444444444444",
+        requestedScopes: [{ type: "organization", id: "org_stratos" }],
+      }),
+      (error: unknown) => error instanceof DirectorCopilotContractError
+        && error.code === "DOMAIN_TOOL_RELATION_INVALID",
+    );
   });
 
   it("rejects a response that expands the requested scope", () => {
@@ -271,6 +315,13 @@ function parseBudget(value: unknown) {
     requestedScopes: [{ type: "project", id: "project-001" }],
     nowMs: Date.parse("2026-07-21T10:01:00Z"),
   });
+}
+
+function fixture(name: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(
+    new URL(`../../../contracts/director-copilot/v1/fixtures/${name}`, import.meta.url),
+    "utf8",
+  )) as Record<string, unknown>;
 }
 
 function emptyBudgetResponse(status: string, warning: string) {
