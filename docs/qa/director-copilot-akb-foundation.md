@@ -11,7 +11,7 @@ funkcí, read-only service secretem, čerstvou reautorizací před syntézou a
 
 ## Ověřený rozsah AKB
 
-- uzavřené DomainTool, EvidenceItem, QueryPlan v2 a AnalysisSnapshot kontrakty;
+- uzavřené DomainTool, EvidenceItem, QueryPlan v3 a AnalysisSnapshot kontrakty;
 - per-application capabilities a scopes pouze z ověřené STRATOS projection;
 - zdrojové požadavky obsahují jen scope typy podporované cílem: Budget přijímá
   `organization`, `budget_scope`, `project`; ProjectFlow přijímá
@@ -94,3 +94,14 @@ Použité kladné hodnoty jsou výslovně označený integrační akceptační f
 nikoli skutečné účetní nebo realizační údaje. Aktivační brána prvního řezu je
 splněna; rozšíření na další manažerské nástroje vyžaduje vlastní verzovaný
 kontrakt a eval dataset.
+
+## Navazující kontraktní rozšíření 2026-07-25
+
+AKB připravilo QueryPlan v4 a strojově čitelný STRATOS katalog nástrojů,
+metrik a vztahů. ArchFlow a AIIP mají uzavřené parsery, pozitivní fixtures,
+capability/scope testy, deterministické odpovědi, historii a auditní metadata.
+Jejich stav zůstává `contract_ready`, nikoli produkčně připojený. České
+směrování je kryto samostatnou sadou 24 jednorázových a navazujících scénářů.
+Produkční akceptace této části vznikne až po nasazení zdrojových endpointů a
+společné bráně popsané v
+`docs/integration/STRATOS_DOMAIN_CATALOG_AND_COPILOT_HANDOFF.md`.

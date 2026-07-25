@@ -33,6 +33,17 @@ Start the full local stack:
 docker compose --env-file .env -f infra/docker-compose/docker-compose.dev.yml --profile ai up -d --build
 ```
 
+Verify the bundled semantic registry without network access:
+
+```bash
+cd apps/web
+pnpm semantic-registry:check
+```
+
+The controlled SSP refresh procedure is documented in
+`docs/OPERATIONS/semantic-registry.md`. Do not synchronize SSP during web
+startup or a production request.
+
 Pull required local AI models through LLM Gateway:
 
 ```bash
@@ -139,6 +150,8 @@ AKL_DIRECTOR_COPILOT_CLIENT_ID=svc-akb-director-copilot
 AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE=/srv/akl/env/svc-akb-director-copilot.client-secret
 AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL=http://stratos-api:4000
 AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL=http://projectflow-api:4010
+AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL=
+AKL_DIRECTOR_COPILOT_AIIP_BASE_URL=
 ```
 
 The production Compose mounts the host file named by
@@ -150,6 +163,21 @@ build boundary. The identity must be exactly `svc-akb-director-copilot`; never
 reuse the actor, web-ingestion, RAG, AIIP or broad AKB policy credential. Keep
 the feature disabled if either source URL, token audience, current actor
 projection or source PEP cannot be verified.
+
+Empty ArchFlow and AIIP URLs are intentional while their catalog status is
+`contract_ready`. Configure them only after the corresponding private
+read-only endpoints pass
+`docs/integration/STRATOS_DOMAIN_CATALOG_AND_COPILOT_HANDOFF.md`. Each source
+still validates its own exact service audience and the independent current
+actor bearer.
+
+The embedding shadow manifest is validated independently with:
+
+```text
+python3 scripts/check_embedding_shadow_profiles.py
+```
+
+It does not start models or affect production answers.
 
 Assistant conversation retention is enforced by Registry, not by the browser.
 Production Compose enables the worker with these bounded settings:

@@ -128,6 +128,15 @@ AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_QDRANT_VECTOR_SIZE=1024
 ```
 
+For the smaller controlled Czech shadow comparison, AKB uses the versioned
+profile set in
+`services/evaluation-service/datasets/czech_embedding_shadow_profiles.json`.
+It compares the same 1024-dimensional `bge-m3` baseline with
+`Qwen/Qwen3-Embedding-0.6B` at 1024 dimensions and the Czech specialist
+`Seznam/simcse-retromae-small-cs` at 256 dimensions. Every profile has a
+separate collection; neither candidate is enabled for answers. See
+`docs/evaluation/czech-embedding-shadow.md`.
+
 Použité endpointy:
 
 ```text

@@ -92,6 +92,21 @@ documents through Registry authorization before answer composition. If sources
 are unauthorized or insufficient, the assistant returns a no-answer or handoff
 state instead of inventing unsupported information.
 
+Director Copilot semantic resolution uses an immutable local SSP snapshot.
+Only code-reviewed bindings can map an imported concept to a known STRATOS
+source or metric. Imported labels, external APIs, prompts, browser context and
+conversation state cannot create capabilities, scopes or policy decisions.
+User questions are never sent to the public SSP endpoint. Audit records include
+the semantic catalog version plus the local registry snapshot ID and digest,
+not the prompt or imported definition text.
+
+The STRATOS domain catalog is also non-authoritative for access: it declares
+tool contracts, capabilities, scope types, fact types and permitted relation
+strategies, but AKB still loads the actor's fresh STRATOS access projection and
+every source applies its own PEP and Information Policy. Canonical relations
+must be source-declared IDs. Names, embedding similarity, browser state and
+LLM output cannot create a cross-application join.
+
 The same rule applies to ingestion and Intelligence. Every production job
 create/read/retry/cancel is authorized with a short-lived Registry proof for
 one immutable document version. Production Intelligence queries use a separate
@@ -230,6 +245,15 @@ does not revoke an otherwise authorized historical answer: AKB requires the
 same source system, canonical item and policy hash under the current access
 projection. A changed policy, missing item, missing capability or uncovered
 scope still withholds the answer.
+
+The chat may persist a bounded `ConversationQueryState` containing only query
+semantics: selected source domains, metrics, period, granularity, narrowing
+entity IDs, filters and ordering. The server validates this browser-provided
+state against a closed catalog and discards unknown fields. It never accepts
+capabilities, requested authorization scopes, policy claims or identity data
+from the state. Source scopes are rebuilt from the current verified STRATOS
+access projection for every turn, and query-state entity IDs can only narrow a
+source request.
 
 ## Secrets
 

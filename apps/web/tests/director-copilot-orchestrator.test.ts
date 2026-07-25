@@ -8,11 +8,14 @@ import {
   classifyDirectorCopilotIntent,
   isDirectorCopilotRiskQuery,
 } from "../src/lib/director-copilot/planner";
+import { resolveConversationQuery } from "../src/lib/director-copilot/query-state";
 import { DirectorCopilotTransportError } from "../src/lib/director-copilot/transport-error";
 import type { ApiRequestContext } from "../src/lib/types";
 
 const budgetFixture = fixture("budget-complete.json");
 const projectFixture = fixture("projectflow-complete.json");
+const archFlowFixture = fixture("archflow-complete.json");
+const aiipFixture = fixture("aiip-complete.json");
 
 describe("Director Copilot orchestrator", () => {
   it("builds a reproducible snapshot from parallel Budget and ProjectFlow evidence", async () => {
@@ -72,6 +75,95 @@ describe("Director Copilot orchestrator", () => {
       result.snapshot?.evidence.every((item) => item.source_system === "STRATOS_PROJECTFLOW"),
       true,
     );
+  });
+
+  it("normalizes a contract-ready ArchFlow tool without inferring relations", async () => {
+    const result = await orchestrateDirectorCopilot({
+      message: "Jaký je stav požadavků v ArchFlow?",
+      language: "cs",
+      context: extendedProjectedContext(),
+      intent: "archflow_demand_overview",
+      now: new Date("2026-07-25T10:00:00Z"),
+      client: {
+        execute: async (_application, request) => ({
+          ...structuredClone(archFlowFixture),
+          tool_call_id: request.tool_call_id,
+        }),
+      },
+    });
+
+    assert.equal(result.status, "complete");
+    assert.deepEqual(result.plan.nodes.map((node) => node.tool_id), [
+      "archflow.need_portfolio_snapshot.v1",
+    ]);
+    assert.equal(result.snapshot?.evidence.length, 8);
+    assert.deepEqual(result.snapshot?.document_context_tags, ["archflow-need:need-001"]);
+  });
+
+  it("joins AIIP and ArchFlow only through declared canonical relation facts", async () => {
+    const queryState = resolveConversationQuery({
+      message: "Jak pokračují AI podněty z AIIP přes ArchFlow?",
+      now: new Date("2026-07-25T10:00:00Z"),
+    }).state;
+    const result = await orchestrateDirectorCopilot({
+      message: "Jak pokračují AI podněty z AIIP přes ArchFlow?",
+      language: "cs",
+      context: extendedProjectedContext(),
+      intent: "innovation_delivery_trace",
+      queryState,
+      now: new Date("2026-07-25T10:00:00Z"),
+      client: {
+        execute: async (application, request) => ({
+          ...structuredClone(application === "aiip" ? aiipFixture : archFlowFixture),
+          tool_call_id: request.tool_call_id,
+        }),
+      },
+    });
+
+    assert.equal(result.status, "complete");
+    assert.deepEqual(
+      result.plan.nodes.map((node) => node.source_application).sort(),
+      ["aiip", "archflow"],
+    );
+    assert.equal(result.snapshot?.evidence.length, 15);
+    assert.deepEqual(result.snapshot?.document_context_tags, [
+      "aiip-idea:idea-001",
+      "archflow-need:need-001",
+    ]);
+    assert.equal(
+      result.snapshot?.document_context_bindings.some(
+        (binding) => binding.canonical_id === "stratos:project:project-001",
+      ),
+      false,
+    );
+  });
+
+  it("uses the explicit fiscal year and bounded entity filters in the domain request", async () => {
+    const now = new Date("2026-07-25T10:00:00Z");
+    const queryState = resolveConversationQuery({
+      message: "Jaký je rozpočet projektu v roce 2025?",
+      now,
+    }).state;
+    queryState.entity_filters.project_ids = ["project-001"];
+    const capturedRequests: DomainToolRequest[] = [];
+    await orchestrateDirectorCopilot({
+      message: "Jaký je rozpočet projektu v roce 2025?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "budget_portfolio_status",
+      queryState,
+      now,
+      client: {
+        execute: async (_application, request) => {
+          capturedRequests.push(request);
+          return { ...structuredClone(budgetFixture), tool_call_id: request.tool_call_id };
+        },
+      },
+    });
+
+    assert.match(capturedRequests[0]?.parameters.as_of ?? "", /^2025-/);
+    assert.deepEqual(capturedRequests[0]?.parameters.project_ids, ["project-001"]);
+    assert.equal(capturedRequests[0]?.parameters.limit, 25);
   });
 
   it("sends the explicit organization grant instead of its derived project closure", async () => {
@@ -254,7 +346,7 @@ describe("Director Copilot orchestrator", () => {
     assert.equal(result.status, "not_authorized");
     assert.equal(result.snapshot, null);
     assert.deepEqual(result.warnings, [
-      "BUDGET_ACCESS_APPLICATION_INACTIVE",
+      "BUDGET_APPLICATION_ACCESS_INACTIVE",
       "PROJECTFLOW_APPLICATION_ACCESS_INACTIVE",
     ]);
   });
@@ -408,4 +500,24 @@ function projectedContext(): ApiRequestContext {
       effectiveScopes: ["project:project-001"],
     }],
   };
+}
+
+function extendedProjectedContext(): ApiRequestContext {
+  const context = projectedContext();
+  context.applicationAccess = [
+    ...(context.applicationAccess ?? []),
+    {
+      application: "archflow",
+      capabilities: ["archflow:access", "archflow:read_organization"],
+      scopes: ["organization:org_stratos"],
+      effectiveScopes: ["organization:org_stratos"],
+    },
+    {
+      application: "aiip",
+      capabilities: ["aiip:access", "aiip:read_organization"],
+      scopes: ["organization:org_stratos"],
+      effectiveScopes: ["organization:org_stratos"],
+    },
+  ];
+  return context;
 }

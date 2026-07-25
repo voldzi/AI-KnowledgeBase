@@ -36,6 +36,10 @@ logs/
 
 # Local runtime data
 data/
+!apps/web/src/lib/director-copilot/data/
+!apps/web/src/lib/director-copilot/data/semantic-registry-bindings.json
+!apps/web/src/lib/director-copilot/data/ssp-cs.snapshot.json
+!apps/web/src/lib/director-copilot/data/stratos-domain-catalog.json
 reports/
 !apps/web/src/app/api/assistant/reports/
 !apps/web/src/app/api/assistant/reports/export/

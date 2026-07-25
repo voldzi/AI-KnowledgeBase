@@ -18,12 +18,20 @@ import {
 } from "./contracts";
 import { DirectorDomainToolClient } from "./domain-tool-client";
 import { orchestrateDirectorCopilot } from "./orchestrator";
+import {
+  conversationQueryState,
+  type ConversationQueryState,
+} from "./query-state";
 
 const HISTORY_SCHEMA_VERSION = "director-copilot-history-1";
 const MAX_SOURCE_REFERENCES = 200;
 
 interface DirectorHistorySourceReference {
-  source_system: "STRATOS_BUDGET" | "STRATOS_PROJECTFLOW";
+  source_system:
+    | "STRATOS_BUDGET"
+    | "STRATOS_PROJECTFLOW"
+    | "STRATOS_ARCHFLOW"
+    | "STRATOS_AIIP";
   canonical_id: string;
   source_version: string;
   policy_hash: string;
@@ -37,6 +45,7 @@ interface DirectorHistoryEnvelope {
   access_hash: string;
   source_applications: DomainApplication[];
   source_references: DirectorHistorySourceReference[];
+  query_state?: ConversationQueryState;
 }
 
 export type DirectorHistoryAuthorization =
@@ -63,6 +72,7 @@ export function directorCopilotPersistenceMetadata(
         access_hash: historyAccessHash(actorContext, sourceApplications),
         source_applications: sourceApplications,
         source_references: historySourceReferences(snapshot),
+        query_state: snapshot.plan.query_state,
       } satisfies DirectorHistoryEnvelope
     : null;
 
@@ -74,6 +84,9 @@ export function directorCopilotPersistenceMetadata(
         response.current_context.active_source_application,
       ),
       requested_director_copilot_intent: planIntent,
+      stratos_query_state:
+        snapshot?.plan.query_state
+        ?? conversationQueryState(response.current_context.stratos_query_state),
     },
     director_copilot_history: envelope,
     follow_up_questions: response.follow_up_questions,
@@ -99,6 +112,9 @@ export function persistedDirectorCopilotResponse(
       directorIntent(response.current_context.requested_director_copilot_intent)
       ?? analysisSnapshot(response.current_context.director_copilot_snapshot)?.plan.intent
       ?? null,
+    stratos_query_state:
+      analysisSnapshot(response.current_context.director_copilot_snapshot)?.plan.query_state
+      ?? conversationQueryState(response.current_context.stratos_query_state),
   };
   return {
     ...response,
@@ -146,6 +162,7 @@ export async function authorizeDirectorCopilotHistory(input: {
       context: input.actorContext,
       client: new DirectorDomainToolClient({ config: input.config }),
       intent: envelope.intent,
+      queryState: envelope.query_state,
       timeoutMs: getDirectorCopilotConfig(input.config).timeoutMs,
     });
     if (!orchestration.snapshot) {
@@ -181,7 +198,7 @@ function historyAccessHash(
         return {
           application,
           authorized: access.authorized,
-          required_capability: access.requiredCapability,
+          required_capabilities: access.requiredCapabilities,
           scopes: access.scopes
             .map((scope) => `${scope.type}:${scope.id ?? ""}`)
             .sort(),
@@ -204,6 +221,8 @@ function historySourceReferences(
         && (
           evidence.source_system === "STRATOS_BUDGET"
           || evidence.source_system === "STRATOS_PROJECTFLOW"
+          || evidence.source_system === "STRATOS_ARCHFLOW"
+          || evidence.source_system === "STRATOS_AIIP"
         )
       ),
     )
@@ -245,6 +264,8 @@ function sourceApplicationsForSnapshot(
     snapshot.plan.nodes.flatMap((node) => (
       node.source_application === "budget"
       || node.source_application === "projectflow"
+      || node.source_application === "archflow"
+      || node.source_application === "aiip"
         ? [node.source_application]
         : []
     )),
@@ -258,6 +279,12 @@ function sourceApplicationsForAnswerSource(value: unknown): DomainApplication[] 
   if (value === "director_copilot_projectflow") {
     return ["projectflow"];
   }
+  if (value === "director_copilot_archflow") {
+    return ["archflow"];
+  }
+  if (value === "director_copilot_aiip") {
+    return ["aiip"];
+  }
   if (value === "director_copilot_federation") {
     return ["budget", "projectflow"];
   }
@@ -270,7 +297,11 @@ function analysisSnapshot(value: unknown): AnalysisSnapshot | null {
   }
   const candidate = value as Partial<AnalysisSnapshot>;
   return candidate.schema_version === "director-copilot-analysis-snapshot-1"
-    && candidate.plan?.schema_version === "director-copilot-query-plan-2"
+    && (
+      candidate.plan?.schema_version === "director-copilot-query-plan-4"
+      || (candidate.plan?.schema_version as string | undefined) === "director-copilot-query-plan-3"
+      || (candidate.plan?.schema_version as string | undefined) === "director-copilot-query-plan-2"
+    )
     && Array.isArray(candidate.evidence)
     ? candidate as AnalysisSnapshot
     : null;
@@ -285,13 +316,17 @@ function historyEnvelope(value: unknown): DirectorHistoryEnvelope | null {
   const applications = Array.isArray(candidate.source_applications)
     ? candidate.source_applications.filter(
         (application): application is DomainApplication => (
-          application === "budget" || application === "projectflow"
+          application === "budget"
+          || application === "projectflow"
+          || application === "archflow"
+          || application === "aiip"
         ),
       )
     : [];
   const references = Array.isArray(candidate.source_references)
     ? candidate.source_references.filter(isHistorySourceReference)
     : [];
+  const queryState = conversationQueryState(candidate.query_state);
   if (
     candidate.schema_version !== HISTORY_SCHEMA_VERSION
     || !intent
@@ -312,6 +347,7 @@ function historyEnvelope(value: unknown): DirectorHistoryEnvelope | null {
     access_hash: candidate.access_hash,
     source_applications: [...new Set(applications)].sort(),
     source_references: references,
+    ...(queryState ? { query_state: queryState } : {}),
   };
 }
 
@@ -326,6 +362,8 @@ function isHistorySourceReference(
     (
       candidate.source_system === "STRATOS_BUDGET"
       || candidate.source_system === "STRATOS_PROJECTFLOW"
+      || candidate.source_system === "STRATOS_ARCHFLOW"
+      || candidate.source_system === "STRATOS_AIIP"
     )
     && typeof candidate.canonical_id === "string"
     && typeof candidate.source_version === "string"
@@ -335,9 +373,13 @@ function isHistorySourceReference(
 
 function directorIntent(value: unknown): DirectorCopilotIntent | null {
   return value === "portfolio_risk_correlation"
+    || value === "portfolio_performance_overview"
     || value === "project_portfolio_status"
     || value === "budget_portfolio_status"
     || value === "project_access_overview"
+    || value === "archflow_demand_overview"
+    || value === "aiip_idea_overview"
+    || value === "innovation_delivery_trace"
     ? value
     : null;
 }

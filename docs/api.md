@@ -28,9 +28,12 @@ contract. AKB sends an independent service bearer and current actor bearer;
 each source reloads the actor's STRATOS access projection and applies its own
 PEP. See `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`.
 
-The web `POST /api/assistant/chat` bridge classifies a bounded set of typed
-Director Copilot intents before the document assistant router. The current
-ProjectFlow-only intent uses `projectflow.project_delivery_snapshot.v1` and
+The web `POST /api/assistant/chat` bridge resolves a versioned semantic
+`ConversationQueryState` and typed Director Copilot intent before the document
+assistant router. The state carries only bounded query semantics such as
+source, metric, period, granularity and entity filters; it never carries
+capabilities or authorization scopes. The current ProjectFlow-only intent uses
+`projectflow.project_delivery_snapshot.v1` and
 returns only source-authorized project display name, status, schedule status,
 maximum milestone delay, next milestone date, source timestamp and deep link.
 Financial questions such as costs, price, spending, forecast and variance use
@@ -39,7 +42,19 @@ historical documents. A
 question about whether ProjectFlow is available is distinct from a request to
 grant or change access. If the live source is disabled, unavailable or denied,
 the bridge returns an explicit no-answer/restricted response and does not fall
-back to document RAG.
+back to document RAG. Budget and ProjectFlow may also run in parallel for a
+deterministic cross-domain performance overview. An explicit live-data request
+for ArchFlow or AIIP returns a source-not-connected response until the
+corresponding source manifest and tool are deployed; it is not silently
+answered from documents.
+
+The binding machine-readable catalog is
+`apps/web/src/lib/director-copilot/data/stratos-domain-catalog.json`.
+ArchFlow `archflow.need_portfolio_snapshot.v1` and AIIP
+`aiip.idea_portfolio_snapshot.v1` are contract-ready with closed fact and
+relation schemas, but remain disconnected until the source owners deploy and
+pass the handoff in
+`docs/integration/STRATOS_DOMAIN_CATALOG_AND_COPILOT_HANDOFF.md`.
 
 Every successful browser bridge response also returns
 `persistence_status: persisted | failed` and the durable assistant

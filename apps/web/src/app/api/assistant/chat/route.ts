@@ -6,6 +6,7 @@ import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
 import {
+  directorCopilotPendingSourcesResponse,
   directorCopilotUnavailableResponse,
   runDirectorCopilotChat,
 } from "@/lib/director-copilot/chat";
@@ -14,6 +15,7 @@ import {
   persistedDirectorCopilotResponse,
 } from "@/lib/director-copilot/history";
 import { classifyDirectorCopilotIntent } from "@/lib/director-copilot/planner";
+import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
 import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
@@ -53,7 +55,43 @@ export async function POST(request: NextRequest) {
     const requestContext = _objectContext(body.context);
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const config = getAklConfig();
+    const directorQuery = resolveConversationQuery({
+      message,
+      context: requestContext,
+    });
     const directorIntent = classifyDirectorCopilotIntent(message, requestContext);
+    if (directorQuery.recognized && directorQuery.pending_sources.length) {
+      const response = persistedDirectorCopilotResponse(
+        directorCopilotPendingSourcesResponse({
+          conversationId,
+          language: responseLanguage,
+          sources: directorQuery.pending_sources,
+          queryState: directorQuery.state,
+        }),
+      );
+      const persistedConversation = await clients.registry
+        .appendAssistantConversationMessages(
+          response.conversation_id,
+          {
+            user_id: context.subjectId,
+            title: titleFromMessage(message),
+            messages: assistantTurnMessages(
+              message,
+              response,
+              directorCopilotPersistenceMetadata(response, context),
+            ),
+          },
+          context,
+        )
+        .catch(() => undefined);
+      return NextResponse.json({
+        response: persistedConversation
+          ? response
+          : withHistoryPersistenceWarning(response),
+        message_id: latestAssistantMessageId(persistedConversation),
+        persistence_status: persistedConversation ? "persisted" : "failed",
+      });
+    }
     if (directorIntent && getDirectorCopilotConfig(config).enabled) {
       const directorResponse = await runDirectorCopilotChat({
         message,
@@ -63,6 +101,7 @@ export async function POST(request: NextRequest) {
         clients,
         config,
         intent: directorIntent,
+        queryState: directorQuery.state,
         refreshActorContext: context.accessToken
           ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
           : undefined,
@@ -96,6 +135,7 @@ export async function POST(request: NextRequest) {
         conversationId,
         language: responseLanguage,
         intent: directorIntent,
+        queryState: directorQuery.state,
       });
       const persistedConversation = await clients.registry
         .appendAssistantConversationMessages(

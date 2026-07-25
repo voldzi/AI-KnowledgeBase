@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/akb/contracts/embedding-shadow/v1/profile-set.schema.json",
+  "title": "AKB embedding shadow profile set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_set_id", "profiles", "promotion_gates"],
+  "properties": {
+    "schema_version": {"const": "akb-embedding-shadow-profile-set-1"},
+    "profile_set_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,79}$"},
+    "profiles": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "items": {"$ref": "#/$defs/profile"}
+    },
+    "promotion_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recall_at_50_min", "ndcg_at_8_min", "czech_routing_accuracy_min", "citation_traceability_min", "false_answer_rate_max", "p95_regression_max_percent"],
+      "properties": {
+        "recall_at_50_min": {"type": "number", "minimum": 0, "maximum": 1},
+        "ndcg_at_8_min": {"type": "number", "minimum": 0, "maximum": 1},
+        "czech_routing_accuracy_min": {"type": "number", "minimum": 0, "maximum": 1},
+        "citation_traceability_min": {"type": "number", "minimum": 0, "maximum": 1},
+        "false_answer_rate_max": {"type": "number", "minimum": 0, "maximum": 1},
+        "p95_regression_max_percent": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "role", "model_id", "service_model_id", "dimensions", "max_input_tokens", "language_scope", "license", "attribution_required", "collection_name", "enabled_for_answers"],
+      "properties": {
+        "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,79}$"},
+        "role": {"enum": ["baseline", "candidate"]},
+        "model_id": {"type": "string", "minLength": 3, "maxLength": 160},
+        "service_model_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "dimensions": {"type": "integer", "minimum": 64, "maximum": 8192},
+        "max_input_tokens": {"type": "integer", "minimum": 128, "maximum": 131072},
+        "language_scope": {"enum": ["multilingual", "czech"]},
+        "license": {"type": "string", "minLength": 3, "maxLength": 80},
+        "attribution_required": {"type": "boolean"},
+        "collection_name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,119}$"},
+        "enabled_for_answers": {"type": "boolean"}
+      }
+    }
+  }
+}

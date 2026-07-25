@@ -137,6 +137,46 @@ describe("Director Copilot projected access", () => {
     assert.equal(domainAccessFor(context, "projectflow").reason, "scope_missing");
   });
 
+  it("binds ArchFlow scopes to the matching read capability", () => {
+    const context = projectedContext();
+    context.applicationAccess = [{
+      application: "archflow",
+      capabilities: ["archflow:access", "archflow:read_unit"],
+      scopes: [
+        "own:user-001",
+        "organization_unit:unit-it",
+        "organization:org_stratos",
+      ],
+      effectiveScopes: [
+        "own:user-001",
+        "organization_unit:unit-it",
+        "organization:org_stratos",
+      ],
+    }];
+
+    assert.deepEqual(domainAccessFor(context, "archflow").scopes, [
+      { type: "organization_unit", id: "unit-it" },
+    ]);
+  });
+
+  it("does not let an AIIP unit reader expand to organization scope", () => {
+    const context = projectedContext();
+    context.applicationAccess = [{
+      application: "aiip",
+      capabilities: ["aiip:access", "aiip:read_unit"],
+      scopes: ["organization_unit:unit-it", "organization:org_stratos"],
+      effectiveScopes: ["organization_unit:unit-it", "organization:org_stratos"],
+    }];
+
+    assert.deepEqual(domainAccessFor(context, "aiip").scopes, [
+      { type: "organization_unit", id: "unit-it" },
+    ]);
+    context.applicationAccess[0]!.capabilities = ["aiip:access", "aiip:read_organization"];
+    assert.deepEqual(domainAccessFor(context, "aiip").scopes, [
+      { type: "organization", id: "org_stratos" },
+    ]);
+  });
+
   it("fails closed outside the single STRATOS organization or after identity revocation", () => {
     const outsideOrganization = projectedContext();
     outsideOrganization.organizationId = "org_other";

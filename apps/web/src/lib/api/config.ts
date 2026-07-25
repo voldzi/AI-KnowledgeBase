@@ -11,6 +11,8 @@ export interface DirectorCopilotConfig {
   clientSecretFile?: string;
   budgetBaseUrl?: string;
   projectflowBaseUrl?: string;
+  archflowBaseUrl?: string;
+  aiipBaseUrl?: string;
   timeoutMs: number;
   maxResponseBytes: number;
 }
@@ -247,6 +249,8 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     clientSecretFile: env.AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE || undefined,
     budgetBaseUrl: env.AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL?.replace(/\/+$/, "") || undefined,
     projectflowBaseUrl: env.AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL?.replace(/\/+$/, "") || undefined,
+    archflowBaseUrl: env.AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL?.replace(/\/+$/, "") || undefined,
+    aiipBaseUrl: env.AKL_DIRECTOR_COPILOT_AIIP_BASE_URL?.replace(/\/+$/, "") || undefined,
     timeoutMs: positiveNumber(
       env.AKL_DIRECTOR_COPILOT_TIMEOUT_MS,
       8_000,

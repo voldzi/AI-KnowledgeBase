@@ -48,9 +48,12 @@ export class DirectorDomainToolClient {
       );
     }
     const config = getDirectorCopilotConfig(this.options.config);
-    const baseUrl = application === "budget"
-      ? config.budgetBaseUrl
-      : config.projectflowBaseUrl;
+    const baseUrl = {
+      budget: config.budgetBaseUrl,
+      projectflow: config.projectflowBaseUrl,
+      archflow: config.archflowBaseUrl,
+      aiip: config.aiipBaseUrl,
+    }[application];
     if (!baseUrl) {
       throw new DirectorCopilotTransportError(
         "DIRECTOR_COPILOT_SOURCE_UNCONFIGURED",

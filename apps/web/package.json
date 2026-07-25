@@ -10,7 +10,9 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "semantic-registry:sync": "node scripts/sync-ssp-semantic-registry.mjs",
+    "semantic-registry:check": "node scripts/sync-ssp-semantic-registry.mjs --check"
   },
   "dependencies": {
     "@voldzi/stratos-ui": "0.3.35",

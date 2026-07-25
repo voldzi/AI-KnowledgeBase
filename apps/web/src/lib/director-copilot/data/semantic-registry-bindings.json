@@ -1,0 +1,85 @@
+{
+  "schema_version": "stratos-semantic-registry-bindings-1",
+  "bindings": [
+    {
+      "concept_uri": "https://slovník.gov.cz/generický/slovník-katalogu-využití-ai-ve-veřejném-sektoru/pojem/stav-projektu",
+      "targets": [
+        {
+          "kind": "source",
+          "id": "projectflow"
+        },
+        {
+          "kind": "metric",
+          "id": "project.status"
+        }
+      ],
+      "approved_at": "2026-07-25",
+      "approved_by": "akb-product-governance",
+      "note": "Stav projektu mapuje na autorizovaný ProjectFlow snapshot."
+    },
+    {
+      "concept_uri": "https://slovník.gov.cz/generický/oha/pojem/požadavek",
+      "targets": [
+        {
+          "kind": "source",
+          "id": "archflow"
+        }
+      ],
+      "approved_at": "2026-07-25",
+      "approved_by": "akb-product-governance",
+      "note": "Business požadavek je ve STRATOS autoritativně evidován v ArchFlow."
+    },
+    {
+      "concept_uri": "https://slovník.gov.cz/generický/čsn-iso-iec-20000-2---informační-technologie---management-služeb/pojem/požadavek-na-službu",
+      "targets": [
+        {
+          "kind": "source",
+          "id": "archflow"
+        }
+      ],
+      "approved_at": "2026-07-25",
+      "approved_by": "akb-product-governance",
+      "note": "Požadavek na službu se směruje do ArchFlow, pokud nejde o dokumentový dotaz."
+    },
+    {
+      "concept_uri": "https://slovník.gov.cz/generický/usnesení-vlády-č-86-2020---příloha/pojem/výdaj-související-s-informačními-a-komunikačními-technologiemi",
+      "targets": [
+        {
+          "kind": "source",
+          "id": "budget"
+        }
+      ],
+      "approved_at": "2026-07-25",
+      "approved_by": "akb-product-governance",
+      "note": "ICT výdaj je finanční pojem obsluhovaný nástroji Budgetu."
+    },
+    {
+      "concept_uri": "https://slovník.gov.cz/datový/slovník-digitálního-česka/pojem/částka-výdaje",
+      "targets": [
+        {
+          "kind": "source",
+          "id": "budget"
+        }
+      ],
+      "approved_at": "2026-07-25",
+      "approved_by": "akb-product-governance",
+      "note": "Částka výdaje určuje finanční zdroj, nikoliv konkrétní metriku."
+    },
+    {
+      "concept_uri": "https://slovník.gov.cz/generický/usnesení-vlády-č-86-2020---příloha/pojem/ekonomická-a-personální-náročnost-projektu",
+      "targets": [
+        {
+          "kind": "source",
+          "id": "budget"
+        },
+        {
+          "kind": "source",
+          "id": "projectflow"
+        }
+      ],
+      "approved_at": "2026-07-25",
+      "approved_by": "akb-product-governance",
+      "note": "Průřezový pojem vyžaduje finanční i projektová fakta."
+    }
+  ]
+}

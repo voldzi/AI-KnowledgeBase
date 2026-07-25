@@ -90,16 +90,33 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
 - Ingestion does not publish document versions or answer RAG queries.
 - RAG does not mutate document registry state except audit events.
 - Director Copilot does not read source databases. The AKB server calls fixed,
-  deterministic and read-only Budget/ProjectFlow application endpoints with
+  deterministic and read-only source-application endpoints with
   separate service and actor credentials. It accepts only closed contracts,
   normalizes authorized facts into an immutable evidence snapshot and uses the
   source-provided context tags for dependent AKB retrieval. The assistant
-  planner supports both the governed Budget + ProjectFlow + contract-risk
-  correlation and a ProjectFlow-only live portfolio status intent. Explicit
-  ProjectFlow questions, natural project-status questions and contextual
-  follow-ups are routed to the source tool before the document router. Missing
-  source access, disabled federation or source failure is reported explicitly;
-  a live-data question is never silently answered from historical documents.
+  planner uses a versioned semantic catalog, a closed machine-readable domain
+  tool/metric/relation catalog and a bounded
+  `ConversationQueryState` for source, metric, period, granularity and narrowing
+  entity filters. It supports governed Budget + ProjectFlow + contract-risk
+  correlation, deterministic Budget + ProjectFlow performance overviews and
+  single-source live questions. The query state never carries authorization;
+  every turn reloads the current STRATOS access projection and every source
+  applies its local PEP. Explicit live-data questions and contextual follow-ups
+  are routed before the document router. Missing source access, an unconnected
+  ArchFlow/AIIP tool, disabled federation or source failure is reported
+  explicitly; a live-data question is never silently answered from historical
+  documents.
+- ArchFlow and AIIP contracts, authorization mapping, fixtures, deterministic
+  renderers and canonical relation handling are implemented in AKB but remain
+  `contract_ready`. Only a source-owner deployment and joint conformance gate
+  may change them to `connected`.
+- The semantic catalog is enriched by an immutable local SSP snapshot with
+  source attribution and a content SHA-256. The full imported vocabulary is
+  context only. Only separately reviewed concept bindings may influence a
+  STRATOS source or metric, and those bindings cannot carry identity,
+  capabilities, scopes, classifications or Information Policy decisions.
+  Production query processing never calls the public SSP endpoint. See
+  `docs/OPERATIONS/semantic-registry.md`.
 - LLM Gateway does not own retrieval, authorization, document storage, or UI.
 - Web/API bridge mediates browser access; browser clients do not call internal
   storage, Registry, Ingestion, Qdrant, or LLM services directly unless the

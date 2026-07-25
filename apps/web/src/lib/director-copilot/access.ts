@@ -2,28 +2,14 @@ import type { ApiRequestContext } from "@/lib/types";
 
 import type { DomainApplication, ScopeCoordinate } from "./contracts";
 import { parseScopeString, stableSha256 } from "./contracts";
-
-const REQUIRED_CAPABILITY = {
-  budget: "budget:read",
-  projectflow: "projectflow:read",
-} as const;
-
-const ACCESS_CAPABILITY = {
-  budget: null,
-  projectflow: "projectflow:access",
-} as const;
-
-const SOURCE_SCOPE_TYPES: Record<DomainApplication, ReadonlySet<ScopeCoordinate["type"]>> = {
-  budget: new Set(["organization", "budget_scope", "project"]),
-  projectflow: new Set(["organization", "portfolio", "project"]),
-};
+import { domainCatalogToolForApplication } from "./domain-catalog";
 
 const MAX_SOURCE_SCOPES = 100;
 
 export interface DomainAccess {
   application: DomainApplication;
   authorized: boolean;
-  requiredCapability: (typeof REQUIRED_CAPABILITY)[DomainApplication];
+  requiredCapabilities: string[];
   scopes: ScopeCoordinate[];
   reason:
     | "allowed"
@@ -41,28 +27,29 @@ export function domainAccessFor(
   application: DomainApplication,
   nowMs = Date.now(),
 ): DomainAccess {
-  const requiredCapability = REQUIRED_CAPABILITY[application];
+  const tool = domainCatalogToolForApplication(application);
+  const requiredCapabilities = tool.read_capabilities;
   if (context.authorizationSource !== "stratos_projection") {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "projection_required" };
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "projection_required" };
   }
   if (context.organizationId !== "org_stratos") {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "organization_invalid" };
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "organization_invalid" };
   }
   if (context.identityActive === false || context.membershipActive === false) {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "application_inactive" };
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "application_inactive" };
   }
   const access = context.applicationAccess?.find(
     (candidate) => normalizeApplication(candidate.application) === application,
   );
   if (!access || !validAt(access.validUntil, nowMs)) {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "application_inactive" };
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "application_inactive" };
   }
-  const accessCapability = ACCESS_CAPABILITY[application];
+  const accessCapability = tool.access_capability;
   if (accessCapability && !access.capabilities.includes(accessCapability)) {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "access_capability_missing" };
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "access_capability_missing" };
   }
-  if (!access.capabilities.includes(requiredCapability)) {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "read_capability_missing" };
+  if (!requiredCapabilities.some((capability) => access.capabilities.includes(capability))) {
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "read_capability_missing" };
   }
   const effectiveScopeKeys = new Set(
     (access.effectiveScopes ?? [])
@@ -75,18 +62,19 @@ export function domainAccessFor(
       .map(parseScopeString)
       .filter((scope): scope is ScopeCoordinate => (
         scope !== null
-        && SOURCE_SCOPE_TYPES[application].has(scope.type)
+        && tool.scope_types.includes(scope.type)
         && effectiveScopeKeys.has(scopeKey(scope))
+        && scopeAllowedByReadCapability(application, scope, access.capabilities)
       ))
       .map((scope) => [scopeKey(scope), scope]),
   ).values()];
   if (!scopes.length) {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "scope_missing" };
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "scope_missing" };
   }
   if (scopes.length > MAX_SOURCE_SCOPES) {
-    return { application, authorized: false, requiredCapability, scopes: [], reason: "scope_limit_exceeded" };
+    return { application, authorized: false, requiredCapabilities, scopes: [], reason: "scope_limit_exceeded" };
   }
-  return { application, authorized: true, requiredCapability, scopes, reason: "allowed" };
+  return { application, authorized: true, requiredCapabilities, scopes, reason: "allowed" };
 }
 
 export function accessProjectionHash(context: ApiRequestContext): string {
@@ -119,4 +107,35 @@ function validAt(validUntil: string | null | undefined, nowMs: number): boolean 
 
 function scopeKey(scope: ScopeCoordinate): string {
   return `${scope.type}:${scope.id ?? ""}`;
+}
+
+function scopeAllowedByReadCapability(
+  application: DomainApplication,
+  scope: ScopeCoordinate,
+  capabilities: string[],
+): boolean {
+  if (application === "budget" || application === "projectflow") {
+    return true;
+  }
+  if (application === "archflow") {
+    if (scope.type === "own") return capabilities.includes("archflow:read_own");
+    if (scope.type === "organization_unit") {
+      return capabilities.includes("archflow:read_unit")
+        || capabilities.includes("archflow:read_organization");
+    }
+    if (scope.type === "organization") {
+      return capabilities.includes("archflow:read_organization");
+    }
+    if (scope.type === "recipient_set") {
+      return capabilities.includes("archflow:read_unit")
+        || capabilities.includes("archflow:read_organization");
+    }
+    return false;
+  }
+  if (scope.type === "own") return capabilities.includes("aiip:read_own");
+  if (scope.type === "organization_unit") return capabilities.includes("aiip:read_unit");
+  if (scope.type === "organization" || scope.type === "recipient_set") {
+    return capabilities.includes("aiip:read_organization");
+  }
+  return false;
 }

@@ -1,0 +1,42 @@
+{
+  "schema_version": "director-copilot-1",
+  "tool_id": "archflow.need_portfolio_snapshot.v1",
+  "tool_call_id": "call_3333333333333333",
+  "status": "complete",
+  "generated_at": "2026-07-25T10:00:00Z",
+  "as_of": "2026-07-25T09:58:00Z",
+  "source_system": "STRATOS_ARCHFLOW",
+  "source_version": "archflow-read-model:12",
+  "items": [
+    {
+      "entity_type": "business_need",
+      "entity_id": "need-001",
+      "canonical_id": "stratos:archflow-need:need-001",
+      "authorized_scope": {"type": "organization", "id": "org_stratos"},
+      "source_version": "need:7",
+      "as_of": "2026-07-25T09:58:00Z",
+      "facts": [
+        {"key": "archflow.need.display_name", "value": "Automatizace kontroly smluv", "value_type": "text", "quality": 1},
+        {"key": "archflow.need.status", "value": "analysis", "value_type": "text", "quality": 1},
+        {"key": "archflow.need.readiness_score", "value": 82, "value_type": "number", "quality": 1},
+        {"key": "archflow.need.impact_score", "value": 74, "value_type": "number", "quality": 1},
+        {"key": "archflow.need.decision", "value": "pending", "value_type": "text", "quality": 1},
+        {"key": "archflow.need.budget_handoff_status", "value": "not_handed_off", "value_type": "text", "quality": 1},
+        {"key": "relation.aiip_idea_canonical_id", "value": "stratos:aiip-idea:idea-001", "value_type": "text", "quality": 1},
+        {"key": "relation.project_canonical_id", "value": "stratos:project:project-001", "value_type": "text", "quality": 1}
+      ],
+      "deep_link": "https://stratos.zeleznalady.cz/archflow/needs/need-001",
+      "document_context_tags": ["archflow-need:need-001"],
+      "policy": {
+        "binding_id": "pb_archflow_director_12345678",
+        "version": "information-policy-2.0.0",
+        "hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "classification": {"handling_class": "INTERNAL", "legal_classification": "NONE", "tlp": null, "pap": null},
+        "audience": ["organization:org_stratos"],
+        "obligations": ["AUDIT_ACCESS"]
+      }
+    }
+  ],
+  "warnings": [],
+  "next_cursor": null
+}
