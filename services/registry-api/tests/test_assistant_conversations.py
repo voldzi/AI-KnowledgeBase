@@ -69,6 +69,58 @@ def _append_payload(role: str = "user", content: str = "Jak požádám o příst
     }
 
 
+def test_create_empty_conversation_assigns_server_id_and_current_user(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/assistant/conversation-history",
+        json={},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["conversation_id"].startswith("conv_")
+    assert body["user_id"] == "user_dev"
+    assert body["title"] is None
+    assert body["visibility"] == "private"
+    assert body["messages"] == []
+
+    fetched = client.get(
+        f"/api/v1/assistant/conversation-history/{body['conversation_id']}",
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["messages"] == []
+
+    appended = client.post(
+        f"/api/v1/assistant/conversations/{body['conversation_id']}/messages",
+        json={
+            "user_id": "user_dev",
+            "title": "Jaký má IT rozpočet na rok 2025?",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Jaký má IT rozpočet na rok 2025?",
+                    "citations": [],
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+    assert appended.status_code == 201
+    assert appended.json()["title"] == "Jaký má IT rozpočet na rok 2025?"
+
+
+def test_create_empty_conversation_rejects_unknown_fields(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/assistant/conversation-history",
+        json={"user_id": "another-user"},
+    )
+
+    assert response.status_code == 422
+
+
 def test_append_creates_conversation_and_returns_messages(client: TestClient) -> None:
     response = client.post(
         "/api/v1/assistant/conversations/conv_test1/messages",

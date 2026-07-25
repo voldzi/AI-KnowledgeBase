@@ -511,15 +511,21 @@ the existing RAG persistence contract; list/detail/share/update use the
 ```text
 POST  /assistant/conversations/{conversation_id}/messages
 GET   /assistant/conversation-history
+POST  /assistant/conversation-history
 GET   /assistant/conversation-history/{conversation_id}
 PATCH /assistant/conversation-history/{conversation_id}
 PUT   /assistant/conversation-history/{conversation_id}/shares
 ```
 
+The history `POST` operation creates an empty conversation for the
+authenticated subject. Owner identity is never accepted from its request
+body.
+
 The AKB web BFF exposes the browser-safe chat portal contract under:
 
 ```text
 GET   /api/assistant/conversations
+POST  /api/assistant/conversations
 GET   /api/assistant/conversations/{conversation_id}
 PATCH /api/assistant/conversations/{conversation_id}
 PUT   /api/assistant/conversations/{conversation_id}/shares

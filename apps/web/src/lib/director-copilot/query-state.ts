@@ -68,7 +68,7 @@ const CONTRACT_SIGNAL = /\b(smlouv|contract|dodavatel|supplier|smluvni rizik)\b/
 const FOLLOW_UP_SIGNAL = /\b(a|ale|jen|pouze|celkove|dohromady|vsichni|vsechny|jejich|tento|tahle|tyto|oproti|rozdil|vyvoj|trend|letos|loni|rok|kvartal|mesic|stejne|jinak)\b/;
 const OVERALL_SIGNAL = /\b(celkove|dohromady|za celou organizaci|cela organizace|vsechny projekty|vsechny polozky|ne jen)\b/;
 const ORGANIZATION_UNIT_SIGNAL = /\b(utvar\w*|odbor\w*|oddeleni|sekce|organizacni jednotk\w*|it|ict|informatik\w*)\b/;
-const PORTFOLIO_SIGNAL = /\bportfolio\b/;
+const PORTFOLIO_SIGNAL = /\bportfoli\w*/;
 const DELAYED_SIGNAL = /\b(zpozden|zpozdeni|v prodleni|po terminu)\b/;
 const AT_RISK_SIGNAL = /\b(ohrozen|rizikov[ey]|at risk)\b/;
 const ON_TRACK_SIGNAL = /\b(podle planu|v terminu|on track)\b/;
@@ -139,7 +139,7 @@ export function resolveConversationQuery(input: {
     ...metricSources,
   ]), explicitMetrics);
   const scopeOnlyFollowUp = previous !== null
-    && OVERALL_SIGNAL.test(normalized)
+    && (OVERALL_SIGNAL.test(normalized) || PORTFOLIO_SIGNAL.test(normalized))
     && explicitMetrics.length === 0
     && !LIVE_APPLICATION_SIGNAL.test(normalized);
   const explicitSources = scopeOnlyFollowUp ? [] : detectedSources;
@@ -147,7 +147,8 @@ export function resolveConversationQuery(input: {
   const followUp = FOLLOW_UP_SIGNAL.test(normalized)
     || explicitPeriodYear(normalized, now) !== null
     || explicitDateInterval(normalized) !== null
-    || OVERALL_SIGNAL.test(normalized);
+    || OVERALL_SIGNAL.test(normalized)
+    || PORTFOLIO_SIGNAL.test(normalized);
   const mayInherit = previous !== null
     && followUp
     && !(documentQuestion && explicitSources.length === 0);
@@ -163,9 +164,14 @@ export function resolveConversationQuery(input: {
       ? previous.metrics
       : [];
   const period = resolvePeriod(normalized, previous?.period ?? null, now);
-  const granularity = resolveGranularity(normalized, previous?.granularity ?? "authorized_scope");
+  const explicitGranularity = explicitGranularityForText(normalized);
+  const granularity = explicitGranularity
+    ?? previous?.granularity
+    ?? "authorized_scope";
   const scopeLabel = resolveScopeLabel(normalized, granularity, previous?.scope_label ?? null);
-  const entityFilters = OVERALL_SIGNAL.test(normalized)
+  const entityFilters = explicitGranularity === "organization"
+    || explicitGranularity === "organization_unit"
+    || explicitGranularity === "portfolio"
     ? emptyEntityFilters()
     : previous?.entity_filters ?? emptyEntityFilters();
   const scheduleStatus = DELAYED_SIGNAL.test(normalized)
@@ -409,14 +415,13 @@ function explicitPeriodYear(normalized: string, now: Date): number | null {
   return null;
 }
 
-function resolveGranularity(
+function explicitGranularityForText(
   normalized: string,
-  previous: QueryGranularity,
-): QueryGranularity {
+): QueryGranularity | null {
   if (OVERALL_SIGNAL.test(normalized)) return "organization";
   if (ORGANIZATION_UNIT_SIGNAL.test(normalized)) return "organization_unit";
   if (PORTFOLIO_SIGNAL.test(normalized)) return "portfolio";
-  return previous;
+  return null;
 }
 
 function resolveScopeLabel(

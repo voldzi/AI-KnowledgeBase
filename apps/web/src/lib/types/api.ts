@@ -62,6 +62,7 @@ import type {
   AssistantChatRequest,
   AssistantChatResponse,
   AssistantConversationDetail,
+  AssistantConversationCreateRequest,
   AssistantConversationListResponse,
   AssistantConversationMessageAppendRequest,
   AssistantMessageFeedback,
@@ -278,6 +279,10 @@ export interface RegistryApiClient {
   getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse>;
   putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse>;
   listAssistantConversations(context: ApiRequestContext, includeArchived?: boolean): Promise<AssistantConversationListResponse>;
+  createAssistantConversation(
+    request: AssistantConversationCreateRequest,
+    context: ApiRequestContext
+  ): Promise<AssistantConversationDetail>;
   getAssistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationDetail>;
   appendAssistantConversationMessages(
     conversationId: string,

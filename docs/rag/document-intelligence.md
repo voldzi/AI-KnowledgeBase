@@ -324,11 +324,17 @@ not collide with the RAG assistant conversation endpoint:
 
 ```text
 GET   /api/v1/assistant/conversation-history
+POST  /api/v1/assistant/conversation-history
 GET   /api/v1/assistant/conversation-history/{conversation_id}
 PATCH /api/v1/assistant/conversation-history/{conversation_id}
 PUT   /api/v1/assistant/conversation-history/{conversation_id}/shares
 PUT   /api/v1/assistant/conversation-history/{conversation_id}/messages/{message_id}/feedback
 ```
+
+The create operation persists a message-free private conversation for the
+current subject and returns its server-generated identifier. New-thread
+navigation clears dialogue state before any Director Copilot or RAG request is
+accepted.
 
 New conversations default to private visibility and 180-day retention. Owners
 and admins may rename, pin, archive or restore a conversation, shorten or

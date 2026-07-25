@@ -26,6 +26,34 @@ describe("Director Copilot conversation query state", () => {
     assert.equal(resolved.state.scope_label, "IT");
   });
 
+  it("does not carry a selected project into a new organization-unit question", () => {
+    const previous = resolveConversationQuery({
+      message: "Jaké má tento projekt náklady?",
+      now: NOW,
+    }).state;
+    previous.granularity = "project";
+    previous.entity_filters.project_ids = ["project-qnap"];
+
+    const resolved = resolveConversationQuery({
+      message: "Jaký má IT rozpočet na rok 2025?",
+      context: { stratos_query_state: previous },
+      now: NOW,
+    });
+
+    assert.equal(resolved.state.granularity, "organization_unit");
+    assert.equal(resolved.state.scope_label, "IT");
+    assert.equal(resolved.state.period.fiscal_year, 2025);
+    assert.deepEqual(resolved.state.metrics, ["budget.plan_amount"]);
+    assert.deepEqual(resolved.state.entity_filters, {
+      project_ids: [],
+      portfolio_ids: [],
+      organization_unit_ids: [],
+      budget_scope_ids: [],
+      need_ids: [],
+      idea_ids: [],
+    });
+  });
+
   it("keeps the financial topic and year while an overall follow-up clears entity filters", () => {
     const previous = resolveConversationQuery({
       message: "Jaký má projekt rozpočet na rok 2025?",
@@ -49,6 +77,37 @@ describe("Director Copilot conversation query state", () => {
     assert.equal(
       classifyDirectorCopilotIntent("Ne jen pro tento projekt, ale celkově.", {
         stratos_query_state: previous,
+      }),
+      "budget_portfolio_status",
+    );
+  });
+
+  it("keeps the organization financial context when the next turn groups by portfolio", () => {
+    const first = resolveConversationQuery({
+      message: "Jaký má IT rozpočet na rok 2025?",
+      now: NOW,
+    });
+    const second = resolveConversationQuery({
+      message: "Ne jen pro tento projekt, ale celkově.",
+      context: { stratos_query_state: first.state },
+      now: NOW,
+    });
+    const third = resolveConversationQuery({
+      message: "Rozděl ho podle portfolií.",
+      context: { stratos_query_state: second.state },
+      now: NOW,
+    });
+
+    assert.equal(third.recognized, true);
+    assert.equal(third.inherited, true);
+    assert.deepEqual(third.state.sources, ["budget"]);
+    assert.deepEqual(third.state.metrics, ["budget.plan_amount"]);
+    assert.equal(third.state.period.fiscal_year, 2025);
+    assert.equal(third.state.granularity, "portfolio");
+    assert.deepEqual(third.state.entity_filters.project_ids, []);
+    assert.equal(
+      classifyDirectorCopilotIntent("Rozděl ho podle portfolií.", {
+        stratos_query_state: second.state,
       }),
       "budget_portfolio_status",
     );

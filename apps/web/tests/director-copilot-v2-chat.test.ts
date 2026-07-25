@@ -167,6 +167,54 @@ describe("Director Copilot V2 active chat", () => {
     assert.equal((response.answer ?? "").includes("stratos:idea:"), false);
     assert.equal((response.answer ?? "").includes("stratos:need:"), false);
   });
+
+  it("audits a bounded machine reason when a V2 source is not authorized", async () => {
+    const auditEvents: unknown[] = [];
+    const message = "Jaký má IT rozpočet na rok 2025?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const actorContext = {
+      ...context(),
+      applicationAccess: context().applicationAccess?.filter(
+        (candidate) => candidate.application !== "budget",
+      ),
+    };
+
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-denied",
+      responseLanguage: "cs",
+      actorContext,
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async (event: unknown) => {
+            auditEvents.push(event);
+            return {};
+          },
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: fetcher(),
+      refreshActorContext: async () => actorContext,
+    });
+
+    assert.equal(response.response_type, "restricted");
+    assert.equal(auditEvents.length, 1);
+    const serializedAudit = JSON.stringify(auditEvents[0]);
+    assert.match(
+      serializedAudit,
+      /"failure_reason_code":"DIRECTOR_COPILOT_V2_[A-Z0-9_]+"/,
+    );
+    assert.equal(serializedAudit.includes("actor-token"), false);
+  });
 });
 
 function fetcher(): typeof fetch {

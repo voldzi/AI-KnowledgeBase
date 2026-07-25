@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type {
   ApiRequestContext,
@@ -38,6 +38,7 @@ import type {
   UpsertRoleMappingRequest,
   WorkflowTaskListOptions,
   AssistantConversationDetail,
+  AssistantConversationCreateRequest,
   AssistantConversationListResponse,
   AssistantConversationMessageAppendRequest,
   AssistantMessageFeedback,
@@ -1189,6 +1190,32 @@ export class MockRegistryClient implements RegistryApiClient {
         message_count: conversation.messages.length,
       }));
     return { items: cloneMock(items), limit: 50, offset: 0 };
+  }
+
+  async createAssistantConversation(
+    request: AssistantConversationCreateRequest,
+    context: ApiRequestContext,
+  ): Promise<AssistantConversationDetail> {
+    const now = new Date().toISOString();
+    const conversation: AssistantConversationDetail = {
+      conversation_id: `conv_${randomUUID().replaceAll("-", "")}`,
+      user_id: context.subjectId,
+      status: "active",
+      title: request.title ?? null,
+      visibility: request.visibility ?? "private",
+      retention_until: request.retention_until ?? null,
+      archived_at: null,
+      pinned_at: null,
+      created_at: now,
+      updated_at: now,
+      shared_with: [],
+      messages: [],
+    };
+    this.assistantConversations.set(
+      conversation.conversation_id,
+      cloneMock(conversation),
+    );
+    return cloneMock(conversation);
   }
 
   async getAssistantConversation(

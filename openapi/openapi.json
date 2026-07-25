@@ -4966,6 +4966,45 @@
           "Registry API"
         ]
       },
+      "post": {
+        "summary": "Create Assistant Conversation",
+        "operationId": "registry_api_create_assistant_conversation_api_v1_assistant_conversation_history_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiAssistantConversationCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiAssistantConversationDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
       "servers": [
         {
           "url": "http://localhost:8001",
@@ -8911,6 +8950,44 @@
                 "schema": {
                   "$ref": "#/components/schemas/AkbErrorResponse"
                 }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "POST /api/assistant/conversations",
+        "operationId": "web_post_api_assistant_conversations",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
               }
             }
           }
@@ -16350,6 +16427,43 @@
           "service"
         ],
         "title": "AssignmentSubjectType"
+      },
+      "RegistryApiAssistantConversationCreateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "visibility": {
+            "type": "string",
+            "pattern": "^(private|shared)$",
+            "title": "Visibility",
+            "default": "private"
+          },
+          "retention_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Until"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AssistantConversationCreateRequest"
       },
       "RegistryApiAssistantConversationDetailResponse": {
         "properties": {

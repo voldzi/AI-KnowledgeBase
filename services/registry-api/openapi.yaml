@@ -2398,6 +2398,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      summary: Create Assistant Conversation
+      operationId: create_assistant_conversation_api_v1_assistant_conversation_history_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantConversationCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantConversationDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/assistant/conversations/{conversation_id}/messages:
     post:
       summary: Append Assistant Messages
@@ -3748,6 +3770,28 @@ components:
       - unit
       - service
       title: AssignmentSubjectType
+    AssistantConversationCreateRequest:
+      properties:
+        title:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Title
+        visibility:
+          type: string
+          pattern: ^(private|shared)$
+          title: Visibility
+          default: private
+        retention_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Retention Until
+      additionalProperties: false
+      type: object
+      title: AssistantConversationCreateRequest
     AssistantConversationDetailResponse:
       properties:
         conversation_id:

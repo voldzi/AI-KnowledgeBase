@@ -382,6 +382,7 @@ and manages conversation history through the non-conflicting history contract:
 ```text
 POST  /api/v1/assistant/conversations/{conversationId}/messages
 GET   /api/v1/assistant/conversation-history
+POST  /api/v1/assistant/conversation-history
 GET   /api/v1/assistant/conversation-history/{conversationId}
 PATCH /api/v1/assistant/conversation-history/{conversationId}
 DELETE /api/v1/assistant/conversation-history/{conversationId}
@@ -390,10 +391,17 @@ PUT   /api/v1/assistant/conversation-history/{conversationId}/messages/{messageI
 GET   /api/v1/assistant/directory/users
 ```
 
+`POST /assistant/conversation-history` persists an empty private conversation
+with a server-generated `conv_*` identifier owned by the current authenticated
+subject. The request may set only title, visibility and retention; it cannot
+select another owner. The browser creates this server record before accepting
+the first message in a new thread.
+
 The browser uses only the AKB web/API bridge for this UI flow:
 
 ```text
 GET   /api/assistant/conversations
+POST  /api/assistant/conversations
 GET   /api/assistant/conversations/{conversationId}
 PATCH /api/assistant/conversations/{conversationId}
 DELETE /api/assistant/conversations/{conversationId}

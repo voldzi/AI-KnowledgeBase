@@ -6,6 +6,7 @@ import type {
   AnalystCase,
   AuthorizationHint,
   AssistantConversationDetail,
+  AssistantConversationCreateRequest,
   AssistantConversationListResponse,
   AssistantConversationMessageAppendRequest,
   AssistantMessageFeedback,
@@ -627,6 +628,18 @@ export class ProductionRegistryClient implements RegistryApiClient {
       `/assistant/conversation-history?${params}`,
       "listAssistantConversations",
       context
+    );
+  }
+
+  createAssistantConversation(
+    request: AssistantConversationCreateRequest,
+    context: ApiRequestContext,
+  ): Promise<AssistantConversationDetail> {
+    return this.post<AssistantConversationDetail>(
+      "/assistant/conversation-history",
+      request,
+      "createAssistantConversation",
+      context,
     );
   }
 
