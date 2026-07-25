@@ -59,8 +59,9 @@ nikoli jako nová aplikace, druhá historie nebo paralelní AI vrstva.
   ukládá pouze zobrazenou odpověď a omezenou provenienci bez živého upstream
   snapshotu, tokenů nebo access projection;
 - reautorizace federované historie vůči aktuální STRATOS projection a čerstvým
-  read-only doménovým nástrojům; změna oprávnění, policy nebo source verze
-  historický obsah bezpečně skryje;
+  read-only doménovým nástrojům; změna oprávnění, policy nebo nedostupnost
+  kanonické položky historický obsah bezpečně skryje, zatímco nová verze
+  autorizovaného živého snapshotu sama o sobě není změnou oprávnění;
 - feature flag pro řízenou produkční aktivaci.
 
 ### Co stále chybí

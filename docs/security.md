@@ -225,7 +225,11 @@ access tokens, or access projections. Their bounded provenance is revalidated
 against both the current STRATOS access projection and a fresh source-domain
 response whenever the thread is reopened. If the source cannot be verified,
 AKB fails closed and withholds the historical answer instead of treating an
-outage as an authorization denial.
+outage as an authorization denial. A changed live-data `source_version` alone
+does not revoke an otherwise authorized historical answer: AKB requires the
+same source system, canonical item and policy hash under the current access
+projection. A changed policy, missing item, missing capability or uncovered
+scope still withholds the answer.
 
 ## Secrets
 

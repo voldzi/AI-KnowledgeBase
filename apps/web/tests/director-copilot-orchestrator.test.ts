@@ -354,6 +354,20 @@ describe("Director Copilot orchestrator", () => {
       }),
       "budget_portfolio_status",
     );
+    assert.equal(
+      classifyDirectorCopilotIntent("Jaký je výhled?", {
+        answer_source: "director_copilot_budget",
+        active_source_application: "budget",
+      }),
+      "budget_portfolio_status",
+    );
+    assert.equal(
+      classifyDirectorCopilotIntent("A pro příští rok?", {
+        answer_source: "director_copilot_budget",
+        active_source_application: "budget",
+      }),
+      "budget_portfolio_status",
+    );
   });
 });
 
