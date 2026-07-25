@@ -19,6 +19,13 @@ describe("chat viewport layout", () => {
     );
   });
 
+  it("keeps the new-answer control visible without moving the composer", () => {
+    assert.match(
+      css,
+      /\.akb-chat-scroll-latest\s*\{[^}]*bottom:\s*4px;[^}]*position:\s*sticky;/s,
+    );
+  });
+
   it("bounds standalone chat to the dynamic viewport", () => {
     assert.match(
       css,

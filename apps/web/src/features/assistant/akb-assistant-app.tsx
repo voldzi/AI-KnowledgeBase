@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -99,6 +99,7 @@ interface ChatMessage {
   response?: AssistantChatResponse;
   pending?: boolean;
   persisted?: boolean;
+  persistenceStatus?: "persisted" | "failed";
   feedback?: AssistantMessageFeedback | null;
   feedbackSaving?: boolean;
 }
@@ -307,6 +308,8 @@ const assistantAppCopy = {
     historyUnavailable: "Historii se nepodařilo načíst. Nový dotaz můžete zadat a načtení historie zkusit později.",
     requestedThreadUnavailable: "Požadované vlákno není dostupné nebo k němu nemáte přístup.",
     historySourceAccessChanged: "Přístup ke zdrojům této historické odpovědi se změnil. Položte dotaz znovu, aby AKB použila pouze aktuálně dostupné zdroje.",
+    historySourceTemporarilyUnavailable: "Zdroj historické odpovědi se teď nepodařilo bezpečně ověřit. Obsah zůstává skrytý; zkuste vlákno načíst později.",
+    newMessagesBelow: "Nová odpověď",
     close: "Zavřít",
     owner: "Vlastník",
     anotherUser: "Uživatel",
@@ -445,6 +448,8 @@ const assistantAppCopy = {
     historyUnavailable: "Conversation history could not be loaded. You can ask a new question and try loading history later.",
     requestedThreadUnavailable: "The requested thread is unavailable or you do not have access to it.",
     historySourceAccessChanged: "Access to the sources for this historical answer has changed. Ask the question again so AKB uses only sources currently available to you.",
+    historySourceTemporarilyUnavailable: "The source of this historical answer could not be verified safely right now. The content remains hidden; try loading the thread later.",
+    newMessagesBelow: "New answer",
     close: "Close",
     owner: "Owner",
     anotherUser: "User",
@@ -499,6 +504,13 @@ export function AkbAssistantApp({
   const [reportDetailLevel, setReportDetailLevel] = useState<AssistantReportDetailLevel>("standard");
   const [reportExportFormat, setReportExportFormat] = useState<AssistantReportExportPreference>("xlsx");
   const [reportColumns, setReportColumns] = useState<AssistantReportColumnKey[]>(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS.obligation_table);
+  const transcriptRef = useRef<HTMLElement | null>(null);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const threadScrollPositions = useRef(new Map<string, number>());
+  const previousTranscriptThreadId = useRef<string | null>(null);
+  const previousLastMessageId = useRef<string | null>(null);
+  const autoFollowTranscript = useRef(true);
+  const [newMessagesBelow, setNewMessagesBelow] = useState(false);
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
   const canManageActiveThread = !activeThread?.conversationId ||
@@ -536,7 +548,15 @@ export function AkbAssistantApp({
       credentials: "same-origin",
       headers: { Accept: "application/json" }
     })
-      .then((response) => (response.ok ? response.json() : null))
+      .then((response) => {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+        }
+        if (!response.ok) {
+          throw new Error("Conversation history request failed.");
+        }
+        return response.json();
+      })
       .then((payload) => {
         if (!active || !payload?.conversation) {
           return;
@@ -549,11 +569,49 @@ export function AkbAssistantApp({
           thread.id === activeThread.id ? { ...loadedThread, pinned: thread.pinned, draft: thread.draft } : thread
         )));
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (active) {
+          setStatusMessage(copy.historyUnavailable);
+        }
+      });
     return () => {
       active = false;
     };
   }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.id, language]);
+
+  const lastMessageId = activeThread?.messages.at(-1)?.id ?? null;
+  useEffect(() => {
+    const transcript = transcriptRef.current;
+    if (!transcript || !activeThread) {
+      return;
+    }
+    const threadChanged = previousTranscriptThreadId.current !== activeThread.id;
+    const messageChanged = previousLastMessageId.current !== lastMessageId;
+    previousTranscriptThreadId.current = activeThread.id;
+    previousLastMessageId.current = lastMessageId;
+    const frame = window.requestAnimationFrame(() => {
+      if (threadChanged) {
+        const savedPosition = threadScrollPositions.current.get(activeThread.id);
+        transcript.scrollTop = savedPosition ?? transcript.scrollHeight;
+        autoFollowTranscript.current = isTranscriptNearBottom(transcript);
+        setNewMessagesBelow(false);
+        return;
+      }
+      if (!messageChanged) {
+        return;
+      }
+      if (autoFollowTranscript.current) {
+        transcriptEndRef.current?.scrollIntoView({
+          block: "end",
+          behavior: prefersReducedMotion() ? "auto" : "smooth",
+        });
+        setNewMessagesBelow(false);
+      } else {
+        setNewMessagesBelow(true);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeThread, lastMessageId]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -580,6 +638,7 @@ export function AkbAssistantApp({
   }
 
   function selectThread(threadId: string) {
+    rememberActiveThreadScroll();
     setActiveThreadId(threadId);
     setStatusMessage(null);
     setSourceContext(null);
@@ -590,6 +649,7 @@ export function AkbAssistantApp({
   }
 
   function createThread() {
+    rememberActiveThreadScroll();
     const thread = createEmptyThread(copy.emptyThreadTitle);
     setThreads((current) => [thread, ...current]);
     setActiveThreadId(thread.id);
@@ -853,6 +913,8 @@ export function AkbAssistantApp({
       pending: true
     };
     setSubmitting(true);
+    autoFollowTranscript.current = true;
+    setNewMessagesBelow(false);
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
@@ -897,6 +959,7 @@ export function AkbAssistantApp({
       const payload = (await httpResponse.json()) as {
         response: AssistantChatResponse;
         message_id?: string | null;
+        persistence_status?: "persisted" | "failed";
       };
       const response = payload.response;
       const assistantMessage: ChatMessage = {
@@ -906,11 +969,18 @@ export function AkbAssistantApp({
         createdAt: new Date().toISOString(),
         response,
         persisted: Boolean(payload.message_id),
+        persistenceStatus:
+          payload.persistence_status
+          ?? (payload.message_id ? "persisted" : "failed"),
       };
       updateThread(threadId, (thread) => ({
         ...thread,
-        conversationId: response.conversation_id,
-        ownerSubjectId: thread.ownerSubjectId ?? currentSubjectId,
+        conversationId: payload.persistence_status === "persisted"
+          ? response.conversation_id
+          : thread.conversationId,
+        ownerSubjectId: payload.persistence_status === "persisted"
+          ? thread.ownerSubjectId ?? currentSubjectId
+          : thread.ownerSubjectId,
         context: response.current_context ?? effectiveContext,
         messages: thread.messages.map((message) => (message.id === pendingMessage.id ? assistantMessage : message)),
         updatedAt: new Date().toISOString()
@@ -924,6 +994,37 @@ export function AkbAssistantApp({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function rememberActiveThreadScroll() {
+    if (activeThread?.id && transcriptRef.current) {
+      threadScrollPositions.current.set(
+        activeThread.id,
+        transcriptRef.current.scrollTop,
+      );
+    }
+  }
+
+  function handleTranscriptScroll() {
+    const transcript = transcriptRef.current;
+    if (!transcript || !activeThread) {
+      return;
+    }
+    threadScrollPositions.current.set(activeThread.id, transcript.scrollTop);
+    const nearBottom = isTranscriptNearBottom(transcript);
+    autoFollowTranscript.current = nearBottom;
+    if (nearBottom) {
+      setNewMessagesBelow(false);
+    }
+  }
+
+  function scrollToLatestMessage() {
+    autoFollowTranscript.current = true;
+    setNewMessagesBelow(false);
+    transcriptEndRef.current?.scrollIntoView({
+      block: "end",
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
   }
 
   async function submitMessageFeedback(
@@ -1332,7 +1433,14 @@ export function AkbAssistantApp({
             </div>
           </header>
 
-          <section className="akb-chat-transcript" aria-live="polite">
+          <section
+            ref={transcriptRef}
+            className="akb-chat-transcript"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            onScroll={handleTranscriptScroll}
+          >
             {activeThread.messages.length === 0 ? (
               <div className="akb-chat-empty">
                 <MessageSquare size={24} aria-hidden="true" />
@@ -1370,6 +1478,21 @@ export function AkbAssistantApp({
                 />
               ))
             )}
+            <div
+              ref={transcriptEndRef}
+              className="akb-chat-transcript__end"
+              aria-hidden="true"
+            />
+            {newMessagesBelow ? (
+              <button
+                type="button"
+                className="akb-chat-scroll-latest"
+                onClick={scrollToLatestMessage}
+              >
+                {copy.newMessagesBelow}
+                <span aria-hidden="true">↓</span>
+              </button>
+            ) : null}
           </section>
 
           {statusMessage ? (
@@ -2695,6 +2818,8 @@ function assistantWarningLabel(warning: string, copy: AssistantAppLabels): strin
     case "REGISTRY_METADATA_REPORT":
     case "REGISTRY_METADATA_SUMMARY":
     case "REGISTRY_DOCUMENT_LIST":
+    case "DIRECTOR_COPILOT_PROJECTFLOW_LIVE_DATA":
+    case "DIRECTOR_COPILOT_BUDGET_LIVE_DATA":
       return null;
     case "REPORT_ROWS_TRUNCATED":
       return copy.warningRowsTruncated;
@@ -2922,6 +3047,8 @@ function messageFromConversationMessage(
 ): ChatMessage {
   const content = message.availability === "source_access_changed"
     ? assistantAppCopy[language].historySourceAccessChanged
+    : message.availability === "source_temporarily_unavailable"
+      ? assistantAppCopy[language].historySourceTemporarilyUnavailable
     : message.content;
   return {
     id: message.message_id,
@@ -2932,6 +3059,7 @@ function messageFromConversationMessage(
     authorSubjectType: message.author_subject_type,
     authorDisplayName: message.author_display_name,
     persisted: true,
+    persistenceStatus: "persisted",
     feedback: message.viewer_feedback ?? null,
     response: message.role === "assistant"
       ? responseFromPersistedMessage(
@@ -2972,13 +3100,13 @@ function responseFromPersistedMessage(
     why_needed: null,
     current_context: objectValue(metadata.current_context),
     citations: message.citations,
-    follow_up_questions: [],
-    suggested_actions: [],
+    follow_up_questions: stringArrayValue(metadata.follow_up_questions),
+    suggested_actions: suggestedActionsValue(metadata.suggested_actions),
     report_artifacts: reportArtifactsValue(metadata.report_artifacts),
     confidence: typeof metadata.confidence === "string" ? metadata.confidence as AssistantChatResponse["confidence"] : null,
     warnings: Array.isArray(metadata.warnings) ? metadata.warnings.filter((item): item is string => typeof item === "string") : [],
-    missing_information: null,
-    recommended_action: null
+    missing_information: nullableStringValue(metadata.missing_information),
+    recommended_action: nullableStringValue(metadata.recommended_action)
   };
   return normalizeAssistantAnswerReports(response, previousUserMessage, "cs");
 }
@@ -2997,6 +3125,24 @@ function objectValue(value: unknown): Record<string, unknown> {
 
 function reportArtifactsValue(value: unknown): AssistantReportArtifact[] {
   return Array.isArray(value) ? value.filter((item): item is AssistantReportArtifact => Boolean(item && typeof item === "object")) : [];
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function suggestedActionsValue(value: unknown): AssistantChatResponse["suggested_actions"] {
+  return Array.isArray(value)
+    ? value.filter((item): item is AssistantChatResponse["suggested_actions"][number] => (
+        Boolean(item && typeof item === "object")
+      ))
+    : [];
+}
+
+function nullableStringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 function findLastAssistantResponse(thread: AssistantThread): AssistantChatResponse | null {
@@ -3019,6 +3165,14 @@ function titleFromQuestion(question: string): string {
 
 function createClientId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isTranscriptNearBottom(element: HTMLElement): boolean {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= 96;
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function formatThreadTime(value: string): string {

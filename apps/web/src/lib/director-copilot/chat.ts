@@ -166,7 +166,6 @@ export function directorCopilotUnavailableResponse(input: {
     current_context: {
       answer_source: projectOnly ? "director_copilot_projectflow" : budgetOnly ? "director_copilot_budget" : "director_copilot_federation",
       requested_director_copilot_intent: input.intent,
-      director_copilot_ephemeral: true,
     },
     citations: [],
     follow_up_questions: [],
@@ -237,7 +236,6 @@ function composeProjectFlowResponse(
   const warnings = [...new Set([
     ...orchestrationWarnings,
     "DIRECTOR_COPILOT_PROJECTFLOW_LIVE_DATA",
-    "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION",
   ])];
   return {
     response_type: "answer",
@@ -250,7 +248,6 @@ function composeProjectFlowResponse(
       answer_source: "director_copilot_projectflow",
       director_copilot_query_plan: snapshot.plan,
       director_copilot_snapshot: snapshot,
-      director_copilot_ephemeral: true,
       active_source_application: "projectflow",
     },
     citations: [],
@@ -318,7 +315,6 @@ function composeBudgetResponse(
       answer_source: "director_copilot_budget",
       director_copilot_query_plan: snapshot.plan,
       director_copilot_snapshot: snapshot,
-      director_copilot_ephemeral: true,
       active_source_application: "budget",
     },
     citations: [],
@@ -331,7 +327,6 @@ function composeBudgetResponse(
     warnings: [...new Set([
       ...orchestrationWarnings,
       "DIRECTOR_COPILOT_BUDGET_LIVE_DATA",
-      "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION",
     ])],
     missing_information: null,
     recommended_action: null,
@@ -457,7 +452,6 @@ function composeFourLayerResponse(
     ...response.warnings,
     ...orchestrationWarnings,
     ...(hasDocumentEvidence || policyBlocked ? [] : ["DIRECTOR_COPILOT_DOCUMENT_EVIDENCE_MISSING"]),
-    "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION",
   ])];
   return {
     ...response,
@@ -472,7 +466,6 @@ function composeFourLayerResponse(
       answer_source: "director_copilot_federation",
       director_copilot_query_plan: snapshot.plan,
       director_copilot_snapshot: snapshot,
-      director_copilot_ephemeral: true,
     },
   };
 }
@@ -507,14 +500,13 @@ function emptyDirectorResponse(
     current_context: {
       answer_source: "director_copilot_federation",
       director_copilot_query_plan: plan,
-      director_copilot_ephemeral: true,
     },
     citations: [],
     follow_up_questions: [],
     suggested_actions: [],
     report_artifacts: [],
     confidence: "insufficient_source",
-    warnings: [...new Set([...warnings, "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION"])],
+    warnings: [...new Set(warnings)],
     missing_information: answer,
     recommended_action: null,
   };
@@ -751,7 +743,7 @@ async function auditDirectorResult(
       unavailable_source_count: snapshot?.unavailable_sources.length ?? 0,
       citation_count: response.citations.length,
       status,
-      history_persisted: false,
+      history_persistence_managed_by: "web_bridge",
     },
   }, serviceContext);
 }

@@ -343,7 +343,25 @@ still returns `status: "persisted"` with the full message history when Registry
 history is available; when the conversation does not exist or Registry API is
 unavailable, the response degrades to `status: "ephemeral"` with the
 `CONVERSATION_HISTORY_NOT_PERSISTED` warning. Persistence failures never block
-the chat response itself.
+the chat response itself. The web bridge also returns an explicit
+`persistence_status`, so the UI never presents a transient turn as silently
+durable.
+
+Director Copilot turns use the same Registry conversation as document RAG
+turns. AKB persists the rendered user/assistant pair plus a bounded
+`director-copilot-history-1` envelope containing only source identities,
+versions, policy hashes, authorized source applications, and a hash of the
+relevant projected access. It does not persist the live evidence snapshot,
+facts returned by Budget/ProjectFlow, bearer tokens, service credentials, or
+the access projection.
+
+Before a federated historical answer is returned to the browser, the web BFF
+revalidates the relevant projected capability/scope and executes the current
+read-only domain tool. A changed grant, missing source item, source version, or
+policy hash yields `source_access_changed`; a temporarily unavailable source
+yields `source_temporarily_unavailable`. In both cases the stored answer body
+and citations are withheld. Document citations continue to be independently
+reauthorized by Registry.
 
 For a follow-up turn, RAG can load only a bounded window of earlier
 user-authored questions from the freshly authorized Registry conversation.

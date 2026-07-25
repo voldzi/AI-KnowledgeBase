@@ -529,6 +529,12 @@ History records carry owner, visibility, retention, archive state, messages,
 and active user/group shares. New conversations default to private visibility
 and 180-day retention.
 
+`POST /api/assistant/chat` wraps the assistant response with the durable
+assistant `message_id` and `persistence_status: persisted | failed`. Federated
+Director Copilot turns use the same conversation and persist only a bounded
+governed history envelope. The BFF reauthorizes that envelope before returning
+historical ProjectFlow or Budget content.
+
 Assistant chat request:
 
 ```json

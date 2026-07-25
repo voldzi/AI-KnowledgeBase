@@ -9,6 +9,10 @@ import {
   directorCopilotUnavailableResponse,
   runDirectorCopilotChat,
 } from "@/lib/director-copilot/chat";
+import {
+  directorCopilotPersistenceMetadata,
+  persistedDirectorCopilotResponse,
+} from "@/lib/director-copilot/history";
 import { classifyDirectorCopilotIntent } from "@/lib/director-copilot/planner";
 import { isAklLanguage } from "@/lib/language";
 import {
@@ -19,6 +23,7 @@ import {
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
 import type {
+  AssistantChatResponse,
   AssistantConversationDetail,
   Classification,
   Document,
@@ -50,7 +55,7 @@ export async function POST(request: NextRequest) {
     const config = getAklConfig();
     const directorIntent = classifyDirectorCopilotIntent(message, requestContext);
     if (directorIntent && getDirectorCopilotConfig(config).enabled) {
-      const response = await runDirectorCopilotChat({
+      const directorResponse = await runDirectorCopilotChat({
         message,
         conversationId,
         responseLanguage,
@@ -62,16 +67,57 @@ export async function POST(request: NextRequest) {
           ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
           : undefined,
       });
-      return NextResponse.json({ response, message_id: null });
+      const response = persistedDirectorCopilotResponse(directorResponse);
+      const persistedConversation = await clients.registry
+        .appendAssistantConversationMessages(
+          response.conversation_id,
+          {
+            user_id: context.subjectId,
+            title: titleFromMessage(message),
+            messages: assistantTurnMessages(
+              message,
+              response,
+              directorCopilotPersistenceMetadata(directorResponse, context),
+            ),
+          },
+          context,
+        )
+        .catch(() => undefined);
+      return NextResponse.json({
+        response: persistedConversation
+          ? response
+          : withHistoryPersistenceWarning(response),
+        message_id: latestAssistantMessageId(persistedConversation),
+        persistence_status: persistedConversation ? "persisted" : "failed",
+      });
     }
     if (directorIntent) {
+      const response = directorCopilotUnavailableResponse({
+        conversationId,
+        language: responseLanguage,
+        intent: directorIntent,
+      });
+      const persistedConversation = await clients.registry
+        .appendAssistantConversationMessages(
+          response.conversation_id,
+          {
+            user_id: context.subjectId,
+            title: titleFromMessage(message),
+            messages: assistantTurnMessages(message, response, {
+              confidence: response.confidence,
+              current_context: response.current_context,
+              warnings: response.warnings,
+            }),
+          },
+          context,
+        )
+        .catch(() => undefined);
       return NextResponse.json({
-        response: directorCopilotUnavailableResponse({
-          conversationId,
-          language: responseLanguage,
-          intent: directorIntent,
-        }),
-        message_id: null,
+        response: persistedConversation
+          ? response
+          : withHistoryPersistenceWarning(response),
+        message_id: latestAssistantMessageId(persistedConversation),
+        persistence_status: persistedConversation ? "persisted" : "failed",
       });
     }
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
@@ -196,8 +242,11 @@ export async function POST(request: NextRequest) {
           ).catch(() => undefined);
         }
         return NextResponse.json({
-          response: normalizedRegistryResponse,
+          response: persistedConversation
+            ? normalizedRegistryResponse
+            : withHistoryPersistenceWarning(normalizedRegistryResponse),
           message_id: latestAssistantMessageId(persistedConversation),
+          persistence_status: persistedConversation ? "persisted" : "failed",
         });
       }
     }
@@ -237,12 +286,53 @@ export async function POST(request: NextRequest) {
         .catch(() => persistedConversation);
     }
     return NextResponse.json({
-      response: normalizedResponse,
+      response: persistedConversation
+        ? normalizedResponse
+        : withHistoryPersistenceWarning(normalizedResponse),
       message_id: latestAssistantMessageId(persistedConversation),
+      persistence_status: persistedConversation ? "persisted" : "failed",
     });
   } catch (error) {
     return assistantBridgeError(error);
   }
+}
+
+function assistantTurnMessages(
+  message: string,
+  response: AssistantChatResponse,
+  metadata: Record<string, unknown>,
+) {
+  return [
+    {
+      role: "user" as const,
+      content: message,
+      citations: [],
+      metadata: {},
+    },
+    {
+      role: "assistant" as const,
+      content:
+        response.answer
+        ?? response.message
+        ?? response.recommended_action
+        ?? "(empty)",
+      response_type: response.response_type,
+      citations: response.citations,
+      metadata,
+    },
+  ];
+}
+
+function withHistoryPersistenceWarning(
+  response: AssistantChatResponse,
+): AssistantChatResponse {
+  return {
+    ...response,
+    warnings: [...new Set([
+      ...response.warnings,
+      "CONVERSATION_HISTORY_NOT_PERSISTED",
+    ])],
+  };
 }
 
 function latestAssistantMessageId(
