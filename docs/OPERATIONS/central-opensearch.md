@@ -30,6 +30,45 @@ Ingestion must use only the writer account. RAG must use only the reader
 account. The reader may search but cannot refresh, update mappings, bulk-write,
 or delete. Neither account may read cluster-root or security-index APIs.
 
+## Node Startup Resilience
+
+Every `os01`-`os03` node uses the systemd drop-in
+`/etc/systemd/system/opensearch.service.d/resilience.conf`:
+
+```ini
+[Unit]
+StartLimitIntervalSec=30min
+StartLimitBurst=5
+
+[Service]
+TimeoutStartSec=10min
+Restart=on-failure
+RestartSec=30s
+```
+
+The longer start bound allows manager election, security-index recovery and
+shard recovery after a simultaneous host restart. `Restart=on-failure` retries
+failed boots without restarting an intentional operator stop. Do not add an
+initial per-node sleep: delaying quorum participants can extend an otherwise
+recoverable manager outage.
+
+The idempotent workstation helper
+`scripts/setup_opensearch_codex_access.sh` installs the drop-in, reloads systemd
+without restarting a running node, configures a dedicated SSH key and grants
+only the listed OpenSearch service and journal commands. It stores no password
+or private key in the repository.
+
+After applying the drop-in, verify all nodes before any rolling restart:
+
+```bash
+systemctl show opensearch.service \
+  --property=ActiveState,SubState,TimeoutStartUSec,Restart,RestartUSec,StartLimitIntervalUSec,StartLimitBurst,DropInPaths
+```
+
+Required values are `active/running`, `10min`, `on-failure`, `30s`, `30min`
+and `5`. Then verify the HAProxy alias, RAG readiness and the public AKB
+`/api/ready` endpoint. Never restart multiple manager-eligible nodes together.
+
 ## Alias And Mapping
 
 `akl_document_chunks` is a managed write alias. Production sets:
