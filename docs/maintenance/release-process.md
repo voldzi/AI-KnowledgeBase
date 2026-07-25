@@ -38,6 +38,105 @@ Required checks:
 
 Do not push directly to `main`.
 
+## Optimized Release Candidate Workflow
+
+Use this sequence for every production-bound change. It keeps the existing
+fail-closed release controls while avoiding repeated merge/build/deploy loops.
+
+1. **Establish the baseline.** Record the clean candidate branch, the full
+   current production SHA, current public health, and the diff between them.
+2. **Classify runtime impact.** List the services whose source, Docker
+   definition, runtime contract, or complete Compose block actually changed.
+   A CI helper, documentation generator, or other non-runtime script must not
+   silently justify rebuilding all services. Investigate any unexpectedly
+   broad service selection before release.
+3. **Run focused validation.** Start with tests, type checking, contract
+   checks, and schema checks owned by the affected components. Fix failures
+   before starting the expensive image gate.
+4. **Build the exact production images.** Use the same Dockerfile, repository
+   root context, build arguments, contract paths, and service profile as
+   `docker-compose.docker-home.yml`. For the web profiles, the minimum exact
+   preflight from the repository root is:
+
+   ```bash
+   docker build \
+     --file apps/web/Dockerfile \
+     --build-arg NEXT_PUBLIC_AKL_BASE_PATH=/akb \
+     --build-arg AKL_IMAGE_SERVICE=web \
+     --tag akl/web:release-preflight \
+     .
+
+   docker build \
+     --file apps/web/Dockerfile \
+     --build-arg NEXT_PUBLIC_AKL_BASE_PATH= \
+     --build-arg AKL_IMAGE_SERVICE=chat-web \
+     --tag akl/chat-web:release-preflight \
+     .
+   ```
+
+   Build every other affected service with its production Dockerfile and exact
+   production context. A successful native framework build and successful
+   Compose rendering do not replace this gate.
+5. **Finish the candidate before merge.** Keep all fixes in the same PR.
+   Push only the final candidate, wait for every required check, review the
+   resulting diff and generated contracts, and merge once. Do not use
+   production as a Docker build test.
+6. **Refresh retrieval.** Incrementally reindex the final meaningful working
+   tree in Chroma using the exact managed repository root from
+   `list_repositories`, currently
+   `/Users/voldzi/Developer/18 2026/AI KnowledgeBase`. Verify at least one
+   focused query finds the changed implementation or documentation. When MCP
+   is unavailable, use:
+
+   ```bash
+   "/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" \
+     reindex --root .
+   ```
+
+7. **Deploy the exact merge SHA once.** Confirm the SHA is reachable from
+   protected `origin/main`, then start the immutable release through the
+   current verified release. Run it detached with a durable owner-only
+   operator log so an SSH or agent transport interruption cannot terminate or
+   obscure the release.
+8. **Monitor durable evidence.** Follow the deployment PID, deployment record,
+   and operator log until completion. Do not report success while the process
+   is still running.
+9. **Verify production.** Confirm `/srv/akl/current`, image revisions,
+   container health, public `/akb/api/health`, `/akb/api/ready`, and one narrow
+   authorized application/source smoke. For a shadow integration, separately
+   verify service-token issuance, exact single audience, pinned manifest
+   loading, and upstream readiness before any active promotion.
+10. **Close the release.** Record the merge SHA, active release SHA, affected
+    services, checks run, health result, known shadow blockers, and Chroma
+    reindex result.
+
+### Failure loop
+
+- A failure before production build is fixed in the same PR and repeats only
+  the relevant local gate before required CI.
+- A failed production build that has crossed the immutable SHA-burn boundary
+  requires a reviewed descendant. Do not retry the burned SHA.
+- Before opening that descendant PR, reproduce and fix the exact production
+  image failure locally, then rerun the full production image preflight.
+- A failure after migration or runtime side effects follows only the
+  documented forward-fix/recovery procedure. Never improvise rollback by
+  moving `current`, retagging an image, or rewriting Git history.
+
+### Timing targets
+
+These are operating targets, not reasons to weaken a gate:
+
+- final PR CI: at most 8 minutes where runner capacity permits;
+- prebuilt release images: at most 6 minutes and completed off production;
+- production activation after verified images exist: at most 3 minutes;
+- ordinary final-candidate-to-production path: at most 15 minutes;
+- forward-fix or rollback decision: within 2 minutes of a verified failure.
+
+The target architecture is build-once promotion: CI publishes signed,
+content-addressed images and a release manifest, and production pulls and
+verifies those digests instead of compiling source. Until that pipeline exists,
+the exact local production-image preflight above is mandatory.
+
 ## Release Tag
 
 Create a release tag only from a known-good `main` commit:
