@@ -138,6 +138,8 @@ services:
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage
       - ${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-/srv/akl/env/svc-akb-web-ingestion.client-secret}:/run/secrets/svc-akb-web-ingestion-client-secret:ro
       - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     tmpfs:
       - /run/akl-secrets:mode=0700,uid=0,gid=0
     depends_on:
@@ -220,6 +222,8 @@ services:
     volumes:
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage:ro
       - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     tmpfs:
       - /run/akl-secrets:mode=0700,uid=0,gid=0
     depends_on:

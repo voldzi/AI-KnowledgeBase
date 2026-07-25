@@ -38,8 +38,13 @@ copies.
 11. Persist only a bounded history envelope and re-run the authorized source
     query when history is reopened.
 12. Audit tool IDs, schema/source versions, status, counts, latency, scope types
-    and correlation identifiers without prompts, answers, tokens or source
-    payloads.
+   and correlation identifiers without prompts, answers, tokens or source
+   payloads.
+
+On `docker.home.cz`, the AKB web containers define
+`host.docker.internal:host-gateway`. This permits a source application that is
+published only on the host, such as the separate AIIP Compose stack, to be
+reached through a stable internal hostname rather than a Docker bridge IP.
 
 ## Modes
 
