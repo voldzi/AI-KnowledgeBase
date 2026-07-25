@@ -171,6 +171,10 @@ Purpose:
 - provide the ChatGPT/Copilot-like AKB Employee Chat Portal at `/chat`
 - let users start, return to, archive, and share assistant threads
 - load persisted conversation history from Registry API through the web BFF
+- keep document, ProjectFlow, Budget, and cross-domain Copilot turns in the
+  same governed history
+- follow new messages only while the reader is near the end; preserve an
+  intentional scroll position and expose a `New answer` control otherwise
 - keep share-thread controls visible as the product path for collaborative work with retention policy
 - ask RAG Retrieval Service for answers through the assistant API
 - offer each indexed document title at most once in the suggested-question area,

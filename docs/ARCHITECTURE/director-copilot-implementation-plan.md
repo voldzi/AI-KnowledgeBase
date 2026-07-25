@@ -55,8 +55,13 @@ nikoli jako nová aplikace, druhá historie nebo paralelní AI vrstva.
 - EvidenceItem normalizace, strictest-policy snapshot a čtyřvrstvá odpověď;
 - fail-closed blokace AI pro `RESTRICTED`, `NO_EXTERNAL_AI` a
   `LOCAL_PROCESSING_ONLY`;
-- ephemerální federované odpovědi bez trvalé historie a feature flag ve stavu
-  `false`.
+- jednotná serverová historie dokumentových i federovaných odpovědí; Copilot
+  ukládá pouze zobrazenou odpověď a omezenou provenienci bez živého upstream
+  snapshotu, tokenů nebo access projection;
+- reautorizace federované historie vůči aktuální STRATOS projection a čerstvým
+  read-only doménovým nástrojům; změna oprávnění, policy nebo source verze
+  historický obsah bezpečně skryje;
+- feature flag pro řízenou produkční aktivaci.
 
 ### Co stále chybí
 
@@ -68,8 +73,9 @@ nikoli jako nová aplikace, druhá historie nebo paralelní AI vrstva.
    kontextového follow-upu a zákazu dokumentového fallbacku. Obecný entity
    resolver podle názvu/aliasu projektu, další doménové nástroje a širší DAG
    zůstávají backlog.
-3. EvidenceItem a AnalysisSnapshot existují pro první řez; chybí jejich obecná
-   persistence, historie s reautorizací a artifact package.
+3. EvidenceItem a AnalysisSnapshot existují pro první řez; historie ukládá
+   pouze bezpečný odvozený envelope a při otevření jej reautorizuje. Obecný
+   artifact package zůstává backlog.
 4. `AnalystEvidenceItem` je dokumentový záznam analytického spisu; není
    neměnným mezidoménovým důkazem a nesmí být bez změny významu použit jako
    kontrakt Copilota.

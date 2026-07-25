@@ -220,6 +220,13 @@ answers are reauthorized on each load. If current source access is absent, the
 stored answer, citations, and structured artifacts are withheld and only a
 content-free aggregate audit event is written.
 
+Federated ProjectFlow/Budget answers are stored without raw domain payloads,
+access tokens, or access projections. Their bounded provenance is revalidated
+against both the current STRATOS access projection and a fresh source-domain
+response whenever the thread is reopened. If the source cannot be verified,
+AKB fails closed and withholds the historical answer instead of treating an
+outage as an authorization denial.
+
 ## Secrets
 
 Secrets must not be committed to Git, documentation, package artifacts, shell

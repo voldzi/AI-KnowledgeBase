@@ -158,6 +158,48 @@ describe("Director Copilot chat policy enforcement", () => {
     }
   });
 
+  it("explains missing Budget data without presenting it as an authorization denial", async () => {
+    const missingPlan = await runBudgetFixture({
+      ...structuredClone(budgetFixture),
+      status: "complete",
+      items: [],
+      warnings: ["BUDGET_APPROVED_PLAN_MISSING"],
+    });
+    assert.equal(missingPlan.response_type, "no_answer");
+    assert.match(missingPlan.answer ?? "", /není k dispozici schválený plán/);
+    assert.equal(missingPlan.warnings.includes("BUDGET_APPROVED_PLAN_MISSING"), true);
+
+    const currencyConflict = await runBudgetFixture({
+      ...structuredClone(budgetFixture),
+      status: "complete",
+      items: [],
+      warnings: ["BUDGET_CURRENCY_CONFLICT"],
+    });
+    assert.equal(currencyConflict.response_type, "no_answer");
+    assert.match(currencyConflict.answer ?? "", /rozdílných měnách/);
+    assert.match(currencyConflict.answer ?? "", /Nesčítal/);
+  });
+
+  it("distinguishes Budget scope and Information Policy denials", async () => {
+    const scopeDenied = await runBudgetFixture({
+      ...structuredClone(budgetFixture),
+      status: "not_authorized",
+      items: [],
+      warnings: ["BUDGET_SCOPE_NOT_COVERED"],
+    });
+    assert.equal(scopeDenied.response_type, "restricted");
+    assert.match(scopeDenied.answer ?? "", /neobsahuje použitelný/);
+
+    const policyDenied = await runBudgetFixture({
+      ...structuredClone(budgetFixture),
+      status: "not_authorized",
+      items: [],
+      warnings: ["BUDGET_INFORMATION_POLICY_DENIED"],
+    });
+    assert.equal(policyDenied.response_type, "restricted");
+    assert.match(policyDenied.answer ?? "", /Information Policy/);
+  });
+
   it("does not invent a local-membership denial for an organization-wide grant", async () => {
     const originalFetch = globalThis.fetch;
     let ragCalls = 0;
@@ -450,6 +492,39 @@ function fixture(name: string): DomainToolResponse {
     new URL(`../../../contracts/director-copilot/v1/fixtures/${name}`, import.meta.url),
     "utf8",
   )) as DomainToolResponse;
+}
+
+async function runBudgetFixture(
+  source: DomainToolResponse,
+): Promise<Awaited<ReturnType<typeof runDirectorCopilotChat>>> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body)) as DomainToolRequest;
+    return Response.json({
+      ...structuredClone(source),
+      tool_call_id: request.tool_call_id,
+    });
+  };
+  try {
+    return await runDirectorCopilotChat({
+      message: "Jaké má projekt náklady?",
+      conversationId: null,
+      responseLanguage: "cs",
+      intent: "budget_portfolio_status",
+      actorContext: context(),
+      clients: {
+        rag: {
+          assistantChat: async () => {
+            throw new Error("Budget live-data states must not use document RAG");
+          },
+        },
+        registry: { createAuditEvent: async () => ({}) },
+      } as unknown as ApiClients,
+      config: config(),
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 function config(): AklConfig {

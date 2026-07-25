@@ -167,12 +167,61 @@
               "items": {
                 "items": {
                   "properties": {
-                    "facts": { "items": { "properties": { "key": { "enum": ["project.display_name", "budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount"] } } } }
+                    "facts": {
+                      "items": { "properties": { "key": { "enum": ["project.display_name", "budget.variance_amount", "budget.variance_percent", "budget.plan_amount", "budget.actual_amount", "budget.forecast_amount"] } } },
+                      "allOf": [
+                        { "contains": { "properties": { "key": { "const": "project.display_name" } }, "required": ["key"] }, "minContains": 1, "maxContains": 1 },
+                        { "contains": { "properties": { "key": { "const": "budget.variance_amount" } }, "required": ["key"] }, "minContains": 1, "maxContains": 1 },
+                        { "contains": { "properties": { "key": { "const": "budget.plan_amount" } }, "required": ["key"] }, "minContains": 1, "maxContains": 1 }
+                      ],
+                      "oneOf": [
+                        {
+                          "contains": { "properties": { "key": { "const": "budget.actual_amount" } }, "required": ["key"] },
+                          "minContains": 1,
+                          "maxContains": 1,
+                          "not": { "contains": { "properties": { "key": { "const": "budget.forecast_amount" } }, "required": ["key"] } }
+                        },
+                        {
+                          "contains": { "properties": { "key": { "const": "budget.forecast_amount" } }, "required": ["key"] },
+                          "minContains": 1,
+                          "maxContains": 1,
+                          "not": { "contains": { "properties": { "key": { "const": "budget.actual_amount" } }, "required": ["key"] } }
+                        }
+                      ]
+                    }
                   }
                 }
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool_id": { "const": "budget.project_financial_snapshot.v1" },
+              "warnings": {
+                "contains": {
+                  "enum": ["BUDGET_INFORMATION_POLICY_DENIED", "BUDGET_SCOPE_NOT_COVERED"]
+                }
+              }
+            },
+            "required": ["tool_id", "warnings"]
+          },
+          "then": { "properties": { "status": { "const": "not_authorized" } } }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool_id": { "const": "budget.project_financial_snapshot.v1" },
+              "warnings": {
+                "contains": {
+                  "enum": ["BUDGET_APPROVED_PLAN_MISSING", "BUDGET_CURRENCY_CONFLICT"]
+                }
+              }
+            },
+            "required": ["tool_id", "warnings"]
+          },
+          "then": { "properties": { "status": { "enum": ["complete", "partial"] } } }
         },
         {
           "if": { "properties": { "tool_id": { "const": "projectflow.project_delivery_snapshot.v1" } }, "required": ["tool_id"] },

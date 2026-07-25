@@ -175,4 +175,109 @@ describe("Director Copilot DomainTool contract", () => {
         && error.code === "DOMAIN_TOOL_ITEMS_LIMIT",
     );
   });
+
+  it("requires a complete single-currency Budget snapshot with actual xor forecast", () => {
+    const missingName = structuredClone(budgetFixture) as {
+      items: Array<{ facts: Array<{ key: string; currency?: string | null }> }>;
+    };
+    missingName.items[0]!.facts = missingName.items[0]!.facts.filter(
+      (fact) => fact.key !== "project.display_name",
+    );
+    assert.throws(
+      () => parseBudget(missingName),
+      (error: unknown) => error instanceof DirectorCopilotContractError
+        && error.code === "BUDGET_FINANCIAL_FACT_MISSING",
+    );
+
+    const actualAndForecast = structuredClone(budgetFixture) as {
+      items: Array<{ facts: Array<Record<string, unknown>> }>;
+    };
+    actualAndForecast.items[0]!.facts.push({
+      key: "budget.actual_amount",
+      value: 10_500_000,
+      value_type: "currency",
+      unit: null,
+      currency: "CZK",
+      period_start: "2026-01-01",
+      period_end: "2026-12-31",
+      quality: 1,
+    });
+    assert.throws(
+      () => parseBudget(actualAndForecast),
+      (error: unknown) => error instanceof DirectorCopilotContractError
+        && error.code === "BUDGET_ACTUAL_FORECAST_INVALID",
+    );
+
+    const mixedCurrencies = structuredClone(budgetFixture) as {
+      items: Array<{ facts: Array<{ key: string; currency?: string | null }> }>;
+    };
+    mixedCurrencies.items[0]!.facts.find(
+      (fact) => fact.key === "budget.forecast_amount",
+    )!.currency = "EUR";
+    assert.throws(
+      () => parseBudget(mixedCurrencies),
+      (error: unknown) => error instanceof DirectorCopilotContractError
+        && error.code === "BUDGET_CURRENCY_CONFLICT",
+    );
+
+    const zeroPlan = structuredClone(budgetFixture) as {
+      items: Array<{ facts: Array<{ key: string; value: unknown }> }>;
+    };
+    zeroPlan.items[0]!.facts = zeroPlan.items[0]!.facts.filter(
+      (fact) => fact.key !== "budget.variance_percent",
+    );
+    zeroPlan.items[0]!.facts.find(
+      (fact) => fact.key === "budget.plan_amount",
+    )!.value = 0;
+    assert.equal(parseBudget(zeroPlan).status, "complete");
+  });
+
+  it("keeps missing Budget data separate from scope and policy denials", () => {
+    const missingPlan = emptyBudgetResponse(
+      "complete",
+      "BUDGET_APPROVED_PLAN_MISSING",
+    );
+    assert.equal(parseBudget(missingPlan).status, "complete");
+
+    const scopeDenied = emptyBudgetResponse(
+      "not_authorized",
+      "BUDGET_SCOPE_NOT_COVERED",
+    );
+    assert.equal(parseBudget(scopeDenied).status, "not_authorized");
+
+    assert.throws(
+      () => parseBudget({
+        ...missingPlan,
+        status: "not_authorized",
+      }),
+      (error: unknown) => error instanceof DirectorCopilotContractError
+        && error.code === "BUDGET_DATA_WARNING_STATUS_INVALID",
+    );
+    assert.throws(
+      () => parseBudget({
+        ...scopeDenied,
+        status: "complete",
+      }),
+      (error: unknown) => error instanceof DirectorCopilotContractError
+        && error.code === "BUDGET_DENIAL_STATUS_INVALID",
+    );
+  });
 });
+
+function parseBudget(value: unknown) {
+  return parseDomainToolResponse(value, {
+    toolId: DOMAIN_TOOL_IDS.budget,
+    toolCallId: "call_1111111111111111",
+    requestedScopes: [{ type: "project", id: "project-001" }],
+    nowMs: Date.parse("2026-07-21T10:01:00Z"),
+  });
+}
+
+function emptyBudgetResponse(status: string, warning: string) {
+  return {
+    ...structuredClone(budgetFixture),
+    status,
+    items: [],
+    warnings: [warning],
+  };
+}

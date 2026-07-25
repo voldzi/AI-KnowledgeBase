@@ -1029,6 +1029,7 @@ button {
 }
 
 .akb-chat-transcript {
+  align-content: start;
   background: #fbfcfc;
   display: grid;
   gap: 14px;
@@ -1037,6 +1038,41 @@ button {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 18px 20px;
+  position: relative;
+}
+
+.akb-chat-transcript__end {
+  height: 1px;
+  width: 100%;
+}
+
+.akb-chat-scroll-latest {
+  align-items: center;
+  align-self: end;
+  background: #ffffff;
+  border: 1px solid #9fc2c6;
+  border-radius: 999px;
+  bottom: 4px;
+  box-shadow: 0 5px 18px rgb(16 32 42 / 16%);
+  color: #245f64;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 7px;
+  justify-self: center;
+  min-height: 36px;
+  padding: 0 13px;
+  position: sticky;
+  z-index: 2;
+}
+
+.akb-chat-scroll-latest:hover,
+.akb-chat-scroll-latest:focus-visible {
+  background: #f0f8f8;
+  outline: 2px solid #66a8ad;
+  outline-offset: 2px;
 }
 
 .akb-chat-empty {
