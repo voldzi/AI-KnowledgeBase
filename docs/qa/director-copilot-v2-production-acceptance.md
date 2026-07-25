@@ -64,6 +64,14 @@ Shadow succeeds only when every source response validates against its pinned
 manifest and every observed source status is `complete`, `partial`, `no_data`,
 `not_authorized` or `unavailable` with a known reason code.
 
+Start S1 by pressing **Nové vlákno** and record the newly returned server
+`conv_*` identifier. It must differ from the previously active conversation
+before S1 is submitted. The S1 audit must contain
+`budget.organization_financial_summary.v1`; S2 and S3 must retain fiscal year
+2025 and the financial metric while the project filter remains empty. A V2
+failure must include a bounded `failure_reason_code` and must not trigger a
+document-RAG answer.
+
 ## Negative and resilience acceptance
 
 Run these cases in the isolated STRATOS integration environment, never by

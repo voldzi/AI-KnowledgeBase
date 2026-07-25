@@ -84,6 +84,9 @@ export function directorCopilotV2FailureResponse(input: {
 }): AssistantChatResponse {
   const notAuthorized = input.error instanceof DirectorCopilotTransportError
     && input.error.outcome === "not_authorized";
+  const failureReasonCode = input.error instanceof DirectorCopilotTransportError
+    ? input.error.code
+    : "DIRECTOR_COPILOT_V2_FAILED";
   const answer = input.language === "en"
     ? notAuthorized
       ? "Your current authorized scope does not cover the requested live STRATOS data."
@@ -97,12 +100,13 @@ export function directorCopilotV2FailureResponse(input: {
     answer,
     confidence: "insufficient_source",
     queryState: input.queryState,
-    warnings: [
+    warnings: [...new Set([
+      failureReasonCode,
       notAuthorized
         ? "DIRECTOR_COPILOT_V2_NOT_AUTHORIZED"
         : "DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE",
       "LIVE_DATA_FALLBACK_BLOCKED",
-    ],
+    ])],
     missingInformation: answer,
   });
 }
@@ -145,6 +149,7 @@ export async function auditDirectorCopilotV2Failure(input: {
       contract_revision: DIRECTOR_COPILOT_V2_REVISION,
       mode: input.mode,
       error_code: errorCode,
+      failure_reason_code: errorCode,
       outcome: input.error instanceof DirectorCopilotTransportError
         ? input.error.outcome
         : "unavailable",
@@ -632,10 +637,29 @@ async function auditResult(
       authorized_document_link_count:
         orchestration.snapshot.authorized_document_ids.length,
       status: orchestration.status,
+      failure_reason_code: primaryFailureReasonCode(orchestration),
       baseline_response_type: input.baselineResponse?.response_type ?? null,
       baseline_confidence: input.baselineResponse?.confidence ?? null,
     },
   }, serviceContext);
+}
+
+function primaryFailureReasonCode(
+  orchestration: DirectorCopilotV2OrchestrationResult,
+): string | null {
+  if (orchestration.status === "complete" || orchestration.status === "no_data") {
+    return null;
+  }
+  const reasonCode = orchestration.snapshot.outcomes
+    .filter((outcome) => (
+      outcome.status === "partial"
+      || outcome.status === "not_authorized"
+      || outcome.status === "unavailable"
+    ))
+    .flatMap((outcome) => outcome.reason_codes)
+    .sort()[0];
+  return reasonCode
+    ?? `DIRECTOR_COPILOT_V2_${orchestration.status.toUpperCase()}`;
 }
 
 function markdownCell(value: unknown): string {

@@ -207,6 +207,7 @@ from app.schemas import (
     WorkflowTaskPriority,
     WorkflowTaskResponse,
     WorkflowTaskStatus,
+    AssistantConversationCreateRequest,
     AssistantConversationDetailResponse,
     AssistantConversationListItemResponse,
     AssistantConversationListResponse,
@@ -9046,6 +9047,35 @@ def list_assistant_conversations(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/assistant/conversation-history",
+    response_model=AssistantConversationDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_assistant_conversation(
+    payload: AssistantConversationCreateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantConversationDetailResponse:
+    context = require_global_action(principal, Action.rag_query, db)
+    _validate_conversation_retention_until(payload.retention_until)
+    conversation = AssistantConversation(
+        conversation_id=make_id("conv"),
+        user_id=context.subject_id,
+        title=payload.title,
+        visibility=payload.visibility,
+        retention_until=(
+            payload.retention_until
+            or _default_conversation_retention_until()
+        ),
+    )
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    db.refresh(conversation, attribute_names=["messages", "shares"])
+    return _conversation_response(conversation, db=db, principal=principal)
 
 
 @router.post(

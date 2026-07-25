@@ -53,6 +53,13 @@ reached through a stable internal hostname rather than a Docker bridge IP.
   a metadata-only audit.
 - `active`: V2 answer is returned. V1 remains available for rollback.
 
+Every new chat thread is persisted before its first question and starts with
+an empty query state. An explicit organization, organization-unit or portfolio
+turn clears incompatible project filters. Follow-up grouping by portfolio
+inherits the financial metric and fiscal year without inheriting a project
+restriction. Shadow failures record a bounded `failure_reason_code`; a
+recognized live-data request is never replaced by document RAG.
+
 ## Joint acceptance
 
 Run one uninterrupted conversation:

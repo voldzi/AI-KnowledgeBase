@@ -482,6 +482,7 @@ export function AkbAssistantApp({
     }
     return null;
   });
+  const [creatingThread, setCreatingThread] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
@@ -648,8 +649,12 @@ export function AkbAssistantApp({
     setMobileThreadsOpen(false);
   }
 
-  function createThread() {
+  async function createThread() {
+    if (creatingThread) {
+      return;
+    }
     rememberActiveThreadScroll();
+    const previousThreadId = activeThread.id;
     const thread = createEmptyThread(copy.emptyThreadTitle);
     setThreads((current) => [thread, ...current]);
     setActiveThreadId(thread.id);
@@ -658,6 +663,42 @@ export function AkbAssistantApp({
     setSourceContext(null);
     setSourceError(null);
     setMobileThreadsOpen(false);
+    setCreatingThread(true);
+    try {
+      const response = await fetch(withAppBasePath("/api/assistant/conversations"), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          redirectToLoginAfterUnauthorized();
+        }
+        throw new Error("Conversation creation failed.");
+      }
+      const payload = await response.json() as {
+        conversation: AssistantConversationDetail;
+      };
+      const persistedThread = threadFromConversation(
+        payload.conversation,
+        language,
+      );
+      setThreads((current) => current.map((candidate) => (
+        candidate.id === thread.id ? persistedThread : candidate
+      )));
+      setActiveThreadId((current) => (
+        current === thread.id ? persistedThread.id : current
+      ));
+    } catch {
+      setThreads((current) => current.filter(
+        (candidate) => candidate.id !== thread.id,
+      ));
+      setActiveThreadId(previousThreadId);
+      setStatusMessage(copy.threadUpdateFailed);
+    } finally {
+      setCreatingThread(false);
+    }
   }
 
   function removeThreadFromView(threadId: string, successMessage?: string) {
@@ -876,6 +917,9 @@ export function AkbAssistantApp({
   }
 
   async function submitQuestion(nextQuestion = composer, endpoint: "/api/assistant/chat" | "/api/assistant/clarify" = "/api/assistant/chat", nextContext = activeThread.context) {
+    if (creatingThread) {
+      return;
+    }
     if (activeThread.status === "archived") {
       setStatusMessage(copy.archivedReadOnly);
       return;
@@ -1118,7 +1162,7 @@ export function AkbAssistantApp({
     setStatusMessage(null);
     const remainder = removeLeadingSlashToken(composer);
     if (commandId === "new_thread") {
-      createThread();
+      void createThread();
       return;
     }
     if (commandId === "types") {
@@ -1291,7 +1335,12 @@ export function AkbAssistantApp({
               <X size={16} aria-hidden="true" />
             </button>
           </div>
-          <StratosButton tone="primary" type="button" onClick={createThread}>
+          <StratosButton
+            tone="primary"
+            type="button"
+            onClick={() => void createThread()}
+            disabled={creatingThread}
+          >
             <MessageSquarePlus size={16} aria-hidden="true" />
             {copy.newThread}
           </StratosButton>
@@ -1594,9 +1643,13 @@ export function AkbAssistantApp({
                 onKeyDown={handleComposerKeyDown}
                 placeholder={copy.composerPlaceholder}
                 rows={2}
-                disabled={activeThread.status === "archived"}
+                disabled={creatingThread || activeThread.status === "archived"}
               />
-              <button type="submit" disabled={submitting || activeThread.status === "archived"} aria-label={submitting ? copy.asking : copy.ask}>
+              <button
+                type="submit"
+                disabled={creatingThread || submitting || activeThread.status === "archived"}
+                aria-label={submitting ? copy.asking : copy.ask}
+              >
                 <Send size={17} aria-hidden="true" />
               </button>
             </div>
@@ -2915,7 +2968,7 @@ function createInitialThreads(
   conversations: AssistantConversationListItem[] = []
 ): AssistantThread[] {
   if (conversations.length > 0) {
-    return conversations.map((conversation) => threadFromConversationListItem(conversation));
+    return conversations.map((conversation) => threadFromConversationListItem(conversation, language));
   }
   return [
     {
@@ -2972,12 +3025,19 @@ function createEmptyThread(title: string): AssistantThread {
   };
 }
 
-function threadFromConversationListItem(conversation: AssistantConversationListItem): AssistantThread {
+function threadFromConversationListItem(
+  conversation: AssistantConversationListItem,
+  language: AklLanguage
+): AssistantThread {
   return {
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
     ownerSubjectId: conversation.user_id,
-    title: conversation.title ?? "AKB chat",
+    title: conversation.title ?? (
+      conversation.message_count === 0
+        ? emptyThreadTitle(language)
+        : "AKB chat"
+    ),
     context: {},
     messages: [],
     draft: "",
@@ -3007,7 +3067,11 @@ function threadFromConversation(
     id: threadIdFromConversationId(conversation.conversation_id),
     conversationId: conversation.conversation_id,
     ownerSubjectId: conversation.user_id,
-    title: conversation.title ?? "AKB chat",
+    title: conversation.title ?? (
+      conversation.messages.length === 0
+        ? emptyThreadTitle(language)
+        : "AKB chat"
+    ),
     context: {},
     messages: conversation.messages.map((message) => {
       const chatMessage = messageFromConversationMessage(
@@ -3037,6 +3101,10 @@ function threadFromConversation(
     })),
     historyLoaded: true
   };
+}
+
+function emptyThreadTitle(language: AklLanguage): string {
+  return language === "en" ? "New thread" : "Nové vlákno";
 }
 
 function messageFromConversationMessage(

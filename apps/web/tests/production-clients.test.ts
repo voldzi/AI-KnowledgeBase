@@ -951,6 +951,10 @@ describe("production API clients", () => {
     const context = createMockContext({ subjectId: "employee_1", accessToken: "test-token" });
 
     await clients.registry.listAssistantConversations(context, true);
+    await clients.registry.createAssistantConversation(
+      { title: "Nové vlákno", visibility: "private" },
+      context,
+    );
     await clients.registry.getAssistantConversation("conv_1", context);
     await clients.registry.appendAssistantConversationMessages(
       "conv_1",
@@ -981,18 +985,20 @@ describe("production API clients", () => {
 
     assert.equal(calls[0][0], "https://registry.local/api/v1/assistant/conversation-history?include_archived=true&limit=50&offset=0");
     assert.equal(calls[0][1]?.method, "GET");
-    assert.equal(calls[1][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
-    assert.equal(calls[1][1]?.method, "GET");
-    assert.equal(calls[2][0], "https://registry.local/api/v1/assistant/conversations/conv_1/messages");
-    assert.equal(calls[2][1]?.method, "POST");
-    assert.equal(calls[3][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
-    assert.equal(calls[3][1]?.method, "PATCH");
-    assert.equal(calls[4][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/shares");
-    assert.equal(calls[4][1]?.method, "PUT");
-    assert.equal(calls[5][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/messages/msg_1/feedback");
+    assert.equal(calls[1][0], "https://registry.local/api/v1/assistant/conversation-history");
+    assert.equal(calls[1][1]?.method, "POST");
+    assert.equal(calls[2][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[2][1]?.method, "GET");
+    assert.equal(calls[3][0], "https://registry.local/api/v1/assistant/conversations/conv_1/messages");
+    assert.equal(calls[3][1]?.method, "POST");
+    assert.equal(calls[4][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[4][1]?.method, "PATCH");
+    assert.equal(calls[5][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/shares");
     assert.equal(calls[5][1]?.method, "PUT");
-    assert.equal(calls[6][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
-    assert.equal(calls[6][1]?.method, "DELETE");
+    assert.equal(calls[6][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1/messages/msg_1/feedback");
+    assert.equal(calls[6][1]?.method, "PUT");
+    assert.equal(calls[7][0], "https://registry.local/api/v1/assistant/conversation-history/conv_1");
+    assert.equal(calls[7][1]?.method, "DELETE");
   });
 
   it("loads workflow tasks from the Registry API", async () => {

@@ -48,6 +48,48 @@ describe("Director Copilot V2 orchestration", () => {
     assert.equal(requests[0]?.parameters.granularity, "organization");
   });
 
+  it("routes the S1 IT budget question to the organization tool without a stale project filter", async () => {
+    const previous = resolveConversationQuery({
+      message: "Jaké má projekt QNAP náklady?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    previous.granularity = "project";
+    previous.entity_filters.project_ids = ["project-qnap"];
+    const state = resolveConversationQuery({
+      message: "Jaký má IT rozpočet na rok 2025?",
+      context: { stratos_query_state: previous },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const requests: DirectorCopilotV2Request[] = [];
+
+    await orchestrateDirectorCopilotV2({
+      message: "Jaký má IT rozpočet na rok 2025?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "budget_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async (_application, request) => {
+          requests.push(request);
+          return {
+            ...structuredClone(budgetOrganization.responses.complete),
+            tool_call_id: request.tool_call_id,
+          };
+        },
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.equal(requests[0]?.tool_id, "budget.organization_financial_summary.v1");
+    assert.equal(requests[0]?.parameters.granularity, "organization_unit");
+    assert.deepEqual(requests[0]?.parameters.period, {
+      type: "fiscal_year",
+      fiscal_year: 2025,
+    });
+    assert.deepEqual(requests[0]?.parameters.entity_filters.project_ids, []);
+  });
+
   it("uses the project snapshot for an explicitly selected project", async () => {
     const state = resolveConversationQuery({
       message: "Jaký je rozpočet projektu v roce 2025?",

@@ -1917,6 +1917,14 @@ class AssistantMessageCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class AssistantConversationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, max_length=300)
+    visibility: str = Field(default="private", pattern="^(private|shared)$")
+    retention_until: datetime | None = None
+
+
 class AssistantMessageAppendRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
     messages: list[AssistantMessageCreate] = Field(min_length=1, max_length=10)

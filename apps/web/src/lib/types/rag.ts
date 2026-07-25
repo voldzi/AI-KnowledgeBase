@@ -366,6 +366,12 @@ export interface AssistantConversationListResponse {
   offset: number;
 }
 
+export interface AssistantConversationCreateRequest {
+  title?: string | null;
+  visibility?: "private" | "shared";
+  retention_until?: string | null;
+}
+
 export interface AssistantConversationPatchRequest {
   title?: string | null;
   status?: "active" | "archived";
