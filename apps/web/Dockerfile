@@ -2,7 +2,7 @@
 
 FROM node:26-alpine AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
 RUN npm install -g pnpm@11.7.0 && pnpm install --frozen-lockfile
 
 FROM node:26-alpine AS builder
@@ -12,7 +12,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /usr/local/lib/node_modules/pnpm /usr/local/lib/node_modules/pnpm
-COPY . .
+COPY apps/web/ ./
+COPY contracts/director-copilot/v2 /contracts/director-copilot/v2
 RUN node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs run build
 
 FROM node:26-alpine AS runner
@@ -31,7 +32,7 @@ RUN mkdir -p /data/object-storage && chown -R nextjs:nextjs /data
 COPY --from=builder --chown=nextjs:nextjs /app/public ./public
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY apps/web/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3000
