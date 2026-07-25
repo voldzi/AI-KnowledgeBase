@@ -154,11 +154,11 @@ export async function authorizeDirectorCopilotHistory(input: {
         : { status: "source_unavailable" };
     }
     const currentReferences = new Set(
-      historySourceReferences(orchestration.snapshot).map(sourceReferenceKey),
+      historySourceReferences(orchestration.snapshot).map(sourceAuthorizationKey),
     );
     if (
       envelope.source_references.some(
-        (reference) => !currentReferences.has(sourceReferenceKey(reference)),
+        (reference) => !currentReferences.has(sourceAuthorizationKey(reference)),
       )
     ) {
       return { status: "access_changed" };
@@ -225,6 +225,15 @@ function sourceReferenceKey(reference: DirectorHistorySourceReference): string {
     reference.source_system,
     reference.canonical_id,
     reference.source_version,
+    reference.policy_hash,
+  ].join("|");
+}
+
+function sourceAuthorizationKey(reference: DirectorHistorySourceReference): string {
+  // source_version is live-data provenance, not an authorization attribute.
+  return [
+    reference.source_system,
+    reference.canonical_id,
     reference.policy_hash,
   ].join("|");
 }

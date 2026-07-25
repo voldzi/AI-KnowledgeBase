@@ -357,11 +357,15 @@ the access projection.
 
 Before a federated historical answer is returned to the browser, the web BFF
 revalidates the relevant projected capability/scope and executes the current
-read-only domain tool. A changed grant, missing source item, source version, or
-policy hash yields `source_access_changed`; a temporarily unavailable source
-yields `source_temporarily_unavailable`. In both cases the stored answer body
-and citations are withheld. Document citations continue to be independently
-reauthorized by Registry.
+read-only domain tool. A changed grant, missing source item, or changed policy
+hash yields `source_access_changed`; a temporarily unavailable source
+yields `source_temporarily_unavailable`. For live Budget and ProjectFlow data,
+`source_version` remains persisted provenance but is not itself an
+authorization attribute: a refreshed version remains visible only when the
+fresh response contains the same source system, canonical item and policy
+hash under the current projected capability and scope. In denied cases the
+stored answer body and citations are withheld. Document citations continue to
+be independently reauthorized by Registry.
 
 For a follow-up turn, RAG can load only a bounded window of earlier
 user-authored questions from the freshly authorized Registry conversation.

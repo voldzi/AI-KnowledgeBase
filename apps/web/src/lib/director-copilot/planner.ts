@@ -10,7 +10,8 @@ import {
   type DirectorQueryPlan,
 } from "./contracts";
 
-const BUDGET_SIGNAL = /(rozpoc|budget|finan|odchyl|forecast|plan|skutecnost|cerpan|naklad|cen[ay]|vydaj|utrata|investic|castka|kolik stoji)/i;
+const BUDGET_SIGNAL = /(rozpoc|budget|finan|odchyl|forecast|vyhled|plan|skutecnost|cerpan|naklad|cen[ay]|vydaj|utrata|investic|castka|kolik stoji)/i;
+const BUDGET_FOLLOW_UP_SIGNAL = /(pristi rok|budouci rok|minuly rok|letos|loni|oproti|rozdil|vyvoj|trend)/i;
 const DELIVERY_SIGNAL = /(projectflow|projekt|project|portfolio|milnik|milestone|harmonogram|zpozd|delay|termin|ukol|realizac|plneni)/i;
 const CONTRACT_SIGNAL = /(smlouv|contract|dodavatel|supplier|rizik|risk)/i;
 const PROJECT_LIVE_SIGNAL = /(stav|prehled|seznam|evid|kolik|ktere|jake|jak je|aktual|zpozd|milnik|harmonogram|termin|ukol|plneni|pokrok|problem|zavislost|kapacit|tym|otevr|detail|konkret)/i;
@@ -44,9 +45,15 @@ export function classifyDirectorCopilotIntent(
   const accessOverview = accessQuestion && ACCESS_OVERVIEW_SIGNAL.test(normalized);
   const projectFlowContext = context.answer_source === "director_copilot_projectflow"
     || nestedPlanIntent(context) === "project_portfolio_status";
+  const budgetContext = context.answer_source === "director_copilot_budget"
+    || context.active_source_application === "budget"
+    || nestedPlanIntent(context) === "budget_portfolio_status";
 
   // A financial question remains a Budget question even when it follows a ProjectFlow answer.
-  if (hasBudget && (!documentQuestion || explicitProjectFlow)) {
+  if (
+    (hasBudget || (budgetContext && BUDGET_FOLLOW_UP_SIGNAL.test(normalized)))
+    && (!documentQuestion || explicitProjectFlow)
+  ) {
     return "budget_portfolio_status";
   }
 
