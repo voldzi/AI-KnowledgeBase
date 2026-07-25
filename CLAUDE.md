@@ -67,6 +67,46 @@ The goal in this repository is:
 - Do not manipulate VPN, VLAN, firewall, or network segmentation.
 - On `docker.home.cz`, verify deployment state with non-destructive checks first: git HEAD, `docker compose ps`, service `/health`, public `/akb/api/health`, and a narrow assistant/source smoke before changing configuration.
 
+## Fast and Safe Release Discipline
+
+- Treat production deployment as promotion of an already verified release
+  candidate, not as the first place where its Docker images are built.
+- Before opening or merging a release PR, compare the candidate with the
+  currently verified production SHA and list the expected affected services.
+  Review unexpected broad selection, especially a non-runtime `scripts/*`
+  change selecting every service, before starting production deployment.
+- Run focused tests first, then build every affected image with the exact
+  production Dockerfile, repository-root build context, build arguments, and
+  contract files. A native `pnpm build` or `docker compose config` is not a
+  substitute for the production image build.
+- Keep build fixes in the same PR until the exact production images pass.
+  Do not merge a candidate and discover ordinary Docker context or executable
+  errors by building it for the first time on `docker.home.cz`.
+- Required CI and security checks must not be skipped. Run them once on the
+  final candidate, merge only when all required checks pass, and deploy the
+  exact resulting full SHA once.
+- If production build starts and the immutable workflow burns the SHA, never
+  reuse it. Diagnose the recorded failure, prepare a reviewed descendant, and
+  repeat the exact pre-merge image build before another deployment.
+- Start long remote deployment through the durable, detached immutable release
+  entry point. Monitor its deployment record and operator log; do not make
+  success depend on an interactive SSH or Codex transport session.
+- After deployment, verify the active `/srv/akl/current` SHA, affected
+  container health, public `/akb/api/health`, `/akb/api/ready`, and the narrow
+  authorized source flow. Shadow integrations must also prove their service
+  token, exact audience, manifest, and upstream readiness before promotion.
+- Preserve immutable image identity, database backup, writable-primary,
+  migration, authorization, readiness, and rollback gates. Improve their
+  placement, caching, and parallelism rather than bypassing them.
+- After the final meaningful code or documentation state is ready, and before
+  the final handoff, incrementally reindex the AKB Chroma repository. Use the
+  exact managed root returned by `list_repositories` (currently
+  `/Users/voldzi/Developer/18 2026/AI KnowledgeBase`) and verify the new
+  material with a focused search. If MCP is unavailable, use the documented
+  `chroma-dev.sh reindex --root .` fallback and report that fallback.
+- The detailed binding sequence, failure loop, and timing targets are in
+  `docs/maintenance/release-process.md`.
+
 ## Application Skeleton Standards
 
 This repository follows the central application standards maintained in the
