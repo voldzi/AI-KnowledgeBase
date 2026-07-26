@@ -27,6 +27,10 @@ copies.
 3. Derive requested scopes only from the fresh STRATOS access projection.
 4. Obtain a separate service token for every source audience and pass the
    independent current actor bearer.
+   The same service client obtains a fifth route-bound token with scope
+   `director-copilot-akl-api` and the single audience `akl-api` for the
+   mandatory metadata-only Registry audit. A source token, default token or
+   interactive user token must not be reused for this audit.
 5. Traverse at most five cursor pages and 500 authorized items per tool.
 6. Distinguish `complete`, `partial`, `no_data`, `not_authorized` and
    `unavailable`.
@@ -41,6 +45,10 @@ copies.
    and correlation identifiers without prompts, answers, tokens or source
    payloads.
 
+The central access projection may identify the Budget application as either
+`budget` or the STRATOS catalog id `budget-contract`. AKB maps only this closed
+alias to the Budget domain. Unknown application ids remain unauthorized.
+
 On `docker.home.cz`, the AKB web containers define
 `host.docker.internal:host-gateway`. This permits a source application that is
 published only on the host, such as the separate AIIP Compose stack, to be
@@ -52,6 +60,18 @@ reached through a stable internal hostname rather than a Docker bridge IP.
 - `shadow`: V1 answer is returned; V2 evaluates after the response and writes
   a metadata-only audit.
 - `active`: V2 answer is returned. V1 remains available for rollback.
+
+Activation requires all five route-bound service scopes:
+
+- `director-copilot-akl-api` -> exactly `akl-api`;
+- `director-copilot-budget-api` -> exactly `budget-api`;
+- `director-copilot-projectflow-api` -> exactly `projectflow-api`;
+- `director-copilot-archflow-api` -> exactly `archflow-api`;
+- `director-copilot-aiip-api` -> exactly `aiip-api`.
+
+The client must not receive a default or multi-audience token.
+Registry must additionally list `svc-akb-director-copilot` as an exact trusted
+service client and grant it only the `audit` route family.
 
 Every new chat thread is persisted before its first question and starts with
 an empty query state. An explicit organization, organization-unit or portfolio

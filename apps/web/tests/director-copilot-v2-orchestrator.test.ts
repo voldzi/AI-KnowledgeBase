@@ -65,7 +65,7 @@ describe("Director Copilot V2 orchestration", () => {
     await orchestrateDirectorCopilotV2({
       message: "Jaký má IT rozpočet na rok 2025?",
       language: "cs",
-      context: projectedContext(),
+      context: projectedContext("budget-contract"),
       intent: "budget_portfolio_status",
       queryState: state,
       catalog: pinnedDirectorCopilotV2CatalogForTests(),
@@ -315,7 +315,9 @@ describe("Director Copilot V2 orchestration", () => {
   });
 });
 
-function projectedContext(): ApiRequestContext {
+function projectedContext(
+  budgetApplication = "budget",
+): ApiRequestContext {
   return {
     subjectId: "fixture-subject",
     organizationId: "org_stratos",
@@ -327,7 +329,7 @@ function projectedContext(): ApiRequestContext {
     requestId: "request-v2",
     correlationId: "correlation-v2",
     applicationAccess: [
-      access("budget", ["budget:access", "budget:read"]),
+      access(budgetApplication, ["budget:access", "budget:read"]),
       access("projectflow", ["projectflow:access", "projectflow:read"]),
       access("archflow", ["archflow:access", "archflow:read_organization"]),
       access("aiip", ["aiip:access", "aiip:read_organization"]),

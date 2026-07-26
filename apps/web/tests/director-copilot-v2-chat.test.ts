@@ -31,6 +31,7 @@ describe("Director Copilot V2 active chat", () => {
 
   it("correlates financial and delivery facts by canonical project identity without RAG", async () => {
     const auditEvents: unknown[] = [];
+    const auditContexts: ApiRequestContext[] = [];
     let registryDocumentChecks = 0;
     let ragCalls = 0;
     const message = "Které projekty překračují plán a mají zpožděný milník?";
@@ -55,8 +56,9 @@ describe("Director Copilot V2 active chat", () => {
             registryDocumentChecks += 1;
             throw new Error("fixture document is not authorized");
           },
-          createAuditEvent: async (event: unknown) => {
+          createAuditEvent: async (event: unknown, auditContext: ApiRequestContext) => {
             auditEvents.push(event);
+            auditContexts.push(auditContext);
             return {};
           },
         },
@@ -79,6 +81,12 @@ describe("Director Copilot V2 active chat", () => {
     assert.equal(ragCalls, 0);
     assert.equal(registryDocumentChecks, 1);
     assert.equal(auditEvents.length, 1);
+    assert.equal(auditContexts.length, 1);
+    assert.equal(
+      auditContexts[0]?.accessToken,
+      "mock-director-copilot-service-token-akl-api",
+    );
+    assert.equal(auditContexts[0]?.serviceClientId, "svc-akb-director-copilot");
     const serializedAudit = JSON.stringify(auditEvents[0]);
     assert.match(serializedAudit, /director-copilot-2/);
     assert.match(serializedAudit, /source_versions_json/);

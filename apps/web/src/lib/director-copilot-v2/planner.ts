@@ -1,5 +1,6 @@
 import type { ApiRequestContext, ResponseLanguage } from "@/lib/types";
 import { accessProjectionHash } from "@/lib/director-copilot/access";
+import { canonicalDirectorCopilotApplication } from "@/lib/director-copilot/application-id";
 import type { DirectorCopilotIntent } from "@/lib/director-copilot/contracts";
 import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
 
@@ -217,7 +218,7 @@ function inferredGranularityFromProjection(
   application: DirectorCopilotV2Application,
 ): DirectorCopilotV2Granularity {
   const access = (context.applicationAccess ?? []).find(
-    (candidate) => candidate.application.toLowerCase().replaceAll("_", "-") === application,
+    (candidate) => canonicalDirectorCopilotApplication(candidate.application) === application,
   );
   const explicitTypes = new Set(
     (access?.scopes ?? []).map((scope) => scope.split(":", 1)[0]),

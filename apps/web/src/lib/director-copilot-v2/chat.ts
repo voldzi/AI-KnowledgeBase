@@ -9,7 +9,10 @@ import type {
   AssistantChatResponse,
   ResponseLanguage,
 } from "@/lib/types";
-import { directorCopilotServiceToken } from "@/lib/director-copilot/service-identity";
+import {
+  DIRECTOR_COPILOT_AUDIT_TARGET,
+  directorCopilotServiceToken,
+} from "@/lib/director-copilot/service-identity";
 import type { DirectorCopilotIntent } from "@/lib/director-copilot/contracts";
 import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
 import { DirectorCopilotTransportError } from "@/lib/director-copilot/transport-error";
@@ -119,7 +122,11 @@ export async function auditDirectorCopilotV2Failure(input: {
   mode: "shadow" | "active";
   error: unknown;
 }): Promise<void> {
-  const serviceToken = await directorCopilotServiceToken(input.config);
+  const serviceToken = await directorCopilotServiceToken(
+    input.config,
+    fetch,
+    DIRECTOR_COPILOT_AUDIT_TARGET,
+  );
   const serviceContext: ApiRequestContext = {
     ...input.actorContext,
     subjectId: SERVICE_CLIENT_ID,
@@ -574,7 +581,11 @@ async function auditResult(
   orchestration: DirectorCopilotV2OrchestrationResult,
   response: AssistantChatResponse,
 ): Promise<void> {
-  const serviceToken = await directorCopilotServiceToken(input.config);
+  const serviceToken = await directorCopilotServiceToken(
+    input.config,
+    fetch,
+    DIRECTOR_COPILOT_AUDIT_TARGET,
+  );
   const serviceContext: ApiRequestContext = {
     ...input.actorContext,
     subjectId: SERVICE_CLIENT_ID,

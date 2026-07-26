@@ -1,4 +1,5 @@
 import type { ApiRequestContext } from "@/lib/types";
+import { canonicalDirectorCopilotApplication } from "@/lib/director-copilot/application-id";
 
 import {
   type DirectorCopilotV2Application,
@@ -48,7 +49,7 @@ export function directorCopilotV2AccessFor(
     return denied(application, "identity_inactive");
   }
   const access = (context.applicationAccess ?? []).find(
-    (candidate) => normalizeApplication(candidate.application) === application,
+    (candidate) => canonicalDirectorCopilotApplication(candidate.application) === application,
   );
   if (!access) return denied(application, "application_access_missing");
   if (!validAt(access.validUntil, nowMs)) return denied(application, "grant_expired");
@@ -180,10 +181,6 @@ const SCOPE_TYPES = new Set<DirectorCopilotV2ScopeType>([
 
 function scopeKey(scope: DirectorCopilotV2Scope): string {
   return `${scope.type}:${scope.id ?? ""}`;
-}
-
-function normalizeApplication(value: string): string {
-  return value.trim().toLowerCase().replaceAll("_", "-");
 }
 
 function validAt(validUntil: string | null | undefined, nowMs: number): boolean {

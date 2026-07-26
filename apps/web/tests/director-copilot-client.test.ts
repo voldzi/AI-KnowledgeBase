@@ -16,9 +16,13 @@ const fixture = JSON.parse(readFileSync(
 describe("Director Copilot domain client", () => {
   it("sends independent service and actor credentials without capability headers", async () => {
     let captured: RequestInit | undefined;
+    let tokenApplication: string | undefined;
     const client = new DirectorDomainToolClient({
       config: config(),
-      serviceToken: async () => "service-token",
+      serviceToken: async (application) => {
+        tokenApplication = application;
+        return "service-token";
+      },
       fetcher: async (_input, init) => {
         captured = init;
         return Response.json({ ...fixture, tool_call_id: "call_aaaaaaaaaaaaaaaa" });
@@ -34,6 +38,7 @@ describe("Director Copilot domain client", () => {
     assert.equal(headers.has("x-stratos-capabilities"), false);
     assert.equal(headers.has("x-stratos-scopes"), false);
     assert.equal(headers.get("idempotency-key"), "call_aaaaaaaaaaaaaaaa");
+    assert.equal(tokenApplication, "budget");
   });
 
   it("rejects shared service and actor credentials", async () => {

@@ -20,7 +20,10 @@ import { directorCopilotPromptEvidence, finalizeDirectorSnapshot, orchestrateDir
 import type { ConversationQueryState } from "./query-state";
 import type { StratosSemanticSource } from "./semantic-catalog";
 import { semanticRegistryStatus } from "./semantic-registry";
-import { directorCopilotServiceToken } from "./service-identity";
+import {
+  DIRECTOR_COPILOT_AUDIT_TARGET,
+  directorCopilotServiceToken,
+} from "./service-identity";
 
 const DIRECTOR_COPILOT_SERVICE_CLIENT_ID = "svc-akb-director-copilot";
 
@@ -1243,7 +1246,11 @@ async function auditDirectorResult(
         { source_system: item.source_system, source_version: item.source_version },
       ])).values()]
     : [];
-  const serviceAccessToken = await directorCopilotServiceToken(input.config);
+  const serviceAccessToken = await directorCopilotServiceToken(
+    input.config,
+    fetch,
+    DIRECTOR_COPILOT_AUDIT_TARGET,
+  );
   const serviceContext: ApiRequestContext = {
     ...input.actorContext,
     subjectId: DIRECTOR_COPILOT_SERVICE_CLIENT_ID,

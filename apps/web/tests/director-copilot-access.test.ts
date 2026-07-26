@@ -5,6 +5,24 @@ import { accessProjectionHash, domainAccessFor } from "../src/lib/director-copil
 import type { ApiRequestContext } from "../src/lib/types";
 
 describe("Director Copilot projected access", () => {
+  it("accepts the canonical STRATOS Budget & Contract application id", () => {
+    const context = projectedContext();
+    context.applicationAccess = context.applicationAccess?.map((access) => (
+      access.application === "budget"
+        ? { ...access, application: "budget-contract" }
+        : access
+    ));
+
+    assert.equal(
+      domainAccessFor(
+        context,
+        "budget",
+        Date.parse("2026-07-21T10:00:00Z"),
+      ).authorized,
+      true,
+    );
+  });
+
   it("uses explicit grants that are present in the effective closure", () => {
     const context = projectedContext();
     const access = domainAccessFor(context, "budget", Date.parse("2026-07-21T10:00:00Z"));

@@ -1,5 +1,6 @@
 import type { ApiRequestContext } from "@/lib/types";
 
+import { canonicalDirectorCopilotApplication } from "./application-id";
 import type { DomainApplication, ScopeCoordinate } from "./contracts";
 import { parseScopeString, stableSha256 } from "./contracts";
 import { domainCatalogToolForApplication } from "./domain-catalog";
@@ -39,7 +40,7 @@ export function domainAccessFor(
     return { application, authorized: false, requiredCapabilities, scopes: [], reason: "application_inactive" };
   }
   const access = context.applicationAccess?.find(
-    (candidate) => normalizeApplication(candidate.application) === application,
+    (candidate) => canonicalDirectorCopilotApplication(candidate.application) === application,
   );
   if (!access || !validAt(access.validUntil, nowMs)) {
     return { application, authorized: false, requiredCapabilities, scopes: [], reason: "application_inactive" };
@@ -80,7 +81,9 @@ export function domainAccessFor(
 export function accessProjectionHash(context: ApiRequestContext): string {
   const applicationAccess = (context.applicationAccess ?? [])
     .map((access) => ({
-      application: normalizeApplication(access.application),
+      application:
+        canonicalDirectorCopilotApplication(access.application)
+        ?? access.application.trim().toLowerCase().replaceAll("_", "-"),
       capabilities: [...new Set(access.capabilities)].sort(),
       scopes: [...new Set(access.scopes ?? [])].sort(),
       effective_scopes: [...new Set(access.effectiveScopes ?? [])].sort(),
@@ -93,10 +96,6 @@ export function accessProjectionHash(context: ApiRequestContext): string {
     membership_active: context.membershipActive !== false,
     application_access: applicationAccess,
   });
-}
-
-function normalizeApplication(value: string): string {
-  return value.trim().toLowerCase().replaceAll("_", "-");
 }
 
 function validAt(validUntil: string | null | undefined, nowMs: number): boolean {
