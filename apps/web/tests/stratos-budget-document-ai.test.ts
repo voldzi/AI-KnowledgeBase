@@ -318,6 +318,7 @@ describe("STRATOS Budget document bridge contract", () => {
         external_document_id: "extdoc_budget_123",
         upload_session_id: payload.session_id,
         upload_token: "signed-token",
+        upload_receipt: "signed-document-intake-receipt-for-canonical-lineage",
         source_file_uri: payload.source_file_uri,
         file_hash: fileHash,
         file_name: fileName,
@@ -340,6 +341,7 @@ describe("STRATOS Budget document bridge contract", () => {
         body: {
           version_label: "upload-bbbbbbbbbbbbbbbb",
           source_file_uri: payload.source_file_uri,
+          intake_receipt: "signed-document-intake-receipt-for-canonical-lineage",
         },
         sourceLocation,
         versionLineage: stratosBudgetVersionLineageFromUploadToken(payload),

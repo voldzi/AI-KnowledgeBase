@@ -6,18 +6,19 @@ service README files.
 
 ## STRATOS content-security profile
 
-AKB web and ingestion receive the same canonical server-side profile as the
-other STRATOS applications. The pilot uses
-`STRATOS_CONTENT_SECURITY_MODE=disabled`,
-`STRATOS_CONTENT_SECURITY_REQUIRED=false`, and no endpoint. This state means
-that an external DLP/malware scan was not performed; it does not weaken
-Information Policy, ingestion authorization, scope, or audit checks.
+AKB owns the central Document Intake malware boundary for all document
+origins. Web uploads use ClamAV `INSTREAM` only through
+`tcp://clamav:3310` on the private application network. Registry independently
+verifies the signed clean attestation and Ingestion verifies the Registry state
+before reading the object.
 
-Controlled gateway operation will use
-`STRATOS_CONTENT_SECURITY_MODE=gateway`,
-`STRATOS_CONTENT_SECURITY_REQUIRED=true`, and an internal
-`STRATOS_CONTENT_SECURITY_ENDPOINT`. AKB does not accept application-specific
-aliases or a legacy configuration layer.
+Migration starts with `STRATOS_CONTENT_SECURITY_MODE=clamd` and
+`STRATOS_CONTENT_SECURITY_REQUIRED=false`: every new file is scanned, while
+legacy unattested versions remain readable. After the corpus reset or
+controlled rescan and source-application acceptance, set `REQUIRED=true`.
+Scanner errors and timeouts always fail closed for new uploads in both modes.
+The exact contract and promotion gates are in
+`docs/integration/AKB_DOCUMENT_INTAKE_V1.md` and ADR 0010.
 
 ## Local Development
 

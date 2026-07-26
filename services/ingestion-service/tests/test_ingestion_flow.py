@@ -113,6 +113,59 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
     assert "email:aiip.office@example.cz" in entity_payload["entity_pairs"]
 
 
+def test_ingestion_fails_closed_without_clean_document_intake_attestation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "unscanned-policy.md"
+    source.write_text(
+        "# Unscanned policy\nThis content must not be parsed or indexed.",
+        encoding="utf-8",
+    )
+
+    with make_client(
+        tmp_path,
+        {"STRATOS_CONTENT_SECURITY_REQUIRED": "true"},
+    ) as client:
+        response = client.post(
+            "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
+            json={
+                "idempotency_key": "test:intake-attestation-required",
+                "document_id": "doc_unscanned",
+                "document_version_id": "ver_unscanned",
+                "source_file_uri": str(source),
+                "parser_profile": "controlled_document",
+                "ocr_enabled": True,
+                "chunking_strategy": "legal_structured",
+                "embedding_profile": "default",
+                "expected_current_ingestion_job_id": None,
+            },
+        )
+        report = client.get(
+            f"/api/v1/ingestion/jobs/{response.json()['job_id']}/report",
+            headers=actor_proof_headers(),
+        )
+        points = client.app.state.indexer.mock_points
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "failed"
+    assert report.status_code == 200
+    assert report.json()["documents_processed"] == 0
+    assert report.json()["errors"] == [
+        {
+            "code": "DOCUMENT_INTAKE_SCAN_REQUIRED",
+            "message": (
+                "The immutable Registry version has no clean content security "
+                "attestation"
+            ),
+        }
+    ]
+    assert points == []
+
+
 def test_ocr_sidecar_fallback_marks_warning(tmp_path: Path) -> None:
     source = tmp_path / "scan.txt"
     source.write_text("", encoding="utf-8")

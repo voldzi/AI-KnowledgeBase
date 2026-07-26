@@ -722,6 +722,7 @@ class StratosBudgetDocumentFileCreate(BaseModel):
     mime_type: str = Field(min_length=1, max_length=160)
     size_bytes: int = Field(ge=1)
     sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    intake_receipt: str | None = Field(default=None, min_length=32, max_length=16384)
 
 
 class StratosBudgetBatchLineage(BaseModel):
@@ -1133,6 +1134,7 @@ class DocumentFileCreate(BaseModel):
     size_bytes: int | None = Field(default=None, ge=0)
     sha256: str | None = Field(default=None, max_length=128)
     uploaded_by: str | None = Field(default=None, max_length=128)
+    intake_receipt: str | None = Field(default=None, min_length=32, max_length=16384)
 
     @field_validator("sha256")
     @classmethod
@@ -1149,6 +1151,7 @@ class AiipDocumentFileCreate(BaseModel):
     mime_type: str = Field(min_length=1, max_length=160)
     size_bytes: int = Field(ge=1)
     sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    intake_receipt: str | None = Field(default=None, min_length=32, max_length=16384)
 
 
 class AiipDocumentVersionCreate(BaseModel):
@@ -1247,6 +1250,11 @@ class DocumentVersionResponse(BaseModel):
     source_file_uri: str
     source_location: SourceLocation | None
     file_hash: str | None
+    content_security_status: str | None = None
+    content_security_engine: str | None = None
+    content_security_engine_version: str | None = None
+    content_security_signature_version: str | None = None
+    content_security_scanned_at: datetime | None = None
     change_summary: str | None
     created_at: datetime
     published_at: datetime | None

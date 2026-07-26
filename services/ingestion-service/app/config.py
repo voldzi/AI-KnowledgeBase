@@ -181,6 +181,7 @@ class Settings:
     object_storage_mode: str
     object_storage_root: Path
     max_file_bytes: int
+    content_security_required: bool
 
     ocr_provider: str
     ocr_language: str
@@ -496,6 +497,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         object_storage_mode=object_storage_mode,
         object_storage_root=Path(_get(source, "AKL_OBJECT_STORAGE_ROOT", "./object-storage")),
         max_file_bytes=max_file_bytes,
+        content_security_required=_parse_bool(
+            _get(source, "STRATOS_CONTENT_SECURITY_REQUIRED", "false")
+        ),
         ocr_provider=ocr_provider,
         ocr_language=_get(source, "AKL_INGESTION_OCR_LANGUAGE", "ces+eng"),
         tesseract_command=_get(source, "AKL_INGESTION_TESSERACT_COMMAND", "tesseract"),

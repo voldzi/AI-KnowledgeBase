@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 import time
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import httpx
@@ -203,6 +203,21 @@ class RegistryClient:
             ),
             source_file_uri=_optional_str(version.get("source_file_uri")),
             file_hash=_optional_str(version.get("file_hash")),
+            content_security_status=_optional_str(
+                version.get("content_security_status")
+            ),
+            content_security_engine=_optional_str(
+                version.get("content_security_engine")
+            ),
+            content_security_engine_version=_optional_str(
+                version.get("content_security_engine_version")
+            ),
+            content_security_signature_version=_optional_str(
+                version.get("content_security_signature_version")
+            ),
+            content_security_scanned_at=_optional_datetime(
+                version.get("content_security_scanned_at")
+            ),
         )
 
     async def write_audit_event(
@@ -566,6 +581,12 @@ def _optional_date(value: Any) -> date | None:
     if not isinstance(value, str) or not value:
         return None
     return date.fromisoformat(value)
+
+
+def _optional_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _str_list(value: Any) -> list[str]:

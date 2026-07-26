@@ -12,6 +12,10 @@ This section contains current integration-facing runbooks and contracts.
   - current Document Workbench implementation slice, gaps, and next recommended work
 - `STRATOS_EXTERNAL_DOCUMENTS_API.md`
   - server-side STRATOS to AKB external documents contract
+- `AKB_DOCUMENT_INTAKE_V1.md`
+  - canonical quarantine, malware scan, signed receipt and enforcement contract for every document origin
+- `STRATOS_DOCUMENT_INTAKE_HANDOFF.md`
+  - application and role mapping, client obligations, acceptance suite and coordinated rollout for STRATOS applications
 - `STRATOS_OKF_PROFILE.md`
   - portable Open Knowledge Format profile for importing governed STRATOS concepts into AKB
 - `STRATOS_IT_MANAGEMENT_PROFILE.md`

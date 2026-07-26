@@ -23,9 +23,11 @@ import { equalAiipGovernanceConfirmation, equalCanonicalJson } from "@/lib/strat
 import {
   assertUploadMatchesIngestionPayload,
   assertUploadTokenPurpose,
+  requireCleanIntakeReceipt,
   verifyPersistedUploadedObject,
   verifyUploadReceipt,
 } from "@/lib/upload/preflight";
+import { getContentSecuritySettings } from "@/lib/upload/content-security";
 import { parseInformationPolicy, parseIntegrationEnvelope } from "@/lib/stratos/information-policy";
 
 import { stratosBridgeError } from "../../../../errors";
@@ -187,7 +189,16 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       uploadSettings
     );
     assertUploadTokenPurpose(payload, STRATOS_UPLOAD_TOKEN_PURPOSE);
-    verifyUploadReceipt(uploadReceipt, uploadToken, payload, uploadSettings);
+    const receiptPayload = verifyUploadReceipt(
+      uploadReceipt,
+      uploadToken,
+      payload,
+      uploadSettings,
+    );
+    requireCleanIntakeReceipt(
+      receiptPayload,
+      getContentSecuritySettings().required,
+    );
     await verifyPersistedUploadedObject(payload, uploadSettings);
     const normalizedBody: Record<string, unknown> = {
       ...body,
@@ -196,6 +207,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       file_name: payload.file_name,
       file_type: payload.file_type,
       file_size: payload.file_size,
+      intake_receipt: uploadReceipt,
     };
     const sourceLocation = sourceLocationForUpload({
       fileName: payload.file_name,

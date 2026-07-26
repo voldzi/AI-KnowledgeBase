@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { loadDirectorCopilotV2ManifestCatalog } from "@/lib/director-copilot-v2/manifest-catalog";
+import { contentSecurityReadiness } from "@/lib/upload/content-security";
 
 export const runtime = "nodejs";
 
@@ -24,10 +25,12 @@ export async function GET() {
       : await loadDirectorCopilotV2ManifestCatalog({ config })
           .then(() => "ready" as const)
           .catch(() => "not_ready" as const);
+    const documentIntake = await contentSecurityReadiness();
     const dependenciesReady = Object.values(dependencies)
       .every((status) => status === "ready" || status === "mock");
     const isReady = dependenciesReady
-      && (directorConfig.v2Mode !== "active" || directorCopilotV2 === "ready");
+      && (directorConfig.v2Mode !== "active" || directorCopilotV2 === "ready")
+      && documentIntake !== "not_ready";
     return NextResponse.json(
       {
         service: "web-frontend",
@@ -37,6 +40,7 @@ export async function GET() {
         dependencies: {
           ...dependencies,
           director_copilot_v2: directorCopilotV2,
+          document_intake_content_security: documentIntake,
         }
       },
       {

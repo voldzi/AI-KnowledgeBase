@@ -132,6 +132,11 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
                         "policy_version": "information-policy-2.0.0",
                         "policy_hash": "sha256:" + "a" * 64,
                         "policy_summary": {"handlingClass": "INTERNAL"},
+                        "content_security_status": "clean",
+                        "content_security_engine": "clamav",
+                        "content_security_engine_version": "1.4.3",
+                        "content_security_signature_version": "27654",
+                        "content_security_scanned_at": "2026-07-26T10:30:00Z",
                     }
                 )
             if method == "PATCH":
@@ -198,6 +203,11 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
             auth_context=caller,
         )
         assert metadata.external_system == "STRATOS_AIIP"
+        assert metadata.content_security_status == "clean"
+        assert metadata.content_security_engine == "clamav"
+        assert metadata.content_security_engine_version == "1.4.3"
+        assert metadata.content_security_signature_version == "27654"
+        assert metadata.content_security_scanned_at is not None
         await client.update_external_document_current(
             document_id="doc-aiip-1",
             document_version_id="ver-aiip-1",

@@ -9758,6 +9758,66 @@
         }
       }
     },
+    "/api/document-intake/v1/sessions/{sessionId}/content": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "put": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "PUT /api/document-intake/v1/sessions/{sessionId}/content",
+        "operationId": "web_put_api_document_intake_v1_sessions_sessionId_content",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{documentId}/assignments": {
       "servers": [
         {
@@ -14843,6 +14903,19 @@
             "type": "string",
             "pattern": "^sha256:[a-f0-9]{64}$",
             "title": "Sha256"
+          },
+          "intake_receipt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384,
+                "minLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intake Receipt"
           }
         },
         "additionalProperties": false,
@@ -18652,6 +18725,19 @@
               }
             ],
             "title": "Uploaded By"
+          },
+          "intake_receipt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384,
+                "minLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intake Receipt"
           }
         },
         "type": "object",
@@ -19639,6 +19725,62 @@
               }
             ],
             "title": "File Hash"
+          },
+          "content_security_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Security Status"
+          },
+          "content_security_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Security Engine"
+          },
+          "content_security_engine_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Security Engine Version"
+          },
+          "content_security_signature_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Security Signature Version"
+          },
+          "content_security_scanned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Security Scanned At"
           },
           "change_summary": {
             "anyOf": [
@@ -21788,6 +21930,19 @@
             "type": "string",
             "pattern": "^sha256:[a-f0-9]{64}$",
             "title": "Sha256"
+          },
+          "intake_receipt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384,
+                "minLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intake Receipt"
           }
         },
         "additionalProperties": false,

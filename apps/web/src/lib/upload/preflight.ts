@@ -90,7 +90,7 @@ export interface UploadTokenPayload {
 }
 
 export interface UploadReceiptPayload {
-  schema_version: "akl-upload-receipt-1";
+  schema_version: "akl-upload-receipt-1" | "akb-document-intake-receipt-1";
   upload_token_sha256: string;
   session_id: string;
   document_id: string;
@@ -103,6 +103,16 @@ export interface UploadReceiptPayload {
   sha256: string;
   persisted_at: string;
   expires_at: string;
+  content_security?: UploadReceiptContentSecurity;
+}
+
+export interface UploadReceiptContentSecurity {
+  status: "clean" | "not_performed";
+  engine: "clamav" | "disabled";
+  engine_version: string | null;
+  signature_version: string | null;
+  scanned_at: string;
+  duration_ms: number;
 }
 
 export interface PersistedUploadObject {
@@ -501,6 +511,93 @@ export async function persistUploadedObject(
   return { path: targetPath, sha256, size_bytes: content.byteLength };
 }
 
+export async function persistQuarantinedUploadObject(
+  payload: UploadTokenPayload,
+  content: Uint8Array,
+  settings: UploadSettings = getUploadSettings(),
+): Promise<PersistedUploadObject> {
+  assertExactUploadContent(payload, content);
+  const quarantinePath = resolveQuarantinePath(payload, settings, "pending");
+  const parentPath = path.dirname(quarantinePath);
+  await mkdir(parentPath, { recursive: true });
+  try {
+    const handle = await open(quarantinePath, "wx", 0o640);
+    try {
+      await handle.writeFile(content);
+      await handle.datasync();
+    } finally {
+      await handle.close();
+    }
+    await syncDirectory(parentPath);
+  } catch (error) {
+    if (!isFileExistsError(error)) throw error;
+    const existing = await verifyUploadObjectAtPath(payload, quarantinePath).catch(() => null);
+    if (!existing) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOAD_QUARANTINE_CONFLICT",
+        "The upload quarantine already contains different content for this session.",
+      );
+    }
+    return existing;
+  }
+  return {
+    path: quarantinePath,
+    sha256: payload.sha256,
+    size_bytes: content.byteLength,
+  };
+}
+
+export async function promoteQuarantinedUploadObject(
+  payload: UploadTokenPayload,
+  quarantined: PersistedUploadObject,
+  settings: UploadSettings = getUploadSettings(),
+): Promise<PersistedUploadObject> {
+  const verified = await verifyUploadObjectAtPath(payload, quarantined.path);
+  const targetPath = resolveObjectPath(payload, settings);
+  const parentPath = path.dirname(targetPath);
+  await mkdir(parentPath, { recursive: true });
+  try {
+    await link(quarantined.path, targetPath);
+  } catch (error) {
+    if (!isFileExistsError(error)) throw error;
+    const existing = await verifyPersistedUploadedObject(payload, settings).catch(() => null);
+    if (!existing) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOAD_SESSION_OBJECT_CONFLICT",
+        "The upload session target already contains different content.",
+      );
+    }
+    await unlink(quarantined.path).catch(() => undefined);
+    return existing;
+  }
+  await syncDirectory(parentPath);
+  await unlink(quarantined.path);
+  await syncDirectory(path.dirname(quarantined.path));
+  return { ...verified, path: targetPath };
+}
+
+export async function retainQuarantinedUploadObject(
+  payload: UploadTokenPayload,
+  quarantined: PersistedUploadObject,
+  outcome: "infected" | "failed",
+  settings: UploadSettings = getUploadSettings(),
+): Promise<PersistedUploadObject> {
+  await verifyUploadObjectAtPath(payload, quarantined.path);
+  const retainedPath = resolveQuarantinePath(payload, settings, outcome);
+  await mkdir(path.dirname(retainedPath), { recursive: true });
+  try {
+    await link(quarantined.path, retainedPath);
+    await unlink(quarantined.path);
+  } catch (error) {
+    if (!isFileExistsError(error)) throw error;
+    await verifyUploadObjectAtPath(payload, retainedPath);
+    await unlink(quarantined.path).catch(() => undefined);
+  }
+  return { ...quarantined, path: retainedPath };
+}
+
 async function syncDirectory(directoryPath: string): Promise<void> {
   const directory = await open(directoryPath, "r");
   try {
@@ -523,7 +620,8 @@ export function createUploadReceipt(
   uploadToken: string,
   payload: UploadTokenPayload,
   persisted: PersistedUploadObject,
-  settings: UploadSettings = getUploadSettings()
+  settings: UploadSettings = getUploadSettings(),
+  contentSecurity?: UploadReceiptContentSecurity,
 ): string {
   if (persisted.size_bytes !== payload.file_size || persisted.sha256 !== payload.sha256) {
     throw new UploadPreflightError(
@@ -533,7 +631,9 @@ export function createUploadReceipt(
     );
   }
   const receipt: UploadReceiptPayload = {
-    schema_version: "akl-upload-receipt-1",
+    schema_version: contentSecurity
+      ? "akb-document-intake-receipt-1"
+      : "akl-upload-receipt-1",
     upload_token_sha256: hashValue(uploadToken),
     session_id: payload.session_id,
     document_id: payload.document_id,
@@ -545,7 +645,8 @@ export function createUploadReceipt(
     file_type: payload.file_type,
     sha256: payload.sha256,
     persisted_at: new Date().toISOString(),
-    expires_at: payload.expires_at
+    expires_at: payload.expires_at,
+    ...(contentSecurity ? { content_security: contentSecurity } : {}),
   };
   const encodedPayload = Buffer.from(JSON.stringify(receipt)).toString("base64url");
   return `${encodedPayload}.${signReceiptValue(encodedPayload, settings.signingSecret)}`;
@@ -583,7 +684,7 @@ export function verifyUploadReceipt(
     throw new UploadPreflightError(401, "INVALID_UPLOAD_RECEIPT", "Upload receipt persistence time is invalid.");
   }
 
-  const expected: Omit<UploadReceiptPayload, "schema_version" | "persisted_at"> = {
+  const expected: Record<string, unknown> = {
     upload_token_sha256: hashValue(uploadToken),
     session_id: uploadPayload.session_id,
     document_id: uploadPayload.document_id,
@@ -594,7 +695,7 @@ export function verifyUploadReceipt(
     file_size: uploadPayload.file_size,
     file_type: uploadPayload.file_type,
     sha256: uploadPayload.sha256,
-    expires_at: uploadPayload.expires_at
+    expires_at: uploadPayload.expires_at,
   };
   const mismatches = Object.entries(expected)
     .filter(([key, value]) => payload[key as keyof UploadReceiptPayload] !== value)
@@ -608,6 +709,34 @@ export function verifyUploadReceipt(
     );
   }
   return payload;
+}
+
+export function requireCleanIntakeReceipt(
+  payload: UploadReceiptPayload,
+  required: boolean,
+): UploadReceiptContentSecurity | null {
+  const security = payload.content_security ?? null;
+  if (!security) {
+    if (required) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOAD_SCAN_ATTESTATION_REQUIRED",
+        "The upload confirmation requires a Document Intake security attestation.",
+      );
+    }
+    return null;
+  }
+  if (security.status !== "clean") {
+    if (required) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOAD_SCAN_NOT_CLEAN",
+        "The upload has not received a clean content-security verdict.",
+      );
+    }
+    return security;
+  }
+  return security;
 }
 
 export async function verifyPersistedUploadedObject(
@@ -663,6 +792,49 @@ export async function verifyPersistedUploadedObject(
       "UPLOADED_OBJECT_MISSING",
       "Persisted upload object is not available for confirmation."
     );
+  } finally {
+    await handle?.close();
+  }
+}
+
+async function verifyUploadObjectAtPath(
+  payload: UploadTokenPayload,
+  objectPath: string,
+): Promise<PersistedUploadObject> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(objectPath, "r");
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size !== payload.file_size) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOADED_OBJECT_MISMATCH",
+        "Upload object size does not match the signed upload decision.",
+      );
+    }
+    const hash = createHash("sha256");
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, payload.file_size));
+    let position = 0;
+    while (position < payload.file_size) {
+      const { bytesRead } = await handle.read(
+        chunk,
+        0,
+        Math.min(chunk.byteLength, payload.file_size - position),
+        position,
+      );
+      if (bytesRead === 0) break;
+      hash.update(chunk.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    const sha256 = `sha256:${hash.digest("hex")}`;
+    if (position !== payload.file_size || sha256 !== payload.sha256) {
+      throw new UploadPreflightError(
+        409,
+        "UPLOADED_OBJECT_MISMATCH",
+        "Upload object hash does not match the signed upload decision.",
+      );
+    }
+    return { path: objectPath, sha256, size_bytes: position };
   } finally {
     await handle?.close();
   }
@@ -791,7 +963,7 @@ function hashValue(value: string): string {
 function isExactReceiptPayload(value: unknown): value is UploadReceiptPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
-  const keys = [
+  const baseKeys = [
     "schema_version",
     "upload_token_sha256",
     "session_id",
@@ -804,11 +976,13 @@ function isExactReceiptPayload(value: unknown): value is UploadReceiptPayload {
     "file_type",
     "sha256",
     "persisted_at",
-    "expires_at"
+    "expires_at",
   ];
+  const intakeReceipt = record.schema_version === "akb-document-intake-receipt-1";
+  const keys = intakeReceipt ? [...baseKeys, "content_security"] : baseKeys;
   if (Object.keys(record).length !== keys.length || keys.some((key) => !(key in record))) return false;
   return (
-    record.schema_version === "akl-upload-receipt-1" &&
+    (record.schema_version === "akl-upload-receipt-1" || intakeReceipt) &&
     typeof record.upload_token_sha256 === "string" && SHA256_PATTERN.test(record.upload_token_sha256) &&
     typeof record.session_id === "string" && record.session_id.length > 0 &&
     typeof record.document_id === "string" && record.document_id.length > 0 &&
@@ -820,7 +994,32 @@ function isExactReceiptPayload(value: unknown): value is UploadReceiptPayload {
     typeof record.file_type === "string" && record.file_type.length > 0 &&
     typeof record.sha256 === "string" && SHA256_PATTERN.test(record.sha256) &&
     typeof record.persisted_at === "string" &&
-    typeof record.expires_at === "string"
+    typeof record.expires_at === "string" &&
+    (!intakeReceipt || isExactReceiptContentSecurity(record.content_security))
+  );
+}
+
+function isExactReceiptContentSecurity(value: unknown): value is UploadReceiptContentSecurity {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const keys = [
+    "status",
+    "engine",
+    "engine_version",
+    "signature_version",
+    "scanned_at",
+    "duration_ms",
+  ];
+  return (
+    Object.keys(record).length === keys.length
+    && keys.every((key) => key in record)
+    && (record.status === "clean" || record.status === "not_performed")
+    && (record.engine === "clamav" || record.engine === "disabled")
+    && (record.engine_version === null || typeof record.engine_version === "string")
+    && (record.signature_version === null || typeof record.signature_version === "string")
+    && typeof record.scanned_at === "string"
+    && Number.isSafeInteger(record.duration_ms)
+    && Number(record.duration_ms) >= 0
   );
 }
 
@@ -992,6 +1191,51 @@ function resolveObjectPath(payload: UploadTokenPayload, settings: UploadSettings
     throw new UploadPreflightError(400, "OBJECT_KEY_INVALID", "Upload object key is outside the configured bucket.");
   }
   return targetPath;
+}
+
+function resolveQuarantinePath(
+  payload: UploadTokenPayload,
+  settings: UploadSettings,
+  outcome: "pending" | "infected" | "failed",
+): string {
+  const root = path.resolve(settings.objectStorageRoot);
+  const quarantineRoot = path.resolve(root, ".quarantine", outcome);
+  const targetPath = path.resolve(
+    quarantineRoot,
+    payload.session_id,
+    normalizeFilename(payload.file_name),
+  );
+  if (!targetPath.startsWith(`${quarantineRoot}${path.sep}`)) {
+    throw new UploadPreflightError(
+      400,
+      "UPLOAD_QUARANTINE_PATH_INVALID",
+      "Upload quarantine path is outside the configured storage root.",
+    );
+  }
+  return targetPath;
+}
+
+function assertExactUploadContent(
+  payload: UploadTokenPayload,
+  content: Uint8Array,
+): void {
+  if (content.byteLength !== payload.file_size) {
+    throw new UploadPreflightError(
+      400,
+      "UPLOAD_SIZE_MISMATCH",
+      "Uploaded content size does not match the preflight metadata.",
+      { expected_size_bytes: payload.file_size, actual_size_bytes: content.byteLength },
+    );
+  }
+  const sha256 = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+  if (sha256 !== payload.sha256) {
+    throw new UploadPreflightError(
+      400,
+      "UPLOAD_HASH_MISMATCH",
+      "Uploaded content SHA-256 does not match the preflight metadata.",
+      { expected_sha256: payload.sha256, actual_sha256: sha256 },
+    );
+  }
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {

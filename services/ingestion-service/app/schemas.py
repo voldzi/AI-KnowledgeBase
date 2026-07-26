@@ -418,6 +418,11 @@ class DocumentMetadata(BaseModel):
     policy_summary: dict[str, Any] = Field(default_factory=dict)
     source_file_uri: str | None = None
     file_hash: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    content_security_status: str | None = None
+    content_security_engine: str | None = None
+    content_security_engine_version: str | None = None
+    content_security_signature_version: str | None = None
+    content_security_scanned_at: datetime | None = None
 
 
 class DocumentChunk(BaseModel):

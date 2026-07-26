@@ -536,6 +536,7 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
                 embedding_profile: "default",
                 upload_session_id: preflightBody.preflight.upload_session_id,
                 upload_token: preflightBody.preflight.required_headers["X-AKL-Upload-Token"],
+                upload_receipt: uploaded.upload_receipt,
                 source_file_uri: uploaded.source_file_uri,
                 file_hash: uploaded.file.sha256,
                 file_name: uploaded.file.filename,
