@@ -341,6 +341,7 @@ export interface CreateVersionRequest {
     size_bytes?: number | null;
     sha256?: string | null;
     uploaded_by?: string | null;
+    intake_receipt?: string | null;
   } | null;
 }
 

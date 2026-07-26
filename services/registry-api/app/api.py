@@ -38,6 +38,11 @@ from app.access_governance import (
 )
 from app.auth import Principal, get_current_principal
 from app.config import get_settings
+from app.content_security import (
+    ContentSecurityAttestation,
+    ContentSecurityAttestationError,
+    verify_content_security_attestation,
+)
 from app.database import get_db
 from app.errors import problem
 from app.information_policy import (
@@ -757,7 +762,87 @@ def _document_version_response(version: DocumentVersion) -> DocumentVersionRespo
         default=None,
     )
     response = DocumentVersionResponse.model_validate(version)
-    return response.model_copy(update={"file_id": latest_file.file_id if latest_file else None})
+    return response.model_copy(
+        update={
+            "file_id": latest_file.file_id if latest_file else None,
+            "content_security_status": (
+                latest_file.content_security_status if latest_file else None
+            ),
+            "content_security_engine": (
+                latest_file.content_security_engine if latest_file else None
+            ),
+            "content_security_engine_version": (
+                latest_file.content_security_engine_version if latest_file else None
+            ),
+            "content_security_signature_version": (
+                latest_file.content_security_signature_version if latest_file else None
+            ),
+            "content_security_scanned_at": (
+                latest_file.content_security_scanned_at if latest_file else None
+            ),
+        }
+    )
+
+
+def _verify_document_intake_attestation(
+    *,
+    document_id: str,
+    source_file_uri: str,
+    file_payload: object,
+) -> ContentSecurityAttestation | None:
+    settings = get_settings()
+    try:
+        return verify_content_security_attestation(
+            getattr(file_payload, "intake_receipt", None),
+            signing_secret=settings.content_security_attestation_secret,
+            required=settings.content_security_required,
+            document_id=document_id,
+            source_file_uri=source_file_uri,
+            filename=getattr(file_payload, "filename", None),
+            mime_type=getattr(file_payload, "mime_type", None),
+            size_bytes=getattr(file_payload, "size_bytes", None),
+            sha256=getattr(file_payload, "sha256", None),
+        )
+    except ContentSecurityAttestationError as exc:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "document_intake_attestation_invalid",
+            str(exc),
+        ) from exc
+
+
+def _apply_document_intake_attestation(
+    file: DocumentFile,
+    attestation: ContentSecurityAttestation | None,
+) -> None:
+    if attestation is None:
+        return
+    if (
+        file.content_security_attestation_sha256 is not None
+        and file.content_security_attestation_sha256 != attestation.receipt_sha256
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "document_intake_attestation_conflict",
+            "The immutable file already has a different content security attestation",
+        )
+    file.content_security_status = attestation.status
+    file.content_security_engine = attestation.engine
+    file.content_security_engine_version = attestation.engine_version
+    file.content_security_signature_version = attestation.signature_version
+    file.content_security_scanned_at = attestation.scanned_at
+    file.content_security_attestation_sha256 = attestation.receipt_sha256
+
+
+def _document_intake_audit_metadata(
+    attestation: ContentSecurityAttestation | None,
+) -> dict[str, str]:
+    if attestation is None:
+        return {"content_security_status": "legacy_unattested"}
+    return {
+        "content_security_status": attestation.status,
+        "content_security_engine": attestation.engine,
+    }
 
 
 def _commit_or_conflict(db: Session) -> None:
@@ -2746,6 +2831,11 @@ def upsert_aiip_document_version(
         )
     _assert_aiip_document_matches(external_ref, payload)
     document = external_ref.document
+    intake_attestation = _verify_document_intake_attestation(
+        document_id=document.document_id,
+        source_file_uri=payload.source_file_uri,
+        file_payload=payload.file,
+    )
     existing = next(
         (version for version in document.versions if version.version_label == payload.version_label),
         None,
@@ -2796,6 +2886,7 @@ def upsert_aiip_document_version(
                 "canonical_storage_object_reused": (
                     existing.source_file_uri != payload.source_file_uri
                 ),
+                **_document_intake_audit_metadata(intake_attestation),
             },
         )
         current_file = max(
@@ -2803,6 +2894,8 @@ def upsert_aiip_document_version(
             key=lambda item: (item.uploaded_at, item.file_id),
             default=None,
         )
+        if current_file is not None:
+            _apply_document_intake_attestation(current_file, intake_attestation)
         expected_source_location = (
             payload.source_location.model_dump(mode="json", exclude_none=True)
             if payload.source_location is not None
@@ -2866,6 +2959,7 @@ def upsert_aiip_document_version(
         sha256=payload.file.sha256,
         uploaded_by=registration.registered_by_subject_id,
     )
+    _apply_document_intake_attestation(file, intake_attestation)
     db.add(version)
     db.add(file)
     db.flush()
@@ -2879,6 +2973,7 @@ def upsert_aiip_document_version(
         metadata={
             "document_id": document.document_id,
             "governed_resource_id": registration.governed_resource_id,
+            **_document_intake_audit_metadata(intake_attestation),
         },
     )
     _commit_or_conflict(db)
@@ -3844,6 +3939,11 @@ def upsert_stratos_budget_document_version(
         )
     _assert_budget_document_matches(external_ref, payload)
     document = external_ref.document
+    intake_attestation = _verify_document_intake_attestation(
+        document_id=document.document_id,
+        source_file_uri=payload.source_file_uri,
+        file_payload=payload.file,
+    )
     existing = next(
         (
             item
@@ -3901,6 +4001,8 @@ def upsert_stratos_budget_document_version(
             key=lambda item: (item.uploaded_at, item.file_id),
             default=None,
         )
+        if current_file is not None:
+            _apply_document_intake_attestation(current_file, intake_attestation)
         expected_source = _budget_version_source_location(payload)
         if (
             existing.governed_resource_id
@@ -3940,7 +4042,10 @@ def upsert_stratos_budget_document_version(
             resource_type="document_version",
             resource_id=existing.document_version_id,
             correlation_id=payload.integration_envelope.correlation_id,
-            metadata={"document_id": document_id},
+            metadata={
+                "document_id": document_id,
+                **_document_intake_audit_metadata(intake_attestation),
+            },
         )
         _commit_or_conflict(db)
         db.refresh(existing)
@@ -3984,6 +4089,7 @@ def upsert_stratos_budget_document_version(
         sha256=payload.file.sha256,
         uploaded_by=payload.integration_envelope.actor.subject_id,
     )
+    _apply_document_intake_attestation(file, intake_attestation)
     db.add(version)
     db.add(file)
     db.flush()
@@ -4006,6 +4112,7 @@ def upsert_stratos_budget_document_version(
             "document_id": document.document_id,
             "owner_subject_id": payload.integration_envelope.actor.subject_id,
             "governed_resource_id": governance_columns["governed_resource_id"],
+            **_document_intake_audit_metadata(intake_attestation),
         },
     )
     _commit_or_conflict(db)
@@ -6398,6 +6505,19 @@ def create_document_version(
             "policy_summary": dict(document.policy_summary),
         }
     )
+    intake_attestation: ContentSecurityAttestation | None = None
+    if payload.file is not None:
+        intake_attestation = _verify_document_intake_attestation(
+            document_id=document.document_id,
+            source_file_uri=payload.source_file_uri,
+            file_payload=payload.file,
+        )
+    elif get_settings().content_security_required:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "document_intake_attestation_required",
+            "A file and clean AKB Document Intake attestation are required",
+        )
 
     version = DocumentVersion(
         document_version_id=make_id("ver"),
@@ -6456,6 +6576,7 @@ def create_document_version(
             sha256=payload.file.sha256 or payload.file_hash,
             uploaded_by=payload.file.uploaded_by or principal.subject_id,
         )
+        _apply_document_intake_attestation(file, intake_attestation)
         db.add(file)
     add_audit_event(
         db,
@@ -6463,7 +6584,11 @@ def create_document_version(
         event_type="document.version.created",
         resource_type="document_version",
         resource_id=version.document_version_id,
-        metadata={"document_id": document.document_id, "version_label": version.version_label},
+        metadata={
+            "document_id": document.document_id,
+            "version_label": version.version_label,
+            **_document_intake_audit_metadata(intake_attestation),
+        },
     )
     _commit_or_conflict(db)
     db.refresh(version)

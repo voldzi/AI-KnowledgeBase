@@ -473,6 +473,7 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
               document_id: selectedDocumentId,
               upload_session_id: uploadPreflight.upload_session_id,
               upload_token: uploadPreflight.required_headers["X-AKL-Upload-Token"],
+              upload_receipt: uploaded.upload_receipt,
               source_file_uri: uploaded.source_file_uri,
               file_hash: uploaded.file.sha256,
               file_name: uploaded.file.filename,

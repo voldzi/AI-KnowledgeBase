@@ -326,6 +326,24 @@ class DocumentFile(Base):
     sha256: Mapped[str | None] = mapped_column(String(128), nullable=True)
     uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    content_security_status: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    content_security_engine: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    content_security_engine_version: Mapped[str | None] = mapped_column(
+        String(160), nullable=True
+    )
+    content_security_signature_version: Mapped[str | None] = mapped_column(
+        String(160), nullable=True
+    )
+    content_security_scanned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    content_security_attestation_sha256: Mapped[str | None] = mapped_column(
+        String(80), nullable=True
+    )
 
     document: Mapped[Document] = relationship(back_populates="files")
     document_version: Mapped[DocumentVersion] = relationship(back_populates="files")

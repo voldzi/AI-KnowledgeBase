@@ -8,9 +8,13 @@ import { createDefaultInformationPolicy } from "@/lib/stratos/information-policy
 import {
   createUploadPreflightDecision,
   getUploadSettings,
-  persistUploadedObject,
   validateUploadFileMetadata,
+  verifyUploadToken,
 } from "@/lib/upload/preflight";
+import {
+  acceptDocumentIntakeBytes,
+  applyDocumentIntakeSettings,
+} from "@/lib/upload/document-intake";
 import type {
   ApiClients,
   ApiRequestContext,
@@ -128,7 +132,7 @@ export async function synchronizePublicSource(
     };
   }
 
-  const uploadSettings = getUploadSettings();
+  const uploadSettings = applyDocumentIntakeSettings(getUploadSettings());
   const file = validateUploadFileMetadata(
     {
       file_name: downloaded.filename,
@@ -148,42 +152,21 @@ export async function synchronizePublicSource(
       policy_binding_id: document.policy_binding_id,
       policy_version: document.policy_version,
       policy_hash: document.policy_hash,
+      purpose: "official-public-source-sync",
     },
     uploadSettings,
   );
-  await persistUploadedObject(
-    {
-      session_id: preflight.upload_session_id,
-      document_id: document.document_id,
-      bucket: preflight.bucket,
-      object_key: preflight.object_key,
-      source_file_uri: preflight.source_file_uri,
-      file_name: preflight.file.filename,
-      file_size: preflight.file.size_bytes,
-      file_type: preflight.file.mime_type,
-      sha256: preflight.file.sha256,
-      expires_at: preflight.expires_at,
-      policy_binding_id: preflight.policy_binding_id,
-      policy_version: preflight.policy_version,
-      policy_hash: preflight.policy_hash,
-      external_document_id: null,
-      expected_current_document_version_id: null,
-      governed_document_resource_id: null,
-      source_governed_resource_id: null,
-      source_resource_id: null,
-      source_version: null,
-      governance_scope: null,
-      governance_actor_subject_id: null,
-      governance_registered_by_subject_id: null,
-      governance_correlation_id: null,
-      governance_idempotency_key: null,
-      purpose: null,
-      workflow_mode: null,
-      workflow_context: null,
-    },
-    downloaded.bytes,
-    uploadSettings,
-  );
+  const uploadToken = preflight.required_headers["X-AKL-Upload-Token"];
+  if (!uploadToken) {
+    throw new Error("Official source intake did not issue an upload token.");
+  }
+  const acceptedUpload = await acceptDocumentIntakeBytes({
+    content: downloaded.bytes,
+    sessionId: preflight.upload_session_id,
+    uploadToken,
+    payload: verifyUploadToken(uploadToken, uploadSettings),
+    settings: uploadSettings,
+  });
 
   const capturedAt = new Date().toISOString();
   const metadataCorrection = sameContent && currentVersion !== null;
@@ -216,6 +199,7 @@ export async function synchronizePublicSource(
         size_bytes: downloaded.bytes.byteLength,
         sha256: downloaded.sha256,
         uploaded_by: context.subjectId,
+        intake_receipt: acceptedUpload.upload_receipt,
       },
     },
     context,

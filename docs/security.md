@@ -207,6 +207,16 @@ aggregated nor removed by that pruner. See
 STRATOS applications may pass business context, but AKB decides whether the
 current user can pick, upload, view, ingest, or open cited sources.
 
+AKB also owns the binary trust decision through Document Intake. Every
+interactive, STRATOS-originated and controlled public-source upload is written
+to quarantine before normal object storage. The exact signed content is checked
+for declared-type consistency and streamed to private ClamAV. `FOUND`, scanner
+error, timeout and invalid response fail closed. Only a clean result creates a
+signed receipt; Registry binds that receipt to the immutable document/file
+coordinates and Ingestion can require the resulting `clean` state before
+opening the object. Source applications cannot assert this state themselves.
+See ADR 0010.
+
 AKB administrators may use the web UI role preview to test what selected user
 types see. The preview is protected by the current OIDC session, stored in a
 short-lived signed cookie, and only lowers or changes the effective AKB web

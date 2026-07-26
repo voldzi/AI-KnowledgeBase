@@ -35,8 +35,11 @@ import { ApiClientError, type ApiRequestContext, type IngestionJob } from "@/lib
 import {
   assertUploadMatchesIngestionPayload,
   assertUploadTokenPurpose,
+  requireCleanIntakeReceipt,
   verifyPersistedUploadedObject,
+  verifyUploadReceipt,
 } from "@/lib/upload/preflight";
+import { getContentSecuritySettings } from "@/lib/upload/content-security";
 
 import { stratosBridgeError } from "../../../../errors";
 
@@ -70,6 +73,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
     const documentId = requiredString(body, "document_id");
     const externalDocumentId = requiredString(body, "external_document_id");
     const uploadToken = requiredString(body, "upload_token");
+    const uploadReceipt = requiredString(body, "upload_receipt");
     const uploadSettings = getStratosBudgetUploadSettings();
     const payload = assertUploadMatchesIngestionPayload(
       uploadToken,
@@ -92,6 +96,16 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       versionLineage.upload_mode,
       contract.integrationEnvelope.correlationId,
     );
+    const receiptPayload = verifyUploadReceipt(
+      uploadReceipt,
+      uploadToken,
+      payload,
+      uploadSettings,
+    );
+    requireCleanIntakeReceipt(
+      receiptPayload,
+      getContentSecuritySettings().required,
+    );
     await verifyPersistedUploadedObject(payload, uploadSettings);
     assertSignedBudgetContext(payload, {
       contract,
@@ -107,6 +121,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       file_name: payload.file_name,
       file_type: payload.file_type,
       file_size: payload.file_size,
+      intake_receipt: uploadReceipt,
     };
     const canonicalContract = canonicalStratosBudgetUploadContract(contract, payload);
     const sourceLocation = stratosBudgetVersionSourceLocation({

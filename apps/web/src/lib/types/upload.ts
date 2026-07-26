@@ -21,6 +21,8 @@ export interface UploadPreflightDecision {
 
 export interface UploadContentResponse {
   uploaded: boolean;
+  intake_status: "clean" | "accepted_without_external_scan";
+  upload_receipt: string;
   upload_session_id: string;
   source_file_uri: string;
   file: {
@@ -28,5 +30,13 @@ export interface UploadContentResponse {
     mime_type: string;
     size_bytes: number;
     sha256: string;
+  };
+  content_security: {
+    status: "clean" | "not_performed";
+    engine: "clamav" | "disabled";
+    engine_version: string | null;
+    signature_version: string | null;
+    scanned_at: string;
+    duration_ms: number;
   };
 }

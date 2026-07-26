@@ -116,6 +116,20 @@ AKB exposes several REST surfaces:
 | Governance Service | `/api/v1` | Version comparison, compliance, conflicts, KB drafts, validity alerts. |
 | Platform Status | root paths | `/health`, `/ready`, `/metrics`, `/openapi.json`. |
 
+All supported document origins share the canonical binary security boundary:
+
+```text
+PUT /api/document-intake/v1/sessions/{sessionId}/content
+```
+
+Origin-specific preflight routes issue a signed session and this canonical
+URL. The endpoint accepts only the exact signed MIME type, size and SHA-256,
+writes to quarantine, performs file-signature and ClamAV checks, and returns a
+signed `akb-document-intake-receipt-1`. Registry confirmation verifies the
+receipt against the immutable file, and Ingestion can require Registry status
+`clean`. Details and error codes are in
+`docs/integration/AKB_DOCUMENT_INTAKE_V1.md`.
+
 Controlled-document create, upload preflight, binary upload and ingestion use
 one request-bound identity path. They accept either the current secure OIDC web
 session or an `Authorization: Bearer <access_token>` header and derive the same

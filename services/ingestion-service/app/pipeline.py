@@ -114,6 +114,15 @@ class IngestionPipeline:
                 request.document_version_id,
                 auth_context=auth_context,
             )
+            if (
+                self.registry.settings.content_security_required
+                and document_metadata.content_security_status != "clean"
+            ):
+                raise IngestionError(
+                    "DOCUMENT_INTAKE_SCAN_REQUIRED",
+                    "The immutable Registry version has no clean content security attestation",
+                    status_code=409,
+                )
             if self.registry.settings.registry_client_mode != "mock":
                 if not document_metadata.source_file_uri or not document_metadata.file_hash:
                     raise IngestionError(

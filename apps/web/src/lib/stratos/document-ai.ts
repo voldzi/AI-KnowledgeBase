@@ -19,6 +19,7 @@ import {
   type UploadSettings,
   type UploadTokenPayload,
 } from "@/lib/upload/preflight";
+import { applyDocumentIntakeSettings } from "@/lib/upload/document-intake";
 import {
   parseInformationPolicy,
   parseIntegrationEnvelope,
@@ -355,6 +356,7 @@ export const STRATOS_BUDGET_CONFIRM_FIELDS = [
   "external_document_id",
   "upload_session_id",
   "upload_token",
+  "upload_receipt",
   "source_file_uri",
   "file_hash",
   "file_name",
@@ -447,24 +449,24 @@ export function positiveInteger(value: unknown, fallback: number, max: number): 
 }
 
 export function getStratosUploadSettings(): UploadSettings {
-  return {
+  return applyDocumentIntakeSettings({
     ...getUploadSettings(),
     publicUploadBasePath: withAppBasePath("/api/stratos/upload/sessions")
-  };
+  });
 }
 
 export function getStratosBudgetUploadSettings(
   env: Record<string, string | undefined> = process.env,
 ): UploadSettings {
   const configuredBudgetLimit = Number(env.AKL_WEB_BUDGET_UPLOAD_MAX_FILE_BYTES);
-  return {
+  return applyDocumentIntakeSettings({
     ...getUploadSettings(env),
     maxFileBytes:
       Number.isSafeInteger(configuredBudgetLimit) && configuredBudgetLimit > 0
         ? configuredBudgetLimit
         : STRATOS_BUDGET_UPLOAD_MAX_FILE_BYTES,
     publicUploadBasePath: withAppBasePath("/api/stratos/budget-upload/sessions")
-  };
+  });
 }
 
 export function canonicalDocumentUrl(input: {
@@ -699,6 +701,7 @@ export async function upsertAiipDocumentVersion(input: {
         mime_type: optionalString(input.body, "file_type"),
         size_bytes: Number.isFinite(fileSize) ? fileSize : 0,
         sha256: fileHash,
+        intake_receipt: requiredString(input.body, "intake_receipt"),
       },
     },
   });
@@ -1106,6 +1109,7 @@ export function buildStratosBudgetDocumentVersionRequest(input: {
       mime_type: input.contract.fileType,
       size_bytes: input.contract.fileSize,
       sha256: input.contract.fileHash,
+      intake_receipt: requiredString(input.body, "intake_receipt"),
     },
   };
 }

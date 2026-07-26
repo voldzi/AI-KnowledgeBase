@@ -198,6 +198,14 @@ class Settings(BaseSettings):
         le=300,
         alias="AKL_INGESTION_AUTHORIZATION_TTL_SECONDS",
     )
+    content_security_required: bool = Field(
+        default=False,
+        alias="STRATOS_CONTENT_SECURITY_REQUIRED",
+    )
+    content_security_attestation_secret: str | None = Field(
+        default=None,
+        alias="AKL_WEB_UPLOAD_SIGNING_SECRET",
+    )
 
     keycloak_admin_base_url: str | None = Field(default=None, alias="AKL_KEYCLOAK_ADMIN_BASE_URL")
     keycloak_realm: str = Field(default="stratos", alias="AKL_KEYCLOAK_REALM")
@@ -337,6 +345,14 @@ class Settings(BaseSettings):
             if not route_grants:
                 raise ValueError(
                     "Production OIDC requires AKL_SERVICE_CLIENT_ROUTE_GRANTS"
+                )
+            if self.content_security_required and (
+                not self.content_security_attestation_secret
+                or len(self.content_security_attestation_secret) < 32
+            ):
+                raise ValueError(
+                    "Required Document Intake verification needs "
+                    "AKL_WEB_UPLOAD_SIGNING_SECRET with at least 32 characters"
                 )
             required_ingestion_routes = frozenset(
                 {"authz", "audit", "documents-read", "ingestion-status"}

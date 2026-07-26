@@ -7,8 +7,13 @@ import {
   assertUploadMatchesIngestionPayload,
   assertUploadTokenPurpose,
   CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
+  getUploadSettings,
+  requireCleanIntakeReceipt,
   UploadPreflightError,
+  verifyPersistedUploadedObject,
+  verifyUploadReceipt,
 } from "@/lib/upload/preflight";
+import { getContentSecuritySettings } from "@/lib/upload/content-security";
 
 import { badRequest, bridgeError } from "../errors";
 import { uploadErrorResponse } from "../upload/errors";
@@ -23,6 +28,7 @@ export async function POST(request: NextRequest) {
     const documentId = String(body.document_id ?? "").trim();
     const sourceFileUri = String(body.source_file_uri ?? "").trim();
     const uploadToken = body.upload_token ? String(body.upload_token).trim() : "";
+    const uploadReceipt = body.upload_receipt ? String(body.upload_receipt).trim() : "";
     const uploadSessionId = body.upload_session_id ? String(body.upload_session_id).trim() : "";
 
     if (!documentId) {
@@ -33,29 +39,44 @@ export async function POST(request: NextRequest) {
       return badRequest("source_file_uri is required.");
     }
 
-    let uploadPayload = null;
-    if (uploadToken) {
-      uploadPayload = assertUploadMatchesIngestionPayload(uploadToken, {
-        document_id: documentId,
-        upload_session_id: uploadSessionId,
-        source_file_uri: sourceFileUri,
-        file_hash: body.file_hash ? String(body.file_hash).trim() : null,
-        file_name: body.file_name ? String(body.file_name).trim() : null,
-        file_size: Number.isFinite(Number(body.file_size)) ? Number(body.file_size) : null,
-        file_type: body.file_type ? String(body.file_type).trim() : null
-      });
-      assertUploadTokenPurpose(uploadPayload, CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE);
+    if (!uploadToken || !uploadReceipt || !uploadSessionId) {
+      throw new UploadPreflightError(
+        400,
+        "DOCUMENT_INTAKE_PROOF_REQUIRED",
+        "upload_token, upload_receipt and upload_session_id are required.",
+      );
     }
+    const uploadSettings = getUploadSettings();
+    const uploadPayload = assertUploadMatchesIngestionPayload(uploadToken, {
+      document_id: documentId,
+      upload_session_id: uploadSessionId,
+      source_file_uri: sourceFileUri,
+      file_hash: body.file_hash ? String(body.file_hash).trim() : null,
+      file_name: body.file_name ? String(body.file_name).trim() : null,
+      file_size: Number.isFinite(Number(body.file_size)) ? Number(body.file_size) : null,
+      file_type: body.file_type ? String(body.file_type).trim() : null
+    });
+    assertUploadTokenPurpose(uploadPayload, CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE);
+    const receiptPayload = verifyUploadReceipt(
+      uploadReceipt,
+      uploadToken,
+      uploadPayload,
+      uploadSettings,
+    );
+    requireCleanIntakeReceipt(
+      receiptPayload,
+      getContentSecuritySettings().required,
+    );
+    await verifyPersistedUploadedObject(uploadPayload, uploadSettings);
 
     const [document, currentAttempt] = await Promise.all([
       clients.registry.getDocument(documentId, context),
       clients.registry.getDocumentIngestionAttempt(documentId, context),
     ]);
     if (
-      uploadPayload &&
-      (document.policy_binding_id !== uploadPayload.policy_binding_id ||
+      document.policy_binding_id !== uploadPayload.policy_binding_id ||
         document.policy_version !== uploadPayload.policy_version ||
-        document.policy_hash !== uploadPayload.policy_hash)
+        document.policy_hash !== uploadPayload.policy_hash
     ) {
       return badRequest("Document policy changed after upload preflight.", 409);
     }
@@ -75,7 +96,8 @@ export async function POST(request: NextRequest) {
               mime_type: body.file_type ? String(body.file_type).trim() : null,
               size_bytes: Number.isFinite(Number(body.file_size)) ? Number(body.file_size) : null,
               sha256: body.file_hash ? String(body.file_hash).trim() : null,
-              uploaded_by: context.subjectId
+              uploaded_by: context.subjectId,
+              intake_receipt: uploadReceipt,
             }
           : null
       },
