@@ -12,6 +12,7 @@ import { DirectorCopilotTransportError } from "../src/lib/director-copilot/trans
 const budgetOrganization = fixture("budget-organization-financial-summary.json");
 const budgetProject = fixture("budget-project-financial-snapshot.json");
 const projectflow = fixture("projectflow-portfolio-delivery-overview.json");
+const archflow = fixture("archflow-need-portfolio-overview.json");
 
 describe("Director Copilot V2 orchestration", () => {
   it("uses the source-owned organization aggregate instead of summing projects in AKB", async () => {
@@ -312,6 +313,146 @@ describe("Director Copilot V2 orchestration", () => {
     assert.equal(calls.length, 2);
     assert.notEqual(calls[0]?.tool_call_id, calls[1]?.tool_call_id);
     assert.equal(calls[1]?.parameters.cursor, "cursor-page-2");
+  });
+
+  it("stores canonical project identities from authorized source results for a follow-up", async () => {
+    const state = resolveConversationQuery({
+      message: "Jaký je rozpočet projektu v roce 2025?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    state.granularity = "project";
+    state.entity_filters.project_ids = ["project-001"];
+
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Jaký je rozpočet projektu v roce 2025?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "budget_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async (_application, request) => ({
+          ...structuredClone(budgetProject.responses.complete),
+          tool_call_id: request.tool_call_id,
+        }),
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.deepEqual(
+      result.continuation_query_state.entity_filters.project_ids,
+      ["project-001"],
+    );
+    assert.equal(result.continuation_query_state.period.fiscal_year, 2025);
+  });
+
+  it("does not call ProjectFlow with an unresolved unsupported entity filter", async () => {
+    const state = resolveConversationQuery({
+      message: "Které potřeby mají zpožděný projekt?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    state.sources = ["projectflow"];
+    state.metrics = ["project.schedule_status"];
+    state.granularity = "project";
+    state.entity_filters.need_ids = ["need-001"];
+    let calls = 0;
+
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Které potřeby mají zpožděný projekt?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "project_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async () => {
+          calls += 1;
+          throw new Error("must not call ProjectFlow");
+        },
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.equal(calls, 0);
+    assert.equal(result.status, "unavailable");
+    assert.deepEqual(result.snapshot.outcomes[0]?.reason_codes, [
+      "DIRECTOR_COPILOT_V2_ENTITY_FILTER_RESOLUTION_REQUIRED",
+    ]);
+    assert.equal(result.plan.nodes[0]?.request, null);
+  });
+
+  it("does not infer a ProjectFlow relationship from unrelated coexisting filters", async () => {
+    const state = resolveConversationQuery({
+      message: "Které z těchto potřeb mají zpožděný projekt?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    state.sources = ["projectflow"];
+    state.metrics = ["project.schedule_status"];
+    state.granularity = "project";
+    state.entity_filters.need_ids = ["need-001"];
+    state.entity_filters.project_ids = ["project-001"];
+    let calls = 0;
+
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Které z těchto potřeb mají zpožděný projekt?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "project_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async () => {
+          calls += 1;
+          throw new Error("must not call ProjectFlow");
+        },
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.equal(calls, 0);
+    assert.equal(result.status, "unavailable");
+    assert.deepEqual(result.snapshot.outcomes[0]?.reason_codes, [
+      "DIRECTOR_COPILOT_V2_ENTITY_FILTER_RESOLUTION_REQUIRED",
+    ]);
+  });
+
+  it("converts a need to its canonical project only through a typed manifest link", async () => {
+    const state = resolveConversationQuery({
+      message: "Které potřeby byly předány do projektů?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    state.sources = ["archflow"];
+    state.metrics = ["archflow.need.status"];
+    state.granularity = "project";
+
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Které potřeby byly předány do projektů?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "archflow_demand_overview",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async (_application, request) => ({
+          ...structuredClone(archflow.responses.complete),
+          tool_call_id: request.tool_call_id,
+        }),
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.deepEqual(
+      result.continuation_query_state.entity_filters.project_ids,
+      ["project-001"],
+    );
+    assert.deepEqual(
+      result.continuation_query_state.entity_filters.need_ids,
+      [],
+    );
+    assert.deepEqual(
+      result.continuation_query_state.entity_filters.idea_ids,
+      [],
+    );
   });
 });
 

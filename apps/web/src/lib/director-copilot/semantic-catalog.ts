@@ -117,7 +117,7 @@ export const STRATOS_SEMANTIC_METRICS: readonly StratosSemanticMetricDefinition[
     id: "budget.variance_amount",
     source: "budget",
     description: "Odchylka skutecnosti nebo vyhledu proti planu.",
-    patterns: [/\bodchyl/, /\brozdil/, /\bprekroc/, /\buspor/],
+    patterns: [/\bodchyl/, /\brozdil/, /\bprekroc/, /\bprekra/, /\buspor/],
   },
   {
     id: "project.status",

@@ -1,8 +1,14 @@
 # Director Copilot V2 production acceptance
 
-Status: ready for execution after the AKB V2 release is deployed
+Status: blocked until the ProjectFlow runtime manifest and shared contract
+bundle are coherent, then ready after the AKB V2 release is deployed
 
 Contract: `director-copilot-2`, revision `2.0.2`
+
+The runtime ProjectFlow manifest must be byte-identical with the pinned shared
+bundle before S1. In particular, a runtime-only
+`PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED` reason code is manifest drift, not an
+acceptable extension of revision `2.0.2`.
 
 ## Purpose
 
@@ -56,7 +62,7 @@ evidence.
 | S2 | `Ne jen pro tento projekt, ale celkově.` | Retains the year, clears the project filter and returns the organisation aggregate. |
 | S3 | `Rozděl ho podle portfolií.` | Keeps the financial context and requests the supported portfolio granularity. |
 | S4 | `Které projekty překračují plán?` | Returns only Budget-authorized projects, with source-owned plan/forecast/variance semantics. |
-| S5 | `Které z nich mají současně zpožděný milník?` | Joins Budget and ProjectFlow only on byte-identical `stratos:project:<id>`; no name-based join. |
+| S5 | `Které z nich mají současně zpožděný milník?` | Preserves the year and canonical project set; ProjectFlow receives only supported canonical filters and joins only on byte-identical `stratos:project:<id>`. |
 | S6 | `Jaké potřeby čekají na rozhodnutí?` | Uses `archflow.need_portfolio_overview.v1`; a no-data result remains distinct from a denial. |
 | S7 | `Jaké AI podněty čekají na harmonizaci?` | Uses `aiip.idea_portfolio_overview.v1`. |
 | S8 | Follow the returned idea to its need, then to its project. | Traverses only the declared typed relationship; unknown or untyped links are omitted. |
@@ -66,6 +72,13 @@ evidence.
 Shadow succeeds only when every source response validates against its pinned
 manifest and every observed source status is `complete`, `partial`, `no_data`,
 `not_authorized` or `unavailable` with a known reason code.
+
+For S5, inspect the captured ProjectFlow request. Non-empty
+`budget_scope_ids`, `need_ids` and `idea_ids` are forbidden. If a need or idea
+has no manifest-declared path to a project, portfolio or organization unit,
+the expected result is the bounded AKB planning reason
+`DIRECTOR_COPILOT_V2_ENTITY_FILTER_RESOLUTION_REQUIRED` and zero ProjectFlow
+execute calls.
 
 Start S1 by pressing **Nové vlákno** and record the newly returned server
 `conv_*` identifier. It must differ from the previously active conversation

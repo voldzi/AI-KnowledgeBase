@@ -73,6 +73,14 @@ describe("Director Copilot V2 active chat", () => {
 
     assert.equal(response.response_type, "answer");
     assert.equal(response.current_context.answer_source, "director_copilot_v2");
+    assert.deepEqual(
+      (
+        response.current_context.stratos_query_state as {
+          entity_filters?: { project_ids?: string[] };
+        }
+      ).entity_filters?.project_ids,
+      ["project-001"],
+    );
     assert.match(response.answer ?? "", /Souvislost financí a realizace/);
     assert.match(response.answer ?? "", /Projekt Alfa/);
     assert.match(response.answer ?? "", /14 dní/);
@@ -96,6 +104,10 @@ describe("Director Copilot V2 active chat", () => {
     const history = directorCopilotPersistenceMetadata(response, context());
     const serializedHistory = JSON.stringify(history);
     assert.match(serializedHistory, /"contract_version":"director-copilot-2"/);
+    assert.match(
+      serializedHistory,
+      /"project_ids":\["project-001"\]/,
+    );
     assert.equal(serializedHistory.includes("actor-token"), false);
     assert.equal(serializedHistory.includes("Projekt Alfa"), false);
     const originalFetch = globalThis.fetch;
