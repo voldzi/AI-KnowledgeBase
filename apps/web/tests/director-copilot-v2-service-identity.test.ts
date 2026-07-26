@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 
 import type { AklConfig } from "../src/lib/api/config";
 import {
+  DIRECTOR_COPILOT_AUDIT_TARGET,
   directorCopilotServiceToken,
   resetDirectorCopilotServiceTokenCacheForTests,
 } from "../src/lib/director-copilot/service-identity";
@@ -35,6 +36,11 @@ describe("Director Copilot V2 service identity", () => {
       fetcher,
       DIRECTOR_COPILOT_V2_TARGETS.projectflow,
     );
+    const audit = await directorCopilotServiceToken(
+      config(),
+      fetcher,
+      DIRECTOR_COPILOT_AUDIT_TARGET,
+    );
     const budgetCached = await directorCopilotServiceToken(
       config(),
       fetcher,
@@ -42,10 +48,12 @@ describe("Director Copilot V2 service identity", () => {
     );
 
     assert.notEqual(budget, projectflow);
+    assert.notEqual(audit, budget);
     assert.equal(budgetCached, budget);
     assert.deepEqual(scopes, [
       "director-copilot-budget-api",
       "director-copilot-projectflow-api",
+      "director-copilot-akl-api",
     ]);
   });
 

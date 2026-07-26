@@ -61,7 +61,10 @@ describe("Director Copilot chat policy enforcement", () => {
       assert.equal(auditCalls, 1);
       assert.equal(auditContext?.subjectId, "svc-akb-director-copilot");
       assert.equal(auditContext?.serviceClientId, "svc-akb-director-copilot");
-      assert.equal(auditContext?.accessToken, "mock-director-copilot-service-token");
+      assert.equal(
+        auditContext?.accessToken,
+        "mock-director-copilot-service-token-akl-api",
+      );
       assert.deepEqual(auditContext?.capabilities, []);
       assert.deepEqual(auditContext?.scopes, []);
       assert.match(JSON.stringify(auditPayload), /"returned_item_count":1/);

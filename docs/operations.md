@@ -165,6 +165,27 @@ Promote `shadow` to `active` only after the joint dialogue, negative
 authorization, history reauthorization, audit and latency gates in
 `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md` pass.
 
+Before changing the mode to `active`, verify that
+`svc-akb-director-copilot` can obtain five separate exact-audience tokens.
+The additional audit route is:
+
+```text
+scope=director-copilot-akl-api
+audience=akl-api
+Registry route grant=audit
+```
+
+Do not activate V2 when this token is unavailable. The Registry audit is a
+required completion gate, not a best-effort side effect.
+
+The production Registry environment must include the matching narrow route
+allowlist entry and route grant:
+
+```text
+trusted service client=svc-akb-director-copilot
+svc-akb-director-copilot=audit
+```
+
 The production Compose mounts the host file named by
 `AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE` read-only into both web profiles and
 the entrypoint copies it to a private in-container tmpfs before dropping

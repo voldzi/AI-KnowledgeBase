@@ -13,25 +13,51 @@ import {
   type DomainToolRequest,
   type DomainToolResponse,
 } from "./contracts";
-import { directorCopilotServiceToken } from "./service-identity";
+import {
+  type DirectorCopilotServiceTarget,
+  directorCopilotServiceToken,
+} from "./service-identity";
 import { DirectorCopilotTransportError } from "./transport-error";
 
 const EXECUTE_PATH = "/api/v1/integrations/akb/domain-tools/execute";
 
+const SERVICE_TARGETS: Readonly<Record<DomainApplication, DirectorCopilotServiceTarget>> = {
+  budget: {
+    audience: "budget-api",
+    scope: "director-copilot-budget-api",
+  },
+  projectflow: {
+    audience: "projectflow-api",
+    scope: "director-copilot-projectflow-api",
+  },
+  archflow: {
+    audience: "archflow-api",
+    scope: "director-copilot-archflow-api",
+  },
+  aiip: {
+    audience: "aiip-api",
+    scope: "director-copilot-aiip-api",
+  },
+};
+
 export interface DomainToolClientOptions {
   config: AklConfig;
   fetcher?: typeof fetch;
-  serviceToken?: () => Promise<string>;
+  serviceToken?: (application: DomainApplication) => Promise<string>;
 }
 
 export class DirectorDomainToolClient {
   private readonly fetcher: typeof fetch;
-  private readonly serviceToken: () => Promise<string>;
+  private readonly serviceToken: (application: DomainApplication) => Promise<string>;
 
   constructor(private readonly options: DomainToolClientOptions) {
     this.fetcher = options.fetcher ?? fetch;
     this.serviceToken = options.serviceToken
-      ?? (() => directorCopilotServiceToken(options.config, this.fetcher));
+      ?? ((application) => directorCopilotServiceToken(
+        options.config,
+        this.fetcher,
+        SERVICE_TARGETS[application],
+      ));
   }
 
   async execute(
@@ -61,7 +87,7 @@ export class DirectorDomainToolClient {
         "unavailable",
       );
     }
-    const serviceToken = await this.serviceToken();
+    const serviceToken = await this.serviceToken(application);
     if (!serviceToken || serviceToken === actorContext.accessToken) {
       throw new DirectorCopilotTransportError(
         "DIRECTOR_COPILOT_TOKEN_SEPARATION_REQUIRED",

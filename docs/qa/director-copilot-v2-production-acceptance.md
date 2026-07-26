@@ -25,6 +25,9 @@ Record these values in the execution evidence before testing:
   `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`;
 - a test account with an active organisation scope, the five required source
   capabilities and no privileged global role;
+- the `svc-akb-director-copilot` client with five optional route-bound scopes,
+  including `director-copilot-akl-api` with exactly the `akl-api` audience for
+  the mandatory Registry audit;
 - one authorised project with Budget plan/forecast, ProjectFlow delivery data,
   a linked ArchFlow need, a linked AIIP idea and an independently authorised
   AKB document;
@@ -96,6 +99,17 @@ Only after all shadow and negative cases pass, an operator may set
 `AKL_DIRECTOR_COPILOT_V2_MODE=active` for a short monitored pilot. Record the
 start/end time and the exact AKB release SHA. Repeat S1-S10 with the V2 answer
 visible to the test account.
+
+The active S1 preflight must prove all of the following before the complete
+run continues:
+
+- the central application id `budget-contract` resolves to the closed Budget
+  domain without changing its capabilities or scopes;
+- the invoked tool is `budget.organization_financial_summary.v1`;
+- the Registry accepts the metadata-only V2 audit through the exact
+  `director-copilot-akl-api` service token;
+- the user and assistant messages are persisted in the new conversation;
+- no V1 domain tool or document RAG fallback is invoked.
 
 Promotion is accepted only when all of these are true:
 
