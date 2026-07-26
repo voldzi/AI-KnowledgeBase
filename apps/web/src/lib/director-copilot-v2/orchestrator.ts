@@ -18,6 +18,7 @@ import {
 } from "./contracts";
 import type { DirectorCopilotV2DomainToolClient } from "./domain-tool-client";
 import type { DirectorCopilotV2ManifestCatalog } from "./manifest-catalog";
+import { directorCopilotV2ContinuationQueryState } from "./continuation";
 import {
   buildDirectorCopilotV2Plan,
   type DirectorCopilotV2Plan,
@@ -65,6 +66,7 @@ export interface DirectorCopilotV2OrchestrationResult {
   status: "complete" | "partial" | "no_data" | "not_authorized" | "unavailable";
   plan: DirectorCopilotV2Plan;
   snapshot: DirectorCopilotV2Snapshot;
+  continuation_query_state: ConversationQueryState;
 }
 
 type V2Executor = Pick<DirectorCopilotV2DomainToolClient, "execute">;
@@ -107,6 +109,11 @@ export async function orchestrateDirectorCopilotV2(input: {
     input.authorizeDocument,
   );
   const status = aggregateStatus(outcomes);
+  const continuationQueryState = directorCopilotV2ContinuationQueryState(
+    plan.query_state,
+    outcomes,
+    input.catalog,
+  );
   const snapshotBase = {
     schema_version: DIRECTOR_COPILOT_V2_SNAPSHOT_VERSION,
     contract_version: DIRECTOR_COPILOT_V2_CONTRACT,
@@ -132,7 +139,12 @@ export async function orchestrateDirectorCopilotV2(input: {
     snapshot_id: directorCopilotV2StableId("snap", snapshotHash),
     snapshot_hash: snapshotHash,
   };
-  return { status, plan, snapshot };
+  return {
+    status,
+    plan,
+    snapshot,
+    continuation_query_state: continuationQueryState,
+  };
 }
 
 async function executeNode(
@@ -142,6 +154,13 @@ async function executeNode(
   client: V2Executor,
 ): Promise<DirectorCopilotV2SourceOutcome> {
   const startedAt = performance.now();
+  if (node.planning_error_code) {
+    return unavailableOutcome(
+      node,
+      node.planning_error_code,
+      elapsedMilliseconds(startedAt),
+    );
+  }
   if (!node.access.authorized || !node.request) {
     return {
       application: node.application,

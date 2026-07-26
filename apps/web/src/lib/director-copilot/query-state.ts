@@ -69,7 +69,8 @@ const FOLLOW_UP_SIGNAL = /\b(a|ale|jen|pouze|celkove|dohromady|vsichni|vsechny|j
 const OVERALL_SIGNAL = /\b(celkove|dohromady|za celou organizaci|cela organizace|vsechny projekty|vsechny polozky|ne jen)\b/;
 const ORGANIZATION_UNIT_SIGNAL = /\b(utvar\w*|odbor\w*|oddeleni|sekce|organizacni jednotk\w*|it|ict|informatik\w*)\b/;
 const PORTFOLIO_SIGNAL = /\bportfoli\w*/;
-const DELAYED_SIGNAL = /\b(zpozden|zpozdeni|v prodleni|po terminu)\b/;
+const PROJECT_GRANULARITY_SIGNAL = /\bprojekt\w*/;
+const DELAYED_SIGNAL = /\b(zpozden\w*|v prodleni|po terminu)\b/;
 const AT_RISK_SIGNAL = /\b(ohrozen|rizikov[ey]|at risk)\b/;
 const ON_TRACK_SIGNAL = /\b(podle planu|v terminu|on track)\b/;
 const DESC_SIGNAL = /\b(nejvyssi|nejvetsi|nejvice|top|nejhorsi)\b/;
@@ -421,6 +422,7 @@ function explicitGranularityForText(
   if (OVERALL_SIGNAL.test(normalized)) return "organization";
   if (ORGANIZATION_UNIT_SIGNAL.test(normalized)) return "organization_unit";
   if (PORTFOLIO_SIGNAL.test(normalized)) return "portfolio";
+  if (PROJECT_GRANULARITY_SIGNAL.test(normalized)) return "project";
   return null;
 }
 

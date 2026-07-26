@@ -44,6 +44,16 @@ copies.
 12. Audit tool IDs, schema/source versions, status, counts, latency, scope types
    and correlation identifiers without prompts, answers, tokens or source
    payloads.
+13. Build the next-turn entity context only from authorized result items and
+    relationships declared by the exact source manifest. A typed
+    `archflow.need.linked_project` link replaces the need filter with its
+    canonical project target for a ProjectFlow continuation. Coexisting IDs
+    are never treated as proof of a relationship.
+14. Never send non-empty `budget_scope_ids`, `need_ids` or `idea_ids` to
+    ProjectFlow. If no typed path has resolved them to an organization unit,
+    portfolio or project, planning stops locally with
+    `DIRECTOR_COPILOT_V2_ENTITY_FILTER_RESOLUTION_REQUIRED`; the filter is not
+    ignored and the request is not widened.
 
 The central access projection may identify the Budget application as either
 `budget` or the STRATOS catalog id `budget-contract`. AKB maps only this closed
@@ -79,6 +89,26 @@ turn clears incompatible project filters. Follow-up grouping by portfolio
 inherits the financial metric and fiscal year without inheriting a project
 restriction. Shadow failures record a bounded `failure_reason_code`; a
 recognized live-data request is never replaced by document RAG.
+
+The continuation state exposed to the next turn contains canonical entity
+identities derived from the authorized response. Governed history still keeps
+the original query state inside its reauthorization envelope, so reopening a
+thread replays the original authorized request while the visible conversation
+continues with the derived entity context.
+
+## Contract closure required upstream
+
+The AKB pinned bundle remains byte-identical with the handoff SHA-256
+`b71c94819d3e014792bd329a1a78a73e1d138d627bb88db10a478a37b6a6a3c5`.
+At the time of the 2026-07-27 implementation, the STRATOS ProjectFlow runtime
+manifest also advertises `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`, but that
+reason code is absent from the canonical bundle for revision `2.0.2`.
+
+AKB must not add a local exception because unknown runtime reason codes and
+manifest drift are fail-closed conditions. Before joint acceptance, STRATOS
+must publish one coherent contract closure: preferably an additive revision
+with regenerated manifest bundle, fixtures, hashes and handoff. AKB can then
+pin that byte-identical revision in a separate contract-only update.
 
 ## Joint acceptance
 

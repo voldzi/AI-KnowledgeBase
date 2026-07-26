@@ -113,6 +113,52 @@ describe("Director Copilot conversation query state", () => {
     );
   });
 
+  it("keeps year, metric and authorized entity context across the reference dialogue", () => {
+    const first = resolveConversationQuery({
+      message: "Jaký má IT rozpočet na rok 2025?",
+      now: NOW,
+    }).state;
+    const second = resolveConversationQuery({
+      message: "Ne jen pro tento projekt, ale celkově.",
+      context: { stratos_query_state: first },
+      now: NOW,
+    }).state;
+    const third = resolveConversationQuery({
+      message: "Rozděl ho podle portfolií.",
+      context: { stratos_query_state: second },
+      now: NOW,
+    }).state;
+    third.entity_filters.portfolio_ids = ["portfolio-001"];
+    const fourth = resolveConversationQuery({
+      message: "Které projekty překračují plán?",
+      context: { stratos_query_state: third },
+      now: NOW,
+    }).state;
+    fourth.entity_filters.project_ids = ["project-001"];
+    const fifth = resolveConversationQuery({
+      message: "Které z nich mají současně zpožděný milník?",
+      context: { stratos_query_state: fourth },
+      now: NOW,
+    }).state;
+
+    assert.equal(fourth.period.fiscal_year, 2025);
+    assert.equal(fourth.granularity, "project");
+    assert.deepEqual(
+      fourth.metrics,
+      ["budget.plan_amount", "budget.variance_amount"],
+    );
+    assert.deepEqual(fourth.entity_filters.portfolio_ids, ["portfolio-001"]);
+    assert.equal(fifth.period.fiscal_year, 2025);
+    assert.equal(fifth.granularity, "project");
+    assert.deepEqual(fifth.sources, ["projectflow"]);
+    assert.deepEqual(
+      fifth.metrics,
+      ["milestone.max_delay_days", "milestone.next_due_date"],
+    );
+    assert.equal(fifth.filters.schedule_status, "delayed");
+    assert.deepEqual(fifth.entity_filters.project_ids, ["project-001"]);
+  });
+
   it("preserves a bounded interval and every V2 entity filter across a follow-up", () => {
     const previous = resolveConversationQuery({
       message: "Porovnej projekty od 2025-01-01 do 2025-06-30.",

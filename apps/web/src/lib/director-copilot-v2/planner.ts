@@ -31,6 +31,7 @@ export interface DirectorCopilotV2PlanNode {
   required_capabilities: string[];
   access: DirectorCopilotV2AccessDecision;
   request: DirectorCopilotV2Request | null;
+  planning_error_code: string | null;
   timeout_ms: number;
 }
 
@@ -77,12 +78,16 @@ export function buildDirectorCopilotV2Plan(input: {
       granularity,
       now.getTime(),
     );
+    const filterResolution = entityFiltersForApplication(
+      input.queryState,
+      application,
+    );
     const toolCallId = directorCopilotV2StableId("call", {
       plan_id: planId,
       application,
       tool_id: toolId,
     });
-    const request = access.authorized
+    const request = access.authorized && !filterResolution.errorCode
       ? requestForNode({
           planId,
           toolCallId,
@@ -93,6 +98,7 @@ export function buildDirectorCopilotV2Plan(input: {
           granularity,
           manifest,
           scopes: access.scopes,
+          entityFilters: filterResolution.filters,
           now,
         })
       : null;
@@ -104,6 +110,7 @@ export function buildDirectorCopilotV2Plan(input: {
       required_capabilities: requiredCapabilities(manifest, granularity, access.scopes.map((scope) => scope.type)),
       access,
       request,
+      planning_error_code: filterResolution.errorCode,
       timeout_ms: manifest.timeout_ms,
     };
   });
@@ -130,6 +137,7 @@ function requestForNode(input: {
   granularity: DirectorCopilotV2Granularity;
   manifest: DirectorCopilotV2Manifest;
   scopes: DirectorCopilotV2Request["requested_scopes"];
+  entityFilters: DirectorCopilotV2EntityFilters;
   now: Date;
 }): DirectorCopilotV2Request {
   const request: DirectorCopilotV2Request = {
@@ -146,7 +154,7 @@ function requestForNode(input: {
     requested_scopes: input.scopes,
     parameters: {
       period: periodForQuery(input.message, input.queryState),
-      entity_filters: entityFilters(input.queryState),
+      entity_filters: input.entityFilters,
       granularity: input.granularity,
       group_by: groupBy(input.queryState, input.granularity, input.manifest),
       scenario: scenarios(input.queryState, input.manifest),
@@ -259,6 +267,40 @@ function entityFilters(state: ConversationQueryState): DirectorCopilotV2EntityFi
     project_ids: state.entity_filters.project_ids,
     need_ids: state.entity_filters.need_ids,
     idea_ids: state.entity_filters.idea_ids,
+  };
+}
+
+function entityFiltersForApplication(
+  state: ConversationQueryState,
+  application: DirectorCopilotV2Application,
+): {
+  filters: DirectorCopilotV2EntityFilters;
+  errorCode: string | null;
+} {
+  const filters = entityFilters(state);
+  if (application !== "projectflow") {
+    return {
+      filters,
+      errorCode: null,
+    };
+  }
+  const unsupported = [
+    ["budget_scope_ids", filters.budget_scope_ids ?? []],
+    ["need_ids", filters.need_ids ?? []],
+    ["idea_ids", filters.idea_ids ?? []],
+  ] as const;
+  const unresolvedTypes = unsupported
+    .filter(([, values]) => values.length > 0)
+    .map(([key]) => key);
+  if (!unresolvedTypes.length) {
+    return {
+      filters,
+      errorCode: null,
+    };
+  }
+  return {
+    filters,
+    errorCode: "DIRECTOR_COPILOT_V2_ENTITY_FILTER_RESOLUTION_REQUIRED",
   };
 }
 

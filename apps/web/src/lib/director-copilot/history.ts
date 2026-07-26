@@ -112,9 +112,9 @@ export function directorCopilotPersistenceMetadata(
       ),
       requested_director_copilot_intent: planIntent,
       stratos_query_state:
-        snapshot?.plan.query_state
-        ?? v2Snapshot?.plan.query_state
-        ?? conversationQueryState(response.current_context.stratos_query_state),
+        conversationQueryState(response.current_context.stratos_query_state)
+        ?? snapshot?.plan.query_state
+        ?? v2Snapshot?.plan.query_state,
     },
     director_copilot_history: envelope,
     follow_up_questions: response.follow_up_questions,
@@ -145,9 +145,9 @@ export function persistedDirectorCopilotResponse(
       ?? v2Snapshot?.plan.intent
       ?? null,
     stratos_query_state:
-      analysisSnapshot(response.current_context.director_copilot_snapshot)?.plan.query_state
-      ?? v2Snapshot?.plan.query_state
-      ?? conversationQueryState(response.current_context.stratos_query_state),
+      conversationQueryState(response.current_context.stratos_query_state)
+      ?? analysisSnapshot(response.current_context.director_copilot_snapshot)?.plan.query_state
+      ?? v2Snapshot?.plan.query_state,
   };
   return {
     ...response,
