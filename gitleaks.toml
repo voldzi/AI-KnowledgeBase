@@ -33,6 +33,13 @@ paths = ['''scripts/verify_stratos_contract_snapshot\.py$''']
 regexes = ['''"[^"]+":\s*"[a-f0-9]{64}"''']
 
 [[rules.allowlists]]
+description = "Pinned Director Copilot OpenAPI contract digest"
+condition = "AND"
+regexTarget = "line"
+paths = ['''docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION\.md$''']
+regexes = ['''OpenAPI SHA-256:\s*`[a-f0-9]{64}`''']
+
+[[rules.allowlists]]
 description = "AIIP duplicate-search idempotency fixture"
 condition = "AND"
 regexTarget = "line"

@@ -1,10 +1,10 @@
 {
   "schema_version": "director-copilot-2",
-  "contract_revision": "2.0.2",
+  "contract_revision": "2.0.3",
   "manifests": [
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.2",
+      "contract_revision": "2.0.3",
       "tool_id": "aiip.idea_portfolio_overview.v1",
       "owner": "AIIP",
       "audience": "aiip-api",
@@ -217,7 +217,7 @@
     },
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.2",
+      "contract_revision": "2.0.3",
       "tool_id": "archflow.need_portfolio_overview.v1",
       "owner": "ARCHFLOW",
       "audience": "archflow-api",
@@ -502,7 +502,7 @@
     },
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.2",
+      "contract_revision": "2.0.3",
       "tool_id": "budget.organization_financial_summary.v1",
       "owner": "BUDGET",
       "audience": "budget-api",
@@ -674,7 +674,7 @@
     },
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.2",
+      "contract_revision": "2.0.3",
       "tool_id": "budget.project_financial_snapshot.v1",
       "owner": "BUDGET",
       "audience": "budget-api",
@@ -776,7 +776,7 @@
     },
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.2",
+      "contract_revision": "2.0.3",
       "tool_id": "projectflow.portfolio_delivery_overview.v1",
       "owner": "PROJECTFLOW",
       "audience": "projectflow-api",
@@ -1005,6 +1005,7 @@
         "PROJECTFLOW_LOCAL_MEMBERSHIP_REQUIRED",
         "PROJECTFLOW_INFORMATION_POLICY_DENIED",
         "PROJECTFLOW_CAPABILITY_DENIED",
+        "PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED",
         "PROJECTFLOW_ORGANIZATION_UNIT_MAPPING_MISSING",
         "PROJECTFLOW_NO_DATA",
         "PROJECTFLOW_DOMAIN_TOOL_UNAVAILABLE"

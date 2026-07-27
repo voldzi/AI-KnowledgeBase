@@ -2,18 +2,18 @@
 
 Status: implemented behind `disabled|shadow|active`
 
-Wire contract: `director-copilot-2`, revision `2.0.2`
+Wire contract: `director-copilot-2`, revision `2.0.3`
 
 ## Pinned upstream
 
-- STRATOS: `3190266e21c9f45b9733c62debb2763ee88b1eed`
-- AIIP: `d6403cb1c5bbf87032683647e68e5f5a7d473752`
+- STRATOS: `663e71820b93c5801a27f393eae63a24ba118745`
+- AIIP: `32ee68228a9ac29c945f4a876c67dbec878a86ad`
 - request SHA-256: `c4faf33dfecc59bba1e7ef28cd2bd315183ffb6583c9a6b4da4dae4e3829bdd5`
 - response SHA-256: `22caad5e8dacfd9d3e0451f64c638e91c4d0deb649e091cf1e16fb12e8da51dd`
-- manifest SHA-256: `886d613659f7f65c2b4a739681e1fbaf2e577aaa3376ef1996b2af4f93704572`
+- manifest SHA-256: `713d8b7d8a3a1b7873d244d4a244c3d08b1f43d0692669656100ba1454ff99a6`
 - error SHA-256: `99949d198294a947366cf099b2af7023979f538fadab8bbec48fffce8e9bdeab`
-- OpenAPI SHA-256: `b61e727a0ab9f5a7b37e01fa75fc055cf331a3849914f0db524bea1732219836`
-- manifest bundle SHA-256: `b71c94819d3e014792bd329a1a78a73e1d138d627bb88db10a478a37b6a6a3c5`
+- OpenAPI SHA-256: `9c94e2f75953511d17b178085ac57cf34594dd9f3cb2ed56799093611e8fb373`
+- manifest bundle SHA-256: `3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5`
 
 The production build verifies these hashes and byte identity of runtime schema
 copies.
@@ -96,19 +96,14 @@ the original query state inside its reauthorization envelope, so reopening a
 thread replays the original authorized request while the visible conversation
 continues with the derived entity context.
 
-## Contract closure required upstream
+## Contract closure
 
-The AKB pinned bundle remains byte-identical with the handoff SHA-256
-`b71c94819d3e014792bd329a1a78a73e1d138d627bb88db10a478a37b6a6a3c5`.
-At the time of the 2026-07-27 implementation, the STRATOS ProjectFlow runtime
-manifest also advertises `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`, but that
-reason code is absent from the canonical bundle for revision `2.0.2`.
-
-AKB must not add a local exception because unknown runtime reason codes and
-manifest drift are fail-closed conditions. Before joint acceptance, STRATOS
-must publish one coherent contract closure: preferably an additive revision
-with regenerated manifest bundle, fixtures, hashes and handoff. AKB can then
-pin that byte-identical revision in a separate contract-only update.
+STRATOS revision `2.0.3` closes the ProjectFlow manifest mismatch. The pinned
+bundle now declares `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`, and AKB accepts
+that code only for the exact ProjectFlow manifest in this revision. Unknown
+runtime revisions, hashes, tools, facts, links and reason codes continue to
+fail closed. Joint acceptance may start only after the matching STRATOS, AIIP
+and AKB revisions are deployed; V2 remains in `shadow`.
 
 ## Joint acceptance
 

@@ -10,9 +10,9 @@ import requestSchema from "./contracts/director-copilot-2-request.schema.json";
 import responseSchema from "./contracts/director-copilot-2-response.schema.json";
 
 export const DIRECTOR_COPILOT_V2_CONTRACT = "director-copilot-2" as const;
-export const DIRECTOR_COPILOT_V2_REVISION = "2.0.2" as const;
+export const DIRECTOR_COPILOT_V2_REVISION = "2.0.3" as const;
 export const DIRECTOR_COPILOT_V2_MANIFEST_BUNDLE_SHA256 =
-  "b71c94819d3e014792bd329a1a78a73e1d138d627bb88db10a478a37b6a6a3c5" as const;
+  "3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5" as const;
 
 export const V2_TOOL_IDS = {
   budgetOrganization: "budget.organization_financial_summary.v1",

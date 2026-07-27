@@ -1,14 +1,13 @@
 # Director Copilot V2 production acceptance
 
-Status: blocked until the ProjectFlow runtime manifest and shared contract
-bundle are coherent, then ready after the AKB V2 release is deployed
+Status: ready after the matching STRATOS, AIIP and AKB releases are deployed
 
-Contract: `director-copilot-2`, revision `2.0.2`
+Contract: `director-copilot-2`, revision `2.0.3`
 
-The runtime ProjectFlow manifest must be byte-identical with the pinned shared
-bundle before S1. In particular, a runtime-only
-`PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED` reason code is manifest drift, not an
-acceptable extension of revision `2.0.2`.
+The runtime manifests must be byte-identical with the pinned shared bundle
+before S1. Revision `2.0.3` includes the closed ProjectFlow reason
+`PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`; any additional runtime-only reason
+remains contract drift.
 
 ## Purpose
 
@@ -27,7 +26,7 @@ Record these values in the execution evidence before testing:
 
 - AKB release SHA and `/akb/api/health` version;
 - STRATOS, Budget, ProjectFlow, ArchFlow and AIIP release SHAs;
-- contract revision `2.0.2` and the six pinned contract hashes from
+- contract revision `2.0.3` and the six pinned contract hashes from
   `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`;
 - a test account with an active organisation scope, the five required source
   capabilities and no privileged global role;

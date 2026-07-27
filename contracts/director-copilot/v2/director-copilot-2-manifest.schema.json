@@ -32,7 +32,7 @@
   ],
   "properties": {
     "schema_version": { "const": "director-copilot-2" },
-    "contract_revision": { "const": "2.0.2" },
+    "contract_revision": { "const": "2.0.3" },
     "tool_id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,119}$" },
     "owner": { "enum": ["BUDGET", "PROJECTFLOW", "ARCHFLOW", "AIIP"] },
     "audience": { "enum": ["budget-api", "projectflow-api", "archflow-api", "aiip-api"] },
