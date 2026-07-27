@@ -49,7 +49,7 @@ The focused suite covers:
 
 Verification completed on the final working state:
 
-- web tests: 423 passed, 0 failed;
+- web tests: 424 passed, 0 failed;
 - TypeScript: passed;
 - production Next.js build: passed;
 - exact production `web` Docker image build: passed;
@@ -58,16 +58,20 @@ Verification completed on the final working state:
 - repository skeleton: passed;
 - OpenAPI index and JSON validation: passed.
 
-## Upstream closure blocker
+## Upstream closure resolved
 
-STRATOS commit history currently contains a ProjectFlow runtime manifest that
-advertises `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`. The canonical
-`director-copilot-2-manifests.json` for wire revision `2.0.2`, SHA-256
-`b71c94819d3e014792bd329a1a78a73e1d138d627bb88db10a478a37b6a6a3c5`,
-does not contain that reason code.
+STRATOS commit `663e71820b93c5801a27f393eae63a24ba118745`
+publishes wire revision `2.0.3`. AIIP source revision
+`32ee68228a9ac29c945f4a876c67dbec878a86ad` uses the same closure.
+The canonical manifest bundle SHA-256 is
+`3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5`
+and now includes `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`.
 
-This is a closed-contract inconsistency. AKB intentionally retains exact
-manifest comparison and unknown-reason rejection. Joint acceptance must wait
-for STRATOS to publish one coherent additive contract revision with regenerated
-manifest bundle, fixtures, OpenAPI/hash evidence and an updated handoff. No
-local allow-list exception is permitted.
+AKB pins the byte-identical bundle and still rejects every unknown revision,
+hash, fact, link and reason code. Joint S1-S10 acceptance can begin after the
+matching AIIP and AKB releases are deployed, with V2 remaining in `shadow`.
+
+The AKB 2.0.3 update also binds audit metadata to the central contract revision
+constant and has a positive contract test for the new ProjectFlow reason code.
+This prevents the wire validator and Registry audit from reporting different
+revisions.

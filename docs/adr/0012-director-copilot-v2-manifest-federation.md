@@ -13,7 +13,7 @@ joint acceptance.
 
 ## Decision
 
-AKB pins `director-copilot-2` revision `2.0.2` and its six SHA-256 values.
+AKB pins `director-copilot-2` revision `2.0.3` and its six SHA-256 values.
 At runtime it loads each source manifest, validates the closed schema and
 requires semantic equality with the pinned bundle. Each source receives one
 route-bound service bearer with exactly one audience plus a separate current

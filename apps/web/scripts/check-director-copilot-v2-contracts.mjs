@@ -17,13 +17,13 @@ const expected = {
   "director-copilot-2-response.schema.json":
     "22caad5e8dacfd9d3e0451f64c638e91c4d0deb649e091cf1e16fb12e8da51dd",
   "director-copilot-2-manifest.schema.json":
-    "886d613659f7f65c2b4a739681e1fbaf2e577aaa3376ef1996b2af4f93704572",
+    "713d8b7d8a3a1b7873d244d4a244c3d08b1f43d0692669656100ba1454ff99a6",
   "director-copilot-2-error.schema.json":
     "99949d198294a947366cf099b2af7023979f538fadab8bbec48fffce8e9bdeab",
   "director-copilot-2.openapi.json":
-    "b61e727a0ab9f5a7b37e01fa75fc055cf331a3849914f0db524bea1732219836",
+    "9c94e2f75953511d17b178085ac57cf34594dd9f3cb2ed56799093611e8fb373",
   "director-copilot-2-manifests.json":
-    "b71c94819d3e014792bd329a1a78a73e1d138d627bb88db10a478a37b6a6a3c5",
+    "3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5",
 };
 
 for (const [name, expectedHash] of Object.entries(expected)) {
@@ -43,5 +43,5 @@ for (const [name, expectedHash] of Object.entries(expected)) {
 }
 
 console.log(
-  `Director Copilot V2 contract 2.0.2 verified in ${fileURLToPath(repositoryContracts)}.`,
+  `Director Copilot V2 contract 2.0.3 verified in ${fileURLToPath(repositoryContracts)}.`,
 );

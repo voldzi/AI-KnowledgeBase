@@ -606,8 +606,8 @@ async function auditResult(
     resource_id: response.conversation_id,
     severity: orchestration.status === "complete" ? "info" : "warning",
     metadata: {
-      contract_version: "director-copilot-2",
-      contract_revision: "2.0.2",
+      contract_version: DIRECTOR_COPILOT_V2_CONTRACT,
+      contract_revision: DIRECTOR_COPILOT_V2_REVISION,
       mode: input.mode,
       plan_id: orchestration.plan.plan_id,
       snapshot_id: orchestration.snapshot.snapshot_id,

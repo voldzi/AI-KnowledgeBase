@@ -87,6 +87,23 @@ describe("Director Copilot V2 pinned contracts", () => {
     );
   });
 
+  it("accepts the closed ProjectFlow entity-filter reason in revision 2.0.3", () => {
+    const fixture = readFixture("projectflow-portfolio-delivery-overview.json");
+    const manifest = pinnedDirectorCopilotV2Manifest(fixture.tool_id as DirectorCopilotV2ToolId);
+    const envelope = structuredClone(fixture.errors["400"]);
+    envelope.error_code = "PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED";
+    envelope.message = "The requested ProjectFlow entity filter is unsupported.";
+
+    assert.equal(
+      parseDirectorCopilotV2Error(envelope, {
+        status: 400,
+        manifest,
+        toolCallId: fixture.request.tool_call_id,
+      }).error_code,
+      "PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED",
+    );
+  });
+
   it("fails closed for broken policy lineage and unsafe deep links", () => {
     const fixture = readFixture("projectflow-portfolio-delivery-overview.json");
     const manifest = pinnedDirectorCopilotV2Manifest(fixture.tool_id as DirectorCopilotV2ToolId);

@@ -134,7 +134,7 @@ specific deployment document.
 ### Director Copilot activation
 
 Director Copilot V1 remains available. The additive V2 consumer is pinned to
-wire contract `director-copilot-2`, revision `2.0.2`, and is disabled by
+wire contract `director-copilot-2`, revision `2.0.3`, and is disabled by
 default:
 
 ```text

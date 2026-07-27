@@ -26,7 +26,7 @@ The additive Director Copilot V2 contract is pinned under:
 contracts/director-copilot/v2/
 ```
 
-V2 revision `2.0.2` dynamically validates source manifests for Budget,
+V2 revision `2.0.3` dynamically validates source manifests for Budget,
 ProjectFlow, ArchFlow and AIIP, but only accepts the exact pinned manifest set.
 Every target uses a separate single-audience service token and the independent
 current actor bearer. The shared request includes period, entity filters,
