@@ -20,6 +20,24 @@ Scanner errors and timeouts always fail closed for new uploads in both modes.
 The exact contract and promotion gates are in
 `docs/integration/AKB_DOCUMENT_INTAKE_V1.md` and ADR 0010.
 
+### Controlled legacy rescan
+
+Legacy files are scanned only by the Registry one-off command. It mounts the
+object store read-only, streams one file at a time through private ClamAV and
+writes only the verdict and an audit event. It never moves, deletes, reindexes
+or republishes a document. Start with a dry run, then use bounded batches:
+
+```sh
+docker compose --env-file /srv/akl/env/akl.env -f infra/docker-compose/docker-compose.docker-home.yml \
+  run --rm --no-deps registry-api python -m app.content_security_backfill --limit 25
+docker compose --env-file /srv/akl/env/akl.env -f infra/docker-compose/docker-compose.docker-home.yml \
+  run --rm --no-deps registry-api python -m app.content_security_backfill --apply --limit 25
+```
+
+`infected`, `scan_error` and `integrity_error` are fail-closed outcomes for
+the batch. Investigate those records from their audit metadata; do not retry
+errors automatically without an operator decision.
+
 ## Local Development
 
 Create local configuration:

@@ -218,6 +218,11 @@ export interface DocumentVersion {
   source_file_uri: string;
   source_location?: Record<string, unknown> | null;
   file_hash: string | null;
+  content_security_status?: string | null;
+  content_security_engine?: string | null;
+  content_security_engine_version?: string | null;
+  content_security_signature_version?: string | null;
+  content_security_scanned_at?: string | null;
   change_summary: string | null;
   created_at: string;
   published_at: string | null;

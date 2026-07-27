@@ -81,6 +81,16 @@ export class SourceDownloadError extends Error {
   }
 }
 
+export function assertSourceContentSecurityAllowed(status: string | null | undefined): void {
+  if (status === "infected") {
+    throw new SourceDownloadError(
+      423,
+      "SOURCE_CONTENT_SECURITY_BLOCKED",
+      "The source file is blocked by the content-security policy."
+    );
+  }
+}
+
 const DEFAULT_EXPIRES_IN_SECONDS = 5 * 60;
 const FULL_SHA256_PATTERN = /^sha256:[a-fA-F0-9]{64}$/;
 
