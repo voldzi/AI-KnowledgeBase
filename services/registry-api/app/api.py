@@ -7668,6 +7668,19 @@ def resolve_public_document_source(
             public_slug=normalized_slug,
             operation="public_download",
         )
+        source_file = db.scalar(
+            select(DocumentFile).where(
+                DocumentFile.document_version_id == publication.document_version_id,
+                DocumentFile.uri == publication.source_file_uri,
+                DocumentFile.sha256 == publication.source_file_hash,
+            )
+        )
+        if source_file is None or source_file.content_security_status == "infected":
+            raise problem(
+                status.HTTP_404_NOT_FOUND,
+                "public_document_unavailable",
+                "The public document is unavailable",
+            )
         return PublicDocumentSourceResolutionResponse(
             publication_id=publication.publication_id,
             public_slug=publication.public_slug,

@@ -4,6 +4,7 @@ import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/
 import { withAppBasePath } from "@/lib/app-url";
 import {
   readSourceObject,
+  assertSourceContentSecurityAllowed,
   SourceDownloadError,
   sourceContentTypeHeader,
   verifySourceDownloadToken
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
     if (!version || document.document_id !== version.document_id) {
       return NextResponse.json({ error: { code: "STALE_SOURCE_TOKEN", message: "The source version is no longer available." } }, { status: 409 });
     }
+    assertSourceContentSecurityAllowed(version.content_security_status);
     if (
       (version.policy_binding_id ?? null) !== payload.policy_binding_id ||
       (version.policy_version ?? null) !== payload.policy_version ||

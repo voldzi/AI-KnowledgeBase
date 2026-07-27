@@ -6,6 +6,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 import {
+  assertSourceContentSecurityAllowed,
   createSourceOpenDecision,
   getSourceDownloadSettings,
   readSourceObject,
@@ -16,6 +17,15 @@ import {
 } from "../src/lib/upload/source-download";
 
 describe("source download", () => {
+  it("blocks a source explicitly marked as infected while allowing legacy states", () => {
+    assert.doesNotThrow(() => assertSourceContentSecurityAllowed(null));
+    assert.doesNotThrow(() => assertSourceContentSecurityAllowed("clean"));
+    assert.throws(
+      () => assertSourceContentSecurityAllowed("infected"),
+      (error: unknown) => error instanceof SourceDownloadError && error.code === "SOURCE_CONTENT_SECURITY_BLOCKED"
+    );
+  });
+
   it("creates a signed source open decision and reads the stored object", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akl-source-"));
     const settings = testSettings(root);

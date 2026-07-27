@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
-import { createSourceOpenDecision, SourceDownloadError } from "@/lib/upload/source-download";
+import { assertSourceContentSecurityAllowed, createSourceOpenDecision, SourceDownloadError } from "@/lib/upload/source-download";
 
 import { documentWorkflowBadRequest, documentWorkflowBridgeError } from "../../../../../errors";
 
@@ -57,6 +57,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (!version || version.document_id !== document.document_id) {
       return documentWorkflowBadRequest("Document version does not belong to this document.", 404);
     }
+    assertSourceContentSecurityAllowed(version.content_security_status);
 
     const sourceOpen = await createSourceOpenDecision({
       document_id: document.document_id,
