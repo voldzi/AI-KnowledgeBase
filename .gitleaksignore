@@ -1,2 +1,4 @@
 ef15c7657a94770d5e816d81f7cddada23eea3c7:apps/web/tests/aiip-governance-confirmation.test.ts:generic-api-key:105
 a9ac8d9bd11a24bc89f796f7c83947c3d47d1412:docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md:generic-api-key:15
+c5ac9b8a09cab0f2ef14d1f93de4df917d8e0c97:.env.example:generic-api-key:155
+386f32b8de8c151e612651f480f82f96e3fd330f:.env.example:generic-api-key:155
