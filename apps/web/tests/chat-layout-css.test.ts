@@ -32,4 +32,15 @@ describe("chat viewport layout", () => {
       /\.akb-employee-portal-shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s,
     );
   });
+
+  it("uses mobile action tracks matching the fixed icon button width", () => {
+    assert.match(
+      css,
+      /\.akb-chat-header__actions\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*44px\);/s,
+    );
+    assert.match(
+      css,
+      /\.akb-chat-header__actions\s*>\s*:last-child\s*\{[^}]*grid-column:\s*span 2;[^}]*width:\s*100%;/s,
+    );
+  });
 });

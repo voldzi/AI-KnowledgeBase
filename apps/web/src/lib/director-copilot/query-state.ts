@@ -70,6 +70,7 @@ const OVERALL_SIGNAL = /\b(celkove|dohromady|za celou organizaci|cela organizace
 const ORGANIZATION_UNIT_SIGNAL = /\b(utvar\w*|odbor\w*|oddeleni|sekce|organizacni jednotk\w*|it|ict|informatik\w*)\b/;
 const PORTFOLIO_SIGNAL = /\bportfoli\w*/;
 const PROJECT_GRANULARITY_SIGNAL = /\bprojekt\w*/;
+const ITEM_GRANULARITY_SIGNAL = /\b(polozk\w*|budget item\w*)\b/;
 const DELAYED_SIGNAL = /\b(zpozden\w*|v prodleni|po terminu)\b/;
 const AT_RISK_SIGNAL = /\b(ohrozen|rizikov[ey]|at risk)\b/;
 const ON_TRACK_SIGNAL = /\b(podle planu|v terminu|on track)\b/;
@@ -173,6 +174,7 @@ export function resolveConversationQuery(input: {
   const entityFilters = explicitGranularity === "organization"
     || explicitGranularity === "organization_unit"
     || explicitGranularity === "portfolio"
+    || explicitGranularity === "item"
     ? emptyEntityFilters()
     : previous?.entity_filters ?? emptyEntityFilters();
   const scheduleStatus = DELAYED_SIGNAL.test(normalized)
@@ -419,6 +421,7 @@ function explicitPeriodYear(normalized: string, now: Date): number | null {
 function explicitGranularityForText(
   normalized: string,
 ): QueryGranularity | null {
+  if (ITEM_GRANULARITY_SIGNAL.test(normalized)) return "item";
   if (OVERALL_SIGNAL.test(normalized)) return "organization";
   if (ORGANIZATION_UNIT_SIGNAL.test(normalized)) return "organization_unit";
   if (PORTFOLIO_SIGNAL.test(normalized)) return "portfolio";

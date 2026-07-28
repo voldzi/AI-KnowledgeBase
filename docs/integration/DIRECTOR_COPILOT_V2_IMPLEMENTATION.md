@@ -83,11 +83,15 @@ Registry must additionally list `svc-akb-director-copilot` as an exact trusted
 service client and grant it only the `audit` route family.
 
 Every new chat thread is persisted before its first question and starts with
-an empty query state. An explicit organization, organization-unit or portfolio
-turn clears incompatible project filters. Follow-up grouping by portfolio
-inherits the financial metric and fiscal year without inheriting a project
-restriction. Failures record a bounded `failure_reason_code`; a recognized
-live-data request is never replaced by document RAG.
+an empty query state. An explicit organization, organization-unit, portfolio
+or item turn clears incompatible project filters. Budget item questions use
+the closed `item` granularity and `budget_item` grouping. Comparative wording
+such as highest or lowest is evaluated only over a complete authorized result
+with comparable currencies; incomplete results are not presented as an
+absolute maximum or minimum. Follow-up grouping by portfolio inherits the
+financial metric and fiscal year without inheriting a project restriction.
+Failures record a bounded `failure_reason_code`; a recognized live-data
+request is never replaced by document RAG.
 
 The continuation state exposed to the next turn contains canonical entity
 identities derived from the authorized response. Governed history still keeps

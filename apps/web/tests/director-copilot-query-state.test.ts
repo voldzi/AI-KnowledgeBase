@@ -196,6 +196,29 @@ describe("Director Copilot conversation query state", () => {
     );
   });
 
+  it("recognizes the highest plan item as a ranked Budget item query", () => {
+    const previous = resolveConversationQuery({
+      message: "Jaký je plán projektu?",
+      now: NOW,
+    }).state;
+    previous.entity_filters.project_ids = ["project-001"];
+    const resolved = resolveConversationQuery({
+      message: "Jaká je nejvyšší položka plánu?",
+      context: { stratos_query_state: previous },
+      now: NOW,
+    });
+
+    assert.equal(resolved.recognized, true);
+    assert.deepEqual(resolved.state.sources, ["budget"]);
+    assert.deepEqual(resolved.state.metrics, ["budget.plan_amount"]);
+    assert.equal(resolved.state.granularity, "item");
+    assert.deepEqual(resolved.state.sort, {
+      metric: "budget.plan_amount",
+      direction: "desc",
+    });
+    assert.deepEqual(resolved.state.entity_filters.project_ids, []);
+  });
+
   it("does not divert a document question to a live domain tool", () => {
     const resolved = resolveConversationQuery({
       message: "Co je uvedeno v projektové dokumentaci?",
