@@ -17,6 +17,9 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PIP_CACHE_DIR: /home/akbci/.cache/akb-ci/pip
+  PLAYWRIGHT_BROWSERS_PATH: /home/akbci/.cache/akb-ci/playwright
+  PNPM_STORE_DIR: /home/akbci/.cache/akb-ci/pnpm-store
 
 jobs:
   standards:
@@ -107,11 +110,9 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
 
       - name: Verify local semantic registry
         run: pnpm semantic-registry:check
@@ -176,8 +177,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: ${{ matrix.dependency-file }}
 
       - name: Install dependencies
         working-directory: ${{ matrix.working-directory }}
@@ -215,8 +214,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/registry-api/pyproject.toml
 
       - name: Install Registry API dependencies
         working-directory: services/registry-api
