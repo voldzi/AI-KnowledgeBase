@@ -13,7 +13,6 @@ import {
   DIRECTOR_COPILOT_AUDIT_TARGET,
   directorCopilotServiceToken,
 } from "@/lib/director-copilot/service-identity";
-import type { DirectorCopilotIntent } from "@/lib/director-copilot/contracts";
 import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
 import { DirectorCopilotTransportError } from "@/lib/director-copilot/transport-error";
 
@@ -30,6 +29,7 @@ import {
   type DirectorCopilotV2OrchestrationResult,
   type DirectorCopilotV2Snapshot,
 } from "./orchestrator";
+import type { DirectorCopilotIntent } from "./shared";
 
 const SERVICE_CLIENT_ID = "svc-akb-director-copilot";
 
@@ -43,10 +43,7 @@ export async function runDirectorCopilotV2Chat(input: {
   intent: DirectorCopilotIntent;
   queryState: ConversationQueryState;
   refreshActorContext?: () => Promise<ApiRequestContext>;
-  mode: "shadow" | "active";
-  baselineResponse?:
-    | AssistantChatResponse
-    | (() => AssistantChatResponse | undefined);
+  mode: "active";
   fetcher?: typeof fetch;
 }): Promise<AssistantChatResponse> {
   const catalog = await loadDirectorCopilotV2ManifestCatalog({
@@ -121,7 +118,7 @@ export async function auditDirectorCopilotV2Failure(input: {
   actorContext: ApiRequestContext;
   clients: ApiClients;
   config: AklConfig;
-  mode: "shadow" | "active";
+  mode: "active";
   error: unknown;
 }): Promise<void> {
   const serviceToken = await directorCopilotServiceToken(
@@ -577,17 +574,11 @@ async function auditResult(
     actorContext: ApiRequestContext;
     clients: ApiClients;
     config: AklConfig;
-    mode: "shadow" | "active";
-    baselineResponse?:
-      | AssistantChatResponse
-      | (() => AssistantChatResponse | undefined);
+  mode: "active";
   },
   orchestration: DirectorCopilotV2OrchestrationResult,
   response: AssistantChatResponse,
 ): Promise<void> {
-  const baselineResponse = typeof input.baselineResponse === "function"
-    ? input.baselineResponse()
-    : input.baselineResponse;
   const serviceToken = await directorCopilotServiceToken(
     input.config,
     fetch,
@@ -606,9 +597,7 @@ async function auditResult(
   };
   await input.clients.registry.createAuditEvent({
     actor_id: input.actorContext.subjectId,
-    event_type: input.mode === "shadow"
-      ? "assistant.director_copilot_v2_shadow_evaluated"
-      : "assistant.director_copilot_v2_returned",
+    event_type: "assistant.director_copilot_v2_returned",
     resource_type: "assistant_conversation",
     resource_id: response.conversation_id,
     severity: orchestration.status === "complete" ? "info" : "warning",
@@ -656,8 +645,6 @@ async function auditResult(
         orchestration.snapshot.authorized_document_ids.length,
       status: orchestration.status,
       failure_reason_code: primaryFailureReasonCode(orchestration),
-      baseline_response_type: baselineResponse?.response_type ?? null,
-      baseline_confidence: baselineResponse?.confidence ?? null,
     },
   }, serviceContext);
 }

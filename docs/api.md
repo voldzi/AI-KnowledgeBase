@@ -12,15 +12,7 @@ The versioned public AIIP application fragment is:
 openapi/aiip-application-api.v1.json
 ```
 
-The binding source-application contract for the first Director Copilot
-federation is:
-
-```text
-openapi/director-copilot-domain-tools.v1.json
-contracts/director-copilot/v1/
-```
-
-The additive Director Copilot V2 contract is pinned under:
+The active Director Copilot contract is pinned under:
 
 ```text
 contracts/director-copilot/v2/
@@ -40,35 +32,27 @@ Budget and ProjectFlow implement the same read-only
 browser route, so it is maintained separately from the generated AKB root
 contract. AKB sends an independent service bearer and current actor bearer;
 each source reloads the actor's STRATOS access projection and applies its own
-PEP. See `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`.
+PEP. See `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 
 The web `POST /api/assistant/chat` bridge resolves a versioned semantic
 `ConversationQueryState` and typed Director Copilot intent before the document
 assistant router. The state carries only bounded query semantics such as
 source, metric, period, granularity and entity filters; it never carries
-capabilities or authorization scopes. The current ProjectFlow-only intent uses
-`projectflow.project_delivery_snapshot.v1` and
-returns only source-authorized project display name, status, schedule status,
-maximum milestone delay, next milestone date, source timestamp and deep link.
-Financial questions such as costs, price, spending, forecast and variance use
-`budget.project_financial_snapshot.v1`; they never fall back to ProjectFlow or
-historical documents. A
-question about whether ProjectFlow is available is distinct from a request to
-grant or change access. If the live source is disabled, unavailable or denied,
-the bridge returns an explicit no-answer/restricted response and does not fall
-back to document RAG. Budget and ProjectFlow may also run in parallel for a
-deterministic cross-domain performance overview. When V2 is in shadow or active
-mode, explicit ArchFlow and AIIP live-data questions use their governed V2
-tools. In disabled mode the V1 catalog status still applies. No mode silently
-answers an unavailable live-data question from documents.
+capabilities or authorization scopes. Project delivery questions use
+`projectflow.portfolio_delivery_overview.v1`. Financial questions use
+`budget.organization_financial_summary.v1` or
+`budget.project_financial_snapshot.v1` according to the bounded query state.
+ArchFlow and AIIP live-data questions use
+`archflow.need_portfolio_overview.v1` and
+`aiip.idea_portfolio_overview.v1`. Each response is limited to
+source-authorized facts, source timestamps and safe deep links.
 
-The binding machine-readable catalog is
-`apps/web/src/lib/director-copilot/data/stratos-domain-catalog.json`.
-ArchFlow `archflow.need_portfolio_snapshot.v1` and AIIP
-`aiip.idea_portfolio_snapshot.v1` are contract-ready with closed fact and
-relation schemas, but remain disconnected until the source owners deploy and
-pass the handoff in
-`docs/integration/STRATOS_DOMAIN_CATALOG_AND_COPILOT_HANDOFF.md`.
+A question about access availability is distinct from a request to grant or
+change access. If a live source is disabled, unavailable or denies the request,
+the bridge returns an explicit no-answer or restricted response and never
+falls back to document RAG. Budget and ProjectFlow can run in parallel only
+when the V2 plan has a declared typed join. No mode silently answers an
+unavailable live-data question from documents.
 
 Every successful browser bridge response also returns
 `persistence_status: persisted | failed` and the durable assistant

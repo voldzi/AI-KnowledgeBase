@@ -418,11 +418,16 @@ nahrazovat nedostupný zdroj odhadem ani snižovat bezpečnost kvůli latenci.
 - Produkční změna má immutable release, rollback, health/readiness, contract
   smoke a dohledatelný eval report.
 
-## 9. Bezprostřední pracovní pořadí
+## 9. Bezprostřední pracovní pořadí (historický plán)
 
-1. STRATOS dokončí `DIRECTOR_COPILOT_HANDOFF_STRATOS.md`.
-2. Budget dokončí `DIRECTOR_COPILOT_HANDOFF_BUDGET.md`.
-3. ProjectFlow dokončí `DIRECTOR_COPILOT_HANDOFF_PROJECTFLOW.md`.
+Tento plán předchází přijetí `director-copilot-2` revize `2.0.3`. Aktuální
+provozní stav a následnou údržbu popisuje
+`docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
+
+1. STRATOS, Budget a ProjectFlow dokončí odpovídající V2 source kontrakty.
+2. AKB připne společný bundle a provede integrační ověření.
+3. Zdrojové endpointy zůstanou zachované až do samostatného potvrzeného
+   retirement kroku STRATOS.
 4. V integračním prostředí spustit byte-identical contract, token/audience,
    scope-revocation, partial/no-answer a citovaný RAG test.
 5. Doplnit verzovaný cross-domain eval dataset a uzamknout SLI baseline.

@@ -66,49 +66,49 @@
     {
       "id": "archflow-status",
       "turns": [
-        {"message": "Jaký je stav požadavků v ArchFlow?", "sources": ["archflow"], "metrics": ["archflow.need.status"], "pending_sources": ["archflow"], "intent": null}
+        {"message": "Jaký je stav požadavků v ArchFlow?", "sources": ["archflow"], "metrics": ["archflow.need.status"], "intent": "archflow_demand_overview"}
       ]
     },
     {
       "id": "archflow-readiness",
       "turns": [
-        {"message": "Které business potřeby jsou připravené k rozhodnutí?", "sources": ["archflow"], "metrics": ["archflow.need.readiness_score", "archflow.need.decision"], "pending_sources": ["archflow"], "intent": null}
+        {"message": "Které business potřeby jsou připravené k rozhodnutí?", "sources": ["archflow"], "metrics": ["archflow.need.readiness_score", "archflow.need.decision"], "intent": "archflow_demand_overview"}
       ]
     },
     {
       "id": "archflow-budget-handoff",
       "turns": [
-        {"message": "Co ještě nebylo předáno z ArchFlow do Budgetu?", "sources": ["archflow"], "metrics": ["archflow.need.budget_handoff_status"], "pending_sources": ["archflow"], "intent": null}
+        {"message": "Co ještě nebylo předáno z ArchFlow do Budgetu?", "sources": ["archflow"], "metrics": ["archflow.need.budget_handoff_status"], "intent": "archflow_demand_overview"}
       ]
     },
     {
       "id": "aiip-status",
       "turns": [
-        {"message": "Jaký je stav AI podnětů v AIIP?", "sources": ["aiip"], "metrics": ["aiip.idea.status"], "pending_sources": ["aiip"], "intent": null}
+        {"message": "Jaký je stav AI podnětů v AIIP?", "sources": ["aiip"], "metrics": ["aiip.idea.status"], "intent": "aiip_idea_overview"}
       ]
     },
     {
       "id": "aiip-value-risk",
       "turns": [
-        {"message": "Které AI nápady mají nejvyšší hodnotu a riziko?", "sources": ["aiip"], "metrics": ["aiip.idea.value_score", "aiip.idea.risk_score"], "pending_sources": ["aiip"], "intent": null}
+        {"message": "Které AI nápady mají nejvyšší hodnotu a riziko?", "sources": ["aiip"], "metrics": ["aiip.idea.value_score", "aiip.idea.risk_score"], "intent": "aiip_idea_overview"}
       ]
     },
     {
       "id": "aiip-handoff",
       "turns": [
-        {"message": "Které AI podněty ještě nebyly předány do ArchFlow?", "sources": ["aiip"], "metrics": ["aiip.idea.handoff_status"], "pending_sources": ["aiip"], "intent": null}
+        {"message": "Které AI podněty ještě nebyly předány do ArchFlow?", "sources": ["aiip"], "metrics": ["aiip.idea.handoff_status"], "intent": "aiip_idea_overview"}
       ]
     },
     {
       "id": "innovation-trace",
       "turns": [
-        {"message": "Jak pokračují AI podněty z AIIP přes ArchFlow?", "sources": ["archflow", "aiip"], "metrics": [], "pending_sources": ["archflow", "aiip"], "intent": null}
+        {"message": "Jak pokračují AI podněty z AIIP přes ArchFlow?", "sources": ["archflow", "aiip"], "metrics": [], "intent": "innovation_delivery_trace"}
       ]
     },
     {
       "id": "full-chain",
       "turns": [
-        {"message": "Ukaž cestu AI nápadů přes ArchFlow do Budgetu a realizovaných projektů.", "sources": ["budget", "projectflow", "archflow", "aiip"], "metrics": [], "pending_sources": ["archflow", "aiip"], "intent": null}
+        {"message": "Ukaž cestu AI nápadů přes ArchFlow do Budgetu a realizovaných projektů.", "sources": ["budget", "projectflow", "archflow", "aiip"], "metrics": [], "intent": "innovation_delivery_trace"}
       ]
     },
     {

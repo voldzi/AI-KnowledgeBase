@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { classifyDirectorCopilotIntent } from "../src/lib/director-copilot/planner";
+import { classifyDirectorCopilotV2Intent } from "../src/lib/director-copilot-v2/intent-router";
 import {
   normalizeSemanticText,
   semanticSourcesForText,
@@ -38,7 +38,7 @@ describe("local SSP semantic registry", () => {
     );
     assert.deepEqual(semanticSourcesForText(message), ["projectflow", "budget"]);
     assert.equal(
-      classifyDirectorCopilotIntent(
+      classifyDirectorCopilotV2Intent(
         "Jaká je ekonomická a personální náročnost projektu?",
       ),
       "portfolio_performance_overview",

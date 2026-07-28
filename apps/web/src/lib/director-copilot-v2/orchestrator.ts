@@ -1,8 +1,6 @@
 import "server-only";
 
 import type { ApiRequestContext, ResponseLanguage } from "@/lib/types";
-import { accessProjectionHash } from "@/lib/director-copilot/access";
-import type { DirectorCopilotIntent } from "@/lib/director-copilot/contracts";
 import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
 import { DirectorCopilotTransportError } from "@/lib/director-copilot/transport-error";
 
@@ -24,6 +22,7 @@ import {
   type DirectorCopilotV2Plan,
   type DirectorCopilotV2PlanNode,
 } from "./planner";
+import { accessProjectionHash, type DirectorCopilotIntent } from "./shared";
 
 const MAX_PAGES_PER_TOOL = 5;
 const MAX_ITEMS_PER_TOOL = 500;

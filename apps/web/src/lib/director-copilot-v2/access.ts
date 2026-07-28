@@ -1,5 +1,4 @@
 import type { ApiRequestContext } from "@/lib/types";
-import { canonicalDirectorCopilotApplication } from "@/lib/director-copilot/application-id";
 
 import {
   type DirectorCopilotV2Application,
@@ -8,6 +7,7 @@ import {
   type DirectorCopilotV2Scope,
   type DirectorCopilotV2ScopeType,
 } from "./contracts";
+import { canonicalDirectorCopilotApplication } from "./shared";
 
 const MAX_SOURCE_SCOPES = 100;
 

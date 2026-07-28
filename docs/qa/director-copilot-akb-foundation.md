@@ -97,11 +97,7 @@ kontrakt a eval dataset.
 
 ## Navazující kontraktní rozšíření 2026-07-25
 
-AKB připravilo QueryPlan v4 a strojově čitelný STRATOS katalog nástrojů,
-metrik a vztahů. ArchFlow a AIIP mají uzavřené parsery, pozitivní fixtures,
-capability/scope testy, deterministické odpovědi, historii a auditní metadata.
-Jejich stav zůstává `contract_ready`, nikoli produkčně připojený. České
-směrování je kryto samostatnou sadou 24 jednorázových a navazujících scénářů.
-Produkční akceptace této části vznikne až po nasazení zdrojových endpointů a
-společné bráně popsané v
-`docs/integration/STRATOS_DOMAIN_CATALOG_AND_COPILOT_HANDOFF.md`.
+Tento historický základ předcházel produkčnímu přijetí V2. Aktuální stav,
+včetně ArchFlow a AIIP jako připojených řízených zdrojů, popisuje
+`docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md` a společná akceptace
+je evidována v `docs/qa/director-copilot-v2-production-acceptance.md`.
