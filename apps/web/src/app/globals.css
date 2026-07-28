@@ -2103,7 +2103,14 @@ button {
 
   .akb-chat-header__actions {
     display: grid;
-    grid-template-columns: 36px 36px 36px minmax(0, 1fr);
+    grid-template-columns: repeat(4, 44px);
+  }
+
+  .akb-chat-header__actions > :last-child {
+    grid-column: span 2;
+    justify-self: stretch;
+    min-width: 0;
+    width: 100%;
   }
 
   .akb-chat-message {

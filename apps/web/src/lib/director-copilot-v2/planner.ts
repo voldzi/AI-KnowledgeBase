@@ -311,7 +311,13 @@ function groupBy(
   granularity: DirectorCopilotV2Granularity,
   manifest: DirectorCopilotV2Manifest,
 ): string[] {
+  const itemDimension = granularity === "item"
+    && state.metrics.some((metric) => metric.startsWith("budget."))
+    && manifest.entity_types.includes("budget_item")
+    ? "budget_item"
+    : null;
   const candidates = [
+    itemDimension,
     granularity === "item" ? null : granularity,
     state.filters.schedule_status ? "schedule_status" : null,
   ].filter((value): value is string => Boolean(value));

@@ -27,6 +27,7 @@ import { loadDirectorCopilotV2ManifestCatalog } from "./manifest-catalog";
 import {
   orchestrateDirectorCopilotV2,
   type DirectorCopilotV2OrchestrationResult,
+  type DirectorCopilotV2SourceOutcome,
   type DirectorCopilotV2Snapshot,
 } from "./orchestrator";
 import type { DirectorCopilotIntent } from "./shared";
@@ -219,7 +220,11 @@ function composeResponse(
   }
   const sections = orchestration.snapshot.outcomes
     .filter((outcome) => outcome.items.length > 0)
-    .map((outcome) => renderSource(outcome.application, outcome.items, language));
+    .map((outcome) => renderSource(
+      outcome,
+      orchestration.plan.query_state,
+      language,
+    ));
   const correlations = [
     renderProjectCorrelation(orchestration.snapshot, language),
     renderInnovationTrace(orchestration.snapshot, language),
@@ -350,10 +355,13 @@ function renderProjectCorrelation(
 }
 
 function renderSource(
-  application: "budget" | "projectflow" | "archflow" | "aiip",
-  items: DirectorCopilotV2Item[],
+  outcome: DirectorCopilotV2SourceOutcome,
+  queryState: ConversationQueryState,
   language: ResponseLanguage,
 ): string {
+  const application = outcome.application;
+  const ranked = rankItems(outcome, queryState);
+  const items = ranked.items;
   const sourceName = {
     budget: "Budget",
     projectflow: "ProjectFlow",
@@ -379,15 +387,56 @@ function renderSource(
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
   ].join("\n");
-  const summary = language === "en"
-    ? `${sourceName} returned ${items.length} authorized item(s).`
-    : `${sourceName} vrátil ${items.length} oprávněných položek.`;
-  const truncated = items.length > rows.length
+  const summary = ranked.topOnly && queryState.sort
+    ? language === "en"
+      ? `Highest authorized item by ${factLabel(queryState.sort.metric, language)} from ${outcome.items.length} returned item(s).`
+      : `Nejvyšší oprávněná položka podle metriky ${factLabel(queryState.sort.metric, language)} z ${outcome.items.length} vrácených položek.`
+    : language === "en"
+      ? `${sourceName} returned ${outcome.items.length} authorized item(s).`
+      : `${sourceName} vrátil ${outcome.items.length} oprávněných položek.`;
+  const truncated = !ranked.topOnly && items.length > rows.length
     ? language === "en"
       ? `\n\nThe table shows the first ${rows.length} items.`
       : `\n\nTabulka zobrazuje prvních ${rows.length} položek.`
     : "";
   return `### ${sourceName}\n\n${summary}\n\n${table}${truncated}`;
+}
+
+function rankItems(
+  outcome: DirectorCopilotV2SourceOutcome,
+  queryState: ConversationQueryState,
+): { items: DirectorCopilotV2Item[]; topOnly: boolean } {
+  const sort = queryState.sort;
+  if (!sort) return { items: outcome.items, topOnly: false };
+  const comparable = outcome.items.flatMap((item) => {
+    const fact = item.facts.find((candidate) => candidate.key === sort.metric);
+    return typeof fact?.value === "number" ? [{ item, fact }] : [];
+  });
+  if (!comparable.length || !comparableCurrencies(comparable.map(({ fact }) => fact))) {
+    return { items: outcome.items, topOnly: false };
+  }
+  const direction = sort.direction === "asc" ? 1 : -1;
+  const sorted = [...comparable]
+    .sort((left, right) => (
+      (Number(left.fact.value) - Number(right.fact.value)) * direction
+      || left.item.canonical_id.localeCompare(right.item.canonical_id)
+    ))
+    .map(({ item }) => item);
+  const topOnly = outcome.authorized_result_complete
+    && outcome.candidate_count <= outcome.items.length;
+  return {
+    items: topOnly ? sorted.slice(0, 1) : sorted,
+    topOnly,
+  };
+}
+
+function comparableCurrencies(facts: DirectorCopilotV2Fact[]): boolean {
+  const currencies = new Set(
+    facts
+      .filter((fact) => fact.value_type === "currency")
+      .map((fact) => fact.currency ?? ""),
+  );
+  return currencies.size <= 1;
 }
 
 function preferredFactKeys(

@@ -16,6 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  AKB_CI_CACHE_ROOT: /home/akbci/.cache/akb-ci
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   PIP_CACHE_DIR: /home/akbci/.cache/akb-ci/pip
   PLAYWRIGHT_BROWSERS_PATH: /home/akbci/.cache/akb-ci/playwright
@@ -64,10 +65,31 @@ jobs:
         run: npx --yes @redocly/cli lint openapi/openapi.json
 
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: gitleaks.toml
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="8.24.3"
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          expected_sha256="9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c"
+          cache_root="${AKB_CI_CACHE_ROOT:-${RUNNER_TEMP}}/gitleaks/${version}"
+          binary="${cache_root}/gitleaks"
+
+          if [[ ! -x "${binary}" ]]; then
+            mkdir -p "${cache_root}"
+            tmp_dir="$(mktemp -d)"
+            trap 'rm -rf "${tmp_dir}"' EXIT
+            curl --fail --location --silent --show-error \
+              "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}" \
+              --output "${tmp_dir}/${archive}"
+            printf '%s  %s\n' "${expected_sha256}" "${tmp_dir}/${archive}" | sha256sum --check
+            tar -xzf "${tmp_dir}/${archive}" -C "${cache_root}" gitleaks
+            chmod 0755 "${binary}"
+          fi
+
+          "${binary}" git . \
+            --config gitleaks.toml \
+            --redact \
+            --no-banner
 
   immutable-release:
     name: Immutable release, ingestion, and containerized PostgreSQL toolchain

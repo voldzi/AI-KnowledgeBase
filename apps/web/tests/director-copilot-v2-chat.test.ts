@@ -6,6 +6,7 @@ import type { AklConfig } from "../src/lib/api/config";
 import { runDirectorCopilotV2Chat } from "../src/lib/director-copilot-v2/chat";
 import {
   pinnedDirectorCopilotV2ManifestBundle,
+  type DirectorCopilotV2Item,
   type DirectorCopilotV2Request,
 } from "../src/lib/director-copilot-v2/contracts";
 import { resetDirectorCopilotV2ManifestCacheForTests } from "../src/lib/director-copilot-v2/manifest-catalog";
@@ -235,6 +236,45 @@ describe("Director Copilot V2 active chat", () => {
     );
     assert.equal(serializedAudit.includes("actor-token"), false);
   });
+
+  it("requests Budget items and returns only the highest comparable plan item", async () => {
+    const requests: DirectorCopilotV2Request[] = [];
+    const message = "Jaká je nejvyšší položka plánu?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-budget-item",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: budgetItemFetcher(requests),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.tool_id, "budget.organization_financial_summary.v1");
+    assert.equal(requests[0]?.parameters.granularity, "item");
+    assert.deepEqual(requests[0]?.parameters.group_by, ["budget_item"]);
+    assert.deepEqual(requests[0]?.parameters.scenario, ["plan"]);
+    assert.match(response.answer ?? "", /Nejvyšší oprávněná položka/);
+    assert.match(response.answer ?? "", /Servery/);
+    assert.match(response.answer ?? "", /500[  ]000/);
+    assert.equal((response.answer ?? "").includes("Licence"), false);
+  });
 });
 
 function fetcher(): typeof fetch {
@@ -300,6 +340,75 @@ function innovationFetcher(): typeof fetch {
       ...structuredClone(source),
       tool_call_id: request.tool_call_id,
     });
+  };
+}
+
+function budgetItemFetcher(requests: DirectorCopilotV2Request[]): typeof fetch {
+  return async (input, init) => {
+    if (init?.method === "GET") {
+      const url = String(input);
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : url.includes("aiip")
+            ? "aiip-api"
+            : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    requests.push(request);
+    const response = structuredClone(budgetOrganization.responses.complete);
+    const base = structuredClone(response.items[0]);
+    response.items = [
+      budgetItem(base, "licence", "Licence", 120_000),
+      budgetItem(base, "servery", "Servery", 500_000),
+      budgetItem(base, "skoleni", "Školení", 80_000),
+    ];
+    response.completeness.candidate_count = response.items.length;
+    return Response.json({
+      ...response,
+      tool_id: request.tool_id,
+      tool_call_id: request.tool_call_id,
+    });
+  };
+}
+
+function budgetItem(
+  base: DirectorCopilotV2Item,
+  id: string,
+  displayName: string,
+  planAmount: number,
+): DirectorCopilotV2Item {
+  const canonicalId = `stratos:budget-aggregate:budget_item:${id}`;
+  return {
+    ...structuredClone(base),
+    entity_type: "budget_item",
+    entity_id: id,
+    canonical_id: canonicalId,
+    deep_link: `https://stratos.example.test/budget/items/${id}`,
+    document_context_tags: [`budget_item:${id}`],
+    policy_lineage: base.policy_lineage.map((entry) => ({
+      ...structuredClone(entry),
+      resource_id: canonicalId,
+    })),
+    facts: [
+      {
+        ...structuredClone(base.facts[0]),
+        key: "budget_item.display_name",
+        value: displayName,
+      },
+      {
+        ...structuredClone(base.facts[1]),
+        key: "budget.plan_amount",
+        value: planAmount,
+      },
+    ],
   };
 }
 
