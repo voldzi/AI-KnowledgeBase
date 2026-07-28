@@ -48,6 +48,29 @@ AKL_DIRECTOR_COPILOT_V2_MODE=shadow
 V1 remains the user-visible response in this mode. V2 must still load the
 closed source manifests, invoke its tools and leave metadata-only audit events.
 
+### Service-token and manifest preflight
+
+Before S1, STRATOS verifies the production OIDC registration of
+`svc-akb-director-copilot`. The client must obtain four separate client
+credentials tokens, each requested with exactly one of these scopes:
+
+- `director-copilot-budget-api` for audience `budget-api`;
+- `director-copilot-projectflow-api` for audience `projectflow-api`;
+- `director-copilot-archflow-api` for audience `archflow-api`;
+- `director-copilot-aiip-api` for audience `aiip-api`.
+
+For every token, call the corresponding manifest endpoint with
+`X-AKB-Domain-Tool-Contract: director-copilot-2`. The endpoint must return
+HTTP 200 and the pinned manifest content. Record only the scope name,
+audience, HTTP status, manifest revision/hash and correlation ID. Never record
+the bearer token, client secret or response payload.
+
+`invalid_scope`, a multi-audience token, a missing audience, HTTP 401/403, or
+manifest drift is a hard preflight failure. Keep V2 in `shadow`, correct the
+STRATOS OIDC/client-scope registration or source deployment, and rerun this
+preflight before running S1-S10. Do not work around it by using a broader
+scope, a global role, or a shared service token.
+
 ## Shadow acceptance
 
 For each request, retain the AKB correlation identifier, source statuses,
