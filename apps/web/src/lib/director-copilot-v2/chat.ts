@@ -44,7 +44,9 @@ export async function runDirectorCopilotV2Chat(input: {
   queryState: ConversationQueryState;
   refreshActorContext?: () => Promise<ApiRequestContext>;
   mode: "shadow" | "active";
-  baselineResponse?: AssistantChatResponse;
+  baselineResponse?:
+    | AssistantChatResponse
+    | (() => AssistantChatResponse | undefined);
   fetcher?: typeof fetch;
 }): Promise<AssistantChatResponse> {
   const catalog = await loadDirectorCopilotV2ManifestCatalog({
@@ -576,11 +578,16 @@ async function auditResult(
     clients: ApiClients;
     config: AklConfig;
     mode: "shadow" | "active";
-    baselineResponse?: AssistantChatResponse;
+    baselineResponse?:
+      | AssistantChatResponse
+      | (() => AssistantChatResponse | undefined);
   },
   orchestration: DirectorCopilotV2OrchestrationResult,
   response: AssistantChatResponse,
 ): Promise<void> {
+  const baselineResponse = typeof input.baselineResponse === "function"
+    ? input.baselineResponse()
+    : input.baselineResponse;
   const serviceToken = await directorCopilotServiceToken(
     input.config,
     fetch,
@@ -649,8 +656,8 @@ async function auditResult(
         orchestration.snapshot.authorized_document_ids.length,
       status: orchestration.status,
       failure_reason_code: primaryFailureReasonCode(orchestration),
-      baseline_response_type: input.baselineResponse?.response_type ?? null,
-      baseline_confidence: input.baselineResponse?.confidence ?? null,
+      baseline_response_type: baselineResponse?.response_type ?? null,
+      baseline_confidence: baselineResponse?.confidence ?? null,
     },
   }, serviceContext);
 }

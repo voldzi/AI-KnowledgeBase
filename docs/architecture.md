@@ -110,7 +110,10 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   documents.
 - V1 source status and V2 activation are separate. V2 can evaluate all four
   source applications in shadow while V1 remains the user-visible baseline.
-  Only a joint conformance gate may activate V2 responses.
+  Both paths start independently, so a slow or failed V1 execution cannot
+  suppress the V2 result or audit. Baseline comparison is opportunistic and
+  does not gate V2 completion. Only a joint conformance gate may activate V2
+  responses.
 - The semantic catalog is enriched by an immutable local SSP snapshot with
   source attribution and a content SHA-256. The full imported vocabulary is
   context only. Only separately reviewed concept bindings may influence a
