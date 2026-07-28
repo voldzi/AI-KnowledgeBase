@@ -22,6 +22,7 @@ import {
   directorCopilotV2FailureResponse,
   runDirectorCopilotV2Chat,
 } from "@/lib/director-copilot-v2/chat";
+import { scheduleIndependentShadowExecution } from "@/lib/director-copilot-v2/shadow-execution";
 import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
@@ -109,6 +110,61 @@ export async function POST(request: NextRequest) {
       const refreshActorContext = context.accessToken
         ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
         : undefined;
+      let completedBaselineResponse: AssistantChatResponse | undefined;
+      const baselineExecution = directorConfig.v2Mode === "active"
+        ? undefined
+        : runDirectorCopilotChat({
+            message,
+            conversationId,
+            responseLanguage,
+            actorContext: context,
+            clients,
+            config,
+            intent: directorIntent,
+            queryState: directorQuery.state,
+            refreshActorContext,
+          }).then((response) => {
+            completedBaselineResponse = response;
+            return response;
+          });
+      if (directorConfig.v2Mode === "shadow") {
+        scheduleIndependentShadowExecution({
+          execute: async () => {
+            await runDirectorCopilotV2Chat({
+              message,
+              conversationId,
+              responseLanguage,
+              actorContext: context,
+              clients,
+              config,
+              intent: directorIntent,
+              queryState: directorQuery.state,
+              refreshActorContext,
+              mode: "shadow",
+              baselineResponse: () => completedBaselineResponse,
+            });
+          },
+          onFailure: async (error: unknown) => {
+            await auditDirectorCopilotV2Failure({
+              conversationId,
+              actorContext: context,
+              clients,
+              config,
+              mode: "shadow",
+              error,
+            }).catch(() => undefined);
+            logIntegrationEvent({
+              level: "error",
+              service: "director-copilot",
+              operation: "v2_shadow",
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              errorCode: "DIRECTOR_COPILOT_V2_SHADOW_FAILED",
+            });
+          },
+          schedule: (task) => after(task),
+        });
+      }
       const directorResponse = directorConfig.v2Mode === "active"
         ? await runDirectorCopilotV2Chat({
             message,
@@ -137,51 +193,7 @@ export async function POST(request: NextRequest) {
               queryState: directorQuery.state,
             });
           })
-        : await runDirectorCopilotChat({
-            message,
-            conversationId,
-            responseLanguage,
-            actorContext: context,
-            clients,
-            config,
-            intent: directorIntent,
-            queryState: directorQuery.state,
-            refreshActorContext,
-          });
-      if (directorConfig.v2Mode === "shadow") {
-        after(async () => {
-          await runDirectorCopilotV2Chat({
-            message,
-            conversationId: directorResponse.conversation_id,
-            responseLanguage,
-            actorContext: context,
-            clients,
-            config,
-            intent: directorIntent,
-            queryState: directorQuery.state,
-            refreshActorContext,
-            mode: "shadow",
-            baselineResponse: directorResponse,
-          }).catch(async (error: unknown) => {
-            await auditDirectorCopilotV2Failure({
-              conversationId: directorResponse.conversation_id,
-              actorContext: context,
-              clients,
-              config,
-              mode: "shadow",
-              error,
-            }).catch(() => undefined);
-            logIntegrationEvent({
-              level: "error",
-              service: "director-copilot",
-              operation: "v2_shadow",
-              requestId: context.requestId,
-              correlationId: context.correlationId,
-              errorCode: "DIRECTOR_COPILOT_V2_SHADOW_FAILED",
-            });
-          });
-        });
-      }
+        : await baselineExecution!;
       const response = persistedDirectorCopilotResponse(directorResponse);
       const persistedConversation = await clients.registry
         .appendAssistantConversationMessages(

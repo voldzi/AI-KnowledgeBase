@@ -17,6 +17,7 @@ import { resolveConversationQuery } from "../src/lib/director-copilot/query-stat
 import type {
   ApiClients,
   ApiRequestContext,
+  AssistantChatResponse,
   AssistantConversationMessage,
 } from "../src/lib/types";
 
@@ -67,6 +68,10 @@ describe("Director Copilot V2 active chat", () => {
       intent: "portfolio_performance_overview",
       queryState,
       mode: "active",
+      baselineResponse: () => ({
+        response_type: "no_answer",
+        confidence: "insufficient_source",
+      } as AssistantChatResponse),
       fetcher: fetcher(),
       refreshActorContext: async () => context(),
     });
@@ -99,6 +104,8 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(serializedAudit, /director-copilot-2/);
     assert.match(serializedAudit, /source_versions_json/);
     assert.match(serializedAudit, /latency_ms/);
+    assert.match(serializedAudit, /"baseline_response_type":"no_answer"/);
+    assert.match(serializedAudit, /"baseline_confidence":"insufficient_source"/);
     assert.equal(serializedAudit.includes("actor-token"), false);
     assert.equal(serializedAudit.includes("Disky pro QNAP"), false);
     const history = directorCopilotPersistenceMetadata(response, context());

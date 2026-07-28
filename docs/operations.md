@@ -177,9 +177,13 @@ AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL=http://stratos-api:4000
 AKL_DIRECTOR_COPILOT_AIIP_BASE_URL=http://aiip-web:3000
 ```
 
-`shadow` keeps the V1 answer visible and evaluates V2 after the response. It
-does not add V2 latency to the user request. `active` returns only V2 live-data
-answers. A live-source failure in active mode never falls back to document RAG.
+`shadow` keeps the V1 answer visible while V1 and V2 start independently for
+the same request. V2 completion is delegated to the post-response lifecycle,
+so a slow or failed V1 execution cannot suppress the V2 audit result. Baseline
+comparison fields are recorded when V1 finishes before the V2 audit is written;
+otherwise they remain empty without blocking V2 evaluation. V2 latency is not
+added to the user request. `active` returns only V2 live-data answers. A
+live-source failure in active mode never falls back to document RAG.
 Promote `shadow` to `active` only after the joint dialogue, negative
 authorization, history reauthorization, audit and latency gates in
 `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md` pass.
