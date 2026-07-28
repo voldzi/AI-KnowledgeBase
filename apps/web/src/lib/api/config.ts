@@ -2,11 +2,8 @@ export type AklEnvironment = "development" | "test" | "staging" | "production";
 export type ApiClientMode = "mock" | "production";
 export type AuthMode = "mock" | "oidc";
 export type WebProfile = "platform" | "chat";
-export type DirectorCopilotV2Mode = "disabled" | "shadow" | "active";
-
 export interface DirectorCopilotConfig {
   enabled: boolean;
-  v2Mode?: DirectorCopilotV2Mode;
   v2ManifestCacheTtlMs?: number;
   tokenUrl?: string;
   clientId: string;
@@ -56,7 +53,6 @@ export interface AklConfig {
 export function getDirectorCopilotConfig(config: AklConfig): DirectorCopilotConfig {
   return config.directorCopilot ?? {
     enabled: false,
-    v2Mode: "disabled",
     v2ManifestCacheTtlMs: 300_000,
     clientId: "svc-akb-director-copilot",
     timeoutMs: 8_000,
@@ -137,14 +133,6 @@ function strictBoolean(value: string | undefined, fallback: boolean, name: strin
   if (value === "true") return true;
   if (value === "false") return false;
   throw new Error(`${name} must be true or false`);
-}
-
-function directorCopilotV2Mode(value: string | undefined): DirectorCopilotV2Mode {
-  const normalized = value?.trim().toLowerCase() || "disabled";
-  if (normalized === "disabled" || normalized === "shadow" || normalized === "active") {
-    return normalized;
-  }
-  throw new Error("AKL_DIRECTOR_COPILOT_V2_MODE must be disabled, shadow or active");
 }
 
 export function getAklConfig(env: EnvSource = process.env): AklConfig {
@@ -256,7 +244,6 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
   );
   const directorCopilot = {
     enabled: directorCopilotEnabled,
-    v2Mode: directorCopilotV2Mode(env.AKL_DIRECTOR_COPILOT_V2_MODE),
     v2ManifestCacheTtlMs: positiveNumber(
       env.AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS,
       300_000,
@@ -302,22 +289,14 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     if (!directorCopilot.clientSecret && !directorCopilot.clientSecretFile) {
       throw new Error("Director Copilot requires a dedicated service credential");
     }
-    if (!directorCopilot.budgetBaseUrl || !directorCopilot.projectflowBaseUrl) {
-      throw new Error("Director Copilot requires Budget and ProjectFlow base URLs");
-    }
   }
-  if (directorCopilot.v2Mode !== "disabled") {
-    if (!directorCopilot.enabled) {
-      throw new Error("Director Copilot V2 shadow or active mode requires AKL_DIRECTOR_COPILOT_ENABLED=true");
-    }
-    if (
-      !directorCopilot.budgetBaseUrl
-      || !directorCopilot.projectflowBaseUrl
-      || !directorCopilot.archflowBaseUrl
-      || !directorCopilot.aiipBaseUrl
-    ) {
-      throw new Error("Director Copilot V2 requires Budget, ProjectFlow, ArchFlow and AIIP base URLs");
-    }
+  if (directorCopilot.enabled && (
+    !directorCopilot.budgetBaseUrl
+    || !directorCopilot.projectflowBaseUrl
+    || !directorCopilot.archflowBaseUrl
+    || !directorCopilot.aiipBaseUrl
+  )) {
+    throw new Error("Director Copilot requires Budget, ProjectFlow, ArchFlow and AIIP base URLs");
   }
 
   return {

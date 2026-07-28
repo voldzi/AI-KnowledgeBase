@@ -192,10 +192,9 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 4. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.
 5. SLA escalation runtime: pravidelna detekce prekrocenych SLA, audit udalosti, eskalacni tasky a dashboard signal.
 6. Object Storage service: presunout signed upload/download z web bridge do backend kontraktu.
-7. Director Copilot integration gate: nasadit AKB aktivacni release s
-   read-only secretem, spustit pozitivni live dotaz a spolecne partial,
-   scope-revocation, policy, citation a audit acceptance testy podle
-   `docs/integration/DIRECTOR_COPILOT_HANDOFF.md`.
+7. Director Copilot V2 maintenance: udrzovat pinned manifest bundle,
+   reautorizaci historie a fail-closed chovani podle
+   `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 8. RAG evaluation expansion: rozsirit produkcni gate o mezidomenove scenare,
    aktualnost, konflikty a dostupnost pouze casti zdroju.
 9. Intelligence entity layer: extrahovat entity z chunku, ulozit mentiony s

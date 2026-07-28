@@ -1,7 +1,4 @@
 import type { ApiRequestContext, ResponseLanguage } from "@/lib/types";
-import { accessProjectionHash } from "@/lib/director-copilot/access";
-import { canonicalDirectorCopilotApplication } from "@/lib/director-copilot/application-id";
-import type { DirectorCopilotIntent } from "@/lib/director-copilot/contracts";
 import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
 
 import { directorCopilotV2AccessFor, type DirectorCopilotV2AccessDecision } from "./access";
@@ -20,6 +17,11 @@ import {
   type DirectorCopilotV2ToolId,
 } from "./contracts";
 import type { DirectorCopilotV2ManifestCatalog } from "./manifest-catalog";
+import {
+  accessProjectionHash,
+  canonicalDirectorCopilotApplication,
+  type DirectorCopilotIntent,
+} from "./shared";
 
 export const DIRECTOR_COPILOT_V2_PLAN_VERSION = "director-copilot-v2-query-plan-1" as const;
 

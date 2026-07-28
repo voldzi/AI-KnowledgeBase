@@ -157,6 +157,8 @@ describe("AKL web config", () => {
       AKL_DIRECTOR_COPILOT_CLIENT_SECRET: "test-only-secret",
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: "http://archflow-api:4000",
+      AKL_DIRECTOR_COPILOT_AIIP_BASE_URL: "http://aiip-api:3000",
     });
 
     assert.equal(config.directorCopilot?.enabled, true);
@@ -164,11 +166,10 @@ describe("AKL web config", () => {
     assert.equal(config.directorCopilot?.projectflowBaseUrl, "http://projectflow-api:3000");
   });
 
-  it("requires every governed source before Director Copilot V2 shadow mode", () => {
+  it("requires every governed source when Director Copilot is enabled", () => {
     assert.throws(
       () => getAklConfig({
         AKL_DIRECTOR_COPILOT_ENABLED: "true",
-        AKL_DIRECTOR_COPILOT_V2_MODE: "shadow",
         AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
         AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
       }),
@@ -176,10 +177,9 @@ describe("AKL web config", () => {
     );
   });
 
-  it("accepts Director Copilot V2 shadow mode with a bounded manifest cache", () => {
+  it("accepts the V2-only configuration with a bounded manifest cache", () => {
     const config = getAklConfig({
       AKL_DIRECTOR_COPILOT_ENABLED: "true",
-      AKL_DIRECTOR_COPILOT_V2_MODE: "shadow",
       AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS: "120000",
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
@@ -187,7 +187,6 @@ describe("AKL web config", () => {
       AKL_DIRECTOR_COPILOT_AIIP_BASE_URL: "http://aiip-api:3000",
     });
 
-    assert.equal(config.directorCopilot?.v2Mode, "shadow");
     assert.equal(config.directorCopilot?.v2ManifestCacheTtlMs, 120000);
   });
 
@@ -212,6 +211,8 @@ describe("AKL web config", () => {
       AKL_DIRECTOR_COPILOT_CLIENT_SECRET: "inline-secret-is-not-production-safe",
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: "http://archflow-api:4000",
+      AKL_DIRECTOR_COPILOT_AIIP_BASE_URL: "http://aiip-api:3000",
     }), /must use AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE/);
   });
 });

@@ -61,10 +61,6 @@ from the flat standard documents.
 8. Director Copilot target and delivery plan:
    - `ARCHITECTURE/director-copilot-implementation-plan.md`
    - `qa/director-copilot-akb-foundation.md`
-   - `integration/DIRECTOR_COPILOT_HANDOFF.md`
-   - `integration/DIRECTOR_COPILOT_HANDOFF_STRATOS.md`
-   - `integration/DIRECTOR_COPILOT_HANDOFF_BUDGET.md`
-   - `integration/DIRECTOR_COPILOT_HANDOFF_PROJECTFLOW.md`
    - `integration/PROJECTFLOW_FREE_FORM_COPILOT_HANDOFF.md`
    - `integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`
    - `qa/director-copilot-v2-impact-2026-07-25.md`

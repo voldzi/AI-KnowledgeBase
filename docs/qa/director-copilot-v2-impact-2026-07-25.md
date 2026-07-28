@@ -1,14 +1,18 @@
-# Director Copilot V2 AKB impact report
+# Director Copilot V2 AKB impact report (historical pre-acceptance record)
 
 Date: 2026-07-25
 
-Verdict: AKB implementation PASS; joint STRATOS integration acceptance pending
+Verdict at the time: AKB implementation PASS; joint STRATOS integration acceptance pending
+
+Superseded by the production acceptance of `director-copilot-2` revision
+`2.0.3` and the V1 retirement record in
+`docs/maintenance/director-copilot-v1-retirement.md`.
 
 ## Scope
 
-AKB now consumes the additive `director-copilot-2` contract revision `2.0.2`
-for Budget, ProjectFlow, ArchFlow and AIIP. V1 remains unchanged and is the
-default because V2 mode defaults to `disabled`.
+AKB then consumed the additive `director-copilot-2` contract revision `2.0.2`
+for Budget, ProjectFlow, ArchFlow and AIIP. This report predates the accepted
+2.0.3 production runtime and must not be used as an operating instruction.
 
 Implemented:
 

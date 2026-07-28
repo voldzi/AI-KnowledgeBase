@@ -151,23 +151,20 @@ specific deployment document.
 
 ### Director Copilot activation
 
-Director Copilot V1 remains available. The additive V2 consumer is pinned to
-wire contract `director-copilot-2`, revision `2.0.3`, and is disabled by
-default:
+Director Copilot V2 is the only AKB federation path. It is pinned to wire
+contract `director-copilot-2`, revision `2.0.3`, and is enabled only when all
+four governed sources and the dedicated service identity are configured:
 
 ```text
 AKL_DIRECTOR_COPILOT_ENABLED=false
-AKL_DIRECTOR_COPILOT_V2_MODE=disabled
 AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS=300000
 ```
 
 Set all four governed source URLs, token URL, exact client ID and host secret
-path in the private production environment. Deploy code with V2 still disabled,
-then change only to `shadow` for the joint acceptance run:
+path in the private production environment:
 
 ```text
 AKL_DIRECTOR_COPILOT_ENABLED=true
-AKL_DIRECTOR_COPILOT_V2_MODE=shadow
 AKL_DIRECTOR_COPILOT_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token
 AKL_DIRECTOR_COPILOT_CLIENT_ID=svc-akb-director-copilot
 AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE=/srv/akl/env/svc-akb-director-copilot.client-secret
@@ -177,16 +174,11 @@ AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL=http://stratos-api:4000
 AKL_DIRECTOR_COPILOT_AIIP_BASE_URL=http://aiip-web:3000
 ```
 
-`shadow` keeps the V1 answer visible while V1 and V2 start independently for
-the same request. V2 completion is delegated to the post-response lifecycle,
-so a slow or failed V1 execution cannot suppress the V2 audit result. Baseline
-comparison fields are recorded when V1 finishes before the V2 audit is written;
-otherwise they remain empty without blocking V2 evaluation. V2 latency is not
-added to the user request. `active` returns only V2 live-data answers. A
-live-source failure in active mode never falls back to document RAG.
-Promote `shadow` to `active` only after the joint dialogue, negative
-authorization, history reauthorization, audit and latency gates in
-`docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md` pass.
+V2 returns the user-visible live-data answer and writes
+`assistant.director_copilot_v2_returned`. A live-source failure never falls
+back to document RAG. The joint dialogue, negative authorization, history
+reauthorization, audit and latency gates are recorded in
+`docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 
 Before changing the mode to `active`, verify that
 `svc-akb-director-copilot` can obtain five separate exact-audience tokens.
@@ -221,9 +213,9 @@ projection or source PEP cannot be verified.
 
 Each V2 source receives a separately requested service token with exactly one
 target audience and the independent current actor bearer. Readiness validates
-the runtime manifests against the pinned closed contract. Manifest drift is
-blocking only in active mode; shadow reports it without making the current V1
-web service unavailable.
+the runtime manifests against the pinned closed contract. Manifest drift blocks
+the V2 live-data path fail-closed and must be remediated before it is enabled
+again.
 
 The embedding shadow manifest is validated independently with:
 

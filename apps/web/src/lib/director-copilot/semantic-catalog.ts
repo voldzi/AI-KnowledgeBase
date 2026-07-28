@@ -2,10 +2,6 @@ import {
   semanticRegistryMetricsForText,
   semanticRegistrySourcesForText,
 } from "./semantic-registry";
-import {
-  domainCatalogMetric,
-  domainCatalogSourceStatus,
-} from "./domain-catalog";
 import type {
   StratosSemanticMetric,
   StratosSemanticSource,
@@ -250,18 +246,10 @@ export function sourceForMetric(
 }
 
 export function pendingSemanticSources(
-  sources: readonly StratosSemanticSource[],
+  _sources: readonly StratosSemanticSource[],
 ): StratosSemanticSource[] {
-  return sources.filter(
-    (source) => domainCatalogSourceStatus(source) !== "connected",
-  );
-}
-
-for (const definition of STRATOS_SEMANTIC_METRICS) {
-  const catalogMetric = domainCatalogMetric(definition.id);
-  if (!catalogMetric) {
-    throw new Error(`STRATOS semantic metric ${definition.id} is missing from the domain catalog.`);
-  }
+  // Every semantic source is bound to the pinned V2 manifest catalog at runtime.
+  return [];
 }
 
 function unique<T>(values: T[]): T[] {

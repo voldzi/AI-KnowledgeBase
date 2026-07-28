@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { classifyDirectorCopilotIntent } from "../src/lib/director-copilot/planner";
+import { classifyDirectorCopilotV2Intent } from "../src/lib/director-copilot-v2/intent-router";
 import {
   resolveConversationQuery,
   type ConversationQueryState,
@@ -69,7 +69,7 @@ describe("Director Copilot Czech routing evaluation", () => {
           `${evalCase.id}: recognized`,
         );
         assert.equal(
-          classifyDirectorCopilotIntent(turn.message, context),
+          classifyDirectorCopilotV2Intent(turn.message, context),
           turn.intent,
           `${evalCase.id}: intent`,
         );

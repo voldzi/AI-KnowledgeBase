@@ -20,7 +20,7 @@ export async function GET() {
           ),
         );
     const directorConfig = getDirectorCopilotConfig(config);
-    const directorCopilotV2 = directorConfig.v2Mode === "disabled" || !directorConfig.v2Mode
+    const directorCopilotV2 = !directorConfig.enabled
       ? "disabled"
       : await loadDirectorCopilotV2ManifestCatalog({ config })
           .then(() => "ready" as const)
@@ -29,7 +29,7 @@ export async function GET() {
     const dependenciesReady = Object.values(dependencies)
       .every((status) => status === "ready" || status === "mock");
     const isReady = dependenciesReady
-      && (directorConfig.v2Mode !== "active" || directorCopilotV2 === "ready")
+      && (!directorConfig.enabled || directorCopilotV2 === "ready")
       && documentIntake !== "not_ready";
     return NextResponse.json(
       {

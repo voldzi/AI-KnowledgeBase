@@ -10,6 +10,7 @@ SHA-256 values and the byte identity of the five runtime schema copies. The
 check is part of the production web build. Contract drift therefore fails the
 build before AKB can call a source.
 
-The V1 contract remains available and operational. V2 activation is controlled
-by `AKL_DIRECTOR_COPILOT_V2_MODE=disabled|shadow|active` and defaults to
-`disabled`.
+V2 activation is controlled by `AKL_DIRECTOR_COPILOT_ENABLED=true`. After the
+production acceptance, V2 is the sole runtime path. It does not use a V1
+fallback, shadow mode, or baseline comparison. Setting the flag to `false`
+keeps recognized live-data requests fail-closed.

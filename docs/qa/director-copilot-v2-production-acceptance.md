@@ -1,6 +1,7 @@
 # Director Copilot V2 production acceptance
 
-Status: ready after the matching STRATOS, AIIP and AKB releases are deployed
+Status: accepted in production. STRATOS recorded S1-S10 and isolated N1-N10
+as PASS for `director-copilot-2` revision `2.0.3`.
 
 Contract: `director-copilot-2`, revision `2.0.3`
 
@@ -11,10 +12,10 @@ remains contract drift.
 
 ## Purpose
 
-This is the joint production acceptance run for the additive Director Copilot
-V2 integration. It proves that AKB can safely combine live, authorized facts
-from Budget, ProjectFlow, ArchFlow and AIIP. It does not replace the existing
-Director Copilot V1 until every gate below passes.
+This is the joint production acceptance record for Director Copilot V2. It
+proves that AKB can safely combine live, authorized facts from Budget,
+ProjectFlow, ArchFlow and AIIP. V1 is retired by the subsequent AKB-only
+cleanup release documented in `docs/maintenance/director-copilot-v1-retirement.md`.
 
 The run must use an approved test account and explicitly marked integration
 fixtures. Do not change a real user's grants, information policy or business
@@ -39,16 +40,11 @@ Record these values in the execution evidence before testing:
 - separate fixtures for no-data, currency conflict, information-policy denial,
   an ambiguous project name and a ProjectFlow document that AKB must deny.
 
-The deployment begins with:
+The accepted deployment uses `AKL_DIRECTOR_COPILOT_ENABLED=true`. V2 loads the
+closed source manifests, invokes only V2 tools and leaves metadata-only audit
+events.
 
-```text
-AKL_DIRECTOR_COPILOT_V2_MODE=shadow
-```
-
-V1 remains the user-visible response in this mode. V2 must still load the
-closed source manifests, invoke its tools and leave metadata-only audit events.
-
-## Shadow acceptance
+## Production acceptance
 
 For each request, retain the AKB correlation identifier, source statuses,
 source revisions, tool identifiers, authorized scope types, item counts and
@@ -68,7 +64,7 @@ evidence.
 | S9 | Open a ProjectFlow document link returned with a project. | AKB performs independent document authorization. An unauthorized document is neither named nor linked. |
 | S10 | Reopen the thread, then repeat a live-data question. | Persisted history triggers a fresh authorized source query; unchanged access remains visible. |
 
-Shadow succeeds only when every source response validates against its pinned
+Acceptance succeeds only when every source response validates against its pinned
 manifest and every observed source status is `complete`, `partial`, `no_data`,
 `not_authorized` or `unavailable` with a known reason code.
 
@@ -107,10 +103,9 @@ modifying the live organisation.
 
 ## Controlled active pilot
 
-Only after all shadow and negative cases pass, an operator may set
-`AKL_DIRECTOR_COPILOT_V2_MODE=active` for a short monitored pilot. Record the
-start/end time and the exact AKB release SHA. Repeat S1-S10 with the V2 answer
-visible to the test account.
+V2 is the user-visible live-data path. Record the exact AKB release SHA for
+each subsequent maintenance release and repeat S1-S10 after a contract or
+authorization change.
 
 The active S1 preflight must prove all of the following before the complete
 run continues:
@@ -132,7 +127,8 @@ Promotion is accepted only when all of these are true:
 - no prompts, answers, tokens or source payloads appear in logs or audit;
 - latency is within the agreed operating threshold and no source is silently
   dropped;
-- V1 remains available as the rollback path.
+- the controlled runtime kill switch is available through
+  `AKL_DIRECTOR_COPILOT_ENABLED=false` and keeps live-data requests fail-closed.
 
 ## Evidence and verdict
 
@@ -141,7 +137,7 @@ hashes, test IDs, pass/fail verdict, correlation identifiers, source/tool
 metadata, authorization scope type, response status and latency. Redact all
 tokens, prompts, answers, fixture payloads and personal data.
 
-Any failed security, policy, contract or data-provenance case keeps V2 in
-`shadow`. A failed availability case may be retried only after the source
-owner records the remediation and a new release SHA. Promote to `active` only
-with an explicit overall PASS verdict.
+Any failed security, policy, contract or data-provenance case disables the
+affected live-data path until the source owner records remediation and a new
+release SHA. Production remains on the accepted V2 contract only after an
+explicit overall PASS verdict.

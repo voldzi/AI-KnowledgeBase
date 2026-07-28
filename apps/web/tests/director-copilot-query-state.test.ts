@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { classifyDirectorCopilotIntent } from "../src/lib/director-copilot/planner";
+import { classifyDirectorCopilotV2Intent } from "../src/lib/director-copilot-v2/intent-router";
 import {
   conversationQueryState,
   resolveConversationQuery,
@@ -75,7 +75,7 @@ describe("Director Copilot conversation query state", () => {
     assert.equal(resolved.state.granularity, "organization");
     assert.deepEqual(resolved.state.entity_filters.project_ids, []);
     assert.equal(
-      classifyDirectorCopilotIntent("Ne jen pro tento projekt, ale celkově.", {
+      classifyDirectorCopilotV2Intent("Ne jen pro tento projekt, ale celkově.", {
         stratos_query_state: previous,
       }),
       "budget_portfolio_status",
@@ -106,7 +106,7 @@ describe("Director Copilot conversation query state", () => {
     assert.equal(third.state.granularity, "portfolio");
     assert.deepEqual(third.state.entity_filters.project_ids, []);
     assert.equal(
-      classifyDirectorCopilotIntent("Rozděl ho podle portfolií.", {
+      classifyDirectorCopilotV2Intent("Rozděl ho podle portfolií.", {
         stratos_query_state: second.state,
       }),
       "budget_portfolio_status",
@@ -189,7 +189,7 @@ describe("Director Copilot conversation query state", () => {
 
   it("recognizes a combined financial and delivery question without requiring a contract term", () => {
     assert.equal(
-      classifyDirectorCopilotIntent(
+      classifyDirectorCopilotV2Intent(
         "Které projekty mají nejvyšší rozpočtovou odchylku a současně zpožděný harmonogram?",
       ),
       "portfolio_performance_overview",
@@ -204,24 +204,23 @@ describe("Director Copilot conversation query state", () => {
 
     assert.equal(resolved.recognized, false);
     assert.equal(
-      classifyDirectorCopilotIntent("Co je uvedeno v projektové dokumentaci?"),
+      classifyDirectorCopilotV2Intent("Co je uvedeno v projektové dokumentaci?"),
       null,
     );
   });
 
-  it("marks an explicit AIIP live-data question as pending instead of allowing a RAG fallback", () => {
+  it("routes an explicit AIIP live-data question to V2 instead of allowing a RAG fallback", () => {
     const resolved = resolveConversationQuery({
       message: "Kolik podnětů eviduje AIIP a v jakém jsou stavu?",
       now: NOW,
     });
 
     assert.equal(resolved.recognized, true);
-    assert.deepEqual(resolved.pending_sources, ["aiip"]);
+    assert.deepEqual(resolved.pending_sources, []);
     assert.equal(
-      classifyDirectorCopilotIntent(
+      classifyDirectorCopilotV2Intent(
         "Kolik podnětů eviduje AIIP a v jakém jsou stavu?",
         {},
-        { includeContractReady: true },
       ),
       "aiip_idea_overview",
     );
@@ -297,19 +296,19 @@ describe("Director Copilot conversation query state", () => {
     ] as const;
 
     for (const [message, expected] of supportedCases) {
-      assert.equal(classifyDirectorCopilotIntent(message), expected, message);
+      assert.equal(classifyDirectorCopilotV2Intent(message), expected, message);
     }
 
-    const pendingCases = [
-      ["Kolik máme business požadavků v ArchFlow?", "archflow"],
-      ["Které potřeby v ArchFlow jsou připravené?", "archflow"],
-      ["Kolik AI nápadů čeká v AIIP na posouzení?", "aiip"],
-      ["Jaký přínos mají podněty v AI Innovation Portal?", "aiip"],
+    const governedSourceCases = [
+      "Kolik máme business požadavků v ArchFlow?",
+      "Které potřeby v ArchFlow jsou připravené?",
+      "Kolik AI nápadů čeká v AIIP na posouzení?",
+      "Jaký přínos mají podněty v AI Innovation Portal?",
     ] as const;
-    for (const [message, expectedSource] of pendingCases) {
+    for (const message of governedSourceCases) {
       const resolved = resolveConversationQuery({ message, now: NOW });
       assert.equal(resolved.recognized, true, message);
-      assert.deepEqual(resolved.pending_sources, [expectedSource], message);
+      assert.deepEqual(resolved.pending_sources, [], message);
     }
   });
 });

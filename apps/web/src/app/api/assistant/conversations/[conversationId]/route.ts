@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getAklConfig } from "@/lib/api/config";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
-import { authorizeDirectorCopilotHistory } from "@/lib/director-copilot/history";
+import { authorizeDirectorCopilotV2History } from "@/lib/director-copilot-v2/history";
 import type {
   ApiClients,
   AssistantConversationDetail,
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 async function reauthorizeFederatedHistory(
   conversation: AssistantConversationDetail,
-  actorContext: Parameters<typeof authorizeDirectorCopilotHistory>[0]["actorContext"],
+  actorContext: Parameters<typeof authorizeDirectorCopilotV2History>[0]["actorContext"],
   authorizationProjectionAvailable = true,
   clients?: Pick<ApiClients, "registry">,
 ): Promise<AssistantConversationDetail> {
@@ -68,7 +68,7 @@ async function reauthorizeFederatedHistory(
       messages.push(unavailableHistoryMessage(message, "source_unavailable"));
       continue;
     }
-    const authorization = await authorizeDirectorCopilotHistory({
+    const authorization = await authorizeDirectorCopilotV2History({
       message,
       previousUserMessage,
       actorContext,
@@ -85,9 +85,9 @@ async function reauthorizeFederatedHistory(
 }
 
 async function freshAuthorizationContext(
-  requestContext: Parameters<typeof authorizeDirectorCopilotHistory>[0]["actorContext"],
+  requestContext: Parameters<typeof authorizeDirectorCopilotV2History>[0]["actorContext"],
 ): Promise<{
-  context: Parameters<typeof authorizeDirectorCopilotHistory>[0]["actorContext"];
+  context: Parameters<typeof authorizeDirectorCopilotV2History>[0]["actorContext"];
   available: boolean;
 }> {
   if (!requestContext.accessToken) {

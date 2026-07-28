@@ -108,12 +108,10 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   ArchFlow/AIIP tool, disabled federation or source failure is reported
   explicitly; a live-data question is never silently answered from historical
   documents.
-- V1 source status and V2 activation are separate. V2 can evaluate all four
-  source applications in shadow while V1 remains the user-visible baseline.
-  Both paths start independently, so a slow or failed V1 execution cannot
-  suppress the V2 result or audit. Baseline comparison is opportunistic and
-  does not gate V2 completion. Only a joint conformance gate may activate V2
-  responses.
+- Director Copilot V2 is the sole live-data path after joint production
+  acceptance. A slow, failed, denied or contract-drifting source returns its
+  explicit V2 result and cannot be substituted by document RAG. The runtime
+  does not retain a V1 baseline, shadow comparison or fallback execution path.
 - The semantic catalog is enriched by an immutable local SSP snapshot with
   source attribution and a content SHA-256. The full imported vocabulary is
   context only. Only separately reviewed concept bindings may influence a

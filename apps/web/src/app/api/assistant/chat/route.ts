@@ -1,28 +1,21 @@
-import { after, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
-import { logIntegrationEvent } from "@/lib/api/logger";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
-import {
-  directorCopilotPendingSourcesResponse,
-  directorCopilotUnavailableResponse,
-  runDirectorCopilotChat,
-} from "@/lib/director-copilot/chat";
-import {
-  directorCopilotPersistenceMetadata,
-  persistedDirectorCopilotResponse,
-} from "@/lib/director-copilot/history";
-import { classifyDirectorCopilotIntent } from "@/lib/director-copilot/planner";
 import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
 import {
   auditDirectorCopilotV2Failure,
   directorCopilotV2FailureResponse,
   runDirectorCopilotV2Chat,
 } from "@/lib/director-copilot-v2/chat";
-import { scheduleIndependentShadowExecution } from "@/lib/director-copilot-v2/shadow-execution";
+import { classifyDirectorCopilotV2Intent } from "@/lib/director-copilot-v2/intent-router";
+import {
+  directorCopilotV2PersistenceMetadata,
+  persistedDirectorCopilotV2Response,
+} from "@/lib/director-copilot-v2/history";
 import { isAklLanguage } from "@/lib/language";
 import {
   buildRegistryDocumentReport,
@@ -67,105 +60,12 @@ export async function POST(request: NextRequest) {
       message,
       context: requestContext,
     });
-    const directorIntent = classifyDirectorCopilotIntent(message, requestContext, {
-      includeContractReady: directorConfig.v2Mode !== "disabled",
-    });
-    if (
-      directorQuery.recognized
-      && directorQuery.pending_sources.length
-      && directorConfig.v2Mode === "disabled"
-    ) {
-      const response = persistedDirectorCopilotResponse(
-        directorCopilotPendingSourcesResponse({
-          conversationId,
-          language: responseLanguage,
-          sources: directorQuery.pending_sources,
-          queryState: directorQuery.state,
-        }),
-      );
-      const persistedConversation = await clients.registry
-        .appendAssistantConversationMessages(
-          response.conversation_id,
-          {
-            user_id: context.subjectId,
-            title: titleFromMessage(message),
-            messages: assistantTurnMessages(
-              message,
-              response,
-              directorCopilotPersistenceMetadata(response, context),
-            ),
-          },
-          context,
-        )
-        .catch(() => undefined);
-      return NextResponse.json({
-        response: persistedConversation
-          ? response
-          : withHistoryPersistenceWarning(response),
-        message_id: latestAssistantMessageId(persistedConversation),
-        persistence_status: persistedConversation ? "persisted" : "failed",
-      });
-    }
-    if (directorIntent && directorConfig.enabled) {
+    const directorIntent = classifyDirectorCopilotV2Intent(message, requestContext);
+    if (directorIntent) {
       const refreshActorContext = context.accessToken
         ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
         : undefined;
-      let completedBaselineResponse: AssistantChatResponse | undefined;
-      const baselineExecution = directorConfig.v2Mode === "active"
-        ? undefined
-        : runDirectorCopilotChat({
-            message,
-            conversationId,
-            responseLanguage,
-            actorContext: context,
-            clients,
-            config,
-            intent: directorIntent,
-            queryState: directorQuery.state,
-            refreshActorContext,
-          }).then((response) => {
-            completedBaselineResponse = response;
-            return response;
-          });
-      if (directorConfig.v2Mode === "shadow") {
-        scheduleIndependentShadowExecution({
-          execute: async () => {
-            await runDirectorCopilotV2Chat({
-              message,
-              conversationId,
-              responseLanguage,
-              actorContext: context,
-              clients,
-              config,
-              intent: directorIntent,
-              queryState: directorQuery.state,
-              refreshActorContext,
-              mode: "shadow",
-              baselineResponse: () => completedBaselineResponse,
-            });
-          },
-          onFailure: async (error: unknown) => {
-            await auditDirectorCopilotV2Failure({
-              conversationId,
-              actorContext: context,
-              clients,
-              config,
-              mode: "shadow",
-              error,
-            }).catch(() => undefined);
-            logIntegrationEvent({
-              level: "error",
-              service: "director-copilot",
-              operation: "v2_shadow",
-              requestId: context.requestId,
-              correlationId: context.correlationId,
-              errorCode: "DIRECTOR_COPILOT_V2_SHADOW_FAILED",
-            });
-          },
-          schedule: (task) => after(task),
-        });
-      }
-      const directorResponse = directorConfig.v2Mode === "active"
+      const directorResponse = directorConfig.enabled
         ? await runDirectorCopilotV2Chat({
             message,
             conversationId,
@@ -193,8 +93,13 @@ export async function POST(request: NextRequest) {
               queryState: directorQuery.state,
             });
           })
-        : await baselineExecution!;
-      const response = persistedDirectorCopilotResponse(directorResponse);
+        : directorCopilotV2FailureResponse({
+            conversationId,
+            language: responseLanguage,
+            error: new Error("DIRECTOR_COPILOT_V2_DISABLED"),
+            queryState: directorQuery.state,
+          });
+      const response = persistedDirectorCopilotV2Response(directorResponse);
       const persistedConversation = await clients.registry
         .appendAssistantConversationMessages(
           response.conversation_id,
@@ -204,38 +109,8 @@ export async function POST(request: NextRequest) {
             messages: assistantTurnMessages(
               message,
               response,
-              directorCopilotPersistenceMetadata(directorResponse, context),
+              directorCopilotV2PersistenceMetadata(directorResponse, context),
             ),
-          },
-          context,
-        )
-        .catch(() => undefined);
-      return NextResponse.json({
-        response: persistedConversation
-          ? response
-          : withHistoryPersistenceWarning(response),
-        message_id: latestAssistantMessageId(persistedConversation),
-        persistence_status: persistedConversation ? "persisted" : "failed",
-      });
-    }
-    if (directorIntent) {
-      const response = directorCopilotUnavailableResponse({
-        conversationId,
-        language: responseLanguage,
-        intent: directorIntent,
-        queryState: directorQuery.state,
-      });
-      const persistedConversation = await clients.registry
-        .appendAssistantConversationMessages(
-          response.conversation_id,
-          {
-            user_id: context.subjectId,
-            title: titleFromMessage(message),
-            messages: assistantTurnMessages(message, response, {
-              confidence: response.confidence,
-              current_context: response.current_context,
-              warnings: response.warnings,
-            }),
           },
           context,
         )

@@ -160,7 +160,6 @@ function config(): AklConfig {
     },
     directorCopilot: {
       enabled: true,
-      v2Mode: "shadow",
       v2ManifestCacheTtlMs: 300_000,
       clientId: "svc-akb-director-copilot",
       budgetBaseUrl: "https://budget.example",

@@ -1,6 +1,6 @@
 # Director Copilot V2 AKB implementation
 
-Status: implemented behind `disabled|shadow|active`
+Status: production active; V1 retired in AKB
 
 Wire contract: `director-copilot-2`, revision `2.0.3`
 
@@ -64,12 +64,11 @@ On `docker.home.cz`, the AKB web containers define
 published only on the host, such as the separate AIIP Compose stack, to be
 reached through a stable internal hostname rather than a Docker bridge IP.
 
-## Modes
+## Runtime control
 
-- `disabled`: V1 only; no V2 manifest or tool calls.
-- `shadow`: V1 answer is returned; V2 evaluates after the response and writes
-  a metadata-only audit.
-- `active`: V2 answer is returned. V1 remains available for rollback.
+`AKL_DIRECTOR_COPILOT_ENABLED=true` enables the only live-data runtime path:
+V2. Setting it to `false` does not restore V1; it produces a bounded
+fail-closed result for recognized live-data requests.
 
 Activation requires all five route-bound service scopes:
 
@@ -87,8 +86,8 @@ Every new chat thread is persisted before its first question and starts with
 an empty query state. An explicit organization, organization-unit or portfolio
 turn clears incompatible project filters. Follow-up grouping by portfolio
 inherits the financial metric and fiscal year without inheriting a project
-restriction. Shadow failures record a bounded `failure_reason_code`; a
-recognized live-data request is never replaced by document RAG.
+restriction. Failures record a bounded `failure_reason_code`; a recognized
+live-data request is never replaced by document RAG.
 
 The continuation state exposed to the next turn contains canonical entity
 identities derived from the authorized response. Governed history still keeps
@@ -102,8 +101,8 @@ STRATOS revision `2.0.3` closes the ProjectFlow manifest mismatch. The pinned
 bundle now declares `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`, and AKB accepts
 that code only for the exact ProjectFlow manifest in this revision. Unknown
 runtime revisions, hashes, tools, facts, links and reason codes continue to
-fail closed. Joint acceptance may start only after the matching STRATOS, AIIP
-and AKB revisions are deployed; V2 remains in `shadow`.
+fail closed. Acceptance is valid only for matching STRATOS, AIIP and AKB
+revisions.
 
 ## Joint acceptance
 
@@ -120,6 +119,6 @@ capability and scope revocation between turns, policy denial, currency
 conflict, ambiguous entity, each source outage, history reopening, pagination
 and an unauthorized ProjectFlow document link.
 
-Promotion to `active` requires zero data leakage, zero document fallback for
-live-data questions, accepted source/audit reason codes, stable latency and a
-recorded release SHA for AKB plus every source application.
+The accepted production state requires zero data leakage, zero document
+fallback for live-data questions, accepted source/audit reason codes, stable
+latency and a recorded release SHA for AKB plus every source application.
