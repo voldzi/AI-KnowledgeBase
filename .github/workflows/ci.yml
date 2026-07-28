@@ -17,11 +17,14 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PIP_CACHE_DIR: /home/akbci/.cache/akb-ci/pip
+  PLAYWRIGHT_BROWSERS_PATH: /home/akbci/.cache/akb-ci/playwright
+  PNPM_STORE_DIR: /home/akbci/.cache/akb-ci/pnpm-store
 
 jobs:
   standards:
     name: Repository Standards
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
 
     steps:
       - name: Check out repository
@@ -33,11 +36,17 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          package-manager-cache: false
 
       - name: Set up Ruby
+        if: runner.environment == 'github-hosted'
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
+
+      - name: Verify preinstalled Ruby
+        if: runner.environment == 'self-hosted'
+        run: ruby --version
 
       - name: Validate skeleton
         run: bash scripts/validate-skeleton.sh
@@ -62,7 +71,7 @@ jobs:
 
   immutable-release:
     name: Immutable release, ingestion, and containerized PostgreSQL toolchain
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
 
     steps:
       - name: Check out repository
@@ -71,14 +80,19 @@ jobs:
           fetch-depth: 0
 
       - name: Install shellcheck
+        if: runner.environment == 'github-hosted'
         run: sudo apt-get update && sudo apt-get install --yes shellcheck
+
+      - name: Verify preinstalled shellcheck
+        if: runner.environment == 'self-hosted'
+        run: shellcheck --version
 
       - name: Validate immutable release workflow including ingestion
         run: bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
     defaults:
       run:
         working-directory: apps/web
@@ -97,11 +111,9 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
 
       - name: Verify local semantic registry
         run: pnpm semantic-registry:check
@@ -116,14 +128,19 @@ jobs:
         run: pnpm build
 
       - name: Install Playwright browser
+        if: runner.environment == 'github-hosted'
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright browser on self-hosted runner
+        if: runner.environment == 'self-hosted'
+        run: pnpm exec playwright install chromium
 
       - name: End-to-end test
         run: pnpm test:e2e
 
   python-services:
     name: Python / ${{ matrix.service }}
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
     strategy:
       fail-fast: false
       matrix:
@@ -161,8 +178,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: ${{ matrix.dependency-file }}
 
       - name: Install dependencies
         working-directory: ${{ matrix.working-directory }}
@@ -176,7 +191,7 @@ jobs:
 
   registry-postgres:
     name: Registry API / PostgreSQL
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
     services:
       postgres:
         image: postgres:17-alpine
@@ -200,8 +215,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/registry-api/pyproject.toml
 
       - name: Install Registry API dependencies
         working-directory: services/registry-api
@@ -225,7 +238,7 @@ jobs:
 
   compose:
     name: Docker Compose Config
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
 
     steps:
       - name: Check out repository

@@ -25,6 +25,50 @@ Required checks:
 - `Docker Compose Config`
 - `Immutable docker.home.cz release`
 
+## CI Runtime
+
+AKB pull-request and `main` CI run on the repository-specific self-hosted
+runner `akb-ci`. It is hosted on the isolated `stratos-ci-runner-01` VM and
+has no production secrets, production SSH credential, or access to
+`docker.home.cz`. The runner has no default GitHub labels, so jobs must request
+the explicit `akb-ci` label.
+
+The production immutable release remains a separate operator action on
+`docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
+CI must never use the production deployment runner or production environment.
+
+The CI VM owns its non-secret build prerequisites. Its baseline includes Docker,
+Ruby 3.3, `shellcheck`, and the Chromium runtime libraries required by the web
+end-to-end test. CI jobs must not use `sudo`; a repository workflow can execute
+arbitrary pull-request code and therefore receives only the `akbci` service
+account.
+
+### Persistent CI caches
+
+The AKB runner keeps dependency caches on the VM instead of uploading them to
+GitHub Actions cache storage:
+
+- pnpm store: `/home/akbci/.cache/akb-ci/pnpm-store`
+- pip download cache: `/home/akbci/.cache/akb-ci/pip`
+- Playwright browsers: `/home/akbci/.cache/akb-ci/playwright`
+- Docker image and build layers: the persistent Docker data root managed by the
+  VM Docker daemon
+
+These paths contain only public build dependencies and generated build layers;
+they must never contain repository credentials, production secrets, `.env`
+files, user uploads, or test output containing document content. Workflow jobs
+must not use GitHub-hosted dependency cache actions on the self-hosted runner.
+The Python and Node toolchains installed by their setup actions remain in the
+runner tool cache and are also reused between jobs.
+
+Do not run `docker system prune`, `docker builder prune`, or delete the shared
+Docker data root from a workflow. The Docker daemon is shared with the STRATOS
+CI runner on this VM. Cache maintenance is an operator action and must run only
+while both runners are idle. Keep at least 20 GB free on the VM; when cleanup is
+needed, remove package-cache entries older than 30 days first, then remove only
+unused Docker build cache older than 30 days. Never prune running containers,
+volumes, or images used by another repository.
+
 ## Pull Request Flow
 
 1. Create a branch from current `main`.
