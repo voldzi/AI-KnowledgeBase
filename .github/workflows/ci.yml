@@ -21,7 +21,7 @@ env:
 jobs:
   standards:
     name: Repository Standards
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
 
     steps:
       - name: Check out repository
@@ -35,9 +35,14 @@ jobs:
           node-version: "24"
 
       - name: Set up Ruby
+        if: runner.environment == 'github-hosted'
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
+
+      - name: Verify preinstalled Ruby
+        if: runner.environment == 'self-hosted'
+        run: ruby --version
 
       - name: Validate skeleton
         run: bash scripts/validate-skeleton.sh
@@ -62,7 +67,7 @@ jobs:
 
   immutable-release:
     name: Immutable release, ingestion, and containerized PostgreSQL toolchain
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
 
     steps:
       - name: Check out repository
@@ -71,14 +76,19 @@ jobs:
           fetch-depth: 0
 
       - name: Install shellcheck
+        if: runner.environment == 'github-hosted'
         run: sudo apt-get update && sudo apt-get install --yes shellcheck
+
+      - name: Verify preinstalled shellcheck
+        if: runner.environment == 'self-hosted'
+        run: shellcheck --version
 
       - name: Validate immutable release workflow including ingestion
         run: bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
     defaults:
       run:
         working-directory: apps/web
@@ -116,14 +126,19 @@ jobs:
         run: pnpm build
 
       - name: Install Playwright browser
+        if: runner.environment == 'github-hosted'
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright browser on self-hosted runner
+        if: runner.environment == 'self-hosted'
+        run: pnpm exec playwright install chromium
 
       - name: End-to-end test
         run: pnpm test:e2e
 
   python-services:
     name: Python / ${{ matrix.service }}
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
     strategy:
       fail-fast: false
       matrix:
@@ -176,7 +191,7 @@ jobs:
 
   registry-postgres:
     name: Registry API / PostgreSQL
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
     services:
       postgres:
         image: postgres:17-alpine
@@ -225,7 +240,7 @@ jobs:
 
   compose:
     name: Docker Compose Config
-    runs-on: ubuntu-latest
+    runs-on: akb-ci
 
     steps:
       - name: Check out repository

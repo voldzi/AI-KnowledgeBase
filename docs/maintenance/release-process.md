@@ -25,6 +25,24 @@ Required checks:
 - `Docker Compose Config`
 - `Immutable docker.home.cz release`
 
+## CI Runtime
+
+AKB pull-request and `main` CI run on the repository-specific self-hosted
+runner `akb-ci`. It is hosted on the isolated `stratos-ci-runner-01` VM and
+has no production secrets, production SSH credential, or access to
+`docker.home.cz`. The runner has no default GitHub labels, so jobs must request
+the explicit `akb-ci` label.
+
+The production immutable release remains a separate operator action on
+`docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
+CI must never use the production deployment runner or production environment.
+
+The CI VM owns its non-secret build prerequisites. Its baseline includes Docker,
+Ruby 3.3, `shellcheck`, and the Chromium runtime libraries required by the web
+end-to-end test. CI jobs must not use `sudo`; a repository workflow can execute
+arbitrary pull-request code and therefore receives only the `akbci` service
+account.
+
 ## Pull Request Flow
 
 1. Create a branch from current `main`.
