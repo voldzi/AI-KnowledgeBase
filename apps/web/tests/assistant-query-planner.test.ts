@@ -20,7 +20,7 @@ describe("assistant query planner", () => {
     const second = buildAssistantQueryPlan(input);
 
     assert.equal(first.plan_id, second.plan_id);
-    assert.equal(first.version, "2026-06-23");
+    assert.equal(first.version, "2026-07-28");
     assert.equal(first.intent, "obligation_table");
     assert.equal(first.output.kind, "table");
     assert.equal(first.output.artifact_contract_version, "report.v2");
@@ -28,6 +28,9 @@ describe("assistant query planner", () => {
     assert.equal(first.quality_gates.row_citations_required, true);
     assert.equal(first.quality_gates.min_columns, 3);
     assert.equal(first.quality_gates.min_informative_cells_per_row, 2);
+    assert.equal(first.execution.lane, "generative_rag");
+    assert.equal(first.execution.retrieval_strategy, "hybrid");
+    assert.equal(first.execution.generative_model_required, true);
   });
 
   it("uses report mode columns, detail, and export preference in the query plan", () => {
@@ -76,5 +79,32 @@ describe("assistant query planner", () => {
     assert.equal(plan.quality_gates.row_citations_required, false);
     assert.equal(plan.quality_gates.registry_metadata_without_chunk_citations_allowed, true);
     assert.deepEqual(plan.retrieval.topics, ["digitalizace"]);
+    assert.equal(plan.execution.lane, "deterministic_registry");
+    assert.equal(plan.execution.retrieval_strategy, "none");
+    assert.equal(plan.execution.generative_model_required, false);
+  });
+
+  it("builds a no-LLM lexical extraction plan with citation gates", () => {
+    const plan = buildAssistantQueryPlan({
+      message: "Cituj čl. 4 odst. 2 zákona 365/2000 Sb.",
+      language: "cs",
+      tool: "document_search_extract",
+      reason: "document_lookup_intent",
+      structuredOutput: false,
+      obligationOutput: false,
+      registryReportKind: null,
+      registryTopics: []
+    });
+
+    assert.equal(plan.intent, "document_extract");
+    assert.equal(plan.output.kind, "answer");
+    assert.equal(plan.quality_gates.citations_required, true);
+    assert.equal(plan.execution.lane, "lexical_extract");
+    assert.equal(plan.execution.source_authority, "document_index");
+    assert.equal(plan.execution.operation, "extract");
+    assert.equal(plan.execution.retrieval_strategy, "lexical");
+    assert.equal(plan.execution.generative_model_required, false);
+    assert.equal(plan.execution.model_policy, "none");
+    assert.equal(plan.execution.fallback_tool, null);
   });
 });

@@ -385,7 +385,9 @@ export async function POST(request: NextRequest) {
         conversation_id: conversationId,
         message,
         context: ragContextForAssistantRoute(requestContext, assistantRoute),
-        mode: body.mode ?? "it_support_answer",
+        mode: assistantRoute.tool === "document_search_extract"
+          ? "retrieve_only"
+          : body.mode ?? "it_support_answer",
         response_language: responseLanguage
       },
       context

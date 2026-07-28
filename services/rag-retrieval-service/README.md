@@ -76,14 +76,19 @@ OpenAPI specifikace je v `openapi.yaml`.
 `POST /api/v1/rag/query`:
 
 1. Vytvori `query_id`.
-2. Ziska query embedding z LLM Gateway klienta.
-3. Spusti dense retriever nad Qdrant nebo mock indexem; pri `AKL_RAG_FULLTEXT_MODE=opensearch` spusti lexical cast nad OpenSearch.
+2. Pro generativni rezimy ziska query embedding z LLM Gateway klienta.
+   `retrieve_only` embedding nevytvari.
+3. Generativni rezimy spusti dense retriever nad Qdrant nebo mock indexem a
+   lexical cast; `retrieve_only` spusti pouze lexical cast, v produkci nad
+   OpenSearch.
 4. Aplikuje metadata filtry.
 5. Posle kandidatni `document_id` do Registry API `/authz/filter-documents`.
 6. Zahodi neautorizovane chunky pred rerankingem a pred LLM.
-7. Provede reranking.
+7. Pro generativni rezimy provede reranking; `retrieve_only` jej vynecha.
 8. Vyhodnoti no-answer policy.
-9. Pokud jsou zdroje dostatečné, sestaví prompt a zavolá LLM Gateway chat completion.
+9. Pokud jsou zdroje dostatecne, generativni rezimy sestavi prompt a zavolaji
+   LLM Gateway chat completion. `retrieve_only` vrati omezene citovane vynatky
+   bez modelu.
 10. Promitne metadata kvality zdroju do warnings (`SOURCE_OCR_USED`,
     `SOURCE_QUALITY_REVIEW_REQUIRED`, `SOURCE_LOW_EXTRACTION_QUALITY`).
 11. Vrati odpoved, confidence, citace, `used_chunks`, warnings a `missing_information`.
@@ -144,6 +149,7 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_RAG_ANSWER_MAX_TOKENS` | `512` | Maximalni delka generovane odpovedi posilana do LLM Gateway. |
 | `AKL_RAG_REQUIRE_CITATIONS` | `true` | Vynuti citace u odpovedi. |
 | `AKL_RAG_ENABLE_RERANKING` | `true` | Zapne/vypne lexical reranking. |
+| `AKL_RAG_FOLLOW_UP_MODE` | `deterministic` | `deterministic` generuje navazujici otazky bez LLM; `llm` je explicitni opt-in. |
 | `AKL_RAG_AUTHZ_MODE` | `dev` | `dev` pouzije lokalni authz filtr, `registry` pouzije Registry API klienta. |
 
 Produkce s `AKL_RAG_FULLTEXT_MODE=opensearch` vyžaduje HTTPS, Basic Auth,

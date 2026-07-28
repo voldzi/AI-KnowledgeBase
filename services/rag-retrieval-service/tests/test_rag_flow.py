@@ -8,6 +8,7 @@ from app.service import (
     RagRetrievalService,
     _assistant_answer_query,
     _assistant_filters,
+    _assistant_query_plan_audit_metadata,
     _assistant_query,
     _bounded_conversation_questions,
     _employee_answer,
@@ -461,6 +462,87 @@ def test_assistant_chat_returns_actionable_follow_up_questions() -> None:
     assert body["follow_up_questions"]
     assert all(item.endswith("?") for item in body["follow_up_questions"])
     assert not any("otevřít" in item.lower() for item in body["follow_up_questions"])
+
+
+def test_assistant_retrieve_only_uses_lexical_extract_without_embedding_or_llm() -> None:
+    with make_client() as client:
+        service = client.app.state.rag_service
+        service._llm_client.embeddings = AsyncMock(
+            side_effect=AssertionError("lexical extraction must not invoke embeddings")
+        )
+        service._llm_client.chat_completion = AsyncMock(
+            side_effect=AssertionError("lexical extraction must not invoke chat completion")
+        )
+        service._llm_client.chat_completion_result = AsyncMock(
+            side_effect=AssertionError("lexical extraction must not invoke chat completion")
+        )
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Najdi smlouvu 256-2022-S.",
+                "mode": "retrieve_only",
+                "context": {
+                    "assistant_query_plan": {
+                        "plan_id": "plan_test",
+                        "version": "2026-07-28",
+                        "tool": "document_search_extract",
+                        "reason": "document_lookup_intent",
+                        "execution": {
+                            "lane": "lexical_extract",
+                            "retrieval_strategy": "lexical",
+                            "generative_model_required": False,
+                            "model_policy": "none",
+                        },
+                    }
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert body["answer"].startswith("Nalezené citované výňatky:")
+    assert "AUTOCONT" in body["answer"]
+    assert "``" not in body["answer"]
+    assert body["citations"][0]["document_title"].startswith("Smlouva 256-2022-S")
+    assert 1 <= len(body["citations"]) <= 3
+    assert body["follow_up_questions"]
+    assert service._llm_client.embeddings.await_count == 0
+    assert service._llm_client.chat_completion.await_count == 0
+    assert service._llm_client.chat_completion_result.await_count == 0
+
+
+def test_assistant_query_plan_audit_metadata_keeps_only_bounded_decisions() -> None:
+    metadata = _assistant_query_plan_audit_metadata(
+        {
+            "assistant_query_plan": {
+                "plan_id": "plan_test",
+                "version": "2026-07-28",
+                "tool": "document_search_extract",
+                "reason": "document_lookup_intent",
+                "prompt": "must not be logged",
+                "execution": {
+                    "lane": "lexical_extract",
+                    "retrieval_strategy": "lexical",
+                    "generative_model_required": False,
+                    "model_policy": "none",
+                    "document_body": "must not be logged",
+                },
+            }
+        }
+    )
+
+    assert metadata == {
+        "assistant_plan_id": "plan_test",
+        "assistant_plan_version": "2026-07-28",
+        "assistant_tool": "document_search_extract",
+        "assistant_tool_reason": "document_lookup_intent",
+        "assistant_execution_lane": "lexical_extract",
+        "assistant_retrieval_strategy": "lexical",
+        "assistant_generative_model_required": False,
+        "assistant_model_policy": "none",
+    }
 
 
 def test_follow_up_parser_accepts_llm_json_only_questions() -> None:

@@ -14,6 +14,7 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.llm_client_mode == "mock"
     assert settings.answer_max_tokens == 512
     assert settings.source_context_window == 1
+    assert settings.follow_up_mode == "deterministic"
 
 
 def test_production_rejects_mock_clients() -> None:
@@ -69,6 +70,12 @@ def test_invalid_answer_max_tokens_is_rejected() -> None:
 def test_invalid_source_context_window_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_SOURCE_CONTEXT_WINDOW"):
         load_settings({"AKL_RAG_SOURCE_CONTEXT_WINDOW": "6"})
+
+
+def test_follow_up_mode_accepts_llm_opt_in_and_rejects_unknown_values() -> None:
+    assert load_settings({"AKL_RAG_FOLLOW_UP_MODE": "llm"}).follow_up_mode == "llm"
+    with pytest.raises(ConfigError, match="AKL_RAG_FOLLOW_UP_MODE"):
+        load_settings({"AKL_RAG_FOLLOW_UP_MODE": "automatic"})
 
 
 def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:

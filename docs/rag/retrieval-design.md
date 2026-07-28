@@ -20,7 +20,8 @@ Sluzba nezodpovida za ingestion, parsing dokumentu, registry metadata ani zmenu 
 ## Retrieval tok
 
 1. API prijme `subject_id`, `query`, `filters`, `answer_mode` a `max_chunks`.
-2. LLM Gateway klient vytvori embedding dotazu.
+2. Pro generativni odpoved LLM Gateway klient vytvori embedding dotazu;
+   `retrieve_only` pouzije lexikalni cestu bez embeddingu.
 3. Retriever vrati kandidatni chunky:
    - mock retriever pouziva lokalni fixture chunky,
    - Qdrant retriever vola `/collections/{collection}/points/search`,
@@ -35,6 +36,26 @@ Sluzba nezodpovida za ingestion, parsing dokumentu, registry metadata ani zmenu 
 10. Evidence gate ověří tvrzení proti použitým chunkům.
 
 Detail RAG V2 je v `docs/rag/rag-v2.md`.
+
+## Nákladově řízené cesty
+
+Zaměstnanecký chat nepoužívá jeden univerzální AI tok. Deterministický
+`assistant_query_plan` rozděluje požadavky do tří cest:
+
+1. `deterministic_registry`: počty, seznamy a metadata dokumentů čte přímo z
+   Registry API. Neprovádí retrieval ani generování.
+2. `lexical_extract`: přesné dohledání, citace a lokalizace textu používá
+   lexikální fulltext. V produkci je autoritativním fulltextovým zdrojem
+   OpenSearch. Tato cesta nevytváří embedding, nepouští reranker, nerozšiřuje
+   parent kontext a nevolá chat model.
+3. `generative_rag`: shrnutí, porovnání, vysvětlení, povinnosti, rizika a
+   strukturované reporty používají hybridní retrieval, adaptivní modelovou
+   politiku a evidence gate.
+
+Všechny dokumentové cesty po načtení kandidátů znovu aplikují Registry
+authorization a Information Policy. `requested_scopes`, prompt ani router
+nevytvářejí oprávnění. Lexikální no-answer se automaticky nepřepíná na LLM,
+protože by tak obcházel rozhodnutí plánu a zvyšoval riziko falešné odpovědi.
 
 ## Hybrid score
 
@@ -60,6 +81,7 @@ Real local RAG používá:
 - `AKL_RAG_EMBEDDING_MODEL=bge-m3`
 - `AKL_RAG_ANSWER_MAX_TOKENS=512`
 - `AKL_RAG_SOURCE_CONTEXT_WINDOW=1`
+- `AKL_RAG_FOLLOW_UP_MODE=deterministic`
 - `AKL_RAG_AUTHZ_MODE=dev`
 - Qdrant kolekci `akl_document_chunks` s vektorem velikosti `1024` a distance `Cosine`
 - OpenSearch index `akl_document_chunks` se stejnymi citačními a filtrovacími poli
@@ -70,6 +92,12 @@ Mock/dev-test profil používá `mock-embedding` s výchozí dimenzí 8. Tento p
 odpovědi. Standardní zaměstnanecké dotazy zůstávají na `AKL_RAG_CHAT_MODEL`,
 zatímco extrakce, porovnání, checklisty, manažerské/auditní odpovědi a velký
 kontext používají high-quality model, pokud je nastavený.
+
+Modelová politika se uplatní jen v `generative_rag`. Registry reporty a
+lexikální výňatky mají `model_policy=none`. Provozní diagnostika u každého
+retrievalu uvádí `retrieval_strategy`, `embedding_invoked` a
+`reranker_invoked`; audit chatu ukládá pouze bezpečné identifikátory plánu a
+rozhodnutí o cestě.
 
 ## Qdrant payload
 

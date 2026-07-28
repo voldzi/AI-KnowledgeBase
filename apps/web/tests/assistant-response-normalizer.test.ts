@@ -57,11 +57,14 @@ describe("assistant response normalizer", () => {
 
     assert.equal(normalized.current_context.tenant_id, "tenant-1");
     assert.equal(normalized.current_context.answer_source, "rag_retrieval");
-    assert.equal(normalized.current_context.assistant_contract_version, "2026-06-23");
+    assert.equal(normalized.current_context.assistant_contract_version, "2026-07-28");
     assert.equal(normalized.current_context.assistant_tool, "rag_document_answer");
     assert.equal(normalized.current_context.assistant_tool_reason, "rag_structured_output");
     assert.equal(normalized.current_context.structured_output_requested, true);
     assert.equal(normalized.current_context.obligation_output_requested, true);
+    assert.equal(normalized.current_context.assistant_execution_lane, "generative_rag");
+    assert.equal(normalized.current_context.assistant_retrieval_strategy, "hybrid");
+    assert.equal(normalized.current_context.assistant_generative_model_required, true);
     assert.equal((normalized.current_context.assistant_query_plan as { intent?: string }).intent, "obligation_table");
     assert.equal(
       (normalized.current_context.assistant_query_plan as { output?: { artifact_contract_version?: string } }).output?.artifact_contract_version,
@@ -115,5 +118,23 @@ describe("assistant response normalizer", () => {
     assert.equal(normalized.current_context.report_artifact_count, 1);
     assert.equal(normalized.report_artifacts[0]?.artifact_id, registryReport.artifact_id);
     assert.equal(normalized.report_artifacts[0]?.artifact_kind, "registry_metadata_table");
+  });
+
+  it("marks deterministic document extraction as a non-generative source", () => {
+    const message = "Najdi smlouvu 256-2022-S.";
+    const route = routeAssistantMessage(message, "cs");
+    const response = responseFixture({
+      answer: "Nalezené citované výňatky:\n\n- Smlouva 256-2022-S",
+      current_context: {}
+    });
+
+    const normalized = normalizeAssistantChatResponse({ response, message, language: "cs", route });
+
+    assert.equal(normalized.current_context.answer_source, "document_search_extract");
+    assert.equal(normalized.current_context.assistant_tool, "document_search_extract");
+    assert.equal(normalized.current_context.assistant_execution_lane, "lexical_extract");
+    assert.equal(normalized.current_context.assistant_retrieval_strategy, "lexical");
+    assert.equal(normalized.current_context.assistant_generative_model_required, false);
+    assert.equal(normalized.current_context.assistant_model_policy, "none");
   });
 });

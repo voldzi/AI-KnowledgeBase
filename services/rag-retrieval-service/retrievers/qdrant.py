@@ -36,6 +36,19 @@ class QdrantHybridRetriever:
     ) -> list[RetrievedChunk]:
         # Exact resolution is intentionally lexical. Identifiers and titles are
         # authoritative metadata signals and must not be diluted by dense fusion.
+        return await self.retrieve_lexical(
+            query=query,
+            filters=filters,
+            limit=limit,
+        )
+
+    async def retrieve_lexical(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+    ) -> list[RetrievedChunk]:
         return await self._retrieve_lexical_candidates(
             query=query,
             filters=filters,

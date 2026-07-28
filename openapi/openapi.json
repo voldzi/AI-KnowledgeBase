@@ -6453,6 +6453,7 @@
           "assistant"
         ],
         "summary": "Assistant Chat",
+        "description": "Returns a governed assistant response. In retrieve_only mode the service performs authorized lexical retrieval and returns bounded cited excerpts without invoking embeddings, reranking, parent expansion, or a chat model.",
         "operationId": "rag_retrieval_service_assistant_chat_api_v1_assistant_chat_post",
         "requestBody": {
           "content": {

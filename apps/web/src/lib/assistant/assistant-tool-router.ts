@@ -16,8 +16,15 @@ import {
   type AssistantQueryPlan
 } from "./assistant-query-planner";
 
-export type AssistantToolName = "registry_document_report" | "rag_document_answer";
-export type AssistantToolRouteReason = "registry_metadata_intent" | "rag_structured_output" | "rag_grounded_answer";
+export type AssistantToolName =
+  | "registry_document_report"
+  | "document_search_extract"
+  | "rag_document_answer";
+export type AssistantToolRouteReason =
+  | "registry_metadata_intent"
+  | "document_lookup_intent"
+  | "rag_structured_output"
+  | "rag_grounded_answer";
 
 export interface AssistantToolRoute {
   tool: AssistantToolName;
@@ -33,6 +40,13 @@ export interface AssistantToolRoute {
 
 const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf|graf|diagram|vizualiz|chart|plot)/i;
 const OBLIGATION_OUTPUT_RE = /(povinnost|obligation)/i;
+const DOCUMENT_LOOKUP_ACTION_RE = /(?:^|[\s,.;:!?])(najdi|vyhledej|dohledej|ukaž|ukaz|otevři|otevri)(?:\s|$)/i;
+const DOCUMENT_LOOKUP_OBJECT_RE = /(dokument|směrnic|smernic|předpis|predpis|zákon|zakon|smlouv|metodik|ustanoven|člán|cl\.|odstav|příloh|priloh|kapitol|sekc|pasáž|pasaz|část|cast|verz|soubor)/i;
+const DOCUMENT_QUOTE_RE = /(?:^|[\s,.;:!?])(cituj|ocituj)(?:\s|$)|přesn[ée]\s+znění|presn[ée]\s+zneni|kde\s+je\s+(?:to\s+)?uveden|ve\s+kterém\s+dokumentu|v\s+jakém\s+dokumentu/i;
+const DOCUMENT_IDENTIFIER_RE =
+  /\b(?:doc|ver)_[a-z0-9_-]{6,}\b|\b(?:čl|cl)\.\s*\d+[a-z]?(?:\s+odst\.\s*\d+)?|\b\d{1,4}\/\d{4}\s*sb\.?\b|\b[A-ZČŘŠŽŤĎŇ]{2,12}\s+\d{1,4}\/\d{2,4}\b|\b\d{2,6}[-/]\d{2,4}[-/][A-Z0-9]{1,12}\b/i;
+const SYNTHESIS_RE =
+  /(shrň|shrn|vysvět|vysvet|popiš|popis|porov|rozdíl|rozdil|rozpor|povinnost|dopad|rizik|doporuč|doporuc|vyhodnoť|vyhodnot|analyz|co\s+(?:je|znamená|znamena|stanoví|stanovi|upravuje)|k\s+čemu|k\s+cemu|co\s+z\s+toho\s+plyne|praktick[ýy]\s+význam|praktick[ýy]\s+vyznam)/i;
 
 export function routeAssistantMessage(
   message: string,
@@ -52,6 +66,18 @@ export function routeAssistantMessage(
       registryTopics: extractRegistryDocumentTopics(message, language),
       answerFormatInstruction: null,
       reportRequest
+    });
+  }
+  if (isDocumentSearchExtractQuestion(message, structuredOutput)) {
+    return withQueryPlan(message, language, {
+      tool: "document_search_extract",
+      reason: "document_lookup_intent",
+      structuredOutput: false,
+      obligationOutput: false,
+      registryReportKind: null,
+      registryTopics: [],
+      answerFormatInstruction: null,
+      reportRequest: null
     });
   }
   return withQueryPlan(message, language, {
@@ -95,6 +121,16 @@ export function routeAssistantMessageForRag(
     }),
     reportRequest: route.reportRequest
   };
+}
+
+function isDocumentSearchExtractQuestion(message: string, structuredOutput: boolean): boolean {
+  if (!message.trim() || structuredOutput || SYNTHESIS_RE.test(message)) {
+    return false;
+  }
+  if (DOCUMENT_QUOTE_RE.test(message) || DOCUMENT_IDENTIFIER_RE.test(message)) {
+    return true;
+  }
+  return DOCUMENT_LOOKUP_ACTION_RE.test(message) && DOCUMENT_LOOKUP_OBJECT_RE.test(message);
 }
 
 export function ragContextForAssistantRoute(
