@@ -278,7 +278,11 @@ export interface RegistryApiClient {
   updateRoleMappingStatus(roleMappingId: string, status: string, context: ApiRequestContext): Promise<RoleMapping>;
   getProfileSettings(context: ApiRequestContext): Promise<ProfileSettingsResponse>;
   putProfileSettings(request: ProfileSettingsPutRequest, context: ApiRequestContext): Promise<ProfileSettingsResponse>;
-  listAssistantConversations(context: ApiRequestContext, includeArchived?: boolean): Promise<AssistantConversationListResponse>;
+  listAssistantConversations(
+    context: ApiRequestContext,
+    includeArchived?: boolean,
+    includeSuggestionSignals?: boolean
+  ): Promise<AssistantConversationListResponse>;
   createAssistantConversation(
     request: AssistantConversationCreateRequest,
     context: ApiRequestContext

@@ -358,6 +358,15 @@ export interface AssistantConversationListItem {
   updated_at: string;
   shared_with: AssistantConversationShare[];
   message_count: number;
+  suggestion_signals: AssistantSuggestionSignal[];
+}
+
+export interface AssistantSuggestionSignal {
+  source_kind: "director_copilot_v2" | "documents";
+  intent: string | null;
+  prompt_fingerprint: string;
+  feedback_rating: "helpful" | "not_helpful" | null;
+  created_at: string;
 }
 
 export interface AssistantConversationListResponse {

@@ -1564,16 +1564,29 @@ class RagRetrievalService:
         questions = _parse_follow_up_questions(raw)
         return questions or fallback
 
-    async def assistant_suggestions(self, response_language: ResponseLanguage = "cs") -> AssistantSuggestionsResponse:
-        dynamic = await self._content_based_suggestions(response_language)
+    async def assistant_suggestions(
+        self,
+        response_language: ResponseLanguage = "cs",
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> AssistantSuggestionsResponse:
+        dynamic = await self._content_based_suggestions(
+            response_language,
+            auth_context=auth_context,
+        )
         if dynamic:
             return AssistantSuggestionsResponse(suggestions=dynamic)
         return AssistantSuggestionsResponse(suggestions=_assistant_suggestions(response_language))
 
-    async def _content_based_suggestions(self, response_language: ResponseLanguage) -> list[AssistantSuggestion]:
+    async def _content_based_suggestions(
+        self,
+        response_language: ResponseLanguage,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> list[AssistantSuggestion]:
         """Derive suggested questions from documents actually present in the
-        search index, so the assistant promotes real stored content instead
-        of a generic IT-support catalogue."""
+        search index after Registry authorization. Document titles must never
+        reveal the existence of a source outside the current subject's scope."""
         list_titles = getattr(self._retriever, "list_document_titles", None)
         if list_titles is None:
             return []
@@ -1582,7 +1595,28 @@ class RagRetrievalService:
         except Exception:
             logger.warning("assistant_suggestions_index_lookup_failed", exc_info=True)
             return []
-        return _content_based_suggestions_from_documents(documents, response_language)
+        candidate_ids = [
+            str(document.get("document_id") or "")
+            for document in documents
+            if document.get("document_id")
+        ]
+        if not candidate_ids or auth_context is None:
+            return []
+        try:
+            authorized = await self._registry_client.filter_allowed_documents(
+                subject_id=auth_context.subject_id,
+                candidate_document_ids=candidate_ids,
+                auth_context=auth_context,
+            )
+        except Exception:
+            logger.warning("assistant_suggestions_authorization_failed", exc_info=True)
+            return []
+        visible = [
+            document
+            for document in documents
+            if str(document.get("document_id") or "") in authorized.allowed_document_ids
+        ]
+        return _content_based_suggestions_from_documents(visible, response_language)
 
     async def assistant_conversation(
         self,

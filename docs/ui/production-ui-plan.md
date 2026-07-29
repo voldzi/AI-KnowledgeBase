@@ -25,7 +25,12 @@ workspace:
 - Primary AKB Assistant surface for user-owned threads, thread switching, citation review, and share-thread controls.
 - Default scope is all authorized knowledge. Imported project documentation uses the `akb-docs` tag when the local docs import manifest is used.
 - `project_documentation` is included in default document types.
-- Suggested questions are loaded from `GET /api/v1/assistant/suggestions`.
+- Suggested questions are loaded through the private, non-cacheable web bridge
+  `GET /api/assistant/suggestions`. The bridge combines only the current
+  access projection, a deterministic calendar cadence and bounded derived
+  signals from the current subject's own retained threads. It does not call an
+  LLM, copy historical prompt text or expose a domain that the Director
+  Copilot V2 planner cannot authorize and execute.
 - Questions are sent through `POST /api/v1/assistant/chat`.
 - Clarifying answers continue through `POST /api/v1/assistant/clarify`.
 - Citations are clickable.

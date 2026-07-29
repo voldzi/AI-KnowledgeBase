@@ -177,8 +177,18 @@ Purpose:
   intentional scroll position and expose a `New answer` control otherwise
 - keep share-thread controls visible as the product path for collaborative work with retention policy
 - ask RAG Retrieval Service for answers through the assistant API
-- offer each indexed document title at most once in the suggested-question area,
-  even when the retrieval index contains several versions or chunks of the same document
+- build at most four suggested questions without an LLM from the current
+  STRATOS access projection, Prague calendar cadence and bounded signals from
+  the current subject's own retained threads
+- pass every live-data suggestion through the pinned Director Copilot V2
+  intent router, planner, capability, scope and Information Policy boundary
+  before it can be displayed; a suggested question is never an authorization
+  assertion
+- use only intent, time, bounded feedback and a one-way prompt fingerprint for
+  history personalization. Never expose raw historical prompts or answers and
+  never learn from a shared thread owned by another subject
+- refresh suggestions when the selected language changes and whenever a new
+  server-backed thread is created
 - show confidence, warnings and no-answer states inside the active thread
 - display citations with document id, version id, section path, page and chunk id
 - keep source-context and direct source-document opening available from the answer

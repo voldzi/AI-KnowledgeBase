@@ -2018,6 +2018,14 @@ class AssistantConversationShareReplaceRequest(BaseModel):
     visibility: str = Field(default="shared", pattern="^(private|shared)$")
 
 
+class AssistantSuggestionSignalResponse(BaseModel):
+    source_kind: Literal["director_copilot_v2", "documents"]
+    intent: str | None = Field(default=None, max_length=128)
+    prompt_fingerprint: str = Field(pattern="^[0-9a-f]{64}$")
+    feedback_rating: Literal["helpful", "not_helpful"] | None = None
+    created_at: datetime
+
+
 class AssistantConversationListItemResponse(BaseModel):
     conversation_id: str
     user_id: str
@@ -2031,6 +2039,10 @@ class AssistantConversationListItemResponse(BaseModel):
     updated_at: datetime
     shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)
     message_count: int = 0
+    suggestion_signals: list[AssistantSuggestionSignalResponse] = Field(
+        default_factory=list,
+        max_length=32,
+    )
 
 
 class AssistantConversationListResponse(BaseModel):

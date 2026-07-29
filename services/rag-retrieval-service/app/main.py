@@ -317,8 +317,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         response_language: ResponseLanguage = "cs",
     ) -> AssistantSuggestionsResponse:
-        _guard_request(request)
-        return await _service(request).assistant_suggestions(response_language)
+        auth_context = _guard_request(request)
+        return await _service(request).assistant_suggestions(
+            response_language,
+            auth_context=auth_context,
+        )
 
     @app.get(
         "/api/v1/assistant/conversations/{conversation_id}",

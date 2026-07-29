@@ -950,7 +950,7 @@ describe("production API clients", () => {
     const clients = createApiClients({ env, fetcher });
     const context = createMockContext({ subjectId: "employee_1", accessToken: "test-token" });
 
-    await clients.registry.listAssistantConversations(context, true);
+    await clients.registry.listAssistantConversations(context, true, true);
     await clients.registry.createAssistantConversation(
       { title: "Nové vlákno", visibility: "private" },
       context,
@@ -983,7 +983,7 @@ describe("production API clients", () => {
     );
     await clients.registry.deleteAssistantConversation("conv_1", context);
 
-    assert.equal(calls[0][0], "https://registry.local/api/v1/assistant/conversation-history?include_archived=true&limit=50&offset=0");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/assistant/conversation-history?include_archived=true&limit=50&offset=0&include_suggestion_signals=true");
     assert.equal(calls[0][1]?.method, "GET");
     assert.equal(calls[1][0], "https://registry.local/api/v1/assistant/conversation-history");
     assert.equal(calls[1][1]?.method, "POST");

@@ -304,19 +304,19 @@ export class MockRagClient implements RagApiClient {
     if (language === "en") {
       return {
         suggestions: [
-          { label: "New access", prompt: "How do I request new access?", domain: "Service Desk", audience: "employee" },
-          { label: "Report incident", prompt: "How do I report an incident?", domain: "IT Operations", audience: "employee" },
-          { label: "Who approves exception", prompt: "Who approves an exception to a directive?", domain: "Documentation", audience: "employee" },
-          { label: "Platform architecture", prompt: "What is the architecture of the AKB platform?", domain: "Documentation", audience: "employee" }
+          { label: "Available documents", prompt: "What types of documents are available to me in AKB?", domain: "Documents", audience: "authorized_user" },
+          { label: "Who approves exception", prompt: "Who approves an exception to a directive?", domain: "Documentation", audience: "authorized_user" },
+          { label: "Document obligations", prompt: "Which obligations follow from the documents available to me?", domain: "Documentation", audience: "authorized_user" },
+          { label: "Platform architecture", prompt: "What is the architecture of the AKB platform?", domain: "Documentation", audience: "authorized_user" }
         ]
       };
     }
     return {
       suggestions: [
-        { label: "Nový přístup", prompt: "Jak požádám o nový přístup?", domain: "Service Desk", audience: "employee" },
-        { label: "Nahlásit incident", prompt: "Jak nahlásím incident?", domain: "IT Operations", audience: "employee" },
-        { label: "Kdo schvaluje výjimku", prompt: "Kdo schvaluje výjimku ze směrnice?", domain: "Dokumentace", audience: "employee" },
-        { label: "Architektura platformy", prompt: "Jaká je architektura AKB platformy?", domain: "Dokumentace", audience: "employee" }
+        { label: "Dostupné dokumenty", prompt: "Jakého typu jsou dokumenty, které mám v AKB k dispozici?", domain: "Dokumenty", audience: "authorized_user" },
+        { label: "Kdo schvaluje výjimku", prompt: "Kdo schvaluje výjimku ze směrnice?", domain: "Dokumentace", audience: "authorized_user" },
+        { label: "Povinnosti z dokumentů", prompt: "Jaké povinnosti vyplývají z dokumentů, ke kterým mám přístup?", domain: "Dokumentace", audience: "authorized_user" },
+        { label: "Architektura platformy", prompt: "Jaká je architektura AKB platformy?", domain: "Dokumentace", audience: "authorized_user" }
       ]
     };
   }
