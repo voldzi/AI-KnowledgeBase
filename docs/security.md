@@ -283,6 +283,16 @@ from the state. Source scopes are rebuilt from the current verified STRATOS
 access projection for every turn, and query-state entity IDs can only narrow a
 source request.
 
+Temporal controlled-document rules are never authorized by a client-supplied
+date, package id or scope. Registry first selects packages effective on
+`valid_on`, then applies current document authorization to every exact package
+member. RAG may propose a rule only from retrieved authorized chunks and every
+proposal must cite a member version of the package. Only human-accepted or
+human-edited, non-conflicting rules can become consumer eligible. A lower
+authority rule is withheld when the same normative key exists in an effective
+higher-authority source. Missing packages, conflicts, unknown fields and
+authorization outages fail closed.
+
 ## Secrets
 
 Secrets must not be committed to Git, documentation, package artifacts, shell

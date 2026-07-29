@@ -358,3 +358,155 @@ export interface AuthorizationHint {
   can_read_audit: boolean;
   can_manage_admin: boolean;
 }
+
+export type ControlledDocumentPackageStatus =
+  | "draft"
+  | "approved"
+  | "valid"
+  | "superseded"
+  | "cancelled"
+  | "archived";
+
+export type ControlledDocumentSourceType =
+  | "law"
+  | "implementing_regulation"
+  | "internal_directive"
+  | "internal_instruction"
+  | "methodology"
+  | "form"
+  | "informative_guidance";
+
+export interface ControlledDocumentPackageMember {
+  member_id: string;
+  member_role: "main_document" | "attachment" | "form" | "template";
+  relation_type:
+    | "contains_attachment"
+    | "contains_form"
+    | "contains_template"
+    | "implements"
+    | "replaces"
+    | "amends"
+    | "references"
+    | "related_to";
+  document_id: string;
+  document_version_id: string;
+  label: string | null;
+  ordinal: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface ControlledDocumentPackage {
+  package_id: string;
+  organization_id: string;
+  package_key: string;
+  release_label: string;
+  title: string;
+  domain: string;
+  source_type: ControlledDocumentSourceType;
+  authority_rank: number;
+  status: ControlledDocumentPackageStatus;
+  effective_from: string;
+  effective_to: string | null;
+  primary_document_id: string;
+  primary_document_version_id: string;
+  replaces_package_id: string | null;
+  owner_id: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  metadata: Record<string, unknown>;
+  members: ControlledDocumentPackageMember[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ControlledDocumentPackageList {
+  items: ControlledDocumentPackage[];
+  valid_on: string;
+  warnings: string[];
+}
+
+export interface ControlledDocumentPackageCreate {
+  package_key: string;
+  release_label: string;
+  title: string;
+  domain: string;
+  source_type: ControlledDocumentSourceType;
+  effective_from: string;
+  effective_to?: string | null;
+  primary_document_id: string;
+  primary_document_version_id: string;
+  replaces_package_id?: string | null;
+  members: Array<{
+    member_role: ControlledDocumentPackageMember["member_role"];
+    relation_type: ControlledDocumentPackageMember["relation_type"];
+    document_id: string;
+    document_version_id: string;
+    label?: string | null;
+    ordinal?: number;
+    metadata?: Record<string, unknown>;
+  }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ControlledRuleCitation {
+  document_id: string;
+  document_version_id: string;
+  chunk_id: string;
+  section_path: string[];
+  page_number: number | null;
+  article_number: string | null;
+  paragraph_number: string | null;
+  quoted_text: string;
+}
+
+export interface ControlledRuleProposal {
+  rule_id: string;
+  normative_key: string;
+  category: string;
+  title: string;
+  value: unknown;
+  unit: string | null;
+  currency: string | null;
+  vat_basis: string;
+  conditions: string[];
+  exceptions: string[];
+  responsible_roles: string[];
+  required_evidence: string[];
+  confidence: number;
+  citation: ControlledRuleCitation;
+}
+
+export interface ControlledRule {
+  extraction_id: string;
+  package_id: string;
+  source_type: ControlledDocumentSourceType;
+  authority_rank: number;
+  proposal: ControlledRuleProposal;
+  verification_status: "proposed" | "accepted" | "edited" | "rejected";
+  verified_by: string | null;
+  verified_at: string | null;
+  verification_note: string | null;
+  precedence_status: "authoritative" | "supplemental" | "shadowed" | "conflict";
+  consumer_eligible: boolean;
+}
+
+export interface ControlledRuleList {
+  domain: string;
+  valid_on: string;
+  packages: ControlledDocumentPackage[];
+  rules: ControlledRule[];
+  warnings: string[];
+}
+
+export interface ControlledRuleFeedbackRequest {
+  field: string;
+  ai_value?: unknown;
+  final_value?: unknown;
+  decision: "accepted" | "rejected" | "edited";
+  reason?: string | null;
+  actor: string;
+  source_app: "STRATOS_PLATFORM";
+  source_entity_id: string;
+  correlation_id?: string | null;
+  metadata?: Record<string, unknown>;
+}

@@ -10,6 +10,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from collections.abc import Callable
 from typing import AsyncIterator, Awaitable
 
@@ -23,6 +24,10 @@ from app.archflow_extraction import (
 from app.config import Settings
 from app.context import get_correlation_id, get_request_id
 from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
+from app.controlled_rule_extraction import (
+    controlled_rule_extraction_profile,
+    extract_controlled_rule_proposals,
+)
 from app.errors import RetrievalError
 from app.llm_client import ChatCompletionResult, LLMGatewayClient
 from app.registry_client import IdempotencyReservation, RegistryClient
@@ -56,6 +61,8 @@ from app.schemas import (
     ContractExtractionProfilesResponse,
     ContractExtractionProposeRequest,
     ContractExtractionResponse,
+    ControlledRuleExtractionProposeRequest,
+    ControlledRuleExtractionResponse,
     RagAnswer,
     RagQueryRequest,
     RagQueryFilters,
@@ -657,6 +664,7 @@ class RagRetrievalService:
             profiles=[
                 *contract_extraction_profiles(),
                 *archflow_goal_extraction_profiles(),
+                controlled_rule_extraction_profile(),
             ]
         )
 
@@ -784,6 +792,154 @@ class RagRetrievalService:
                 "status": response.status,
                 "proposal_count": len(response.proposals),
                 "missing_information": response.missing_information,
+                "warnings": response.warnings,
+            },
+            auth_context=auth_context,
+        )
+        return response
+
+    async def propose_controlled_rule_extraction(
+        self,
+        payload: ControlledRuleExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ControlledRuleExtractionResponse:
+        query_id = _query_id()
+        source_coordinates = {
+            (document.document_id, document.document_version_id)
+            for document in payload.documents
+        }
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="controlled_rule_extraction.started",
+            resource_id=payload.package_id,
+            metadata={
+                "tenant_id": payload.tenant_id,
+                "package_id": payload.package_id,
+                "domain": payload.domain,
+                "source_document_count": len(source_coordinates),
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+            },
+            auth_context=auth_context,
+        )
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=_controlled_rule_extraction_query(payload),
+                filters=RagQueryFilters(
+                    document_types=[
+                        "directive",
+                        "regulation",
+                        "methodology",
+                        "policy",
+                        "procedure",
+                        "manual",
+                        "attachment",
+                        "other",
+                    ],
+                    document_ids=sorted(
+                        {document_id for document_id, _ in source_coordinates}
+                    ),
+                    document_version_ids=sorted(
+                        {version_id for _, version_id in source_coordinates}
+                    ),
+                    only_valid=False,
+                    classification_max=payload.classification_max,
+                ),
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        denied_sources = sorted(
+            document_id
+            for document_id, _ in source_coordinates
+            if document_id in run.denied_document_ids
+        )
+        if denied_sources:
+            await self._audit_extraction(
+                actor_id=payload.subject_id,
+                event_type="controlled_rule_extraction.permission_denied",
+                resource_id=payload.package_id,
+                metadata={
+                    "tenant_id": payload.tenant_id,
+                    "denied_document_ids": denied_sources,
+                    "profile": payload.profile,
+                },
+                auth_context=auth_context,
+            )
+            raise RetrievalError(
+                "CONTROLLED_DOCUMENT_ACCESS_DENIED",
+                "The subject is not authorized for every package source version.",
+                status_code=403,
+                details={"denied_document_ids": denied_sources},
+            )
+
+        chunks = [
+            chunk
+            for chunk in run.response.chunks
+            if (
+                chunk.citation.document_id,
+                chunk.citation.document_version_id,
+            )
+            in source_coordinates
+        ]
+        rules, missing_information, extraction_warnings = (
+            extract_controlled_rule_proposals(chunks=chunks)
+        )
+        warnings = list(
+            dict.fromkeys([*run.response.warnings, *extraction_warnings])
+        )
+        if not chunks:
+            warnings.append("CONTROLLED_PACKAGE_SOURCES_NOT_RETRIEVED")
+        status = "PROPOSED" if rules and not missing_information else "PARTIAL"
+        primary = payload.documents[0]
+        result = {
+            "domain": payload.domain,
+            "package_id": payload.package_id,
+            "rules": [rule.model_dump(mode="json") for rule in rules],
+        }
+        stored = await self._registry_client.store_document_extraction(
+            payload={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": f"controlled-package:{payload.package_id}",
+                "entity_type": "controlled_document_package",
+                "entity_id": payload.package_id,
+                "document_id": primary.document_id,
+                "document_version_id": primary.document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+                "status": status,
+                "classification": payload.classification_max,
+                "requested_by": payload.subject_id,
+                "correlation_id": payload.correlation_id,
+                "result": result,
+                "missing_information": missing_information,
+                "warnings": warnings,
+                "metadata": {
+                    "query_id": query_id,
+                    "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+                    "source_document_count": len(source_coordinates),
+                    **payload.metadata,
+                },
+            },
+            auth_context=auth_context,
+        )
+        response = _controlled_rule_extraction_response_from_registry(
+            stored.get("extraction", stored)
+        )
+        await self._audit_extraction(
+            actor_id=payload.subject_id,
+            event_type="controlled_rule_extraction.proposed",
+            resource_id=response.extraction_id,
+            metadata={
+                "tenant_id": response.tenant_id,
+                "package_id": response.package_id,
+                "domain": response.domain,
+                "status": response.status,
+                "proposal_count": len(response.rules),
                 "warnings": response.warnings,
             },
             auth_context=auth_context,
@@ -1279,7 +1435,7 @@ class RagRetrievalService:
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
                 query=retrieval_query,
-                filters=_assistant_filters(payload.context),
+                filters=_assistant_filters(payload.context, payload.message),
                 max_chunks=max_chunks,
             ),
             query_id=query_id,
@@ -1778,6 +1934,7 @@ class RagRetrievalService:
             self._settings.adaptive_retrieval_mode == "enforce"
             and plan.profile == "temporal"
             and not payload.filters.document_version_ids
+            and payload.filters.valid_on is None
         ):
             retrieval_filters = payload.filters.model_copy(update={"only_valid": False})
         exact_document_id = None
@@ -1959,6 +2116,11 @@ class RagRetrievalService:
                     "candidate_limit": candidate_limit,
                     "dense_weight": plan.dense_weight,
                     "only_valid": retrieval_filters.only_valid,
+                    "valid_on": (
+                        retrieval_filters.valid_on.isoformat()
+                        if retrieval_filters.valid_on
+                        else None
+                    ),
                     "candidates_before_authz": len(candidates),
                     "candidates_after_authz": len(authorized),
                     "duplicates_removed": duplicate_count,
@@ -2633,6 +2795,17 @@ def _contract_extraction_query(payload: ContractExtractionProposeRequest) -> str
     )
 
 
+def _controlled_rule_extraction_query(
+    payload: ControlledRuleExtractionProposeRequest,
+) -> str:
+    return (
+        "Řízený předpis: najdi přesně citovatelné finanční limity, časové lhůty, "
+        "povinnosti, zákazy, oprávnění, odpovědnosti, výjimky a požadované doklady. "
+        "Nevytvářej pravidla, která nejsou výslovně obsažena ve zdrojové verzi. "
+        f"Doména: {payload.domain}. Balíček: {payload.package_id}."
+    )
+
+
 def _archflow_goal_extraction_query(payload: ArchflowGoalExtractionProposeRequest) -> str:
     return (
         "ArchFlow goal extraction: strategický cíl dílčí cíl schopnost povinnost požadavek "
@@ -2717,6 +2890,44 @@ def _contract_extraction_response_from_registry(payload: dict[str, object]) -> C
         warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
         source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
         metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
+
+
+def _controlled_rule_extraction_response_from_registry(
+    payload: dict[str, object],
+) -> ControlledRuleExtractionResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    metadata = payload.get("metadata")
+    metadata_map = metadata if isinstance(metadata, dict) else {}
+    rules = result_map.get("rules", [])
+    source_chunk_ids = metadata_map.get("source_chunk_ids", [])
+    return ControlledRuleExtractionResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system="STRATOS_PLATFORM",
+        package_id=str(result_map.get("package_id", payload.get("entity_id", ""))),
+        domain=str(result_map.get("domain", "")),
+        profile="controlled_document_rules_v1",
+        profile_version="1",
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        rules=rules if isinstance(rules, list) else [],
+        missing_information=(
+            payload.get("missing_information", [])
+            if isinstance(payload.get("missing_information"), list)
+            else []
+        ),
+        warnings=(
+            payload.get("warnings", [])
+            if isinstance(payload.get("warnings"), list)
+            else []
+        ),
+        source_chunk_ids=(
+            source_chunk_ids if isinstance(source_chunk_ids, list) else []
+        ),
+        metadata=metadata_map,
     )
 
 
@@ -2968,7 +3179,10 @@ def _int_or_none(value: object) -> int | None:
         return None
 
 
-def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
+def _assistant_filters(
+    context: dict[str, object],
+    query: str = "",
+) -> RagQueryFilters:
     tags: list[str] = []
     context_tags = context.get("tags")
     if isinstance(context_tags, list):
@@ -3007,7 +3221,62 @@ def _assistant_filters(context: dict[str, object]) -> RagQueryFilters:
         tags=tags,
         document_ids=document_ids,
         document_version_ids=document_version_ids,
+        valid_on=_assistant_valid_on(context, query),
     )
+
+
+def _assistant_valid_on(
+    context: dict[str, object],
+    query: str,
+) -> date | None:
+    sources = [context]
+    for key in ("stratos", "akb", "document", "entity"):
+        nested = context.get(key)
+        if isinstance(nested, dict):
+            sources.append(nested)
+    for source in sources:
+        for key in ("valid_on", "validOn", "as_of", "asOf"):
+            parsed = _parse_iso_date(source.get(key))
+            if parsed is not None:
+                return parsed
+
+    iso_match = re.search(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)", query)
+    if iso_match:
+        parsed = _parse_iso_date(iso_match.group(1))
+        if parsed is not None:
+            return parsed
+
+    czech_match = re.search(
+        r"(?<!\d)(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})(?!\d)",
+        query,
+    )
+    if czech_match:
+        try:
+            return date(
+                int(czech_match.group(3)),
+                int(czech_match.group(2)),
+                int(czech_match.group(1)),
+            )
+        except ValueError:
+            return None
+
+    year_match = re.search(
+        r"\b(?:v|ve|k|ke|pro|za|od)\s+(?:roce|roku|dni)?\s*(20\d{2})\b",
+        query.casefold(),
+    )
+    if year_match:
+        return date(int(year_match.group(1)), 12, 31)
+    return None
+
+
+def _parse_iso_date(value: object) -> date | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()[:10]
+    try:
+        return date.fromisoformat(candidate)
+    except ValueError:
+        return None
 
 
 def _assistant_context_values(

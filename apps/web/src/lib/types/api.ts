@@ -1,6 +1,12 @@
 import type { AuditEvent, AuditEventListOptions, CreateAuditEventRequest } from "./audit";
 import type {
   AuthorizationHint,
+  ControlledDocumentPackage,
+  ControlledDocumentPackageCreate,
+  ControlledDocumentPackageList,
+  ControlledDocumentPackageStatus,
+  ControlledRuleFeedbackRequest,
+  ControlledRuleList,
   CreateDocumentRequest,
   CreateVersionRequest,
   Document,
@@ -71,6 +77,8 @@ import type {
   AssistantConversationResponse,
   AssistantConversationShareReplaceRequest,
   AssistantSuggestionsResponse,
+  ControlledRuleExtractionRequest,
+  ControlledRuleExtractionResponse,
   RagAnswer,
   RagQueryRequest,
   SourceContext
@@ -210,6 +218,29 @@ export interface RegistryApiClient {
     versionId: string,
     context: ApiRequestContext
   ): Promise<DocumentVersion>;
+  listControlledDocumentPackages(
+    context: ApiRequestContext,
+    options: { domain: string; validOn?: string; includeInactive?: boolean }
+  ): Promise<ControlledDocumentPackageList>;
+  createControlledDocumentPackage(
+    request: ControlledDocumentPackageCreate,
+    context: ApiRequestContext
+  ): Promise<ControlledDocumentPackage>;
+  updateControlledDocumentPackageStatus(
+    packageId: string,
+    targetStatus: ControlledDocumentPackageStatus,
+    context: ApiRequestContext
+  ): Promise<ControlledDocumentPackage>;
+  listControlledRules(
+    domain: string,
+    context: ApiRequestContext,
+    options?: { validOn?: string; approvedOnly?: boolean }
+  ): Promise<ControlledRuleList>;
+  recordControlledRuleFeedback(
+    extractionId: string,
+    request: ControlledRuleFeedbackRequest,
+    context: ApiRequestContext
+  ): Promise<void>;
   getAuthorizationHints(context: ApiRequestContext): Promise<AuthorizationHint>;
   authorizeDocument(
     documentId: string,
@@ -366,6 +397,10 @@ export interface RagApiClient {
   assistantClarify(request: AssistantChatRequest, context: ApiRequestContext): Promise<AssistantChatResponse>;
   assistantSuggestions(context: ApiRequestContext, language?: AklLanguage): Promise<AssistantSuggestionsResponse>;
   assistantConversation(conversationId: string, context: ApiRequestContext): Promise<AssistantConversationResponse>;
+  proposeControlledRules(
+    request: ControlledRuleExtractionRequest,
+    context: ApiRequestContext
+  ): Promise<ControlledRuleExtractionResponse>;
 }
 
 export interface GovernanceApiClient {

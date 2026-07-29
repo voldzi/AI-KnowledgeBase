@@ -2,6 +2,12 @@
 
 AKB is a local AI KnowledgeBase for controlled documents, ingestion, embeddings, Qdrant-backed RAG retrieval, citations, and audit events.
 
+The `/controlled-documentation` workspace manages effective-dated legal and
+internal-document packages, attachments and human-verified cited rules.
+Current and historical chat/API answers use the same `valid_on` semantics and
+the closed source hierarchy documented in
+`docs/ARCHITECTURE/temporal-controlled-documentation.md`.
+
 In production, policy-bearing documents and immutable versions are linked to
 the central STRATOS governed-information lineage. Capabilities, registered
 scopes, Information Policy bindings, current versions, RAG citations, and

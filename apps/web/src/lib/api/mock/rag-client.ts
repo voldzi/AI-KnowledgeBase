@@ -4,6 +4,8 @@ import type {
   AssistantChatResponse,
   AssistantConversationResponse,
   AssistantSuggestionsResponse,
+  ControlledRuleExtractionRequest,
+  ControlledRuleExtractionResponse,
   RagAnswer,
   RagApiClient,
   RagQueryRequest,
@@ -21,6 +23,29 @@ import {
 import { cloneMock, mockRagAnswer } from "./data";
 
 export class MockRagClient implements RagApiClient {
+  async proposeControlledRules(
+    request: ControlledRuleExtractionRequest,
+    _context: ApiRequestContext,
+  ): Promise<ControlledRuleExtractionResponse> {
+    return {
+      extraction_id: `extract_${request.package_id}`,
+      tenant_id: request.tenant_id,
+      external_system: "STRATOS_PLATFORM",
+      package_id: request.package_id,
+      domain: request.domain,
+      profile: "controlled_document_rules_v1",
+      profile_version: "1",
+      status: "PARTIAL",
+      classification: request.classification_max,
+      requested_by: request.subject_id,
+      rules: [],
+      missing_information: ["NO_CITABLE_CONTROLLED_RULES_FOUND"],
+      warnings: [],
+      source_chunk_ids: [],
+      metadata: {},
+    };
+  }
+
   async query(request: RagQueryRequest, _context: ApiRequestContext): Promise<RagAnswer> {
     const answer = cloneMock(mockRagAnswer);
     if (request.query.toLowerCase().includes("neznamy") || request.query.toLowerCase().includes("unknown")) {

@@ -37,6 +37,7 @@ export interface PublicSourceCollection {
   maxDocuments: number;
   licenseNote: string;
   allowHtml?: boolean;
+  historyFrom?: string;
   fixedDocuments?: PublicSourceFixedDocument[];
   openDataActs?: PublicSourceOpenDataAct[];
 }
@@ -114,6 +115,7 @@ const czechLawActs: PublicSourceOpenDataAct[] = [
   { title: "Zákon o rovném zacházení a o právních prostředcích ochrany před diskriminací a o změně některých zákonů (antidiskriminační zákon)", year: 2009, number: "198" },
   { title: "Zákon o zadávání veřejných zakázek", year: 2016, number: "134" },
   { title: "Nařízení vlády o stanovení finančních limitů a částek pro účely zákona o zadávání veřejných zakázek", year: 2016, number: "172" },
+  { title: "Vyhláška o uveřejňování formulářů pro účely zákona o zadávání veřejných zakázek a náležitostech profilu zadavatele", year: 2016, number: "168" },
   { title: "Vyhláška o stanovení rozsahu dokumentace veřejné zakázky na stavební práce a soupisu stavebních prací, dodávek a služeb s výkazem výměr", year: 2016, number: "169" },
   { title: "Vyhláška o stanovení paušální částky nákladů řízení o přezkoumání úkonů zadavatele při zadávání veřejných zakázek", year: 2016, number: "170" },
   { title: "Vyhláška o stanovení podrobnějších podmínek týkajících se elektronických nástrojů, elektronických úkonů při zadávání veřejných zakázek a certifikátu shody", year: 2016, number: "260" },
@@ -355,7 +357,7 @@ export const PUBLIC_SOURCE_COLLECTIONS: readonly PublicSourceCollection[] = [
     id: "czech-law",
     name: "České právní předpisy – e-Sbírka",
     authority: "Ministerstvo vnitra – e-Sbírka",
-    description: "Vybraná účinná znění právních předpisů z oficiálních otevřených dat e-Sbírky.",
+    description: "Vybraná současná i historická znění právních předpisů z oficiálních otevřených dat e-Sbírky.",
     homepage: "https://e-sbirka.gov.cz/open-data",
     topic: "pravo-cr",
     documentType: "regulation",
@@ -365,8 +367,9 @@ export const PUBLIC_SOURCE_COLLECTIONS: readonly PublicSourceCollection[] = [
     seedUrls: [],
     crawlPathPrefixes: ["/sb/", "/sbr-cache/", "/souborove-sluzby/"],
     maxPages: 0,
-    maxDocuments: czechLawActs.length,
-    licenseNote: "Oficiální otevřená data e-Sbírky jsou dostupná bez registrace; AKB zachovává účinné znění, kanonický odkaz, datum verze a hash.",
+    maxDocuments: czechLawActs.length * 12,
+    historyFrom: "2023-01-01",
+    licenseNote: "Oficiální otevřená data e-Sbírky jsou dostupná bez registrace; AKB zachovává znění účinná od roku 2023, kanonický odkaz, interval účinnosti a hash.",
     openDataActs: czechLawActs,
   },
 ] as const;

@@ -24,7 +24,7 @@ test("fixed EUR-Lex collection returns only approved HTTPS sources", async () =>
   assert.ok(result.candidates.every((item) => item.canonicalUrl.startsWith("https://eur-lex.europa.eu/")));
 });
 
-test("e-Sbírka discovery uses credential-free open data and selects the current effective version", async () => {
+test("e-Sbírka discovery uses credential-free open data and preserves versions effective since 2023", async () => {
   let requests = 0;
   const fetcher: typeof fetch = async (input, init) => {
     requests += 1;
@@ -36,6 +36,8 @@ test("e-Sbírka discovery uses credential-free open data and selects the current
       "má-vyhlášené-znění": `${path.slice(1)}/0000-00-00`,
       "má-znění": [
         `${path.slice(1)}/0000-00-00`,
+        `${path.slice(1)}/2022-09-01`,
+        `${path.slice(1)}/2023-07-16`,
         `${path.slice(1)}/2025-01-01`,
         `${path.slice(1)}/2999-01-01`,
       ],
@@ -47,16 +49,29 @@ test("e-Sbírka discovery uses credential-free open data and selects the current
 
   const collection = publicSourceCollection("czech-law");
   const result = await discoverPublicSourceCollection("czech-law", fetcher);
-  const procurementAct = result.candidates.find((item) => item.title.startsWith("134/2016 Sb."));
+  const procurementAct = result.candidates.filter((item) => item.title.startsWith("134/2016 Sb."));
 
   assert.equal(collection?.syncMode, "open_data");
-  assert.equal(result.candidates.length, collection?.openDataActs?.length);
+  assert.equal(result.candidates.length, (collection?.openDataActs?.length ?? 0) * 3);
   assert.equal(result.pagesVisited, collection?.openDataActs?.length);
   assert.equal(requests, collection?.openDataActs?.length);
   assert.equal(result.warnings.length, 0);
-  assert.equal(procurementAct?.canonicalUrl, "https://e-sbirka.gov.cz/sb/2016/134");
-  assert.match(procurementAct?.sourceUrl ?? "", /^https:\/\/opendata\.eselpoint\.gov\.cz\/sparql\?/);
-  assert.match(decodeURIComponent(procurementAct?.sourceUrl ?? ""), /2016\/134\/2025-01-01/);
+  assert.equal(procurementAct.length, 3);
+  assert.equal(procurementAct[0]?.canonicalUrl, "https://e-sbirka.gov.cz/sb/2016/134");
+  assert.deepEqual(
+    procurementAct.map((candidate) => ({
+      from: candidate.effectiveFrom,
+      to: candidate.effectiveTo,
+      status: candidate.temporalStatus,
+    })),
+    [
+      { from: "2022-09-01", to: "2023-07-15", status: "historical" },
+      { from: "2023-07-16", to: "2024-12-31", status: "historical" },
+      { from: "2025-01-01", to: null, status: "current" },
+    ],
+  );
+  assert.match(procurementAct[0]?.sourceUrl ?? "", /^https:\/\/opendata\.eselpoint\.gov\.cz\/sparql\?/);
+  assert.match(decodeURIComponent(procurementAct[2]?.sourceUrl ?? ""), /2016\/134\/2025-01-01/);
 });
 
 test("ČSÚ collection keeps authoritative HTML catalog pages as searchable originals", async () => {

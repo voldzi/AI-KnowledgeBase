@@ -419,6 +419,32 @@ def test_qdrant_valid_filter_allows_missing_valid_from_for_valid_documents() -> 
     )
 
 
+def test_temporal_filter_uses_requested_date_in_both_indexes() -> None:
+    filters = RagQueryFilters(only_valid=True, valid_on="2023-06-30")
+
+    qdrant_filter = _qdrant_filter(filters)
+    serialized_qdrant = str(qdrant_filter)
+    assert "2023-06-30" in serialized_qdrant
+
+    opensearch_filter = _opensearch_filter(filters)
+    assert {"range": {"valid_from": {"lte": "2023-06-30"}}} in next(
+        item["bool"]["should"]
+        for item in opensearch_filter
+        if "bool" in item and any(
+            "valid_from" in str(clause)
+            for clause in item["bool"].get("should", [])
+        )
+    )
+    assert {"range": {"valid_to": {"gte": "2023-06-30"}}} in next(
+        item["bool"]["should"]
+        for item in opensearch_filter
+        if "bool" in item and any(
+            "valid_to" in str(clause)
+            for clause in item["bool"].get("should", [])
+        )
+    )
+
+
 def test_qdrant_fusion_keeps_best_score_for_duplicate_chunk() -> None:
     weak_vector = _point_to_chunk(
         {

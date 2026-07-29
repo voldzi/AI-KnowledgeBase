@@ -69,6 +69,8 @@ from app.models import (
     AssistantConversationShare,
     AssistantMessage,
     AssistantMessageFeedback,
+    ControlledDocumentPackage,
+    ControlledDocumentPackageMember,
     Document,
     DocumentAccessPolicy,
     DocumentAssignment,
@@ -149,6 +151,16 @@ from app.schemas import (
     AuthzFilterDocumentsRequest,
     AuthzFilterDocumentsResponse,
     Classification,
+    ControlledDocumentPackageCreate,
+    ControlledDocumentPackageListResponse,
+    ControlledDocumentPackageMemberResponse,
+    ControlledDocumentPackageResponse,
+    ControlledDocumentPackageStatus,
+    ControlledDocumentPackageStatusUpdate,
+    ControlledDocumentSourceType,
+    ControlledRuleExtractionResult,
+    ControlledRuleListResponse,
+    ControlledRuleResponse,
     DocumentAssignmentCreate,
     DocumentAssignmentListResponse,
     DocumentAssignmentReplaceRequest,
@@ -354,6 +366,37 @@ READINESS_INGESTION_REVIEW_STATUSES = {
     DocumentExtractionStatus.rejected_in_source_app.value,
     "CANCELLED",
     "COMPLETED_WITH_WARNINGS",
+}
+
+CONTROLLED_DOCUMENT_AUTHORITY_RANK = {
+    ControlledDocumentSourceType.law.value: 100,
+    ControlledDocumentSourceType.implementing_regulation.value: 90,
+    ControlledDocumentSourceType.internal_directive.value: 60,
+    ControlledDocumentSourceType.internal_instruction.value: 50,
+    ControlledDocumentSourceType.methodology.value: 40,
+    ControlledDocumentSourceType.form.value: 20,
+    ControlledDocumentSourceType.informative_guidance.value: 10,
+}
+
+CONTROLLED_PACKAGE_STATUS_TRANSITIONS = {
+    ControlledDocumentPackageStatus.draft.value: {
+        ControlledDocumentPackageStatus.approved.value,
+        ControlledDocumentPackageStatus.cancelled.value,
+    },
+    ControlledDocumentPackageStatus.approved.value: {
+        ControlledDocumentPackageStatus.valid.value,
+        ControlledDocumentPackageStatus.cancelled.value,
+    },
+    ControlledDocumentPackageStatus.valid.value: {
+        ControlledDocumentPackageStatus.superseded.value,
+        ControlledDocumentPackageStatus.archived.value,
+        ControlledDocumentPackageStatus.cancelled.value,
+    },
+    ControlledDocumentPackageStatus.superseded.value: {
+        ControlledDocumentPackageStatus.archived.value,
+    },
+    ControlledDocumentPackageStatus.archived.value: set(),
+    ControlledDocumentPackageStatus.cancelled.value: set(),
 }
 
 
@@ -714,6 +757,38 @@ def _get_document_extraction(db: Session, extraction_id: str) -> DocumentExtract
             "Document extraction was not found",
         )
     return extraction
+
+
+def _get_controlled_document_package(
+    db: Session,
+    package_id: str,
+) -> ControlledDocumentPackage:
+    package = db.execute(
+        select(ControlledDocumentPackage)
+        .where(ControlledDocumentPackage.package_id == package_id)
+        .options(selectinload(ControlledDocumentPackage.members))
+    ).scalar_one_or_none()
+    if package is None:
+        raise problem(
+            status.HTTP_404_NOT_FOUND,
+            "controlled_document_package_not_found",
+            "Controlled-document package was not found",
+        )
+    return package
+
+
+def _require_controlled_package_read(
+    principal: Principal,
+    package: ControlledDocumentPackage,
+    db: Session,
+) -> None:
+    document_ids = {
+        package.primary_document_id,
+        *(member.document_id for member in package.members),
+    }
+    for document_id in document_ids:
+        document = _get_document(db, document_id)
+        require_document_action(principal, Action.document_read, document, db)
 
 
 def _require_document_extraction_access(principal: Principal, extraction: DocumentExtraction) -> None:
@@ -1762,13 +1837,26 @@ def _latest_document_version(db: Session, document_id: str) -> DocumentVersion |
 
 
 def _current_valid_document_version(db: Session, document_id: str) -> DocumentVersion | None:
+    current_date = date.today()
     return db.execute(
         select(DocumentVersion)
         .where(
             DocumentVersion.document_id == document_id,
             DocumentVersion.status == DocumentStatus.valid.value,
+            (
+                DocumentVersion.valid_from.is_(None)
+                | (DocumentVersion.valid_from <= current_date)
+            ),
+            (
+                DocumentVersion.valid_to.is_(None)
+                | (DocumentVersion.valid_to >= current_date)
+            ),
         )
-        .order_by(desc(DocumentVersion.published_at), desc(DocumentVersion.created_at))
+        .order_by(
+            DocumentVersion.valid_from.desc().nullslast(),
+            desc(DocumentVersion.published_at),
+            desc(DocumentVersion.created_at),
+        )
         .limit(1)
     ).scalar_one_or_none()
 
@@ -1838,7 +1926,8 @@ def _publish_version(
         )
     ).scalars()
     for active_version in active_versions:
-        active_version.status = DocumentStatus.superseded.value
+        if _validity_intervals_overlap(active_version, version):
+            active_version.status = DocumentStatus.superseded.value
 
     version.status = DocumentStatus.valid.value
     version.published_at = utcnow()
@@ -1851,6 +1940,19 @@ def _publish_version(
         resource_id=version.document_version_id,
         metadata={"document_id": document.document_id},
     )
+
+
+def _validity_intervals_overlap(
+    left: DocumentVersion,
+    right: DocumentVersion,
+) -> bool:
+    if left.valid_to is not None and right.valid_from is not None:
+        if left.valid_to < right.valid_from:
+            return False
+    if right.valid_to is not None and left.valid_from is not None:
+        if right.valid_to < left.valid_from:
+            return False
+    return True
 
 
 def _archive_version(
@@ -5164,6 +5266,472 @@ def _audit_external_document_current(
 
 
 @router.post(
+    "/controlled-documentation/packages",
+    response_model=ControlledDocumentPackageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_controlled_document_package(
+    payload: ControlledDocumentPackageCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ControlledDocumentPackageResponse:
+    primary_document = _get_document(db, payload.primary_document_id)
+    require_document_action(principal, Action.document_update, primary_document, db)
+    _get_version(
+        db,
+        payload.primary_document_id,
+        payload.primary_document_version_id,
+    )
+    if payload.replaces_package_id is not None:
+        replaced = _get_controlled_document_package(db, payload.replaces_package_id)
+        if (
+            replaced.organization_id != principal.organization_id
+            or replaced.package_key != payload.package_key
+            or replaced.domain != payload.domain
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_document_replacement_mismatch",
+                "A replacement must keep the same organization, package key, and domain",
+            )
+
+    member_models: list[ControlledDocumentPackageMember] = []
+    for member in payload.members:
+        document = _get_document(db, member.document_id)
+        require_document_action(principal, Action.document_read, document, db)
+        _get_version(db, member.document_id, member.document_version_id)
+        member_models.append(
+            ControlledDocumentPackageMember(
+                member_id=make_id("cdmember"),
+                member_role=member.member_role.value,
+                relation_type=member.relation_type.value,
+                document_id=member.document_id,
+                document_version_id=member.document_version_id,
+                label=member.label,
+                ordinal=member.ordinal,
+                member_metadata=member.metadata,
+            )
+        )
+
+    package = ControlledDocumentPackage(
+        package_id=make_id("cdpkg"),
+        organization_id=principal.organization_id,
+        package_key=payload.package_key,
+        release_label=payload.release_label,
+        title=payload.title,
+        domain=payload.domain,
+        source_type=payload.source_type.value,
+        authority_rank=CONTROLLED_DOCUMENT_AUTHORITY_RANK[payload.source_type.value],
+        status=ControlledDocumentPackageStatus.draft.value,
+        effective_from=payload.effective_from,
+        effective_to=payload.effective_to,
+        primary_document_id=payload.primary_document_id,
+        primary_document_version_id=payload.primary_document_version_id,
+        replaces_package_id=payload.replaces_package_id,
+        owner_id=principal.subject_id,
+        package_metadata=payload.metadata,
+        members=member_models,
+    )
+    db.add(package)
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="controlled_document.package_created",
+        resource_type="controlled_document_package",
+        resource_id=package.package_id,
+        correlation_id=get_correlation_id(),
+        metadata={
+            "domain": package.domain,
+            "package_key": package.package_key,
+            "release_label": package.release_label,
+            "source_type": package.source_type,
+            "member_count": len(member_models),
+        },
+    )
+    _commit_or_conflict(db)
+    return ControlledDocumentPackageResponse.model_validate(
+        _get_controlled_document_package(db, package.package_id)
+    )
+
+
+@router.post(
+    "/controlled-documentation/packages/{package_id}/status",
+    response_model=ControlledDocumentPackageResponse,
+)
+def transition_controlled_document_package(
+    package_id: str,
+    payload: ControlledDocumentPackageStatusUpdate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ControlledDocumentPackageResponse:
+    package = _get_controlled_document_package(db, package_id)
+    primary_document = _get_document(db, package.primary_document_id)
+    target = payload.target_status.value
+    if target not in CONTROLLED_PACKAGE_STATUS_TRANSITIONS.get(package.status, set()):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_transition_invalid",
+            f"Package status cannot transition from {package.status} to {target}",
+        )
+
+    if target in {
+        ControlledDocumentPackageStatus.approved.value,
+        ControlledDocumentPackageStatus.valid.value,
+    }:
+        # Package approval follows the same root-document authority as the
+        # existing interactive version publication endpoint. Exact immutable
+        # version authority is enforced later for every read and RAG citation.
+        require_document_action(
+            principal,
+            Action.document_version_publish,
+            primary_document,
+            db,
+        )
+    else:
+        require_document_action(principal, Action.document_update, primary_document, db)
+
+    if target == ControlledDocumentPackageStatus.approved.value:
+        package.approved_by = principal.subject_id
+        package.approved_at = utcnow()
+    if target == ControlledDocumentPackageStatus.valid.value:
+        for member in package.members:
+            version = _get_version(db, member.document_id, member.document_version_id)
+            if version.status != DocumentStatus.valid.value:
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "controlled_document_package_member_not_published",
+                    "Every exact member version must be published before the package",
+                )
+            if version.valid_from and version.valid_from > package.effective_from:
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "controlled_document_package_member_not_effective",
+                    "A member version starts after the package effective date",
+                )
+            if version.valid_to and version.valid_to < package.effective_from:
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "controlled_document_package_member_not_effective",
+                    "A member version ended before the package effective date",
+                )
+        previous_packages = db.execute(
+            select(ControlledDocumentPackage).where(
+                ControlledDocumentPackage.organization_id == package.organization_id,
+                ControlledDocumentPackage.package_key == package.package_key,
+                ControlledDocumentPackage.status
+                == ControlledDocumentPackageStatus.valid.value,
+                ControlledDocumentPackage.package_id != package.package_id,
+            )
+        ).scalars()
+        for previous in previous_packages:
+            previous.status = ControlledDocumentPackageStatus.superseded.value
+            if (
+                previous.effective_to is None
+                or previous.effective_to >= package.effective_from
+            ):
+                previous.effective_to = package.effective_from - timedelta(days=1)
+
+    package.status = target
+    package.updated_at = utcnow()
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="controlled_document.package_status_changed",
+        resource_type="controlled_document_package",
+        resource_id=package.package_id,
+        correlation_id=get_correlation_id(),
+        metadata={"target_status": target, "note_present": bool(payload.note)},
+    )
+    _commit_or_conflict(db)
+    return ControlledDocumentPackageResponse.model_validate(
+        _get_controlled_document_package(db, package.package_id)
+    )
+
+
+def _authorized_controlled_packages(
+    *,
+    db: Session,
+    principal: Principal,
+    domain: str,
+    valid_on: date,
+) -> list[ControlledDocumentPackage]:
+    packages = list(
+        db.execute(
+            select(ControlledDocumentPackage)
+            .where(
+                ControlledDocumentPackage.organization_id
+                == principal.organization_id,
+                ControlledDocumentPackage.domain == domain,
+                ControlledDocumentPackage.status
+                == ControlledDocumentPackageStatus.valid.value,
+                ControlledDocumentPackage.effective_from <= valid_on,
+                (
+                    ControlledDocumentPackage.effective_to.is_(None)
+                    | (ControlledDocumentPackage.effective_to >= valid_on)
+                ),
+            )
+            .options(selectinload(ControlledDocumentPackage.members))
+            .order_by(
+                desc(ControlledDocumentPackage.authority_rank),
+                desc(ControlledDocumentPackage.effective_from),
+            )
+        ).scalars()
+    )
+    authorized: list[ControlledDocumentPackage] = []
+    for package in packages:
+        try:
+            _require_controlled_package_read(principal, package, db)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_403_FORBIDDEN:
+                continue
+            raise
+        authorized.append(package)
+    return authorized
+
+
+def _controlled_package_freshness_warnings(
+    packages: list[ControlledDocumentPackage],
+    valid_on: date,
+) -> list[str]:
+    for package in packages:
+        review_due = package.package_metadata.get("review_due_on")
+        if isinstance(review_due, str):
+            try:
+                if date.fromisoformat(review_due) < valid_on:
+                    return ["SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE"]
+            except ValueError:
+                return ["SOURCE_REVIEW_DATE_INVALID"]
+    return []
+
+
+def _apply_controlled_rule_precedence(
+    rules: list[ControlledRuleResponse],
+) -> bool:
+    conflict_detected = False
+    rules_by_normative_key: dict[str, list[ControlledRuleResponse]] = {}
+    for rule in rules:
+        rules_by_normative_key.setdefault(
+            rule.proposal.normative_key,
+            [],
+        ).append(rule)
+    for candidates in rules_by_normative_key.values():
+        highest_rank = max(rule.authority_rank for rule in candidates)
+        highest_candidates = [
+            rule for rule in candidates if rule.authority_rank == highest_rank
+        ]
+        highest_values = {
+            json.dumps(
+                rule.proposal.value,
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            )
+            for rule in highest_candidates
+        }
+        has_conflict = len(highest_values) > 1
+        conflict_detected = conflict_detected or has_conflict
+        for rule in candidates:
+            if rule.authority_rank < highest_rank:
+                rule.precedence_status = "shadowed"
+                rule.consumer_eligible = False
+                continue
+            if has_conflict:
+                rule.precedence_status = "conflict"
+                rule.consumer_eligible = False
+                continue
+            rule.precedence_status = (
+                "authoritative"
+                if rule.source_type
+                in {
+                    ControlledDocumentSourceType.law,
+                    ControlledDocumentSourceType.implementing_regulation,
+                }
+                else "supplemental"
+            )
+            rule.consumer_eligible = rule.verification_status in {
+                "accepted",
+                "edited",
+            }
+    return conflict_detected
+
+
+@router.get(
+    "/controlled-documentation/packages",
+    response_model=ControlledDocumentPackageListResponse,
+)
+def list_controlled_document_packages(
+    domain: str = Query(min_length=2, max_length=80),
+    valid_on: date | None = Query(default=None),
+    include_inactive: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ControlledDocumentPackageListResponse:
+    applicable_on = valid_on or date.today()
+    if include_inactive:
+        require_global_action(principal, Action.document_update, db)
+        candidates = list(
+            db.execute(
+                select(ControlledDocumentPackage)
+                .where(
+                    ControlledDocumentPackage.organization_id
+                    == principal.organization_id,
+                    ControlledDocumentPackage.domain == domain,
+                )
+                .options(selectinload(ControlledDocumentPackage.members))
+                .order_by(
+                    desc(ControlledDocumentPackage.authority_rank),
+                    desc(ControlledDocumentPackage.effective_from),
+                )
+            ).scalars()
+        )
+        packages = []
+        for package in candidates:
+            try:
+                _require_controlled_package_read(principal, package, db)
+            except HTTPException as exc:
+                if exc.status_code == status.HTTP_403_FORBIDDEN:
+                    continue
+                raise
+            packages.append(package)
+    else:
+        packages = _authorized_controlled_packages(
+            db=db,
+            principal=principal,
+            domain=domain,
+            valid_on=applicable_on,
+        )
+    return ControlledDocumentPackageListResponse(
+        items=[
+            ControlledDocumentPackageResponse.model_validate(package)
+            for package in packages
+        ],
+        valid_on=applicable_on,
+        warnings=_controlled_package_freshness_warnings(packages, applicable_on),
+    )
+
+
+@router.get(
+    "/controlled-documentation/rules",
+    response_model=ControlledRuleListResponse,
+)
+def list_controlled_document_rules(
+    domain: str = Query(min_length=2, max_length=80),
+    valid_on: date | None = Query(default=None),
+    approved_only: bool = Query(default=True),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ControlledRuleListResponse:
+    applicable_on = valid_on or date.today()
+    packages = _authorized_controlled_packages(
+        db=db,
+        principal=principal,
+        domain=domain,
+        valid_on=applicable_on,
+    )
+    package_by_id = {package.package_id: package for package in packages}
+    if not package_by_id:
+        return ControlledRuleListResponse(
+            domain=domain,
+            valid_on=applicable_on,
+            packages=[],
+            rules=[],
+            warnings=["NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE"],
+        )
+
+    extractions = list(
+        db.execute(
+            select(DocumentExtraction).where(
+                DocumentExtraction.entity_type == "controlled_document_package",
+                DocumentExtraction.entity_id.in_(package_by_id),
+                DocumentExtraction.profile == "controlled_document_rules_v1",
+                DocumentExtraction.status.notin_(
+                    {
+                        DocumentExtractionStatus.failed.value,
+                        DocumentExtractionStatus.superseded.value,
+                        DocumentExtractionStatus.rejected_in_source_app.value,
+                    }
+                ),
+            )
+        ).scalars()
+    )
+    extraction_ids = [item.extraction_id for item in extractions]
+    feedback_items = (
+        list(
+            db.execute(
+                select(DocumentExtractionFeedback).where(
+                    DocumentExtractionFeedback.extraction_id.in_(extraction_ids)
+                )
+            ).scalars()
+        )
+        if extraction_ids
+        else []
+    )
+    latest_feedback: dict[tuple[str, str], DocumentExtractionFeedback] = {}
+    for feedback in sorted(feedback_items, key=lambda item: item.created_at):
+        latest_feedback[(feedback.extraction_id, feedback.field)] = feedback
+
+    rules: list[ControlledRuleResponse] = []
+    warnings = _controlled_package_freshness_warnings(packages, applicable_on)
+    for extraction in extractions:
+        result = ControlledRuleExtractionResult.model_validate(extraction.result)
+        package = package_by_id.get(result.package_id)
+        if package is None or result.domain != domain:
+            warnings.append("CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH")
+            continue
+        member_versions = {
+            member.document_version_id
+            for member in package.members
+        }
+        for proposal in result.rules:
+            if proposal.citation.document_version_id not in member_versions:
+                warnings.append("CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE")
+                continue
+            feedback = latest_feedback.get(
+                (extraction.extraction_id, f"rules.{proposal.rule_id}")
+            )
+            verification_status = feedback.decision if feedback else "proposed"
+            effective_proposal = proposal
+            if feedback is not None and feedback.decision == "edited":
+                try:
+                    effective_proposal = type(proposal).model_validate(
+                        feedback.final_value
+                    )
+                except ValueError:
+                    warnings.append("CONTROLLED_RULE_EDIT_INVALID")
+                    continue
+            if approved_only and verification_status not in {"accepted", "edited"}:
+                continue
+            rules.append(
+                ControlledRuleResponse(
+                    extraction_id=extraction.extraction_id,
+                    package_id=package.package_id,
+                    source_type=package.source_type,
+                    authority_rank=package.authority_rank,
+                    proposal=effective_proposal,
+                    verification_status=verification_status,
+                    verified_by=feedback.actor_id if feedback else None,
+                    verified_at=feedback.created_at if feedback else None,
+                    verification_note=feedback.reason if feedback else None,
+                )
+            )
+
+    conflict_detected = _apply_controlled_rule_precedence(rules)
+
+    if conflict_detected:
+        warnings.append("POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW")
+    return ControlledRuleListResponse(
+        domain=domain,
+        valid_on=applicable_on,
+        packages=[
+            ControlledDocumentPackageResponse.model_validate(package)
+            for package in packages
+        ],
+        rules=rules,
+        warnings=list(dict.fromkeys(warnings)),
+    )
+
+
+@router.post(
     "/document-extractions",
     response_model=DocumentExtractionStoreResponse,
     status_code=status.HTTP_201_CREATED,
@@ -5176,6 +5744,38 @@ def store_document_extraction(
 ) -> DocumentExtractionStoreResponse:
     require_global_action(principal, Action.rag_query, db)
     _get_version(db, payload.document_id, payload.document_version_id)
+    if payload.profile == "controlled_document_rules_v1":
+        package = _get_controlled_document_package(db, payload.entity_id)
+        result = ControlledRuleExtractionResult.model_validate(payload.result)
+        if result.package_id != package.package_id or result.domain != package.domain:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_rule_package_coordinates_mismatch",
+                "The extraction result must match the controlled-document package",
+            )
+        member_coordinates = {
+            (member.document_id, member.document_version_id)
+            for member in package.members
+        }
+        if (payload.document_id, payload.document_version_id) not in member_coordinates:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_rule_source_outside_package",
+                "The extraction source must be an exact package member version",
+            )
+        member_version_ids = {
+            member.document_version_id
+            for member in package.members
+        }
+        if any(
+            rule.citation.document_version_id not in member_version_ids
+            for rule in result.rules
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_rule_citation_outside_package",
+                "Every rule citation must target an exact package member version",
+            )
 
     existing = db.execute(
         select(DocumentExtraction).where(
@@ -5281,6 +5881,25 @@ def store_document_extraction_feedback(
 ) -> DocumentExtractionFeedbackStoreResponse:
     extraction = _get_document_extraction(db, extraction_id)
     _require_document_extraction_access(principal, extraction)
+    if extraction.profile == "controlled_document_rules_v1":
+        result = ControlledRuleExtractionResult.model_validate(extraction.result)
+        allowed_fields = {f"rules.{rule.rule_id}" for rule in result.rules}
+        if payload.field not in allowed_fields:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_rule_feedback_target_invalid",
+                "Feedback must identify one proposed rule",
+            )
+        if (
+            payload.actor != principal.subject_id
+            and not principal.service_identity
+            and "admin" not in principal.roles
+        ):
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "controlled_rule_feedback_actor_mismatch",
+                "Controlled-rule feedback actor must match the authenticated subject",
+            )
     if payload.source_app.value != extraction.external_system:
         raise problem(
             status.HTTP_409_CONFLICT,

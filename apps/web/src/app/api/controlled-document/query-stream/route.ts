@@ -14,6 +14,7 @@ export const runtime = "nodejs";
 const DEFAULT_DOCUMENT_TYPES: DocumentType[] = [
   "project_documentation",
   "directive",
+  "regulation",
   "methodology",
   "knowledge_base_article",
   "policy"
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
         only_valid: body.only_valid !== false,
         classification_max: String(body.classification_max ?? "internal") as Classification,
         tags: _stringList(body.tags, []),
+        valid_on: body.valid_on ? String(body.valid_on) : null,
       },
       answer_mode: "normative_with_citations",
       max_chunks: Number(body.max_chunks ?? 8),
@@ -91,6 +93,7 @@ export async function POST(request: NextRequest) {
           only_valid: body.only_valid !== false,
           classification_max: String(body.classification_max ?? "internal") as Classification,
           tags: _stringList(body.tags, []),
+          valid_on: body.valid_on ? String(body.valid_on) : null,
         },
         answer_mode: "normative_with_citations",
         max_chunks: Number(body.max_chunks ?? 8),

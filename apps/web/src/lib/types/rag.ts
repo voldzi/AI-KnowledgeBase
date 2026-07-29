@@ -35,6 +35,8 @@ export interface Citation {
   section_path: string[];
   page_number: number | null;
   chunk_id: string;
+  valid_from?: string | null;
+  valid_to?: string | null;
   policy_binding_id?: string | null;
   policy_version?: string | null;
   policy_hash?: string | null;
@@ -48,6 +50,11 @@ export interface RagQueryFilters {
   only_valid: boolean;
   classification_max: Classification;
   tags: string[];
+  document_ids?: string[];
+  document_version_ids?: string[];
+  tenant_id?: string | null;
+  external_system?: string | null;
+  valid_on?: string | null;
 }
 
 export type AnswerMode =
@@ -410,4 +417,40 @@ export interface AssistantConversationShareReplaceRequest {
     subject_id: string;
     permission: "viewer" | "commenter";
   }>;
+}
+
+export interface ControlledRuleExtractionRequest {
+  tenant_id: string;
+  external_system: "STRATOS_PLATFORM";
+  package_id: string;
+  domain: string;
+  documents: Array<{
+    document_id: string;
+    document_version_id: string;
+  }>;
+  subject_id: string;
+  profile: "controlled_document_rules_v1";
+  profile_version: "1";
+  classification_max: Classification;
+  max_chunks?: number;
+  correlation_id?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ControlledRuleExtractionResponse {
+  extraction_id: string;
+  tenant_id: string;
+  external_system: "STRATOS_PLATFORM";
+  package_id: string;
+  domain: string;
+  profile: "controlled_document_rules_v1";
+  profile_version: "1";
+  status: string;
+  classification: Classification;
+  requested_by: string;
+  rules: import("./documents").ControlledRuleProposal[];
+  missing_information: string[];
+  warnings: string[];
+  source_chunk_ids: string[];
+  metadata: Record<string, unknown>;
 }

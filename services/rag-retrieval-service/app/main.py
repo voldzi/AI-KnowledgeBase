@@ -39,6 +39,8 @@ from app.schemas import (
     ContractExtractionProfilesResponse,
     ContractExtractionProposeRequest,
     ContractExtractionResponse,
+    ControlledRuleExtractionProposeRequest,
+    ControlledRuleExtractionResponse,
     HealthResponse,
     RagAnswer,
     RagQueryRequest,
@@ -362,6 +364,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload.profile,
         )
         return await _service(request).propose_contract_extraction(payload, auth_context=auth_context)
+
+    @app.post(
+        "/api/v1/stratos/extractions/controlled-rules/propose",
+        response_model=ControlledRuleExtractionResponse,
+        tags=["stratos-extractions"],
+    )
+    async def propose_controlled_rule_extraction(
+        payload: ControlledRuleExtractionProposeRequest,
+        request: Request,
+    ) -> ControlledRuleExtractionResponse:
+        auth_context = _guard_request(request)
+        logger.info(
+            "controlled_rule_extraction_requested subject_id=%s tenant_id=%s "
+            "package_id=%s domain=%s source_document_count=%s content_logged=false",
+            payload.subject_id,
+            payload.tenant_id,
+            payload.package_id,
+            payload.domain,
+            len(payload.documents),
+        )
+        return await _service(request).propose_controlled_rule_extraction(
+            payload,
+            auth_context=auth_context,
+        )
 
     @app.post(
         "/api/v1/stratos/extractions/archflow-goals/propose",
