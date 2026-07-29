@@ -97,7 +97,11 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   planner uses a versioned semantic catalog, a closed machine-readable domain
   tool/metric/relation catalog and a bounded
   `ConversationQueryState` for source, metric, period, granularity and narrowing
-  entity filters. V2 discovers the exact source-owned tool surface from
+  entity filters. The planner composes approved domain concepts and inflected
+  aliases rather than enumerating complete user sentences. Source ownership
+  disambiguates generic terms, and generated positive and negative routing
+  matrices guard the catalog. Routing itself is deterministic and does not
+  require an LLM. V2 discovers the exact source-owned tool surface from
   schema-validated, revision-pinned manifests for Budget, ProjectFlow, ArchFlow
   and AIIP. It correlates only byte-identical canonical identities or typed
   manifest relationships and never calculates source-owned financial totals.

@@ -9,6 +9,7 @@ import {
   type StratosSemanticSource,
 } from "./semantic-catalog";
 import { semanticRegistrySourcesForText } from "./semantic-registry";
+import { matchesSemanticConcept } from "./semantic-matcher";
 
 export const CONVERSATION_QUERY_STATE_VERSION = "stratos-conversation-query-state-2" as const;
 const LEGACY_QUERY_STATE_VERSION = "stratos-conversation-query-state-1";
@@ -76,6 +77,34 @@ const AT_RISK_SIGNAL = /\b(ohrozen|rizikov[ey]|at risk)\b/;
 const ON_TRACK_SIGNAL = /\b(podle planu|v terminu|on track)\b/;
 const DESC_SIGNAL = /\b(nejvyssi|nejvetsi|nejvice|top|nejhorsi)\b/;
 const ASC_SIGNAL = /\b(nejnizsi|nejmensi|nejmene|nejlepsi)\b/;
+const FOLLOW_UP_TERMS = [
+  "a co", "a jak", "a ktery", "ale", "jen", "pouze", "celkove",
+  "dohromady", "oproti", "rozdil", "vyvoj", "trend", "stejne", "jinak",
+] as const;
+const OVERALL_TERMS = [
+  "celkove", "dohromady", "cela organizace", "vsechny projekty",
+  "vsechny polozky", "souhrnne", "organizacni souhrn",
+] as const;
+const ORGANIZATION_UNIT_TERMS = [
+  "organizacni jednotka", "utvar", "odbor", "oddeleni", "sekce",
+  "informatika", "ict",
+] as const;
+const PORTFOLIO_TERMS = ["portfolio", "program projektu"] as const;
+const PROJECT_TERMS = ["projekt", "projektova akce"] as const;
+const ITEM_TERMS = [
+  "polozka", "rozpoctova polozka", "nakladova polozka", "rozpoctova kapitola",
+  "radek rozpoctu",
+] as const;
+const DELAYED_TERMS = ["zpozdeni", "prodleni", "po terminu", "skluz"] as const;
+const AT_RISK_TERMS = ["ohrozeny", "rizikovy", "at risk"] as const;
+const ON_TRACK_TERMS = ["podle planu", "v terminu", "on track"] as const;
+const DESC_TERMS = [
+  "nejvyssi", "nejvetsi", "nejvice", "maximum", "top", "nejhorsi",
+  "nejdrazsi", "nejnakladnejsi", "maximalni",
+] as const;
+const ASC_TERMS = [
+  "nejnizsi", "nejmensi", "nejmene", "minimum", "nejlepsi", "nejlevnejsi",
+] as const;
 
 const SOURCE_VALUES = new Set<StratosSemanticSource>([
   "budget",
@@ -140,17 +169,22 @@ export function resolveConversationQuery(input: {
     )),
     ...metricSources,
   ]), explicitMetrics);
+  const overallSignal = OVERALL_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, OVERALL_TERMS);
+  const portfolioSignal = PORTFOLIO_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, PORTFOLIO_TERMS);
   const scopeOnlyFollowUp = previous !== null
-    && (OVERALL_SIGNAL.test(normalized) || PORTFOLIO_SIGNAL.test(normalized))
+    && (overallSignal || portfolioSignal)
     && explicitMetrics.length === 0
     && !LIVE_APPLICATION_SIGNAL.test(normalized);
   const explicitSources = scopeOnlyFollowUp ? [] : detectedSources;
   const documentQuestion = DOCUMENT_SIGNAL.test(normalized);
   const followUp = FOLLOW_UP_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, FOLLOW_UP_TERMS)
     || explicitPeriodYear(normalized, now) !== null
     || explicitDateInterval(normalized) !== null
-    || OVERALL_SIGNAL.test(normalized)
-    || PORTFOLIO_SIGNAL.test(normalized);
+    || overallSignal
+    || portfolioSignal;
   const mayInherit = previous !== null
     && followUp
     && !(documentQuestion && explicitSources.length === 0);
@@ -178,10 +212,13 @@ export function resolveConversationQuery(input: {
     ? emptyEntityFilters()
     : previous?.entity_filters ?? emptyEntityFilters();
   const scheduleStatus = DELAYED_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, DELAYED_TERMS)
     ? "delayed" as const
     : AT_RISK_SIGNAL.test(normalized)
+      || matchesSemanticConcept(normalized, AT_RISK_TERMS)
       ? "at_risk" as const
       : ON_TRACK_SIGNAL.test(normalized)
+        || matchesSemanticConcept(normalized, ON_TRACK_TERMS)
         ? "on_track" as const
         : inherited
           ? previous.filters.schedule_status
@@ -189,8 +226,10 @@ export function resolveConversationQuery(input: {
   const sortMetric = sortMetricForQuery(metrics, normalized)
     ?? (inherited ? previous.sort?.metric ?? null : null);
   const sortDirection = DESC_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, DESC_TERMS)
     ? "desc" as const
     : ASC_SIGNAL.test(normalized)
+      || matchesSemanticConcept(normalized, ASC_TERMS)
       ? "asc" as const
       : inherited
         ? previous.sort?.direction ?? "desc"
@@ -421,11 +460,26 @@ function explicitPeriodYear(normalized: string, now: Date): number | null {
 function explicitGranularityForText(
   normalized: string,
 ): QueryGranularity | null {
-  if (ITEM_GRANULARITY_SIGNAL.test(normalized)) return "item";
-  if (OVERALL_SIGNAL.test(normalized)) return "organization";
-  if (ORGANIZATION_UNIT_SIGNAL.test(normalized)) return "organization_unit";
-  if (PORTFOLIO_SIGNAL.test(normalized)) return "portfolio";
-  if (PROJECT_GRANULARITY_SIGNAL.test(normalized)) return "project";
+  if (
+    ITEM_GRANULARITY_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, ITEM_TERMS)
+  ) return "item";
+  if (
+    OVERALL_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, OVERALL_TERMS)
+  ) return "organization";
+  if (
+    ORGANIZATION_UNIT_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, ORGANIZATION_UNIT_TERMS)
+  ) return "organization_unit";
+  if (
+    PORTFOLIO_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, PORTFOLIO_TERMS)
+  ) return "portfolio";
+  if (
+    PROJECT_GRANULARITY_SIGNAL.test(normalized)
+    || matchesSemanticConcept(normalized, PROJECT_TERMS)
+  ) return "project";
   return null;
 }
 
@@ -445,7 +499,12 @@ function sortMetricForQuery(
   metrics: StratosSemanticMetric[],
   normalized: string,
 ): StratosSemanticMetric | null {
-  if (!DESC_SIGNAL.test(normalized) && !ASC_SIGNAL.test(normalized)) return null;
+  if (
+    !DESC_SIGNAL.test(normalized)
+    && !ASC_SIGNAL.test(normalized)
+    && !matchesSemanticConcept(normalized, DESC_TERMS)
+    && !matchesSemanticConcept(normalized, ASC_TERMS)
+  ) return null;
   return metrics.find((metric) => (
     metric === "budget.variance_amount"
     || metric === "milestone.max_delay_days"
