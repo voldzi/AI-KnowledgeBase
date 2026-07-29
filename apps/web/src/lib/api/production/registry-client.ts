@@ -19,6 +19,12 @@ import type {
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
+  ControlledDocumentPackage,
+  ControlledDocumentPackageCreate,
+  ControlledDocumentPackageList,
+  ControlledDocumentPackageStatus,
+  ControlledRuleFeedbackRequest,
+  ControlledRuleList,
   DirectoryUser,
   Document,
   DocumentAuthorizationDecision,
@@ -243,6 +249,79 @@ export class ProductionRegistryClient implements RegistryApiClient {
       `/documents/${documentId}/versions/${versionId}/archive`,
       undefined,
       "archiveDocumentVersion",
+      context
+    );
+  }
+
+  listControlledDocumentPackages(
+    context: ApiRequestContext,
+    options: { domain: string; validOn?: string; includeInactive?: boolean }
+  ): Promise<ControlledDocumentPackageList> {
+    const params = new URLSearchParams();
+    params.set("domain", options.domain);
+    if (options.validOn) params.set("valid_on", options.validOn);
+    if (options.includeInactive !== undefined) {
+      params.set("include_inactive", String(options.includeInactive));
+    }
+    const query = params.toString();
+    return this.get<ControlledDocumentPackageList>(
+      `/controlled-documentation/packages${query ? `?${query}` : ""}`,
+      "listControlledDocumentPackages",
+      context
+    );
+  }
+
+  createControlledDocumentPackage(
+    request: ControlledDocumentPackageCreate,
+    context: ApiRequestContext
+  ): Promise<ControlledDocumentPackage> {
+    return this.post<ControlledDocumentPackage>(
+      "/controlled-documentation/packages",
+      request,
+      "createControlledDocumentPackage",
+      context
+    );
+  }
+
+  updateControlledDocumentPackageStatus(
+    packageId: string,
+    targetStatus: ControlledDocumentPackageStatus,
+    context: ApiRequestContext
+  ): Promise<ControlledDocumentPackage> {
+    return this.post<ControlledDocumentPackage>(
+      `/controlled-documentation/packages/${encodeURIComponent(packageId)}/status`,
+      { target_status: targetStatus },
+      "updateControlledDocumentPackageStatus",
+      context
+    );
+  }
+
+  listControlledRules(
+    domain: string,
+    context: ApiRequestContext,
+    options: { validOn?: string; approvedOnly?: boolean } = {}
+  ): Promise<ControlledRuleList> {
+    const params = new URLSearchParams({ domain });
+    if (options.validOn) params.set("valid_on", options.validOn);
+    if (options.approvedOnly !== undefined) {
+      params.set("approved_only", String(options.approvedOnly));
+    }
+    return this.get<ControlledRuleList>(
+      `/controlled-documentation/rules?${params.toString()}`,
+      "listControlledRules",
+      context
+    );
+  }
+
+  async recordControlledRuleFeedback(
+    extractionId: string,
+    request: ControlledRuleFeedbackRequest,
+    context: ApiRequestContext
+  ): Promise<void> {
+    await this.post<unknown>(
+      `/document-extractions/${encodeURIComponent(extractionId)}/feedback`,
+      request,
+      "recordControlledRuleFeedback",
       context
     );
   }

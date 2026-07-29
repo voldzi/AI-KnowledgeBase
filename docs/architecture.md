@@ -131,6 +131,12 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   the web backend. The browser selects only a code-reviewed collection and a
   discovered candidate; it cannot expand the host allowlist or provide a
   trusted storage URI. See `docs/ingestion/official-public-sources.md`.
+- Temporal controlled documentation combines immutable document versions into
+  effective-dated packages. Registry owns the source hierarchy, human-reviewed
+  cited rules and conflict-safe consumer projection; RAG only proposes cited
+  rules from exact authorized versions. Chat and application consumers use the
+  same `valid_on` semantics and default to the current effective state. See
+  `docs/ARCHITECTURE/temporal-controlled-documentation.md`.
 
 ## Authentication And Authorization
 

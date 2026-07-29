@@ -210,6 +210,131 @@ class DocumentVersion(Base):
     )
 
 
+class ControlledDocumentPackage(Base, TimestampMixin):
+    __tablename__ = "controlled_document_packages"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "package_key",
+            "release_label",
+            name="uq_controlled_document_package_release",
+        ),
+        Index(
+            "ix_controlled_document_packages_domain_validity",
+            "organization_id",
+            "domain",
+            "status",
+            "effective_from",
+            "effective_to",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'approved', 'valid', 'superseded', 'cancelled', 'archived')",
+            name="ck_controlled_document_package_status",
+        ),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_from <= effective_to",
+            name="ck_controlled_document_package_validity",
+        ),
+        CheckConstraint(
+            "authority_rank >= 0 AND authority_rank <= 1000",
+            name="ck_controlled_document_package_authority_rank",
+        ),
+    )
+
+    package_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("cdpkg")
+    )
+    organization_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="org_stratos", index=True
+    )
+    package_key: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    release_label: Mapped[str] = mapped_column(String(80), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    domain: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    authority_rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft", index=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    primary_document_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("documents.document_id", ondelete="RESTRICT"), nullable=False
+    )
+    primary_document_version_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("document_versions.document_version_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    replaces_package_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("controlled_document_packages.package_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    owner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    approved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    package_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+
+    members: Mapped[list["ControlledDocumentPackageMember"]] = relationship(
+        back_populates="package",
+        cascade="all, delete-orphan",
+        order_by="ControlledDocumentPackageMember.ordinal",
+    )
+
+
+class ControlledDocumentPackageMember(Base):
+    __tablename__ = "controlled_document_package_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "package_id",
+            "document_version_id",
+            "member_role",
+            name="uq_controlled_document_package_member",
+        ),
+        Index(
+            "ix_controlled_document_package_members_document_version",
+            "document_id",
+            "document_version_id",
+        ),
+        CheckConstraint(
+            "member_role IN ('main_document', 'attachment', 'form', 'template')",
+            name="ck_controlled_document_package_member_role",
+        ),
+        CheckConstraint(
+            "relation_type IN ('contains_attachment', 'contains_form', 'contains_template', "
+            "'replaces', 'amends', 'implements', 'references', 'related_to')",
+            name="ck_controlled_document_package_relation_type",
+        ),
+    )
+
+    member_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("cdmember")
+    )
+    package_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("controlled_document_packages.package_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    member_role: Mapped[str] = mapped_column(String(40), nullable=False)
+    relation_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    document_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("documents.document_id", ondelete="RESTRICT"), nullable=False
+    )
+    document_version_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("document_versions.document_version_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    label: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    member_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", MutableDict.as_mutable(json_type()), nullable=False, default=dict
+    )
+
+    package: Mapped[ControlledDocumentPackage] = relationship(back_populates="members")
+
+
 class DocumentPublication(Base, TimestampMixin):
     """Immutable public projection for one exact AKB document version.
 

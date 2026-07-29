@@ -218,6 +218,28 @@ metadata decision, displays only the approved snapshot, and links exclusively
 to the verified public source route. Missing, revoked, invalid, or temporarily
 unverifiable publications render the same fail-closed unavailable state.
 
+## Temporal Controlled Documentation
+
+```text
+POST /controlled-documentation/packages
+GET  /controlled-documentation/packages
+POST /controlled-documentation/packages/{package_id}/status
+GET  /controlled-documentation/rules
+```
+
+Package and rule list operations use `valid_on`; omission means today.
+`include_inactive=true` is available only to callers with document-management
+authority. A package references exact immutable document versions and cannot
+become `valid` while a member is unpublished or ineffective.
+
+The rules endpoint returns accepted or edited cited proposals by default. It
+groups identical `normative_key` values, applies the closed source-authority
+rank and marks each rule `authoritative`, `supplemental`, `shadowed` or
+`conflict`. Only non-conflicting accepted/edited rules at the winning authority
+level have `consumer_eligible=true`.
+
+See `docs/ARCHITECTURE/temporal-controlled-documentation.md`.
+
 ## Document Extraction Persistence
 
 Registry API stores extraction results as generic AKB records. It does not run

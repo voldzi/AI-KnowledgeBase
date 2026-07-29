@@ -66,6 +66,9 @@ async function synchronizeCandidate(
           source_url: candidate.sourceUrl,
           canonical_url: candidate.canonicalUrl,
           title: candidate.title,
+          version_label: candidate.versionLabel,
+          effective_from: candidate.effectiveFrom,
+          effective_to: candidate.effectiveTo,
         }),
       });
       const body = await response.json();
@@ -176,7 +179,8 @@ export function PublicSourcesWorkbench({
         }
       }
     };
-    await Promise.all([worker(), worker()]);
+    const workerCount = collection.id === "czech-law" ? 1 : 2;
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
     update(collection.id, (current) => ({ ...current, syncing: false }));
   }
 
@@ -223,7 +227,12 @@ export function PublicSourcesWorkbench({
               {state.candidates.length > 0 ? (
                 <div className="public-source-card__preview">
                   {state.candidates.slice(0, 4).map((candidate) => (
-                    <span key={candidate.sourceUrl}>{candidate.title}</span>
+                    <span key={candidate.sourceUrl}>
+                      {candidate.title}
+                      {candidate.effectiveFrom
+                        ? ` · účinné ${candidate.effectiveFrom}${candidate.effectiveTo ? ` až ${candidate.effectiveTo}` : " dosud"}`
+                        : ""}
+                    </span>
                   ))}
                   {state.candidates.length > 4 ? <small>+ {state.candidates.length - 4} dalších dokumentů</small> : null}
                 </div>

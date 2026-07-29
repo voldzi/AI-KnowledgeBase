@@ -36,6 +36,9 @@ export interface PublicSourceSyncRequest {
   sourceUrl: string;
   canonicalUrl?: string;
   title: string;
+  versionLabel?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
 }
 
 export interface PublicSourceSyncResult {
@@ -57,7 +60,16 @@ export async function synchronizePublicSource(
   const collection = publicSourceCollection(input.collectionId);
   if (!collection) throw new Error("Unknown public source collection.");
   const sourceUrl = assertPublicSourceUrl(collection.id, input.sourceUrl);
-  if (collection.id === "czech-law") assertCzechLawOpenDataSourceUrl(sourceUrl);
+  const legalVersion = collection.id === "czech-law"
+    ? assertCzechLawOpenDataSourceUrl(sourceUrl)
+    : null;
+  const effectiveFrom = legalVersion?.effectiveDate ?? input.effectiveFrom;
+  const effectiveTo = effectiveFrom ? (input.effectiveTo ?? null) : input.effectiveTo;
+  assertTemporalVersionInput({
+    effectiveFrom,
+    effectiveTo,
+    expectedEffectiveFrom: legalVersion?.effectiveDate,
+  });
   const canonicalUrl = assertPublicSourceUrl(
     collection.id,
     input.canonicalUrl || input.sourceUrl,
@@ -81,9 +93,17 @@ export async function synchronizePublicSource(
   const versions = await clients.registry.listDocumentVersions(document.document_id, context);
   const currentVersion = versions[0] ?? null;
   const sameContent = currentVersion?.file_hash === downloaded.sha256;
-  const sameVersion = sameContent && currentVersionMatchesDownloadMetadata(currentVersion, downloaded)
-    ? currentVersion
-    : null;
+  const sameVersion = versions.find((version) => (
+    version.file_hash === downloaded.sha256
+    && currentVersionMatchesDownloadMetadata(version, downloaded)
+    && (
+      !effectiveFrom
+      || (
+        version.valid_from === effectiveFrom
+        && version.valid_to === effectiveTo
+      )
+    )
+  )) ?? null;
   if (sameVersion) {
     if (sameVersion.status !== "valid" || document.status !== "valid") {
       await approveAndPublishOfficialVersion(document, sameVersion, clients, context);
@@ -174,8 +194,8 @@ export async function synchronizePublicSource(
     document.document_id,
     {
       version_label: uniqueSourceVersionLabel(downloaded, capturedAt, versions),
-      valid_from: capturedAt.slice(0, 10),
-      valid_to: null,
+      valid_from: effectiveFrom ?? capturedAt.slice(0, 10),
+      valid_to: effectiveTo ?? null,
       source_file_uri: preflight.source_file_uri,
       source_location: {
         kind: "url",
@@ -185,14 +205,20 @@ export async function synchronizePublicSource(
         content_type: downloaded.mimeType,
         sha256: downloaded.sha256,
         captured_at: capturedAt,
-        version: downloaded.etag ?? downloaded.lastModified ?? downloaded.sha256,
+        version: input.versionLabel
+          ?? effectiveFrom
+          ?? downloaded.etag
+          ?? downloaded.lastModified
+          ?? downloaded.sha256,
       },
       file_hash: downloaded.sha256,
       change_summary: metadataCorrection
         ? "Opravná neměnná verze se správným názvem a typem původního souboru."
         : versions.length === 0
           ? "První automaticky zachycená verze oficiálního veřejného zdroje."
-          : "Nová verze oficiálního veřejného zdroje zjištěná změnou obsahu.",
+          : effectiveFrom
+            ? `Oficiální znění účinné od ${effectiveFrom}${effectiveTo ? ` do ${effectiveTo}` : " dosud"}.`
+            : "Nová verze oficiálního veřejného zdroje zjištěná změnou obsahu.",
       file: {
         filename: downloaded.filename,
         mime_type: downloaded.mimeType,
@@ -649,6 +675,39 @@ function currentVersionMatchesDownloadMetadata(
     && sourceLocation.content_type === downloaded.mimeType
     && sourceLocation.sha256 === downloaded.sha256;
 }
+
+function assertTemporalVersionInput({
+  effectiveFrom,
+  effectiveTo,
+  expectedEffectiveFrom,
+}: {
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  expectedEffectiveFrom?: string;
+}): void {
+  if (!effectiveFrom && effectiveTo) {
+    throw new Error("Temporal source version requires an effective-from date.");
+  }
+  if (effectiveFrom && !isIsoDate(effectiveFrom)) {
+    throw new Error("Effective-from must be a valid ISO date.");
+  }
+  if (effectiveTo && !isIsoDate(effectiveTo)) {
+    throw new Error("Effective-to must be a valid ISO date.");
+  }
+  if (expectedEffectiveFrom && effectiveFrom !== expectedEffectiveFrom) {
+    throw new Error("The requested effective date does not match the official e-Sbírka version.");
+  }
+  if (effectiveFrom && effectiveTo && effectiveTo < effectiveFrom) {
+    throw new Error("Effective-to cannot precede effective-from.");
+  }
+}
+
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 
 function normalizeDocumentTitle(value: string, url: URL): string {
   const title = value.replace(/\s+/g, " ").trim();

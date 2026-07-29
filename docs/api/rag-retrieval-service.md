@@ -185,6 +185,25 @@ AKB remains the only Document AI backend. ArchFlow must not store binary
 documents, extracted text, chunks, embeddings, prompts, or RAG/LLM output copies
 outside AKB.
 
+## Controlled Rule Proposals
+
+`POST /api/v1/stratos/extractions/controlled-rules/propose` retrieves exact
+authorized package-member versions and proposes cited structured rules under
+profile `controlled_document_rules_v1`. It supports definitions,
+responsibilities, obligations, prohibitions, permissions, financial limits,
+deadlines, conditions, exceptions, required documents, evidence, approval
+steps and references.
+
+Every proposal includes a stable `normative_key` and exact citation. No
+citations or insufficient authorized evidence produces no invented rule. RAG
+persists the proposal to Registry; acceptance, editing, precedence and
+application-consumer eligibility remain Registry responsibilities.
+
+Normal RAG retrieval accepts `valid_on`. Without it, retrieval uses current
+effective versions. An explicit historical date in a supported user query is
+normalized to the same filter and returned citations include `valid_from` and
+`valid_to`.
+
 ## Integration Notes
 
 - Filters candidate documents through Registry API authorization.

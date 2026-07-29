@@ -83,7 +83,11 @@ ExtractionStatus = Literal[
 ]
 ExtractionFieldStatus = Literal["proposed"]
 ExtractionFeedbackDecision = Literal["accepted", "rejected", "edited"]
-StratosExtractionSourceApp = Literal["STRATOS_BUDGET", "STRATOS_ARCHFLOW"]
+StratosExtractionSourceApp = Literal[
+    "STRATOS_BUDGET",
+    "STRATOS_ARCHFLOW",
+    "STRATOS_PLATFORM",
+]
 ArchflowArtifactType = Literal[
     "TARGET_ARCHITECTURE",
     "SOLUTION_ARCHITECTURE",
@@ -106,6 +110,7 @@ class RagQueryFilters(BaseModel):
     document_version_ids: list[str] = Field(default_factory=list)
     tenant_id: str | None = Field(default=None, min_length=1, max_length=128)
     external_system: str | None = Field(default=None, min_length=1, max_length=80)
+    valid_on: date | None = None
 
 
 class ChunkCitation(BaseModel):
@@ -120,6 +125,8 @@ class ChunkCitation(BaseModel):
     section_path: list[str] = Field(default_factory=list)
     article_number: str | None = None
     paragraph_number: str | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
 
     @model_validator(mode="after")
     def fill_document_version(self) -> "ChunkCitation":
@@ -170,6 +177,8 @@ class Citation(BaseModel):
     section_path: list[str] = Field(default_factory=list)
     page_number: int | None = Field(default=None, ge=1)
     chunk_id: str = Field(min_length=1)
+    valid_from: date | None = None
+    valid_to: date | None = None
     policy_binding_id: str | None = None
     policy_version: str | None = None
     policy_hash: str | None = None
@@ -436,6 +445,49 @@ class ContractExtractionProposeRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ControlledDocumentSourceVersion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+
+
+class ControlledRuleExtractionProposeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    external_system: Literal["STRATOS_PLATFORM"] = "STRATOS_PLATFORM"
+    package_id: str = Field(min_length=1, max_length=64)
+    domain: str = Field(
+        min_length=2,
+        max_length=80,
+        pattern=r"^[a-z0-9][a-z0-9_:-]+$",
+    )
+    documents: list[ControlledDocumentSourceVersion] = Field(
+        min_length=1,
+        max_length=100,
+    )
+    subject_id: str = Field(min_length=1, max_length=128)
+    profile: Literal["controlled_document_rules_v1"] = (
+        "controlled_document_rules_v1"
+    )
+    profile_version: Literal["1"] = "1"
+    classification_max: Classification = "internal"
+    max_chunks: int = Field(default=30, ge=1, le=50)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def unique_source_versions(self) -> "ControlledRuleExtractionProposeRequest":
+        coordinates = [
+            (document.document_id, document.document_version_id)
+            for document in self.documents
+        ]
+        if len(set(coordinates)) != len(coordinates):
+            raise ValueError("Controlled-document source versions must be unique.")
+        return self
+
+
 class ArchflowSourceDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -539,6 +591,84 @@ class ContractExtractionCitation(BaseModel):
     quoted_text: str
     viewer_url: str
     warnings: list[str] = Field(default_factory=list)
+
+
+class ControlledRuleCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    chunk_id: str = Field(min_length=1, max_length=128)
+    section_path: list[str] = Field(default_factory=list, max_length=20)
+    page_number: int | None = Field(default=None, ge=1)
+    article_number: str | None = Field(default=None, max_length=80)
+    paragraph_number: str | None = Field(default=None, max_length=80)
+    quoted_text: str = Field(min_length=1, max_length=2000)
+
+
+class ControlledRuleProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str = Field(
+        min_length=3,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+    normative_key: str = Field(
+        min_length=3,
+        max_length=160,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+    category: Literal[
+        "definition",
+        "responsibility",
+        "obligation",
+        "prohibition",
+        "permission",
+        "financial_limit",
+        "deadline",
+        "condition",
+        "exception",
+        "required_document",
+        "audit_evidence",
+        "approval_step",
+        "scope",
+        "reference",
+    ]
+    title: str = Field(min_length=1, max_length=300)
+    value: Any
+    unit: str | None = Field(default=None, max_length=80)
+    currency: str | None = Field(default=None, max_length=3)
+    vat_basis: Literal[
+        "including_vat",
+        "excluding_vat",
+        "not_applicable",
+        "unknown",
+    ] = "not_applicable"
+    conditions: list[str] = Field(default_factory=list, max_length=50)
+    exceptions: list[str] = Field(default_factory=list, max_length=50)
+    responsible_roles: list[str] = Field(default_factory=list, max_length=30)
+    required_evidence: list[str] = Field(default_factory=list, max_length=50)
+    confidence: float = Field(ge=0, le=1)
+    citation: ControlledRuleCitation
+
+
+class ControlledRuleExtractionResponse(BaseModel):
+    extraction_id: str
+    tenant_id: str
+    external_system: Literal["STRATOS_PLATFORM"]
+    package_id: str
+    domain: str
+    profile: Literal["controlled_document_rules_v1"]
+    profile_version: Literal["1"]
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    rules: list[ControlledRuleProposal] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ContractPaymentRuleProposal(BaseModel):

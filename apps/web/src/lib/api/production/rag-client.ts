@@ -4,6 +4,8 @@ import type {
   AssistantChatResponse,
   AssistantConversationResponse,
   AssistantSuggestionsResponse,
+  ControlledRuleExtractionRequest,
+  ControlledRuleExtractionResponse,
   RagAnswer,
   RagApiClient,
   RagQueryRequest,
@@ -102,6 +104,22 @@ export class ProductionRagClient implements RagApiClient {
       baseUrl: this.baseUrl,
       path: `/assistant/conversations/${encodeURIComponent(conversationId)}`,
       method: "GET",
+      context,
+      fetcher: this.fetcher
+    });
+  }
+
+  proposeControlledRules(
+    request: ControlledRuleExtractionRequest,
+    context: ApiRequestContext
+  ): Promise<ControlledRuleExtractionResponse> {
+    return requestJson<ControlledRuleExtractionResponse>({
+      service: "rag-retrieval-service",
+      operation: "proposeControlledRules",
+      baseUrl: this.baseUrl,
+      path: "/stratos/extractions/controlled-rules/propose",
+      method: "POST",
+      body: request,
       context,
       fetcher: this.fetcher
     });

@@ -138,6 +138,8 @@ def _to_retrieved_chunk(
             section_path=payload.get("section_path", []),
             article_number=payload.get("article_number"),
             paragraph_number=payload.get("paragraph_number"),
+            valid_from=payload.get("valid_from"),
+            valid_to=payload.get("valid_to"),
         ),
         metadata={
             "dense_score": round(dense_score, 6),
@@ -146,6 +148,8 @@ def _to_retrieved_chunk(
             "classification": payload.get("classification"),
             "tags": payload.get("tags", []),
             "status": payload.get("status"),
+            "valid_from": payload.get("valid_from"),
+            "valid_to": payload.get("valid_to"),
             "source_file_uri": payload.get("source_file_uri"),
             "source_file_name": payload.get("source_file_name"),
             "source_mime_type": payload.get("source_mime_type"),

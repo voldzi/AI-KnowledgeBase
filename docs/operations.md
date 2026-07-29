@@ -187,6 +187,22 @@ diagnostics, and tells the user that the source responded but could not be
 safely verified. Suggestions for a known failing execution profile remain
 disabled until that profile passes the shared production contract test again.
 
+### Temporal controlled-document maintenance
+
+The `/controlled-documentation` workspace is the operator surface for
+effective-dated legal and internal-document packages. A gestor creates a draft
+from exact published document versions, adds attachments/forms, reviews cited
+rule proposals and moves the package through `approved` to `valid`. A
+schvalovatel may perform the same final publication action when their current
+capability permits it; no separate technical-document role is required.
+
+An overdue `review_due_on` produces
+`SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE`. It does not automatically invalidate a
+directive. A conflict warning or a detected higher-authority replacement must
+create gestor review work before an application consumes the rule. The
+procedure and public-procurement pilot are defined in
+`docs/ARCHITECTURE/temporal-controlled-documentation.md`.
+
 Before changing the mode to `active`, verify that
 `svc-akb-director-copilot` can obtain five separate exact-audience tokens.
 The additional audit route is:

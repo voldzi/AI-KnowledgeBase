@@ -1,4 +1,3 @@
----
 openapi: 3.1.0
 info:
   title: AKL RAG Retrieval Service
@@ -6,7 +5,7 @@ info:
     confidence, and no-answer policy for AKB Platform.
   version: dev
 paths:
-  "/health":
+  /health:
     get:
       tags:
       - health
@@ -18,8 +17,8 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HealthResponse"
-  "/ready":
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
     get:
       tags:
       - health
@@ -31,10 +30,10 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ReadinessResponse"
+                $ref: '#/components/schemas/ReadinessResponse'
         '503':
           description: At least one dependency is not ready.
-  "/api/v1/rag/retrieve":
+  /api/v1/rag/retrieve:
     post:
       tags:
       - rag
@@ -44,7 +43,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/RetrieveRequest"
+              $ref: '#/components/schemas/RetrieveRequest'
         required: true
       responses:
         '200':
@@ -52,14 +51,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/RetrieveResponse"
+                $ref: '#/components/schemas/RetrieveResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/rag/query":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/query:
     post:
       tags:
       - rag
@@ -69,7 +68,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/RagQueryRequest"
+              $ref: '#/components/schemas/RagQueryRequest'
         required: true
       responses:
         '200':
@@ -77,14 +76,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/RagAnswer"
+                $ref: '#/components/schemas/RagAnswer'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/rag/query-stream":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/query-stream:
     post:
       tags:
       - rag
@@ -94,7 +93,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/RagQueryRequest"
+              $ref: '#/components/schemas/RagQueryRequest'
         required: true
       responses:
         '200':
@@ -107,8 +106,8 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/rag/answer":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/answer:
     post:
       tags:
       - rag
@@ -118,7 +117,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/AnswerRequest"
+              $ref: '#/components/schemas/AnswerRequest'
         required: true
       responses:
         '200':
@@ -126,14 +125,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/RagAnswer"
+                $ref: '#/components/schemas/RagAnswer'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/integrations/aiip/harmonize":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/aiip/harmonize:
     post:
       tags:
       - aiip-integration
@@ -143,7 +142,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/AiipHarmonizeRequest"
+              $ref: '#/components/schemas/AiipHarmonizeRequest'
         required: true
       responses:
         '200':
@@ -151,14 +150,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AiipApplicationResponse"
+                $ref: '#/components/schemas/AiipApplicationResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/integrations/aiip/duplicates/search":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/aiip/duplicates/search:
     post:
       tags:
       - aiip-integration
@@ -168,7 +167,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/AiipDuplicateSearchRequest"
+              $ref: '#/components/schemas/AiipDuplicateSearchRequest'
         required: true
       responses:
         '200':
@@ -176,14 +175,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AiipApplicationResponse"
+                $ref: '#/components/schemas/AiipApplicationResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/chunks/{chunk_id}/source-context":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/chunks/{chunk_id}/source-context:
     get:
       tags:
       - viewer
@@ -209,14 +208,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SourceContextResponse"
+                $ref: '#/components/schemas/SourceContextResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/citations/{chunk_id}/open":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/citations/{chunk_id}/open:
     get:
       tags:
       - viewer
@@ -242,14 +241,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SourceContextResponse"
+                $ref: '#/components/schemas/SourceContextResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/assistant/citations/{chunk_id}/open":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/citations/{chunk_id}/open:
     get:
       tags:
       - assistant
@@ -275,14 +274,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SourceContextResponse"
+                $ref: '#/components/schemas/SourceContextResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/assistant/chat":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/chat:
     post:
       tags:
       - assistant
@@ -292,7 +291,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/AssistantChatRequest"
+              $ref: '#/components/schemas/AssistantChatRequest'
         required: true
       responses:
         '200':
@@ -300,14 +299,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AssistantChatResponse"
+                $ref: '#/components/schemas/AssistantChatResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/assistant/clarify":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/clarify:
     post:
       tags:
       - assistant
@@ -317,7 +316,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/AssistantChatRequest"
+              $ref: '#/components/schemas/AssistantChatRequest'
         required: true
       responses:
         '200':
@@ -325,14 +324,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AssistantChatResponse"
+                $ref: '#/components/schemas/AssistantChatResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/assistant/suggestions":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/suggestions:
     get:
       tags:
       - assistant
@@ -355,14 +354,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AssistantSuggestionsResponse"
+                $ref: '#/components/schemas/AssistantSuggestionsResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/assistant/conversations/{conversation_id}":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assistant/conversations/{conversation_id}:
     get:
       tags:
       - assistant
@@ -381,14 +380,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AssistantConversationResponse"
+                $ref: '#/components/schemas/AssistantConversationResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/stratos/extractions/profiles":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/profiles:
     get:
       tags:
       - stratos-extractions
@@ -400,8 +399,8 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ContractExtractionProfilesResponse"
-  "/api/v1/stratos/extractions/contracts/propose":
+                $ref: '#/components/schemas/ContractExtractionProfilesResponse'
+  /api/v1/stratos/extractions/contracts/propose:
     post:
       tags:
       - stratos-extractions
@@ -411,7 +410,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/ContractExtractionProposeRequest"
+              $ref: '#/components/schemas/ContractExtractionProposeRequest'
         required: true
       responses:
         '200':
@@ -419,14 +418,39 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ContractExtractionResponse"
+                $ref: '#/components/schemas/ContractExtractionResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/stratos/extractions/archflow-goals/propose":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/controlled-rules/propose:
+    post:
+      tags:
+      - stratos-extractions
+      summary: Propose Controlled Rule Extraction
+      operationId: propose_controlled_rule_extraction_api_v1_stratos_extractions_controlled_rules_propose_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlledRuleExtractionProposeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlledRuleExtractionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/archflow-goals/propose:
     post:
       tags:
       - stratos-extractions
@@ -436,7 +460,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/ArchflowGoalExtractionProposeRequest"
+              $ref: '#/components/schemas/ArchflowGoalExtractionProposeRequest'
         required: true
       responses:
         '200':
@@ -444,14 +468,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ArchflowGoalExtractionResponse"
+                $ref: '#/components/schemas/ArchflowGoalExtractionResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/stratos/extractions/architecture-package/propose":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/architecture-package/propose:
     post:
       tags:
       - stratos-extractions
@@ -461,7 +485,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/ArchflowArchitectureExtractionProposeRequest"
+              $ref: '#/components/schemas/ArchflowArchitectureExtractionProposeRequest'
         required: true
       responses:
         '200':
@@ -469,14 +493,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ArchflowArchitectureExtractionResponse"
+                $ref: '#/components/schemas/ArchflowArchitectureExtractionResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/stratos/extractions/architecture-handover/propose":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/architecture-handover/propose:
     post:
       tags:
       - stratos-extractions
@@ -486,7 +510,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/ArchflowArchitectureExtractionProposeRequest"
+              $ref: '#/components/schemas/ArchflowArchitectureExtractionProposeRequest'
         required: true
       responses:
         '200':
@@ -494,14 +518,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ArchflowArchitectureExtractionResponse"
+                $ref: '#/components/schemas/ArchflowArchitectureExtractionResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/stratos/extractions/{extraction_id}":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/{extraction_id}:
     get:
       tags:
       - stratos-extractions
@@ -520,14 +544,14 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/StratosExtractionResponse"
+                $ref: '#/components/schemas/StratosExtractionResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/stratos/extractions/{extraction_id}/feedback":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/stratos/extractions/{extraction_id}/feedback:
     post:
       tags:
       - stratos-extractions
@@ -545,21 +569,21 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/StratosExtractionFeedbackRequest"
+              $ref: '#/components/schemas/StratosExtractionFeedbackRequest'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/StratosExtractionFeedbackResponse"
+                $ref: '#/components/schemas/StratosExtractionFeedbackResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/rag/compare-documents":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/compare-documents:
     post:
       tags:
       - rag
@@ -589,8 +613,8 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
-  "/api/v1/rag/check-compliance":
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rag/check-compliance:
     post:
       tags:
       - rag
@@ -620,7 +644,7 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/HTTPValidationError"
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AiipApplicationResponse:
@@ -646,8 +670,8 @@ components:
           default: completed
         result:
           anyOf:
-          - "$ref": "#/components/schemas/AiipHarmonizeResult"
-          - "$ref": "#/components/schemas/AiipDuplicateSearchResult"
+          - $ref: '#/components/schemas/AiipHarmonizeResult'
+          - $ref: '#/components/schemas/AiipDuplicateSearchResult'
           title: Result
         warnings:
           items:
@@ -655,7 +679,7 @@ components:
           type: array
           title: Warnings
         model:
-          "$ref": "#/components/schemas/AiipModelMetadata"
+          $ref: '#/components/schemas/AiipModelMetadata'
         prompt_template_version:
           type: string
           title: Prompt Template Version
@@ -665,7 +689,7 @@ components:
           - type: 'null'
           title: Retrieval Index Version
         usage:
-          "$ref": "#/components/schemas/AiipUsage"
+          $ref: '#/components/schemas/AiipUsage'
         latency_ms:
           type: integer
           minimum: 0.0
@@ -710,7 +734,7 @@ components:
           title: Matched Areas
         citations:
           items:
-            "$ref": "#/components/schemas/AiipDuplicateCitation"
+            $ref: '#/components/schemas/AiipDuplicateCitation'
           type: array
           title: Citations
       additionalProperties: false
@@ -785,7 +809,7 @@ components:
           title: Model Preference
           default: standard
         record:
-          "$ref": "#/components/schemas/AiipRecordInput"
+          $ref: '#/components/schemas/AiipRecordInput'
         limit:
           type: integer
           maximum: 20.0
@@ -816,7 +840,7 @@ components:
       properties:
         candidates:
           items:
-            "$ref": "#/components/schemas/AiipDuplicateCandidate"
+            $ref: '#/components/schemas/AiipDuplicateCandidate'
           type: array
           title: Candidates
         limit:
@@ -876,7 +900,7 @@ components:
           minimum: 0.0
           title: Confidence
         provenance:
-          "$ref": "#/components/schemas/AiipFieldProvenance"
+          $ref: '#/components/schemas/AiipFieldProvenance'
       additionalProperties: false
       type: object
       required:
@@ -919,7 +943,7 @@ components:
           title: Locale
           default: cs
         record:
-          "$ref": "#/components/schemas/AiipRecordInput"
+          $ref: '#/components/schemas/AiipRecordInput'
       additionalProperties: false
       type: object
       required:
@@ -932,7 +956,7 @@ components:
       properties:
         suggestions:
           items:
-            "$ref": "#/components/schemas/AiipFieldSuggestion"
+            $ref: '#/components/schemas/AiipFieldSuggestion'
           type: array
           maxItems: 30
           title: Suggestions
@@ -1071,7 +1095,7 @@ components:
           title: Query
         chunks:
           items:
-            "$ref": "#/components/schemas/RetrievedChunk"
+            $ref: '#/components/schemas/RetrievedChunk'
           type: array
           title: Chunks
         answer_mode:
@@ -1200,7 +1224,7 @@ components:
           title: Document Version Id
         documents:
           items:
-            "$ref": "#/components/schemas/ArchflowSourceDocument"
+            $ref: '#/components/schemas/ArchflowSourceDocument'
           type: array
           maxItems: 50
           title: Documents
@@ -1319,7 +1343,7 @@ components:
           title: Requested By
         proposals:
           items:
-            "$ref": "#/components/schemas/ArchflowArchitectureFieldProposal"
+            $ref: '#/components/schemas/ArchflowArchitectureFieldProposal'
           type: array
           title: Proposals
         missing_information:
@@ -1388,7 +1412,7 @@ components:
           minLength: 1
           title: Reason
         citation:
-          "$ref": "#/components/schemas/ContractExtractionCitation"
+          $ref: '#/components/schemas/ContractExtractionCitation'
         warnings:
           items:
             type: string
@@ -1471,7 +1495,7 @@ components:
           title: Catalog Version Id
         documents:
           items:
-            "$ref": "#/components/schemas/ArchflowSourceDocument"
+            $ref: '#/components/schemas/ArchflowSourceDocument'
           type: array
           maxItems: 50
           title: Documents
@@ -1587,7 +1611,7 @@ components:
           title: Requested By
         proposals:
           items:
-            "$ref": "#/components/schemas/ArchflowGoalFieldProposal"
+            $ref: '#/components/schemas/ArchflowGoalFieldProposal'
           type: array
           title: Proposals
         missing_information:
@@ -1653,14 +1677,14 @@ components:
           - conflicting_sources
           title: Confidence
         proposal:
-          "$ref": "#/components/schemas/ArchflowGoalProposalValue"
+          $ref: '#/components/schemas/ArchflowGoalProposalValue'
         reason:
           type: string
           maxLength: 1000
           minLength: 1
           title: Reason
         citation:
-          "$ref": "#/components/schemas/ContractExtractionCitation"
+          $ref: '#/components/schemas/ContractExtractionCitation'
         warnings:
           items:
             type: string
@@ -1718,13 +1742,13 @@ components:
           title: Obligation Type
         suggested_metrics:
           items:
-            "$ref": "#/components/schemas/ArchflowSuggestedMetric"
+            $ref: '#/components/schemas/ArchflowSuggestedMetric'
           type: array
           maxItems: 8
           title: Suggested Metrics
         candidate_requirements:
           items:
-            "$ref": "#/components/schemas/ArchflowCandidateRequirement"
+            $ref: '#/components/schemas/ArchflowCandidateRequirement'
           type: array
           maxItems: 8
           title: Candidate Requirements
@@ -1897,7 +1921,7 @@ components:
           title: Message
         questions:
           items:
-            "$ref": "#/components/schemas/ClarificationQuestion"
+            $ref: '#/components/schemas/ClarificationQuestion'
           type: array
           title: Questions
         why_needed:
@@ -1911,7 +1935,7 @@ components:
           title: Current Context
         citations:
           items:
-            "$ref": "#/components/schemas/Citation"
+            $ref: '#/components/schemas/Citation'
           type: array
           title: Citations
         follow_up_questions:
@@ -1921,12 +1945,12 @@ components:
           title: Follow Up Questions
         suggested_actions:
           items:
-            "$ref": "#/components/schemas/AssistantSuggestedAction"
+            $ref: '#/components/schemas/AssistantSuggestedAction'
           type: array
           title: Suggested Actions
         report_artifacts:
           items:
-            "$ref": "#/components/schemas/AssistantReportArtifact"
+            $ref: '#/components/schemas/AssistantReportArtifact'
           type: array
           title: Report Artifacts
         confidence:
@@ -2021,13 +2045,13 @@ components:
           title: Description
         columns:
           items:
-            "$ref": "#/components/schemas/AssistantReportColumn"
+            $ref: '#/components/schemas/AssistantReportColumn'
           type: array
           maxItems: 20
           title: Columns
         rows:
           items:
-            "$ref": "#/components/schemas/AssistantReportRow"
+            $ref: '#/components/schemas/AssistantReportRow'
           type: array
           maxItems: 500
           title: Rows
@@ -2051,11 +2075,11 @@ components:
           title: Warnings
         provenance:
           anyOf:
-          - "$ref": "#/components/schemas/AssistantReportArtifactProvenance"
+          - $ref: '#/components/schemas/AssistantReportArtifactProvenance'
           - type: 'null'
         quality:
           anyOf:
-          - "$ref": "#/components/schemas/AssistantReportArtifactQuality"
+          - $ref: '#/components/schemas/AssistantReportArtifactQuality'
           - type: 'null'
       additionalProperties: false
       type: object
@@ -2140,7 +2164,7 @@ components:
           title: Evidence Status
         citations:
           items:
-            "$ref": "#/components/schemas/Citation"
+            $ref: '#/components/schemas/Citation'
           type: array
           title: Citations
       additionalProperties: false
@@ -2203,12 +2227,12 @@ components:
           title: Cells
         citations:
           items:
-            "$ref": "#/components/schemas/Citation"
+            $ref: '#/components/schemas/Citation'
           type: array
           title: Citations
         source_refs:
           items:
-            "$ref": "#/components/schemas/AssistantReportCellSource"
+            $ref: '#/components/schemas/AssistantReportCellSource'
           type: array
           title: Source Refs
         confidence:
@@ -2270,7 +2294,7 @@ components:
       properties:
         suggestions:
           items:
-            "$ref": "#/components/schemas/AssistantSuggestion"
+            $ref: '#/components/schemas/AssistantSuggestion'
           type: array
           title: Suggestions
       type: object
@@ -2322,6 +2346,18 @@ components:
           - type: string
           - type: 'null'
           title: Paragraph Number
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
       additionalProperties: false
       type: object
       required:
@@ -2369,6 +2405,18 @@ components:
           type: string
           minLength: 1
           title: Chunk Id
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
         policy_binding_id:
           anyOf:
           - type: string
@@ -2386,12 +2434,12 @@ components:
           title: Policy Hash
         policy_summary:
           anyOf:
-          - "$ref": "#/components/schemas/CitationPolicySummary"
+          - $ref: '#/components/schemas/CitationPolicySummary'
           - type: 'null'
         policy_summary_hash:
           anyOf:
           - type: string
-            pattern: "^sha256:[a-f0-9]{64}$"
+            pattern: ^sha256:[a-f0-9]{64}$
           - type: 'null'
           title: Policy Summary Hash
         document_context_tags:
@@ -2508,7 +2556,7 @@ components:
           type: array
           title: Contentcategories
         audience:
-          "$ref": "#/components/schemas/CitationPolicyAudience"
+          $ref: '#/components/schemas/CitationPolicyAudience'
       additionalProperties: false
       type: object
       required:
@@ -2626,7 +2674,7 @@ components:
       properties:
         profiles:
           items:
-            "$ref": "#/components/schemas/ContractExtractionProfile"
+            $ref: '#/components/schemas/ContractExtractionProfile'
           type: array
           title: Profiles
       type: object
@@ -2785,7 +2833,7 @@ components:
           title: Requested By
         proposals:
           items:
-            "$ref": "#/components/schemas/ContractFieldProposal"
+            $ref: '#/components/schemas/ContractFieldProposal'
           type: array
           title: Proposals
         missing_information:
@@ -2834,10 +2882,10 @@ components:
           - type: integer
           - type: number
           - items:
-              "$ref": "#/components/schemas/ContractPaymentRuleProposal"
+              $ref: '#/components/schemas/ContractPaymentRuleProposal'
             type: array
           - items:
-              "$ref": "#/components/schemas/ContractPaymentScheduleV1Item"
+              $ref: '#/components/schemas/ContractPaymentScheduleV1Item'
             type: array
           title: Proposed Value
         normalized_value:
@@ -2846,10 +2894,10 @@ components:
           - type: integer
           - type: number
           - items:
-              "$ref": "#/components/schemas/ContractPaymentRuleProposal"
+              $ref: '#/components/schemas/ContractPaymentRuleProposal'
             type: array
           - items:
-              "$ref": "#/components/schemas/ContractPaymentScheduleV1Item"
+              $ref: '#/components/schemas/ContractPaymentScheduleV1Item'
             type: array
           - type: 'null'
           title: Normalized Value
@@ -2876,7 +2924,7 @@ components:
           type: string
           title: Reason
         citation:
-          "$ref": "#/components/schemas/ContractExtractionCitation"
+          $ref: '#/components/schemas/ContractExtractionCitation'
         warnings:
           items:
             type: string
@@ -2988,10 +3036,10 @@ components:
           title: Requires Confirmation
           default: true
         citation:
-          "$ref": "#/components/schemas/ContractExtractionCitation"
+          $ref: '#/components/schemas/ContractExtractionCitation'
         payment_terms_citation:
           anyOf:
-          - "$ref": "#/components/schemas/ContractExtractionCitation"
+          - $ref: '#/components/schemas/ContractExtractionCitation'
           - type: 'null'
       additionalProperties: false
       type: object
@@ -3039,11 +3087,350 @@ components:
       - currency
       - chunk_id
       title: ContractPaymentScheduleV1Item
+    ControlledDocumentSourceVersion:
+      properties:
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      title: ControlledDocumentSourceVersion
+    ControlledRuleCitation:
+      properties:
+        document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Document Version Id
+        chunk_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Chunk Id
+        section_path:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          title: Section Path
+        page_number:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Page Number
+        article_number:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Article Number
+        paragraph_number:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Paragraph Number
+        quoted_text:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Quoted Text
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - chunk_id
+      - quoted_text
+      title: ControlledRuleCitation
+    ControlledRuleExtractionProposeRequest:
+      properties:
+        tenant_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_PLATFORM
+          title: External System
+          default: STRATOS_PLATFORM
+        package_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Package Id
+        domain:
+          type: string
+          maxLength: 80
+          minLength: 2
+          pattern: ^[a-z0-9][a-z0-9_:-]+$
+          title: Domain
+        documents:
+          items:
+            $ref: '#/components/schemas/ControlledDocumentSourceVersion'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Documents
+        subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Subject Id
+        profile:
+          type: string
+          const: controlled_document_rules_v1
+          title: Profile
+          default: controlled_document_rules_v1
+        profile_version:
+          type: string
+          const: '1'
+          title: Profile Version
+          default: '1'
+        classification_max:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification Max
+          default: internal
+        max_chunks:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Max Chunks
+          default: 30
+        correlation_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - tenant_id
+      - package_id
+      - domain
+      - documents
+      - subject_id
+      title: ControlledRuleExtractionProposeRequest
+    ControlledRuleExtractionResponse:
+      properties:
+        extraction_id:
+          type: string
+          title: Extraction Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        external_system:
+          type: string
+          const: STRATOS_PLATFORM
+          title: External System
+        package_id:
+          type: string
+          title: Package Id
+        domain:
+          type: string
+          title: Domain
+        profile:
+          type: string
+          const: controlled_document_rules_v1
+          title: Profile
+        profile_version:
+          type: string
+          const: '1'
+          title: Profile Version
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - PROPOSED
+          - PARTIAL
+          - FAILED
+          - SUPERSEDED
+          - ACCEPTED_IN_SOURCE_APP
+          - REJECTED_IN_SOURCE_APP
+          title: Status
+        classification:
+          type: string
+          enum:
+          - public
+          - internal
+          - restricted
+          - confidential
+          title: Classification
+        requested_by:
+          type: string
+          title: Requested By
+        rules:
+          items:
+            $ref: '#/components/schemas/ControlledRuleProposal'
+          type: array
+          title: Rules
+        missing_information:
+          items:
+            type: string
+          type: array
+          title: Missing Information
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_chunk_ids:
+          items:
+            type: string
+          type: array
+          title: Source Chunk Ids
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - extraction_id
+      - tenant_id
+      - external_system
+      - package_id
+      - domain
+      - profile
+      - profile_version
+      - status
+      - classification
+      - requested_by
+      title: ControlledRuleExtractionResponse
+    ControlledRuleProposal:
+      properties:
+        rule_id:
+          type: string
+          maxLength: 128
+          minLength: 3
+          pattern: ^[a-z0-9][a-z0-9._:-]+$
+          title: Rule Id
+        normative_key:
+          type: string
+          maxLength: 160
+          minLength: 3
+          pattern: ^[a-z0-9][a-z0-9._:-]+$
+          title: Normative Key
+        category:
+          type: string
+          enum:
+          - definition
+          - responsibility
+          - obligation
+          - prohibition
+          - permission
+          - financial_limit
+          - deadline
+          - condition
+          - exception
+          - required_document
+          - audit_evidence
+          - approval_step
+          - scope
+          - reference
+          title: Category
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        value:
+          title: Value
+        unit:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Unit
+        currency:
+          anyOf:
+          - type: string
+            maxLength: 3
+          - type: 'null'
+          title: Currency
+        vat_basis:
+          type: string
+          enum:
+          - including_vat
+          - excluding_vat
+          - not_applicable
+          - unknown
+          title: Vat Basis
+          default: not_applicable
+        conditions:
+          items:
+            type: string
+          type: array
+          maxItems: 50
+          title: Conditions
+        exceptions:
+          items:
+            type: string
+          type: array
+          maxItems: 50
+          title: Exceptions
+        responsible_roles:
+          items:
+            type: string
+          type: array
+          maxItems: 30
+          title: Responsible Roles
+        required_evidence:
+          items:
+            type: string
+          type: array
+          maxItems: 50
+          title: Required Evidence
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+        citation:
+          $ref: '#/components/schemas/ControlledRuleCitation'
+      additionalProperties: false
+      type: object
+      required:
+      - rule_id
+      - normative_key
+      - category
+      - title
+      - value
+      - confidence
+      - citation
+      title: ControlledRuleProposal
     HTTPValidationError:
       properties:
         detail:
           items:
-            "$ref": "#/components/schemas/ValidationError"
+            $ref: '#/components/schemas/ValidationError'
           type: array
           title: Detail
       type: object
@@ -3085,7 +3472,7 @@ components:
           title: Confidence
         citations:
           items:
-            "$ref": "#/components/schemas/Citation"
+            $ref: '#/components/schemas/Citation'
           type: array
           title: Citations
         warnings:
@@ -3214,6 +3601,12 @@ components:
             minLength: 1
           - type: 'null'
           title: External System
+        valid_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid On
       additionalProperties: false
       type: object
       title: RagQueryFilters
@@ -3229,7 +3622,7 @@ components:
           minLength: 1
           title: Query
         filters:
-          "$ref": "#/components/schemas/RagQueryFilters"
+          $ref: '#/components/schemas/RagQueryFilters'
         answer_mode:
           type: string
           enum:
@@ -3312,7 +3705,7 @@ components:
           minLength: 1
           title: Query
         filters:
-          "$ref": "#/components/schemas/RagQueryFilters"
+          $ref: '#/components/schemas/RagQueryFilters'
         max_chunks:
           type: integer
           maximum: 50.0
@@ -3332,7 +3725,7 @@ components:
           title: Query Id
         chunks:
           items:
-            "$ref": "#/components/schemas/RetrievedChunk"
+            $ref: '#/components/schemas/RetrievedChunk'
           type: array
           title: Chunks
         warnings:
@@ -3379,7 +3772,7 @@ components:
           minLength: 1
           title: Text
         citation:
-          "$ref": "#/components/schemas/ChunkCitation"
+          $ref: '#/components/schemas/ChunkCitation'
         metadata:
           additionalProperties: true
           type: object
@@ -3462,7 +3855,7 @@ components:
           - binary
           title: Viewer Mode
         location:
-          "$ref": "#/components/schemas/SourceLocation"
+          $ref: '#/components/schemas/SourceLocation'
         chunk_text:
           type: string
           title: Chunk Text
@@ -3595,6 +3988,7 @@ components:
           enum:
           - STRATOS_BUDGET
           - STRATOS_ARCHFLOW
+          - STRATOS_PLATFORM
           title: Source App
         source_entity_id:
           type: string
@@ -3626,7 +4020,7 @@ components:
           type: string
           title: Feedback Id
         extraction:
-          "$ref": "#/components/schemas/StratosExtractionResponse"
+          $ref: '#/components/schemas/StratosExtractionResponse'
       type: object
       required:
       - feedback_id

@@ -51,10 +51,12 @@ def test_query_returns_answer_with_citation_from_authorized_chunk() -> None:
             "document_version_id": "ver_456",
             "document_title": "Smernice pro spravu dokumentu",
             "version_label": "1.0",
-            "document_version": "1.0",
-            "section_path": ["Cl. 4", "Odst. 2"],
+                "document_version": "1.0",
+                "section_path": ["Cl. 4", "Odst. 2"],
                 "page_number": 7,
                 "chunk_id": "chunk_789",
+                "valid_from": None,
+                "valid_to": None,
                 "policy_binding_id": None,
                 "policy_version": None,
                 "policy_hash": None,
@@ -695,6 +697,16 @@ def test_assistant_filters_preserve_explicit_document_and_version_scope() -> Non
     assert filters.document_ids == ["doc_contract"]
     assert filters.document_version_ids == ["ver_contract_2"]
     assert filters.only_valid is False
+
+
+def test_assistant_filters_resolve_historical_date_without_confusing_act_number() -> None:
+    historical = _assistant_filters({}, "Co platilo k 15. 7. 2023?")
+    current = _assistant_filters({}, "Co stanoví zákon 134/2016 Sb.?")
+    year_end = _assistant_filters({}, "Jaké limity platily v roce 2024?")
+
+    assert historical.valid_on.isoformat() == "2023-07-15"
+    assert current.valid_on is None
+    assert year_end.valid_on.isoformat() == "2024-12-31"
 
 
 def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:

@@ -134,6 +134,24 @@ version, publishes it under collection-level approval and starts exact
 Registry-governed ingestion. See
 `docs/ingestion/official-public-sources.md`.
 
+Registry exposes effective-dated document packages and cited, human-verified
+rules:
+
+```text
+POST /api/v1/controlled-documentation/packages
+GET  /api/v1/controlled-documentation/packages?domain=...&valid_on=YYYY-MM-DD
+POST /api/v1/controlled-documentation/packages/{packageId}/status
+GET  /api/v1/controlled-documentation/rules?domain=...&valid_on=YYYY-MM-DD
+```
+
+Omitting `valid_on` means the current date. Application consumers must use only
+rules with `consumer_eligible=true`; `shadowed`, `conflict`, unverified and
+uncited proposals are not decision inputs. RAG proposes rules through
+`POST /api/v1/stratos/extractions/controlled-rules/propose`; Registry stores
+the proposal and human feedback. The complete hierarchy and historical
+contract are in
+`docs/ARCHITECTURE/temporal-controlled-documentation.md`.
+
 True public AKB documents use a separate immutable delivery surface:
 
 ```text

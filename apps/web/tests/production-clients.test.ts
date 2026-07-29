@@ -3,6 +3,10 @@ import { describe, it } from "node:test";
 
 import { createApiClients } from "../src/lib/api";
 import { createMockContext } from "../src/lib/api/correlation";
+import {
+  controlledPackageMemberRelation,
+  nextControlledPackageStatus,
+} from "../src/lib/controlled-documentation/contract";
 import type { AklFetch } from "../src/lib/api/http-client";
 
 const env = {
@@ -283,6 +287,57 @@ describe("production API clients", () => {
       calls[0][0],
       "https://registry.local/api/v1/documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract%3Acontract-1&limit=200&offset=0"
     );
+  });
+
+  it("loads temporal controlled packages and consumer rules for one exact date", async () => {
+    const calls: string[] = [];
+    const fetcher: AklFetch = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("/controlled-documentation/packages")) {
+        return Response.json({
+          items: [],
+          valid_on: "2024-01-01",
+          warnings: [],
+        });
+      }
+      return Response.json({
+        domain: "public_procurement",
+        valid_on: "2024-01-01",
+        packages: [],
+        rules: [],
+        warnings: [],
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext();
+    await clients.registry.listControlledDocumentPackages(context, {
+      domain: "public_procurement",
+      validOn: "2024-01-01",
+      includeInactive: true,
+    });
+    await clients.registry.listControlledRules("public_procurement", context, {
+      validOn: "2024-01-01",
+      approvedOnly: true,
+    });
+
+    assert.deepEqual(calls, [
+      "https://registry.local/api/v1/controlled-documentation/packages?domain=public_procurement&valid_on=2024-01-01&include_inactive=true",
+      "https://registry.local/api/v1/controlled-documentation/rules?domain=public_procurement&valid_on=2024-01-01&approved_only=true",
+    ]);
+  });
+
+  it("keeps controlled-package workflow and member relations aligned with Registry", () => {
+    assert.equal(nextControlledPackageStatus("draft"), "approved");
+    assert.equal(nextControlledPackageStatus("approved"), "valid");
+    assert.equal(nextControlledPackageStatus("valid"), null);
+    assert.equal(
+      controlledPackageMemberRelation("attachment"),
+      "contains_attachment",
+    );
+    assert.equal(controlledPackageMemberRelation("form"), "contains_form");
+    assert.equal(controlledPackageMemberRelation("template"), "contains_template");
   });
 
   it("loads the authorized ingestion projection with one Registry request", async () => {

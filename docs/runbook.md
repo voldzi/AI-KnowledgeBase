@@ -148,6 +148,47 @@ autorizace.
 5. Recreate `ingestion-service`, wait for `/ready`, then run one disposable
    dedicated-confirm ingestion and verify status-only transition to `INDEXED`.
 
+## Controlled Rule Missing, Stale Or Conflicting
+
+1. Open `/controlled-documentation` and select the exact domain and
+   `valid_on` date used by the caller.
+2. Confirm that the expected package is `valid`, every member is published and
+   its effective interval covers the date.
+3. Inspect the rule proposal citation and human feedback. An unreviewed
+   proposal is intentionally not consumer eligible.
+4. For `shadowed`, inspect the higher-authority rule with the same
+   `normative_key`; do not restore the lower rule by changing its rank.
+5. For `conflict`, keep all candidates unavailable to consumers and assign the
+   package to the gestor. Do not choose a value operationally.
+6. `SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE` is a review warning, not automatic
+   revocation. Record the gestor decision or upload a new immutable release.
+7. Repeat the Registry rule request and the chat/API scenario for the same
+   date. Both must return the same package, rule and citation coordinates.
+
+Full semantics are in
+`docs/ARCHITECTURE/temporal-controlled-documentation.md`.
+
+### Public-procurement pilot
+
+1. In **Public sources**, load and synchronize `czech-law`; verify that the
+   versions of Act No. 134/2016 and its implementing regulations effective
+   since 2023 reach `INDEXED`.
+2. Synchronize the three procurement directives from `eu-law`.
+3. Upload `_SM_2023_2_zadavani verejnych zakazek_Verze_1.docx` through the
+   governed intake and publish its immutable version with `valid_from`
+   `2023-05-30`.
+4. Upload `_Pr2.docx` and `_Pr3.docx` as separate controlled documents.
+5. Create package key `public_procurement:sm-2-2023`, release `1`, source type
+   `internal_directive`, annual review cadence, and attach Pr2/Pr3 with stable
+   ordinals. Approve and activate the package only after every member is
+   indexed and authorized.
+6. Run `controlled_document_rules_v1`, review each cited proposal, accept only
+   exact source-backed rules, and reject ambiguous or conflicting proposals.
+7. Verify one current-date and one 2023-date query through both chat and
+   `/api/v1/controlled-documentation/rules`. A higher legal rule must shadow a
+   conflicting internal rule; a non-conflicting internal procedure may remain
+   supplemental.
+
 ## High Latency
 
 1. Split latency by web bridge, Registry, RAG, Qdrant, and LLM Gateway.

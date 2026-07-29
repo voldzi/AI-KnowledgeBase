@@ -77,6 +77,43 @@ class DocumentExtractionFeedbackDecision(str, Enum):
     edited = "edited"
 
 
+class ControlledDocumentPackageStatus(str, Enum):
+    draft = "draft"
+    approved = "approved"
+    valid = "valid"
+    superseded = "superseded"
+    cancelled = "cancelled"
+    archived = "archived"
+
+
+class ControlledDocumentSourceType(str, Enum):
+    law = "law"
+    implementing_regulation = "implementing_regulation"
+    internal_directive = "internal_directive"
+    internal_instruction = "internal_instruction"
+    methodology = "methodology"
+    form = "form"
+    informative_guidance = "informative_guidance"
+
+
+class ControlledDocumentMemberRole(str, Enum):
+    main_document = "main_document"
+    attachment = "attachment"
+    form = "form"
+    template = "template"
+
+
+class ControlledDocumentRelationType(str, Enum):
+    contains_attachment = "contains_attachment"
+    contains_form = "contains_form"
+    contains_template = "contains_template"
+    replaces = "replaces"
+    amends = "amends"
+    implements = "implements"
+    references = "references"
+    related_to = "related_to"
+
+
 class SourceLocationKind(str, Enum):
     url = "url"
     uploaded_file = "uploaded_file"
@@ -1060,6 +1097,21 @@ class DocumentExtractionStoreRequest(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def validate_controlled_document_rules(self) -> "DocumentExtractionStoreRequest":
+        if self.profile != "controlled_document_rules_v1":
+            return self
+        if self.external_system != ExternalSourceSystem.stratos_platform:
+            raise ValueError(
+                "controlled_document_rules_v1 must use STRATOS_PLATFORM"
+            )
+        if self.entity_type != "controlled_document_package":
+            raise ValueError(
+                "controlled_document_rules_v1 must target a controlled_document_package"
+            )
+        ControlledRuleExtractionResult.model_validate(self.result)
+        return self
+
 
 class DocumentExtractionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -1126,6 +1178,232 @@ class DocumentExtractionFeedbackResponse(BaseModel):
 class DocumentExtractionFeedbackStoreResponse(BaseModel):
     feedback: DocumentExtractionFeedbackResponse
     extraction: DocumentExtractionResponse
+
+
+class ControlledDocumentPackageMemberCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    member_role: ControlledDocumentMemberRole
+    relation_type: ControlledDocumentRelationType
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    label: str | None = Field(default=None, max_length=300)
+    ordinal: int = Field(default=0, ge=0, le=1000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ControlledDocumentPackageCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    package_key: str = Field(
+        min_length=3,
+        max_length=160,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+    release_label: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=300)
+    domain: str = Field(
+        min_length=2,
+        max_length=80,
+        pattern=r"^[a-z0-9][a-z0-9_:-]+$",
+    )
+    source_type: ControlledDocumentSourceType
+    effective_from: date
+    effective_to: date | None = None
+    primary_document_id: str = Field(min_length=1, max_length=64)
+    primary_document_version_id: str = Field(min_length=1, max_length=64)
+    replaces_package_id: str | None = Field(default=None, max_length=64)
+    members: list[ControlledDocumentPackageMemberCreate] = Field(
+        min_length=1,
+        max_length=100,
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_package(self) -> "ControlledDocumentPackageCreate":
+        if self.effective_to is not None and self.effective_to < self.effective_from:
+            raise ValueError("effective_to cannot precede effective_from")
+        main_members = [
+            member
+            for member in self.members
+            if member.member_role == ControlledDocumentMemberRole.main_document
+        ]
+        if len(main_members) != 1:
+            raise ValueError("A package release must contain exactly one main document")
+        main = main_members[0]
+        if (
+            main.document_id != self.primary_document_id
+            or main.document_version_id != self.primary_document_version_id
+        ):
+            raise ValueError("The main package member must match the primary version")
+        identities = {
+            (member.document_version_id, member.member_role.value)
+            for member in self.members
+        }
+        if len(identities) != len(self.members):
+            raise ValueError("Package members must be unique")
+        return self
+
+
+class ControlledDocumentPackageStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_status: ControlledDocumentPackageStatus
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ControlledDocumentPackageMemberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    member_id: str
+    member_role: ControlledDocumentMemberRole
+    relation_type: ControlledDocumentRelationType
+    document_id: str
+    document_version_id: str
+    label: str | None
+    ordinal: int
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias="member_metadata",
+    )
+
+
+class ControlledDocumentPackageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    package_id: str
+    organization_id: str
+    package_key: str
+    release_label: str
+    title: str
+    domain: str
+    source_type: ControlledDocumentSourceType
+    authority_rank: int
+    status: ControlledDocumentPackageStatus
+    effective_from: date
+    effective_to: date | None
+    primary_document_id: str
+    primary_document_version_id: str
+    replaces_package_id: str | None
+    owner_id: str
+    approved_by: str | None
+    approved_at: datetime | None
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias="package_metadata",
+    )
+    members: list[ControlledDocumentPackageMemberResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ControlledDocumentPackageListResponse(BaseModel):
+    items: list[ControlledDocumentPackageResponse]
+    valid_on: date
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ControlledRuleCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    chunk_id: str = Field(min_length=1, max_length=128)
+    section_path: list[str] = Field(default_factory=list, max_length=20)
+    page_number: int | None = Field(default=None, ge=1)
+    article_number: str | None = Field(default=None, max_length=80)
+    paragraph_number: str | None = Field(default=None, max_length=80)
+    quoted_text: str = Field(min_length=1, max_length=2000)
+
+
+class ControlledRuleProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str = Field(
+        min_length=3,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+    normative_key: str = Field(
+        min_length=3,
+        max_length=160,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+    category: Literal[
+        "definition",
+        "responsibility",
+        "obligation",
+        "prohibition",
+        "permission",
+        "financial_limit",
+        "deadline",
+        "condition",
+        "exception",
+        "required_document",
+        "audit_evidence",
+        "approval_step",
+        "scope",
+        "reference",
+    ]
+    title: str = Field(min_length=1, max_length=300)
+    value: Any
+    unit: str | None = Field(default=None, max_length=80)
+    currency: str | None = Field(default=None, max_length=3)
+    vat_basis: Literal["including_vat", "excluding_vat", "not_applicable", "unknown"] = (
+        "not_applicable"
+    )
+    conditions: list[str] = Field(default_factory=list, max_length=50)
+    exceptions: list[str] = Field(default_factory=list, max_length=50)
+    responsible_roles: list[str] = Field(default_factory=list, max_length=30)
+    required_evidence: list[str] = Field(default_factory=list, max_length=50)
+    confidence: float = Field(ge=0, le=1)
+    citation: ControlledRuleCitation
+
+
+class ControlledRuleExtractionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domain: str = Field(
+        min_length=2,
+        max_length=80,
+        pattern=r"^[a-z0-9][a-z0-9_:-]+$",
+    )
+    package_id: str = Field(min_length=1, max_length=64)
+    rules: list[ControlledRuleProposal] = Field(max_length=500)
+
+    @model_validator(mode="after")
+    def unique_rules(self) -> "ControlledRuleExtractionResult":
+        rule_ids = [rule.rule_id for rule in self.rules]
+        if len(set(rule_ids)) != len(rule_ids):
+            raise ValueError("Controlled rule ids must be unique")
+        return self
+
+
+class ControlledRuleResponse(BaseModel):
+    extraction_id: str
+    package_id: str
+    source_type: ControlledDocumentSourceType
+    authority_rank: int
+    proposal: ControlledRuleProposal
+    verification_status: Literal["proposed", "accepted", "edited", "rejected"]
+    verified_by: str | None = None
+    verified_at: datetime | None = None
+    verification_note: str | None = None
+    precedence_status: Literal[
+        "authoritative",
+        "supplemental",
+        "shadowed",
+        "conflict",
+    ] = "supplemental"
+    consumer_eligible: bool = False
+
+
+class ControlledRuleListResponse(BaseModel):
+    domain: str
+    valid_on: date
+    packages: list[ControlledDocumentPackageResponse]
+    rules: list[ControlledRuleResponse]
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DocumentFileCreate(BaseModel):

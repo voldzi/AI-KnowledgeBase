@@ -1,4 +1,10 @@
 import app.api as api_module
+from app.schemas import (
+    ControlledDocumentSourceType,
+    ControlledRuleCitation,
+    ControlledRuleProposal,
+    ControlledRuleResponse,
+)
 
 
 def _create_document(client, headers, **overrides):
@@ -424,6 +430,334 @@ def test_valid_document_can_reenter_review_for_a_new_official_version(client, ad
 
     assert reviewed_again.status_code == 200, reviewed_again.text
     assert reviewed_again.json()["status"] == "review"
+
+
+def test_non_overlapping_legal_versions_remain_valid_and_resolve_by_date(
+    client,
+    admin_headers,
+):
+    document = _create_document(
+        client,
+        admin_headers,
+        title="134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+        document_type="regulation",
+    )
+
+    def create_and_publish(label, valid_from, valid_to):
+        created = client.post(
+            f"/api/v1/documents/{document['document_id']}/versions",
+            headers=admin_headers,
+            json={
+                "version_label": label,
+                "valid_from": valid_from,
+                "valid_to": valid_to,
+                "source_file_uri": f"s3://akl-documents/law/{label}.json",
+                "file_hash": f"sha256:{label}",
+            },
+        )
+        assert created.status_code == 201, created.text
+        assert client.patch(
+            f"/api/v1/documents/{document['document_id']}",
+            headers=admin_headers,
+            json={"status": "review"},
+        ).status_code == 200
+        assert client.patch(
+            f"/api/v1/documents/{document['document_id']}",
+            headers=admin_headers,
+            json={"status": "approved"},
+        ).status_code == 200
+        published = client.post(
+            f"/api/v1/documents/{document['document_id']}/versions/"
+            f"{created.json()['document_version_id']}/publish",
+            headers=admin_headers,
+        )
+        assert published.status_code == 200, published.text
+        return published.json()
+
+    historical = create_and_publish("effective-2023", "2023-01-01", "2023-12-31")
+    current = create_and_publish("effective-2024", "2024-01-01", None)
+
+    versions = client.get(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=admin_headers,
+    )
+    assert versions.status_code == 200, versions.text
+    statuses = {
+        item["document_version_id"]: item["status"]
+        for item in versions.json()["items"]
+    }
+    assert statuses[historical["document_version_id"]] == "valid"
+    assert statuses[current["document_version_id"]] == "valid"
+
+    historical_at = client.get(
+        f"/api/v1/documents/{document['document_id']}/versions?valid_on=2023-06-01",
+        headers=admin_headers,
+    )
+    assert historical_at.status_code == 200, historical_at.text
+    assert [
+        item["document_version_id"]
+        for item in historical_at.json()["items"]
+    ] == [historical["document_version_id"]]
+
+
+def test_controlled_document_package_and_approved_rule_are_consumable(
+    client,
+    admin_headers,
+):
+    def published_document(title, document_type, version_label, source_uri):
+        document = _create_document(
+            client,
+            admin_headers,
+            title=title,
+            document_type=document_type,
+            tags=["controlled-document", "public_procurement"],
+            metadata={"domain": "public_procurement"},
+        )
+        created = client.post(
+            f"/api/v1/documents/{document['document_id']}/versions",
+            headers=admin_headers,
+            json={
+                "version_label": version_label,
+                "valid_from": "2023-05-30",
+                "source_file_uri": source_uri,
+                "file_hash": f"sha256:{version_label}",
+            },
+        )
+        assert created.status_code == 201, created.text
+        assert client.patch(
+            f"/api/v1/documents/{document['document_id']}",
+            headers=admin_headers,
+            json={"status": "review"},
+        ).status_code == 200
+        assert client.patch(
+            f"/api/v1/documents/{document['document_id']}",
+            headers=admin_headers,
+            json={"status": "approved"},
+        ).status_code == 200
+        published = client.post(
+            f"/api/v1/documents/{document['document_id']}/versions/"
+            f"{created.json()['document_version_id']}/publish",
+            headers=admin_headers,
+        )
+        assert published.status_code == 200, published.text
+        return document, published.json()
+
+    directive, directive_version = published_document(
+        "Směrnice č. 2/2023 o zadávání veřejných zakázek",
+        "directive",
+        "1",
+        "s3://akl-documents/procurement/directive.docx",
+    )
+    attachment, attachment_version = published_document(
+        "Příloha č. 2 – formulář",
+        "attachment",
+        "1",
+        "s3://akl-documents/procurement/pr2.docx",
+    )
+    package_response = client.post(
+        "/api/v1/controlled-documentation/packages",
+        headers=admin_headers,
+        json={
+            "package_key": "public_procurement:sm-2-2023",
+            "release_label": "1",
+            "title": "Směrnice č. 2/2023 včetně příloh",
+            "domain": "public_procurement",
+            "source_type": "internal_directive",
+            "effective_from": "2023-05-30",
+            "primary_document_id": directive["document_id"],
+            "primary_document_version_id": directive_version["document_version_id"],
+            "members": [
+                {
+                    "member_role": "main_document",
+                    "relation_type": "related_to",
+                    "document_id": directive["document_id"],
+                    "document_version_id": directive_version["document_version_id"],
+                    "ordinal": 0,
+                },
+                {
+                    "member_role": "attachment",
+                    "relation_type": "contains_attachment",
+                    "document_id": attachment["document_id"],
+                    "document_version_id": attachment_version["document_version_id"],
+                    "ordinal": 1,
+                },
+            ],
+            "metadata": {"review_due_on": "2024-05-30"},
+        },
+    )
+    assert package_response.status_code == 201, package_response.text
+    package = package_response.json()
+    assert package["status"] == "draft"
+    assert len(package["members"]) == 2
+
+    for target in ("approved", "valid"):
+        transitioned = client.post(
+            f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
+            headers=admin_headers,
+            json={"target_status": target},
+        )
+        assert transitioned.status_code == 200, transitioned.text
+        package = transitioned.json()
+    assert package["status"] == "valid"
+
+    extraction_response = client.post(
+        "/api/v1/document-extractions",
+        headers=admin_headers,
+        json={
+            "tenant_id": "org_stratos",
+            "external_system": "STRATOS_PLATFORM",
+            "external_ref": package["package_id"],
+            "entity_type": "controlled_document_package",
+            "entity_id": package["package_id"],
+            "document_id": directive["document_id"],
+            "document_version_id": directive_version["document_version_id"],
+            "profile": "controlled_document_rules_v1",
+            "profile_version": "1",
+            "status": "PROPOSED",
+            "classification": "internal",
+            "requested_by": "user_admin",
+            "result": {
+                "domain": "public_procurement",
+                "package_id": package["package_id"],
+                "rules": [
+                    {
+                        "rule_id": "internal.market-research.threshold",
+                        "normative_key": "public_procurement.market_research.threshold",
+                        "category": "financial_limit",
+                        "title": "Průzkum trhu",
+                        "value": 20000,
+                        "unit": "CZK",
+                        "currency": "CZK",
+                        "vat_basis": "including_vat",
+                        "conditions": [],
+                        "exceptions": [],
+                        "responsible_roles": ["příkazce operace"],
+                        "required_evidence": ["záznam o průzkumu trhu"],
+                        "confidence": 0.91,
+                        "citation": {
+                            "document_id": directive["document_id"],
+                            "document_version_id": directive_version[
+                                "document_version_id"
+                            ],
+                            "chunk_id": "chunk_procurement_threshold",
+                            "section_path": ["Článek 6"],
+                            "page_number": 8,
+                            "quoted_text": "Průzkum trhu se provádí nad 20 000 Kč.",
+                        },
+                    }
+                ],
+            },
+        },
+    )
+    assert extraction_response.status_code == 201, extraction_response.text
+    extraction = extraction_response.json()["extraction"]
+
+    before_approval = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers=admin_headers,
+    )
+    assert before_approval.status_code == 200, before_approval.text
+    assert before_approval.json()["rules"] == []
+    assert "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE" in before_approval.json()["warnings"]
+
+    accepted = client.post(
+        f"/api/v1/document-extractions/{extraction['extraction_id']}/feedback",
+        headers=admin_headers,
+        json={
+            "field": "rules.internal.market-research.threshold",
+            "ai_value": 20000,
+            "final_value": 20000,
+            "decision": "accepted",
+            "actor": "user_admin",
+            "source_app": "STRATOS_PLATFORM",
+            "source_entity_id": package["package_id"],
+        },
+    )
+    assert accepted.status_code == 201, accepted.text
+
+    consumable = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers=admin_headers,
+    )
+    assert consumable.status_code == 200, consumable.text
+    body = consumable.json()
+    assert body["rules"][0]["verification_status"] == "accepted"
+    assert body["rules"][0]["proposal"]["value"] == 20000
+    assert body["rules"][0]["proposal"]["citation"]["document_version_id"] == (
+        directive_version["document_version_id"]
+    )
+    assert body["rules"][0]["precedence_status"] == "supplemental"
+    assert body["rules"][0]["consumer_eligible"] is True
+
+
+def test_controlled_rule_precedence_prefers_law_and_closes_equal_rank_conflict():
+    citation = ControlledRuleCitation(
+        document_id="doc_source",
+        document_version_id="ver_source",
+        chunk_id="chunk_source",
+        quoted_text="Rozhodný limit činí stanovenou částku.",
+    )
+
+    def rule(
+        *,
+        package_id: str,
+        source_type: ControlledDocumentSourceType,
+        authority_rank: int,
+        value: int,
+    ) -> ControlledRuleResponse:
+        return ControlledRuleResponse(
+            extraction_id=f"ext_{package_id}",
+            package_id=package_id,
+            source_type=source_type,
+            authority_rank=authority_rank,
+            proposal=ControlledRuleProposal(
+                rule_id=f"{package_id}.threshold",
+                normative_key="public_procurement.vzmr.supplies.threshold",
+                category="financial_limit",
+                title="Limit veřejné zakázky",
+                value=value,
+                unit="CZK",
+                currency="CZK",
+                confidence=1,
+                citation=citation,
+            ),
+            verification_status="accepted",
+        )
+
+    law = rule(
+        package_id="law",
+        source_type=ControlledDocumentSourceType.law,
+        authority_rank=100,
+        value=3_000_000,
+    )
+    directive = rule(
+        package_id="directive",
+        source_type=ControlledDocumentSourceType.internal_directive,
+        authority_rank=60,
+        value=100_000,
+    )
+
+    assert api_module._apply_controlled_rule_precedence([directive, law]) is False
+    assert law.precedence_status == "authoritative"
+    assert law.consumer_eligible is True
+    assert directive.precedence_status == "shadowed"
+    assert directive.consumer_eligible is False
+
+    conflicting_law = rule(
+        package_id="law-conflict",
+        source_type=ControlledDocumentSourceType.law,
+        authority_rank=100,
+        value=4_000_000,
+    )
+    assert api_module._apply_controlled_rule_precedence(
+        [law, conflicting_law]
+    ) is True
+    assert law.precedence_status == "conflict"
+    assert conflicting_law.precedence_status == "conflict"
+    assert law.consumer_eligible is False
+    assert conflicting_law.consumer_eligible is False
 
 
 def test_analyst_case_saved_query_and_evidence_are_persisted(client, admin_headers, reader_headers):

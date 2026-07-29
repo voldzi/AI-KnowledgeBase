@@ -64,6 +64,7 @@ const navigation = {
     { href: "/dashboard", label: "Přehled", icon: LayoutDashboard },
     { href: "/tasks", label: "Úkoly", icon: ListChecks },
     { href: "/documents", label: "Dokumenty", icon: Database },
+    { href: "/controlled-documentation", label: "Řízené předpisy", icon: BookOpen },
     { href: "/ingestion", label: "Zpracování", icon: FileClock },
     { href: "/chat", label: "Znalostní chat", icon: Bot },
     { href: "/intelligence", label: "Intelligence", icon: Network },
@@ -77,6 +78,7 @@ const navigation = {
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tasks", label: "Tasks", icon: ListChecks },
     { href: "/documents", label: "Documents", icon: Database },
+    { href: "/controlled-documentation", label: "Controlled documents", icon: BookOpen },
     { href: "/ingestion", label: "Ingestion", icon: FileClock },
     { href: "/chat", label: "Knowledge chat", icon: Bot },
     { href: "/intelligence", label: "Intelligence", icon: Network },
@@ -214,7 +216,7 @@ type ShellModuleId =
   "documents" | "operations" | "ai" | "knowledge" | "intelligence" | "governance";
 
 const moduleRouteGroups: Record<ShellModuleId, string[]> = {
-  documents: ["/documents", "/upload", "/ingestion"],
+  documents: ["/documents", "/controlled-documentation", "/upload", "/ingestion"],
   operations: ["/dashboard", "/tasks", "/"],
   ai: ["/chat", "/help"],
   knowledge: [],

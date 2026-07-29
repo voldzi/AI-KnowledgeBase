@@ -29,6 +29,13 @@ export async function POST(request: NextRequest) {
         sourceUrl: String(body.source_url ?? ""),
         canonicalUrl: body.canonical_url ? String(body.canonical_url) : undefined,
         title: String(body.title ?? ""),
+        versionLabel: body.version_label ? String(body.version_label) : undefined,
+        effectiveFrom: body.effective_from ? String(body.effective_from) : undefined,
+        effectiveTo: body.effective_to === null
+          ? null
+          : body.effective_to
+            ? String(body.effective_to)
+            : undefined,
       },
       clients,
       context,

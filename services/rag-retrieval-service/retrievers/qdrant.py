@@ -618,6 +618,8 @@ def _point_to_chunk(
             section_path=list(payload.get("section_path") or []),
             article_number=payload.get("article_number"),
             paragraph_number=payload.get("paragraph_number"),
+            valid_from=payload.get("valid_from"),
+            valid_to=payload.get("valid_to"),
         ),
         metadata={
             "dense_score": round(dense_score, 6),
@@ -634,6 +636,8 @@ def _point_to_chunk(
             "external_ref": payload.get("external_ref") or chunk_metadata.get("external_ref"),
             "tags": payload.get("tags", chunk_metadata.get("tags", [])),
             "status": payload.get("status") or chunk_metadata.get("status"),
+            "valid_from": payload.get("valid_from") or chunk_metadata.get("valid_from"),
+            "valid_to": payload.get("valid_to") or chunk_metadata.get("valid_to"),
             "source_file_uri": payload.get("source_file_uri") or chunk_metadata.get("source_file_uri"),
             "source_file_name": payload.get("source_file_name") or chunk_metadata.get("source_file_name"),
             "source_mime_type": payload.get("source_mime_type") or chunk_metadata.get("source_mime_type"),
@@ -685,13 +689,13 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
         must.append({"key": "external_system", "match": {"value": filters.external_system}})
 
     if filters.only_valid:
-        today = datetime.now(UTC).date().isoformat()
+        valid_on = (filters.valid_on or datetime.now(UTC).date()).isoformat()
         must.append({"key": "status", "match": {"value": "valid"}})
         must.append(
             {
                 "min_should": {
                     "conditions": [
-                        {"key": "valid_from", "range": {"lte": today}},
+                        {"key": "valid_from", "range": {"lte": valid_on}},
                         {"is_empty": {"key": "valid_from"}},
                     ],
                     "min_count": 1,
@@ -702,7 +706,7 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
             {
                 "min_should": {
                     "conditions": [
-                        {"key": "valid_to", "range": {"gte": today}},
+                        {"key": "valid_to", "range": {"gte": valid_on}},
                         {"is_empty": {"key": "valid_to"}},
                     ],
                     "min_count": 1,
@@ -794,13 +798,13 @@ def _opensearch_filter(filters: RagQueryFilters) -> list[dict[str, Any]]:
     if filters.external_system:
         filter_clauses.append({"term": {"external_system": filters.external_system}})
     if filters.only_valid:
-        today = datetime.now(UTC).date().isoformat()
+        valid_on = (filters.valid_on or datetime.now(UTC).date()).isoformat()
         filter_clauses.append({"term": {"status": "valid"}})
         filter_clauses.append(
             {
                 "bool": {
                     "should": [
-                        {"range": {"valid_from": {"lte": today}}},
+                        {"range": {"valid_from": {"lte": valid_on}}},
                         {"bool": {"must_not": {"exists": {"field": "valid_from"}}}},
                     ],
                     "minimum_should_match": 1,
@@ -811,7 +815,7 @@ def _opensearch_filter(filters: RagQueryFilters) -> list[dict[str, Any]]:
             {
                 "bool": {
                     "should": [
-                        {"range": {"valid_to": {"gte": today}}},
+                        {"range": {"valid_to": {"gte": valid_on}}},
                         {"bool": {"must_not": {"exists": {"field": "valid_to"}}}},
                     ],
                     "minimum_should_match": 1,

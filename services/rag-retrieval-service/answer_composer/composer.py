@@ -474,6 +474,8 @@ def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:
                 section_path=chunk.citation.section_path,
                 page_number=chunk.citation.page_number,
                 chunk_id=chunk.chunk_id,
+                valid_from=chunk.citation.valid_from,
+                valid_to=chunk.citation.valid_to,
                 policy_binding_id=_metadata_text(chunk.metadata, "policy_binding_id"),
                 policy_version=_metadata_text(chunk.metadata, "policy_version"),
                 policy_hash=_metadata_text(chunk.metadata, "policy_hash"),

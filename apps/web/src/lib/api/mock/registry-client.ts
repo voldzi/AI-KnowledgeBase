@@ -13,6 +13,12 @@ import type {
   CreateAuditEventRequest,
   CreateDocumentRequest,
   CreateVersionRequest,
+  ControlledDocumentPackage,
+  ControlledDocumentPackageCreate,
+  ControlledDocumentPackageList,
+  ControlledDocumentPackageStatus,
+  ControlledRuleFeedbackRequest,
+  ControlledRuleList,
   DirectoryUser,
   Document,
   DocumentAssignment,
@@ -72,6 +78,10 @@ export class MockRegistryClient implements RegistryApiClient {
   >();
   private readonly analystCases = new Map<string, AnalystCase>();
   private readonly roleMappings = new Map<string, RoleMapping>();
+  private readonly controlledPackages = new Map<
+    string,
+    ControlledDocumentPackage
+  >();
 
   async listDocuments(
     _context: ApiRequestContext,
@@ -471,6 +481,101 @@ export class MockRegistryClient implements RegistryApiClient {
     }
     return cloneMock(version);
   }
+
+  async listControlledDocumentPackages(
+    _context: ApiRequestContext,
+    options: { domain: string; validOn?: string; includeInactive?: boolean },
+  ): Promise<ControlledDocumentPackageList> {
+    return {
+      items: cloneMock(
+        [...this.controlledPackages.values()].filter(
+          (item) => item.domain === options.domain,
+        ),
+      ),
+      valid_on: options.validOn ?? new Date().toISOString().slice(0, 10),
+      warnings: [],
+    };
+  }
+
+  async createControlledDocumentPackage(
+    request: ControlledDocumentPackageCreate,
+    context: ApiRequestContext,
+  ): Promise<ControlledDocumentPackage> {
+    const now = new Date().toISOString();
+    const packageId = `cdpkg_${randomUUID().replaceAll("-", "")}`;
+    const item: ControlledDocumentPackage = {
+      package_id: packageId,
+      organization_id: "org_stratos",
+      package_key: request.package_key,
+      release_label: request.release_label,
+      title: request.title,
+      domain: request.domain,
+      source_type: request.source_type,
+      authority_rank: 60,
+      status: "draft",
+      effective_from: request.effective_from,
+      effective_to: request.effective_to ?? null,
+      primary_document_id: request.primary_document_id,
+      primary_document_version_id: request.primary_document_version_id,
+      replaces_package_id: request.replaces_package_id ?? null,
+      owner_id: context.subjectId,
+      approved_by: null,
+      approved_at: null,
+      metadata: request.metadata ?? {},
+      members: request.members.map((member, index) => ({
+        member_id: `cdmember_${randomUUID().replaceAll("-", "")}`,
+        member_role: member.member_role,
+        relation_type: member.relation_type,
+        document_id: member.document_id,
+        document_version_id: member.document_version_id,
+        label: member.label ?? null,
+        ordinal: member.ordinal ?? index,
+        metadata: member.metadata ?? {},
+      })),
+      created_at: now,
+      updated_at: now,
+    };
+    this.controlledPackages.set(packageId, item);
+    return cloneMock(item);
+  }
+
+  async updateControlledDocumentPackageStatus(
+    packageId: string,
+    targetStatus: ControlledDocumentPackageStatus,
+    _context: ApiRequestContext,
+  ): Promise<ControlledDocumentPackage> {
+    const item = this.controlledPackages.get(packageId);
+    if (!item) {
+      throw new ApiClientError("Package not found", 404, "not_found", "mock");
+    }
+    item.status = targetStatus;
+    item.updated_at = new Date().toISOString();
+    return cloneMock(item);
+  }
+
+  async listControlledRules(
+    domain: string,
+    _context: ApiRequestContext,
+    options: { validOn?: string; approvedOnly?: boolean } = {},
+  ): Promise<ControlledRuleList> {
+    return {
+      domain,
+      valid_on: options.validOn ?? new Date().toISOString().slice(0, 10),
+      packages: cloneMock(
+        [...this.controlledPackages.values()].filter(
+          (item) => item.domain === domain,
+        ),
+      ),
+      rules: [],
+      warnings: [],
+    };
+  }
+
+  async recordControlledRuleFeedback(
+    _extractionId: string,
+    _request: ControlledRuleFeedbackRequest,
+    _context: ApiRequestContext,
+  ): Promise<void> {}
 
   async getAuthorizationHints(
     context: ApiRequestContext,

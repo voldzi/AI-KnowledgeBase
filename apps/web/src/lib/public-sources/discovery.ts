@@ -13,6 +13,10 @@ export interface PublicSourceCandidate {
   title: string;
   sourceUrl: string;
   canonicalUrl: string;
+  versionLabel?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  temporalStatus?: "current" | "historical";
 }
 
 export interface PublicSourceDiscoveryResult {
@@ -196,17 +200,24 @@ async function discoverCzechLawOpenData(
         );
         pagesVisited += 1;
         const payload = JSON.parse(await readBoundedText(response, PAGE_MAX_BYTES)) as unknown;
-        const effectiveVersion = selectEffectiveCzechLawVersion(
+        const effectiveVersions = selectEffectiveCzechLawVersions(
           payload,
           act.year,
           act.number,
+          collection.historyFrom ?? today,
           today,
         );
-        candidates.push({
-          title: `${act.number}/${act.year} Sb. – ${act.title}`,
-          sourceUrl: czechLawSparqlUrl(effectiveVersion).toString(),
-          canonicalUrl: `${E_SBIRKA_PUBLIC_ORIGIN}/sb/${act.year}/${act.number}`,
-        });
+        for (const version of effectiveVersions) {
+          candidates.push({
+            title: `${act.number}/${act.year} Sb. – ${act.title}`,
+            sourceUrl: czechLawSparqlUrl(version.url).toString(),
+            canonicalUrl: `${E_SBIRKA_PUBLIC_ORIGIN}/sb/${act.year}/${act.number}`,
+            versionLabel: `účinné-od-${version.effectiveFrom}`,
+            effectiveFrom: version.effectiveFrom,
+            effectiveTo: version.effectiveTo,
+            temporalStatus: version.effectiveTo ? "historical" : "current",
+          });
+        }
       } catch (error) {
         warnings.push(`${act.number}/${act.year} Sb.: ${errorMessage(error)}`);
       }
@@ -224,12 +235,13 @@ async function discoverCzechLawOpenData(
   };
 }
 
-function selectEffectiveCzechLawVersion(
+function selectEffectiveCzechLawVersions(
   payload: unknown,
   year: number,
   number: string,
+  historyFrom: string,
   today: string,
-): URL {
+): Array<{ url: URL; effectiveFrom: string; effectiveTo: string | null }> {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Open data returned an unsupported legal-act shape.");
   }
@@ -243,12 +255,34 @@ function selectEffectiveCzechLawVersion(
     .filter((value) => value.startsWith(expectedPrefix))
     .map((value) => ({ value, date: value.slice(expectedPrefix.length) }))
     .filter(({ date }) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date !== "0000-00-00" && date <= today)
-    .sort((left, right) => right.date.localeCompare(left.date));
-  const selected = available[0]?.value ?? record["má-vyhlášené-znění"];
-  if (typeof selected !== "string" || !selected.startsWith(expectedPrefix)) {
+    .sort((left, right) => left.date.localeCompare(right.date));
+  if (available.length === 0) {
     throw new Error("Open data does not contain an applicable legal-act version.");
   }
-  return new URL(selected.replace(/^\/+/, ""), `${E_SBIRKA_OPEN_DATA_ORIGIN}/`);
+  let baselineIndex = -1;
+  for (let index = available.length - 1; index >= 0; index -= 1) {
+    if (available[index].date <= historyFrom) {
+      baselineIndex = index;
+      break;
+    }
+  }
+  const selected = available.filter(
+    ({ date }, index) => date >= historyFrom || index === baselineIndex,
+  );
+  return selected.map(({ value, date }, index) => {
+    const next = selected[index + 1];
+    return {
+      url: new URL(value.replace(/^\/+/, ""), `${E_SBIRKA_OPEN_DATA_ORIGIN}/`),
+      effectiveFrom: date,
+      effectiveTo: next ? previousIsoDate(next.date) : null,
+    };
+  });
+}
+
+function previousIsoDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
 }
 
 function czechLawSparqlUrl(version: URL): URL {
@@ -358,7 +392,10 @@ function deduplicateCandidates(candidates: PublicSourceCandidate[]): PublicSourc
     const key = canonicalCandidateKey(candidate.sourceUrl);
     if (!result.has(key)) result.set(key, candidate);
   }
-  return [...result.values()].sort((left, right) => left.title.localeCompare(right.title, "cs"));
+  return [...result.values()].sort((left, right) => (
+    left.title.localeCompare(right.title, "cs")
+    || (left.effectiveFrom ?? "").localeCompare(right.effectiveFrom ?? "")
+  ));
 }
 
 function canonicalCandidateKey(value: string): string {
