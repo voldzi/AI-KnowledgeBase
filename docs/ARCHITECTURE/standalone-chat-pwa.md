@@ -418,6 +418,14 @@ DNS alias bez samostatného aplikačního profilu se nepovažuje za dokončené
 - bez horizontálního overflow;
 - chat-only profil na mobilu nezobrazuje modulovou spodní navigaci; pracovní tok
   zůstává v pořadí hlavička, konverzace, stav odpovědi a editor dotazu;
+- lokální hlavička chatu se na úzkém mobilu redukuje na jednu lištu se seznamem
+  vláken, názvem vlákna, sdílením a nabídkou dalších akcí; popis aplikace a
+  samostatná řada akcí nesmí zmenšovat transcript;
+- transcript je jediný hlavní vertikální scroll target a využívá veškerý prostor
+  mezi kompaktní hlavičkou a composerem;
+- composer začíná jako jednořádkový, roste s obsahem do omezené výšky a
+  respektuje `safe-area-inset-bottom`; nastavení sestavy se na mobilu otevírá v
+  omezeném spodním panelu;
 - editor dotazu zůstává dostupný při zobrazení softwarové klávesnice;
 - seznam konverzací a citace lze ovládat klávesnicí;
 - focus se po zavření panelu nebo dialogu vrací na spouštěcí prvek;
@@ -536,6 +544,8 @@ Implementace v repozitáři obsahuje:
 - automatické testy konfigurace, rout a cache politiky;
 - veřejné neinteraktivní `/health` a `/ready` endpointy s politikou `no-store`;
 - release ověření health/readiness, manifestu a blokovaného management API.
+- kompaktní mobilní chatovou plochu se sdíleným popoverem akcí, klávesnicovým
+  ovládáním a bezpečně omezeným panelem nastavení sestavy.
 
 Produkční stav 2026-07-18:
 

@@ -67,7 +67,12 @@ Check 1440 x 900, 1024 x 768, 390 x 844 and 360 x 800:
 
 - no clipped navigation labels, buttons or query chips,
 - no nested `main` landmarks in the employee chat portal,
-- mobile chat shows header and composer before the transcript,
+- mobile chat uses one compact conversation toolbar; the transcript remains the
+  primary scroll surface and occupies at least 480 px at 390 x 844,
+- the mobile composer is at most 96 px before text growth, respects the bottom
+  safe area and exposes report settings through the compact tool button,
+- the thread actions menu closes by outside click and Escape, supports
+  ArrowUp/ArrowDown/Home/End and returns focus to its trigger,
 - the thread panel is closed initially, keyboard reachable and reports
   `aria-expanded`,
 - focus indicators remain visible on suggestions, recovery actions, filters and
