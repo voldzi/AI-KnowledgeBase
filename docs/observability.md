@@ -219,6 +219,14 @@ replica degradation, indexing failures, search latency, rejected requests, and
 unexpected count drift. Never label metrics with credentials, source text,
 queries, prompts, or answers.
 
+Director Copilot V2 rejects a live response that does not match the pinned
+contract. Its integration log distinguishes this from transport failure with
+`DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID`. The optional
+`diagnostic_code` and `diagnostic_paths` fields contain only a validator code
+and bounded JSON-pointer/keyword pairs such as
+`/items/0/facts/0/quality:maximum`. They never contain fact values, entity
+labels, prompts, answers, credentials, or source content.
+
 ## Alerts
 
 Recommended alert areas:

@@ -9,6 +9,7 @@ import { DirectorCopilotTransportError } from "@/lib/director-copilot/transport-
 
 import {
   DIRECTOR_COPILOT_V2_CONTRACT,
+  DirectorCopilotV2ContractError,
   assertDirectorCopilotV2Request,
   parseDirectorCopilotV2Error,
   parseDirectorCopilotV2Response,
@@ -156,13 +157,27 @@ export class DirectorCopilotV2DomainToolClient {
       });
       this.log(application, request.tool_id, response.status, startedAt, context);
       return parsed;
-    } catch {
-      this.log(application, request.tool_id, response.status, startedAt, context, "DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID");
+    } catch (error) {
+      const contractError = error instanceof DirectorCopilotV2ContractError
+        ? error
+        : null;
+      this.log(
+        application,
+        request.tool_id,
+        response.status,
+        startedAt,
+        context,
+        "DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID",
+        contractError?.code,
+        contractError?.diagnosticPaths,
+      );
       throw new DirectorCopilotTransportError(
         "DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID",
         `Director Copilot V2 ${application} source violated the pinned contract.`,
         "unavailable",
         response.status,
+        contractError?.code,
+        contractError?.diagnosticPaths,
       );
     }
   }
@@ -174,6 +189,8 @@ export class DirectorCopilotV2DomainToolClient {
     startedAt: number,
     context: Required<Pick<ApiRequestContext, "requestId" | "correlationId">>,
     errorCode?: string,
+    diagnosticCode?: string,
+    diagnosticPaths?: string[],
   ): void {
     logIntegrationEvent({
       level: errorCode ? "error" : "info",
@@ -184,6 +201,8 @@ export class DirectorCopilotV2DomainToolClient {
       requestId: context.requestId,
       correlationId: context.correlationId,
       errorCode,
+      diagnosticCode,
+      diagnosticPaths,
     });
   }
 }

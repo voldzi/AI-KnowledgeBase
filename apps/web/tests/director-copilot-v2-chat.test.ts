@@ -275,6 +275,41 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(response.answer ?? "", /500[  ]000/);
     assert.equal((response.answer ?? "").includes("Licence"), false);
   });
+
+  it("distinguishes a rejected live contract from a source outage", async () => {
+    const message = "Vypiš mi největší položky výdajového plánu roku 2025";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-29T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-invalid-budget-contract",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: invalidBudgetItemFetcher(),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.match(response.answer ?? "", /zdroj STRATOS odpověděl/i);
+    assert.match(response.answer ?? "", /závaznému kontraktu/i);
+    assert.doesNotMatch(response.answer ?? "", /dočasně nedostupný/i);
+    assert.ok(response.warnings.includes("LIVE_DATA_CONTRACT_REJECTED"));
+    assert.ok(response.warnings.includes("LIVE_DATA_FALLBACK_BLOCKED"));
+  });
 });
 
 function fetcher(): typeof fetch {
@@ -340,6 +375,32 @@ function innovationFetcher(): typeof fetch {
       ...structuredClone(source),
       tool_call_id: request.tool_call_id,
     });
+  };
+}
+
+function invalidBudgetItemFetcher(): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (init?.method === "GET") {
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : url.includes("aiip")
+            ? "aiip-api"
+            : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    const response = structuredClone(budgetOrganization.responses.complete);
+    response.tool_call_id = request.tool_call_id;
+    response.items[0].facts[0].quality = 2;
+    return Response.json(response);
   };
 }
 

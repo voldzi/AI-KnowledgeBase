@@ -4,6 +4,7 @@ import { afterEach, describe, it } from "node:test";
 
 import type { AklConfig } from "../src/lib/api/config";
 import type { ApiRequestContext } from "../src/lib/types";
+import { DirectorCopilotTransportError } from "../src/lib/director-copilot/transport-error";
 import {
   pinnedDirectorCopilotV2ManifestBundle,
   type DirectorCopilotV2Request,
@@ -111,6 +112,54 @@ describe("Director Copilot V2 manifest and execute client", () => {
       }),
       /differs from the pinned contract/,
     );
+  });
+
+  it("reports only safe schema diagnostics when a source response violates the contract", async () => {
+    const originalConsoleError = console.error;
+    const records: string[] = [];
+    console.error = (value?: unknown) => {
+      records.push(String(value ?? ""));
+    };
+    try {
+      const invalidResponse = structuredClone(projectFixture.responses.complete);
+      invalidResponse.items[0].facts[0].quality = 2;
+      const client = new DirectorCopilotV2DomainToolClient({
+        config: config(),
+        catalog: pinnedDirectorCopilotV2CatalogForTests(),
+        serviceToken: async () => "service-token",
+        fetcher: async (_input, init) => {
+          const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+          return Response.json({
+            ...invalidResponse,
+            tool_call_id: request.tool_call_id,
+          });
+        },
+      });
+
+      await assert.rejects(
+        () => client.execute(
+          "projectflow",
+          projectFixture.request,
+          context(),
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof DirectorCopilotTransportError);
+          assert.equal(error.code, "DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID");
+          assert.equal(error.diagnosticCode, "DIRECTOR_COPILOT_V2_RESPONSE_INVALID");
+          assert.deepEqual(error.diagnosticPaths, ["/items/0/facts/0/quality:maximum"]);
+          return true;
+        },
+      );
+
+      assert.equal(records.length, 1);
+      const log = JSON.parse(records[0]!) as Record<string, unknown>;
+      assert.equal(log.error_code, "DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID");
+      assert.equal(log.diagnostic_code, "DIRECTOR_COPILOT_V2_RESPONSE_INVALID");
+      assert.deepEqual(log.diagnostic_paths, ["/items/0/facts/0/quality:maximum"]);
+      assert.equal(records[0]!.includes('"quality":2'), false);
+    } finally {
+      console.error = originalConsoleError;
+    }
   });
 });
 

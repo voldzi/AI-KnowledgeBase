@@ -90,13 +90,19 @@ export function directorCopilotV2FailureResponse(input: {
   const failureReasonCode = input.error instanceof DirectorCopilotTransportError
     ? input.error.code
     : "DIRECTOR_COPILOT_V2_FAILED";
+  const contractRejected = failureReasonCode
+    === "DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID";
   const answer = input.language === "en"
     ? notAuthorized
       ? "Your current authorized scope does not cover the requested live STRATOS data."
-      : "The requested live STRATOS source is temporarily unavailable. I did not replace it with a document answer."
+      : contractRejected
+        ? "The live STRATOS source responded, but AKB could not safely verify the response against the binding contract. I did not display the data or replace it with a document answer."
+        : "The requested live STRATOS source is temporarily unavailable. I did not replace it with a document answer."
     : notAuthorized
       ? "Váš aktuálně oprávněný rozsah nepokrývá požadovaná živá data STRATOS."
-      : "Požadovaný živý zdroj STRATOS je dočasně nedostupný. Nenahradil jsem jej odpovědí z dokumentů.";
+      : contractRejected
+        ? "Živý zdroj STRATOS odpověděl, ale AKB nemohlo odpověď bezpečně ověřit proti závaznému kontraktu. Data jsem nezobrazil ani nenahradil odpovědí z dokumentů."
+        : "Požadovaný živý zdroj STRATOS je dočasně nedostupný. Nenahradil jsem jej odpovědí z dokumentů.";
   return baseResponse({
     conversationId: input.conversationId,
     responseType: notAuthorized ? "restricted" : "no_answer",
@@ -107,7 +113,9 @@ export function directorCopilotV2FailureResponse(input: {
       failureReasonCode,
       notAuthorized
         ? "DIRECTOR_COPILOT_V2_NOT_AUTHORIZED"
-        : "DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE",
+        : contractRejected
+          ? "LIVE_DATA_CONTRACT_REJECTED"
+          : "DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE",
       "LIVE_DATA_FALLBACK_BLOCKED",
     ])],
     missingInformation: answer,
@@ -157,6 +165,12 @@ export async function auditDirectorCopilotV2Failure(input: {
       mode: input.mode,
       error_code: errorCode,
       failure_reason_code: errorCode,
+      validation_error_code: input.error instanceof DirectorCopilotTransportError
+        ? input.error.diagnosticCode ?? null
+        : null,
+      validation_issue_paths_json: input.error instanceof DirectorCopilotTransportError
+        ? JSON.stringify(input.error.diagnosticPaths)
+        : "[]",
       outcome: input.error instanceof DirectorCopilotTransportError
         ? input.error.outcome
         : "unavailable",
@@ -189,9 +203,16 @@ function composeResponse(
     });
   }
   if (orchestration.status === "unavailable") {
+    const contractRejected = orchestration.snapshot.outcomes.some((outcome) => (
+      outcome.reason_codes.includes("DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID")
+    ));
     const answer = language === "en"
-      ? "The requested live STRATOS source is temporarily unavailable. I did not substitute document search."
-      : "Požadovaný živý zdroj STRATOS je dočasně nedostupný. Nenahradil jsem jej vyhledáváním v dokumentech.";
+      ? contractRejected
+        ? "The live STRATOS source responded, but AKB could not safely verify the response against the binding contract. I did not display the data or substitute document search."
+        : "The requested live STRATOS source is temporarily unavailable. I did not substitute document search."
+      : contractRejected
+        ? "Živý zdroj STRATOS odpověděl, ale AKB nemohlo odpověď bezpečně ověřit proti závaznému kontraktu. Data jsem nezobrazil ani nenahradil vyhledáváním v dokumentech."
+        : "Požadovaný živý zdroj STRATOS je dočasně nedostupný. Nenahradil jsem jej vyhledáváním v dokumentech.";
     return baseResponse({
       conversationId,
       responseType: "no_answer",
@@ -199,7 +220,13 @@ function composeResponse(
       confidence: "insufficient_source",
       queryState: orchestration.continuation_query_state,
       snapshot: orchestration.snapshot,
-      warnings: [...outcomeWarnings(orchestration.snapshot), "LIVE_DATA_FALLBACK_BLOCKED"],
+      warnings: [
+        ...outcomeWarnings(orchestration.snapshot),
+        contractRejected
+          ? "LIVE_DATA_CONTRACT_REJECTED"
+          : "DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE",
+        "LIVE_DATA_FALLBACK_BLOCKED",
+      ],
       missingInformation: answer,
     });
   }

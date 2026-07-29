@@ -255,7 +255,11 @@ export interface DirectorCopilotV2ManifestBundle {
 }
 
 export class DirectorCopilotV2ContractError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly diagnosticPaths: string[] = [],
+  ) {
     super(message);
     this.name = "DirectorCopilotV2ContractError";
   }
@@ -577,7 +581,11 @@ function schemaAssert(
   code: string,
 ): void {
   if (validate(value)) return;
-  fail(code, `Schema validation failed: ${formatErrors(validate.errors)}.`);
+  fail(
+    code,
+    `Schema validation failed: ${formatErrors(validate.errors)}.`,
+    diagnosticPaths(validate.errors),
+  );
 }
 
 function formatErrors(errors: ErrorObject[] | null | undefined): string {
@@ -585,6 +593,16 @@ function formatErrors(errors: ErrorObject[] | null | undefined): string {
     .slice(0, 5)
     .map((error) => `${error.instancePath || "/"} ${error.message ?? "is invalid"}`)
     .join("; ");
+}
+
+function diagnosticPaths(
+  errors: ErrorObject[] | null | undefined,
+): string[] {
+  return [...new Set(
+    (errors ?? [])
+      .slice(0, 5)
+      .map((error) => `${error.instancePath || "/"}:${error.keyword}`),
+  )];
 }
 
 function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
@@ -598,6 +616,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function fail(code: string, message: string): never {
-  throw new DirectorCopilotV2ContractError(code, message);
+function fail(
+  code: string,
+  message: string,
+  paths: string[] = [],
+): never {
+  throw new DirectorCopilotV2ContractError(code, message, paths);
 }
