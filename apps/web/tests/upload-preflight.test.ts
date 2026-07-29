@@ -259,6 +259,29 @@ describe("upload preflight", () => {
     assert.equal(payload.governance_idempotency_key, "aiip-upload:idea-123:content-revision-7");
   });
 
+  it("accepts audit coordinates on a controlled-document upload without treating it as federated governance", () => {
+    const settings = testSettings("/tmp/akl-upload-test");
+    const decision = createUploadPreflightDecision(
+      {
+        document_id: "doc_controlled_123",
+        file_name: "nis2.html",
+        file_size: 128,
+        file_type: "text/html",
+        sha256: `sha256:${"f".repeat(64)}`,
+        governance_actor_subject_id: "subject-document-manager",
+        governance_correlation_id: "corr-controlled-upload",
+        purpose: "controlled-document-upload",
+      },
+      settings,
+    );
+
+    const payload = verifyUploadToken(decision.required_headers["X-AKL-Upload-Token"], settings);
+
+    assert.equal(payload.governance_actor_subject_id, "subject-document-manager");
+    assert.equal(payload.governance_correlation_id, "corr-controlled-upload");
+    assert.equal(payload.governance_scope, null);
+  });
+
   it("rejects a signed token with an incomplete governed AIIP context", () => {
     const settings = testSettings("/tmp/akl-upload-test");
     const decision = createUploadPreflightDecision(

@@ -405,19 +405,30 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
       "Upload token expected current ingestion job is invalid."
     );
   }
+  // Actor and correlation IDs are normal audit coordinates for every upload.
+  // Only a source-lineage coordinate starts a federated-governance envelope.
   const governedFields = [
     payload.external_document_id,
     payload.governed_document_resource_id,
     payload.source_governed_resource_id,
     payload.source_resource_id,
     payload.source_version,
+  ];
+  const governanceConfirmationFields = [
     payload.governance_actor_subject_id,
     payload.governance_registered_by_subject_id,
     payload.governance_correlation_id,
     payload.governance_idempotency_key,
   ];
   const governed = governedFields.some((value) => value != null) || payload.governance_scope != null;
-  if (governed && (governedFields.some((value) => typeof value !== "string" || !value) || !payload.governance_scope)) {
+  if (
+    governed &&
+    (
+      governedFields.some((value) => typeof value !== "string" || !value) ||
+      governanceConfirmationFields.some((value) => typeof value !== "string" || !value) ||
+      !payload.governance_scope
+    )
+  ) {
     throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token governance context is incomplete.");
   }
 
