@@ -946,6 +946,8 @@ button {
 }
 
 .akb-chat-main {
+  container-name: akb-chat-main;
+  container-type: inline-size;
   display: grid;
   grid-template-areas: "header" "transcript" "status" "composer";
   grid-template-rows: auto minmax(0, 1fr) auto auto;
@@ -1003,6 +1005,19 @@ button {
   flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.akb-chat-mobile-toolbar {
+  display: none;
+}
+
+.akb-chat-mobile-toolbar__title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .akb-chat-icon-button {
@@ -1637,6 +1652,12 @@ button {
   color: #137077;
 }
 
+.akb-chat-report-mode__mobile-toggle,
+.akb-chat-report-mode__backdrop,
+.akb-chat-report-mode__panel-header {
+  display: none;
+}
+
 .akb-chat-report-mode__panel {
   background: #f8fbfb;
   border: 1px solid var(--border);
@@ -1749,7 +1770,7 @@ button {
   max-height: 160px;
   min-height: 42px;
   outline: 0;
-  resize: vertical;
+  resize: none;
   width: 100%;
 }
 
@@ -1973,6 +1994,42 @@ button {
   outline: 0;
 }
 
+@container akb-chat-main (max-width: 620px) {
+  .akb-chat-header {
+    min-height: 56px;
+    padding-bottom: 6px;
+    padding-top: 6px;
+  }
+
+  .akb-chat-header__identity {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .akb-chat-header__actions--desktop {
+    display: none;
+  }
+
+  .akb-chat-mobile-toolbar {
+    align-items: center;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    width: 100%;
+  }
+
+  .akb-chat-mobile-toolbar .akb-chat-mobile-threads {
+    display: none;
+  }
+}
+
 @media (max-width: 1240px) {
   .akb-chat-app {
     grid-template-columns: 250px minmax(0, 1fr);
@@ -2040,10 +2097,27 @@ button {
   .akb-chat-header {
     align-items: stretch;
     display: grid;
+    padding-bottom: 12px;
+    padding-top: 12px;
   }
 
-  .akb-chat-header__actions {
-    justify-content: flex-start;
+  .akb-chat-header__identity p {
+    display: none;
+  }
+
+  .akb-chat-header__actions--desktop {
+    display: none;
+  }
+
+  .akb-chat-mobile-toolbar {
+    align-items: center;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
+  }
+
+  .akb-chat-mobile-toolbar .akb-chat-mobile-threads {
+    display: inline-flex;
   }
 
   .akb-chat-suggestions {
@@ -2090,27 +2164,167 @@ button {
 }
 
 @media (max-width: 560px) {
+  .stratos-akb-shell--chat .stratos-app-shell-content {
+    padding: 0;
+    scrollbar-gutter: auto;
+  }
+
+  .stratos-akb-shell--chat .akb-chat-app {
+    gap: 0;
+  }
+
+  .akb-chat-main {
+    border-left: 0;
+    border-radius: 0;
+    border-right: 0;
+    box-shadow: none;
+  }
+
   .akb-chat-header,
   .akb-chat-transcript,
   .akb-chat-composer {
-    padding-left: 14px;
-    padding-right: 14px;
+    padding-left: 10px;
+    padding-right: 10px;
   }
 
-  .akb-chat-header h1 {
-    font-size: 22px;
+  .akb-chat-header {
+    min-height: 56px;
+    padding-bottom: 6px;
+    padding-top: 6px;
   }
 
-  .akb-chat-header__actions {
-    display: grid;
-    grid-template-columns: repeat(4, 44px);
+  .akb-chat-header__identity {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
   }
 
-  .akb-chat-header__actions > :last-child {
-    grid-column: span 2;
-    justify-self: stretch;
-    min-width: 0;
+  .akb-chat-mobile-toolbar {
     width: 100%;
+  }
+
+  .akb-chat-transcript {
+    gap: 10px;
+    padding-bottom: 12px;
+    padding-top: 10px;
+  }
+
+  .akb-chat-status {
+    margin: 6px 10px 0;
+  }
+
+  .akb-chat-composer {
+    gap: 5px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    padding-top: 8px;
+  }
+
+  .akb-chat-composer > label {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .akb-chat-report-mode {
+    display: contents;
+  }
+
+  .akb-chat-report-mode__toggle--desktop {
+    display: none;
+  }
+
+  .akb-chat-report-mode__mobile-toggle {
+    align-items: center;
+    align-self: end;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    color: var(--muted);
+    display: inline-flex;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+  }
+
+  .akb-chat-report-mode__mobile-toggle:hover,
+  .akb-chat-report-mode__mobile-toggle:focus-visible,
+  .akb-chat-report-mode__mobile-toggle.is-active {
+    background: #e9f7f7;
+    color: #137077;
+    outline: 0;
+  }
+
+  .akb-chat-report-mode__mobile-toggle:focus-visible {
+    box-shadow: var(--stratos-focus-ring);
+  }
+
+  .akb-chat-report-mode__backdrop {
+    background: rgb(16 32 42 / 32%);
+    border: 0;
+    display: block;
+    inset: 0;
+    padding: 0;
+    position: fixed;
+    z-index: 79;
+  }
+
+  .akb-chat-report-mode__panel {
+    background: var(--surface);
+    border-bottom: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    bottom: 0;
+    box-shadow: 0 -14px 36px rgb(16 32 42 / 20%);
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    left: 0;
+    max-height: min(72dvh, 620px);
+    overflow-y: auto;
+    padding: 12px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+    position: fixed;
+    right: 0;
+    z-index: 80;
+  }
+
+  .akb-chat-report-mode__panel-header {
+    align-items: center;
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+
+  .akb-chat-report-mode__panel-header h2 {
+    font-size: 18px;
+    margin: 0;
+  }
+
+  .akb-chat-composer__box {
+    gap: 4px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    padding: 5px;
+  }
+
+  .akb-chat-composer textarea {
+    font-size: 16px;
+    min-height: 40px;
+    padding: 9px 4px 6px;
+  }
+
+  .akb-chat-composer button[type="submit"] {
+    height: 44px;
+    width: 44px;
   }
 
   .akb-chat-message {

@@ -427,6 +427,54 @@ test.describe("Document Workbench product paths", () => {
     await expect(report.getByRole("button", { name: /Exportovat PDF/ })).toHaveCount(0);
   });
 
+  test("DW-14H mobile chat prioritizes the transcript and keeps advanced actions accessible", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(appPath("/chat"));
+
+    const header = page.locator(".akb-chat-header");
+    const transcript = page.locator(".akb-chat-transcript");
+    const composer = page.locator(".akb-chat-composer");
+
+    await expect(page.locator(".akb-chat-mobile-toolbar")).toBeVisible();
+    await expect(page.locator(".akb-chat-header__actions--desktop")).toBeHidden();
+    await expect(page.locator(".akb-chat-mobile-toolbar__title")).toBeVisible();
+
+    const headerBox = await header.boundingBox();
+    const transcriptBox = await transcript.boundingBox();
+    const composerBox = await composer.boundingBox();
+    expect(headerBox?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(64);
+    expect(transcriptBox?.height ?? 0).toBeGreaterThan(480);
+    expect(composerBox?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(96);
+
+    const reportToggle = page.locator(".akb-chat-report-mode__mobile-toggle");
+    await reportToggle.focus();
+    await page.keyboard.press("Enter");
+    const reportSettings = page.getByRole("region", { name: "Nastavení sestavy" });
+    await expect(reportSettings).toBeVisible();
+    await expect(reportSettings).toHaveCSS("position", "fixed");
+    await reportSettings.getByRole("button", { name: "Zavřít" }).click();
+    await expect(reportSettings).toBeHidden();
+
+    await page.getByRole("button", { name: /Kdo schvaluje výjimku/ }).click();
+    await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();
+
+    const actionsTrigger = page.getByRole("button", { name: "Další akce vlákna" });
+    await actionsTrigger.click();
+    const actionsMenu = page.getByRole("menu", { name: "Další akce vlákna" });
+    await expect(actionsMenu).toBeVisible();
+    await expect(actionsMenu.getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(actionsMenu.getByRole("menuitem").last()).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(actionsMenu).toBeHidden();
+    await expect(actionsTrigger).toBeFocused();
+
+    const horizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(horizontalOverflow).toBeLessThanOrEqual(1);
+  });
+
   test("DW-14A assistant citation document endpoint redirects to signed source content", async ({ page }) => {
     await page.goto(appPath("/api/assistant/citations/chunk_md_109/document"));
 

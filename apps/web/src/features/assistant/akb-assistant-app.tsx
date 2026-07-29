@@ -11,6 +11,7 @@ import {
   Clock3,
   Copy,
   Download,
+  Ellipsis,
   FileSpreadsheet,
   FileText,
   LifeBuoy,
@@ -32,7 +33,11 @@ import {
   Users,
   X
 } from "lucide-react";
-import { DirectoryPersonPicker as PersonPicker } from "@voldzi/stratos-ui";
+import {
+  DirectoryPersonPicker as PersonPicker,
+  EntityContextMenu,
+  PortalPopover,
+} from "@voldzi/stratos-ui";
 
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosDataTable, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
@@ -211,6 +216,7 @@ const assistantAppCopy = {
     deleteSucceeded: "Vlákno bylo trvale odstraněno.",
     copied: "Zkopírováno",
     copyLink: "Kopírovat odkaz",
+    threadActions: "Další akce vlákna",
     sourcesPanel: "Zdroje odpovědi",
     threadAccess: "Přístup k vláknu",
     noSources: "Zdroje se zobrazí po první odpovědi s citacemi.",
@@ -265,6 +271,7 @@ const assistantAppCopy = {
     reportExportPdfOnly: "PDF",
     reportExportBoth: "Excel + PDF",
     reportColumns: "Sloupce",
+    reportSettings: "Nastavení sestavy",
     exportXlsx: "Exportovat Excel",
     exportPdf: "Exportovat PDF",
     exportingReport: "Připravuji Excel",
@@ -351,6 +358,7 @@ const assistantAppCopy = {
     deleteSucceeded: "The thread was permanently deleted.",
     copied: "Copied",
     copyLink: "Copy link",
+    threadActions: "More thread actions",
     sourcesPanel: "Answer sources",
     threadAccess: "Thread access",
     noSources: "Sources appear after the first cited answer.",
@@ -405,6 +413,7 @@ const assistantAppCopy = {
     reportExportPdfOnly: "PDF",
     reportExportBoth: "Excel + PDF",
     reportColumns: "Columns",
+    reportSettings: "Report settings",
     exportXlsx: "Export Excel",
     exportPdf: "Export PDF",
     exportingReport: "Preparing Excel",
@@ -473,6 +482,7 @@ export function AkbAssistantApp({
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("active");
   const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(() => {
     if (initialRequestedThreadUnavailable) {
       return assistantAppCopy[language].requestedThreadUnavailable;
@@ -507,6 +517,8 @@ export function AkbAssistantApp({
   const [reportColumns, setReportColumns] = useState<AssistantReportColumnKey[]>(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS.obligation_table);
   const transcriptRef = useRef<HTMLElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const threadScrollPositions = useRef(new Map<string, number>());
   const previousTranscriptThreadId = useRef<string | null>(null);
   const previousLastMessageId = useRef<string | null>(null);
@@ -539,6 +551,36 @@ export function AkbAssistantApp({
   }, [currentSubjectId, threadFilter, threadSearch, threads]);
   const visibleSuggestions = suggestions.slice(0, 4);
   const visibleSlashCommands = useMemo(() => slashCommandOptions(composer, language), [composer, language]);
+  const hasMobileThreadActions = Boolean(
+    activeThread.conversationId ||
+    (canManageActiveThread && activeThread.status === "active") ||
+    (canManageActiveThread && activeThread.status === "archived"),
+  );
+
+  useEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 40), 160)}px`;
+  }, [composer]);
+
+  useEffect(() => {
+    setMobileActionsOpen(false);
+  }, [activeThreadId]);
+
+  useEffect(() => {
+    if (!mobileActionsOpen) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>("#akb-chat-mobile-actions-popover [role='menuitem']:not(:disabled)")
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobileActionsOpen]);
 
   useEffect(() => {
     if (!activeThread?.conversationId || activeThread.historyLoaded) {
@@ -1309,6 +1351,40 @@ export function AkbAssistantApp({
     }
   }
 
+  function closeMobileActions(restoreFocus = true) {
+    setMobileActionsOpen(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => mobileActionsTriggerRef.current?.focus());
+    }
+  }
+
+  function handleMobileActionsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)"),
+    );
+    if (!items.length) {
+      return;
+    }
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "Home") {
+      items[0]?.focus();
+      return;
+    }
+    if (event.key === "End") {
+      items.at(-1)?.focus();
+      return;
+    }
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = currentIndex < 0
+      ? (direction > 0 ? 0 : items.length - 1)
+      : (currentIndex + direction + items.length) % items.length;
+    items[nextIndex]?.focus();
+  }
+
   return (
     <>
       <section className="akb-chat-app" aria-label="AKB Assistant">
@@ -1389,22 +1465,11 @@ export function AkbAssistantApp({
 
         <main className="akb-chat-main">
           <header className="akb-chat-header">
-            <div>
+            <div className="akb-chat-header__identity">
               <h1>{copy.appTitle}</h1>
               <p>{copy.appSubtitle}</p>
             </div>
-            <div className="akb-chat-header__actions">
-              <button
-                className="akb-chat-icon-button akb-chat-mobile-threads"
-                type="button"
-                onClick={() => setMobileThreadsOpen((open) => !open)}
-                title={copy.threadList}
-                aria-label={copy.threadList}
-                aria-controls="akb-chat-thread-panel"
-                aria-expanded={mobileThreadsOpen}
-              >
-                <PanelLeftOpen size={16} aria-hidden="true" />
-              </button>
+            <div className="akb-chat-header__actions akb-chat-header__actions--desktop">
               {canManageActiveThread && activeThread.status === "active" ? (
                 <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                   <Archive size={16} aria-hidden="true" />
@@ -1480,7 +1545,156 @@ export function AkbAssistantApp({
                 {copy.share}
               </StratosButton>
             </div>
+            <div className="akb-chat-mobile-toolbar">
+              <button
+                className="akb-chat-icon-button akb-chat-mobile-threads"
+                type="button"
+                onClick={() => setMobileThreadsOpen((open) => !open)}
+                title={copy.threadList}
+                aria-label={copy.threadList}
+                aria-controls="akb-chat-thread-panel"
+                aria-expanded={mobileThreadsOpen}
+              >
+                <PanelLeftOpen size={18} aria-hidden="true" />
+              </button>
+              <span className="akb-chat-mobile-toolbar__title" title={activeThread.title}>
+                {activeThread.title}
+              </span>
+              <button
+                className="akb-chat-icon-button"
+                type="button"
+                onClick={() => setShareOpen(true)}
+                disabled={
+                  !activeThread.conversationId ||
+                  activeThread.ownerSubjectId !== currentSubjectId
+                }
+                title={
+                  activeThread.conversationId
+                    ? copy.share
+                    : copy.shareAfterFirstMessage
+                }
+                aria-label={copy.share}
+              >
+                <Share2 size={18} aria-hidden="true" />
+              </button>
+              <button
+                ref={mobileActionsTriggerRef}
+                className="akb-chat-icon-button"
+                type="button"
+                onClick={() => setMobileActionsOpen((open) => !open)}
+                disabled={!hasMobileThreadActions}
+                title={copy.threadActions}
+                aria-label={copy.threadActions}
+                aria-haspopup="menu"
+                aria-expanded={mobileActionsOpen}
+                aria-controls="akb-chat-mobile-actions-popover"
+              >
+                <Ellipsis size={20} aria-hidden="true" />
+              </button>
+            </div>
           </header>
+
+          <PortalPopover
+            id="akb-chat-mobile-actions-popover"
+            open={mobileActionsOpen}
+            anchorElement={mobileActionsTriggerRef.current}
+            placement="bottom-end"
+            width={280}
+            role="dialog"
+            ariaLabel={copy.threadActions}
+            ignoreElement={mobileActionsTriggerRef.current}
+            closeOnAnchorLost
+            onClose={() => closeMobileActions()}
+          >
+            <div onKeyDown={handleMobileActionsKeyDown}>
+              <EntityContextMenu
+                ariaLabel={copy.threadActions}
+                sections={[
+                  {
+                    id: "thread",
+                    items: [
+                      ...(canManageActiveThread && activeThread.status === "active"
+                        ? [{
+                            id: "archive",
+                            label: copy.archive,
+                            icon: <Archive size={17} aria-hidden="true" />,
+                            onSelect: () => {
+                              closeMobileActions(false);
+                              void archiveActiveThread();
+                            },
+                          }]
+                        : []),
+                      ...(canManageActiveThread && activeThread.status === "archived"
+                        ? [{
+                            id: "restore",
+                            label: copy.restore,
+                            icon: <Archive size={17} aria-hidden="true" />,
+                            onSelect: () => {
+                              closeMobileActions(false);
+                              void restoreActiveThread();
+                            },
+                          }]
+                        : []),
+                      ...(canManageActiveThread && activeThread.conversationId
+                        ? [
+                            {
+                              id: "pin",
+                              label: activeThread.pinned ? copy.unpinThread : copy.pinThread,
+                              icon: activeThread.pinned
+                                ? <PinOff size={17} aria-hidden="true" />
+                                : <Pin size={17} aria-hidden="true" />,
+                              onSelect: () => {
+                                closeMobileActions(false);
+                                void toggleActiveThreadPin();
+                              },
+                            },
+                            {
+                              id: "rename",
+                              label: copy.renameThread,
+                              icon: <Pencil size={17} aria-hidden="true" />,
+                              onSelect: () => {
+                                closeMobileActions(false);
+                                setRenameValue(activeThread.title);
+                                setRenameOpen(true);
+                              },
+                            },
+                          ]
+                        : []),
+                      ...(activeThread.conversationId
+                        ? [{
+                            id: "copy-link",
+                            label: copied ? copy.copied : copy.copyLink,
+                            icon: copied
+                              ? <Check size={17} aria-hidden="true" />
+                              : <Copy size={17} aria-hidden="true" />,
+                            onSelect: () => {
+                              closeMobileActions(false);
+                              void copyThreadLink();
+                            },
+                          }]
+                        : []),
+                    ],
+                  },
+                  {
+                    id: "danger",
+                    items: activeThread.conversationId &&
+                      activeThread.ownerSubjectId === currentSubjectId
+                      ? [{
+                          id: "delete",
+                          label: copy.deleteThread,
+                          icon: <Trash2 size={17} aria-hidden="true" />,
+                          danger: true,
+                          onSelect: () => {
+                            closeMobileActions(false);
+                            setDeleteOpen(true);
+                          },
+                        }]
+                      : [],
+                  },
+                ].filter((section) => section.items.length > 0)}
+              />
+            </div>
+          </PortalPopover>
 
           <section
             ref={transcriptRef}
@@ -1562,15 +1776,41 @@ export function AkbAssistantApp({
             <div className="akb-chat-report-mode">
               <button
                 type="button"
-                className={`akb-chat-report-mode__toggle ${reportModeEnabled ? "is-active" : ""}`}
+                className={`akb-chat-report-mode__toggle akb-chat-report-mode__toggle--desktop ${reportModeEnabled ? "is-active" : ""}`}
                 aria-pressed={reportModeEnabled}
+                aria-controls="akb-chat-report-settings"
+                aria-expanded={reportModeEnabled}
                 onClick={() => setReportModeEnabled((current) => !current)}
               >
                 <Table2 size={15} aria-hidden="true" />
                 {reportModeEnabled ? copy.reportModeActive : copy.reportMode}
               </button>
               {reportModeEnabled ? (
-                <div className="akb-chat-report-mode__panel">
+                <>
+                  <button
+                    type="button"
+                    className="akb-chat-report-mode__backdrop"
+                    aria-label={copy.close}
+                    onClick={() => setReportModeEnabled(false)}
+                  />
+                  <div
+                    id="akb-chat-report-settings"
+                    className="akb-chat-report-mode__panel"
+                    role="region"
+                    aria-label={copy.reportSettings}
+                  >
+                    <div className="akb-chat-report-mode__panel-header">
+                      <h2>{copy.reportSettings}</h2>
+                      <button
+                        className="akb-chat-icon-button"
+                        type="button"
+                        onClick={() => setReportModeEnabled(false)}
+                        aria-label={copy.close}
+                        title={copy.close}
+                      >
+                        <X size={17} aria-hidden="true" />
+                      </button>
+                    </div>
                   <StratosSelect
                     id="akb-report-template"
                     label={copy.reportTemplate}
@@ -1616,7 +1856,8 @@ export function AkbAssistantApp({
                       ))}
                     </div>
                   </fieldset>
-                </div>
+                  </div>
+                </>
               ) : null}
             </div>
             {visibleSlashCommands.length ? (
@@ -1636,13 +1877,26 @@ export function AkbAssistantApp({
               </div>
             ) : null}
             <div className="akb-chat-composer__box">
+              <button
+                type="button"
+                className={`akb-chat-report-mode__mobile-toggle ${reportModeEnabled ? "is-active" : ""}`}
+                aria-label={reportModeEnabled ? copy.reportModeActive : copy.reportMode}
+                title={reportModeEnabled ? copy.reportModeActive : copy.reportMode}
+                aria-pressed={reportModeEnabled}
+                aria-controls="akb-chat-report-settings"
+                aria-expanded={reportModeEnabled}
+                onClick={() => setReportModeEnabled((current) => !current)}
+              >
+                <Table2 size={18} aria-hidden="true" />
+              </button>
               <textarea
+                ref={composerTextareaRef}
                 id="akb-chat-composer"
                 value={composer}
                 onChange={(event) => updateActiveDraft(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
                 placeholder={copy.composerPlaceholder}
-                rows={2}
+                rows={1}
                 disabled={creatingThread || activeThread.status === "archived"}
               />
               <button
