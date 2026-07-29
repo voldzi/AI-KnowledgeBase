@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
+import { controlledDocumentationBridgeError } from "../errors";
 
 export const dynamic = "force-dynamic";
 
@@ -33,17 +34,10 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "CONTROLLED_RULES_UNAVAILABLE",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Pravidla se nepodařilo načíst.",
-        },
-      },
-      { status: 502 },
+    return controlledDocumentationBridgeError(
+      error,
+      "CONTROLLED_RULES_UNAVAILABLE",
+      "Pravidla se nepodařilo načíst.",
     );
   }
 }
