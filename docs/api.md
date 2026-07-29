@@ -406,6 +406,7 @@ DELETE /api/assistant/conversations/{conversationId}
 PUT   /api/assistant/conversations/{conversationId}/shares
 PUT   /api/assistant/conversations/{conversationId}/messages/{messageId}/feedback
 GET   /api/assistant/directory
+GET   /api/assistant/suggestions
 ```
 
 Conversation history defaults to private visibility and configurable 180-day
@@ -422,6 +423,14 @@ server-owned and pinned conversations sort before other conversations; an
 archived conversation rejects new messages until it is restored. Response
 feedback is an idempotent per-viewer `helpful | not_helpful` value with one
 bounded reason code. Free-text feedback is intentionally not accepted.
+When `GET /assistant/conversation-history` explicitly sets
+`include_suggestion_signals=true`, owned conversation list items also contain
+at most 32 `suggestion_signals`. Each signal contains only a bounded source kind, a
+validated intent identifier, creation time, bounded feedback and a SHA-256
+fingerprint of the preceding normalized prompt. It contains no prompt or
+answer text. Shared conversations owned by another subject always return an
+empty signal list. The web bridge uses these signals only for ranking; current
+STRATOS capabilities and scopes remain the authorization source of truth.
 Each returned message includes `availability`. Assistant messages with citations
 are reauthorized against every exact cited document version on each history
 read. If one of those versions is no longer allowed or cannot be safely

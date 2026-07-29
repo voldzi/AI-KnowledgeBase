@@ -77,6 +77,11 @@ GET  /api/v1/assistant/citations/{chunk_id}/open
 ```
 
 The assistant wraps retrieval, no-answer policy, answer composition, and citation opening in a plain-language contract for employees. It asks clarifying questions for vague access, incident, and approval requests before it retrieves.
+The direct RAG suggestion endpoint remains a compatibility surface for
+document-only clients. Any document title used there is first filtered through
+Registry authorization for the current principal; a Registry outage therefore
+fails closed instead of returning an unverified title. The main Knowledge Chat
+uses the web bridge's access- and history-aware deterministic suggestions.
 
 ## Assistant Tool Router
 

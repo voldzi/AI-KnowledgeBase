@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
+import { getAklConfig } from "@/lib/api/config";
+import { personalizedAssistantSuggestions } from "@/lib/assistant/personalized-suggestions";
 import { isAklLanguage } from "@/lib/language";
 
 import { assistantBridgeError, unauthorizedAssistantRequest } from "../errors";
@@ -15,12 +17,20 @@ export async function GET(request: Request) {
     }
     const clients = getServerApiClients();
     const requestedLanguage = new URL(request.url).searchParams.get("language");
-    const response = await clients.rag.assistantSuggestions(
+    const conversations = await clients.registry
+      .listAssistantConversations(context, true, true)
+      .then((response) => response.items)
+      .catch(() => []);
+    const response = await personalizedAssistantSuggestions({
       context,
-      isAklLanguage(requestedLanguage) ? requestedLanguage : "cs"
-    );
+      config: getAklConfig(),
+      conversations,
+      language: isAklLanguage(requestedLanguage) ? requestedLanguage : "cs",
+    });
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (error) {
     return assistantBridgeError(error);
   }

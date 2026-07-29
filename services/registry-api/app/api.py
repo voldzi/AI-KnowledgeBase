@@ -216,6 +216,7 @@ from app.schemas import (
     AssistantConversationDetailResponse,
     AssistantConversationListItemResponse,
     AssistantConversationListResponse,
+    AssistantSuggestionSignalResponse,
     AssistantConversationPatch,
     AssistantConversationShareReplaceRequest,
     AssistantConversationShareResponse,
@@ -9048,7 +9049,95 @@ def _conversation_response(
     return response
 
 
-def _conversation_list_item_response(conversation: AssistantConversation) -> AssistantConversationListItemResponse:
+def _assistant_suggestion_source(
+    message: AssistantMessage,
+) -> tuple[str, str | None] | None:
+    metadata = message.message_metadata
+    history = metadata.get("director_copilot_history")
+    current_context = metadata.get("current_context")
+    history_intent = (
+        history.get("intent")
+        if isinstance(history, dict)
+        else None
+    )
+    context_intent = (
+        current_context.get("requested_director_copilot_intent")
+        if isinstance(current_context, dict)
+        else None
+    )
+    intent = history_intent or context_intent
+    if isinstance(intent, str) and 0 < len(intent) <= 128:
+        return "director_copilot_v2", intent
+
+    answer_source = (
+        current_context.get("answer_source")
+        if isinstance(current_context, dict)
+        else None
+    )
+    if (
+        metadata.get("assistant_tool") == "registry_document_report"
+        or answer_source in {"registry_metadata", "registry_metadata_summary", "rag"}
+    ):
+        return "documents", None
+    return None
+
+
+def _assistant_prompt_fingerprint(prompt: str) -> str:
+    normalized = " ".join(
+        unicodedata.normalize("NFKC", prompt).lower().split()
+    )
+    return sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _assistant_suggestion_signals(
+    conversation: AssistantConversation,
+) -> list[AssistantSuggestionSignalResponse]:
+    cutoff = utcnow() - timedelta(days=180)
+    previous_user_message: AssistantMessage | None = None
+    signals: list[AssistantSuggestionSignalResponse] = []
+    for message in conversation.messages:
+        message_created_at = message.created_at
+        if message_created_at.tzinfo is None:
+            message_created_at = message_created_at.replace(tzinfo=timezone.utc)
+        if message.role == "user":
+            previous_user_message = message
+            continue
+        if (
+            message.role != "assistant"
+            or previous_user_message is None
+            or message_created_at < cutoff
+        ):
+            continue
+        source = _assistant_suggestion_source(message)
+        if source is None:
+            continue
+        viewer_feedback = next(
+            (
+                feedback.rating
+                for feedback in message.feedback
+                if feedback.actor_id == conversation.user_id
+            ),
+            None,
+        )
+        signals.append(
+            AssistantSuggestionSignalResponse(
+                source_kind=source[0],
+                intent=source[1],
+                prompt_fingerprint=_assistant_prompt_fingerprint(
+                    previous_user_message.content,
+                ),
+                feedback_rating=viewer_feedback,
+                created_at=message_created_at,
+            )
+        )
+    return signals[-32:]
+
+
+def _conversation_list_item_response(
+    conversation: AssistantConversation,
+    *,
+    include_suggestion_signals: bool = False,
+) -> AssistantConversationListItemResponse:
     return AssistantConversationListItemResponse(
         conversation_id=conversation.conversation_id,
         user_id=conversation.user_id,
@@ -9062,6 +9151,11 @@ def _conversation_list_item_response(conversation: AssistantConversation) -> Ass
         updated_at=conversation.updated_at,
         shared_with=[_assistant_share_response(share) for share in conversation.shares if share.status == "active"],
         message_count=len(conversation.messages),
+        suggestion_signals=(
+            _assistant_suggestion_signals(conversation)
+            if include_suggestion_signals
+            else []
+        ),
     )
 
 
@@ -9158,15 +9252,22 @@ def _validate_conversation_retention_until(
 )
 def list_assistant_conversations(
     include_archived: bool = False,
+    include_suggestion_signals: bool = False,
     limit: Limit = 50,
     offset: Offset = 0,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationListResponse:
     context = require_global_action(principal, Action.rag_query, db)
+    message_load = selectinload(AssistantConversation.messages)
+    if include_suggestion_signals:
+        message_load = message_load.selectinload(AssistantMessage.feedback)
     conversations = db.execute(
         select(AssistantConversation)
-        .options(selectinload(AssistantConversation.messages), selectinload(AssistantConversation.shares))
+        .options(
+            message_load,
+            selectinload(AssistantConversation.shares),
+        )
         .order_by(
             desc(AssistantConversation.pinned_at),
             desc(AssistantConversation.updated_at),
@@ -9181,7 +9282,16 @@ def list_assistant_conversations(
         if _conversation_subject_allowed(conversation, context):
             visible.append(conversation)
     return AssistantConversationListResponse(
-        items=[_conversation_list_item_response(conversation) for conversation in visible[offset : offset + limit]],
+        items=[
+            _conversation_list_item_response(
+                conversation,
+                include_suggestion_signals=(
+                    include_suggestion_signals
+                    and conversation.user_id == context.subject_id
+                ),
+            )
+            for conversation in visible[offset : offset + limit]
+        ],
         limit=limit,
         offset=offset,
     )

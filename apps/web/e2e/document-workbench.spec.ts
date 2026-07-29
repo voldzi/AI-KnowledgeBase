@@ -368,7 +368,10 @@ test.describe("Document Workbench product paths", () => {
     await page.goto(appPath("/chat"));
 
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
-    await page.getByRole("button", { name: /Kdo schvaluje výjimku/ }).click();
+    await page
+      .getByLabel("Zeptejte se na dokument, postup nebo odpovědnost")
+      .fill("Kdo schvaluje výjimku ze směrnice?");
+    await page.getByRole("button", { name: "Odeslat" }).click();
     await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();
 
     const sourcesPanel = page.getByRole("complementary", { name: "Zdroje odpovědi" });
@@ -455,7 +458,10 @@ test.describe("Document Workbench product paths", () => {
     await reportSettings.getByRole("button", { name: "Zavřít" }).click();
     await expect(reportSettings).toBeHidden();
 
-    await page.getByRole("button", { name: /Kdo schvaluje výjimku/ }).click();
+    await page
+      .getByLabel("Zeptejte se na dokument, postup nebo odpovědnost")
+      .fill("Kdo schvaluje výjimku ze směrnice?");
+    await page.getByRole("button", { name: "Odeslat" }).click();
     await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();
 
     const actionsTrigger = page.getByRole("button", { name: "Další akce vlákna" });

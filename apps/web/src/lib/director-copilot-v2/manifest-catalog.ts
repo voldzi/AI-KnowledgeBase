@@ -113,7 +113,7 @@ export function resetDirectorCopilotV2ManifestCacheForTests(): void {
   pendingCatalog = null;
 }
 
-export function pinnedDirectorCopilotV2CatalogForTests(): DirectorCopilotV2ManifestCatalog {
+export function pinnedDirectorCopilotV2Catalog(): DirectorCopilotV2ManifestCatalog {
   const manifests = pinnedDirectorCopilotV2ManifestBundle().manifests
     .sort((left, right) => left.tool_id.localeCompare(right.tool_id));
   const applications = (
@@ -131,6 +131,10 @@ export function pinnedDirectorCopilotV2CatalogForTests(): DirectorCopilotV2Manif
       ),
     ])),
   };
+}
+
+export function pinnedDirectorCopilotV2CatalogForTests(): DirectorCopilotV2ManifestCatalog {
+  return pinnedDirectorCopilotV2Catalog();
 }
 
 async function fetchCatalog(

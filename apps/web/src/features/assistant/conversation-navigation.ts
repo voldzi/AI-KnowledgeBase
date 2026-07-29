@@ -44,6 +44,7 @@ export function conversationListItemFromDetail(
     updated_at: conversation.updated_at,
     shared_with: conversation.shared_with,
     message_count: conversation.messages.length,
+    suggestion_signals: [],
   };
 }
 

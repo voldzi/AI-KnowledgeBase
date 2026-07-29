@@ -41,3 +41,15 @@ def test_content_based_suggestions_show_each_document_title_once() -> None:
         "AI podpora analýzy veřejných zdrojů",
         "Provozní směrnice",
     ]
+
+
+def test_suggestions_do_not_reveal_denied_document_titles() -> None:
+    with make_client({
+        "AKL_RAG_AUTHZ_MODE": "registry",
+        "AKL_RAG_MOCK_DENIED_DOCUMENT_IDS": "doc_123",
+    }) as client:
+        response = client.get("/api/v1/assistant/suggestions?response_language=cs")
+
+    assert response.status_code == 200
+    labels = [item["label"] for item in response.json()["suggestions"]]
+    assert "Smernice pro spravu dokumentu" not in labels

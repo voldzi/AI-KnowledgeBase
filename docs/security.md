@@ -254,6 +254,15 @@ answers are reauthorized on each load. If current source access is absent, the
 stored answer, citations, and structured artifacts are withheld and only a
 content-free aggregate audit event is written.
 
+Chat suggestion personalization does not read full thread details. Registry
+derives a bounded profile from conversations owned by the current subject and
+returns only source kind, known intent, time, bounded feedback and a one-way
+normalized prompt fingerprint. Signals from shared conversations owned by
+another subject are withheld. The web bridge then intersects candidates with
+the current STRATOS access projection and validates each live-data question
+through the pinned Director Copilot V2 planner. A stale profile, browser input
+or suggested prompt cannot create a capability, scope or policy decision.
+
 Federated ProjectFlow/Budget answers are stored without raw domain payloads,
 access tokens, or access projections. Their bounded provenance is revalidated
 against both the current STRATOS access projection and a fresh source-domain

@@ -29,6 +29,7 @@ function listItem(
     updated_at: "2026-07-18T09:00:00.000Z",
     shared_with: [],
     message_count: 2,
+    suggestion_signals: [],
   };
 }
 

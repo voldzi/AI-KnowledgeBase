@@ -295,6 +295,7 @@ class QdrantHybridRetriever:
             if not document_id or not title or document_id in seen:
                 continue
             seen[document_id] = {
+                "document_id": document_id,
                 "document_title": title,
                 "document_type": str(point_payload.get("document_type") or metadata.get("document_type") or ""),
             }

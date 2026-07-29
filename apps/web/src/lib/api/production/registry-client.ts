@@ -621,9 +621,17 @@ export class ProductionRegistryClient implements RegistryApiClient {
 
   listAssistantConversations(
     context: ApiRequestContext,
-    includeArchived = false
+    includeArchived = false,
+    includeSuggestionSignals = false,
   ): Promise<AssistantConversationListResponse> {
-    const params = new URLSearchParams({ include_archived: String(includeArchived), limit: "50", offset: "0" });
+    const params = new URLSearchParams({
+      include_archived: String(includeArchived),
+      limit: "50",
+      offset: "0",
+    });
+    if (includeSuggestionSignals) {
+      params.set("include_suggestion_signals", "true");
+    }
     return this.get<AssistantConversationListResponse>(
       `/assistant/conversation-history?${params}`,
       "listAssistantConversations",

@@ -524,6 +524,9 @@ export function AkbAssistantApp({
   const previousLastMessageId = useRef<string | null>(null);
   const autoFollowTranscript = useRef(true);
   const [newMessagesBelow, setNewMessagesBelow] = useState(false);
+  const [personalizedSuggestions, setPersonalizedSuggestions] = useState(
+    suggestions,
+  );
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
   const canManageActiveThread = !activeThread?.conversationId ||
@@ -549,7 +552,7 @@ export function AkbAssistantApp({
       : byView;
     return [...filtered].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
   }, [currentSubjectId, threadFilter, threadSearch, threads]);
-  const visibleSuggestions = suggestions.slice(0, 4);
+  const visibleSuggestions = personalizedSuggestions.slice(0, 4);
   const visibleSlashCommands = useMemo(() => slashCommandOptions(composer, language), [composer, language]);
   const hasMobileThreadActions = Boolean(
     activeThread.conversationId ||
@@ -569,6 +572,10 @@ export function AkbAssistantApp({
   useEffect(() => {
     setMobileActionsOpen(false);
   }, [activeThreadId]);
+
+  useEffect(() => {
+    void refreshSuggestions();
+  }, [language]);
 
   useEffect(() => {
     if (!mobileActionsOpen) {
@@ -691,6 +698,32 @@ export function AkbAssistantApp({
     setMobileThreadsOpen(false);
   }
 
+  async function refreshSuggestions() {
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/assistant/suggestions?language=${encodeURIComponent(language)}`,
+        ),
+        {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        },
+      );
+      if (!response.ok) {
+        return;
+      }
+      const payload = await response.json() as {
+        suggestions?: AssistantSuggestion[];
+      };
+      if (Array.isArray(payload.suggestions)) {
+        setPersonalizedSuggestions(payload.suggestions.slice(0, 4));
+      }
+    } catch {
+      // Keep the last safe server-rendered set when personalization is unavailable.
+    }
+  }
+
   async function createThread() {
     if (creatingThread) {
       return;
@@ -732,6 +765,7 @@ export function AkbAssistantApp({
       setActiveThreadId((current) => (
         current === thread.id ? persistedThread.id : current
       ));
+      void refreshSuggestions();
     } catch {
       setThreads((current) => current.filter(
         (candidate) => candidate.id !== thread.id,

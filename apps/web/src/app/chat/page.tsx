@@ -9,40 +9,13 @@ import {
   getServerRequestContextForPath,
 } from "@/lib/api/server";
 import { getAklConfig } from "@/lib/api/config";
+import { personalizedAssistantSuggestions } from "@/lib/assistant/personalized-suggestions";
 import { requirePageAccess } from "@/lib/auth/server-route-guard";
 import type {
   AssistantConversationListItem,
-  AssistantSuggestion,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-const FALLBACK_SUGGESTIONS: AssistantSuggestion[] = [
-  {
-    label: "Nový přístup",
-    prompt: "Jak požádám o nový přístup?",
-    domain: "Service Desk",
-    audience: "employee",
-  },
-  {
-    label: "Nahlásit incident",
-    prompt: "Jak nahlásím incident?",
-    domain: "IT Operations",
-    audience: "employee",
-  },
-  {
-    label: "Kdo schvaluje výjimku",
-    prompt: "Kdo schvaluje výjimku ze směrnice?",
-    domain: "Dokumentace",
-    audience: "employee",
-  },
-  {
-    label: "Architektura platformy",
-    prompt: "Jaká je architektura AKB platformy?",
-    domain: "Dokumentace",
-    audience: "employee",
-  },
-];
 
 interface ChatPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -56,25 +29,24 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   requirePageAccess(context, "employee_chat");
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const requestedId = requestedConversationId(resolvedSearchParams.thread);
-  let suggestions = FALLBACK_SUGGESTIONS;
   let initialConversations: AssistantConversationListItem[] = [];
   let historyUnavailable = false;
   let requestedThreadUnavailable = false;
 
-  const [suggestionsResult, conversationsResult] = await Promise.allSettled([
-    clients.rag.assistantSuggestions(context),
-    clients.registry.listAssistantConversations(context, true),
-  ]);
-  if (suggestionsResult.status === "fulfilled") {
-    suggestions = suggestionsResult.value.suggestions;
-  } else {
-    suggestions = FALLBACK_SUGGESTIONS;
-  }
-  if (conversationsResult.status === "fulfilled") {
-    initialConversations = conversationsResult.value.items;
-  } else {
+  try {
+    initialConversations = (
+      await clients.registry.listAssistantConversations(context, true, true)
+    ).items;
+  } catch {
     historyUnavailable = true;
   }
+  const suggestions = (
+    await personalizedAssistantSuggestions({
+      context,
+      config: getAklConfig(),
+      conversations: initialConversations,
+    }).catch(() => ({ suggestions: [] }))
+  ).suggestions;
 
   if (
     requestedId &&

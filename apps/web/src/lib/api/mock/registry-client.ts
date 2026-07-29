@@ -1168,6 +1168,7 @@ export class MockRegistryClient implements RegistryApiClient {
   async listAssistantConversations(
     context: ApiRequestContext,
     includeArchived = false,
+    _includeSuggestionSignals = false,
   ): Promise<AssistantConversationListResponse> {
     const items = [...this.assistantConversations.values()]
       .filter((conversation) => conversation.user_id === context.subjectId)
@@ -1188,6 +1189,7 @@ export class MockRegistryClient implements RegistryApiClient {
         updated_at: conversation.updated_at,
         shared_with: conversation.shared_with,
         message_count: conversation.messages.length,
+        suggestion_signals: [],
       }));
     return { items: cloneMock(items), limit: 50, offset: 0 };
   }

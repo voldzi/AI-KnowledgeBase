@@ -1787,6 +1787,13 @@ paths:
           type: boolean
           default: false
           title: Include Archived
+      - name: include_suggestion_signals
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Suggestion Signals
       - name: limit
         in: query
         required: false
@@ -3864,6 +3871,42 @@ components:
       - updated_at
       - messages
       title: AssistantConversationDetailResponse
+    AssistantSuggestionSignalResponse:
+      properties:
+        source_kind:
+          type: string
+          enum:
+          - director_copilot_v2
+          - documents
+          title: Source Kind
+        intent:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Intent
+        prompt_fingerprint:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Prompt Fingerprint
+        feedback_rating:
+          anyOf:
+          - type: string
+            enum:
+            - helpful
+            - not_helpful
+          - type: 'null'
+          title: Feedback Rating
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - source_kind
+      - prompt_fingerprint
+      - created_at
+      title: AssistantSuggestionSignalResponse
     AssistantConversationListItemResponse:
       properties:
         conversation_id:
@@ -3918,6 +3961,12 @@ components:
           type: integer
           title: Message Count
           default: 0
+        suggestion_signals:
+          items:
+            $ref: '#/components/schemas/AssistantSuggestionSignalResponse'
+          type: array
+          maxItems: 32
+          title: Suggestion Signals
       type: object
       required:
       - conversation_id

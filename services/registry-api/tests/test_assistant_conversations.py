@@ -1,4 +1,5 @@
 from datetime import timedelta
+from hashlib import sha256
 
 from fastapi.testclient import TestClient
 
@@ -164,6 +165,94 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
     assert messages[1]["author_subject_id"] == "akb-assistant"
     assert messages[1]["author_subject_type"] == "service"
     assert messages[1]["author_display_name"] == "AKB Assistant"
+
+
+def test_conversation_list_exposes_only_bounded_derived_suggestion_signals(
+    client: TestClient,
+) -> None:
+    prompt = "Jaký je stav projektového portfolia?"
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_suggestions/messages",
+        json={
+            "user_id": "user_dev",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                    "citations": [],
+                    "metadata": {},
+                },
+                {
+                    "role": "assistant",
+                    "content": "Citlivý text odpovědi se do profilu nesmí propsat.",
+                    "response_type": "answer",
+                    "citations": [],
+                    "metadata": {
+                        "director_copilot_history": {
+                            "intent": "project_portfolio_status",
+                        }
+                    },
+                },
+            ],
+        },
+    )
+    assert appended.status_code == 201, appended.text
+    foreign = client.post(
+        "/api/v1/assistant/conversations/conv_foreign_suggestions/messages",
+        json={
+            "user_id": "another_user",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Soukromý dotaz jiného uživatele",
+                    "citations": [],
+                    "metadata": {},
+                },
+                {
+                    "role": "assistant",
+                    "content": "Odpověď",
+                    "citations": [],
+                    "metadata": {
+                        "director_copilot_history": {
+                            "intent": "aiip_idea_overview",
+                        }
+                    },
+                },
+            ],
+        },
+    )
+    assert foreign.status_code == 201, foreign.text
+
+    listed = client.get(
+        "/api/v1/assistant/conversation-history"
+        "?include_archived=true&include_suggestion_signals=true",
+    )
+    assert listed.status_code == 200, listed.text
+    item = next(
+        candidate
+        for candidate in listed.json()["items"]
+        if candidate["conversation_id"] == "conv_suggestions"
+    )
+    assert item["suggestion_signals"] == [
+        {
+            "source_kind": "director_copilot_v2",
+            "intent": "project_portfolio_status",
+            "prompt_fingerprint": sha256(
+                "jaký je stav projektového portfolia?".encode("utf-8")
+            ).hexdigest(),
+            "feedback_rating": None,
+            "created_at": item["suggestion_signals"][0]["created_at"],
+        }
+    ]
+    serialized = str(item["suggestion_signals"])
+    assert prompt not in serialized
+    assert "Citlivý text odpovědi" not in serialized
+    foreign_item = next(
+        candidate
+        for candidate in listed.json()["items"]
+        if candidate["conversation_id"] == "conv_foreign_suggestions"
+    )
+    assert foreign_item["suggestion_signals"] == []
 
 
 def test_assistant_feedback_is_private_bounded_and_idempotent(
