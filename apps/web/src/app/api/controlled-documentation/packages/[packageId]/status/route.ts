@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import type { ControlledDocumentPackageStatus } from "@/lib/types";
+import { controlledDocumentationBridgeError } from "../../../errors";
 
 export const dynamic = "force-dynamic";
 
@@ -50,17 +51,10 @@ export async function POST(
       );
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "CONTROLLED_DOCUMENTATION_STATUS_FAILED",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Stav balíčku se nepodařilo změnit.",
-        },
-      },
-      { status: 502 },
+    return controlledDocumentationBridgeError(
+      error,
+      "CONTROLLED_DOCUMENTATION_STATUS_FAILED",
+      "Stav balíčku se nepodařilo změnit.",
     );
   }
 }

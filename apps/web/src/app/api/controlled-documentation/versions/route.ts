@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
+import { controlledDocumentationBridgeError } from "../errors";
 
 export const dynamic = "force-dynamic";
 
@@ -29,17 +30,10 @@ export async function GET(request: NextRequest) {
       );
     return NextResponse.json({ items: versions });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "DOCUMENT_VERSIONS_UNAVAILABLE",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Verze dokumentu se nepodařilo načíst.",
-        },
-      },
-      { status: 502 },
+    return controlledDocumentationBridgeError(
+      error,
+      "DOCUMENT_VERSIONS_UNAVAILABLE",
+      "Verze dokumentu se nepodařilo načíst.",
     );
   }
 }

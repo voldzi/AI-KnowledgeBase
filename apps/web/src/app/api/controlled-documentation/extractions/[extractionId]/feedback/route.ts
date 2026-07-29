@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
+import { controlledDocumentationBridgeError } from "../../../errors";
 
 export const dynamic = "force-dynamic";
 
@@ -39,17 +40,10 @@ export async function POST(
     );
     return NextResponse.json({ status: "recorded" });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "CONTROLLED_RULE_REVIEW_FAILED",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Rozhodnutí o pravidle se nepodařilo uložit.",
-        },
-      },
-      { status: 502 },
+    return controlledDocumentationBridgeError(
+      error,
+      "CONTROLLED_RULE_REVIEW_FAILED",
+      "Rozhodnutí o pravidle se nepodařilo uložit.",
     );
   }
 }
