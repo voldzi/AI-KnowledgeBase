@@ -180,6 +180,13 @@ back to document RAG. The joint dialogue, negative authorization, history
 reauthorization, audit and latency gates are recorded in
 `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 
+A response rejected by the pinned V2 contract is not reported as a network
+outage. AKB keeps the result fail-closed, records
+`DIRECTOR_COPILOT_V2_SOURCE_CONTRACT_INVALID` with value-free validator
+diagnostics, and tells the user that the source responded but could not be
+safely verified. Suggestions for a known failing execution profile remain
+disabled until that profile passes the shared production contract test again.
+
 Before changing the mode to `active`, verify that
 `svc-akb-director-copilot` can obtain five separate exact-audience tokens.
 The additional audit route is:

@@ -9,6 +9,8 @@ interface IntegrationLogEvent {
   requestId?: string;
   correlationId?: string;
   errorCode?: string;
+  diagnosticCode?: string;
+  diagnosticPaths?: string[];
 }
 
 export function logIntegrationEvent(event: IntegrationLogEvent): void {
@@ -19,7 +21,9 @@ export function logIntegrationEvent(event: IntegrationLogEvent): void {
     latency_ms: event.latencyMs,
     request_id: event.requestId,
     correlation_id: event.correlationId,
-    error_code: event.errorCode
+    error_code: event.errorCode,
+    diagnostic_code: event.diagnosticCode,
+    diagnostic_paths: event.diagnosticPaths,
   };
 
   if (event.level === "error") {

@@ -246,7 +246,7 @@ function suggestionTemplates(
     return [
       live("budget-plan", "Approved budget", `What is the organization's total approved budget for ${year}?`, "Budget", "budget_portfolio_status", 1.05, ["month_start", "quarter_end"]),
       live("budget-forecast", "Forecast versus plan", "What is this year's financial forecast and variance from the approved plan?", "Budget", "budget_portfolio_status", 1, ["month_end", "quarter_end"]),
-      live("budget-largest-item", "Largest budget item", "Which budget item has the highest approved plan?", "Budget", "budget_portfolio_status", 0.85, ["month_start"]),
+      // Item ranking remains routable, but is not proactively suggested until its live response passes contract validation.
       live("projects-status", "Project portfolio", "What is the status of the project portfolio?", "ProjectFlow", "project_portfolio_status", 1.05, ["week_start"]),
       live("projects-delayed", "Delayed projects", "Which projects are delayed?", "ProjectFlow", "project_portfolio_status", 1, ["week_end", "month_end"]),
       live("projects-milestones", "Upcoming milestones", "Which project milestones are due next?", "ProjectFlow", "project_portfolio_status", 0.95, ["week_start"]),
@@ -261,7 +261,7 @@ function suggestionTemplates(
   return [
     live("budget-plan", "Schválený rozpočet", `Jaký je celkový schválený rozpočet organizace na rok ${year}?`, "Budget", "budget_portfolio_status", 1.05, ["month_start", "quarter_end"]),
     live("budget-forecast", "Výhled proti plánu", "Jaký je letošní finanční výhled a odchylka proti schválenému plánu?", "Budget", "budget_portfolio_status", 1, ["month_end", "quarter_end"]),
-    live("budget-largest-item", "Nejvyšší položka plánu", "Která rozpočtová položka má nejvyšší schválený plán?", "Budget", "budget_portfolio_status", 0.85, ["month_start"]),
+    // Řazení položek zůstává dostupné v chatu, ale do validace živého kontraktu se aktivně nenabízí.
     live("projects-status", "Projektové portfolio", "Jaký je stav projektového portfolia?", "ProjectFlow", "project_portfolio_status", 1.05, ["week_start"]),
     live("projects-delayed", "Zpožděné projekty", "Které projekty jsou zpožděné?", "ProjectFlow", "project_portfolio_status", 1, ["week_end", "month_end"]),
     live("projects-milestones", "Nejbližší milníky", "Které projektové milníky nás čekají nejdříve?", "ProjectFlow", "project_portfolio_status", 0.95, ["week_start"]),

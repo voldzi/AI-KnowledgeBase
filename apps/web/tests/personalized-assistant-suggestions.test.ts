@@ -105,6 +105,9 @@ describe("personalized assistant suggestions", () => {
       item.domain === "Documents"
       || classifyDirectorCopilotV2Intent(item.prompt) !== null
     )));
+    assert.ok(response.suggestions.every((item) => (
+      !/highest approved plan/i.test(item.prompt)
+    )));
   });
 
   it("uses structured history across owned threads without repeating a recent prompt", async () => {
@@ -222,6 +225,15 @@ describe("personalized assistant suggestions", () => {
         && node.planning_error_code === null
       )), template.prompt);
     }
+  });
+
+  it("does not offer a production profile with an unresolved live contract failure", () => {
+    const prompts = suggestionTemplatesForTesting("cs", NOW)
+      .map((template) => template.prompt);
+
+    assert.ok(prompts.every((prompt) => (
+      !/rozpočtová položka.*nejvyšší schválený plán/i.test(prompt)
+    )));
   });
 });
 
