@@ -99,6 +99,37 @@ the original query state inside its reauthorization envelope, so reopening a
 thread replays the original authorized request while the visible conversation
 continues with the derived entity context.
 
+## Universal semantic planning
+
+AKB does not maintain a list of complete user questions. The deterministic
+planner composes each turn from independently versioned concepts:
+
+- governed source application;
+- source-owned metric;
+- period or explicit interval;
+- organization, unit, portfolio, project or item granularity;
+- authorized entity filters;
+- schedule state, ranking direction and document-evidence request;
+- bounded context inherited from the previous authorized turn.
+
+The semantic catalog stores domain concepts and approved aliases rather than
+sentence templates. A conservative lexeme matcher recognizes Czech and English
+inflection, while source ownership prevents a generic word such as `plan` or
+`status` from activating an unrelated application. The same metric therefore
+works with many sentence forms and can be combined independently with a year,
+scope, ranking or grouping. Generated compositional tests and negative
+conversation tests protect this behavior from expanding into broad,
+unauditable keyword matching.
+
+Routing does not require an LLM and cannot grant access. A recognized governed
+data question is resolved through Director Copilot V2. Exact registry
+inventory is handled by deterministic Registry tools. Document questions use
+authorized OpenSearch/Qdrant retrieval and citations. The LLM is reserved for
+grounded synthesis or genuinely generative conversation after the relevant
+authorization and evidence gates. Unknown, ambiguous or unsupported concepts
+must produce clarification, `no_data` or an explicit bounded failure; they
+must not be converted into invented live facts.
+
 ## Contract closure
 
 STRATOS revision `2.0.3` closes the ProjectFlow manifest mismatch. The pinned
