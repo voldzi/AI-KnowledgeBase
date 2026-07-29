@@ -59,7 +59,8 @@ export interface PersonalizedSuggestionInput {
 /**
  * Builds start-of-thread suggestions from the current access projection and
  * privacy-bounded features derived from the subject's own conversation history.
- * It does not call an LLM or treat a suggestion as an authorization claim.
+ * It does not call an LLM or treat a suggestion as an authorization claim;
+ * execution always revalidates the current access projection.
  */
 export async function personalizedAssistantSuggestions(
   input: PersonalizedSuggestionInput,
