@@ -597,8 +597,10 @@ services:
   governance-service:
     build:
       context: ../../services/governance-service
+      labels: *immutable-release-labels
     image: ${GOVERNANCE_SERVICE_IMAGE:-akl/governance-service:docker-home}
     restart: unless-stopped
+    labels: *immutable-release-labels
     environment:
       AKL_ENV: production
       AKL_SERVICE_NAME: governance-service

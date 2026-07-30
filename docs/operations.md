@@ -319,7 +319,8 @@ the signing secret.
 The immutable release preflights those two files, the existing
 `svc-ingestion.client-secret`, and
 `akb-rag-service.client-secret` before burning the SHA or building images.
-First rollout selects Registry, Ingestion, RAG and web, so all four files and
+First rollout selects Registry, Ingestion, RAG, Evaluation, Governance, web,
+and standalone chat. The four confidential transport files listed above and
 their corresponding environment keys must exist before the maintenance
 window.
 
@@ -380,10 +381,11 @@ deployment runbook; the sequence is mandatory:
    a proven restore point; only the documented isolated restore rehearsal does
    that.
 2. Deploy full-Git-SHA image tags for only the affected Registry, Ingestion,
-   RAG, and web services, then run `alembic upgrade head` in the target
+   RAG, Evaluation, Governance, web, and standalone chat services, then run
+   `alembic upgrade head` in the target
    `registry-api` image. A shared production Compose change is accepted only
    when a structural comparison proves that it changes complete blocks of
-   those four services and leaves every unmanaged block and the top-level
+   those seven services and leaves every unmanaged block and the top-level
    envelope byte-identical. Durably record each post-build image ID and verify exact
    SHA/project/service labels again before Alembic/restart, after recreation,
    and after all smoke tests immediately before activation. Reconciliation loads
@@ -394,7 +396,8 @@ deployment runbook; the sequence is mandatory:
    exactly one head and `alembic current` to return exactly one canonical
    revision equal to it (currently `0018_ingestion_attempts` or a later
    approved single head). Multi-head or malformed state fails closed.
-3. Require Registry, Ingestion, RAG, and web health/readiness for every selected
+3. Require Registry, Ingestion, RAG, Evaluation, Governance, web, and standalone
+   chat health/readiness for every selected
    service before public traffic is tested. Ingestion `/ready` is authenticated;
    the release runs its exact in-container `svc-ingestion` probe and never
    treats an anonymous 401/403 as readiness. It also verifies the non-mutating
