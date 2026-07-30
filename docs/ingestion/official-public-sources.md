@@ -98,11 +98,12 @@ HTML is accepted only for collections with an explicit code-reviewed
 `allowHtml` flag and remains subject to the same host allowlist, byte limit,
 content signature, immutable hash and Registry policy as file downloads.
 
-The e-Sbírka connector reads the legal-act JSON-LD description, selects the newest
-effective version not later than the synchronization date and downloads its
-ordered official fragments through the public SPARQL endpoint. The stable AKB
-document identity uses the undated canonical e-Sbírka URL, so a later effective
-version creates a new immutable AKB version instead of a duplicate document.
+The e-Sbírka connector reads the legal-act JSON-LD description, selects the
+effective versions needed to cover the timeline from 2023 through the
+synchronization date and downloads their ordered official fragments through the
+public SPARQL endpoint. The stable AKB document identity uses the undated
+canonical e-Sbírka URL, so each effective text becomes an immutable version of
+one document instead of a duplicate document.
 The open-data provider currently warns that identifiers and structure may still
 change; synchronization therefore relies on the reviewed catalog, hashes and
 idempotent replacement rather than undocumented scraping.
@@ -148,10 +149,14 @@ before switching `AKL_RAG_FULLTEXT_MODE` to `opensearch`.
 2. Open **Public sources**.
 3. For a collection, select **Load catalog** and review the source count,
    authority and any warnings.
-4. Select **Synchronize collection**. The browser uses two bounded workers.
-   Leaving the page stops new browser requests but committed documents remain;
-   running synchronization again resumes idempotently. Transient network,
-   timeout, HTTP 429 and HTTP 5xx failures receive one automatic retry.
+4. To update only a legal or thematic subset, enter one or more titles or act
+   numbers separated by commas, semicolons or new lines. Review the matching
+   count and choose **Synchronize selection**. Leave the field empty only when
+   the whole collection is intended. The e-Sbírka collection uses one bounded
+   worker to preserve the temporal order; other collections use two. Leaving
+   the page stops new browser requests but committed documents remain; running
+   synchronization again resumes idempotently. Transient network, timeout,
+   HTTP 429 and HTTP 5xx failures receive one automatic retry.
 5. Verify that failures are zero and that newly created ingestion attempts reach
    `INDEXED`. A failed item can be retried by synchronizing the collection again.
    When a previously captured OOXML original has the correct content hash but

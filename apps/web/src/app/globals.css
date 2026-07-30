@@ -6194,6 +6194,39 @@ button {
   gap: 6px;
 }
 
+.public-source-card__selection {
+  display: grid;
+  gap: 8px;
+}
+
+.public-source-card__selection > label {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.public-source-card__selection > input {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--foreground);
+  font: inherit;
+  min-height: 42px;
+  padding: 9px 11px;
+  width: 100%;
+}
+
+.public-source-card__selection > input:focus {
+  border-color: #0f8c7f;
+  outline: 2px solid rgba(15, 140, 127, .18);
+  outline-offset: 1px;
+}
+
+.public-source-card__selection > small {
+  color: var(--muted-foreground, #667085);
+  font-weight: 700;
+}
+
 .public-source-card__preview span {
   overflow: hidden;
   text-overflow: ellipsis;
