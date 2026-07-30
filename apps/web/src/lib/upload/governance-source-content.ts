@@ -2,6 +2,7 @@ import { buildNativeSourcePreview, type NativeSourcePreview } from "./ooxml-prev
 import {
   createSourceOpenDecision,
   readSourceObject,
+  SourceDownloadError,
   verifySourceDownloadToken,
   type SourceDownloadSettings,
   type SourceOpenRequest
@@ -19,37 +20,52 @@ export async function readGovernanceSourceContent(
   request: SourceOpenRequest,
   settings?: SourceDownloadSettings
 ): Promise<GovernanceSourceContent> {
-  const decision = await createSourceOpenDecision(request, settings);
-  if (!decision.available || !decision.download_url) {
+  try {
+    const decision = await createSourceOpenDecision(request, settings);
+    if (!decision.available || !decision.download_url) {
+      return {
+        content: "",
+        extracted: false,
+        warnings: [decision.unavailable_reason ?? "SOURCE_OBJECT_NOT_AVAILABLE"]
+      };
+    }
+
+    const token = new URL(`http://akl.local${decision.download_url}`).searchParams.get("token");
+    if (!token) {
+      return {
+        content: "",
+        extracted: false,
+        warnings: ["SOURCE_DOWNLOAD_TOKEN_MISSING"]
+      };
+    }
+
+    const payload = verifySourceDownloadToken(token, settings);
+    const source = await readSourceObject(payload, settings);
+    const extracted = extractTextForGovernance({
+      bytes: source.bytes,
+      filename: source.filename,
+      mimeType: source.mime_type
+    });
+
+    return {
+      content: limitContent(extracted.content),
+      extracted: extracted.extracted,
+      warnings: extracted.warnings
+    };
+  } catch (error) {
     return {
       content: "",
       extracted: false,
-      warnings: [decision.unavailable_reason ?? "SOURCE_OBJECT_NOT_AVAILABLE"]
+      warnings: [sourceContentWarning(error)]
     };
   }
+}
 
-  const token = new URL(`http://akl.local${decision.download_url}`).searchParams.get("token");
-  if (!token) {
-    return {
-      content: "",
-      extracted: false,
-      warnings: ["SOURCE_DOWNLOAD_TOKEN_MISSING"]
-    };
+function sourceContentWarning(error: unknown): string {
+  if (error instanceof SourceDownloadError) {
+    return error.code;
   }
-
-  const payload = verifySourceDownloadToken(token, settings);
-  const source = await readSourceObject(payload, settings);
-  const extracted = extractTextForGovernance({
-    bytes: source.bytes,
-    filename: source.filename,
-    mimeType: source.mime_type
-  });
-
-  return {
-    content: limitContent(extracted.content),
-    extracted: extracted.extracted,
-    warnings: extracted.warnings
-  };
+  return "SOURCE_TEXT_EXTRACTION_FAILED";
 }
 
 function extractTextForGovernance({

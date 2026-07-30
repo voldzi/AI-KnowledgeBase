@@ -203,6 +203,13 @@ create gestor review work before an application consumes the rule. The
 procedure and public-procurement pilot are defined in
 `docs/ARCHITECTURE/temporal-controlled-documentation.md`.
 
+When AKB cannot read an immutable source version, the governed workflow keeps
+running only with an explicit bounded warning such as
+`SOURCE_TEXT_EXTRACTION_FAILED` or the applicable source-download reason.
+It must not synthesize source-backed rule proposals from unavailable content,
+and such a result is never consumer eligible for Budget or another application.
+The gestor must repair or replace the source version before reviewing rules.
+
 Before changing the mode to `active`, verify that
 `svc-akb-director-copilot` can obtain five separate exact-audience tokens.
 The additional audit route is:
