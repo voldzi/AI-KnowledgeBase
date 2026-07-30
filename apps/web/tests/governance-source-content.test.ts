@@ -55,6 +55,29 @@ describe("governance source content", () => {
     assert.equal(result.content, "");
     assert.deepEqual(result.warnings, ["SOURCE_TEXT_EXTRACTION_UNSUPPORTED"]);
   });
+
+  it("keeps malformed OOXML source explicit instead of failing a governance workflow", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akl-governance-docx-"));
+    const settings = testSettings(root);
+    const bytes = new TextEncoder().encode("not a ZIP archive");
+    const objectKey = "doc_123/ver_456/source.docx";
+    await writeSource(root, objectKey, bytes);
+
+    const result = await readGovernanceSourceContent(
+      {
+        document_id: "doc_123",
+        document_version_id: "ver_456",
+        source_file_uri: `s3://akl-documents/${objectKey}`,
+        file_hash: sha256(bytes),
+        viewer_mode: "text"
+      },
+      settings
+    );
+
+    assert.equal(result.extracted, false);
+    assert.equal(result.content, "");
+    assert.deepEqual(result.warnings, ["SOURCE_TEXT_EXTRACTION_FAILED"]);
+  });
 });
 
 async function writeSource(root: string, objectKey: string, bytes: Uint8Array) {
