@@ -110,13 +110,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def compare_versions(payload: CompareVersionsRequest, request: Request) -> CompareVersionsResponse:
         _guard_request(request)
+        actor_bearer_token = _actor_bearer_token(request, payload.subject_id)
         logger.info(
             "governance_compare_requested subject_id=%s left_version=%s right_version=%s content_logged=false",
             payload.subject_id,
             payload.left_version.document_version_id,
             payload.right_version.document_version_id,
         )
-        return await _service(request).compare_versions(payload)
+        return await _service(request).compare_versions(
+            payload,
+            actor_bearer_token=actor_bearer_token,
+        )
 
     @app.post(
         "/api/v1/governance/check-compliance",
@@ -125,12 +129,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def check_compliance(payload: ComplianceCheckRequest, request: Request) -> ComplianceCheckResponse:
         _guard_request(request)
+        actor_bearer_token = _actor_bearer_token(request, payload.subject_id)
         logger.info(
             "governance_compliance_requested subject_id=%s document_type=%s content_logged=false",
             payload.subject_id,
             payload.draft.document_type,
         )
-        return await _service(request).check_compliance(payload)
+        return await _service(request).check_compliance(
+            payload,
+            actor_bearer_token=actor_bearer_token,
+        )
 
     @app.post(
         "/api/v1/governance/detect-conflicts",
@@ -139,12 +147,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def detect_conflicts(payload: ConflictDetectionRequest, request: Request) -> ConflictDetectionResponse:
         _guard_request(request)
+        actor_bearer_token = _actor_bearer_token(request, payload.subject_id)
         logger.info(
             "governance_conflict_detection_requested subject_id=%s document_count=%s content_logged=false",
             payload.subject_id,
             len(payload.documents),
         )
-        return await _service(request).detect_conflicts(payload)
+        return await _service(request).detect_conflicts(
+            payload,
+            actor_bearer_token=actor_bearer_token,
+        )
 
     @app.post(
         "/api/v1/governance/generate-kb-article",
@@ -153,12 +165,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def generate_kb_article(payload: GenerateKbArticleRequest, request: Request) -> GenerateKbArticleResponse:
         _guard_request(request)
+        actor_bearer_token = _actor_bearer_token(request, payload.subject_id)
         logger.info(
             "governance_kb_generation_requested subject_id=%s source_document_id=%s content_logged=false",
             payload.subject_id,
             payload.source_document.document_id,
         )
-        return await _service(request).generate_kb_article(payload)
+        return await _service(request).generate_kb_article(
+            payload,
+            actor_bearer_token=actor_bearer_token,
+        )
 
     @app.get(
         "/api/v1/governance/validity-alerts",
@@ -171,13 +187,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         days_before_expiry: int | None = Query(default=None, ge=1, le=730),
     ) -> ValidityAlertsResponse:
         _guard_request(request)
+        actor_bearer_token = _actor_bearer_token(request, subject_id)
         days = days_before_expiry or _settings(request).default_validity_alert_days
         logger.info(
             "governance_validity_alerts_requested subject_id=%s days_before_expiry=%s",
             subject_id,
             days,
         )
-        return await _service(request).validity_alerts(subject_id=subject_id, days_before_expiry=days)
+        return await _service(request).validity_alerts(
+            subject_id=subject_id,
+            days_before_expiry=days,
+            actor_bearer_token=actor_bearer_token,
+        )
 
     return app
 
@@ -192,6 +213,32 @@ def _service(request: Request) -> GovernanceService:
 
 def _guard_request(request: Request) -> None:
     require_service_auth(request, _settings(request))
+
+
+def _actor_bearer_token(request: Request, subject_id: str) -> str | None:
+    authorization = request.headers.get("X-STRATOS-Actor-Authorization", "")
+    scheme, _, token = authorization.strip().partition(" ")
+    if not token or scheme.lower() != "bearer":
+        if _settings(request).env == "production":
+            raise GovernanceError(
+                "ACTOR_AUTH_REQUIRED",
+                "A current actor bearer is required.",
+                status_code=401,
+            )
+        return None
+    if token == _settings(request).service_token:
+        raise GovernanceError(
+            "TOKEN_SEPARATION_REQUIRED",
+            "Service and actor credentials must be independent.",
+            status_code=403,
+        )
+    if not subject_id.strip():
+        raise GovernanceError(
+            "ACTOR_SUBJECT_INVALID",
+            "Actor subject is required.",
+            status_code=422,
+        )
+    return token
 
 
 try:

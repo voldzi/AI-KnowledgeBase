@@ -8399,6 +8399,11 @@
         ],
         "summary": "Compare Versions",
         "operationId": "governance_service_compare_versions_api_v1_governance_compare_versions_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StratosActorAuthorization"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8451,6 +8456,11 @@
         ],
         "summary": "Check Compliance",
         "operationId": "governance_service_check_compliance_api_v1_governance_check_compliance_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StratosActorAuthorization"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8503,6 +8513,11 @@
         ],
         "summary": "Detect Conflicts",
         "operationId": "governance_service_detect_conflicts_api_v1_governance_detect_conflicts_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StratosActorAuthorization"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8555,6 +8570,11 @@
         ],
         "summary": "Generate Kb Article",
         "operationId": "governance_service_generate_kb_article_api_v1_governance_generate_kb_article_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StratosActorAuthorization"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8608,6 +8628,9 @@
         "summary": "Validity Alerts",
         "operationId": "governance_service_validity_alerts_api_v1_governance_validity_alerts_get",
         "parameters": [
+          {
+            "$ref": "#/components/parameters/StratosActorAuthorization"
+          },
           {
             "name": "subject_id",
             "in": "query",

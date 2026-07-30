@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import ConfigError, load_settings
+from app.http_utils import outgoing_headers
 
 
 def test_default_settings_use_mock_dependency_mode() -> None:
@@ -34,3 +35,17 @@ def test_production_requires_bearer_auth() -> None:
                 "AKL_GOVERNANCE_DEPENDENCY_MODE": "http",
             }
         )
+
+
+def test_actor_bearer_overrides_only_the_upstream_authorization_header() -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_UPSTREAM_BEARER_TOKEN": "fallback-service-token",
+        }
+    )
+
+    headers = outgoing_headers(settings, bearer_token="current-actor-token")
+
+    assert headers["Authorization"] == "Bearer current-actor-token"
+    assert headers["X-Service-Name"] == "governance-service"

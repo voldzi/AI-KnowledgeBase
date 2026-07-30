@@ -147,7 +147,16 @@ def test_non_compliant_check_writes_warning_audit_event(monkeypatch) -> None:
 
     original = registry_module.MockRegistryClient.write_audit_event
 
-    async def capture(self, *, actor_id, event_type, resource_id, metadata, severity="info"):
+    async def capture(
+        self,
+        *,
+        actor_id,
+        event_type,
+        resource_id,
+        metadata,
+        severity="info",
+        actor_bearer_token=None,
+    ):
         captured.append({"event_type": event_type, "severity": severity, "metadata": metadata})
         return await original(
             self,
@@ -156,6 +165,7 @@ def test_non_compliant_check_writes_warning_audit_event(monkeypatch) -> None:
             resource_id=resource_id,
             metadata=metadata,
             severity=severity,
+            actor_bearer_token=actor_bearer_token,
         )
 
     monkeypatch.setattr(registry_module.MockRegistryClient, "write_audit_event", capture)

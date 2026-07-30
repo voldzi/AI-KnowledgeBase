@@ -152,6 +152,11 @@ the proposal and human feedback. The complete hierarchy and historical
 contract are in
 `docs/ARCHITECTURE/temporal-controlled-documentation.md`.
 
+Interactive Governance operations use the internal Governance service bearer
+in `Authorization` and the independently current person bearer in
+`X-STRATOS-Actor-Authorization`. Registry and RAG validate the actor token and
+the declared subject again; service and actor credentials may not be reused.
+
 True public AKB documents use a separate immutable delivery surface:
 
 ```text

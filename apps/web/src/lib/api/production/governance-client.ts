@@ -39,6 +39,9 @@ export class ProductionGovernanceClient implements GovernanceApiClient {
           authorizationSource: undefined,
         }
       : context;
+    const actorAuthorization = this.serviceToken && context.accessToken
+      ? { "X-STRATOS-Actor-Authorization": `Bearer ${context.accessToken}` }
+      : undefined;
     return requestJson<T>({
       service: "governance-service",
       operation,
@@ -47,6 +50,7 @@ export class ProductionGovernanceClient implements GovernanceApiClient {
       method: "POST",
       body,
       context: transportContext,
+      extraHeaders: actorAuthorization,
       fetcher: this.fetcher
     });
   }
