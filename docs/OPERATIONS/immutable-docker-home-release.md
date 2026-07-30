@@ -470,10 +470,19 @@ between preflight and lock acquisition therefore ends in lock or revalidation
 failure before Docker build, writer stop, or database work. The old `current`
 orchestrator is never invoked.
 
-The clean transition is one-time: after contract 2 becomes current, a
-descendant must use the ordinary `/srv/akl/current/scripts/` deployment path.
-Only same-SHA verified reconciliation remains accepted through the target
-bootstrap:
+After contract 2 is current, this transition remains valid only when the target
+declares exactly the next positive
+`AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION`. A missing declaration is revision
+`1` for compatibility with existing verified releases. The target may advance
+only by one revision, and the same revision cannot be reused through bootstrap.
+This narrowly supports coordinated additions such as Governance while
+preserving the rule that ordinary descendants deploy through `current`.
+
+The legacy-to-contract-2 transition is one-time. After contract 2 becomes
+current, an ordinary descendant must use the standard
+`/srv/akl/current/scripts/` deployment path. Target bootstrap remains accepted
+only for same-SHA verified reconciliation or the exact-next managed-boundary
+revision:
 
 - if power is lost after the durable `verified/verified` target marker but
   before `current`, remove a stale lock only after proving its recorded PID is

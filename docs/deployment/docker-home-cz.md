@@ -499,6 +499,11 @@ target pouze reconciliovat. Po `applying`/`failed` stavu se recovery spouští z
 přesného selhaného target release přes descendant forward-fix, nikdy ze starého
 `current`.
 
+Po aktivaci kontraktu 2 přijme target orchestrátor transition režim už jen pro
+přesně následující hodnotu `AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION`. Běžný
+descendant se stejnou, nižší nebo přeskočenou revizí musí být nasazen
+standardně přes `current`.
+
 - ověří SHA vůči bare mirroru a vytvoří read-only
   `/srv/akl/releases/<full-sha>`; celý strom a jeho parent před publikací
   fsyncne,
