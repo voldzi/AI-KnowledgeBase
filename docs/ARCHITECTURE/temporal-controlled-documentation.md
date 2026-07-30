@@ -136,7 +136,9 @@ pilot obsahuje zejména zákon č. 134/2016 Sb., nařízení vlády č. 172/2016
 vyhlášky č. 168/2016 Sb., 169/2016 Sb., 170/2016 Sb., 248/2016 Sb.,
 260/2016 Sb. a 345/2023 Sb. Evropský kontext tvoří směrnice 2014/24/EU,
 2014/25/EU a 2014/23/EU. AKB uchovává zdrojový originál, kanonický odkaz,
-hash a interval účinnosti každé zachycené verze.
+hash a interval účinnosti každé zachycené verze. Časová znění se přebírají
+jako oficiální informativní PDF přes veřejný katalog stahování e-Sbírky; AKB
+nepoužívá pro obsah znění prohlížečové HTML ani neúplné RDF fragmenty.
 
 Pilot ověřuje:
 

@@ -98,15 +98,18 @@ HTML is accepted only for collections with an explicit code-reviewed
 `allowHtml` flag and remains subject to the same host allowlist, byte limit,
 content signature, immutable hash and Registry policy as file downloads.
 
-The e-Sbírka connector reads the legal-act JSON-LD description, selects the
+The e-Sbírka connector reads the legal-act JSON-LD description and selects the
 effective versions needed to cover the timeline from 2023 through the
-synchronization date and downloads their ordered official fragments through the
-public SPARQL endpoint. The stable AKB document identity uses the undated
-canonical e-Sbírka URL, so each effective text becomes an immutable version of
-one document instead of a duplicate document.
-The open-data provider currently warns that identifiers and structure may still
-change; synchronization therefore relies on the reviewed catalog, hashes and
-idempotent replacement rather than undocumented scraping.
+synchronization date. For each selected permanent URL it asks the public
+e-Sbírka download catalogue for the informative PDF, waits for the bounded
+public preparation job when necessary and accepts only a size-bounded response
+with a valid PDF signature. This avoids dependence on mutable RDF fragment
+identifiers while retaining the official source and exact effective date. The
+stable AKB document identity uses the undated canonical e-Sbírka URL, so each
+effective text becomes an immutable version of one document instead of a
+duplicate document. Download catalogue responses, preparation states and file
+identifiers are validated and cannot redirect the intake outside the approved
+e-Sbírka origin.
 
 No additional Keycloak user or client is created for this workflow. It reuses
 the existing `AKB_POLICY_SERVICE_TOKEN` mapped by STRATOS to `service:akb`.

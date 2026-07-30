@@ -116,31 +116,20 @@ export function assertPublicSourceUrl(collectionId: string, value: string): URL 
   return normalizedAllowedUrl(value, collection);
 }
 
-export function assertCzechLawOpenDataSourceUrl(input: URL): {
+export function assertCzechLawSourceUrl(input: URL): {
   year: string;
   number: string;
   effectiveDate: string;
 } {
   if (
-    input.origin !== E_SBIRKA_OPEN_DATA_ORIGIN
-    || input.pathname !== "/sparql"
-    || [...input.searchParams.keys()].some((key) => key !== "query")
+    input.origin !== E_SBIRKA_PUBLIC_ORIGIN
+    || input.search !== ""
   ) {
-    throw new Error("The e-Sbírka source is not an approved open-data query.");
+    throw new Error("The e-Sbírka source is not an approved permanent legal-act URL.");
   }
-  const query = input.searchParams.get("query") ?? "";
-  const match = query.match(
-    /<https:\/\/opendata\.eselpoint\.gov\.cz\/esel-esb\/eli\/cz\/sb\/(\d{4})\/(\d+)\/(\d{4}-\d{2}-\d{2})>/,
-  );
-  if (!match) throw new Error("The e-Sbírka query has no valid legal-act version.");
+  const match = input.pathname.match(/^\/sb\/(\d{4})\/(\d+)\/(\d{4}-\d{2}-\d{2})$/);
+  if (!match) throw new Error("The e-Sbírka URL has no valid legal-act version.");
   const [, year, number, effectiveDate] = match;
-  const version = new URL(
-    `/esel-esb/eli/cz/sb/${year}/${number}/${effectiveDate}`,
-    E_SBIRKA_OPEN_DATA_ORIGIN,
-  );
-  if (query !== czechLawSparqlUrl(version).searchParams.get("query")) {
-    throw new Error("The e-Sbírka source query is not the reviewed fragment query.");
-  }
   return { year, number, effectiveDate };
 }
 
@@ -210,7 +199,7 @@ async function discoverCzechLawOpenData(
         for (const version of effectiveVersions) {
           candidates.push({
             title: `${act.number}/${act.year} Sb. – ${act.title}`,
-            sourceUrl: czechLawSparqlUrl(version.url).toString(),
+            sourceUrl: `${E_SBIRKA_PUBLIC_ORIGIN}/sb/${act.year}/${act.number}/${version.effectiveFrom}`,
             canonicalUrl: `${E_SBIRKA_PUBLIC_ORIGIN}/sb/${act.year}/${act.number}`,
             versionLabel: `účinné-od-${version.effectiveFrom}`,
             effectiveFrom: version.effectiveFrom,
@@ -283,19 +272,6 @@ function previousIsoDate(value: string): string {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
-}
-
-function czechLawSparqlUrl(version: URL): URL {
-  const query = `SELECT ?order ?citation ?text WHERE {
-  <${version.toString()}> <https://slovník.gov.cz/datový/sbírka/pojem/má-fragment-znění> ?versionFragment .
-  ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/obsahuje-fragment> ?fragment .
-  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/pořadí-fragmentu-znění-právního-aktu> ?order . }
-  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/citace-označení-fragmentu-znění-právního-aktu> ?citation . }
-  ?fragment <https://slovník.gov.cz/datový/sbírka/pojem/text-fragmentu> ?text .
-} ORDER BY ?order`;
-  const url = new URL("/sparql", E_SBIRKA_OPEN_DATA_ORIGIN);
-  url.searchParams.set("query", query);
-  return url;
 }
 
 function normalizedAllowedUrl(value: string, collection: PublicSourceCollection): URL {

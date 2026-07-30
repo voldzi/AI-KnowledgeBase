@@ -24,12 +24,15 @@ import type {
 } from "@/lib/types";
 
 import { publicSourceCollection } from "./catalog";
-import { assertCzechLawOpenDataSourceUrl, assertPublicSourceUrl } from "./discovery";
+import { assertCzechLawSourceUrl, assertPublicSourceUrl } from "./discovery";
 
 const MAX_REDIRECTS = 5;
 const DOWNLOAD_TIMEOUT_MS = 45_000;
 const DOWNLOAD_ATTEMPTS = 2;
 const PUBLIC_SOURCE_TAG = "official-public-reference";
+const E_SBIRKA_PUBLIC_ORIGIN = "https://e-sbirka.gov.cz";
+const E_SBIRKA_ASYNC_POLL_ATTEMPTS = 24;
+const E_SBIRKA_ASYNC_POLL_INTERVAL_MS = 500;
 
 export interface PublicSourceSyncRequest {
   collectionId: string;
@@ -61,7 +64,7 @@ export async function synchronizePublicSource(
   if (!collection) throw new Error("Unknown public source collection.");
   const sourceUrl = assertPublicSourceUrl(collection.id, input.sourceUrl);
   const legalVersion = collection.id === "czech-law"
-    ? assertCzechLawOpenDataSourceUrl(sourceUrl)
+    ? assertCzechLawSourceUrl(sourceUrl)
     : null;
   const effectiveFrom = legalVersion?.effectiveDate ?? input.effectiveFrom;
   const effectiveTo = effectiveFrom ? (input.effectiveTo ?? null) : input.effectiveTo;
@@ -436,15 +439,16 @@ async function downloadOfficialDocumentOnce(
   fetcher: typeof fetch,
 ): Promise<DownloadedOfficialDocument> {
   const collectionId = collection.id;
+  if (collectionId === "czech-law") {
+    return downloadCzechLawOfficialPdf(input, collection, fetcher);
+  }
   const allowHtml = collection.allowHtml === true || collectionId === "eu-law";
   let current = assertPublicSourceUrl(collectionId, input.toString());
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     const maxBytes = getUploadSettings().maxFileBytes;
     const response = await fetcher(current, {
       headers: {
-        Accept: collectionId === "czech-law"
-          ? "application/sparql-results+json,application/ld+json,application/json;q=0.9"
-          : collectionId === "eu-law"
+        Accept: collectionId === "eu-law"
             ? "application/xhtml+xml"
             : allowHtml
               ? "text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;q=0.9,*/*;q=0.1"
@@ -487,10 +491,9 @@ async function downloadOfficialDocumentOnce(
     const mimeType = normalizeOfficialMimeType(
       response.headers.get("content-type"),
       bytes,
-      collectionId === "czech-law",
+      false,
       allowHtml,
     );
-    if (collectionId === "czech-law") assertCzechLawSparqlPayload(bytes);
     const filename = officialFilename(
       response.headers.get("content-disposition"),
       current,
@@ -508,6 +511,174 @@ async function downloadOfficialDocumentOnce(
     };
   }
   throw new Error("Official source exceeded the redirect limit.");
+}
+
+async function downloadCzechLawOfficialPdf(
+  input: URL,
+  collection: NonNullable<ReturnType<typeof publicSourceCollection>>,
+  fetcher: typeof fetch,
+): Promise<DownloadedOfficialDocument> {
+  const source = assertPublicSourceUrl(collection.id, input.toString());
+  const legalVersion = assertCzechLawSourceUrl(source);
+  const stablePath = `/sb/${legalVersion.year}/${legalVersion.number}/${legalVersion.effectiveDate}`;
+  const encodedStablePath = encodeURIComponent(stablePath);
+  const linksUrl = new URL(
+    `/sbr-externi/dokumenty-sbirky/${encodedStablePath}/odkazy-ke-stazeni`,
+    E_SBIRKA_PUBLIC_ORIGIN,
+  );
+  const links = await fetchCzechLawJson(linksUrl, collection, fetcher);
+  const documentId = positiveInteger(
+    nestedValue(links, ["informativniZneni", "odkazPdf", "dokumentId"]),
+    "The e-Sbírka download catalogue has no valid informative PDF.",
+  );
+
+  const prepareUrl = new URL(
+    `/sbr-externi/stahni/informativni-zneni/${documentId}/PDF`,
+    E_SBIRKA_PUBLIC_ORIGIN,
+  );
+  let prepared = await fetchCzechLawJson(prepareUrl, collection, fetcher);
+  let state = stringValue(prepared, "stavPozadavku");
+  const requestId = optionalIdentifier(prepared, "pozadavekId");
+  for (
+    let attempt = 0;
+    state === "PROBIHA" && requestId && attempt < E_SBIRKA_ASYNC_POLL_ATTEMPTS;
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, E_SBIRKA_ASYNC_POLL_INTERVAL_MS));
+    const statusUrl = new URL(
+      `/souborove-sluzby/verejne-pozadavky-dokumenty/pozadavky/${requestId}`,
+      E_SBIRKA_PUBLIC_ORIGIN,
+    );
+    prepared = await fetchCzechLawJson(statusUrl, collection, fetcher);
+    state = stringValue(prepared, "stavPozadavku");
+  }
+  if (state !== "OK") {
+    throw new Error(
+      state === "PROBIHA"
+        ? "The e-Sbírka informative PDF was not prepared before the timeout."
+        : "The e-Sbírka informative PDF preparation failed.",
+    );
+  }
+  const fileId = requiredIdentifier(prepared, "id");
+  const fileUrl = new URL(`/souborove-sluzby/soubory/${fileId}`, E_SBIRKA_PUBLIC_ORIGIN);
+  const response = await fetchCzechLawResponse(
+    fileUrl,
+    collection,
+    fetcher,
+    "application/pdf",
+  );
+  const maxBytes = getUploadSettings().maxFileBytes;
+  const declaredSize = Number(response.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+    throw new Error("Official document exceeds the AKB upload limit.");
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (
+    bytes.byteLength === 0
+    || bytes.byteLength > maxBytes
+    || !startsWithAscii(bytes, "%PDF-")
+  ) {
+    throw new Error("The e-Sbírka download did not return a valid PDF within the AKB limit.");
+  }
+  const filename = officialFilename(
+    response.headers.get("content-disposition"),
+    fileUrl,
+    "application/pdf",
+    collection.id,
+  );
+  return {
+    bytes,
+    filename,
+    mimeType: "application/pdf",
+    sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    etag: response.headers.get("etag"),
+    lastModified: response.headers.get("last-modified"),
+  };
+}
+
+async function fetchCzechLawJson(
+  input: URL,
+  collection: NonNullable<ReturnType<typeof publicSourceCollection>>,
+  fetcher: typeof fetch,
+): Promise<Record<string, unknown>> {
+  const response = await fetchCzechLawResponse(
+    input,
+    collection,
+    fetcher,
+    "application/json",
+  );
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > 256 * 1024) {
+    throw new Error("The e-Sbírka control response is empty or too large.");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new Error("The e-Sbírka control response is not valid UTF-8 JSON.");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The e-Sbírka control response has an unsupported shape.");
+  }
+  return value as Record<string, unknown>;
+}
+
+async function fetchCzechLawResponse(
+  input: URL,
+  collection: NonNullable<ReturnType<typeof publicSourceCollection>>,
+  fetcher: typeof fetch,
+  accept: string,
+): Promise<Response> {
+  const url = assertPublicSourceUrl(collection.id, input.toString());
+  if (url.origin !== E_SBIRKA_PUBLIC_ORIGIN) {
+    throw new Error("The e-Sbírka download step left the approved origin.");
+  }
+  const response = await fetcher(url, {
+    headers: {
+      Accept: accept,
+      "User-Agent": "STRATOS-AKB-Public-Sources/1.0 (+https://stratos.zeleznalady.cz/akb)",
+    },
+    cache: "no-store",
+    redirect: "error",
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`Official source download returned HTTP ${response.status}.`);
+  return response;
+}
+
+function nestedValue(value: Record<string, unknown>, path: string[]): unknown {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function positiveInteger(value: unknown, error: string): number {
+  if (!Number.isInteger(value) || Number(value) <= 0) throw new Error(error);
+  return Number(value);
+}
+
+function stringValue(value: Record<string, unknown>, key: string): string {
+  const candidate = value[key];
+  if (typeof candidate !== "string" || candidate.length === 0) {
+    throw new Error(`The e-Sbírka response has no valid ${key}.`);
+  }
+  return candidate;
+}
+
+function optionalIdentifier(value: Record<string, unknown>, key: string): string | null {
+  const candidate = value[key];
+  return typeof candidate === "string" && /^[a-zA-Z0-9-]{1,128}$/.test(candidate)
+    ? candidate
+    : null;
+}
+
+function requiredIdentifier(value: Record<string, unknown>, key: string): string {
+  const candidate = optionalIdentifier(value, key);
+  if (!candidate) throw new Error(`The e-Sbírka response has no valid ${key}.`);
+  return candidate;
 }
 
 function isRetryableOfficialDownloadError(error: unknown): boolean {
@@ -562,36 +733,6 @@ function detectOoxmlMimeType(bytes: Uint8Array): string | null {
   return null;
 }
 
-function assertCzechLawSparqlPayload(bytes: Uint8Array): void {
-  let value: unknown;
-  try {
-    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  } catch {
-    throw new Error("The e-Sbírka open-data response is not valid UTF-8 JSON.");
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("The e-Sbírka open-data response has an unsupported shape.");
-  }
-  const results = (value as { results?: unknown }).results;
-  const bindings = results && typeof results === "object" && !Array.isArray(results)
-    ? (results as { bindings?: unknown }).bindings
-    : null;
-  if (
-    !Array.isArray(bindings)
-    || bindings.length === 0
-    || bindings.some((binding) => {
-      if (!binding || typeof binding !== "object" || Array.isArray(binding)) return true;
-      const text = (binding as { text?: unknown }).text;
-      return !text
-        || typeof text !== "object"
-        || Array.isArray(text)
-        || typeof (text as { value?: unknown }).value !== "string";
-    })
-  ) {
-    throw new Error("The e-Sbírka open-data response contains no valid legal fragments.");
-  }
-}
-
 function officialFilename(
   contentDisposition: string | null,
   url: URL,
@@ -632,9 +773,8 @@ function officialExtensions(mimeType: string): readonly string[] {
 }
 
 function czechLawOpenDataFilename(url: URL): string | null {
-  const query = url.searchParams.get("query") ?? "";
-  const match = query.match(/\/eli\/cz\/sb\/(\d{4})\/(\d+)\/(\d{4}-\d{2}-\d{2})>/);
-  return match ? `sb-${match[1]}-${match[2]}-${match[3]}.json` : null;
+  const match = url.pathname.match(/\/sb\/(\d{4})\/(\d+)\/(\d{4}-\d{2}-\d{2})/);
+  return match ? `sb-${match[1]}-${match[2]}-${match[3]}.pdf` : null;
 }
 
 function sourceVersionLabel(downloaded: DownloadedOfficialDocument, capturedAt: string): string {
