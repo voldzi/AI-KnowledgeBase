@@ -277,13 +277,14 @@ The persistent production environment remains
 `/srv/akl/env/akl.prod.env`; each attempt copies it once into the private linked
 snapshot described below. Every Compose operation receives that snapshot, the
 Compose project, and the target release compose file explicitly. The managed
-immutable set is Registry, Ingestion, RAG, and web. Before the SHA burn/build
+immutable set is Registry, Ingestion, RAG, Evaluation, Governance, web, and
+standalone chat. Before the SHA burn/build
 boundary the workflow requires the Registry proof-signing file and each
 selected Ingestion/RAG/web confidential-client secret to be an absolute,
 operator-owned, single-link regular file with exact mode `0600`. When Director
 Copilot is enabled and either web profile changes, the same preflight applies
 to its dedicated client-secret file. First rollout
-selects all four services. A Registry
+selects all seven services. A Registry
 change first quiesces the Registry writer and is then backed up and verified
 before Alembic runs. PostgreSQL clients come only from the already-local exact
 digest or image ID configured by `AKL_RELEASE_POSTGRES_TOOL_IMAGE`; no mutable

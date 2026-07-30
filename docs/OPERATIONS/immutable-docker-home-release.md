@@ -1,7 +1,8 @@
 # Immutable Releases On `docker.home.cz`
 
 This is the production release and recovery procedure for the coordinated AKB
-Registry, Ingestion, RAG retrieval, and web runtime. It deliberately does not
+Registry, Ingestion, RAG retrieval, Evaluation, Governance, web, and standalone
+chat runtime. It deliberately does not
 deploy from the mutable `/srv/akl/repo` working tree.
 
 ## Safety Invariants
@@ -310,8 +311,9 @@ Before the SHA is burned or any image is built, the deploy script also requires
 every private file needed by the selected service set to be an absolute,
 single-link, non-symlink regular file owned by the release operator with exact
 mode `0600` and non-empty content. Registry additionally requires at least 32
-bytes. First rollout selects all four services, so all four files are mandatory
-even if an older runtime did not use them.
+bytes. First rollout selects all seven managed services, so all four
+confidential transport files are mandatory even if an older runtime did not
+use them.
 
 For the first transition, do not invoke an orchestrator from mutable
 `/srv/akl/repo`. Use an already prepared, reviewed, read-only immutable release
@@ -509,9 +511,10 @@ downgrade, in-place restore, reset, tag deletion, or volume removal.
    under `/srv/akl`, and the latest syntactically validated release dump.
    `applied_sha` must equal the
    current SHA and `state` must be `verified` for an ordinary deployment.
-3. Confirm the change contains only the supported Registry, Ingestion, RAG, or
-   web runtime scope. Shared policy contracts are treated as Registry changes.
-   A shared Compose change may alter only complete blocks of these four services;
+3. Confirm the change contains only the supported Registry, Ingestion, RAG,
+   Evaluation, Governance, web, or standalone chat runtime scope. Shared policy
+   contracts are treated as Registry changes. A shared Compose change may alter
+   only complete blocks of these seven services;
    any other service or top-level change is rejected.
 4. Confirm no database reset, corpus reset, volume removal, Alembic downgrade,
    or network change is included in the change window.

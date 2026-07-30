@@ -15,6 +15,7 @@ class RagClient(Protocol):
         query: str,
         filters: RagQueryFilters,
         max_chunks: int,
+        actor_bearer_token: str | None = None,
     ) -> list[RetrievedChunk]:
         ...
 
@@ -33,6 +34,7 @@ class MockRagClient:
         query: str,
         filters: RagQueryFilters,
         max_chunks: int,
+        actor_bearer_token: str | None = None,
     ) -> list[RetrievedChunk]:
         return _mock_chunks()[:max_chunks]
 
@@ -51,6 +53,7 @@ class HttpRagClient:
         query: str,
         filters: RagQueryFilters,
         max_chunks: int,
+        actor_bearer_token: str | None = None,
     ) -> list[RetrievedChunk]:
         payload = await request_json_with_retry(
             dependency="rag-retrieval-service",
@@ -63,6 +66,7 @@ class HttpRagClient:
                 "filters": filters.model_dump(),
                 "max_chunks": max_chunks,
             },
+            bearer_token=actor_bearer_token,
         )
         return [RetrievedChunk.model_validate(chunk) for chunk in payload.get("chunks", [])]
 

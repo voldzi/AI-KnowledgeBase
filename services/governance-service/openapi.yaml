@@ -39,6 +39,8 @@ paths:
       - governance
       summary: Compare Versions
       operationId: compare_versions_api_v1_governance_compare_versions_post
+      parameters:
+      - $ref: '#/components/parameters/StratosActorAuthorization'
       requestBody:
         content:
           application/json:
@@ -64,6 +66,8 @@ paths:
       - governance
       summary: Check Compliance
       operationId: check_compliance_api_v1_governance_check_compliance_post
+      parameters:
+      - $ref: '#/components/parameters/StratosActorAuthorization'
       requestBody:
         content:
           application/json:
@@ -89,6 +93,8 @@ paths:
       - governance
       summary: Detect Conflicts
       operationId: detect_conflicts_api_v1_governance_detect_conflicts_post
+      parameters:
+      - $ref: '#/components/parameters/StratosActorAuthorization'
       requestBody:
         content:
           application/json:
@@ -114,6 +120,8 @@ paths:
       - governance
       summary: Generate Kb Article
       operationId: generate_kb_article_api_v1_governance_generate_kb_article_post
+      parameters:
+      - $ref: '#/components/parameters/StratosActorAuthorization'
       requestBody:
         content:
           application/json:
@@ -140,6 +148,7 @@ paths:
       summary: Validity Alerts
       operationId: validity_alerts_api_v1_governance_validity_alerts_get
       parameters:
+      - $ref: '#/components/parameters/StratosActorAuthorization'
       - name: subject_id
         in: query
         required: true
@@ -172,6 +181,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
+  parameters:
+    StratosActorAuthorization:
+      name: X-STRATOS-Actor-Authorization
+      in: header
+      required: true
+      description: Current actor bearer kept separate from the Governance service transport credential.
+      schema:
+        type: string
   schemas:
     ChangeItem:
       properties:

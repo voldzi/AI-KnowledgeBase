@@ -54,7 +54,7 @@ OpenAPI kontrakt je v `openapi.yaml` a runtime OpenAPI je dostupne jako `/openap
 | `AKL_ENV` | `development` | `production` vynucuje bearer auth a HTTP klienty. |
 | `AKL_AUTH_MODE` | `disabled` | `disabled`, `mock`, nebo `bearer`. |
 | `AKL_SERVICE_TOKEN` | prazdne | Token pro prichozi bearer auth. |
-| `AKL_UPSTREAM_BEARER_TOKEN` | prazdne | Token pro volani Registry API a RAG Retrieval Service. |
+| `AKL_UPSTREAM_BEARER_TOKEN` | prazdne | Jen neinteraktivni fallback pro volani Registry API a RAG Retrieval Service; interaktivni operace pouzivaji oddeleny aktualni actor bearer. |
 | `AKL_GOVERNANCE_DEPENDENCY_MODE` | `mock` | Vychozi mod zavislosti: `mock` nebo `http`. |
 | `AKL_GOVERNANCE_REGISTRY_CLIENT_MODE` | podle dependency mode | Registry klient. |
 | `AKL_GOVERNANCE_RAG_CLIENT_MODE` | podle dependency mode | RAG klient. |
@@ -92,6 +92,18 @@ X-Request-ID
 X-Correlation-ID
 X-Service-Name
 ```
+
+V produkci web posila dve oddelene identity:
+
+```text
+Authorization: Bearer <governance-service-transport>
+X-STRATOS-Actor-Authorization: Bearer <current-person>
+```
+
+Governance overi servisni transport a aktualni actor bearer preda Registry a
+RAG. Tyto sluzby samy overi OIDC token, shodu `subject_id`, capability, scope a
+Information Policy. Chybejici actor bearer nebo znovupouziti servisniho tokenu
+jako actor identity selze uzavrene. Tokeny se neloguji.
 
 Služba vola Registry API:
 

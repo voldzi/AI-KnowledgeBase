@@ -84,6 +84,10 @@ describe("production API clients", () => {
     const body = JSON.parse(String(calls[0]?.[1]?.body));
     assert.equal(headers.get("Authorization"), "Bearer governance-service-token");
     assert.notEqual(headers.get("Authorization"), "Bearer actor-token");
+    assert.equal(
+      headers.get("X-STRATOS-Actor-Authorization"),
+      "Bearer actor-token",
+    );
     assert.equal(body.subject_id, "user_1");
     assert.equal(headers.get("X-Correlation-ID"), "corr_governance");
   });

@@ -67,11 +67,17 @@ class GovernanceService:
         self._conflict_detector = conflict_detector
         self._kb_generator = kb_generator
 
-    async def compare_versions(self, payload: CompareVersionsRequest) -> CompareVersionsResponse:
+    async def compare_versions(
+        self,
+        payload: CompareVersionsRequest,
+        *,
+        actor_bearer_token: str | None = None,
+    ) -> CompareVersionsResponse:
         _validate_content_size(self._settings, payload.left_version.content, payload.right_version.content)
         await self._require_documents_allowed(
             subject_id=payload.subject_id,
             document_ids=[payload.left_version.document_id, payload.right_version.document_id],
+            actor_bearer_token=actor_bearer_token,
         )
         result_id = _result_id()
         response = self._diff_engine.compare(
@@ -92,6 +98,7 @@ class GovernanceService:
                     response.change_counts.get(key, 0) for key in ("added", "removed", "modified")
                 ),
             },
+            actor_bearer_token=actor_bearer_token,
         )
         logger.info(
             "governance_compare_completed result_id=%s confidence=%s change_count=%s",
@@ -101,12 +108,18 @@ class GovernanceService:
         )
         return response
 
-    async def check_compliance(self, payload: ComplianceCheckRequest) -> ComplianceCheckResponse:
+    async def check_compliance(
+        self,
+        payload: ComplianceCheckRequest,
+        *,
+        actor_bearer_token: str | None = None,
+    ) -> ComplianceCheckResponse:
         _validate_content_size(self._settings, payload.draft.content)
         if payload.draft.document_id:
             await self._require_documents_allowed(
                 subject_id=payload.subject_id,
                 document_ids=[payload.draft.document_id],
+                actor_bearer_token=actor_bearer_token,
             )
 
         control_sources = payload.control_sources
@@ -116,11 +129,13 @@ class GovernanceService:
                 query=payload.control_query,
                 filters=payload.filters,
                 max_chunks=min(payload.max_control_chunks, self._settings.max_control_chunks),
+                actor_bearer_token=actor_bearer_token,
             )
 
         control_sources, warnings = await self._filter_chunks_allowed(
             subject_id=payload.subject_id,
             chunks=control_sources[: self._settings.max_control_chunks],
+            actor_bearer_token=actor_bearer_token,
         )
         result_id = _result_id()
         response = self._compliance_checker.check(
@@ -141,6 +156,7 @@ class GovernanceService:
                 "control_chunk_count": len(control_sources),
                 "document_id": payload.draft.document_id,
             },
+            actor_bearer_token=actor_bearer_token,
         )
         logger.info(
             "governance_compliance_completed result_id=%s status=%s confidence=%s finding_count=%s",
@@ -151,11 +167,17 @@ class GovernanceService:
         )
         return response
 
-    async def detect_conflicts(self, payload: ConflictDetectionRequest) -> ConflictDetectionResponse:
+    async def detect_conflicts(
+        self,
+        payload: ConflictDetectionRequest,
+        *,
+        actor_bearer_token: str | None = None,
+    ) -> ConflictDetectionResponse:
         _validate_content_size(self._settings, *(document.content for document in payload.documents))
         allowed_documents, warnings = await self._filter_documents_allowed(
             subject_id=payload.subject_id,
             documents=payload.documents,
+            actor_bearer_token=actor_bearer_token,
         )
         result_id = _result_id()
         if len(allowed_documents) < 2:
@@ -187,6 +209,7 @@ class GovernanceService:
                 "authorized_document_count": len(allowed_documents),
                 "document_id": allowed_documents[0].document_id if allowed_documents else None,
             },
+            actor_bearer_token=actor_bearer_token,
         )
         logger.info(
             "governance_conflict_detection_completed result_id=%s confidence=%s conflict_count=%s",
@@ -196,11 +219,17 @@ class GovernanceService:
         )
         return response
 
-    async def generate_kb_article(self, payload: GenerateKbArticleRequest) -> GenerateKbArticleResponse:
+    async def generate_kb_article(
+        self,
+        payload: GenerateKbArticleRequest,
+        *,
+        actor_bearer_token: str | None = None,
+    ) -> GenerateKbArticleResponse:
         _validate_content_size(self._settings, payload.source_document.content)
         await self._require_documents_allowed(
             subject_id=payload.subject_id,
             document_ids=[payload.source_document.document_id],
+            actor_bearer_token=actor_bearer_token,
         )
         result_id = _result_id()
         response = self._kb_generator.generate(
@@ -219,6 +248,7 @@ class GovernanceService:
                 "section_count": len(response.article.sections),
                 "publication_status": response.article.publication_status,
             },
+            actor_bearer_token=actor_bearer_token,
         )
         logger.info(
             "governance_kb_generation_completed result_id=%s confidence=%s section_count=%s",
@@ -228,7 +258,13 @@ class GovernanceService:
         )
         return response
 
-    async def validity_alerts(self, *, subject_id: str, days_before_expiry: int) -> ValidityAlertsResponse:
+    async def validity_alerts(
+        self,
+        *,
+        subject_id: str,
+        days_before_expiry: int,
+        actor_bearer_token: str | None = None,
+    ) -> ValidityAlertsResponse:
         if days_before_expiry <= 0 or days_before_expiry > 730:
             raise GovernanceError(
                 "INVALID_VALIDITY_WINDOW",
@@ -239,6 +275,7 @@ class GovernanceService:
         candidates = await self._registry_client.list_validity_candidates(
             subject_id=subject_id,
             days_before_expiry=days_before_expiry,
+            actor_bearer_token=actor_bearer_token,
         )
         alerts = [_validity_alert(candidate) for candidate in candidates]
         citations = unique_citations([alert.citation for alert in alerts])
@@ -260,6 +297,7 @@ class GovernanceService:
             resource_id=result_id,
             response=response,
             metadata={"alert_count": len(alerts), "days_before_expiry": days_before_expiry},
+            actor_bearer_token=actor_bearer_token,
         )
         return response
 
@@ -273,10 +311,17 @@ class GovernanceService:
             "rag-retrieval-service": rag,
         }
 
-    async def _require_documents_allowed(self, *, subject_id: str, document_ids: list[str]) -> None:
+    async def _require_documents_allowed(
+        self,
+        *,
+        subject_id: str,
+        document_ids: list[str],
+        actor_bearer_token: str | None = None,
+    ) -> None:
         authz = await self._registry_client.filter_allowed_documents(
             subject_id=subject_id,
             candidate_document_ids=sorted(set(document_ids)),
+            actor_bearer_token=actor_bearer_token,
         )
         if authz.denied_document_ids:
             raise GovernanceError(
@@ -291,11 +336,13 @@ class GovernanceService:
         *,
         subject_id: str,
         chunks: list[RetrievedChunk],
+        actor_bearer_token: str | None = None,
     ) -> tuple[list[RetrievedChunk], list[str]]:
         candidate_ids = sorted({chunk.citation.document_id for chunk in chunks})
         authz = await self._registry_client.filter_allowed_documents(
             subject_id=subject_id,
             candidate_document_ids=candidate_ids,
+            actor_bearer_token=actor_bearer_token,
         )
         allowed = [chunk for chunk in chunks if chunk.citation.document_id in authz.allowed_document_ids]
         warnings = ["AUTHZ_FILTERED_SOURCES"] if authz.denied_document_ids else []
@@ -306,11 +353,13 @@ class GovernanceService:
         *,
         subject_id: str,
         documents: list,
+        actor_bearer_token: str | None = None,
     ) -> tuple[list, list[str]]:
         candidate_ids = sorted({document.document_id for document in documents})
         authz = await self._registry_client.filter_allowed_documents(
             subject_id=subject_id,
             candidate_document_ids=candidate_ids,
+            actor_bearer_token=actor_bearer_token,
         )
         allowed = [document for document in documents if document.document_id in authz.allowed_document_ids]
         warnings = ["AUTHZ_FILTERED_SOURCES"] if authz.denied_document_ids else []
@@ -325,6 +374,7 @@ class GovernanceService:
         response: object,
         metadata: dict[str, object],
         severity: str = "info",
+        actor_bearer_token: str | None = None,
     ) -> None:
         citations = getattr(response, "citations", [])
         warnings = getattr(response, "warnings", [])
@@ -343,6 +393,7 @@ class GovernanceService:
                 "citation_count": len(citations),
                 "result_sha256": hashlib.sha256(result_json.encode("utf-8")).hexdigest(),
             },
+            actor_bearer_token=actor_bearer_token,
         )
 
 

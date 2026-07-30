@@ -11,9 +11,13 @@ host applications do not make authorization decisions for AKB documents.
 - Service calls preserve `X-Request-ID` and `X-Correlation-ID`.
 - Web-to-Governance calls use the internal
   `AKL_GOVERNANCE_SERVICE_TOKEN` solely as their transport identity. The
-  verified interactive subject remains explicit in the governance request for
-  authorization and audit; the browser bearer is not forwarded as the
-  Governance service credential.
+  verified interactive subject remains explicit in the governance request.
+  The current person bearer is sent separately in the internal
+  `X-STRATOS-Actor-Authorization` header and Governance forwards it only to
+  Registry and RAG for their own OIDC, subject, capability, scope and
+  Information Policy checks. It is never reused as the Governance service
+  credential, exposed to the browser response, or written to logs. Missing or
+  identical service/actor credentials fail closed.
 - LLM Gateway calls use a separate audience-bound service credential. Ingestion
   presents `svc-ingestion`/`service_ingestion`; RAG presents
   `svc-rag`/`service_rag`; both target audience `llm-gateway-service`.

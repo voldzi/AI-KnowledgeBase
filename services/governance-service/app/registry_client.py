@@ -31,6 +31,7 @@ class RegistryClient(Protocol):
         *,
         subject_id: str,
         candidate_document_ids: list[str],
+        actor_bearer_token: str | None = None,
     ) -> AuthzFilterResult:
         ...
 
@@ -42,6 +43,7 @@ class RegistryClient(Protocol):
         resource_id: str,
         metadata: dict[str, object],
         severity: str = "info",
+        actor_bearer_token: str | None = None,
     ) -> None:
         ...
 
@@ -50,6 +52,7 @@ class RegistryClient(Protocol):
         *,
         subject_id: str,
         days_before_expiry: int,
+        actor_bearer_token: str | None = None,
     ) -> list[ValidityCandidate]:
         ...
 
@@ -66,6 +69,7 @@ class MockRegistryClient:
         *,
         subject_id: str,
         candidate_document_ids: list[str],
+        actor_bearer_token: str | None = None,
     ) -> AuthzFilterResult:
         denied = {
             document_id
@@ -83,6 +87,7 @@ class MockRegistryClient:
         resource_id: str,
         metadata: dict[str, object],
         severity: str = "info",
+        actor_bearer_token: str | None = None,
     ) -> None:
         return None
 
@@ -91,6 +96,7 @@ class MockRegistryClient:
         *,
         subject_id: str,
         days_before_expiry: int,
+        actor_bearer_token: str | None = None,
     ) -> list[ValidityCandidate]:
         today = date.today()
         candidates = [
@@ -130,6 +136,7 @@ class HttpRegistryClient:
         *,
         subject_id: str,
         candidate_document_ids: list[str],
+        actor_bearer_token: str | None = None,
     ) -> AuthzFilterResult:
         if not candidate_document_ids:
             return AuthzFilterResult(allowed_document_ids=set(), denied_document_ids=set())
@@ -144,6 +151,7 @@ class HttpRegistryClient:
                 "action": "document.read",
                 "candidate_document_ids": candidate_document_ids,
             },
+            bearer_token=actor_bearer_token,
         )
         return AuthzFilterResult(
             allowed_document_ids=set(payload.get("allowed_document_ids", [])),
@@ -158,6 +166,7 @@ class HttpRegistryClient:
         resource_id: str,
         metadata: dict[str, object],
         severity: str = "info",
+        actor_bearer_token: str | None = None,
     ) -> None:
         await request_json_with_retry(
             dependency="registry-api",
@@ -173,6 +182,7 @@ class HttpRegistryClient:
                 "correlation_id": get_correlation_id(),
                 "metadata": {"service": self._settings.service_name, **metadata},
             },
+            bearer_token=actor_bearer_token,
         )
 
     async def list_validity_candidates(
@@ -180,16 +190,22 @@ class HttpRegistryClient:
         *,
         subject_id: str,
         days_before_expiry: int,
+        actor_bearer_token: str | None = None,
     ) -> list[ValidityCandidate]:
         documents_payload = await request_json_with_retry(
             dependency="registry-api",
             settings=self._settings,
             method="GET",
             url=f"{self._settings.registry_base_url}/documents?limit=200&offset=0",
+            bearer_token=actor_bearer_token,
         )
         documents = documents_payload.get("items", [])
         candidate_ids = [document["document_id"] for document in documents if document.get("document_id")]
-        authz = await self.filter_allowed_documents(subject_id=subject_id, candidate_document_ids=candidate_ids)
+        authz = await self.filter_allowed_documents(
+            subject_id=subject_id,
+            candidate_document_ids=candidate_ids,
+            actor_bearer_token=actor_bearer_token,
+        )
         title_by_id = {document["document_id"]: document.get("title", document["document_id"]) for document in documents}
 
         today = date.today()
@@ -201,6 +217,7 @@ class HttpRegistryClient:
                 settings=self._settings,
                 method="GET",
                 url=f"{self._settings.registry_base_url}/documents/{document_id}/versions?limit=200&offset=0",
+                bearer_token=actor_bearer_token,
             )
             for version in versions_payload.get("items", []):
                 valid_to_raw = version.get("valid_to")
