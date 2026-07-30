@@ -2245,6 +2245,7 @@ akl_assert_existing_current_transition_state() {
   local validation_phase="$6"
   local current_sha git_url trusted_ref resolved_sha
   local marker_sha marker_state marker_phase transition_mode target_image
+  local current_boundary_revision target_boundary_revision
 
   akl_validate_full_sha "$target_sha"
   case "$validation_phase" in
@@ -2343,23 +2344,38 @@ akl_assert_existing_current_transition_state() {
     && "$current_sha" != "$target_sha" ]]; then
     if grep -Fxq 'AKL_IMMUTABLE_ORCHESTRATOR_CONTRACT=2' \
       "${release_root}/releases/${current_sha}/scripts/deploy_docker_home_release.sh"; then
-      akl_fail "Existing current already uses hardened orchestrator contract 2; deploy through current"
+      current_boundary_revision="$(
+        akl_immutable_managed_boundary_revision \
+          "${release_root}/releases/${current_sha}/scripts/deploy_docker_home_release.sh"
+      )"
+      target_boundary_revision="$(
+        akl_immutable_managed_boundary_revision \
+          "${release_root}/releases/${target_sha}/scripts/deploy_docker_home_release.sh"
+      )"
+      [[ "$target_boundary_revision" -eq $((current_boundary_revision + 1)) ]] \
+        || akl_fail "Existing contract-2 current permits target bootstrap only for the exact next managed-boundary revision"
+      transition_mode="managed-boundary-upgrade"
+    else
+      transition_mode="clean"
     fi
-    transition_mode="clean"
   elif [[ "$marker_state" == "failed" || "$marker_state" == "applying" ]]; then
     akl_fail "Transition runtime is not verified; recover through the exact applied release rollback/forward-fix entry point"
   else
     akl_fail "Transition requires verified/verified runtime state bound to current or target reconciliation"
   fi
 
-  if [[ "$transition_mode" == "clean" ]]; then
+  if [[ "$transition_mode" == "clean" \
+    || "$transition_mode" == "managed-boundary-upgrade" ]]; then
     akl_assert_release_sha_not_burned "$release_root" "$target_sha" \
       || akl_fail "Clean transition target has durable burned-SHA evidence; prepare a reviewed descendant"
     for target_image in \
       "akl/registry-api:${target_sha}" \
       "akl/ingestion-service:${target_sha}" \
       "akl/rag-retrieval-service:${target_sha}" \
-      "akl/web:${target_sha}"; do
+      "akl/evaluation-service:${target_sha}" \
+      "akl/governance-service:${target_sha}" \
+      "akl/web:${target_sha}" \
+      "akl/chat-web:${target_sha}"; do
       if docker image inspect "$target_image" >/dev/null 2>&1; then
         akl_fail "Clean transition target image tag already exists: $target_image"
       fi
@@ -2367,6 +2383,27 @@ akl_assert_existing_current_transition_state() {
   fi
 
   printf '%s\n' "$transition_mode"
+}
+
+akl_immutable_managed_boundary_revision() {
+  local deploy_script="$1"
+  local matches revision
+
+  akl_require_file "$deploy_script"
+  matches="$(
+    grep -E '^AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=[1-9][0-9]*$' \
+      "$deploy_script" || true
+  )"
+  if [[ -z "$matches" ]]; then
+    printf '1\n'
+    return 0
+  fi
+  [[ "$(wc -l <<<"$matches" | tr -d '[:space:]')" == "1" ]] \
+    || akl_fail "Immutable managed-boundary revision must be declared exactly once"
+  revision="${matches#*=}"
+  [[ "$revision" =~ ^[1-9][0-9]*$ ]] \
+    || akl_fail "Immutable managed-boundary revision is invalid"
+  printf '%s\n' "$revision"
 }
 
 akl_atomic_current_symlink() {

@@ -268,7 +268,12 @@ trusted self-contained mirror and ancestry (no alternates, grafts, external
 includes, or symlinked object/ref paths), recursively trusted read-only release trees,
 unburned target and absent target tags. The target orchestrator repeats the
 state-sensitive checks under the standard lock and skips prepare/fetch. After
-contract 2 is current, use the ordinary current entry point for every
+contract 2 is active, the same target-side entry point remains available only
+for a declared exact-next `AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION`. This is
+the controlled path for adding a newly managed service to the immutable
+boundary. Equal, skipped, duplicate, or decreasing revisions fail before image
+build, writer stop, backup, or migration.
+After contract 2 is current, use the ordinary current entry point for every
 descendant. Exact commands and crash/forward-fix handling are in
 `docs/OPERATIONS/immutable-docker-home-release.md`, section `One-Time Upgrade
 From An Existing Immutable current`.

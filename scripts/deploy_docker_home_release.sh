@@ -2,6 +2,9 @@
 set +x
 set -Eeuo pipefail
 AKL_IMMUTABLE_ORCHESTRATOR_CONTRACT=2
+# Read from immutable release files by the target-side boundary transition.
+# shellcheck disable=SC2034
+AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=2
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/immutable_release_common.sh

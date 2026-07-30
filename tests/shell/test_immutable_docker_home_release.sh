@@ -2060,7 +2060,77 @@ fi
   --sha "$POST_TRANSITION_STANDARD_SHA"
 assert_current_sha "$POST_TRANSITION_STANDARD_SHA"
 assert_runtime_marker "$POST_TRANSITION_STANDARD_SHA" verified
-SHA_ONE="$POST_TRANSITION_STANDARD_SHA"
+
+# A contract-2 current may use target-side bootstrap only for an explicitly
+# declared, exact next managed-service boundary revision. This supports a
+# coordinated expansion such as adding Governance without making target-side
+# bootstrap a general-purpose policy bypass.
+python3 - "$WORK_REPO/scripts/deploy_docker_home_release.sh" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=2"
+new = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=3"
+if text.count(old) != 1:
+    raise SystemExit("fixture managed-boundary revision is not unique")
+path.write_text(text.replace(old, new))
+PY
+printf 'managed-boundary-upgrade\n' \
+  >"$WORK_REPO/services/governance-service/managed-boundary-upgrade.txt"
+git -C "$WORK_REPO" add \
+  scripts/deploy_docker_home_release.sh \
+  services/governance-service/managed-boundary-upgrade.txt
+git -C "$WORK_REPO" commit --quiet -m 'exact next managed boundary revision'
+MANAGED_BOUNDARY_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+MANAGED_BOUNDARY_RELEASE="$(
+  "$SOURCE_ROOT/scripts/prepare_docker_home_release.sh" "$MANAGED_BOUNDARY_SHA"
+)"
+printf 'MARK managed-boundary-upgrade\n' >>"$CALL_LOG"
+"${MANAGED_BOUNDARY_RELEASE}/scripts/bootstrap_docker_home_target.sh" \
+  --sha "$MANAGED_BOUNDARY_SHA" \
+  --transition-existing-current
+assert_current_sha "$MANAGED_BOUNDARY_SHA"
+assert_runtime_marker "$MANAGED_BOUNDARY_SHA" verified
+managed_boundary_log="$(
+  awk '/^MARK managed-boundary-upgrade$/ {capture=1; next} capture' "$CALL_LOG"
+)"
+grep -Fxq \
+  'build:registry-api rag-retrieval-service evaluation-service governance-service web chat-web' \
+  <<<"$managed_boundary_log" \
+  || fail 'managed-boundary upgrade did not build every supported non-ingestion service'
+grep -Fxq 'build:ingestion-service' <<<"$managed_boundary_log" \
+  || fail 'managed-boundary upgrade did not build ingestion-service'
+
+printf 'same-managed-boundary-revision\n' \
+  >"$WORK_REPO/apps/web/same-managed-boundary-revision.txt"
+git -C "$WORK_REPO" add apps/web/same-managed-boundary-revision.txt
+git -C "$WORK_REPO" commit --quiet -m 'same managed boundary revision'
+SAME_BOUNDARY_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
+git -C "$WORK_REPO" push --quiet origin main
+SAME_BOUNDARY_RELEASE="$(
+  "$SOURCE_ROOT/scripts/prepare_docker_home_release.sh" "$SAME_BOUNDARY_SHA"
+)"
+printf 'MARK same-managed-boundary-rejection\n' >>"$CALL_LOG"
+if "${SAME_BOUNDARY_RELEASE}/scripts/bootstrap_docker_home_target.sh" \
+  --sha "$SAME_BOUNDARY_SHA" \
+  --transition-existing-current; then
+  fail 'managed-boundary transition accepted the same boundary revision twice'
+fi
+same_boundary_log="$(
+  awk '/^MARK same-managed-boundary-rejection$/ {capture=1; next} capture' "$CALL_LOG"
+)"
+if grep -q '^postgres_tool:\|^build:\|^registry_stop$\|^alembic_upgrade$' \
+  <<<"$same_boundary_log"; then
+  fail 'same managed-boundary rejection reached a destructive boundary'
+fi
+"${AKL_RELEASE_ROOT}/current/scripts/deploy_docker_home_release.sh" \
+  --sha "$SAME_BOUNDARY_SHA"
+assert_current_sha "$SAME_BOUNDARY_SHA"
+assert_runtime_marker "$SAME_BOUNDARY_SHA" verified
+SHA_ONE="$SAME_BOUNDARY_SHA"
 
 printf 'registry-primary-gate-retry\n' >"$WORK_REPO/services/registry-api/release.txt"
 git -C "$WORK_REPO" add services/registry-api/release.txt
