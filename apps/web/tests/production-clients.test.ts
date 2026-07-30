@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { createApiClients } from "../src/lib/api";
 import { createMockContext } from "../src/lib/api/correlation";
 import {
+  controlledPackageDatesFromVersion,
   controlledPackageMemberRelation,
   nextControlledPackageStatus,
 } from "../src/lib/controlled-documentation/contract";
@@ -329,6 +330,14 @@ describe("production API clients", () => {
   });
 
   it("keeps controlled-package workflow and member relations aligned with Registry", () => {
+    assert.deepEqual(controlledPackageDatesFromVersion("2023-05-30T00:00:00Z"), {
+      effectiveFrom: "2023-05-30",
+      reviewDueOn: "2024-05-30",
+    });
+    assert.deepEqual(controlledPackageDatesFromVersion(null), {
+      effectiveFrom: null,
+      reviewDueOn: null,
+    });
     assert.equal(nextControlledPackageStatus("draft"), "approved");
     assert.equal(nextControlledPackageStatus("approved"), "valid");
     assert.equal(nextControlledPackageStatus("valid"), null);

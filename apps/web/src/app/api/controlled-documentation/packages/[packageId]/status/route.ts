@@ -15,19 +15,6 @@ export async function POST(
     const context = await getServerRequestContextForRequest(request);
     const forbidden = requireApiAccess(context, "knowledge_workspace");
     if (forbidden) return forbidden;
-    const authorization =
-      await getServerApiClients().registry.getAuthorizationHints(context);
-    if (!authorization.can_publish) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "CONTROLLED_DOCUMENTATION_APPROVAL_FORBIDDEN",
-            message: "Změnu platnosti může provést pouze schvalovatel.",
-          },
-        },
-        { status: 403 },
-      );
-    }
     const { packageId } = await params;
     const body = (await request.json()) as {
       target_status?: ControlledDocumentPackageStatus;
@@ -41,6 +28,26 @@ export async function POST(
           },
         },
         { status: 422 },
+      );
+    }
+    const authorization =
+      await getServerApiClients().registry.getAuthorizationHints(context);
+    const canTransition =
+      body.target_status === "cancelled"
+        ? authorization.can_update
+        : authorization.can_publish;
+    if (!canTransition) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "CONTROLLED_DOCUMENTATION_APPROVAL_FORBIDDEN",
+            message:
+              body.target_status === "cancelled"
+                ? "Koncept může zrušit pouze gestor dokumentace."
+                : "Změnu platnosti může provést pouze schvalovatel.",
+          },
+        },
+        { status: 403 },
       );
     }
     const result =

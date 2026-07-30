@@ -29,6 +29,12 @@ a neměnnou
 historii vydání. Nové vydání nahrazuje předchozí balíček; nepřepisuje jeho
 obsah.
 
+Při výběru přesné hlavní verze pracovní plocha předvyplní účinnost balíčku
+z `valid_from` této verze a doporučí kontrolu za jeden rok. Gestor může data
+upravit před založením, ale nemusí je přepisovat ručně. Chybný koncept lze
+auditovaně převést do stavu `cancelled`; historie omylu se nemaže ani
+nepřepisuje.
+
 Balíček může přejít do stavu `valid` pouze tehdy, když:
 
 1. hlavní dokument i všichni členové existují a jsou publikovaní;
