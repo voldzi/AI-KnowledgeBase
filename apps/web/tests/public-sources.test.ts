@@ -105,8 +105,14 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
       { from: "2025-01-01", to: null, status: "current" },
     ],
   );
-  assert.match(procurementAct[0]?.sourceUrl ?? "", /^https:\/\/opendata\.eselpoint\.gov\.cz\/sparql\?/);
-  assert.match(decodeURIComponent(procurementAct[2]?.sourceUrl ?? ""), /2016\/134\/2025-01-01/);
+  assert.equal(
+    procurementAct[0]?.sourceUrl,
+    "https://e-sbirka.gov.cz/sb/2016/134/2022-09-01",
+  );
+  assert.equal(
+    procurementAct[2]?.sourceUrl,
+    "https://e-sbirka.gov.cz/sb/2016/134/2025-01-01",
+  );
 });
 
 test("ČSÚ collection keeps authoritative HTML catalog pages as searchable originals", async () => {
@@ -431,7 +437,7 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
   }
 });
 
-test("e-Sbírka sync accepts the official SPARQL JSON original", async () => {
+test("e-Sbírka sync downloads the official informative PDF through the public service", async () => {
   const storageRoot = await mkdtemp(join(tmpdir(), "akb-public-law-source-"));
   const previousRoot = process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
   const previousEnvironment = process.env.AKL_ENV;
@@ -446,31 +452,41 @@ test("e-Sbírka sync accepts the official SPARQL JSON original", async () => {
       },
     });
     const context = createMockContext({ subjectId: "public_source_manager" });
-    const bytes = new TextEncoder().encode(JSON.stringify({
-      head: { vars: ["order", "citation", "text"] },
-      results: { bindings: [{ text: { type: "literal", value: "Zadavatel postupuje transparentně." } }] },
-    }));
-    const fetcher: typeof fetch = async (_input, init) => {
-      assert.match(new Headers(init?.headers).get("accept") ?? "", /sparql-results\+json/);
-      return new Response(bytes, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/sparql-results+json; charset=utf-8",
-          "Content-Length": String(bytes.byteLength),
-        },
-      });
+    const pdfBytes = new TextEncoder().encode("%PDF-1.7\nZadavatel postupuje transparentně.\n%%EOF");
+    const requests: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push(url.pathname);
+      assert.equal(url.origin, "https://e-sbirka.gov.cz");
+      assert.equal(new Headers(init?.headers).get("authorization"), null);
+      if (url.pathname.endsWith("/odkazy-ke-stazeni")) {
+        assert.match(new Headers(init?.headers).get("accept") ?? "", /application\/json/);
+        return Response.json({
+          informativniZneni: { odkazPdf: { dokumentId: 145379 } },
+        });
+      }
+      if (url.pathname === "/sbr-externi/stahni/informativni-zneni/145379/PDF") {
+        return Response.json({
+          pozadavekId: "request-123",
+          id: "file-456",
+          stavPozadavku: "OK",
+          nazevDokumentu: "Sb_2016_134_2025-04-03_IZ.pdf",
+        });
+      }
+      if (url.pathname === "/souborove-sluzby/soubory/file-456") {
+        assert.match(new Headers(init?.headers).get("accept") ?? "", /application\/pdf/);
+        return new Response(pdfBytes, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Length": String(pdfBytes.byteLength),
+            "Content-Disposition": "attachment; filename=\"Sb_2016_134_2025-04-03_IZ.pdf\"",
+          },
+        });
+      }
+      return Response.json({ error: "unexpected request" }, { status: 404 });
     };
-    const sourceUrl = new URL("https://opendata.eselpoint.gov.cz/sparql");
-    sourceUrl.searchParams.set(
-      "query",
-      `SELECT ?order ?citation ?text WHERE {
-  <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2016/134/2025-04-03> <https://slovník.gov.cz/datový/sbírka/pojem/má-fragment-znění> ?versionFragment .
-  ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/obsahuje-fragment> ?fragment .
-  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/pořadí-fragmentu-znění-právního-aktu> ?order . }
-  OPTIONAL { ?versionFragment <https://slovník.gov.cz/datový/sbírka/pojem/citace-označení-fragmentu-znění-právního-aktu> ?citation . }
-  ?fragment <https://slovník.gov.cz/datový/sbírka/pojem/text-fragmentu> ?text .
-} ORDER BY ?order`,
-    );
+    const sourceUrl = new URL("https://e-sbirka.gov.cz/sb/2016/134/2025-04-03");
     const transport = async (correlationId: string) => ({
       ...context,
       requestId: correlationId,
@@ -496,14 +512,22 @@ test("e-Sbírka sync accepts the official SPARQL JSON original", async () => {
     };
 
     assert.equal(created.action, "created");
-    assert.equal(versionDetails.file?.mime_type, "application/json");
-    assert.equal(versionDetails.source_location?.file_name, "sb-2016-134-2025-04-03.json");
+    assert.equal(versionDetails.file?.mime_type, "application/pdf");
+    assert.equal(
+      versionDetails.source_location?.file_name,
+      "Sb_2016_134_2025-04-03_IZ.pdf",
+    );
     assert.equal(versions.length, 1);
+    assert.deepEqual(requests, [
+      "/sbr-externi/dokumenty-sbirky/%2Fsb%2F2016%2F134%2F2025-04-03/odkazy-ke-stazeni",
+      "/sbr-externi/stahni/informativni-zneni/145379/PDF",
+      "/souborove-sluzby/soubory/file-456",
+    ]);
     await assert.rejects(
       synchronizePublicSource(
         {
           collectionId: "czech-law",
-          sourceUrl: "https://opendata.eselpoint.gov.cz/sparql?query=SELECT+*+WHERE+%7B%3Fs+%3Fp+%3Fo%7D",
+          sourceUrl: "https://e-sbirka.gov.cz/sb/2016/134?zalozka=text",
           canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
           title: "Neomezený dotaz",
         },
@@ -512,7 +536,7 @@ test("e-Sbírka sync accepts the official SPARQL JSON original", async () => {
         fetcher,
         transport,
       ),
-      /valid legal-act version|reviewed fragment query/i,
+      /valid legal-act version|approved permanent legal-act URL/i,
     );
   } finally {
     if (previousRoot === undefined) delete process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
