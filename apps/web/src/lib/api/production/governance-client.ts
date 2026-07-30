@@ -15,6 +15,7 @@ import { requestJson } from "../http-client";
 export class ProductionGovernanceClient implements GovernanceApiClient {
   constructor(
     private readonly baseUrl: string,
+    private readonly serviceToken?: string,
     private readonly fetcher?: AklFetch
   ) {}
 
@@ -31,6 +32,13 @@ export class ProductionGovernanceClient implements GovernanceApiClient {
   }
 
   private post<T>(path: string, body: unknown, operation: string, context: ApiRequestContext): Promise<T> {
+    const transportContext = this.serviceToken
+      ? {
+          ...context,
+          accessToken: this.serviceToken,
+          authorizationSource: undefined,
+        }
+      : context;
     return requestJson<T>({
       service: "governance-service",
       operation,
@@ -38,7 +46,7 @@ export class ProductionGovernanceClient implements GovernanceApiClient {
       path,
       method: "POST",
       body,
-      context,
+      context: transportContext,
       fetcher: this.fetcher
     });
   }

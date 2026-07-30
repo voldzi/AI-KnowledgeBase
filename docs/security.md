@@ -9,6 +9,11 @@ host applications do not make authorization decisions for AKB documents.
 - Production and STRATOS integration use OIDC/SSO through the STRATOS realm.
 - Server-to-server calls use service tokens or OIDC client credentials.
 - Service calls preserve `X-Request-ID` and `X-Correlation-ID`.
+- Web-to-Governance calls use the internal
+  `AKL_GOVERNANCE_SERVICE_TOKEN` solely as their transport identity. The
+  verified interactive subject remains explicit in the governance request for
+  authorization and audit; the browser bearer is not forwarded as the
+  Governance service credential.
 - LLM Gateway calls use a separate audience-bound service credential. Ingestion
   presents `svc-ingestion`/`service_ingestion`; RAG presents
   `svc-rag`/`service_rag`; both target audience `llm-gateway-service`.
