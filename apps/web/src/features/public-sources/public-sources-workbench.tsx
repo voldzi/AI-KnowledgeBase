@@ -7,6 +7,7 @@ import { StratosButton } from "@/components/stratos/button";
 import { withAppBasePath } from "@/lib/app-url";
 import type { PublicSourceCandidate, PublicSourceDiscoveryResult } from "@/lib/public-sources/discovery";
 import type { PublicSourceCollection } from "@/lib/public-sources/catalog";
+import { selectPublicSourceCandidates } from "@/lib/public-sources/selection";
 
 interface PublicSourcesWorkbenchProps {
   collections: PublicSourceCollection[];
@@ -20,8 +21,10 @@ type CollectionState = {
   candidates: PublicSourceCandidate[];
   pagesVisited: number;
   warnings: string[];
+  query: string;
   discovering: boolean;
   syncing: boolean;
+  syncTotal: number;
   completed: number;
   created: number;
   updated: number;
@@ -34,8 +37,10 @@ const emptyState = (): CollectionState => ({
   candidates: [],
   pagesVisited: 0,
   warnings: [],
+  query: "",
   discovering: false,
   syncing: false,
+  syncTotal: 0,
   completed: 0,
   created: 0,
   updated: 0,
@@ -143,12 +148,17 @@ export function PublicSourcesWorkbench({
   }
 
   async function synchronize(collection: PublicSourceCollection) {
-    const candidates = states[collection.id]?.candidates ?? [];
+    const currentState = states[collection.id] ?? emptyState();
+    const candidates = selectPublicSourceCandidates(
+      currentState.candidates,
+      currentState.query,
+    );
     if (candidates.length === 0) return;
     cancelRef.current[collection.id] = false;
     update(collection.id, (current) => ({
       ...current,
       syncing: true,
+      syncTotal: candidates.length,
       completed: 0,
       created: 0,
       updated: 0,
@@ -202,8 +212,9 @@ export function PublicSourcesWorkbench({
       <div className="public-sources__grid">
         {collections.map((collection) => {
           const state = states[collection.id] ?? emptyState();
-          const progress = state.candidates.length > 0
-            ? Math.round((state.completed / state.candidates.length) * 100)
+          const selectedCandidates = selectPublicSourceCandidates(state.candidates, state.query);
+          const progress = state.syncTotal > 0
+            ? Math.round((state.completed / state.syncTotal) * 100)
             : 0;
           return (
             <article className="public-source-card" key={collection.id}>
@@ -225,23 +236,45 @@ export function PublicSourcesWorkbench({
               <p className="public-source-card__license">{collection.licenseNote}</p>
 
               {state.candidates.length > 0 ? (
-                <div className="public-source-card__preview">
-                  {state.candidates.slice(0, 4).map((candidate) => (
-                    <span key={candidate.sourceUrl}>
-                      {candidate.title}
-                      {candidate.effectiveFrom
-                        ? ` · účinné ${candidate.effectiveFrom}${candidate.effectiveTo ? ` až ${candidate.effectiveTo}` : " dosud"}`
-                        : ""}
-                    </span>
-                  ))}
-                  {state.candidates.length > 4 ? <small>+ {state.candidates.length - 4} dalších dokumentů</small> : null}
+                <div className="public-source-card__selection">
+                  <label htmlFor={`public-source-filter-${collection.id}`}>
+                    Vybrat podle názvu nebo čísla
+                  </label>
+                  <input
+                    id={`public-source-filter-${collection.id}`}
+                    type="search"
+                    value={state.query}
+                    placeholder="Např. 134/2016, 172/2016"
+                    disabled={state.syncing}
+                    onChange={(event) => update(collection.id, (current) => ({
+                      ...current,
+                      query: event.target.value,
+                    }))}
+                  />
+                  <small>
+                    {state.query.trim()
+                      ? `${selectedCandidates.length} z ${state.candidates.length} znění odpovídá výběru`
+                      : `Vybrána celá kolekce: ${state.candidates.length} znění`}
+                  </small>
+                  <div className="public-source-card__preview">
+                    {selectedCandidates.slice(0, 4).map((candidate) => (
+                      <span key={candidate.sourceUrl}>
+                        {candidate.title}
+                        {candidate.effectiveFrom
+                          ? ` · účinné ${candidate.effectiveFrom}${candidate.effectiveTo ? ` až ${candidate.effectiveTo}` : " dosud"}`
+                          : ""}
+                      </span>
+                    ))}
+                    {selectedCandidates.length > 4 ? <small>+ {selectedCandidates.length - 4} dalších dokumentů</small> : null}
+                    {selectedCandidates.length === 0 ? <small>Výběru neodpovídá žádné znění.</small> : null}
+                  </div>
                 </div>
               ) : null}
 
               {state.syncing || state.completed > 0 ? (
                 <div className="public-source-card__progress">
                   <div><span style={{ width: `${progress}%` }} /></div>
-                  <p>{state.completed} / {state.candidates.length} · nové {state.created} · změněné {state.updated} · beze změny {state.unchanged} · chyby {state.failed}</p>
+                  <p>{state.completed} / {state.syncTotal} · nové {state.created} · změněné {state.updated} · beze změny {state.unchanged} · chyby {state.failed}</p>
                 </div>
               ) : null}
 
@@ -259,9 +292,13 @@ export function PublicSourcesWorkbench({
                   type="button"
                   tone="primary"
                   onClick={() => void synchronize(collection)}
-                  disabled={state.syncing || state.discovering || state.candidates.length === 0}
+                  disabled={state.syncing || state.discovering || selectedCandidates.length === 0}
                 >
-                  <CheckCircle2 aria-hidden="true" /> {state.syncing ? "Synchronizuji…" : "Synchronizovat kolekci"}
+                  <CheckCircle2 aria-hidden="true" /> {state.syncing
+                    ? "Synchronizuji…"
+                    : state.query.trim()
+                      ? `Synchronizovat výběr (${selectedCandidates.length})`
+                      : "Synchronizovat kolekci"}
                 </StratosButton>
                 {state.syncing ? (
                   <StratosButton type="button" onClick={() => { cancelRef.current[collection.id] = true; }}>

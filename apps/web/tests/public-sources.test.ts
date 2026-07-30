@@ -8,6 +8,7 @@ import { createApiClients } from "../src/lib/api";
 import { createMockContext } from "../src/lib/api/correlation";
 import { publicSourceCollection, publicSourceTargetTotal } from "../src/lib/public-sources/catalog";
 import { assertPublicSourceUrl, discoverPublicSourceCollection } from "../src/lib/public-sources/discovery";
+import { selectPublicSourceCandidates } from "../src/lib/public-sources/selection";
 import { synchronizePublicSource } from "../src/lib/public-sources/sync";
 import { getUploadSettings } from "../src/lib/upload/preflight";
 
@@ -15,6 +16,40 @@ test("official source catalog targets the requested pilot corpus size", () => {
   const total = publicSourceTargetTotal();
   assert.ok(total >= 300);
   assert.ok(total <= 400);
+});
+
+test("public source selection supports multiple Czech act numbers without selecting unrelated history", () => {
+  const candidates = [
+    {
+      title: "134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+      sourceUrl: "https://example.test/134/2023-07-16",
+      canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
+      versionLabel: "2023-07-16",
+    },
+    {
+      title: "172/2016 Sb. – Nařízení vlády o stanovení finančních limitů",
+      sourceUrl: "https://example.test/172/2024-01-01",
+      canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/172",
+      versionLabel: "2024-01-01",
+    },
+    {
+      title: "264/2025 Sb. – Zákon o kybernetické bezpečnosti",
+      sourceUrl: "https://example.test/264/2025-11-01",
+      canonicalUrl: "https://e-sbirka.gov.cz/sb/2025/264",
+      versionLabel: "2025-11-01",
+    },
+  ] as Parameters<typeof selectPublicSourceCandidates>[0];
+
+  assert.deepEqual(
+    selectPublicSourceCandidates(candidates, "134/2016, 172/2016").map((item) => item.title),
+    [candidates[0]?.title, candidates[1]?.title],
+  );
+  assert.deepEqual(
+    selectPublicSourceCandidates(candidates, "finančních limitů").map((item) => item.title),
+    [candidates[1]?.title],
+  );
+  assert.equal(selectPublicSourceCandidates(candidates, "").length, 3);
+  assert.equal(selectPublicSourceCandidates(candidates, "345/2023").length, 0);
 });
 
 test("fixed EUR-Lex collection returns only approved HTTPS sources", async () => {
