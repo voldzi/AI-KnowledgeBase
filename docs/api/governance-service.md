@@ -45,6 +45,12 @@ GET  /ready
 - Reads registry metadata and authorization-relevant document lists through Registry API.
 - Can query RAG retrieval for control sources.
 - Drives governance panels in the document detail UI through the web bridge.
+- For immutable source documents and cited RAG chunks, forwards the exact
+  document id, immutable version id, and `sha256:` Information Policy binding
+  to Registry authorization. A proposed draft is checked before it becomes a
+  valid version, so it is bound to its document and current policy hash only.
+  Missing or malformed policy coordinates fail closed; a document id alone
+  never establishes authorization under Access V2.
 
 ## Canonical Sources
 

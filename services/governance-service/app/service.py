@@ -77,6 +77,8 @@ class GovernanceService:
         await self._require_documents_allowed(
             subject_id=payload.subject_id,
             document_ids=[payload.left_version.document_id, payload.right_version.document_id],
+            candidate_policy_hashes=_policy_hashes_for(payload.left_version, payload.right_version),
+            candidate_document_versions=_version_ids_for(payload.left_version, payload.right_version),
             actor_bearer_token=actor_bearer_token,
         )
         result_id = _result_id()
@@ -119,6 +121,7 @@ class GovernanceService:
             await self._require_documents_allowed(
                 subject_id=payload.subject_id,
                 document_ids=[payload.draft.document_id],
+                candidate_policy_hashes=_policy_hashes_for(payload.draft),
                 actor_bearer_token=actor_bearer_token,
             )
 
@@ -229,6 +232,8 @@ class GovernanceService:
         await self._require_documents_allowed(
             subject_id=payload.subject_id,
             document_ids=[payload.source_document.document_id],
+            candidate_policy_hashes=_policy_hashes_for(payload.source_document),
+            candidate_document_versions=_version_ids_for(payload.source_document),
             actor_bearer_token=actor_bearer_token,
         )
         result_id = _result_id()
@@ -316,11 +321,15 @@ class GovernanceService:
         *,
         subject_id: str,
         document_ids: list[str],
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
         actor_bearer_token: str | None = None,
     ) -> None:
         authz = await self._registry_client.filter_allowed_documents(
             subject_id=subject_id,
             candidate_document_ids=sorted(set(document_ids)),
+            candidate_policy_hashes=candidate_policy_hashes,
+            candidate_document_versions=candidate_document_versions,
             actor_bearer_token=actor_bearer_token,
         )
         if authz.denied_document_ids:
@@ -339,9 +348,20 @@ class GovernanceService:
         actor_bearer_token: str | None = None,
     ) -> tuple[list[RetrievedChunk], list[str]]:
         candidate_ids = sorted({chunk.citation.document_id for chunk in chunks})
+        candidate_policy_hashes = _policy_hashes_for_chunks(chunks)
+        candidate_document_versions = {
+            document_id: sorted({
+                chunk.citation.document_version_id
+                for chunk in chunks
+                if chunk.citation.document_id == document_id
+            })
+            for document_id in candidate_ids
+        }
         authz = await self._registry_client.filter_allowed_documents(
             subject_id=subject_id,
             candidate_document_ids=candidate_ids,
+            candidate_policy_hashes=candidate_policy_hashes,
+            candidate_document_versions=candidate_document_versions,
             actor_bearer_token=actor_bearer_token,
         )
         allowed = [chunk for chunk in chunks if chunk.citation.document_id in authz.allowed_document_ids]
@@ -359,6 +379,8 @@ class GovernanceService:
         authz = await self._registry_client.filter_allowed_documents(
             subject_id=subject_id,
             candidate_document_ids=candidate_ids,
+            candidate_policy_hashes=_policy_hashes_for(*documents),
+            candidate_document_versions=_version_ids_for(*documents),
             actor_bearer_token=actor_bearer_token,
         )
         allowed = [document for document in documents if document.document_id in authz.allowed_document_ids]
@@ -406,6 +428,48 @@ def _validate_content_size(settings: Settings, *contents: str) -> None:
             status_code=413,
             details={"max_document_chars": settings.max_document_chars},
         )
+
+
+def _policy_hashes_for(*documents: object) -> dict[str, list[str]]:
+    values: dict[str, list[str]] = {}
+    for document in documents:
+        document_id = getattr(document, "document_id", None)
+        policy_hash = getattr(document, "policy_hash", None)
+        if not isinstance(document_id, str) or not document_id:
+            continue
+        if not _is_policy_hash(policy_hash):
+            continue
+        values.setdefault(document_id, []).append(policy_hash)
+    return {document_id: sorted(set(hashes)) for document_id, hashes in values.items()}
+
+
+def _version_ids_for(*documents: object) -> dict[str, list[str]]:
+    values: dict[str, list[str]] = {}
+    for document in documents:
+        document_id = getattr(document, "document_id", None)
+        version_id = getattr(document, "document_version_id", None)
+        if not isinstance(document_id, str) or not document_id:
+            continue
+        if not isinstance(version_id, str) or not version_id:
+            continue
+        values.setdefault(document_id, []).append(version_id)
+    return {document_id: sorted(set(version_ids)) for document_id, version_ids in values.items()}
+
+
+def _policy_hashes_for_chunks(chunks: list[RetrievedChunk]) -> dict[str, list[str]]:
+    values: dict[str, list[str]] = {}
+    for chunk in chunks:
+        policy_hash = chunk.metadata.get("policy_hash")
+        if not _is_policy_hash(policy_hash):
+            continue
+        values.setdefault(chunk.citation.document_id, []).append(policy_hash)
+    return {document_id: sorted(set(hashes)) for document_id, hashes in values.items()}
+
+
+def _is_policy_hash(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("sha256:") or len(value) != 71:
+        return False
+    return all(character in "0123456789abcdef" for character in value.removeprefix("sha256:"))
 
 
 def _validity_alert(candidate: ValidityCandidate) -> ValidityAlert:

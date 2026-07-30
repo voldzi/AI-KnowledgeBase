@@ -105,6 +105,13 @@ RAG. Tyto sluzby samy overi OIDC token, shodu `subject_id`, capability, scope a
 Information Policy. Chybejici actor bearer nebo znovupouziti servisniho tokenu
 jako actor identity selze uzavrene. Tokeny se neloguji.
 
+Pri autorizaci immutableho zdroje nebo citace Governance predava Registry
+presne souradnice `document_id`, `version_id` a aktualni `sha256:` policy
+hash. Compliance nad navrhem se muze spustit pred vznikem platne verze, proto
+vaze navrh na `document_id` a aktualni policy hash. Chybejici nebo neplatny
+policy hash se nenahrazuje sirsi autorizaci podle samotneho identifikatoru
+dokumentu a operace selze uzavrene.
+
 Služba vola Registry API:
 
 - `POST /api/v1/authz/filter-documents`,

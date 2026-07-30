@@ -100,6 +100,7 @@ class DocumentVersionContent(BaseModel):
     classification: Classification = "internal"
     valid_from: date | None = None
     valid_to: date | None = None
+    policy_hash: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     source_uri: str | None = Field(default=None, max_length=1024)
     content: str = Field(min_length=1, max_length=200000)
     citations: list[Citation] = Field(default_factory=list)
@@ -114,6 +115,7 @@ class DraftDocumentInput(BaseModel):
     content: str = Field(min_length=1, max_length=200000)
     document_id: str | None = None
     document_version_id: str | None = None
+    policy_hash: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     owner_id: str | None = Field(default=None, max_length=128)
     gestor_unit: str | None = Field(default=None, max_length=128)
     valid_from: date | None = None
@@ -131,6 +133,7 @@ class GovernanceSourceDocument(BaseModel):
     version_label: str = Field(min_length=1, max_length=80)
     status: DocumentStatus = "valid"
     classification: Classification = "internal"
+    policy_hash: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     content: str = Field(min_length=1, max_length=200000)
     source_uri: str | None = Field(default=None, max_length=1024)
     citations: list[Citation] = Field(default_factory=list)

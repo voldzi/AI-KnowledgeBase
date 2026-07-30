@@ -43,6 +43,7 @@ export interface GovernanceVersionContent {
   version_label: string;
   status: GovernanceDocumentStatus;
   classification: Classification;
+  policy_hash?: string | null;
   valid_from: string | null;
   valid_to: string | null;
   source_uri: string | null;
@@ -57,6 +58,7 @@ export interface GovernanceDraftDocumentInput {
   content: string;
   document_id: string | null;
   document_version_id: string | null;
+  policy_hash?: string | null;
   owner_id: string | null;
   gestor_unit: string | null;
   valid_from: string | null;
@@ -72,6 +74,7 @@ export interface GovernanceSourceDocument {
   version_label: string;
   status: GovernanceDocumentStatus;
   classification: Classification;
+  policy_hash?: string | null;
   content: string;
   source_uri: string | null;
   citations: GovernanceCitation[];

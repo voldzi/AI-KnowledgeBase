@@ -71,6 +71,7 @@ describe("production API clients", () => {
         content: "Controlled text",
         document_id: "doc_1",
         document_version_id: "ver_1",
+        policy_hash: `sha256:${"a".repeat(64)}`,
         owner_id: "user_1",
         gestor_unit: "IT",
         valid_from: "2026-07-30T00:00:00Z",
