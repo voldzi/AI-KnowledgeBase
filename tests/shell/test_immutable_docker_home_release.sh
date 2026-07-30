@@ -26,6 +26,10 @@ fail() {
   exit 1
 }
 
+grep -Fqx 'LABEL cz.zeleznalady.akl.service="governance-service"' \
+  "${SOURCE_ROOT}/services/governance-service/Dockerfile" \
+  || fail "Governance Dockerfile is missing its immutable service label"
+
 assert_current_sha() {
   local expected_sha="$1"
   local target
