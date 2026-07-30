@@ -546,3 +546,91 @@ test("e-Sbírka sync downloads the official informative PDF through the public s
     await rm(storageRoot, { recursive: true, force: true });
   }
 });
+
+test("e-Sbírka sync accepts the documented asynchronous status response", async () => {
+  const storageRoot = await mkdtemp(join(tmpdir(), "akb-public-law-async-source-"));
+  const previousRoot = process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+  const previousEnvironment = process.env.AKL_ENV;
+  process.env.AKL_WEB_OBJECT_STORAGE_ROOT = storageRoot;
+  process.env.AKL_ENV = "test";
+  try {
+    const clients = createApiClients({
+      env: {
+        AKL_ENV: "test",
+        AKL_API_CLIENT_MODE: "mock",
+        AKL_AUTH_MODE: "mock",
+      },
+    });
+    const context = createMockContext({ subjectId: "public_source_manager" });
+    const pdfBytes = new TextEncoder().encode("%PDF-1.7\nHistorické znění.\n%%EOF");
+    const requests: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      requests.push(url.pathname);
+      if (url.pathname.endsWith("/odkazy-ke-stazeni")) {
+        return Response.json({
+          informativniZneni: { odkazPdf: { dokumentId: 145380 } },
+        });
+      }
+      if (url.pathname === "/sbr-externi/stahni/informativni-zneni/145380/PDF") {
+        return Response.json({
+          pozadavekId: "request-async-123",
+          stavPozadavku: "PROBIHA",
+          nazevDokumentu: "Sb_2016_134_2024-01-01_IZ.pdf",
+        });
+      }
+      if (
+        url.pathname
+        === "/souborove-sluzby/verejne-pozadavky-dokumenty/pozadavky/request-async-123"
+      ) {
+        return Response.json({
+          stav: "OK",
+          id: "file-async-456",
+        });
+      }
+      if (url.pathname === "/souborove-sluzby/soubory/file-async-456") {
+        return new Response(pdfBytes, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Length": String(pdfBytes.byteLength),
+            "Content-Disposition": "attachment; filename=\"Sb_2016_134_2024-01-01_IZ.pdf\"",
+          },
+        });
+      }
+      return Response.json({ error: "unexpected request" }, { status: 404 });
+    };
+    const transport = async (correlationId: string) => ({
+      ...context,
+      requestId: correlationId,
+      correlationId,
+    });
+
+    const created = await synchronizePublicSource(
+      {
+        collectionId: "czech-law",
+        sourceUrl: "https://e-sbirka.gov.cz/sb/2016/134/2024-01-01",
+        canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
+        title: "134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+      },
+      clients,
+      context,
+      fetcher,
+      transport,
+    );
+
+    assert.equal(created.action, "created");
+    assert.deepEqual(requests, [
+      "/sbr-externi/dokumenty-sbirky/%2Fsb%2F2016%2F134%2F2024-01-01/odkazy-ke-stazeni",
+      "/sbr-externi/stahni/informativni-zneni/145380/PDF",
+      "/souborove-sluzby/verejne-pozadavky-dokumenty/pozadavky/request-async-123",
+      "/souborove-sluzby/soubory/file-async-456",
+    ]);
+  } finally {
+    if (previousRoot === undefined) delete process.env.AKL_WEB_OBJECT_STORAGE_ROOT;
+    else process.env.AKL_WEB_OBJECT_STORAGE_ROOT = previousRoot;
+    if (previousEnvironment === undefined) delete process.env.AKL_ENV;
+    else process.env.AKL_ENV = previousEnvironment;
+    await rm(storageRoot, { recursive: true, force: true });
+  }
+});

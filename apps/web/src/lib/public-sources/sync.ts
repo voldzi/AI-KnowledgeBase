@@ -550,7 +550,7 @@ async function downloadCzechLawOfficialPdf(
       E_SBIRKA_PUBLIC_ORIGIN,
     );
     prepared = await fetchCzechLawJson(statusUrl, collection, fetcher);
-    state = stringValue(prepared, "stavPozadavku");
+    state = stringValue(prepared, "stav");
   }
   if (state !== "OK") {
     throw new Error(

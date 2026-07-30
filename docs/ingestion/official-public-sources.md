@@ -103,7 +103,9 @@ effective versions needed to cover the timeline from 2023 through the
 synchronization date. For each selected permanent URL it asks the public
 e-Sbírka download catalogue for the informative PDF, waits for the bounded
 public preparation job when necessary and accepts only a size-bounded response
-with a valid PDF signature. This avoids dependence on mutable RDF fragment
+with a valid PDF signature. The initial preparation response uses
+`stavPozadavku`, while the public status endpoint uses `stav`; AKB validates
+the two contracts separately. This avoids dependence on mutable RDF fragment
 identifiers while retaining the official source and exact effective date. The
 stable AKB document identity uses the undated canonical e-Sbírka URL, so each
 effective text becomes an immutable version of one document instead of a

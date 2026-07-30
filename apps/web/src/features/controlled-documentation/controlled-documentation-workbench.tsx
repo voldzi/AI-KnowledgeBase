@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StratosButton } from "@/components/stratos/button";
 import { withAppBasePath } from "@/lib/app-url";
 import {
+  controlledPackageDatesFromVersion,
   controlledPackageMemberRelation,
   nextControlledPackageStatus,
   type ControlledPackageMemberRole,
@@ -336,6 +337,15 @@ export function ControlledDocumentationWorkbench({
                     <CheckCircle2 aria-hidden="true" /> {nextStatusLabel(item.status)}
                   </StratosButton>
                 ) : null}
+                {["draft", "approved"].includes(item.status) && authorization.can_update ? (
+                  <StratosButton
+                    type="button"
+                    disabled={busy === item.package_id}
+                    onClick={() => void transition(item, "cancelled")}
+                  >
+                    <XCircle aria-hidden="true" /> Zrušit {item.status === "draft" ? "koncept" : "vydání"}
+                  </StratosButton>
+                ) : null}
                 {["approved", "valid"].includes(item.status) && authorization.can_update ? (
                   <StratosButton
                     type="button"
@@ -551,7 +561,18 @@ function PackageComposer({
                 {availableDocuments.map((document) => <option key={document.document_id} value={document.document_id}>{document.title}</option>)}
               </select>
             </Field>
-            <VersionPicker documentId={mainDocumentId} value={mainVersionId} onChange={setMainVersionId} />
+            <VersionPicker
+              documentId={mainDocumentId}
+              value={mainVersionId}
+              onChange={(versionId, version) => {
+                setMainVersionId(versionId);
+                const dates = controlledPackageDatesFromVersion(
+                  version?.valid_from ?? null,
+                );
+                if (dates.effectiveFrom) setEffectiveFrom(dates.effectiveFrom);
+                if (dates.reviewDueOn) setReviewDueOn(dates.reviewDueOn);
+              }}
+            />
           </div>
           {members.map((member, index) => (
             <div className="controlled-docs__source-row" key={index}>
@@ -603,7 +624,7 @@ function VersionPicker({
 }: {
   documentId: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, version?: DocumentVersion) => void;
 }) {
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
 
@@ -628,7 +649,19 @@ function VersionPicker({
 
   return (
     <Field label="Přesná verze">
-      <select value={value} disabled={!documentId} onChange={(event) => onChange(event.target.value)}>
+      <select
+        value={value}
+        disabled={!documentId}
+        onChange={(event) => {
+          const versionId = event.target.value;
+          onChange(
+            versionId,
+            versions.find(
+              (version) => version.document_version_id === versionId,
+            ),
+          );
+        }}
+      >
         <option value="">{documentId ? "Vyberte verzi" : "Nejprve dokument"}</option>
         {versions.map((version) => (
           <option key={version.document_version_id} value={version.document_version_id}>
