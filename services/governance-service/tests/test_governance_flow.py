@@ -190,3 +190,39 @@ def test_non_compliant_check_writes_warning_audit_event(monkeypatch) -> None:
     assert len(compliance_events) == 1
     assert compliance_events[0]["severity"] == "warning"
     assert compliance_events[0]["metadata"]["document_id"] == "doc_999"
+
+
+def test_compliance_binds_draft_to_document_and_policy_hash(monkeypatch) -> None:
+    captured: list[dict[str, object]] = []
+
+    from app import registry_client as registry_module
+
+    original = registry_module.MockRegistryClient.filter_allowed_documents
+
+    async def capture(self, **kwargs):
+        captured.append(kwargs)
+        return await original(self, **kwargs)
+
+    monkeypatch.setattr(registry_module.MockRegistryClient, "filter_allowed_documents", capture)
+    policy_hash = f"sha256:{'a' * 64}"
+    payload = {
+        "subject_id": "user_123",
+        "draft": {
+            "document_id": "doc_999",
+            "document_version_id": "ver_999",
+            "policy_hash": policy_hash,
+            "title": "Navrh smernice pro vyjimky",
+            "document_type": "directive",
+            "classification": "internal",
+            "content": "Navrh popisuje vyjimku pro tym. Zadost obsahuje duvod a rozsah.",
+        },
+    }
+
+    with make_client() as client:
+        response = client.post("/api/v1/governance/check-compliance", json=payload)
+
+    assert response.status_code == 200
+    first_authorization = captured[0]
+    assert first_authorization["candidate_document_ids"] == ["doc_999"]
+    assert first_authorization["candidate_document_versions"] is None
+    assert first_authorization["candidate_policy_hashes"] == {"doc_999": [policy_hash]}

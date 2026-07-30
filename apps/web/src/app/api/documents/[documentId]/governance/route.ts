@@ -203,6 +203,7 @@ async function versionContent(document: Document, version: DocumentVersion): Pro
     version_label: version.version_label,
     status: governanceStatus(version.status),
     classification: document.classification,
+    policy_hash: version.policy_hash ?? null,
     valid_from: version.valid_from,
     valid_to: version.valid_to,
     source_uri: version.source_file_uri,
@@ -220,6 +221,7 @@ async function draftContent(document: Document, version: DocumentVersion): Promi
     content: source.content,
     document_id: document.document_id,
     document_version_id: version.document_version_id,
+    policy_hash: version.policy_hash ?? null,
     owner_id: document.owner_id,
     gestor_unit: document.gestor_unit,
     valid_from: version.valid_from,
@@ -238,6 +240,7 @@ async function sourceDocument(document: Document, version: DocumentVersion): Pro
     version_label: version.version_label,
     status: governanceStatus(version.status),
     classification: document.classification,
+    policy_hash: version.policy_hash ?? null,
     content: source.content,
     source_uri: version.source_file_uri,
     citations: source.citations

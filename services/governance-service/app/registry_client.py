@@ -31,6 +31,8 @@ class RegistryClient(Protocol):
         *,
         subject_id: str,
         candidate_document_ids: list[str],
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
         actor_bearer_token: str | None = None,
     ) -> AuthzFilterResult:
         ...
@@ -69,6 +71,8 @@ class MockRegistryClient:
         *,
         subject_id: str,
         candidate_document_ids: list[str],
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
         actor_bearer_token: str | None = None,
     ) -> AuthzFilterResult:
         denied = {
@@ -136,6 +140,8 @@ class HttpRegistryClient:
         *,
         subject_id: str,
         candidate_document_ids: list[str],
+        candidate_policy_hashes: dict[str, list[str]] | None = None,
+        candidate_document_versions: dict[str, list[str]] | None = None,
         actor_bearer_token: str | None = None,
     ) -> AuthzFilterResult:
         if not candidate_document_ids:
@@ -150,6 +156,8 @@ class HttpRegistryClient:
                 "subject_id": subject_id,
                 "action": "document.read",
                 "candidate_document_ids": candidate_document_ids,
+                "candidate_policy_hashes": candidate_policy_hashes or {},
+                "candidate_document_versions": candidate_document_versions or {},
             },
             bearer_token=actor_bearer_token,
         )

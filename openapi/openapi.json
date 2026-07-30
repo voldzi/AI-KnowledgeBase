@@ -35436,6 +35436,18 @@
             ],
             "title": "Valid To"
           },
+          "policy_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Hash"
+          },
           "source_uri": {
             "anyOf": [
               {
@@ -35538,6 +35550,18 @@
               }
             ],
             "title": "Document Version Id"
+          },
+          "policy_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Hash"
           },
           "owner_id": {
             "anyOf": [
@@ -35758,6 +35782,18 @@
             ],
             "title": "Classification",
             "default": "internal"
+          },
+          "policy_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Hash"
           },
           "content": {
             "type": "string",

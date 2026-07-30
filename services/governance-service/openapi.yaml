@@ -808,6 +808,12 @@ components:
             format: date
           - type: 'null'
           title: Valid To
+        policy_hash:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+          - type: 'null'
+          title: Policy Hash
         source_uri:
           anyOf:
           - type: string
@@ -881,6 +887,12 @@ components:
           - type: string
           - type: 'null'
           title: Document Version Id
+        policy_hash:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+          - type: 'null'
+          title: Policy Hash
         owner_id:
           anyOf:
           - type: string
@@ -1035,6 +1047,12 @@ components:
           - confidential
           title: Classification
           default: internal
+        policy_hash:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+          - type: 'null'
+          title: Policy Hash
         content:
           type: string
           maxLength: 200000
