@@ -28,6 +28,7 @@ const productionEnv = {
   AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1/",
   AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/",
   AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/",
+  AKL_GOVERNANCE_SERVICE_TOKEN: "governance-service-token",
   AKL_EVALUATION_API_BASE_URL: "https://evaluation.local/api/v1/",
   AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
   AKL_WEB_PUBLIC_BASE_URL: "https://akl.local",
@@ -145,6 +146,29 @@ describe("Registry-governed ingestion operations", () => {
     );
 
     assert.deepEqual(jobs, []);
+  });
+
+  it("splits large Registry projections into batches of at most fifty document ids", async () => {
+    const batchSizes: number[] = [];
+    const fetcher: AklFetch = async (input) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/documents/ingestion-attempts/current")) {
+        throw new Error(`Unexpected URL: ${url}`);
+      }
+      batchSizes.push(url.searchParams.getAll("document_id").length);
+      return Response.json({ items: [] });
+    };
+    const clients = createApiClients({ env: productionEnv, fetcher });
+
+    const jobs = await listVisibleIngestionJobs(
+      clients,
+      Array.from({ length: 222 }, (_, index) => ({ document_id: `doc_${index + 1}` })),
+      actorContext,
+      { apiClientMode: "production" },
+    );
+
+    assert.deepEqual(jobs, []);
+    assert.deepEqual(batchSizes, [50, 50, 50, 50, 22]);
   });
 
   it("does not hide an unavailable Registry ingestion projection", async () => {

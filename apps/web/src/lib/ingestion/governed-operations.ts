@@ -18,6 +18,7 @@ import {
 } from "@/lib/types";
 
 const REPORT_CONCURRENCY = 6;
+const INGESTION_ATTEMPT_BATCH_SIZE = 50;
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
 
@@ -74,14 +75,26 @@ export async function listVisibleIngestionJobs(
   }
 
   const visible = new Set(visibleDocumentIds);
-  const attempts = await clients.registry.listDocumentIngestionAttempts(actorContext, {
-    documentIds: visibleDocumentIds,
-  });
+  const attempts = (
+    await Promise.all(
+      chunksOf(visibleDocumentIds, INGESTION_ATTEMPT_BATCH_SIZE).map((documentIds) =>
+        clients.registry.listDocumentIngestionAttempts(actorContext, { documentIds }),
+      ),
+    )
+  ).flat();
   return sortNewestFirst(
     attempts
       .filter((attempt) => visible.has(attempt.document_id))
       .map(ingestionJobFromAttempt),
   );
+}
+
+function chunksOf<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 export async function getGovernedIngestionJob(

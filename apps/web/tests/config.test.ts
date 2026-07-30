@@ -118,6 +118,28 @@ describe("AKL web config", () => {
     assert.equal(config.oidc?.clientId, "akb-chat-web");
     assert.equal(config.oidc?.redirectUri, "https://chat.local/api/auth/callback");
     assert.equal(config.ingestionTransport, undefined);
+    assert.equal(config.governanceTransport, undefined);
+  });
+
+  it("requires a dedicated Governance transport in the production platform profile", () => {
+    assert.throws(() => getAklConfig({
+      AKL_ENV: "production",
+      AKL_API_CLIENT_MODE: "production",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_PROFILE: "platform",
+      AKL_REGISTRY_API_BASE_URL: "http://registry-api:8000/api/v1",
+      AKL_INGESTION_API_BASE_URL: "http://ingestion-service:8090/api/v1",
+      AKL_RAG_API_BASE_URL: "http://rag-retrieval-service:8080/api/v1",
+      AKL_GOVERNANCE_API_BASE_URL: "http://governance-service:8080/api/v1",
+      AKL_EVALUATION_API_BASE_URL: "http://evaluation-service:8080/api/v1",
+      AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
+      AKL_WEB_PUBLIC_BASE_URL: "https://akl.local",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_INGESTION_TOKEN_URL: "https://login.local/token",
+      AKL_WEB_INGESTION_CLIENT_ID: "svc-akb-web-ingestion",
+      AKL_WEB_INGESTION_CLIENT_SECRET: "test-only-ingestion-secret",
+    }), /Production platform requires AKL_GOVERNANCE_SERVICE_TOKEN/);
   });
 
   it("rejects unknown web profiles", () => {
@@ -205,6 +227,7 @@ describe("AKL web config", () => {
       AKL_INGESTION_API_BASE_URL: "http://ingestion-service:8090/api/v1",
       AKL_RAG_API_BASE_URL: "http://rag-retrieval-service:8080/api/v1",
       AKL_GOVERNANCE_API_BASE_URL: "http://governance-service:8080/api/v1",
+      AKL_GOVERNANCE_SERVICE_TOKEN: "governance-service-token",
       AKL_EVALUATION_API_BASE_URL: "http://evaluation-service:8080/api/v1",
       AKL_DIRECTOR_COPILOT_ENABLED: "true",
       AKL_DIRECTOR_COPILOT_TOKEN_URL: "https://login.local/realms/stratos/protocol/openid-connect/token",

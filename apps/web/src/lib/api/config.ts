@@ -46,6 +46,9 @@ export interface AklConfig {
     clientSecret?: string;
     clientSecretFile?: string;
   };
+  governanceTransport?: {
+    serviceToken: string;
+  };
   directorCopilot?: DirectorCopilotConfig;
   devAccessToken?: string;
 }
@@ -237,6 +240,13 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     }
   }
 
+  const governanceTransport = env.AKL_GOVERNANCE_SERVICE_TOKEN
+    ? { serviceToken: env.AKL_GOVERNANCE_SERVICE_TOKEN }
+    : undefined;
+  if (environment === "production" && webProfile === "platform" && !governanceTransport) {
+    throw new Error("Production platform requires AKL_GOVERNANCE_SERVICE_TOKEN");
+  }
+
   const directorCopilotEnabled = strictBoolean(
     env.AKL_DIRECTOR_COPILOT_ENABLED,
     false,
@@ -307,6 +317,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     serviceBaseUrls,
     oidc,
     ingestionTransport,
+    governanceTransport,
     directorCopilot,
     devAccessToken: env.AKL_DEV_ACCESS_TOKEN || undefined
   };

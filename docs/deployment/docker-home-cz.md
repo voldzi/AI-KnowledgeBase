@@ -362,6 +362,12 @@ Povinné hodnoty pro `docker-home` profil patří do `/srv/akl/env/akl.prod.env`
 - `AKL_EVAL_SERVICE_TOKEN=<long random service token>`
 - `AKL_GOVERNANCE_SERVICE_TOKEN=<long random service token>`
 
+The same value is injected into the platform web container only for its
+internal calls to `governance-service`. It replaces the interactive bearer at
+the transport boundary; the verified actor remains in the bounded governance
+request and audit context. It must not be exposed to the browser, logs, or
+public reverse proxy.
+
 Evaluation Service runs with `AKL_EVAL_AUTH_MODE=oidc` for the web Quality Lab,
 validates the caller token against the shared AKB issuer/audience/JWKS settings,
 and forwards that identity to RAG/Registry. The legacy evaluation service token

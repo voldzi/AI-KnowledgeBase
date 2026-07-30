@@ -18,6 +18,7 @@ const env = {
   AKL_INGESTION_API_BASE_URL: "https://ingestion.local/api/v1/",
   AKL_RAG_API_BASE_URL: "https://rag.local/api/v1/",
   AKL_GOVERNANCE_API_BASE_URL: "https://governance.local/api/v1/",
+  AKL_GOVERNANCE_SERVICE_TOKEN: "governance-service-token",
   AKL_EVALUATION_API_BASE_URL: "https://evaluation.local/api/v1/",
   AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
   AKL_WEB_PUBLIC_BASE_URL: "https://akl.local",
@@ -42,6 +43,51 @@ function documentFixture(documentId: string) {
 }
 
 describe("production API clients", () => {
+  it("uses the governance service identity while preserving the actor in the request body", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        document_id: "doc_1",
+        status: "compliant",
+        checked_at: "2026-07-30T08:00:00Z",
+        findings: [],
+      });
+    };
+    const clients = createApiClients({ env, fetcher });
+    const context = createMockContext({
+      subjectId: "user_1",
+      accessToken: "actor-token",
+      requestId: "req_governance",
+      correlationId: "corr_governance",
+    });
+
+    await clients.governance.checkCompliance({
+      subject_id: "user_1",
+      draft: {
+        title: "Directive",
+        document_type: "directive",
+        classification: "internal",
+        content: "Controlled text",
+        document_id: "doc_1",
+        document_version_id: "ver_1",
+        owner_id: "user_1",
+        gestor_unit: "IT",
+        valid_from: "2026-07-30T00:00:00Z",
+        valid_to: null,
+        tags: [],
+        citations: [],
+      },
+    }, context);
+
+    const headers = calls[0]?.[1]?.headers as Headers;
+    const body = JSON.parse(String(calls[0]?.[1]?.body));
+    assert.equal(headers.get("Authorization"), "Bearer governance-service-token");
+    assert.notEqual(headers.get("Authorization"), "Bearer actor-token");
+    assert.equal(body.subject_id, "user_1");
+    assert.equal(headers.get("X-Correlation-ID"), "corr_governance");
+  });
+
   it("issues an actor-bound ingestion authorization for an exact document version", async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetcher: AklFetch = async (input, init) => {
