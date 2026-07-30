@@ -34,9 +34,9 @@ VM 125 (`stratos-ci-runner-01`) hosts three AKB runners. Two workers use the
 `akb-ci-light` label for independent standards, web, Python and Compose checks.
 One `akb-ci-exclusive` worker runs the immutable release and Registry/PostgreSQL
 jobs serially because they use Docker, fixed local ports or release-state
-fixtures. CI jobs must request their explicit label together with the standard
-self-hosted Linux/X64 labels; do not route Docker integration work to a light
-worker.
+fixtures. Light workers retain the standard `self-hosted`, `Linux` and `X64`
+labels; the exclusive worker deliberately uses only `akb-ci-exclusive`. Do not
+route Docker integration work to a light worker.
 
 The production immutable release remains a separate operator action on
 `docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
