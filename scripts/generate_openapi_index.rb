@@ -802,6 +802,7 @@ spec = {
   ] + SERVICES.map { |service| { "name" => service[:title] } },
   "paths" => {},
   "components" => {
+    "parameters" => {},
     "securitySchemes" => {
       "bearerAuth" => {
         "type" => "http",
@@ -1375,12 +1376,22 @@ SERVICES.each do |service|
 
   source = YAML.load_file(service_file)
   schemas = source.dig("components", "schemas") || {}
+  parameters = source.dig("components", "parameters") || {}
   ref_map = schemas.keys.to_h do |name|
     ["#/components/schemas/#{name}", "#/components/schemas/#{service[:prefix]}#{name}"]
   end
+  ref_map.merge!(
+    parameters.keys.to_h do |name|
+      ["#/components/parameters/#{name}", "#/components/parameters/#{service[:prefix]}#{name}"]
+    end
+  )
 
   schemas.each do |name, schema|
     spec["components"]["schemas"]["#{service[:prefix]}#{name}"] = deep_rewrite_refs(schema, ref_map)
+  end
+  parameters.each do |name, parameter|
+    spec["components"]["parameters"]["#{service[:prefix]}#{name}"] =
+      deep_rewrite_refs(parameter, ref_map)
   end
   source.dig("components", "securitySchemes")&.each do |name, scheme|
     existing = spec["components"]["securitySchemes"][name]
