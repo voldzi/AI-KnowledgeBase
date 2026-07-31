@@ -24,6 +24,8 @@ Služba nespravuje dokumentový registry, nepublikuje verze dokumentů, nerozhod
 - Auditovaná synchronizace posledního ingestion jobu a výsledného stavu do
   Registry external-document reference.
 - Reindex skeleton pro explicitně předané položky.
+- Bezpečná PDF zobrazovací kopie kancelářských dokumentů přes headless
+  LibreOffice pro autorizovaný Document Workbench.
 
 ## API
 
@@ -41,6 +43,7 @@ POST /api/v1/intelligence/analyst/search
 POST /api/v1/intelligence/entities/search
 POST /api/v1/intelligence/entities/relationships
 GET  /api/v1/integrations/web-ingestion/readiness
+POST /api/v1/renditions/pdf
 
 GET  /health
 GET  /ready
@@ -89,6 +92,12 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_OCR_LANGUAGE` | Jazyk OCR, výchozí `ces+eng`. |
 | `AKL_INGESTION_OCRMYPDF_COMMAND` | Cesta k `ocrmypdf` pro PDF OCR provider. |
 | `AKL_INGESTION_OCR_TIMEOUT_SECONDS` | Timeout OCR zpracování jednoho dokumentu. |
+| `AKL_INGESTION_RENDITION_ENABLED` | Zapne interní PDF zobrazovací kopie Office dokumentů. |
+| `AKL_INGESTION_RENDITION_COMMAND` | Headless převodník, výchozí `libreoffice`. |
+| `AKL_INGESTION_RENDITION_CACHE_ROOT` | Oddělený zapisovatelný cache root odvozených PDF; nesmí být úložištěm originálů. |
+| `AKL_INGESTION_RENDITION_TIMEOUT_SECONDS` | Maximální doba jednoho převodu. |
+| `AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES` | Maximální velikost výsledné PDF kopie. |
+| `AKL_INGESTION_RENDITION_ENGINE_REVISION` | Revize převodníku zahrnutá do cache identity. |
 | `AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE` | Výchozí auditovatelný profil vytěžení dokumentu. |
 | `AKL_INGESTION_PDF_ENGINE` | `auto`, `pymupdf`, nebo `pypdf`; `auto` preferuje layout-aware PyMuPDF a vrací se na `pypdf`. |
 | `AKL_INGESTION_EMBEDDING_CLIENT_MODE` | `http` nebo `mock`. |
@@ -205,6 +214,20 @@ deskew a rotate-pages, čte vytvořený sidecar text a uloží do reportu metada
 `requires_review`. Pokud OCR vrátí prázdné stránky nebo nízké skóre, job skončí s
 varováním `OCR_EMPTY_PAGES` nebo `LOW_OCR_QUALITY`, aby dokument nebyl používán
 jako primární zdroj odpovědí bez kontroly.
+
+## Office zobrazovací kopie
+
+Endpoint `POST /api/v1/renditions/pdf` přijímá pouze přesnou service identitu
+AKB webu a nepřijímá delegované uživatelské hlavičky. Web před voláním znovu
+autorizuje uživatele, konkrétní verzi, Information Policy a povinný čistý
+antivirový výsledek. Služba ověří SHA-256 originálu a podporuje DOC/DOCX/ODT/RTF,
+XLS/XLSX/XLSM/ODS a PPT/PPTX/ODP.
+
+LibreOffice běží headless, v safe mode a s jednorázovým profilem. Originální
+object storage je v produkci připojen jen pro čtení. Výsledek se validuje jako
+PDF a ukládá atomicky do odděleného cache volume podle SHA-256 originálu a
+revize převodníku. Cache není autoritativní dokument a může být kdykoliv
+obnovena. Do logů ani auditu se nezapisuje obsah dokumentu.
 
 ## Chunking
 

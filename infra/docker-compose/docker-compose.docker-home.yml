@@ -363,6 +363,12 @@ services:
       AKL_INGESTION_OCRMYPDF_COMMAND: ${AKL_INGESTION_OCRMYPDF_COMMAND:-ocrmypdf}
       AKL_INGESTION_OCR_TIMEOUT_SECONDS: ${AKL_INGESTION_OCR_TIMEOUT_SECONDS:-300}
       AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR: ${AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR:-20}
+      AKL_INGESTION_RENDITION_ENABLED: ${AKL_INGESTION_RENDITION_ENABLED:-true}
+      AKL_INGESTION_RENDITION_COMMAND: ${AKL_INGESTION_RENDITION_COMMAND:-libreoffice}
+      AKL_INGESTION_RENDITION_CACHE_ROOT: /data/renditions
+      AKL_INGESTION_RENDITION_TIMEOUT_SECONDS: ${AKL_INGESTION_RENDITION_TIMEOUT_SECONDS:-120}
+      AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES: ${AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES:-134217728}
+      AKL_INGESTION_RENDITION_ENGINE_REVISION: ${AKL_INGESTION_RENDITION_ENGINE_REVISION:-libreoffice-v1}
       AKL_INGESTION_EMBEDDING_CLIENT_MODE: ${AKL_INGESTION_EMBEDDING_CLIENT_MODE:-http}
       AKL_LLM_GATEWAY_BASE_URL: http://llm-gateway-service:8080/api/v1
       AKL_LLM_GATEWAY_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:?AKL_LLM_GATEWAY_SERVICE_TOKEN must be set}
@@ -393,7 +399,8 @@ services:
       AKL_INGESTION_JOB_STORE_PATH: /data/ingestion-jobs
       AKL_INGESTION_PROCESS_JOBS_INLINE: ${AKL_INGESTION_PROCESS_JOBS_INLINE:-true}
     volumes:
-      - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage
+      - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage:ro
+      - document-renditions:/data/renditions
       - ingestion-jobs:/data/ingestion-jobs
       - ${AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/svc-ingestion.client-secret}:/run/secrets/svc-ingestion-client-secret:ro
       - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
@@ -666,5 +673,6 @@ volumes:
   caddy-config:
   qdrant-data:
   ingestion-jobs:
+  document-renditions:
   evaluation-reports:
   evaluation-datasets:

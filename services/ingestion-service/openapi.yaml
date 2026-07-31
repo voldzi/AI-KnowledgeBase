@@ -56,6 +56,31 @@ paths:
                 type: object
                 title: Response Web Ingestion Transport Readiness Api V1 Integrations
                   Web Ingestion Readiness Get
+  /api/v1/renditions/pdf:
+    post:
+      tags:
+      - renditions
+      summary: Render Pdf
+      operationId: render_pdf_api_v1_renditions_pdf_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PdfRenditionRequest'
+        required: true
+      responses:
+        '200':
+          description: Immutable, cached PDF display rendition.
+          content:
+            application/json:
+              schema: {}
+            application/pdf: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/ingestion/jobs:
     get:
       tags:
@@ -1414,6 +1439,35 @@ components:
       - cancelled
       - completed_with_warnings
       title: JobStatus
+    PdfRenditionRequest:
+      properties:
+        document_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Id
+        document_version_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Document Version Id
+        source_file_uri:
+          type: string
+          maxLength: 2048
+          minLength: 1
+          title: Source File Uri
+        source_sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Source Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - document_version_id
+      - source_file_uri
+      - source_sha256
+      title: PdfRenditionRequest
     ReadinessResponse:
       properties:
         status:

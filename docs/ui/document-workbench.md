@@ -26,7 +26,7 @@ Implementovano ve web aplikaci:
 - viewer zalozka detailu dokumentu pripravuje signed source open URL pro zdrojovy objekt a ukazuje, zda je objekt ve storage fyzicky dostupny,
 - citace z Employee Chat Portal pouzivaji jednotny citation viewer: hlavni odpoved zustava cista pro netechnicke role, technicke identifikatory jsou oddelene v detailu a akce `Otevrit dokument` otevre v novem tabu primo zdrojovy soubor pres assistant citation redirect,
 - pokud je podepsany zdroj dostupny a source-context obsahuje `page_number`, viewer nabidne otevreni zdroje na strance citace pomoci `#page=N`,
-- nativni preview nad signed source zobrazuje PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem,
+- nativni preview nad signed source zobrazuje PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Office formaty pres serverovou PDF zobrazovaci kopii, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem,
 - `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
 - workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
 - verze zalozka detailu dokumentu obsahuje navodny panel s aktualnim stavem verze, doporucenym dalsim krokem a vysvetlenim, ze nova verze ma vznikat pres originalni soubor a rizene volby zmeny, ne jako volna poznamka,
@@ -121,5 +121,5 @@ QA gate pokryva:
 ### Web UI
 
 - Prubezne zuzuovat lokalni STRATOS UI adapter na tenke mapovani k publikovanemu `@voldzi/stratos-ui` balicku z verejneho npm registry.
-- Doplnit pokrocile Office fidelity prvky nad stejnym signed source kontraktem.
+- Doplnit diagnostiku fontovych substituci a presnejsi citacni navigaci nad Office PDF zobrazovaci kopii.
 - Doplnit PDF textovy highlight primo ve vieweru a hlubsi native renderer integraci pro citace.

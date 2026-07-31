@@ -124,7 +124,7 @@ interface SourceContextSignal {
   createdAt: string;
 }
 
-type NativePreviewKind = "waiting" | "pdf" | "image" | "text" | "markdown" | "csv" | "docx" | "xlsx" | "presentation" | "unsupported";
+type NativePreviewKind = "waiting" | "pdf" | "office" | "image" | "text" | "markdown" | "csv" | "docx" | "xlsx" | "presentation" | "unsupported";
 
 interface MarkdownHeading {
   id: string;
@@ -209,7 +209,7 @@ const detailCopy = {
     openCitationPage: "Otevřít stranu citace",
     citationPageUnavailable: "Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.",
     nativePreviewTitle: "Náhled dokumentu",
-    nativePreviewDetail: "Náhled pracuje s originálem aktuální verze a pomáhá zkontrolovat citované místo.",
+    nativePreviewDetail: "AKB zobrazuje věrnou zobrazovací kopii aktuální verze; autoritativním zdrojem zůstává originál.",
     nativePreviewWaiting: "Nejprve připravte originální dokument v panelu Zdroj.",
     nativePreviewUnavailable: "Náhled není dostupný, protože originální soubor není v úložišti.",
     nativePreviewLoading: "Načítám náhled dokumentu.",
@@ -219,6 +219,8 @@ const detailCopy = {
     nativePreviewPdfFallback: "PDF preview nelze zobrazit ve vestavěném prohlížeči.",
     nativePreviewPdfRenderedTitle: "Vykreslená strana citace",
     nativePreviewPdfRenderedDetail: "PDF stránka je vykreslená přes pdf.js. Citace se zvýrazní textovou vrstvou a případně přes source-location bbox.",
+    nativePreviewOfficeRenderedTitle: "Věrný náhled kancelářského dokumentu",
+    nativePreviewOfficeRenderedDetail: "Náhled vznikl bezpečným převodem neměnného originálu do PDF. Originál, jeho otisk a citace zůstávají beze změny.",
     nativePreviewImageAlt: "Náhled zdrojového obrázku",
     nativePreviewOcrBbox: "OCR oblast citace",
     nativePreviewPdfBbox: "Metadata oblast citace v PDF",
@@ -441,7 +443,7 @@ const detailCopy = {
     openCitationPage: "Open citation page",
     citationPageUnavailable: "Opening the exact citation page will be available after the signed source is available.",
     nativePreviewTitle: "Document preview",
-    nativePreviewDetail: "Preview uses the current version original and helps verify the cited location.",
+    nativePreviewDetail: "AKB displays a faithful viewing copy of the current version; the original remains authoritative.",
     nativePreviewWaiting: "Prepare the original document in the Source panel first.",
     nativePreviewUnavailable: "Preview is not available because the original file is not in storage.",
     nativePreviewLoading: "Loading document preview.",
@@ -451,6 +453,8 @@ const detailCopy = {
     nativePreviewPdfFallback: "PDF preview cannot be displayed in the embedded viewer.",
     nativePreviewPdfRenderedTitle: "Rendered citation page",
     nativePreviewPdfRenderedDetail: "The PDF page is rendered through pdf.js. Citations are highlighted through the text layer and, when available, source-location bbox metadata.",
+    nativePreviewOfficeRenderedTitle: "Faithful office document preview",
+    nativePreviewOfficeRenderedDetail: "The preview is a safe PDF rendition of the immutable original. The original, its digest and citations remain unchanged.",
     nativePreviewImageAlt: "Source image preview",
     nativePreviewOcrBbox: "OCR citation area",
     nativePreviewPdfBbox: "PDF citation metadata area",
@@ -2258,6 +2262,7 @@ function DocumentNativePreview({
   });
   const sourceUrl = sourceOpen?.download_url ?? null;
   const sourcePreviewUrl = sourceUrl ? sourcePreviewUrlForSourceUrl(sourceUrl) : null;
+  const sourceRenditionUrl = sourceUrl ? sourceRenditionUrlForSourceUrl(sourceUrl) : null;
   const previewUrl =
     sourceUrl && sourceContext?.location.page_number ? sourceUrlWithPageFragment(sourceUrl, sourceContext.location.page_number) : sourceUrl;
   const previewKind = sourceOpen ? nativePreviewKind(sourceOpen) : "waiting";
@@ -2376,6 +2381,22 @@ function DocumentNativePreview({
           />
           <PdfCitationLocator copy={copy} sourceContext={sourceContext} />
         </>
+      ) : null}
+      {sourceOpen?.available && previewKind === "office" && sourceRenditionUrl ? (
+        <StratosPdfViewer
+          highlightText={sourceContext?.chunk_text ?? ""}
+          labels={{
+            title: copy.nativePreviewOfficeRenderedTitle,
+            detail: copy.nativePreviewOfficeRenderedDetail,
+            loading: copy.nativePreviewLoading,
+            error: copy.nativePreviewError,
+            page: copy.page,
+            textHighlight: copy.nativePreviewPdfTextHighlight,
+            bbox: copy.nativePreviewPdfBbox
+          }}
+          pageNumber={sourceContext?.location.page_number ?? 1}
+          sourceUrl={withAppBasePath(sourceRenditionUrl)}
+        />
       ) : null}
       {sourceOpen?.available && previewKind === "image" && previewUrl ? (
         <ImageNativePreview copy={copy} sourceContext={sourceContext} sourceUrl={previewUrl} />
@@ -2867,6 +2888,14 @@ function sourcePreviewUrlForSourceUrl(sourceUrl: string): string {
   return fragment ? `${previewUrl}#${fragment}` : previewUrl;
 }
 
+function sourceRenditionUrlForSourceUrl(sourceUrl: string): string {
+  const [baseUrl] = sourceUrl.split("#");
+  return baseUrl.replace(
+    "/api/documents/source/content",
+    "/api/documents/source/rendition"
+  );
+}
+
 function bboxToPercentStyle(bbox: Record<string, number>): CSSProperties {
   const left = normalizeBboxPercent(bbox.x ?? bbox.left ?? 0);
   const top = normalizeBboxPercent(bbox.y ?? bbox.top ?? 0);
@@ -3089,19 +3118,11 @@ function nativePreviewKind(sourceOpen: DocumentSourceOpenDecision): NativePrevie
   if (sourceOpen.viewer_mode === "image" || sourceOpen.viewer_mode === "ocr" || mimeType.startsWith("image/")) {
     return "image";
   }
-  if (filename.endsWith(".docx") || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-    return "docx";
-  }
   if (
-    filename.endsWith(".xlsx") ||
-    filename.endsWith(".xlsm") ||
-    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    mimeType === "application/vnd.ms-excel.sheet.macroEnabled.12"
+    [".doc", ".docx", ".odt", ".rtf", ".xls", ".xlsx", ".xlsm", ".ods", ".ppt", ".pptx", ".odp"]
+      .some((extension) => filename.endsWith(extension))
   ) {
-    return "xlsx";
-  }
-  if (filename.endsWith(".pptx") || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
-    return "presentation";
+    return "office";
   }
   if (mimeType === "text/csv" || filename.endsWith(".csv")) {
     return "csv";

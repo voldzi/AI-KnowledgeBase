@@ -9,6 +9,12 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ghostscript \
+        libreoffice-calc-nogui \
+        libreoffice-impress-nogui \
+        libreoffice-writer-nogui \
+        fonts-dejavu-core \
+        fonts-liberation \
+        fonts-noto-core \
         ocrmypdf \
         poppler-utils \
         qpdf \
@@ -28,6 +34,7 @@ COPY chunkers ./chunkers
 COPY embeddings ./embeddings
 COPY indexers ./indexers
 COPY intelligence ./intelligence
+COPY renditions ./renditions
 COPY openapi.yaml README.md ./
 
 EXPOSE 8090

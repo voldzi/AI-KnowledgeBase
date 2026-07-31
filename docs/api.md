@@ -98,6 +98,14 @@ AKB exposes several REST surfaces:
 | LLM Gateway | `/api/v1` | Model routing, model management, chat completions, embeddings. |
 | Evaluation Service | `/api/v1` | Owned evaluation datasets, quality runs, regression gates, history and reports. |
 | Governance Service | `/api/v1` | Version comparison, compliance, conflicts, KB drafts, validity alerts. |
+
+The browser-safe `GET /api/documents/source/rendition?token=...` route creates
+or serves an authorized Office-to-PDF display copy. It accepts the same
+short-lived signed source token as the source viewer, reloads current Registry
+authorization and policy, and calls internal
+`POST /api/v1/renditions/pdf` with a dedicated service identity. The original
+document remains authoritative; the rendition is private, non-cacheable in the
+browser and keyed by immutable source SHA-256 plus rendering engine revision.
 | Platform Status | root paths | `/health`, `/ready`, `/metrics`, `/openapi.json`. |
 
 All supported document origins share the canonical binary security boundary:

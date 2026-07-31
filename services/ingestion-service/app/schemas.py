@@ -38,6 +38,15 @@ class ReadinessResponse(BaseModel):
     checks: dict[str, str] = Field(default_factory=dict)
 
 
+class PdfRenditionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=128)
+    document_version_id: str = Field(min_length=1, max_length=128)
+    source_file_uri: str = Field(min_length=1, max_length=2048)
+    source_sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
 class IngestionJobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

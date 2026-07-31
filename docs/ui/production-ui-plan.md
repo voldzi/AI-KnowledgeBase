@@ -169,4 +169,4 @@ Ingestion-owned operational tasks are still merged in the web layer until Ingest
 - CSV/XLSX/XLSM: sheet/table context.
 - PPTX: slide text and preview when available.
 - Images/scans: original image plus OCR text and bbox highlighting.
-- Legacy `.doc/.xls/.ppt`: conversion or parser integration before first-class ingestion/rendering.
+- Legacy `.doc/.xls/.ppt`: rendition exists; conversion or parser integration remains before first-class indexing.
