@@ -17,7 +17,9 @@ import {
   ArrowLeft,
   BookOpenCheck,
   Brain,
+  ChevronDown,
   CircleCheck,
+  CircleHelp,
   ClipboardCheck,
   Copy,
   Download,
@@ -29,9 +31,11 @@ import {
   Layers3,
   LockKeyhole,
   Network,
+  Paperclip,
   Plus,
   RotateCcw,
   Save,
+  Settings2,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -44,9 +48,7 @@ import {
   StratosButtonLink,
   StratosDataTable,
   StratosPdfViewer,
-  StratosSelect,
-  StratosViewTabs,
-  type StratosViewTab
+  StratosSelect
 } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
@@ -54,6 +56,10 @@ import type {
   AssignmentSubjectType,
   AuditEvent,
   AuthorizationHint,
+  ControlledDocumentPackage,
+  ControlledDocumentPackageMember,
+  ControlledRule,
+  ControlledRuleProposal,
   Document,
   DocumentAssignment,
   DocumentAssignmentInput,
@@ -85,6 +91,10 @@ interface DocumentDetailProps {
   workflowTasks?: RegistryWorkflowTask[];
   auditEvents?: AuditEvent[];
   publication?: DocumentPublication | null;
+  controlledDomain?: string | null;
+  controlledPackages?: ControlledDocumentPackage[];
+  controlledRules?: ControlledRule[];
+  controlledDataAvailable?: boolean;
 }
 
 interface AssignmentFormRow {
@@ -181,9 +191,47 @@ const detailCopy = {
     viewer: "Dokument",
     workflow: "Schválení",
     insights: "Znalosti",
+    checks: "Kontroly",
     versionsTab: "Verze",
     ingestionTab: "Zpracování",
     auditTab: "Audit",
+    guidedProcess: "Postup práce",
+    guidedProcessDetail: "Projděte kroky zleva doprava. AKB průběžně ukazuje, co je hotové a co vyžaduje pozornost.",
+    guidedDone: "Hotovo",
+    guidedAttention: "Vyžaduje pozornost",
+    guidedPending: "Čeká",
+    guidedNext: "Doporučený další krok",
+    guidedProgress: "Dokončeno",
+    moreInformation: "Další informace",
+    moreInformationDetail: "Historie verzí, technický stav zpracování a auditní stopa.",
+    helpLabel: "Vysvětlení",
+    technicalDetails: "Technické a auditní údaje",
+    technicalDetailsHint: "Tyto údaje jsou určené pro správce a řešení incidentů.",
+    integrityVerified: "Integrita originálu je ověřena otiskem souboru.",
+    attachmentTitle: "Přílohy a související dokumenty",
+    attachmentDetail: "Dokumenty, formuláře a šablony, které patří k tomuto vydání.",
+    attachmentEmpty: "K tomuto dokumentu zatím nejsou připojené žádné přílohy ani formuláře.",
+    attachmentUnavailable: "Vazby na přílohy se nyní nepodařilo ověřit. Samotný dokument zůstává dostupný.",
+    controlledPackage: "Vydání dokumentace",
+    controlledRulesTitle: "Ověřená pravidla a limity",
+    controlledRulesDetail: "Tato data jsou po potvrzení gestorem dostupná také oprávněným aplikacím STRATOS.",
+    controlledRulesEmpty: "Z dokumentu zatím nejsou připravená ověřená pravidla.",
+    controlledRulesUnavailable: "Ověřená pravidla se nyní nepodařilo načíst.",
+    controlledProposed: "K ověření",
+    controlledAccepted: "Ověřeno",
+    controlledConflict: "Rozpor",
+    controlledConsumerEligible: "Dostupné aplikacím",
+    controlledExtract: "Navrhnout pravidla",
+    controlledExtracting: "Připravuji návrhy",
+    controlledExtracted: "Návrhy pravidel byly připravené k ověření.",
+    controlledExtractFailed: "Návrhy pravidel se nepodařilo připravit.",
+    controlledConfirm: "Potvrdit",
+    controlledReject: "Odmítnout",
+    controlledReviewSaved: "Rozhodnutí bylo uloženo.",
+    controlledReviewFailed: "Rozhodnutí se nepodařilo uložit.",
+    controlledOpenWorkspace: "Spravovat vydání a pravidla",
+    analyticalSuggestions: "Analytické návrhy",
+    analyticalSuggestionsDetail: "Pomocné AI návrhy nejsou samy o sobě závazným pravidlem.",
     owner: "Vlastník",
     type: "Typ",
     classification: "Klasifikace",
@@ -415,9 +463,47 @@ const detailCopy = {
     viewer: "Document",
     workflow: "Approval",
     insights: "Knowledge",
+    checks: "Checks",
     versionsTab: "Versions",
     ingestionTab: "Processing",
     auditTab: "Audit",
+    guidedProcess: "Work process",
+    guidedProcessDetail: "Follow the steps from left to right. AKB shows what is complete and what needs attention.",
+    guidedDone: "Done",
+    guidedAttention: "Needs attention",
+    guidedPending: "Waiting",
+    guidedNext: "Recommended next step",
+    guidedProgress: "Completed",
+    moreInformation: "More information",
+    moreInformationDetail: "Version history, technical processing state and audit trail.",
+    helpLabel: "Explanation",
+    technicalDetails: "Technical and audit data",
+    technicalDetailsHint: "These details are intended for administrators and incident investigation.",
+    integrityVerified: "The original file integrity is verified by its fingerprint.",
+    attachmentTitle: "Attachments and related documents",
+    attachmentDetail: "Documents, forms and templates that belong to this release.",
+    attachmentEmpty: "No attachments or forms are linked to this document yet.",
+    attachmentUnavailable: "Attachment relations could not be verified right now. The document itself remains available.",
+    controlledPackage: "Documentation release",
+    controlledRulesTitle: "Verified rules and limits",
+    controlledRulesDetail: "After gestor confirmation, this data is also available to authorized STRATOS applications.",
+    controlledRulesEmpty: "No verified rules have been prepared from this document yet.",
+    controlledRulesUnavailable: "Verified rules could not be loaded right now.",
+    controlledProposed: "For review",
+    controlledAccepted: "Verified",
+    controlledConflict: "Conflict",
+    controlledConsumerEligible: "Available to applications",
+    controlledExtract: "Propose rules",
+    controlledExtracting: "Preparing proposals",
+    controlledExtracted: "Rule proposals were prepared for review.",
+    controlledExtractFailed: "Rule proposals could not be prepared.",
+    controlledConfirm: "Confirm",
+    controlledReject: "Reject",
+    controlledReviewSaved: "Decision was saved.",
+    controlledReviewFailed: "Decision could not be saved.",
+    controlledOpenWorkspace: "Manage releases and rules",
+    analyticalSuggestions: "Analytical suggestions",
+    analyticalSuggestionsDetail: "Supporting AI suggestions are not authoritative rules on their own.",
     owner: "Owner",
     type: "Type",
     classification: "Classification",
@@ -644,7 +730,7 @@ const detailCopy = {
   }
 } satisfies Record<AklLanguage, Record<string, string>>;
 
-type DetailTab = "overview" | "viewer" | "workflow" | "insights" | "versions" | "ingestion" | "audit";
+type DetailTab = "overview" | "viewer" | "insights" | "checks" | "workflow" | "versions" | "ingestion" | "audit";
 
 const detailTabAliases: Record<string, DetailTab> = {
   overview: "overview",
@@ -654,6 +740,8 @@ const detailTabAliases: Record<string, DetailTab> = {
   source: "viewer",
   workflow: "workflow",
   approval: "workflow",
+  checks: "checks",
+  compliance: "checks",
   insights: "insights",
   knowledge: "insights",
   versions: "versions",
@@ -682,6 +770,10 @@ export function DocumentDetail({
   workflowTasks = [],
   auditEvents = [],
   publication,
+  controlledDomain = null,
+  controlledPackages = [],
+  controlledRules = [],
+  controlledDataAvailable = true,
 }: DocumentDetailProps) {
   const { language } = useLanguage();
   const router = useRouter();
@@ -739,6 +831,8 @@ export function DocumentDetail({
   const [proposedInsights, setProposedInsights] = useState<ProposedDocumentInsight[] | null>(null);
   const [insightsAction, setInsightsAction] = useState(false);
   const [insightsFeedback, setInsightsFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [controlledBusy, setControlledBusy] = useState<string | null>(null);
+  const [controlledFeedback, setControlledFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -756,6 +850,116 @@ export function DocumentDetail({
       !["valid", "superseded", "archived", "cancelled"].includes(currentVersion.status)
   );
   const canArchiveCurrentVersion = Boolean(authorization.can_publish && currentVersion?.status === "valid");
+  const ownerLabel = documentOwnerLabel(
+    document,
+    assignments.length > 0 ? assignments : document.assignments ?? [],
+  );
+  const relatedPackageMembers = useMemo(
+    () =>
+      controlledPackages
+        .flatMap((item) => item.members)
+        .filter((member) => member.document_id !== document.document_id)
+        .filter(
+          (member, index, members) =>
+            members.findIndex(
+              (candidate) =>
+                candidate.document_id === member.document_id &&
+                candidate.document_version_id === member.document_version_id,
+            ) === index,
+        ),
+    [controlledPackages, document.document_id],
+  );
+  const verifiedRuleCount = controlledRules.filter((rule) =>
+    ["accepted", "edited"].includes(rule.verification_status),
+  ).length;
+  const proposedRuleCount = controlledRules.filter(
+    (rule) => rule.verification_status === "proposed",
+  ).length;
+  const conflictRuleCount = controlledRules.filter(
+    (rule) => rule.precedence_status === "conflict",
+  ).length;
+  const processingComplete = relatedJobs.some((job) =>
+    ["indexed", "completed", "complete", "succeeded"].includes(job.status.toLowerCase()),
+  );
+  const guidedSteps = useMemo(
+    () => [
+      {
+        tab: "overview" as const,
+        label: language === "cs" ? "Základní údaje" : "Basic details",
+        detail:
+          language === "cs"
+            ? "Název, typ, odpovědnost a platnost."
+            : "Title, type, responsibility and validity.",
+        icon: FileSearch,
+        state: currentVersion && ownerLabel ? "done" : "attention",
+      },
+      {
+        tab: "viewer" as const,
+        label: language === "cs" ? "Dokument a přílohy" : "Document and attachments",
+        detail:
+          language === "cs"
+            ? "Originál, věrný náhled, citace a související soubory."
+            : "Original, faithful preview, citations and related files.",
+        icon: BookOpenCheck,
+        state: currentVersion && processingComplete ? "done" : "attention",
+      },
+      {
+        tab: "insights" as const,
+        label: language === "cs" ? "Pravidla" : "Rules",
+        detail:
+          language === "cs"
+            ? "Ověřené limity a povinnosti pro lidi i aplikace."
+            : "Verified limits and obligations for people and applications.",
+        icon: Brain,
+        state: !controlledDomain
+          ? "done"
+          : conflictRuleCount > 0 || proposedRuleCount > 0 || verifiedRuleCount === 0
+            ? "attention"
+            : "done",
+      },
+      {
+        tab: "checks" as const,
+        label: copy.checks,
+        detail:
+          language === "cs"
+            ? "Změny, úplnost, compliance a rozpory."
+            : "Changes, completeness, compliance and conflicts.",
+        icon: ClipboardCheck,
+        state:
+          governanceResult || ["approved", "valid"].includes(document.status)
+            ? "done"
+            : "pending",
+      },
+      {
+        tab: "workflow" as const,
+        label: language === "cs" ? "Schválení a zveřejnění" : "Approval and publication",
+        detail:
+          language === "cs"
+            ? "Odpovědnosti, rozhodnutí a platné vydání."
+            : "Responsibilities, decision and valid release.",
+        icon: ShieldCheck,
+        state: document.status === "valid" ? "done" : "pending",
+      },
+    ],
+    [
+      conflictRuleCount,
+      controlledDomain,
+      copy.checks,
+      currentVersion,
+      document.status,
+      governanceResult,
+      language,
+      ownerLabel,
+      processingComplete,
+      proposedRuleCount,
+      verifiedRuleCount,
+    ],
+  );
+  const completedGuidedSteps = guidedSteps.filter((step) => step.state === "done").length;
+  const nextGuidedStep =
+    guidedSteps.find((step) => step.state === "attention") ??
+    guidedSteps.find((step) => step.state === "pending") ??
+    guidedSteps[guidedSteps.length - 1];
 
   useEffect(() => {
     const requestedTab = tabFromSearchParams(searchParams.get("tab"));
@@ -998,6 +1202,87 @@ export function DocumentDetail({
     }
   }
 
+  async function extractControlledRules(item: ControlledDocumentPackage) {
+    if (controlledBusy) {
+      return;
+    }
+    setControlledBusy(`extract:${item.package_id}`);
+    setControlledFeedback(null);
+    try {
+      const response = await fetch(
+        withAppBasePath("/api/controlled-documentation/extract"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            package_id: item.package_id,
+            domain: item.domain,
+            documents: item.members.map((member) => ({
+              document_id: member.document_id,
+              document_version_id: member.document_version_id,
+            })),
+            classification_max: "internal",
+          }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      setControlledFeedback({ tone: "success", message: copy.controlledExtracted });
+      router.refresh();
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setControlledFeedback({
+        tone: "error",
+        message: `${copy.controlledExtractFailed}${suffix}`,
+      });
+    } finally {
+      setControlledBusy(null);
+    }
+  }
+
+  async function reviewControlledRule(
+    rule: ControlledRule,
+    decision: "accepted" | "rejected",
+  ) {
+    if (controlledBusy) {
+      return;
+    }
+    setControlledBusy(`rule:${rule.proposal.rule_id}`);
+    setControlledFeedback(null);
+    try {
+      const response = await fetch(
+        withAppBasePath(
+          `/api/controlled-documentation/extractions/${encodeURIComponent(rule.extraction_id)}/feedback`,
+        ),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            field: `rules.${rule.proposal.rule_id}`,
+            ai_value: rule.proposal,
+            final_value: decision === "rejected" ? null : rule.proposal,
+            decision,
+            source_entity_id: rule.package_id,
+          }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(await readDocumentWorkflowError(response));
+      }
+      setControlledFeedback({ tone: "success", message: copy.controlledReviewSaved });
+      router.refresh();
+    } catch (error) {
+      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
+      setControlledFeedback({
+        tone: "error",
+        message: `${copy.controlledReviewFailed}${suffix}`,
+      });
+    } finally {
+      setControlledBusy(null);
+    }
+  }
+
   return (
     <div className="stack">
       <StratosButtonLink href="/documents">
@@ -1011,21 +1296,21 @@ export function DocumentDetail({
             <div>
               <p className="eyebrow">{documentTypeLabel(document.document_type, language)}</p>
               <h2>{document.title}</h2>
-              <p className="muted">{document.document_id} - {document.gestor_unit}</p>
+              <p className="muted">
+                {document.gestor_unit ??
+                  (language === "cs" ? "Gestor zatím není uvedený" : "Gestor is not assigned yet")}
+              </p>
             </div>
             <div className="tag-list">
               <StatusBadge value={document.status} />
               <span className="tag">{document.classification}</span>
-              {document.tags.map((tag) => (
-                <span className="tag" key={tag}>{tag}</span>
-              ))}
             </div>
             <p className="notice">{copy.registryNotice}</p>
           </div>
           <div className="stack">
             <div className="timeline-item">
               <strong>{copy.owner}</strong>
-              <span>{document.owner_id}</span>
+              <span>{ownerLabel}</span>
             </div>
             <div className="timeline-item">
               <strong>{copy.updated}</strong>
@@ -1039,39 +1324,143 @@ export function DocumentDetail({
                   : copy.noVersion}
               </span>
             </div>
+            <details className="technical-details technical-details--compact">
+              <summary>
+                <Settings2 size={16} aria-hidden="true" />
+                {copy.technicalDetails}
+                <ChevronDown size={16} aria-hidden="true" />
+              </summary>
+              <div className="technical-details__body">
+                <p className="technical-details__line">
+                  <strong>Document ID</strong>
+                  <span>{document.document_id}</span>
+                </p>
+                <p className="technical-details__line">
+                  <strong>Owner ID</strong>
+                  <span>{document.owner_id}</span>
+                </p>
+                {document.tags.length > 0 ? (
+                  <p className="technical-details__line">
+                    <strong>Tags</strong>
+                    <span>{document.tags.join(", ")}</span>
+                  </p>
+                ) : null}
+              </div>
+            </details>
           </div>
         </div>
       </section>
 
-      <StratosViewTabs
-        ariaLabel={language === "cs" ? "Sekce dokumentu" : "Document sections"}
-        value={activeTab}
-        onValueChange={setActiveTab}
-        items={
-          [
-            { value: "overview", label: copy.overview, icon: FileSearch },
-            { value: "viewer", label: copy.viewer, icon: BookOpenCheck },
-            { value: "workflow", label: copy.workflow, icon: ClipboardCheck },
-            { value: "insights", label: copy.insights, icon: Brain },
-            { value: "versions", label: copy.versionsTab, icon: Layers3 },
-            { value: "ingestion", label: copy.ingestionTab, icon: FileClock },
-            { value: "audit", label: copy.auditTab, icon: ShieldCheck }
-          ] satisfies Array<StratosViewTab<DetailTab>>
-        }
-      />
+      <section className="document-guide" aria-labelledby="document-guide-title">
+        <header className="document-guide__header">
+          <div>
+            <span className="eyebrow">{copy.guidedProgress} {completedGuidedSteps}/5</span>
+            <div className="document-section-title">
+              <h2 id="document-guide-title">{copy.guidedProcess}</h2>
+              <HelpHint label={copy.helpLabel} text={copy.guidedProcessDetail} />
+            </div>
+            <p>{copy.guidedProcessDetail}</p>
+          </div>
+          {nextGuidedStep ? (
+            <button
+              className="button button--primary document-guide__next"
+              type="button"
+              onClick={() => setActiveTab(nextGuidedStep.tab)}
+            >
+              {copy.guidedNext}: {nextGuidedStep.label}
+            </button>
+          ) : null}
+        </header>
+        <nav aria-label={language === "cs" ? "Hlavní kroky dokumentu" : "Main document steps"}>
+          <ol className="document-guide__steps">
+            {guidedSteps.map((step, index) => {
+              const Icon = step.icon;
+              const stateLabel =
+                step.state === "done"
+                  ? copy.guidedDone
+                  : step.state === "attention"
+                    ? copy.guidedAttention
+                    : copy.guidedPending;
+              return (
+                <li key={step.tab}>
+                  <button
+                    aria-current={activeTab === step.tab ? "step" : undefined}
+                    className="document-guide__step"
+                    data-active={activeTab === step.tab ? "true" : "false"}
+                    data-state={step.state}
+                    type="button"
+                    onClick={() => setActiveTab(step.tab)}
+                  >
+                    <span className="document-guide__step-number" aria-hidden="true">
+                      {step.state === "done" ? <CircleCheck size={18} /> : index + 1}
+                    </span>
+                    <Icon className="document-guide__step-icon" size={20} aria-hidden="true" />
+                    <span className="document-guide__step-copy">
+                      <strong>{step.label}</strong>
+                      <span>{step.detail}</span>
+                      <small>{stateLabel}</small>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+        <details className="document-guide__secondary">
+          <summary>
+            <Settings2 size={18} aria-hidden="true" />
+            <span>
+              <strong>{copy.moreInformation}</strong>
+              <small>{copy.moreInformationDetail}</small>
+            </span>
+            <ChevronDown size={18} aria-hidden="true" />
+          </summary>
+          <div className="document-guide__secondary-actions">
+            {[
+              { tab: "versions" as const, label: copy.versionsTab, icon: Layers3 },
+              { tab: "ingestion" as const, label: copy.ingestionTab, icon: FileClock },
+              { tab: "audit" as const, label: copy.auditTab, icon: ShieldCheck },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  aria-pressed={activeTab === item.tab}
+                  className="button"
+                  key={item.tab}
+                  type="button"
+                  onClick={() => setActiveTab(item.tab)}
+                >
+                  <Icon size={17} aria-hidden="true" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </details>
+      </section>
 
       {activeTab === "overview" ? (
         <div className="stack">
           <section className="grid grid--two">
           <div className="panel">
             <div className="panel__header">
-              <h2>{copy.overview}</h2>
+              <div className="document-section-title">
+                <h2>{copy.overview}</h2>
+                <HelpHint
+                  label={copy.helpLabel}
+                  text={
+                    language === "cs"
+                      ? "Zkontrolujte hlavně název, typ, gestora a datum platnosti. Technické identifikátory nejsou pro běžné rozhodnutí potřeba."
+                      : "Check the title, type, gestor and validity date. Technical identifiers are not needed for ordinary decisions."
+                  }
+                />
+              </div>
               <StatusBadge value={document.status} />
             </div>
             <div className="panel__body detail-kv-grid">
               <KeyValue label={copy.type} value={documentTypeLabel(document.document_type, language)} />
               <KeyValue label={copy.classification} value={document.classification} />
-              <KeyValue label={copy.owner} value={document.owner_id} />
+              <KeyValue label={copy.owner} value={ownerLabel} />
               <KeyValue label={copy.gestor} value={document.gestor_unit ?? "n/a"} />
               <KeyValue label={copy.updated} value={formatDateTime(document.updated_at, language)} />
               <KeyValue
@@ -1106,8 +1495,15 @@ export function DocumentDetail({
             </div>
           </div>
           </section>
-          <section className="grid grid--two">
-            {versionPolicy ? (
+          <details className="technical-details">
+            <summary>
+              <Settings2 size={17} aria-hidden="true" />
+              {copy.technicalDetails}
+              <ChevronDown size={17} aria-hidden="true" />
+            </summary>
+            <p className="muted">{copy.technicalDetailsHint}</p>
+            <section className="grid grid--two technical-details__body">
+              {versionPolicy ? (
               <InformationPolicyPanel
                 value={versionPolicy}
                 title={language === "cs" ? "Policy aktuální verze" : "Current version policy"}
@@ -1143,12 +1539,14 @@ export function DocumentDetail({
                     : "The document policy is parent context. The concrete version binding and hash remain authoritative for opening, citations, export and public publication."
                 }
               />
-            ) : null}
-          </section>
+              ) : null}
+            </section>
+          </details>
         </div>
       ) : null}
 
       {activeTab === "viewer" ? (
+        <div className="stack">
         <section className="grid grid--two">
           <div className="panel">
             <div className="panel__header">
@@ -1191,9 +1589,31 @@ export function DocumentDetail({
               <LockKeyhole size={18} aria-hidden="true" />
             </div>
             <div className="panel__body stack">
-              <KeyValue label={copy.sourceUri} value={currentVersion?.source_file_uri ?? "n/a"} />
-              <KeyValue label={copy.sourceHash} value={currentVersion?.file_hash ?? "n/a"} />
-              <KeyValue label={copy.viewerMode} value={viewerMode} />
+              <p className="notice notice--success">
+                <ShieldCheck size={18} aria-hidden="true" />
+                {copy.integrityVerified}
+              </p>
+              <details className="technical-details technical-details--compact">
+                <summary>
+                  <Settings2 size={16} aria-hidden="true" />
+                  {copy.technicalDetails}
+                  <ChevronDown size={16} aria-hidden="true" />
+                </summary>
+                <div className="technical-details__body">
+                  <p className="technical-details__line">
+                    <strong>{copy.sourceUri}</strong>
+                    <span>{currentVersion?.source_file_uri ?? "n/a"}</span>
+                  </p>
+                  <p className="technical-details__line">
+                    <strong>{copy.sourceHash}</strong>
+                    <span>{currentVersion?.file_hash ?? "n/a"}</span>
+                  </p>
+                  <p className="technical-details__line">
+                    <strong>{copy.viewerMode}</strong>
+                    <span>{viewerMode}</span>
+                  </p>
+                </div>
+              </details>
               <div className="source-open-card">
                 <div className="source-open-card__header">
                   <FileText size={18} aria-hidden="true" />
@@ -1220,8 +1640,6 @@ export function DocumentDetail({
                       value={sourceOpen.available ? copy.available : copy.unavailable}
                     />
                     <KeyValue label={copy.expiresAt} value={formatDateTime(sourceOpen.expires_at, language)} />
-                    <KeyValue label={copy.sourceUri} value={sourceOpen.source_file_uri} />
-                    <KeyValue label={copy.viewerMode} value={sourceOpen.viewer_mode} />
                   </div>
                 ) : null}
                 {sourceOpen?.available && sourceOpen.download_url ? (
@@ -1286,14 +1704,100 @@ export function DocumentDetail({
             </div>
           </aside>
         </section>
+        <ControlledPackageRelations
+          copy={copy}
+          dataAvailable={controlledDataAvailable}
+          documentId={document.document_id}
+          language={language}
+          members={relatedPackageMembers}
+          packages={controlledPackages}
+        />
+        </div>
+      ) : null}
+
+      {activeTab === "checks" ? (
+        <section className="panel">
+          <div className="panel__header">
+            <div>
+              <div className="document-section-title">
+                <h2>{copy.governanceTitle}</h2>
+                <HelpHint label={copy.helpLabel} text={copy.governanceDetail} />
+              </div>
+              <p>{copy.governanceDetail}</p>
+            </div>
+            <Network size={18} aria-hidden="true" />
+          </div>
+          <div className="panel__body stack">
+            <div className="governance-action-grid">
+              {[
+                {
+                  action: "compare_versions" as const,
+                  icon: GitCompareArrows,
+                  label: copy.compareVersions,
+                  detail: copy.compareVersionsDetail,
+                  enabled: versions.length > 1,
+                },
+                {
+                  action: "check_compliance" as const,
+                  icon: ClipboardCheck,
+                  label: copy.complianceCheck,
+                  detail: copy.complianceCheckDetail,
+                  enabled: document.status !== "archived",
+                },
+                {
+                  action: "detect_conflicts" as const,
+                  icon: ShieldCheck,
+                  label: copy.conflictDetection,
+                  detail: copy.conflictDetectionDetail,
+                  enabled: document.status === "review",
+                },
+              ].map((item) => (
+                <GovernanceAction
+                  action={item.action}
+                  detail={item.detail}
+                  enabled={item.enabled}
+                  icon={item.icon}
+                  key={item.action}
+                  label={item.label}
+                  running={governanceAction === item.action}
+                  runLabel={copy.governanceRun}
+                  runningLabel={copy.governanceRunning}
+                  unavailableLabel={copy.governanceUnavailable}
+                  onRun={runGovernanceAction}
+                />
+              ))}
+            </div>
+            {governanceFeedback ? (
+              <div
+                className={`notice ${governanceFeedback.tone === "error" ? "notice--danger" : ""}`}
+                role={governanceFeedback.tone === "error" ? "alert" : "status"}
+              >
+                {governanceFeedback.message}
+              </div>
+            ) : null}
+            {governanceResult ? (
+              <GovernanceResultPanel run={governanceResult} copy={copy} language={language} />
+            ) : null}
+          </div>
+        </section>
       ) : null}
 
       {activeTab === "workflow" ? (
         <div className="stack">
-          <section className="grid grid--two">
+          <section>
             <div className="panel">
               <div className="panel__header">
-                <h2>{copy.workflowTitle}</h2>
+                <div className="document-section-title">
+                  <h2>{copy.workflowTitle}</h2>
+                  <HelpHint
+                    label={copy.helpLabel}
+                    text={
+                      language === "cs"
+                        ? "Schválení proveďte až po kontrole dokumentu, příloh, pravidel a výsledků kontrol."
+                        : "Approve only after checking the document, attachments, rules and check results."
+                    }
+                  />
+                </div>
                 <ShieldCheck size={18} aria-hidden="true" />
               </div>
               <div className="panel__body workflow-rail">
@@ -1325,63 +1829,6 @@ export function DocumentDetail({
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-            <div className="panel">
-              <div className="panel__header">
-                <h2>{copy.governanceTitle}</h2>
-                <Network size={18} aria-hidden="true" />
-              </div>
-              <div className="panel__body stack">
-                <p className="muted">{copy.governanceDetail}</p>
-                <div className="governance-action-grid">
-                  {[
-                    {
-                      action: "compare_versions" as const,
-                      icon: GitCompareArrows,
-                      label: copy.compareVersions,
-                      detail: copy.compareVersionsDetail,
-                      enabled: versions.length > 1
-                    },
-                    {
-                      action: "check_compliance" as const,
-                      icon: ClipboardCheck,
-                      label: copy.complianceCheck,
-                      detail: copy.complianceCheckDetail,
-                      enabled: document.status !== "archived"
-                    },
-                    {
-                      action: "detect_conflicts" as const,
-                      icon: ShieldCheck,
-                      label: copy.conflictDetection,
-                      detail: copy.conflictDetectionDetail,
-                      enabled: document.status === "review"
-                    }
-                  ].map((item) => (
-                    <GovernanceAction
-                      action={item.action}
-                      detail={item.detail}
-                      enabled={item.enabled}
-                      icon={item.icon}
-                      key={item.action}
-                      label={item.label}
-                      running={governanceAction === item.action}
-                      runLabel={copy.governanceRun}
-                      runningLabel={copy.governanceRunning}
-                      unavailableLabel={copy.governanceUnavailable}
-                      onRun={runGovernanceAction}
-                    />
-                  ))}
-                </div>
-                {governanceFeedback ? (
-                  <div
-                    className={`notice ${governanceFeedback.tone === "error" ? "notice--danger" : ""}`}
-                    role={governanceFeedback.tone === "error" ? "alert" : "status"}
-                  >
-                    {governanceFeedback.message}
-                  </div>
-                ) : null}
-                {governanceResult ? <GovernanceResultPanel run={governanceResult} copy={copy} language={language} /> : null}
               </div>
             </div>
           </section>
@@ -1637,42 +2084,128 @@ export function DocumentDetail({
       ) : null}
 
       {activeTab === "insights" ? (
-        <section className="panel">
-          <div className="panel__header">
-            <div>
-              <h2>{copy.insightsTitle}</h2>
-              <p>{copy.insightsNotPersisted}</p>
-            </div>
-            <StratosButton type="button" onClick={() => void proposeDocumentInsights()} disabled={insightsAction}>
-              <Brain size={18} aria-hidden="true" />
-              {insightsAction ? copy.insightsGenerating : copy.insightsGenerate}
-            </StratosButton>
-          </div>
-          <div className="panel__body stack">
-            {insightsFeedback ? (
-              <div className={`notice ${insightsFeedback.tone === "error" ? "notice--danger" : ""}`} role={insightsFeedback.tone === "error" ? "alert" : "status"}>
-                {insightsFeedback.message}
+        <div className="stack">
+          <section className="panel">
+            <div className="panel__header">
+              <div>
+                <div className="document-section-title">
+                  <h2>{copy.controlledRulesTitle}</h2>
+                  <HelpHint label={copy.helpLabel} text={copy.controlledRulesDetail} />
+                </div>
+                <p>{copy.controlledRulesDetail}</p>
               </div>
-            ) : null}
-            <div className="insight-grid">
-              {(proposedInsights ?? defaultInsightPlaceholders(copy)).map((insight) => (
-                <article className="insight-item" key={insight.insight_id}>
-                  <StatusBadge value="draft" label={copy.proposed} />
-                  <strong>{insight.title}</strong>
-                  <p>{insight.summary}</p>
-                  {"confidence" in insight ? <small>Confidence: {insight.confidence}</small> : null}
-                  {"citations" in insight && insight.citations.length > 0 ? (
-                    <small>{copy.insightCitation}: {insight.citations[0]?.section_path.join(" / ")}</small>
-                  ) : null}
-                  {"warnings" in insight && insight.warnings.length > 0 ? (
-                    <small>{copy.insightWarnings}: {insight.warnings.join(", ")}</small>
-                  ) : null}
-                </article>
-              ))}
+              <div className="document-rule-summary" aria-label={copy.controlledRulesTitle}>
+                <StatusBadge value="valid" label={`${copy.controlledAccepted}: ${verifiedRuleCount}`} />
+                {proposedRuleCount > 0 ? (
+                  <StatusBadge value="review" label={`${copy.controlledProposed}: ${proposedRuleCount}`} />
+                ) : null}
+                {conflictRuleCount > 0 ? (
+                  <StatusBadge value="failed" label={`${copy.controlledConflict}: ${conflictRuleCount}`} />
+                ) : null}
+              </div>
             </div>
-            {proposedInsights?.length === 0 ? <div className="empty-state">{copy.insightsEmpty}</div> : null}
-          </div>
-        </section>
+            <div className="panel__body stack">
+              {controlledFeedback ? (
+                <div
+                  className={`notice ${controlledFeedback.tone === "error" ? "notice--danger" : ""}`}
+                  role={controlledFeedback.tone === "error" ? "alert" : "status"}
+                >
+                  {controlledFeedback.message}
+                </div>
+              ) : null}
+              {!controlledDataAvailable ? (
+                <div className="empty-state">
+                  <AlertTriangle size={22} aria-hidden="true" />
+                  {copy.controlledRulesUnavailable}
+                </div>
+              ) : controlledRules.length > 0 ? (
+                <div className="document-rule-list">
+                  {controlledRules.map((rule) => (
+                    <ControlledRuleCard
+                      authorization={authorization}
+                      busy={controlledBusy === `rule:${rule.proposal.rule_id}`}
+                      copy={copy}
+                      key={`${rule.extraction_id}:${rule.proposal.rule_id}`}
+                      language={language}
+                      onReview={reviewControlledRule}
+                      rule={rule}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <CircleHelp size={22} aria-hidden="true" />
+                  {copy.controlledRulesEmpty}
+                </div>
+              )}
+              <div className="document-rule-actions">
+                {authorization.can_update && controlledPackages.length > 0 ? (
+                  <StratosButton
+                    type="button"
+                    disabled={controlledBusy !== null}
+                    onClick={() => void extractControlledRules(controlledPackages[0]!)}
+                  >
+                    <Brain size={18} aria-hidden="true" />
+                    {controlledBusy?.startsWith("extract:")
+                      ? copy.controlledExtracting
+                      : copy.controlledExtract}
+                  </StratosButton>
+                ) : null}
+                <StratosButtonLink href="/controlled-documentation">
+                  <ExternalLink size={17} aria-hidden="true" />
+                  {copy.controlledOpenWorkspace}
+                </StratosButtonLink>
+              </div>
+            </div>
+          </section>
+
+          <details className="panel document-analytical-suggestions">
+            <summary className="panel__header">
+              <span>
+                <strong>{copy.analyticalSuggestions}</strong>
+                <small>{copy.analyticalSuggestionsDetail}</small>
+              </span>
+              <ChevronDown size={18} aria-hidden="true" />
+            </summary>
+            <div className="panel__body stack">
+              <StratosButton
+                type="button"
+                onClick={() => void proposeDocumentInsights()}
+                disabled={insightsAction}
+              >
+                <Brain size={18} aria-hidden="true" />
+                {insightsAction ? copy.insightsGenerating : copy.insightsGenerate}
+              </StratosButton>
+              {insightsFeedback ? (
+                <div
+                  className={`notice ${insightsFeedback.tone === "error" ? "notice--danger" : ""}`}
+                  role={insightsFeedback.tone === "error" ? "alert" : "status"}
+                >
+                  {insightsFeedback.message}
+                </div>
+              ) : null}
+              <div className="insight-grid">
+                {(proposedInsights ?? defaultInsightPlaceholders(copy)).map((insight) => (
+                  <article className="insight-item" key={insight.insight_id}>
+                    <StatusBadge value="draft" label={copy.proposed} />
+                    <strong>{insight.title}</strong>
+                    <p>{insight.summary}</p>
+                    {"confidence" in insight ? <small>Confidence: {insight.confidence}</small> : null}
+                    {"citations" in insight && insight.citations.length > 0 ? (
+                      <small>{copy.insightCitation}: {insight.citations[0]?.section_path.join(" / ")}</small>
+                    ) : null}
+                    {"warnings" in insight && insight.warnings.length > 0 ? (
+                      <small>{copy.insightWarnings}: {insight.warnings.join(", ")}</small>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+              {proposedInsights?.length === 0 ? (
+                <div className="empty-state">{copy.insightsEmpty}</div>
+              ) : null}
+            </div>
+          </details>
+        </div>
       ) : null}
 
       {activeTab === "versions" ? (
@@ -1721,7 +2254,6 @@ export function DocumentDetail({
                 render: (version) => (
                   <span className="cell-title">
                     <strong>{version.version_label}</strong>
-                    <span>{version.document_version_id}</span>
                   </span>
                 )
               },
@@ -1780,9 +2312,29 @@ export function DocumentDetail({
               relatedJobs.map((job) => (
                 <div className="timeline-item" key={job.job_id}>
                   <strong>
-                    {job.job_id} <StatusBadge value={job.status} />
+                    {language === "cs" ? "Zpracování dokumentu" : "Document processing"}{" "}
+                    <StatusBadge value={job.status} />
                   </strong>
-                  <span>{job.chunking_strategy} - {copy.created} {formatDateTime(job.created_at, language)}</span>
+                  <span>
+                    {copy.created} {formatDateTime(job.created_at, language)}
+                  </span>
+                  <details className="technical-details technical-details--compact">
+                    <summary>
+                      <Settings2 size={15} aria-hidden="true" />
+                      {copy.technicalDetails}
+                      <ChevronDown size={15} aria-hidden="true" />
+                    </summary>
+                    <div className="technical-details__body">
+                      <p className="technical-details__line">
+                        <strong>Job ID</strong>
+                        <span>{job.job_id}</span>
+                      </p>
+                      <p className="technical-details__line">
+                        <strong>Chunking</strong>
+                        <span>{job.chunking_strategy}</span>
+                      </p>
+                    </div>
+                  </details>
                 </div>
               ))
             ) : (
@@ -1827,6 +2379,276 @@ export function DocumentDetail({
       ) : null}
     </div>
   );
+}
+
+function ControlledPackageRelations({
+  copy,
+  dataAvailable,
+  documentId,
+  language,
+  members,
+  packages,
+}: {
+  copy: Record<string, string>;
+  dataAvailable: boolean;
+  documentId: string;
+  language: AklLanguage;
+  members: ControlledDocumentPackageMember[];
+  packages: ControlledDocumentPackage[];
+}) {
+  return (
+    <section className="panel document-relations">
+      <div className="panel__header">
+        <div>
+          <div className="document-section-title">
+            <h2>{copy.attachmentTitle}</h2>
+            <HelpHint label={copy.helpLabel} text={copy.attachmentDetail} />
+          </div>
+          <p>{copy.attachmentDetail}</p>
+        </div>
+        <Paperclip size={19} aria-hidden="true" />
+      </div>
+      <div className="panel__body stack">
+        {!dataAvailable ? (
+          <div className="empty-state">
+            <AlertTriangle size={22} aria-hidden="true" />
+            {copy.attachmentUnavailable}
+          </div>
+        ) : (
+          <>
+            {packages.map((item) => (
+              <article className="document-package-summary" key={item.package_id}>
+                <div>
+                  <span className="eyebrow">{copy.controlledPackage}</span>
+                  <h3>{item.title}</h3>
+                  <p>
+                    {item.release_label} · {formatDate(item.effective_from, language)}
+                    {item.effective_to ? ` – ${formatDate(item.effective_to, language)}` : ""}
+                  </p>
+                </div>
+                <StatusBadge value={item.status} />
+              </article>
+            ))}
+            {members.length > 0 ? (
+              <div className="document-relation-list">
+                {members.map((member) => (
+                  <a
+                    className="document-relation"
+                    href={withAppBasePath(`/documents/${encodeURIComponent(member.document_id)}`)}
+                    key={`${member.document_id}:${member.document_version_id}`}
+                  >
+                    <Paperclip size={18} aria-hidden="true" />
+                    <span>
+                      <strong>{member.label || controlledMemberRoleLabel(member.member_role)}</strong>
+                      <small>{controlledMemberRoleLabel(member.member_role)}</small>
+                    </span>
+                    <ExternalLink size={16} aria-hidden="true" />
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <Paperclip size={22} aria-hidden="true" />
+                {copy.attachmentEmpty}
+              </div>
+            )}
+          </>
+        )}
+        <details className="technical-details technical-details--compact">
+          <summary>
+            <Settings2 size={15} aria-hidden="true" />
+            {copy.technicalDetails}
+            <ChevronDown size={15} aria-hidden="true" />
+          </summary>
+          <div className="technical-details__body">
+            <p className="technical-details__line">
+              <strong>Document ID</strong>
+              <span>{documentId}</span>
+            </p>
+            {packages.map((item) => (
+              <p className="technical-details__line" key={item.package_id}>
+                <strong>Package ID</strong>
+                <span>{item.package_id}</span>
+              </p>
+            ))}
+          </div>
+        </details>
+      </div>
+    </section>
+  );
+}
+
+function HelpHint({ label, text }: { label: string; text: string }) {
+  return (
+    <details className="help-hint">
+      <summary aria-label={label} title={label}>
+        <CircleHelp size={17} aria-hidden="true" />
+      </summary>
+      <div role="note">{text}</div>
+    </details>
+  );
+}
+
+function ControlledRuleCard({
+  authorization,
+  busy,
+  copy,
+  language,
+  onReview,
+  rule,
+}: {
+  authorization: AuthorizationHint;
+  busy: boolean;
+  copy: Record<string, string>;
+  language: AklLanguage;
+  onReview: (rule: ControlledRule, decision: "accepted" | "rejected") => Promise<void>;
+  rule: ControlledRule;
+}) {
+  const verified = ["accepted", "edited"].includes(rule.verification_status);
+  const citation = rule.proposal.citation;
+  const citationLabel = [
+    ...citation.section_path,
+    citation.article_number
+      ? `${language === "cs" ? "čl." : "art."} ${citation.article_number}`
+      : null,
+    citation.paragraph_number
+      ? `${language === "cs" ? "odst." : "para."} ${citation.paragraph_number}`
+      : null,
+    citation.page_number
+      ? `${language === "cs" ? "str." : "p."} ${citation.page_number}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const citationHref = `/documents/${encodeURIComponent(citation.document_id)}?tab=viewer&chunk_id=${encodeURIComponent(citation.chunk_id)}`;
+
+  return (
+    <article className="document-rule-card">
+      <header>
+        <div>
+          <span className="eyebrow">{controlledRuleCategoryLabel(rule.proposal.category, language)}</span>
+          <h3>{rule.proposal.title}</h3>
+        </div>
+        <div className="document-rule-card__badges">
+          <StatusBadge
+            value={verified ? "valid" : "review"}
+            label={verified ? copy.controlledAccepted : copy.controlledProposed}
+          />
+          {rule.precedence_status === "conflict" ? (
+            <StatusBadge value="failed" label={copy.controlledConflict} />
+          ) : null}
+          {rule.consumer_eligible ? (
+            <StatusBadge value="online" label={copy.controlledConsumerEligible} />
+          ) : null}
+        </div>
+      </header>
+      <p className="document-rule-card__value">
+        {formatControlledRuleValue(rule.proposal)}
+      </p>
+      {rule.proposal.conditions.length > 0 ? (
+        <p>
+          <strong>{language === "cs" ? "Podmínky:" : "Conditions:"}</strong>{" "}
+          {rule.proposal.conditions.join("; ")}
+        </p>
+      ) : null}
+      <blockquote>{rule.proposal.citation.quoted_text}</blockquote>
+      <a className="document-rule-card__citation" href={withAppBasePath(citationHref)}>
+        <FileText size={16} aria-hidden="true" />
+        {citationLabel || (language === "cs" ? "Otevřít citovaný úsek" : "Open cited passage")}
+      </a>
+      {rule.verification_status === "proposed" && authorization.can_publish ? (
+        <div className="document-rule-actions">
+          <StratosButton
+            type="button"
+            tone="primary"
+            disabled={busy}
+            onClick={() => void onReview(rule, "accepted")}
+          >
+            <CircleCheck size={17} aria-hidden="true" />
+            {copy.controlledConfirm}
+          </StratosButton>
+          <StratosButton
+            type="button"
+            disabled={busy}
+            onClick={() => void onReview(rule, "rejected")}
+          >
+            <Trash2 size={17} aria-hidden="true" />
+            {copy.controlledReject}
+          </StratosButton>
+        </div>
+      ) : null}
+      <details className="technical-details technical-details--compact">
+        <summary>
+          <Settings2 size={15} aria-hidden="true" />
+          {copy.technicalDetails}
+          <ChevronDown size={15} aria-hidden="true" />
+        </summary>
+        <div className="technical-details__body">
+          <p className="technical-details__line">
+            <strong>Rule key</strong>
+            <span>{rule.proposal.normative_key}</span>
+          </p>
+          <p className="technical-details__line">
+            <strong>Confidence</strong>
+            <span>{Math.round(rule.proposal.confidence * 100)} %</span>
+          </p>
+          <p className="technical-details__line">
+            <strong>Authority rank</strong>
+            <span>{rule.authority_rank}</span>
+          </p>
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function documentOwnerLabel(
+  document: Document,
+  assignments: DocumentAssignment[],
+): string {
+  const primaryOwner = assignments.find(
+    (assignment) =>
+      assignment.active && assignment.role === "owner" && assignment.is_primary,
+  );
+  const owner = primaryOwner ?? assignments.find(
+    (assignment) => assignment.active && assignment.role === "owner",
+  );
+  return owner?.display_label?.trim() || document.owner?.trim() || document.owner_id;
+}
+
+function controlledMemberRoleLabel(
+  role: ControlledDocumentPackageMember["member_role"],
+): string {
+  const labels: Record<ControlledDocumentPackageMember["member_role"], string> = {
+    main_document: "Hlavní dokument",
+    attachment: "Příloha",
+    form: "Formulář",
+    template: "Šablona",
+  };
+  return labels[role];
+}
+
+function controlledRuleCategoryLabel(category: string, language: AklLanguage): string {
+  const labels: Record<string, [string, string]> = {
+    threshold: ["Finanční limit", "Financial threshold"],
+    deadline: ["Lhůta", "Deadline"],
+    obligation: ["Povinnost", "Obligation"],
+    approval: ["Schválení", "Approval"],
+    evidence: ["Požadovaný doklad", "Required evidence"],
+    exception: ["Výjimka", "Exception"],
+  };
+  const pair = labels[category];
+  return pair ? pair[language === "cs" ? 0 : 1] : category;
+}
+
+function formatControlledRuleValue(proposal: ControlledRuleProposal): string {
+  const raw =
+    typeof proposal.value === "number"
+      ? new Intl.NumberFormat("cs-CZ").format(proposal.value)
+      : typeof proposal.value === "string"
+        ? proposal.value
+        : JSON.stringify(proposal.value);
+  return [raw, proposal.currency, proposal.unit].filter(Boolean).join(" ");
 }
 
 function sourceContextSignalsForDocument({

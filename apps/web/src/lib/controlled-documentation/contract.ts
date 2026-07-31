@@ -1,6 +1,7 @@
 import type {
   ControlledDocumentPackageMember,
   ControlledDocumentPackageStatus,
+  Document,
 } from "@/lib/types";
 
 export type ControlledPackageMemberRole = "attachment" | "form" | "template";
@@ -38,4 +39,23 @@ export function controlledPackageMemberRelation(
   if (role === "attachment") return "contains_attachment";
   if (role === "form") return "contains_form";
   return "contains_template";
+}
+
+export function controlledDocumentationDomain(
+  document: Pick<Document, "metadata" | "tags">,
+): string | null {
+  const metadataDomain = document.metadata?.domain;
+  if (typeof metadataDomain === "string" && metadataDomain.trim()) {
+    return metadataDomain.trim();
+  }
+  if (
+    document.tags.some((tag) =>
+      ["public_procurement", "public-procurement", "verejne-zakazky"].includes(
+        tag.trim().toLowerCase(),
+      ),
+    )
+  ) {
+    return "public_procurement";
+  }
+  return null;
 }
