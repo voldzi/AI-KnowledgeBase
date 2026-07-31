@@ -24,9 +24,10 @@ The exact contract and promotion gates are in
 
 Production enables `AKL_INGESTION_RENDITION_ENABLED=true`. Ingestion must report
 `checks.renditions=ready` on `/ready`. Original storage is mounted read-only at
-`/data/object-storage`; generated PDF display copies use the independent
-`document-renditions` volume at `/data/renditions`. A change of LibreOffice,
-fonts or rendering policy must increment
+`/data/object-storage`; generated PDF display copies use the dedicated
+`renditions` subtree of the existing ingestion work volume at
+`/data/ingestion-jobs/renditions`. They do not share the original object
+storage. A change of LibreOffice, fonts or rendering policy must increment
 `AKL_INGESTION_RENDITION_ENGINE_REVISION`, which creates a new cache namespace.
 The cache may be removed and rebuilt without changing Registry records,
 document hashes, ingestion indexes or source citations.
