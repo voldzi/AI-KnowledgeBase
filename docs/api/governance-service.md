@@ -44,6 +44,10 @@ GET  /ready
 
 - Reads registry metadata and authorization-relevant document lists through Registry API.
 - Can query RAG retrieval for control sources.
+- Consumes the closed RAG `RetrievedChunk` contract, including `qdrant` and
+  `opensearch` retrieval methods and citation validity dates. An unknown
+  response shape fails closed as `RAG_RESPONSE_CONTRACT_MISMATCH` (HTTP 502)
+  instead of reaching the UI as an unhandled service exception.
 - Drives governance panels in the document detail UI through the web bridge.
 - For immutable source documents and cited RAG chunks, forwards the exact
   document id, immutable version id, and `sha256:` Information Policy binding

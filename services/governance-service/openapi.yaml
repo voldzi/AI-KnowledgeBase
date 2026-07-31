@@ -87,6 +87,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '502':
+          description: RAG Retrieval Service is unavailable or returned an incompatible
+            closed response contract.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovernanceErrorResponse'
   /api/v1/governance/detect-conflicts:
     post:
       tags:
@@ -190,6 +197,35 @@ components:
       schema:
         type: string
   schemas:
+    GovernanceErrorDetail:
+      properties:
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
+        details:
+          type: object
+          additionalProperties: true
+        trace_id:
+          type: string
+          minLength: 1
+      additionalProperties: false
+      required:
+      - code
+      - message
+      - details
+      - trace_id
+      type: object
+    GovernanceErrorResponse:
+      properties:
+        error:
+          $ref: '#/components/schemas/GovernanceErrorDetail'
+      additionalProperties: false
+      required:
+      - error
+      type: object
     ChangeItem:
       properties:
         change_id:
@@ -276,6 +312,12 @@ components:
           type: string
           minLength: 1
           title: Version Label
+        document_version:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Document Version
         page_number:
           anyOf:
           - type: integer
@@ -297,6 +339,18 @@ components:
           - type: string
           - type: 'null'
           title: Paragraph Number
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
       additionalProperties: false
       type: object
       required:
@@ -1236,6 +1290,8 @@ components:
           - dense
           - sparse
           - hybrid
+          - qdrant
+          - opensearch
           title: Retrieval Method
         text:
           type: string
