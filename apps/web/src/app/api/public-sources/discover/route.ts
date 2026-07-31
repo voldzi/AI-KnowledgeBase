@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
+import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import { discoverPublicSourceCollection } from "@/lib/public-sources/discovery";
 
@@ -9,7 +9,13 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const context = await getServerRequestContextForRequest(request);
+    const context = await getOptionalServerRequestContext(request);
+    if (!context) {
+      return NextResponse.json(
+        { error: { code: "OIDC_SESSION_REQUIRED", message: "Relace vypršela. Přihlaste se prosím znovu a akci opakujte." } },
+        { status: 401 },
+      );
+    }
     const forbidden = requireApiAccess(context, "knowledge_workspace");
     if (forbidden) return forbidden;
     const authorization = await getServerApiClients().registry.getAuthorizationHints(context);
