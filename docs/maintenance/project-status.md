@@ -23,7 +23,7 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
 - Web shell, zakladni UI primitiva a PDF viewer pouzivaji publikovany
   `@voldzi/stratos-ui`; lokalni kod zustava jen u AKB domenovych adapteru a
   routingu.
-- Upload/source opening a native preview jsou rozsirene na bezne Office, PDF, obrazkove, textove a strukturovane typy; stare binarni Office formaty `.doc/.xls/.ppt` zustavaji pro plnohodnotnou ingestion/rendering konverzni backlog.
+- Upload/source opening a native preview jsou rozsirene na bezne Office, PDF, obrazkove, textove a strukturovane typy; Office vcetne `.doc/.xls/.ppt` pouziva serverovou PDF zobrazovaci kopii s read-only pristupem k originalu.
 - Produkcni audit 2026-06-11 potvrdil, ze stavajici importovane dokumenty maji
   jako aktualni zdroj Markdown derivaty; 20 dostupnych raw PDF originalu lze
   inventarizovat dry-runem `tools/import_original_pdf_versions.py`, 3 dokumenty
@@ -38,8 +38,8 @@ AKL uz neni jen MVP pro upload URI a RAG dotaz. Aktualni stav je lokalni enterpr
   Nejde o produkcni stav; aktivace ceka na zdrojove endpointy a spolecnou branu.
 
 Zaklad produkcniho dokumentoveho systemu existuje. Nejvetsi zbyle mezery jsou
-federovane cteni zivych domenovych dat pro Copilota reditele, hlubsi viewer
-fidelity pro komplexni Office/PDF dokumenty, obecne schvalovane AI insighty,
+federovane cteni zivych domenovych dat pro Copilota reditele, hlubsi citacni
+navigace v PDF, obecne schvalovane AI insighty,
 vicekrokove schvalovani, runtime SLA eskalace a presun upload/download kontraktu
 mimo web bridge.
 
@@ -81,8 +81,8 @@ mimo web bridge.
   strukturovanych smluvnich entit.
 - Citace z Employee Chat Portal jsou sjednocene pres sdileny citation viewer. Otevreni citace zobrazi formatovany source-context a odkaz `Otevrit dokument` otevre v novem tabu primo originalni podepsany zdrojovy soubor pres assistant citation redirect, bez ztraty historie dotazu a bez vystaveni interniho Docker hostname. PDF redirect pridava `#page=N` a search fragment z textu citace; presne bbox/text-layer zvyrazneni zustava v AKB native preview.
 - Detail dokumentu ve Viewer tabu umi pripravit podepsane otevreni zdrojoveho objektu pres `/api/documents/{documentId}/versions/{versionId}/source/open`; content endpoint ověřuje HMAC token a cte pouze objekt z povoleneho storage bucketu. Pokud je otevreny source-context s `page_number`, UI umi z podepsane URL nabidnout page-jump odkaz `#page=N`.
-- Viewer ma nativni preview nad podepsanym zdrojem: PDF pres STRATOS-compatible `StratosPdfViewer` s pdf.js renderem citacni strany, textovou vrstvou a bbox overlayem, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, DOCX jako odstavce, XLSX/XLSM jako tabulky, PPTX jako slidy, text jako bezpecny textovy nahled, CSV jako tabulku s aktivnim radkem podle source-location a JSON/XML/HTML/XHTML jako textovy nebo HTML preview podle typu.
-- Upload preflight prijima bezne zdrojove formaty: PDF, DOC/DOCX, XLSX/XLSM, PPTX, Markdown/text/CSV/JSON/XML/HTML/XHTML, RTF a hlavni obrazkove typy PNG/JPEG/GIF/WebP/SVG. Ingestion parsery maji plnou textovou extrakci pro PDF, DOCX, XLSX/XLSM, PPTX, HTML, Markdown/text/CSV/JSON/XML a OCR/image fallback podle profilu; stare binarni `.doc/.xls/.ppt` jsou povolene jen tam, kde je dostupny zdrojovy download, ale pro indexaci vyzaduji konverzni rozsireni.
+- Viewer ma nativni preview nad podepsanym zdrojem: PDF pres STRATOS-compatible `StratosPdfViewer` s pdf.js renderem citacni strany, textovou vrstvou a bbox overlayem, Office pres serverovou PDF zobrazovaci kopii, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, text jako bezpecny textovy nahled, CSV jako tabulku s aktivnim radkem podle source-location a JSON/XML/HTML/XHTML jako textovy nebo HTML preview podle typu.
+- Upload preflight prijima bezne zdrojove formaty: PDF, DOC/DOCX, XLSX/XLSM, PPTX, Markdown/text/CSV/JSON/XML/HTML/XHTML, RTF a hlavni obrazkove typy PNG/JPEG/GIF/WebP/SVG. Ingestion parsery maji plnou textovou extrakci pro PDF, DOCX, XLSX/XLSM, PPTX, HTML, Markdown/text/CSV/JSON/XML a OCR/image fallback podle profilu; stare binarni `.doc/.xls/.ppt` se jiz verne zobrazi, ale pro indexaci stale vyzaduji konverzni rozsireni.
 - Lokální dev/test fixtures pro pozitivni signed source tok jsou v `object-storage/akl-documents/doc_103`, `doc_105`, `doc_106`, `doc_107` a `doc_108`; mock metadata pouzivaji plny SHA-256 a content endpoint hash overuje.
 - `/upload` pouziva browser file preflight, SHA-256, podepsanou upload session a PUT upload do aplikacniho upload endpointu.
 - `/help` obsahuje napovedu pro dokumentove role, upload, viewer/citace, workflow, governance a troubleshooting.
@@ -153,7 +153,7 @@ mimo web bridge.
 
 Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazky.
 
-1. Native viewer/rendering: PDF/image/OCR/DOCX/XLSX/XLSM/PPTX/text/Markdown/CSV/JSON/XML/HTML preview existuje nad signed source kontraktem, citace umi deep-link do vieweru na konkretni chunk a PDF umi render citacni strany s textovou vrstvou a bbox overlayem, ale Office preview je stale extrakcni, ne pixel-perfect. Stare binarni Office soubory `.doc/.xls/.ppt` jeste potrebuji konverzni vrstvu.
+1. Native viewer/rendering: PDF/image/OCR/Office/text/Markdown/CSV/JSON/XML/HTML preview existuje nad signed source kontraktem. Office vcetne starych `.doc/.xls/.ppt` pouziva serverovou PDF zobrazovaci kopii; original je stale autoritativni. Zbyva operatorni diagnostika fontovych substituci a hlubsi citacni navigace.
 2. Governance source fidelity: web bridge predava extrahovany source text pro textove a Office zdroje; PDF a dalsi binarni typy zatim zustavaji metadata fallback, dokud neni k dispozici serverova PDF/OCR textova extrakce.
 3. AI insights: Budget `contract_financial_v1` ma Registry persistence a feedback loop, ale obecne povinnosti, role, lhuty a rizika z dokumentoveho workbenche jeste nejsou napojene na plnohodnotny approval workflow ani sdileny review panel.
 4. Audit event coverage: audit tab existuje, ale produkcni hodnota zavisi na duslednem zapisu udalosti ze vsech sluzeb.
@@ -186,7 +186,7 @@ Tyto mezery jsou aktualni cilovy backlog. Nejsou to legacy kompatibilitni zavazk
 
 ## Next Recommended Implementation Slices
 
-1. Native viewer/rendering: pokrocila Office fidelity, konverze starsich `.doc/.xls/.ppt`, PDF textovy highlight primo ve vieweru a hlubsi citacni navigace nad existujicim signed source open/page-jump kontraktem.
+1. Native viewer/rendering: PDF textovy highlight primo ve vieweru, hlubsi citacni navigace nad existujicim signed source open/page-jump kontraktem a diagnostika fontovych substituci Office kopii.
 2. Governance workflow closure: propojit governance result ID na workflow task closure a audit review.
 3. Insight review UI: postavit sdileny STRATOS review panel pro accept/edit/reject/open citation nad existujici extraction persistence a potom jej rozsirit na obecne document insights.
 4. Workflow approval model: pridat approval steps nad `document_assignments`, sekvencni rozhodovani a quorum pravidla.

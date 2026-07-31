@@ -5667,6 +5667,59 @@
         }
       ]
     },
+    "/api/v1/renditions/pdf": {
+      "post": {
+        "tags": [
+          "Ingestion Service",
+          "renditions"
+        ],
+        "summary": "Render Pdf",
+        "operationId": "ingestion_service_render_pdf_api_v1_renditions_pdf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionServicePdfRenditionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Immutable, cached PDF display rendition.",
+            "content": {
+              "application/json": {
+                "schema": {
+                }
+              },
+              "application/pdf": {
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8090",
+          "description": "Local direct Ingestion Service"
+        },
+        {
+          "url": "http://localhost:8080/ingestion",
+          "description": "Local reverse proxy Ingestion Service"
+        }
+      ]
+    },
     "/api/v1/ingestion/jobs": {
       "get": {
         "tags": [
@@ -11110,6 +11163,47 @@
         ],
         "summary": "GET /api/documents/source/preview",
         "operationId": "web_get_api_documents_source_preview",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/source/rendition": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "GET /api/documents/source/rendition",
+        "operationId": "web_get_api_documents_source_rendition",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -26568,6 +26662,42 @@
           "completed_with_warnings"
         ],
         "title": "JobStatus"
+      },
+      "IngestionServicePdfRenditionRequest": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "source_file_uri": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Source File Uri"
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Source Sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_version_id",
+          "source_file_uri",
+          "source_sha256"
+        ],
+        "title": "PdfRenditionRequest"
       },
       "IngestionServiceReadinessResponse": {
         "properties": {

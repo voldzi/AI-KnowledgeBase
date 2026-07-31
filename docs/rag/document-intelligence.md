@@ -571,4 +571,5 @@ PlantUML, draw.io, OpenAPI, and AsyncAPI.
 - Add shared STRATOS review UI for accept/edit/reject/open citation workflows.
 - Add extraction jobs for roles, deadlines, FAQ, glossary terms, and controls.
 - Add conflict and version comparison workflows.
-- Add exact source rendering for PDF coordinates, Office previews, tables, slides, and OCR bounding boxes.
+- Align citation coordinates with the Office PDF rendition and deepen table,
+  slide, PDF text-layer, and OCR bounding-box navigation.

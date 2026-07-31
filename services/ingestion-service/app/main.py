@@ -43,6 +43,7 @@ from app.schemas import (
     EntitySearchResponse,
     IntelligenceDocumentCoordinate,
     JobStatus,
+    PdfRenditionRequest,
     ReadinessResponse,
     ReindexRequest,
     ReindexResponse,
@@ -56,6 +57,7 @@ from chunkers.logical import LogicalStructureChunker
 from embeddings.client import EmbeddingClient
 from indexers.factory import create_indexer
 from parsers.router import ParserRouter
+from renditions.pdf import PdfRenditionService
 
 logger = logging.getLogger("akl.ingestion")
 ACTOR_SUBJECT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{1,127}$")
@@ -80,6 +82,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.store = JobStore(resolved_settings.job_store_path)
         app.state.registry = RegistryClient(resolved_settings)
         app.state.object_storage = ObjectStorageClient(resolved_settings)
+        app.state.pdf_renditions = PdfRenditionService(
+            resolved_settings, app.state.object_storage
+        )
         app.state.parser_router = ParserRouter(resolved_settings)
         app.state.chunker = LogicalStructureChunker(resolved_settings)
         app.state.embedding_client = EmbeddingClient(resolved_settings)
@@ -158,9 +163,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "job_store": _store(request).readiness(),
             "object_storage": _object_storage(request).readiness(),
             "parser": _parser_readiness(settings),
+            "renditions": _pdf_renditions(request).readiness(),
             "worker": "ready" if settings.process_jobs_inline else "not_ready",
         }
-        ready_status = "ready" if all(value in {"ready", "mock"} for value in checks.values()) else "not_ready"
+        ready_status = "ready" if all(value in {"ready", "mock", "disabled"} for value in checks.values()) else "not_ready"
         if ready_status != "ready":
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return ReadinessResponse(status=ready_status, service=settings.service_name, checks=checks)
@@ -188,6 +194,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "client_id": "svc-akb-web-ingestion",
             "role": "service_akb_web_ingestion",
         }
+
+    @app.post(
+        "/api/v1/renditions/pdf",
+        responses={
+            200: {
+                "content": {"application/pdf": {}},
+                "description": "Immutable, cached PDF display rendition.",
+            }
+        },
+        tags=["renditions"],
+    )
+    async def render_pdf(
+        payload: PdfRenditionRequest,
+        request: Request,
+    ) -> Response:
+        transport_context = _guard_request(request)
+        _require_web_transport(transport_context)
+        if (
+            request.headers.get("X-AKL-On-Behalf-Of") is not None
+            or request.headers.get("X-AKL-Ingestion-Authorization") is not None
+        ):
+            raise IngestionError(
+                "DOCUMENT_RENDITION_DELEGATION_FORBIDDEN",
+                "Rendition transport must use only the exact web service identity",
+                status_code=403,
+            )
+        rendition = await _pdf_renditions(request).render(
+            source_file_uri=payload.source_file_uri,
+            expected_source_sha256=payload.source_sha256,
+        )
+        logger.info(
+            "document_rendition_returned document_id=%s document_version_id=%s "
+            "engine=%s engine_revision=%s cache=%s content_logged=false",
+            payload.document_id,
+            payload.document_version_id,
+            rendition.engine,
+            rendition.engine_revision,
+            rendition.cache_status,
+        )
+        return Response(
+            rendition.content,
+            media_type="application/pdf",
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-AKL-Rendition-Engine": rendition.engine,
+                "X-AKL-Rendition-Engine-Revision": rendition.engine_revision,
+                "X-AKL-Rendition-SHA256": rendition.sha256,
+                "X-AKL-Rendition-Source-SHA256": rendition.source_sha256,
+                "X-AKL-Rendition-Cache": rendition.cache_status,
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @app.post(
         "/api/v1/ingestion/jobs",
@@ -728,6 +786,10 @@ def _embedding_client(request: Request) -> EmbeddingClient:
 
 def _object_storage(request: Request) -> ObjectStorageClient:
     return request.app.state.object_storage
+
+
+def _pdf_renditions(request: Request) -> PdfRenditionService:
+    return request.app.state.pdf_renditions
 
 
 def _indexer(request: Request) -> QdrantIndexer:

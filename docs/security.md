@@ -345,6 +345,15 @@ only at a user-authority boundary such as Registry; it does not forward it to
 Ingestion. Persistent service and storage credentials are never exposed to the
 browser.
 
+Office preview is an authorized derivative, not a second document authority.
+The web bridge reloads the current document version and policy on every open,
+requires a clean content-security result when scanning is mandatory, and sends
+only immutable source coordinates to the rendition endpoint using the exact
+web-to-ingestion service identity. The headless converter reads original
+storage through a read-only mount and writes only to a separate disposable
+rendition cache. Returned bytes must have a valid PDF signature and remain
+private with `no-store`; source content is never written to application logs.
+
 AIIP documents marked with `Tajné` in `metadata.aiip.sensitivity`,
 `metadata.aiip.input_data_sensitivity`, or
 `metadata.aiip.output_data_sensitivity` are rejected by the standard AKB

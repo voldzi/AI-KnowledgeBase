@@ -189,6 +189,12 @@ class Settings:
     ocrmypdf_command: str
     ocr_timeout_seconds: float
     min_extracted_chars_before_ocr: int
+    rendition_enabled: bool
+    rendition_command: str
+    rendition_cache_root: Path
+    rendition_timeout_seconds: float
+    rendition_max_output_bytes: int
+    rendition_engine_revision: str
 
     default_extraction_profile: str
     pdf_engine: str
@@ -287,6 +293,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         colbert_batch_size = int(_get(source, "AKL_RAG_COLBERT_BATCH_SIZE", "8"))
         request_timeout_seconds = float(_get(source, "AKL_INGESTION_REQUEST_TIMEOUT_SECONDS", "30"))
         ocr_timeout_seconds = float(_get(source, "AKL_INGESTION_OCR_TIMEOUT_SECONDS", "300"))
+        rendition_timeout_seconds = float(
+            _get(source, "AKL_INGESTION_RENDITION_TIMEOUT_SECONDS", "120")
+        )
+        rendition_max_output_bytes = int(
+            _get(
+                source,
+                "AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES",
+                str(128 * 1024 * 1024),
+            )
+        )
     except ValueError as exc:
         raise ConfigError("Numeric AKL_INGESTION_* or AKL_QDRANT_* configuration value is invalid") from exc
 
@@ -324,6 +340,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_REQUEST_TIMEOUT_SECONDS must be greater than zero")
     if ocr_timeout_seconds <= 0:
         raise ConfigError("AKL_INGESTION_OCR_TIMEOUT_SECONDS must be greater than zero")
+    if rendition_timeout_seconds <= 0:
+        raise ConfigError(
+            "AKL_INGESTION_RENDITION_TIMEOUT_SECONDS must be greater than zero"
+        )
+    if rendition_max_output_bytes <= 0:
+        raise ConfigError(
+            "AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES must be greater than zero"
+        )
 
     service_token = source.get("AKL_SERVICE_TOKEN") or None
     rag_v2_mode = _get(source, "AKL_RAG_V2_INDEX_MODE", "off").strip().lower()
@@ -385,6 +409,15 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     opensearch_auto_create_index = _parse_bool(
         _get(source, "AKL_OPENSEARCH_AUTO_CREATE_INDEX", "true")
     )
+    rendition_enabled = _parse_bool(
+        _get(source, "AKL_INGESTION_RENDITION_ENABLED", "false")
+    )
+    object_storage_root = Path(
+        _get(source, "AKL_OBJECT_STORAGE_ROOT", "./object-storage")
+    )
+    rendition_cache_root = Path(
+        _get(source, "AKL_INGESTION_RENDITION_CACHE_ROOT", "./rendition-cache")
+    )
     if any(registry_service_credentials) and not all(registry_service_credentials):
         raise ConfigError(
             "Registry service identity requires AKL_REGISTRY_SERVICE_TOKEN_URL, "
@@ -439,6 +472,20 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             )
         if object_storage_mode == "mock":
             raise ConfigError("Production must not use mock object storage")
+        if rendition_enabled:
+            if not rendition_cache_root.is_absolute():
+                raise ConfigError(
+                    "Production AKL_INGESTION_RENDITION_CACHE_ROOT must be absolute"
+                )
+            resolved_storage_root = object_storage_root.resolve()
+            resolved_cache_root = rendition_cache_root.resolve()
+            if (
+                resolved_cache_root == resolved_storage_root
+                or resolved_storage_root in resolved_cache_root.parents
+            ):
+                raise ConfigError(
+                    "Production rendition cache must be outside original object storage"
+                )
         if embedding_mode == "mock":
             raise ConfigError("Production must not use mock embedding client")
         if "mock" in indexer_targets:
@@ -495,7 +542,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             _get(source, "AKL_INGESTION_REGISTRY_MOCK_ACCESS_SCOPE", "role:reader")
         ),
         object_storage_mode=object_storage_mode,
-        object_storage_root=Path(_get(source, "AKL_OBJECT_STORAGE_ROOT", "./object-storage")),
+        object_storage_root=object_storage_root,
         max_file_bytes=max_file_bytes,
         content_security_required=_parse_bool(
             _get(source, "STRATOS_CONTENT_SECURITY_REQUIRED", "false")
@@ -506,6 +553,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ocrmypdf_command=_get(source, "AKL_INGESTION_OCRMYPDF_COMMAND", "ocrmypdf"),
         ocr_timeout_seconds=ocr_timeout_seconds,
         min_extracted_chars_before_ocr=min_extracted_chars_before_ocr,
+        rendition_enabled=rendition_enabled,
+        rendition_command=_get(
+            source, "AKL_INGESTION_RENDITION_COMMAND", "libreoffice"
+        ),
+        rendition_cache_root=rendition_cache_root,
+        rendition_timeout_seconds=rendition_timeout_seconds,
+        rendition_max_output_bytes=rendition_max_output_bytes,
+        rendition_engine_revision=_get(
+            source, "AKL_INGESTION_RENDITION_ENGINE_REVISION", "libreoffice-v1"
+        ),
         default_extraction_profile=_get(source, "AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE", "document_text_v1"),
         pdf_engine=pdf_engine,
         default_parser_profile=_get(source, "AKL_INGESTION_DEFAULT_PARSER_PROFILE", "controlled_document"),

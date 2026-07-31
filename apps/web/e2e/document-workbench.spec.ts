@@ -9,6 +9,37 @@ function appPath(path: string) {
   return `${appBasePath}${normalized}`;
 }
 
+function officeRenditionPdfFixture() {
+  const stream = "BT /F1 18 Tf 72 720 Td (AKB Office rendition fixture) Tj ET";
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`
+  ];
+  const parts = [Buffer.from("%PDF-1.4\n", "ascii")];
+  const offsets = [0];
+  for (const [index, body] of objects.entries()) {
+    offsets[index + 1] = Buffer.concat(parts).length;
+    parts.push(Buffer.from(`${index + 1} 0 obj\n${body}\nendobj\n`, "ascii"));
+  }
+  const xrefOffset = Buffer.concat(parts).length;
+  const xref = [
+    "xref",
+    `0 ${objects.length + 1}`,
+    "0000000000 65535 f ",
+    ...objects.map((_, index) => `${String(offsets[index + 1]).padStart(10, "0")} 00000 n `)
+  ].join("\n");
+  parts.push(
+    Buffer.from(
+      `${xref}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`,
+      "ascii"
+    )
+  );
+  return Buffer.concat(parts);
+}
+
 test.describe("Document Workbench product paths", () => {
   test("DW-01 registry renders and filters controlled documents", async ({ page }) => {
     await page.goto(appPath("/documents"));
@@ -310,30 +341,34 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Citace: Extracted source")).toHaveCount(4);
   });
 
-  test("DW-07 native preview renders DOCX, XLSX and presentation sources", async ({ page }) => {
-    const cases = [
-      {
-        documentId: "doc_105",
-        expected: ["DOCX source fixture title", "DOCX viewer extracts controlled document paragraphs."]
-      },
-      {
-        documentId: "doc_106",
-        expected: ["List: Evidence", "Owner", "Security", "Ready"]
-      },
-      {
-        documentId: "doc_107",
-        expected: ["Slide 1", "Presentation source fixture", "Slide text is extracted for native preview."]
-      }
-    ];
+  test("DW-07 native preview renders faithful DOCX, XLSX and presentation PDF renditions", async ({ page }) => {
+    const renditionRequests: string[] = [];
+    const pdf = officeRenditionPdfFixture();
+    await page.route(`**${appPath("/api/documents/source/rendition")}?*`, async (route) => {
+      renditionRequests.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/pdf",
+        body: pdf
+      });
+    });
 
-    for (const previewCase of cases) {
-      await page.goto(appPath(`/documents/${previewCase.documentId}`));
+    for (const documentId of ["doc_105", "doc_106", "doc_107"]) {
+      await page.goto(appPath(`/documents/${documentId}`));
       await page.getByRole("tab", { name: "Dokument", exact: true }).click();
+      const renditionRequest = page.waitForRequest((request) =>
+        request.url().includes("/api/documents/source/rendition?token=")
+      );
       await page.getByRole("button", { name: "Připravit originál" }).click();
+      await renditionRequest;
       await expect(page.getByText("Originální dokument je připravený k otevření.")).toBeVisible();
-      for (const expectedText of previewCase.expected) {
-        await expect(page.getByText(expectedText).first()).toBeVisible();
-      }
+      await expect(page.getByText("Věrný náhled kancelářského dokumentu")).toBeVisible();
+      await expect(page.locator(".native-preview__pdf-page canvas")).toBeVisible();
+    }
+
+    expect(renditionRequests).toHaveLength(3);
+    for (const requestUrl of renditionRequests) {
+      expect(requestUrl).toContain("/api/documents/source/rendition?token=");
     }
   });
 

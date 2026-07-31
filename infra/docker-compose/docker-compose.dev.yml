@@ -492,6 +492,12 @@ services:
       AKL_INGESTION_OCRMYPDF_COMMAND: ${AKL_INGESTION_OCRMYPDF_COMMAND:-ocrmypdf}
       AKL_INGESTION_OCR_TIMEOUT_SECONDS: ${AKL_INGESTION_OCR_TIMEOUT_SECONDS:-300}
       AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR: ${AKL_INGESTION_MIN_EXTRACTED_CHARS_BEFORE_OCR:-20}
+      AKL_INGESTION_RENDITION_ENABLED: ${AKL_INGESTION_RENDITION_ENABLED:-true}
+      AKL_INGESTION_RENDITION_COMMAND: ${AKL_INGESTION_RENDITION_COMMAND:-libreoffice}
+      AKL_INGESTION_RENDITION_CACHE_ROOT: /data/renditions
+      AKL_INGESTION_RENDITION_TIMEOUT_SECONDS: ${AKL_INGESTION_RENDITION_TIMEOUT_SECONDS:-120}
+      AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES: ${AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES:-134217728}
+      AKL_INGESTION_RENDITION_ENGINE_REVISION: ${AKL_INGESTION_RENDITION_ENGINE_REVISION:-libreoffice-v1}
       AKL_INGESTION_EMBEDDING_CLIENT_MODE: ${AKL_INGESTION_EMBEDDING_CLIENT_MODE:-http}
       AKL_LLM_GATEWAY_BASE_URL: ${AKL_INGESTION_LLM_GATEWAY_BASE_URL:-http://llm-gateway-service:8080/api/v1}
       AKL_LLM_GATEWAY_TOKEN: ${AKL_LLM_GATEWAY_SERVICE_TOKEN:-}
@@ -520,7 +526,8 @@ services:
     ports:
       - "${INGESTION_SERVICE_PORT:-8090}:8090"
     volumes:
-      - ingestion-object-storage:/data/object-storage
+      - ingestion-object-storage:/data/object-storage:ro
+      - document-renditions:/data/renditions
       - ingestion-jobs:/data/ingestion-jobs
     depends_on:
       registry-api:
@@ -771,6 +778,7 @@ volumes:
   loki-data:
   ollama-data:
   ingestion-object-storage:
+  document-renditions:
   ingestion-jobs:
   evaluation-reports:
   evaluation-datasets:
