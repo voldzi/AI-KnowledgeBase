@@ -186,6 +186,10 @@ Full semantics are in
    every cited proposal, accept only exact source-backed rules, and reject
    ambiguous or conflicting proposals. Ordinary RAG users must still be unable
    to retrieve these unpublished versions.
+   If extraction logic or indexed source content changes, use `Navrhnout znovu`.
+   The refreshed result retains gestor decisions for unchanged stable rules and
+   presents newly found rules for separate review; verify the proposal count and
+   citations before publication.
 7. Publish every exact member version and activate the package only after all
    proposals are reviewed and at least one cited rule is verified.
 8. Verify one current-date and one 2023-date query through both chat and

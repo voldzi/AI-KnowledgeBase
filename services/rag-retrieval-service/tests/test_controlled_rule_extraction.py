@@ -149,7 +149,19 @@ def test_controlled_rule_extraction_uses_authoring_authorization(monkeypatch) ->
 
 
 def test_controlled_rule_extraction_scans_complete_exact_source(monkeypatch) -> None:
+    from app.registry_client import MockRegistryClient
     from retrievers.mock import MockHybridRetriever
+
+    stored_payload: dict[str, object] = {}
+    original_store = MockRegistryClient.store_document_extraction
+
+    async def capture_store(self, *, payload, auth_context=None):
+        stored_payload.update(payload)
+        return await original_store(
+            self,
+            payload=payload,
+            auth_context=auth_context,
+        )
 
     async def complete_source(self, *, filters, limit):
         assert filters.document_ids == ["doc_directive"]
@@ -168,6 +180,11 @@ def test_controlled_rule_extraction_scans_complete_exact_source(monkeypatch) -> 
         ]
 
     monkeypatch.setattr(MockHybridRetriever, "list_chunks", complete_source)
+    monkeypatch.setattr(
+        MockRegistryClient,
+        "store_document_extraction",
+        capture_store,
+    )
     with make_client() as client:
         response = client.post(
             "/api/v1/stratos/extractions/controlled-rules/propose",
@@ -199,6 +216,8 @@ def test_controlled_rule_extraction_scans_complete_exact_source(monkeypatch) -> 
     assert limits == {20000, 50000}
     assert body["metadata"]["retrieval_mode"] == "exact_source_scan"
     assert body["metadata"]["source_scan_chunk_count"] == 2
+
+    assert stored_payload["refresh_existing"] is True
 
 
 def test_controlled_rule_extraction_fails_closed_for_denied_source() -> None:

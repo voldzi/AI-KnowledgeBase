@@ -5905,6 +5905,35 @@ def store_document_extraction(
         )
     ).scalar_one_or_none()
     if existing is not None:
+        if payload.refresh_existing:
+            existing.status = payload.status.value
+            existing.classification = payload.classification.value
+            existing.requested_by = payload.requested_by
+            existing.correlation_id = payload.correlation_id or get_correlation_id()
+            existing.result = payload.result
+            existing.missing_information = payload.missing_information
+            existing.warnings = payload.warnings
+            existing.extraction_metadata = payload.metadata
+            add_audit_event(
+                db,
+                actor_id=principal.subject_id,
+                event_type="document_extraction.refreshed",
+                resource_type="document_extraction",
+                resource_id=existing.extraction_id,
+                correlation_id=existing.correlation_id,
+                metadata={
+                    "tenant_id": payload.tenant_id,
+                    "external_system": payload.external_system.value,
+                    "external_ref": payload.external_ref,
+                    "document_id": payload.document_id,
+                    "document_version_id": payload.document_version_id,
+                    "profile": payload.profile,
+                    "profile_version": payload.profile_version,
+                    "status": payload.status.value,
+                },
+            )
+            _commit_or_conflict(db)
+            db.refresh(existing)
         response.status_code = status.HTTP_200_OK
         return DocumentExtractionStoreResponse(extraction=DocumentExtractionResponse.model_validate(existing), created=False)
 

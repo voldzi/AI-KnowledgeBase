@@ -92,6 +92,22 @@ def test_document_extraction_store_is_idempotent_for_same_version(client, admin_
     assert second.json()["extraction"]["warnings"] == []
 
 
+def test_refresh_existing_is_rejected_for_non_controlled_extraction(client, admin_headers):
+    document_id, version_id = _document_with_version(client, admin_headers)
+
+    response = client.post(
+        "/api/v1/document-extractions",
+        headers=admin_headers,
+        json=_extraction_payload(
+            document_id,
+            version_id,
+            refresh_existing=True,
+        ),
+    )
+
+    assert response.status_code == 422, response.text
+
+
 def test_document_extraction_supersedes_previous_version(client, admin_headers):
     document_id, version_one = _document_with_version(client, admin_headers, version_label="1.0")
     version_two = client.post(

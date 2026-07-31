@@ -6002,6 +6002,10 @@ components:
           additionalProperties: true
           type: object
           title: Metadata
+        refresh_existing:
+          type: boolean
+          title: Refresh Existing
+          default: false
       type: object
       required:
       - tenant_id
