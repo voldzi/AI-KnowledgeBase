@@ -245,13 +245,40 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("textbox", { name: "Umístění zdroje" })).toHaveValue(/doc_102/);
   });
 
+  test("DW-06A guided detail stays usable on desktop and mobile", async ({ page }, testInfo) => {
+    for (const viewport of [
+      { name: "desktop", width: 1440, height: 1000 },
+      { name: "mobile", width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto(appPath("/documents/doc_102"));
+      await expect(page.locator(".document-guide__step")).toHaveCount(5);
+      await expect(page.getByText("Doporučený další krok", { exact: false }).first()).toBeVisible();
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }));
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+
+      await page.locator(".help-hint > summary").first().click();
+      const helpBox = await page.locator(".help-hint[open] > div").first().boundingBox();
+      expect(helpBox).not.toBeNull();
+      expect(helpBox!.x).toBeGreaterThanOrEqual(0);
+      expect(helpBox!.x + helpBox!.width).toBeLessThanOrEqual(viewport.width);
+      await page.screenshot({
+        path: testInfo.outputPath(`document-detail-${viewport.name}.png`),
+        fullPage: true,
+      });
+    }
+  });
+
   test("DW-06, DW-07, DW-09, DW-12, DW-13 and DW-19 detail shows viewer, workflow, governance, assignments, audit and locked publish gate", async ({ page }) => {
     await page.goto(appPath("/documents/doc_102"));
 
     await expect(page.getByRole("heading", { name: "Detail dokumentu" })).toBeVisible();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
 
-    await page.getByRole("tab", { name: "Dokument", exact: true }).click();
+    await page.locator(".document-guide__step").filter({ hasText: "Dokument a přílohy" }).click();
     await expect(page.getByRole("heading", { name: "Citace a kontext" })).toBeVisible();
     await expect(page.getByText("Dostupné citované úseky")).toBeVisible();
     await page.getByRole("button", { name: "Připravit originál" }).click();
@@ -264,7 +291,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByLabel("Lokace citace").getByText("Sekce: Cl. 4 / Odst. 2")).toBeVisible();
     await expect(page.getByText("Otevření konkrétní strany citace bude dostupné po zpřístupnění podepsaného zdroje.")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Schválení", exact: true }).click();
+    await page.locator(".document-guide__step").filter({ hasText: "Schválení a zveřejnění" }).click();
     await expect(page.getByRole("heading", { name: "Publikace", exact: true })).toBeVisible();
     await expect(
       page.getByText("Nejdřív dokončete revizi a schválení. Teprve potom lze aktuální verzi publikovat."),
@@ -276,6 +303,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("heading", { name: "Úkoly k dokumentu" })).toBeVisible();
     await expect(page.getByText("Document review required")).toBeVisible();
 
+    await page.locator(".document-guide__step").filter({ hasText: "Kontroly" }).click();
     await page.getByRole("button", { name: "Spustit Kontrola compliance" }).click();
     await expect(page.getByRole("heading", { name: "Výsledek governance kontroly" })).toBeVisible();
     await expect(page.getByText("governance_compliance_mock")).toBeVisible();
@@ -285,7 +313,8 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("link", { name: "Otevřít podklad" }).first()).toBeVisible();
     await expect(page.getByText("WEB_BRIDGE_METADATA_CONTENT_ONLY")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Audit", exact: true }).click();
+    await page.getByText("Další informace", { exact: true }).click();
+    await page.getByRole("button", { name: "Audit", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Auditní stopa dokumentu" })).toBeVisible();
     await expect(page.getByText("document.assignments.updated")).toBeVisible();
     await expect(page.getByText("workflow.task.approve")).toBeVisible();
@@ -296,7 +325,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-07 native preview opens an available signed image source with OCR bbox", async ({ page }) => {
     await page.goto(appPath("/documents/doc_103"));
 
-    await page.getByRole("tab", { name: "Dokument", exact: true }).click();
+    await page.locator(".document-guide__step").filter({ hasText: "Dokument a přílohy" }).click();
     await expect(page.getByRole("heading", { name: "Náhled dokumentu" })).toBeVisible();
     await expect(page.getByText("Nejprve připravte originální dokument v panelu Zdroj.")).toBeVisible();
 
@@ -315,7 +344,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-07 native preview renders Markdown as a structured document", async ({ page }) => {
     await page.goto(appPath("/documents/doc_109"));
 
-    await page.getByRole("tab", { name: "Dokument", exact: true }).click();
+    await page.locator(".document-guide__step").filter({ hasText: "Dokument a přílohy" }).click();
     await page.getByRole("button", { name: "Připravit originál" }).click();
     await expect(page.getByText("Originální dokument je připravený k otevření.")).toBeVisible();
     await expect(page.locator(".native-preview__markdown h1")).toHaveText("Markdown preview fixture");
@@ -331,8 +360,9 @@ test.describe("Document Workbench product paths", () => {
   test("DW-12A insight proposals are generated from source text", async ({ page }) => {
     await page.goto(appPath("/documents/doc_109"));
 
-    await page.getByRole("tab", { name: "Znalosti", exact: true }).click();
-    await expect(page.getByText("Návrhy jsou pracovní podklad pro revizi. Vlastník rozhodne, co se má stát řízenou znalostí.")).toBeVisible();
+    await page.locator(".document-guide__step").filter({ hasText: "Pravidla" }).click();
+    await page.getByText("Analytické návrhy", { exact: true }).click();
+    await expect(page.getByText("Pomocné AI návrhy nejsou samy o sobě závazným pravidlem.")).toBeVisible();
     await page.getByRole("button", { name: "Navrhnout znalosti" }).click();
 
     await expect(page.getByRole("status")).toContainText("Návrhy znalostí byly vytvořené ze zdrojového textu.");
@@ -355,7 +385,7 @@ test.describe("Document Workbench product paths", () => {
 
     for (const documentId of ["doc_105", "doc_106", "doc_107"]) {
       await page.goto(appPath(`/documents/${documentId}`));
-      await page.getByRole("tab", { name: "Dokument", exact: true }).click();
+      await page.locator(".document-guide__step").filter({ hasText: "Dokument a přílohy" }).click();
       const renditionRequest = page.waitForRequest((request) =>
         request.url().includes("/api/documents/source/rendition?token=")
       );
@@ -375,7 +405,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-07 PDF preview renders citation page with bbox metadata", async ({ page }) => {
     await page.goto(appPath("/documents/doc_108"));
 
-    await page.getByRole("tab", { name: "Dokument", exact: true }).click();
+    await page.locator(".document-guide__step").filter({ hasText: "Dokument a přílohy" }).click();
     await page.getByRole("button", { name: "Připravit originál" }).click();
     await expect(page.getByText("Originální dokument je připravený k otevření.")).toBeVisible();
     await page.getByRole("button", { name: "Otevřít citaci chunk_pdf_108" }).click();
