@@ -8,17 +8,21 @@ import {
 
 import type { AssistantToolName, AssistantToolRouteReason } from "./assistant-tool-router";
 
-export const ASSISTANT_QUERY_PLAN_VERSION = "2026-06-23";
+export const ASSISTANT_QUERY_PLAN_VERSION = "2026-07-28";
 export const ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION = "report.v2";
 
 export type AssistantQueryIntent =
   | "document_metadata_report"
   | "document_list"
+  | "document_extract"
   | "grounded_answer"
   | "structured_report"
   | "obligation_table";
 
 export type AssistantPlannedOutputKind = "answer" | "table" | "registry_report";
+export type AssistantExecutionLane = "deterministic_registry" | "lexical_extract" | "generative_rag";
+export type AssistantRetrievalStrategy = "none" | "lexical" | "hybrid";
+export type AssistantModelPolicy = "none" | "adaptive";
 
 export interface AssistantQueryPlan {
   plan_id: string;
@@ -43,6 +47,15 @@ export interface AssistantQueryPlan {
     min_columns: number | null;
     min_informative_cells_per_row: number | null;
     registry_metadata_without_chunk_citations_allowed: boolean;
+  };
+  execution: {
+    lane: AssistantExecutionLane;
+    source_authority: "registry_metadata" | "document_index";
+    operation: "inventory" | "list" | "extract" | "synthesize" | "structured_synthesis";
+    retrieval_strategy: AssistantRetrievalStrategy;
+    generative_model_required: boolean;
+    model_policy: AssistantModelPolicy;
+    fallback_tool: AssistantToolName | null;
   };
   retrieval: {
     registry_report_kind: RegistryReportKind | null;
@@ -91,12 +104,13 @@ export function buildAssistantQueryPlan(input: {
       preferred_export_formats: assistantReportExportFormats(input.reportRequest ?? null)
     },
     quality_gates: {
-      citations_required: input.tool === "rag_document_answer",
+      citations_required: input.tool !== "registry_document_report",
       row_citations_required: input.tool === "rag_document_answer" && input.structuredOutput,
       min_columns: input.structuredOutput || input.tool === "registry_document_report" ? Math.min(Math.max(requiredColumns.length, 2), 8) : null,
       min_informative_cells_per_row: input.structuredOutput ? 2 : null,
       registry_metadata_without_chunk_citations_allowed: input.tool === "registry_document_report"
     },
+    execution: executionFor(input.tool, intent, input.structuredOutput),
     retrieval: {
       registry_report_kind: input.registryReportKind,
       topics: input.registryTopics
@@ -114,6 +128,9 @@ function queryIntentFor(input: {
   if (input.tool === "registry_document_report") {
     return input.registryReportKind === "document_list" ? "document_list" : "document_metadata_report";
   }
+  if (input.tool === "document_search_extract") {
+    return "document_extract";
+  }
   if (input.reportRequest?.template === "obligation_table" || (input.structuredOutput && input.obligationOutput)) {
     return "obligation_table";
   }
@@ -121,6 +138,44 @@ function queryIntentFor(input: {
     return "structured_report";
   }
   return "grounded_answer";
+}
+
+function executionFor(
+  tool: AssistantToolName,
+  intent: AssistantQueryIntent,
+  structuredOutput: boolean
+): AssistantQueryPlan["execution"] {
+  if (tool === "registry_document_report") {
+    return {
+      lane: "deterministic_registry",
+      source_authority: "registry_metadata",
+      operation: intent === "document_list" ? "list" : "inventory",
+      retrieval_strategy: "none",
+      generative_model_required: false,
+      model_policy: "none",
+      fallback_tool: null
+    };
+  }
+  if (tool === "document_search_extract") {
+    return {
+      lane: "lexical_extract",
+      source_authority: "document_index",
+      operation: "extract",
+      retrieval_strategy: "lexical",
+      generative_model_required: false,
+      model_policy: "none",
+      fallback_tool: null
+    };
+  }
+  return {
+    lane: "generative_rag",
+    source_authority: "document_index",
+    operation: structuredOutput ? "structured_synthesis" : "synthesize",
+    retrieval_strategy: "hybrid",
+    generative_model_required: true,
+    model_policy: "adaptive",
+    fallback_tool: null
+  };
 }
 
 function outputKindFor(

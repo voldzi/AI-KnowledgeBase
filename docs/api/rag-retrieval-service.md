@@ -75,6 +75,11 @@ The web BFF may enrich valid artifacts to `artifact_contract_version:
 "report.v2"` with artifact kind, provenance, quality, and row `source_refs`.
 Content artifacts require row-level citations before they are shown or exported.
 
+When `mode=retrieve_only`, the service performs authorized lexical retrieval
+and returns up to three bounded cited excerpts. It does not call embeddings,
+reranking, parent expansion, or a chat model. The normal no-answer and
+authorization policies still apply.
+
 Inventory-style document questions are handled by the AKB web BFF before RAG
 when the question can be answered from Registry API metadata, for example
 counts, lists, or type breakdowns. Those responses include metadata breakdowns

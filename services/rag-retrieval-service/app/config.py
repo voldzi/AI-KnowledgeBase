@@ -177,6 +177,7 @@ class Settings:
     evidence_gate_mode: str
     evidence_min_overlap: float
     evidence_verifier_model: str | None
+    follow_up_mode: str
     colbert_mode: str
     colbert_base_url: str
     colbert_model: str
@@ -373,6 +374,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     parent_retrieval_mode = _get(source, "AKL_RAG_PARENT_RETRIEVAL_MODE", "off").strip().lower()
     adaptive_retrieval_mode = _get(source, "AKL_RAG_ADAPTIVE_RETRIEVAL_MODE", "off").strip().lower()
     evidence_gate_mode = _get(source, "AKL_RAG_EVIDENCE_GATE_MODE", "off").strip().lower()
+    follow_up_mode = _get(source, "AKL_RAG_FOLLOW_UP_MODE", "deterministic").strip().lower()
     colbert_mode = _get(source, "AKL_RAG_COLBERT_MODE", "off").strip().lower()
     v2_retrieval_mode = _get(source, "AKL_RAG_V2_RETRIEVAL_MODE", "off").strip().lower()
     for key, mode in (
@@ -389,6 +391,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_RERANKER_PROVIDER must be one of: llama, tei")
     if reranker_strategy not in RERANKER_STRATEGIES:
         raise ConfigError("AKL_RAG_RERANKER_STRATEGY must be one of: cross_encoder, colbert, cascade")
+    if follow_up_mode not in {"deterministic", "llm"}:
+        raise ConfigError("AKL_RAG_FOLLOW_UP_MODE must be one of: deterministic, llm")
 
     reranker_api_key = _file_preferred_secret_value(
         source,
@@ -550,6 +554,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         evidence_verifier_model=_parse_optional_str(
             _get(source, "AKL_RAG_EVIDENCE_VERIFIER_MODEL", "")
         ),
+        follow_up_mode=follow_up_mode,
         colbert_mode=colbert_mode,
         colbert_base_url=colbert_base_url,
         colbert_model=_get(source, "AKL_RAG_COLBERT_MODEL", "colbert-multilingual-v2"),

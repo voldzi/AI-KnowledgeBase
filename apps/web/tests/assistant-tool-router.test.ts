@@ -132,6 +132,44 @@ describe("assistant tool router", () => {
     assert.equal((context.assistant_query_plan as { intent?: string }).intent, "grounded_answer");
   });
 
+  it("routes exact document lookups to the lexical extract path", () => {
+    const route = routeAssistantMessage("Najdi smlouvu 256-2022-S.", "cs");
+
+    assert.equal(route.tool, "document_search_extract");
+    assert.equal(route.reason, "document_lookup_intent");
+    assert.equal(route.queryPlan.intent, "document_extract");
+    assert.equal(route.queryPlan.execution.lane, "lexical_extract");
+    assert.equal(route.queryPlan.execution.retrieval_strategy, "lexical");
+    assert.equal(route.queryPlan.execution.generative_model_required, false);
+    assert.equal(route.queryPlan.quality_gates.citations_required, true);
+  });
+
+  it("routes citation and source-location questions to lexical extraction", () => {
+    for (const message of [
+      "Cituj čl. 4 odst. 2 zákona 365/2000 Sb.",
+      "Kde je uvedena doba archivace?",
+      "RMO 12/2024"
+    ]) {
+      const route = routeAssistantMessage(message, "cs");
+      assert.equal(route.tool, "document_search_extract", message);
+      assert.equal(route.queryPlan.execution.model_policy, "none", message);
+    }
+  });
+
+  it("keeps synthesis and interpretation on the generative RAG path", () => {
+    for (const message of [
+      "Shrň směrnici RMO 12/2024.",
+      "Porovnej smlouvu 256-2022-S s metodikou.",
+      "Jaké povinnosti vyplývají ze zákona 365/2000 Sb.?",
+      "Co upravuje zákon 365/2000 Sb.?"
+    ]) {
+      const route = routeAssistantMessage(message, "cs");
+      assert.equal(route.tool, "rag_document_answer", message);
+      assert.equal(route.queryPlan.execution.lane, "generative_rag", message);
+      assert.equal(route.queryPlan.execution.generative_model_required, true, message);
+    }
+  });
+
   it("forces clarify-style continuation back to the RAG path", () => {
     const route = routeAssistantMessageForRag("Seznam smluv vytvoř do tabulky.", "cs");
 
@@ -141,5 +179,14 @@ describe("assistant tool router", () => {
     assert.deepEqual(route.registryTopics, []);
     assert.equal(route.queryPlan.intent, "structured_report");
     assert.match(route.answerFormatInstruction ?? "", /markdown tabulku/);
+  });
+
+  it("forces lexical continuation back to generative RAG when clarification is requested", () => {
+    const route = routeAssistantMessageForRag("Najdi smlouvu 256-2022-S.", "cs");
+
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.reason, "rag_grounded_answer");
+    assert.equal(route.queryPlan.execution.retrieval_strategy, "hybrid");
+    assert.equal(route.queryPlan.execution.generative_model_required, true);
   });
 });

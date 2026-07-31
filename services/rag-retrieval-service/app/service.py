@@ -377,6 +377,9 @@ class RagRetrievalService:
             query_id=query_id,
             auth_context=auth_context,
             expand_parent=payload.answer_mode != "retrieve_only",
+            retrieval_strategy=(
+                "lexical" if payload.answer_mode == "retrieve_only" else "hybrid"
+            ),
         )
         decision = self._no_answer_policy.evaluate(
             chunks=run.response.chunks,
@@ -1375,6 +1378,7 @@ class RagRetrievalService:
                 "mode": payload.mode,
                 "response_language": payload.response_language,
                 "message_sha256": hashlib.sha256(payload.message.encode("utf-8")).hexdigest(),
+                **_assistant_query_plan_audit_metadata(payload.context),
             },
             auth_context=auth_context,
         )
@@ -1440,6 +1444,10 @@ class RagRetrievalService:
             ),
             query_id=query_id,
             auth_context=auth_context,
+            expand_parent=payload.mode != "retrieve_only",
+            retrieval_strategy=(
+                "lexical" if payload.mode == "retrieve_only" else "hybrid"
+            ),
         )
         decision = self._no_answer_policy.evaluate(
             chunks=run.response.chunks,
@@ -1570,7 +1578,11 @@ class RagRetrievalService:
                 citations=rag_answer.citations,
                 follow_up_questions=(
                     _fallback_follow_up_questions(payload.message, payload.response_language)
-                    if not payload.persist_conversation
+                    if (
+                        payload.mode == "retrieve_only"
+                        or not payload.persist_conversation
+                        or self._settings.follow_up_mode == "deterministic"
+                    )
                     else await self._follow_up_questions(
                         message=payload.message,
                         answer=rag_answer.answer,
@@ -1592,6 +1604,7 @@ class RagRetrievalService:
                     "citation_count": len(rag_answer.citations),
                     "confidence": rag_answer.confidence,
                     "report_artifact_count": len(report_artifacts),
+                    **_assistant_query_plan_audit_metadata(payload.context),
                 },
                 auth_context=auth_context,
             )
@@ -1688,7 +1701,11 @@ class RagRetrievalService:
         auth_context: AuthContext | None,
     ) -> list[str]:
         fallback = _fallback_follow_up_questions(message, response_language)
-        if not answer.strip() or not citations:
+        if (
+            self._settings.follow_up_mode != "llm"
+            or not answer.strip()
+            or not citations
+        ):
             return fallback
         try:
             raw = await self._llm_client.chat_completion(
@@ -1909,10 +1926,16 @@ class RagRetrievalService:
         query_id: str,
         auth_context: AuthContext | None = None,
         expand_parent: bool = True,
+        retrieval_strategy: str = "hybrid",
     ) -> RetrievalRun:
+        if retrieval_strategy not in {"hybrid", "lexical"}:
+            raise ValueError(f"Unsupported retrieval strategy: {retrieval_strategy}")
+        lexical_only = retrieval_strategy == "lexical"
         retrieval_started = time.perf_counter()
         stage_timings_ms: dict[str, float] = {}
         reranker_diagnostics: dict[str, object] = {}
+        embedding_invoked = False
+        reranker_invoked = False
         stage_started = retrieval_started
         analyzed_plan = analyze_query(
             payload.query,
@@ -1982,22 +2005,24 @@ class RagRetrievalService:
         else:
             stage_timings_ms["exact_resolution"] = 0.0
 
-        if exact_document_id:
+        if exact_document_id or lexical_only:
             query_vector = None
             stage_timings_ms["embedding"] = 0.0
         else:
             stage_started = time.perf_counter()
+            embedding_invoked = True
             query_vectors = await self._llm_client.embeddings(
                 [payload.query],
                 auth_context=auth_context,
             )
             stage_timings_ms["embedding"] = _elapsed_stage_ms(stage_started)
             query_vector = query_vectors[0] if query_vectors else None
-        retrieve = (
-            exact_resolver
-            if exact_document_id and exact_resolver
-            else self._retriever.retrieve
-        )
+        if exact_document_id and exact_resolver:
+            retrieve = exact_resolver
+        elif lexical_only:
+            retrieve = self._retriever.retrieve_lexical
+        else:
+            retrieve = self._retriever.retrieve
         candidate_limit = _candidate_budget(
             analyzed_plan.profile,
             requested_chunks=payload.max_chunks,
@@ -2008,10 +2033,11 @@ class RagRetrievalService:
             "filters": retrieval_filters,
             "limit": candidate_limit,
         }
-        if not exact_document_id:
+        if not exact_document_id and not lexical_only:
             retrieve_kwargs["query_vector"] = query_vector
         if (
-            self._settings.adaptive_retrieval_mode == "enforce"
+            not lexical_only
+            and self._settings.adaptive_retrieval_mode == "enforce"
             and "dense_weight" in inspect.signature(retrieve).parameters
         ):
             retrieve_kwargs["dense_weight"] = plan.dense_weight
@@ -2047,11 +2073,15 @@ class RagRetrievalService:
         if exact_document_id:
             warnings.append("EXACT_DOCUMENT_SCOPE_APPLIED")
         if (
-            self._settings.enable_reranking
-            or self._settings.reranker_mode != "off"
-            or self._settings.colbert_mode != "off"
+            not lexical_only
+            and (
+                self._settings.enable_reranking
+                or self._settings.reranker_mode != "off"
+                or self._settings.colbert_mode != "off"
+            )
         ):
             stage_started = time.perf_counter()
+            reranker_invoked = True
             rerank_budget = _reranker_budget(
                 analyzed_plan.profile,
                 available=len(authorized),
@@ -2094,10 +2124,14 @@ class RagRetrievalService:
         stage_timings_ms["total_retrieval"] = _elapsed_stage_ms(retrieval_started)
         logger.info(
             "rag_retrieval_candidates query_id=%s retriever_mode=%s authz_mode=%s "
+            "retrieval_strategy=%s embedding_invoked=%s reranker_invoked=%s "
             "candidates_before_authz=%s candidates_after_authz=%s applied_filters=%s",
             query_id,
             self._settings.retriever_mode,
             self._settings.authz_mode,
+            retrieval_strategy,
+            embedding_invoked,
+            reranker_invoked,
             len(candidates),
             len(authorized),
             payload.filters.model_dump(),
@@ -2108,11 +2142,16 @@ class RagRetrievalService:
                 chunks=chunks,
                 warnings=list(dict.fromkeys(warnings)),
                 retrieval_profile=(
-                    analyzed_plan.profile
+                    "lexical_extract"
+                    if lexical_only
+                    else analyzed_plan.profile
                     if self._settings.adaptive_retrieval_mode != "off"
                     else plan.profile
                 ),
                 retrieval_diagnostics={
+                    "retrieval_strategy": retrieval_strategy,
+                    "embedding_invoked": embedding_invoked,
+                    "reranker_invoked": reranker_invoked,
                     "candidate_limit": candidate_limit,
                     "dense_weight": plan.dense_weight,
                     "only_valid": retrieval_filters.only_valid,
@@ -3020,21 +3059,74 @@ def _retrieval_only_answer(
     warnings: list[str],
     response_language: ResponseLanguage = "cs",
 ) -> RagAnswer:
-    from answer_composer.composer import _citations
+    from answer_composer.composer import _bounded_source_excerpt, _citations
+
+    selected_chunks = chunks[:3]
+    heading = (
+        "Authorized cited excerpts:"
+        if response_language == "en"
+        else "Nalezené citované výňatky:"
+    )
+    lines = [heading]
+    for chunk in selected_chunks:
+        citation = chunk.citation
+        location_parts: list[str] = []
+        if citation.section_path:
+            location_parts.append(" / ".join(citation.section_path[-2:]))
+        if citation.page_number:
+            location_parts.append(
+                f"page {citation.page_number}"
+                if response_language == "en"
+                else f"strana {citation.page_number}"
+            )
+        location = f" ({', '.join(location_parts)})" if location_parts else ""
+        title = re.sub(r"\s+", " ", citation.document_title).strip()
+        excerpt = _bounded_source_excerpt(chunk.text, max_chars=520)
+        lines.extend(
+            [
+                "",
+                f"- **{title}**{location}",
+                f"  > {excerpt}",
+            ]
+        )
 
     return RagAnswer(
         query_id=query_id,
-        answer=(
-            f"Retrieval-only mode returned {len(chunks)} authorized chunk(s)."
-            if response_language == "en"
-            else f"Režim pouze vyhledávání vrátil {len(chunks)} autorizovaných částí dokumentů."
-        ),
+        answer="\n".join(lines),
         confidence=confidence,  # type: ignore[arg-type]
-        citations=_citations(chunks),
+        citations=_citations(selected_chunks),
         warnings=warnings,
-        used_chunks=[chunk.chunk_id for chunk in chunks],
+        used_chunks=[chunk.chunk_id for chunk in selected_chunks],
         missing_information=None,
     )
+
+
+def _assistant_query_plan_audit_metadata(
+    context: dict[str, object],
+) -> dict[str, object]:
+    plan = context.get("assistant_query_plan")
+    if not isinstance(plan, dict):
+        return {}
+    execution = plan.get("execution")
+    execution_map = execution if isinstance(execution, dict) else {}
+    safe_fields = {
+        "assistant_plan_id": plan.get("plan_id"),
+        "assistant_plan_version": plan.get("version"),
+        "assistant_tool": plan.get("tool"),
+        "assistant_tool_reason": plan.get("reason"),
+        "assistant_execution_lane": execution_map.get("lane"),
+        "assistant_retrieval_strategy": execution_map.get("retrieval_strategy"),
+        "assistant_generative_model_required": execution_map.get(
+            "generative_model_required"
+        ),
+        "assistant_model_policy": execution_map.get("model_policy"),
+    }
+    return {
+        key: value
+        for key, value in safe_fields.items()
+        if isinstance(value, bool)
+        or (isinstance(value, str) and 0 < len(value) <= 120)
+    }
 
 
 def _source_context_from_chunk(chunk: RetrievedChunk) -> SourceContextResponse:

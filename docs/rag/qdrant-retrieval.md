@@ -71,8 +71,10 @@ The retriever preserves these fields in `RetrievedChunk.citation`; answer citati
 
 ## Query Flow
 
-1. RAG creates a query embedding through LLM Gateway.
-2. Dense Qdrant `points/search` runs in parallel with the lexical backend. The
+1. Generative RAG creates a query embedding through LLM Gateway. The
+   `retrieve_only` extraction path skips this step.
+2. For generative RAG, dense Qdrant `points/search` runs in parallel with the
+   lexical backend. `retrieve_only` uses only the lexical backend. The
    current real local profile uses OpenSearch `_search` with BM25 over title,
    section, article, paragraph and chunk text fields. If
    `AKL_RAG_FULLTEXT_MODE=qdrant`, the lexical backend falls back to Qdrant

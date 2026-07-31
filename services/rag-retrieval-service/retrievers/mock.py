@@ -25,6 +25,15 @@ class MockHybridRetriever:
         filters: RagQueryFilters,
         limit: int,
     ) -> list[RetrievedChunk]:
+        return await self.retrieve_lexical(query=query, filters=filters, limit=limit)
+
+    async def retrieve_lexical(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+    ) -> list[RetrievedChunk]:
         results: list[RetrievedChunk] = []
         for chunk in self._chunks:
             if not payload_matches_filters(chunk["payload"], filters):

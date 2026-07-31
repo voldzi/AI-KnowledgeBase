@@ -3,7 +3,7 @@ import type { AssistantChatResponse, ResponseLanguage } from "@/lib/types";
 
 import type { AssistantToolRoute } from "./assistant-tool-router";
 
-const ASSISTANT_CONTRACT_VERSION = "2026-06-23";
+const ASSISTANT_CONTRACT_VERSION = "2026-07-28";
 
 export function normalizeAssistantChatResponse({
   response,
@@ -26,6 +26,10 @@ export function normalizeAssistantChatResponse({
       assistant_query_plan: route.queryPlan,
       assistant_tool: route.tool,
       assistant_tool_reason: route.reason,
+      assistant_execution_lane: route.queryPlan.execution.lane,
+      assistant_retrieval_strategy: route.queryPlan.execution.retrieval_strategy,
+      assistant_generative_model_required: route.queryPlan.execution.generative_model_required,
+      assistant_model_policy: route.queryPlan.execution.model_policy,
       structured_output_requested: route.structuredOutput,
       obligation_output_requested: route.obligationOutput,
       registry_report_kind: route.registryReportKind,
@@ -36,7 +40,10 @@ export function normalizeAssistantChatResponse({
 }
 
 function answerSourceForRoute(route: AssistantToolRoute): string {
-  return route.tool === "registry_document_report" ? "registry_metadata" : "rag_retrieval";
+  if (route.tool === "registry_document_report") {
+    return "registry_metadata";
+  }
+  return route.tool === "document_search_extract" ? "document_search_extract" : "rag_retrieval";
 }
 
 function compactContext(context: Record<string, unknown>): Record<string, unknown> {

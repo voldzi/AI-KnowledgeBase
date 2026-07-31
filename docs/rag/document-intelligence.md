@@ -91,9 +91,22 @@ backend tool. The router is intentionally small and auditable:
 - `registry_document_report` answers document inventory and list questions from
   Registry API metadata, for example "kolik máme dokumentů na téma
   digitalizace" or "seznam smluv do tabulky".
+- `document_search_extract` handles high-confidence lookup, exact citation, and
+  source-location questions such as "najdi smlouvu 256-2022-S", "cituj čl. 4
+  odst. 2" or "kde je uvedena doba archivace". In production it uses the
+  read-only OpenSearch fulltext index, applies the same Registry authorization
+  and Information Policy filtering as RAG, and returns at most three bounded
+  cited excerpts. It does not invoke embeddings, reranking, parent expansion,
+  or a chat model.
 - `rag_document_answer` answers document-content questions through RAG
   Retrieval Service, including structured reports that interpret cited chunks,
   for example "vytvoř sestavu z obsahu smlouvy".
+
+Interpretation, comparison, summaries, obligations, risk assessment, and
+structured synthesis always remain on `rag_document_answer`; the router never
+silently downgrades those requests to lexical excerpts. An empty or denied
+lexical result follows the normal no-answer policy and does not automatically
+escalate to an LLM.
 
 The router does not expose technical tool names in the user-facing answer and
 does not send registry routing metadata into the RAG prompt. For RAG calls it
@@ -122,6 +135,8 @@ It records:
 - registry topics and report kind when Registry metadata is used;
 - quality gates, including whether citations and row-level citations are
   required.
+- the execution lane, authoritative source, operation, retrieval strategy,
+  whether a generative model is required, and the selected model policy.
 
 Every response returned by the AKB web/API bridge carries the same internal
 enterprise envelope in `current_context`:
@@ -130,6 +145,10 @@ enterprise envelope in `current_context`:
 - `assistant_query_plan`
 - `assistant_tool`
 - `assistant_tool_reason`
+- `assistant_execution_lane`
+- `assistant_retrieval_strategy`
+- `assistant_generative_model_required`
+- `assistant_model_policy`
 - `answer_source`
 - `structured_output_requested`
 - `obligation_output_requested`
@@ -142,6 +161,12 @@ artifact and non-duplicated display text after a page reload.
 `POST /api/assistant/clarify` uses the same response normalizer as
 `POST /api/assistant/chat`; clarify turns are always kept on the RAG path
 because they continue an already-started document-content conversation.
+
+Follow-up suggestions are deterministic by default, so a grounded answer does
+not trigger a second LLM completion. `AKL_RAG_FOLLOW_UP_MODE=llm` is an
+explicit opt-in that must be evaluated before production use. Retrieval and
+answer audits record only bounded plan fields, counts, hashes, and execution
+decisions; prompts, answers, document bodies, and tokens remain excluded.
 
 Internal warning flags such as registry/report routing markers are not rendered
 as raw codes in the Employee Chat Portal. The UI either hides purely technical
