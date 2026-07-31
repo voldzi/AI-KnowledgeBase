@@ -102,6 +102,7 @@ odporujícího interního pravidla pro automatickou spotřebu.
 
 ```text
 POST /api/v1/controlled-documentation/packages
+POST /api/v1/controlled-documentation/official-legal-packages
 GET  /api/v1/controlled-documentation/packages?domain=...&valid_on=YYYY-MM-DD
 POST /api/v1/controlled-documentation/packages/{package_id}/status
 GET  /api/v1/controlled-documentation/rules?domain=...&valid_on=YYYY-MM-DD
@@ -112,6 +113,15 @@ POST /api/v1/document-extractions/{extraction_id}/feedback
 
 Webová pracovní plocha je `/controlled-documentation`. Používá stejné API a
 neobsahuje paralelní úložiště pravidel.
+
+Oficiální zákon a prováděcí předpis se do stejného časového modelu převádí
+výhradně z ověřeného zdroje e-Sbírky. Operace
+`official-legal-packages` vytvoří návrhový balíček pro každou uloženou účinnou
+verzi zdroje a zachová všechny historické intervaly. Nejde o automatické
+právní schválení: návrh se nesmí stát platným ani `consumer_eligible`, dokud
+gestor neposoudí citované návrhy pravidel a vydání výslovně nevyhlásí jako
+platné. Tím se odděluje automatické získání přesného znění od lidského
+posouzení právního významu.
 
 Pracovní plocha gestora načítá také schválené, dosud neplatné balíčky pomocí
 `include_inactive=true`. Tento režim vyžaduje `document.update` a slouží pouze
@@ -154,6 +164,13 @@ vyhlášky č. 168/2016 Sb., 169/2016 Sb., 170/2016 Sb., 248/2016 Sb.,
 hash a interval účinnosti každé zachycené verze. Časová znění se přebírají
 jako oficiální informativní PDF přes veřejný katalog stahování e-Sbírky; AKB
 nepoužívá pro obsah znění prohlížečové HTML ani neúplné RDF fragmenty.
+
+Před vytěžením interní směrnice gestor nejprve v pracovní ploše vytvoří
+návrhové časové balíčky zákona a prováděcích předpisů. U každého balíčku
+spustí řízené vytěžení, potvrdí pouze přesně citovaná pravidla a vyhlásí
+ověřené vydání jako platné. Teprve potom stejným postupem kontroluje interní
+směrnici. Vyšší právní autorita pak může v API zastínit odporující interní
+pravidlo, aniž by se ztratila dohledatelná historie směrnice.
 
 Pilot ověřuje:
 

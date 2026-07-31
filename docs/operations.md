@@ -211,6 +211,13 @@ to published versions. A
 schvalovatel may perform the same final publication action when their current
 capability permits it; no separate technical-document role is required.
 
+For `law` and `implementing_regulation`, AKB accepts only a verified e-Sbírka
+source. The legal-package planner creates a draft for each published effective
+source version, including historical intervals. A later source version does
+not erase a non-overlapping historical version. This automation is limited to
+preparing traceable evidence; a gestor still reviews and explicitly validates
+rules before Budget or another application can consume them.
+
 An overdue `review_due_on` produces
 `SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE`. It does not automatically invalidate a
 directive. A conflict warning or a detected higher-authority replacement must

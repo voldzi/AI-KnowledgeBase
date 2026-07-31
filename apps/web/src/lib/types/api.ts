@@ -3,6 +3,8 @@ import type {
   AuthorizationHint,
   ControlledDocumentPackage,
   ControlledDocumentPackageCreate,
+  OfficialLegalPackageCreate,
+  OfficialLegalPackageCreateResponse,
   ControlledDocumentPackageList,
   ControlledDocumentPackageStatus,
   ControlledRuleFeedbackRequest,
@@ -226,6 +228,10 @@ export interface RegistryApiClient {
     request: ControlledDocumentPackageCreate,
     context: ApiRequestContext
   ): Promise<ControlledDocumentPackage>;
+  materializeOfficialLegalPackages(
+    request: OfficialLegalPackageCreate,
+    context: ApiRequestContext
+  ): Promise<OfficialLegalPackageCreateResponse>;
   updateControlledDocumentPackageStatus(
     packageId: string,
     targetStatus: ControlledDocumentPackageStatus,

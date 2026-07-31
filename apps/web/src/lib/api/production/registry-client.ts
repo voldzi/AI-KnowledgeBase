@@ -21,6 +21,8 @@ import type {
   CreateVersionRequest,
   ControlledDocumentPackage,
   ControlledDocumentPackageCreate,
+  OfficialLegalPackageCreate,
+  OfficialLegalPackageCreateResponse,
   ControlledDocumentPackageList,
   ControlledDocumentPackageStatus,
   ControlledRuleFeedbackRequest,
@@ -279,6 +281,18 @@ export class ProductionRegistryClient implements RegistryApiClient {
       "/controlled-documentation/packages",
       request,
       "createControlledDocumentPackage",
+      context
+    );
+  }
+
+  materializeOfficialLegalPackages(
+    request: OfficialLegalPackageCreate,
+    context: ApiRequestContext
+  ): Promise<OfficialLegalPackageCreateResponse> {
+    return this.post<OfficialLegalPackageCreateResponse>(
+      "/controlled-documentation/official-legal-packages",
+      request,
+      "materializeOfficialLegalPackages",
       context
     );
   }

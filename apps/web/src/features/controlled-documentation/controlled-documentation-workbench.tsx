@@ -294,6 +294,22 @@ export function ControlledDocumentationWorkbench({
 
       {authorization.can_update ? <PublishingGuide /> : null}
 
+      {authorization.can_update && authorization.can_publish ? (
+        <OfficialLegalPackagePlanner
+          documents={documents}
+          domain={domain}
+          onCreated={async (created, existing) => {
+            setNotice(
+              created > 0
+                ? `Připraveno ${created} časově platných konceptů právních balíčků${existing > 0 ? `; ${existing} již existovalo` : ""}.`
+                : `Všechny vybrané časové verze už mají právní balíček (${existing}).`,
+            );
+            await refresh();
+          }}
+          onError={setError}
+        />
+      ) : null}
+
       {authorization.can_update ? (
         <PackageComposer
           documents={documents}
@@ -532,6 +548,129 @@ function czechProposalCount(count: number) {
   if (count === 1) return "návrh";
   if (count >= 2 && count <= 4) return "návrhy";
   return "návrhů";
+}
+
+const PUBLIC_PROCUREMENT_LEGAL_SOURCES = [
+  { match: "134/2016", sourceType: "law", packageKey: "public_procurement:law-134-2016" },
+  { match: "172/2016", sourceType: "implementing_regulation", packageKey: "public_procurement:implementing-regulation-172-2016" },
+  { match: "168/2016", sourceType: "implementing_regulation", packageKey: "public_procurement:implementing-regulation-168-2016" },
+  { match: "169/2016", sourceType: "implementing_regulation", packageKey: "public_procurement:implementing-regulation-169-2016" },
+  { match: "170/2016", sourceType: "implementing_regulation", packageKey: "public_procurement:implementing-regulation-170-2016" },
+  { match: "248/2016", sourceType: "implementing_regulation", packageKey: "public_procurement:implementing-regulation-248-2016" },
+  { match: "260/2016", sourceType: "implementing_regulation", packageKey: "public_procurement:implementing-regulation-260-2016" },
+  { match: "345/2023", sourceType: "implementing_regulation", packageKey: "public_procurement:implementing-regulation-345-2023" },
+] as const;
+
+function OfficialLegalPackagePlanner({
+  documents,
+  domain,
+  onCreated,
+  onError,
+}: {
+  documents: Document[];
+  domain: string;
+  onCreated: (created: number, existing: number) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const candidates = useMemo(() => PUBLIC_PROCUREMENT_LEGAL_SOURCES.flatMap((source) =>
+    documents
+      .filter((document) => (
+        document.metadata?.collection_id === "czech-law"
+        && document.title.includes(source.match)
+      ))
+      .map((document) => ({ ...source, document })),
+  ), [documents]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setSelected((current) => {
+      const available = new Set(candidates.map((candidate) => candidate.document.document_id));
+      const retained = current.filter((id) => available.has(id));
+      return retained.length > 0 ? retained : [...available];
+    });
+  }, [candidates]);
+
+  async function materialize() {
+    if (selected.length === 0) {
+      onError("Vyberte alespoň jeden oficiální právní předpis z e-Sbírky.");
+      return;
+    }
+    setBusy(true);
+    onError("");
+    try {
+      const sources = candidates
+        .filter((candidate) => selected.includes(candidate.document.document_id))
+        .map((candidate) => ({
+          document_id: candidate.document.document_id,
+          source_type: candidate.sourceType,
+          package_key: candidate.packageKey,
+        }));
+      const response = await fetch(
+        withAppBasePath("/api/controlled-documentation/official-legal-packages"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain, sources }),
+        },
+      );
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const result = await response.json() as { created?: unknown[]; existing?: unknown[] };
+      await onCreated(result.created?.length ?? 0, result.existing?.length ?? 0);
+    } catch (materializeError) {
+      onError(
+        materializeError instanceof Error
+          ? materializeError.message
+          : "Právní balíčky se nepodařilo připravit.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (domain !== "public_procurement") return null;
+  return (
+    <section className="controlled-docs__legal-planner" aria-labelledby="official-law-planner-title">
+      <div>
+        <p className="eyebrow">Oficiální právní základ</p>
+        <h2 id="official-law-planner-title">Připravit právní balíčky z e-Sbírky</h2>
+        <p>
+          AKB vytvoří pouze koncepty z již uložených, publikovaných a časově určených
+          originálů. Před použitím aplikacemi je nutné každý balíček schválit a pravidla
+          s přesnou citací posoudit.
+        </p>
+      </div>
+      {candidates.length === 0 ? (
+        <p className="controlled-docs__warning"><ShieldCheck aria-hidden="true" />Nejsou dostupné cílové právní předpisy z e-Sbírky. Nejprve je synchronizujte ve Veřejných zdrojích.</p>
+      ) : (
+        <>
+          <div className="controlled-docs__legal-source-list">
+            {candidates.map((candidate) => {
+              const checked = selected.includes(candidate.document.document_id);
+              return (
+                <label key={candidate.document.document_id} className="controlled-docs__legal-source">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => setSelected((current) => event.target.checked
+                      ? [...new Set([...current, candidate.document.document_id])]
+                      : current.filter((id) => id !== candidate.document.document_id))}
+                  />
+                  <span>
+                    <strong>{candidate.document.title}</strong>
+                    <small>{candidate.sourceType === "law" ? "Zákon" : "Prováděcí předpis"} · oficiální e-Sbírka</small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <StratosButton type="button" tone="primary" disabled={busy || selected.length === 0} onClick={() => void materialize()}>
+            <BookOpenCheck aria-hidden="true" /> {busy ? "Připravuji…" : "Připravit koncepty právních balíčků"}
+          </StratosButton>
+        </>
+      )}
+    </section>
+  );
 }
 
 function PackageComposer({

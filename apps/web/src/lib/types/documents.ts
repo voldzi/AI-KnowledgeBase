@@ -448,6 +448,25 @@ export interface ControlledDocumentPackageCreate {
   metadata?: Record<string, unknown>;
 }
 
+export interface OfficialLegalPackageSourceCreate {
+  document_id: string;
+  source_type: Extract<
+    ControlledDocumentSourceType,
+    "law" | "implementing_regulation"
+  >;
+  package_key: string;
+}
+
+export interface OfficialLegalPackageCreate {
+  domain: string;
+  sources: OfficialLegalPackageSourceCreate[];
+}
+
+export interface OfficialLegalPackageCreateResponse {
+  created: ControlledDocumentPackage[];
+  existing: ControlledDocumentPackage[];
+}
+
 export interface ControlledRuleCitation {
   document_id: string;
   document_version_id: string;

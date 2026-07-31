@@ -5895,6 +5895,54 @@ button {
   gap: 12px;
 }
 
+.controlled-docs__legal-planner {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #b9d9d4;
+  background: #f5fbfa;
+}
+
+.controlled-docs__legal-planner h2,
+.controlled-docs__legal-planner p {
+  margin: 0;
+}
+
+.controlled-docs__legal-planner > div {
+  display: grid;
+  gap: 5px;
+}
+
+.controlled-docs__legal-source-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.controlled-docs__legal-source {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #cbdade;
+  background: #fff;
+  cursor: pointer;
+}
+
+.controlled-docs__legal-source input {
+  margin-top: 3px;
+}
+
+.controlled-docs__legal-source span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.controlled-docs__legal-source small {
+  color: #66757d;
+}
+
 .controlled-docs__guide {
   display: grid;
   gap: 14px;
@@ -6107,7 +6155,8 @@ button {
 
   .controlled-docs__metrics,
   .controlled-docs__form-grid,
-  .controlled-docs__guide ol {
+  .controlled-docs__guide ol,
+  .controlled-docs__legal-source-list {
     grid-template-columns: minmax(0, 1fr);
   }
 

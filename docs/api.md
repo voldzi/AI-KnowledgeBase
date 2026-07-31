@@ -147,10 +147,17 @@ rules:
 
 ```text
 POST /api/v1/controlled-documentation/packages
+POST /api/v1/controlled-documentation/official-legal-packages
 GET  /api/v1/controlled-documentation/packages?domain=...&valid_on=YYYY-MM-DD
 POST /api/v1/controlled-documentation/packages/{packageId}/status
 GET  /api/v1/controlled-documentation/rules?domain=...&valid_on=YYYY-MM-DD
 ```
+
+`official-legal-packages` accepts only verified e-Sbírka sources classified as
+`law` or `implementing_regulation`. It creates an idempotent draft package for
+each indexed effective version of every supplied source. It never publishes a
+package or makes a rule usable by another application: the gestor must review
+cited proposals and explicitly make the relevant release valid.
 
 Omitting `valid_on` means the current date. Application consumers must use only
 rules with `consumer_eligible=true`; `shadowed`, `conflict`, unverified and

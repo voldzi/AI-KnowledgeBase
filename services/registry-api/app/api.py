@@ -152,6 +152,8 @@ from app.schemas import (
     AuthzFilterDocumentsResponse,
     Classification,
     ControlledDocumentPackageCreate,
+    OfficialLegalPackageCreate,
+    OfficialLegalPackageCreateResponse,
     ControlledDocumentPackageListResponse,
     ControlledDocumentPackageMemberResponse,
     ControlledDocumentPackageResponse,
@@ -775,6 +777,79 @@ def _get_controlled_document_package(
             "Controlled-document package was not found",
         )
     return package
+
+
+def _require_official_legal_source(
+    document: Document,
+    version: DocumentVersion,
+) -> None:
+    """Limit legal authority to an immutable official e-Sbirka version."""
+    metadata = document.document_metadata or {}
+    canonical_url = metadata.get("canonical_url")
+    if not (
+        _is_official_public_source_document(document)
+        and metadata.get("collection_id") == "czech-law"
+        and isinstance(canonical_url, str)
+        and canonical_url.startswith("https://e-sbirka.gov.cz/")
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_legal_source_not_official",
+            "A legal package must use an official e-Sbirka public-source document",
+        )
+    if version.status != DocumentStatus.valid.value or version.valid_from is None:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_legal_version_not_effective",
+            "A legal package must use a published version with an effective date",
+        )
+
+
+def _temporal_package_overlap(
+    left: ControlledDocumentPackage,
+    right: ControlledDocumentPackage,
+) -> bool:
+    left_end = left.effective_to or date.max
+    right_end = right.effective_to or date.max
+    return left.effective_from <= right_end and right.effective_from <= left_end
+
+
+def _preserve_temporal_controlled_package_history(
+    db: Session,
+    package: ControlledDocumentPackage,
+) -> None:
+    """Close only overlapping validity intervals; old law versions remain queryable."""
+    existing_packages = list(
+        db.execute(
+            select(ControlledDocumentPackage).where(
+                ControlledDocumentPackage.organization_id == package.organization_id,
+                ControlledDocumentPackage.package_key == package.package_key,
+                ControlledDocumentPackage.status == ControlledDocumentPackageStatus.valid.value,
+                ControlledDocumentPackage.package_id != package.package_id,
+            )
+        ).scalars()
+    )
+    for existing in existing_packages:
+        if not _temporal_package_overlap(existing, package):
+            continue
+        if existing.effective_from == package.effective_from:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_document_package_effective_conflict",
+                "Two package releases cannot start on the same effective date",
+            )
+        if existing.effective_from < package.effective_from:
+            existing.effective_to = package.effective_from - timedelta(days=1)
+            continue
+        # A historic release is being activated after a later release already
+        # exists. It must end immediately before that later release starts.
+        package.effective_to = existing.effective_from - timedelta(days=1)
+        if package.effective_to < package.effective_from:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_document_package_effective_conflict",
+                "The package would have an empty effective interval",
+            )
 
 
 def _require_controlled_package_read(
@@ -1911,7 +1986,12 @@ def _publish_version(
         DocumentStatus.cancelled.value,
     }:
         raise problem(status.HTTP_409_CONFLICT, "version_not_publishable", "Version cannot be published")
-    if document.status != DocumentStatus.approved.value:
+    is_historical_official_source = (
+        document.status == DocumentStatus.valid.value
+        and version.valid_to is not None
+        and _is_official_public_source_document(document)
+    )
+    if document.status != DocumentStatus.approved.value and not is_historical_official_source:
         raise problem(
             status.HTTP_409_CONFLICT,
             "publish_requires_approval",
@@ -1931,7 +2011,8 @@ def _publish_version(
 
     version.status = DocumentStatus.valid.value
     version.published_at = utcnow()
-    _transition_document_status(document, DocumentStatus.valid)
+    if document.status != DocumentStatus.valid.value:
+        _transition_document_status(document, DocumentStatus.valid)
     add_audit_event(
         db,
         actor_id=actor_id,
@@ -5277,11 +5358,16 @@ def create_controlled_document_package(
 ) -> ControlledDocumentPackageResponse:
     primary_document = _get_document(db, payload.primary_document_id)
     require_document_action(principal, Action.document_update, primary_document, db)
-    _get_version(
+    primary_version = _get_version(
         db,
         payload.primary_document_id,
         payload.primary_document_version_id,
     )
+    if payload.source_type in {
+        ControlledDocumentSourceType.law,
+        ControlledDocumentSourceType.implementing_regulation,
+    }:
+        _require_official_legal_source(primary_document, primary_version)
     if payload.replaces_package_id is not None:
         replaced = _get_controlled_document_package(db, payload.replaces_package_id)
         if (
@@ -5355,6 +5441,132 @@ def create_controlled_document_package(
 
 
 @router.post(
+    "/controlled-documentation/official-legal-packages",
+    response_model=OfficialLegalPackageCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def materialize_official_legal_packages(
+    payload: OfficialLegalPackageCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> OfficialLegalPackageCreateResponse:
+    """Create idempotent draft releases for all indexed temporal law versions."""
+    created: list[ControlledDocumentPackageResponse] = []
+    existing: list[ControlledDocumentPackageResponse] = []
+    processed_document_ids: set[str] = set()
+    processed_package_keys: set[str] = set()
+    for source in payload.sources:
+        if source.document_id in processed_document_ids:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "controlled_document_legal_source_duplicate",
+                "A legal source may occur only once in one request",
+            )
+        processed_document_ids.add(source.document_id)
+        if source.package_key in processed_package_keys:
+            raise problem(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "controlled_document_legal_package_key_duplicate",
+                "A legal package key may occur only once in one request",
+            )
+        processed_package_keys.add(source.package_key)
+        document = _get_document(db, source.document_id)
+        require_document_action(principal, Action.document_version_publish, document, db)
+        versions = list(
+            db.execute(
+                select(DocumentVersion)
+                .where(
+                    DocumentVersion.document_id == document.document_id,
+                    DocumentVersion.status == DocumentStatus.valid.value,
+                    DocumentVersion.valid_from.is_not(None),
+                )
+                .order_by(DocumentVersion.valid_from, DocumentVersion.created_at)
+            ).scalars()
+        )
+        if not versions:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "controlled_document_legal_versions_missing",
+                "The official legal source has no published effective versions",
+            )
+        for version in versions:
+            _require_official_legal_source(document, version)
+            package = db.execute(
+                select(ControlledDocumentPackage)
+                .where(
+                    ControlledDocumentPackage.organization_id == principal.organization_id,
+                    ControlledDocumentPackage.domain == payload.domain,
+                    ControlledDocumentPackage.primary_document_id == document.document_id,
+                    ControlledDocumentPackage.primary_document_version_id == version.document_version_id,
+                )
+                .options(selectinload(ControlledDocumentPackage.members))
+            ).scalar_one_or_none()
+            if package is not None:
+                if package.source_type != source.source_type.value:
+                    raise problem(
+                        status.HTTP_409_CONFLICT,
+                        "controlled_document_legal_source_type_conflict",
+                        "The official source already has a package with a different legal authority type",
+                    )
+                existing.append(ControlledDocumentPackageResponse.model_validate(package))
+                continue
+            package = ControlledDocumentPackage(
+                package_id=make_id("cdpkg"),
+                organization_id=principal.organization_id,
+                package_key=source.package_key,
+                release_label=version.version_label,
+                title=document.title,
+                domain=payload.domain,
+                source_type=source.source_type.value,
+                authority_rank=CONTROLLED_DOCUMENT_AUTHORITY_RANK[source.source_type.value],
+                status=ControlledDocumentPackageStatus.draft.value,
+                effective_from=version.valid_from,
+                effective_to=version.valid_to,
+                primary_document_id=document.document_id,
+                primary_document_version_id=version.document_version_id,
+                owner_id=principal.subject_id,
+                package_metadata={
+                    "source_model": "official-public-reference-v1",
+                    "collection_id": "czech-law",
+                    "canonical_url": document.document_metadata.get("canonical_url"),
+                    "materialized_from": "official_legal_package_v1",
+                },
+                members=[
+                    ControlledDocumentPackageMember(
+                        member_id=make_id("cdmember"),
+                        member_role="main_document",
+                        relation_type="related_to",
+                        document_id=document.document_id,
+                        document_version_id=version.document_version_id,
+                        label=document.title,
+                        ordinal=0,
+                        member_metadata={"official_legal_source": True},
+                    )
+                ],
+            )
+            db.add(package)
+            db.flush()
+            add_audit_event(
+                db,
+                actor_id=principal.subject_id,
+                event_type="controlled_document.official_legal_package_materialized",
+                resource_type="controlled_document_package",
+                resource_id=package.package_id,
+                correlation_id=get_correlation_id(),
+                metadata={
+                    "domain": package.domain,
+                    "package_key": package.package_key,
+                    "source_type": package.source_type,
+                    "document_id": document.document_id,
+                    "document_version_id": version.document_version_id,
+                },
+            )
+            created.append(ControlledDocumentPackageResponse.model_validate(package))
+    _commit_or_conflict(db)
+    return OfficialLegalPackageCreateResponse(created=created, existing=existing)
+
+
+@router.post(
     "/controlled-documentation/packages/{package_id}/status",
     response_model=ControlledDocumentPackageResponse,
 )
@@ -5415,22 +5627,7 @@ def transition_controlled_document_package(
                     "controlled_document_package_member_not_effective",
                     "A member version ended before the package effective date",
                 )
-        previous_packages = db.execute(
-            select(ControlledDocumentPackage).where(
-                ControlledDocumentPackage.organization_id == package.organization_id,
-                ControlledDocumentPackage.package_key == package.package_key,
-                ControlledDocumentPackage.status
-                == ControlledDocumentPackageStatus.valid.value,
-                ControlledDocumentPackage.package_id != package.package_id,
-            )
-        ).scalars()
-        for previous in previous_packages:
-            previous.status = ControlledDocumentPackageStatus.superseded.value
-            if (
-                previous.effective_to is None
-                or previous.effective_to >= package.effective_from
-            ):
-                previous.effective_to = package.effective_from - timedelta(days=1)
+        _preserve_temporal_controlled_package_history(db, package)
 
     package.status = target
     package.updated_at = utcnow()

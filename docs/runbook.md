@@ -174,15 +174,20 @@ Full semantics are in
    versions of Act No. 134/2016 and its implementing regulations effective
    since 2023 reach `INDEXED`.
 2. Synchronize the three procurement directives from `eu-law`.
-3. Upload `_SM_2023_2_zadavani verejnych zakazek_Verze_1.docx` through the
+3. In **Řízená dokumentace** choose `public_procurement` and use **Připravit
+   právní balíčky z e-Sbírky**. This creates only time-effective law and
+   implementing-regulation drafts. For each draft, run the controlled
+   extraction, review cited proposals and make the release valid before any
+   consumer can use it.
+4. Upload `_SM_2023_2_zadavani verejnych zakazek_Verze_1.docx` through the
    governed intake and publish its immutable version with `valid_from`
    `2023-05-30`.
-4. Upload `_Pr2.docx` and `_Pr3.docx` as separate controlled documents.
-5. Create package key `public_procurement:sm-2-2023`, release `1`, source type
+5. Upload `_Pr2.docx` and `_Pr3.docx` as separate controlled documents.
+6. Create package key `public_procurement:sm-2-2023`, release `1`, source type
    `internal_directive`, annual review cadence, and attach Pr2/Pr3 with stable
    ordinals. Approve the package only after every member is indexed and the
    gestor can read its exact version.
-6. Run `controlled_document_rules_v1` while the package is approved, review
+7. Run `controlled_document_rules_v1` while the package is approved, review
    every cited proposal, accept only exact source-backed rules, and reject
    ambiguous or conflicting proposals. Ordinary RAG users must still be unable
    to retrieve these unpublished versions.
@@ -190,9 +195,9 @@ Full semantics are in
    The refreshed result retains gestor decisions for unchanged stable rules and
    presents newly found rules for separate review; verify the proposal count and
    citations before publication.
-7. Publish every exact member version and activate the package only after all
+8. Publish every exact member version and activate the package only after all
    proposals are reviewed and at least one cited rule is verified.
-8. Verify one current-date and one 2023-date query through both chat and
+9. Verify one current-date and one 2023-date query through both chat and
    `/api/v1/controlled-documentation/rules`. A higher legal rule must shadow a
    conflicting internal rule; a non-conflicting internal procedure may remain
    supplemental.
