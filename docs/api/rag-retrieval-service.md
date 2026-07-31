@@ -189,10 +189,11 @@ outside AKB.
 
 `POST /api/v1/stratos/extractions/controlled-rules/propose` retrieves exact
 authorized package-member versions and proposes cited structured rules under
-profile `controlled_document_rules_v1`, revision `2`. The revision runs
-separate retrieval passes for limits, evidence, responsibilities, approvals,
-prohibitions and exceptions so a single broad query cannot silently omit an
-important rule family. It supports definitions,
+profile `controlled_document_rules_v1`, revision `2`. For this governance
+operation, AKB scans every indexed chunk of the explicitly named and authorized
+source versions instead of relying on relevance-ranked search. The scan is
+bounded; an absent source version or a package exceeding the bound remains
+partial and cannot be published. It supports definitions,
 responsibilities, obligations, prohibitions, permissions, financial limits,
 deadlines, conditions, exceptions, required documents, evidence, approval
 steps and references.

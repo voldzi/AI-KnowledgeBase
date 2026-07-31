@@ -18,6 +18,24 @@ class MockHybridRetriever:
         self._settings = settings
         self._chunks = _mock_chunks()
 
+    async def list_chunks(
+        self,
+        *,
+        filters: RagQueryFilters,
+        limit: int,
+    ) -> list[RetrievedChunk]:
+        results = [
+            _to_retrieved_chunk(
+                chunk,
+                score=1.0,
+                dense_score=0.0,
+                sparse_score=0.0,
+            )
+            for chunk in self._chunks
+            if payload_matches_filters(chunk["payload"], filters)
+        ]
+        return results[:limit]
+
     async def resolve_exact_candidates(
         self,
         *,
