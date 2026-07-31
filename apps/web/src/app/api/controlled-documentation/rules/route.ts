@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
         validOn: request.nextUrl.searchParams.get("valid_on") || undefined,
         approvedOnly:
           request.nextUrl.searchParams.get("approved_only") !== "false",
+        includeInactive:
+          request.nextUrl.searchParams.get("include_inactive") === "true",
       },
     );
     return NextResponse.json(result);

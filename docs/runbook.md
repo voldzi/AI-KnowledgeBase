@@ -180,11 +180,15 @@ Full semantics are in
 4. Upload `_Pr2.docx` and `_Pr3.docx` as separate controlled documents.
 5. Create package key `public_procurement:sm-2-2023`, release `1`, source type
    `internal_directive`, annual review cadence, and attach Pr2/Pr3 with stable
-   ordinals. Approve and activate the package only after every member is
-   indexed and authorized.
-6. Run `controlled_document_rules_v1`, review each cited proposal, accept only
-   exact source-backed rules, and reject ambiguous or conflicting proposals.
-7. Verify one current-date and one 2023-date query through both chat and
+   ordinals. Approve the package only after every member is indexed and the
+   gestor can read its exact version.
+6. Run `controlled_document_rules_v1` while the package is approved, review
+   every cited proposal, accept only exact source-backed rules, and reject
+   ambiguous or conflicting proposals. Ordinary RAG users must still be unable
+   to retrieve these unpublished versions.
+7. Publish every exact member version and activate the package only after all
+   proposals are reviewed and at least one cited rule is verified.
+8. Verify one current-date and one 2023-date query through both chat and
    `/api/v1/controlled-documentation/rules`. A higher legal rule must shadow a
    conflicting internal rule; a non-conflicting internal procedure may remain
    supplemental.

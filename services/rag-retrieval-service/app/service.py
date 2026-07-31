@@ -851,6 +851,7 @@ class RagRetrievalService:
             ),
             query_id=query_id,
             auth_context=auth_context,
+            authorization_action="document.update",
         )
         denied_sources = sorted(
             document_id
@@ -1909,6 +1910,7 @@ class RagRetrievalService:
         query_id: str,
         auth_context: AuthContext | None = None,
         expand_parent: bool = True,
+        authorization_action: str = "rag.query",
     ) -> RetrievalRun:
         retrieval_started = time.perf_counter()
         stage_timings_ms: dict[str, float] = {}
@@ -1967,6 +1969,7 @@ class RagRetrievalService:
                         subject_id=payload.subject_id,
                         chunks=scoped_candidates,
                         auth_context=auth_context,
+                        action=authorization_action,
                     )
                     stage_timings_ms["exact_resolution_authorization"] = _elapsed_stage_ms(
                         stage_started
@@ -2023,6 +2026,7 @@ class RagRetrievalService:
             subject_id=payload.subject_id,
             chunks=candidates,
             auth_context=auth_context,
+            action=authorization_action,
         )
         denied_document_ids.update(candidate_denied_document_ids)
         stage_timings_ms["authorization"] = _elapsed_stage_ms(stage_started)
@@ -2084,6 +2088,7 @@ class RagRetrievalService:
                 subject_id=payload.subject_id,
                 chunks=chunks,
                 auth_context=auth_context,
+                action=authorization_action,
             )
             stage_timings_ms["parent_expansion"] = _elapsed_stage_ms(stage_started)
             warnings.extend(expansion_warnings)
@@ -2180,6 +2185,7 @@ class RagRetrievalService:
         subject_id: str,
         chunks: list[RetrievedChunk],
         auth_context: AuthContext | None,
+        action: str = "rag.query",
     ) -> tuple[list[RetrievedChunk], list[str]]:
         getter = getattr(self._retriever, "get_context_chunks", None)
         if getter is None:
@@ -2200,6 +2206,7 @@ class RagRetrievalService:
             subject_id=subject_id,
             chunks=list(unique_related.values()),
             auth_context=auth_context,
+            action=action,
         )
         authorized_chunk_ids = {item.chunk_id for item in authorized_related}
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { ApiClientError } from "@/lib/types";
+import { controlledDocumentationErrorMessage } from "@/lib/controlled-documentation/presentation";
 
 function isNextRedirectError(error: unknown): boolean {
   const digest =
@@ -24,7 +25,10 @@ export function controlledDocumentationBridgeError(
       {
         error: {
           code: error.code,
-          message: error.message,
+          message: controlledDocumentationErrorMessage(
+            error.code,
+            fallbackMessage,
+          ),
           trace_id: error.traceId,
         },
       },

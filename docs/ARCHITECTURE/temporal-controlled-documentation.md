@@ -113,6 +113,15 @@ POST /api/v1/document-extractions/{extraction_id}/feedback
 Webová pracovní plocha je `/controlled-documentation`. Používá stejné API a
 neobsahuje paralelní úložiště pravidel.
 
+Pracovní plocha gestora načítá také schválené, dosud neplatné balíčky pomocí
+`include_inactive=true`. Tento režim vyžaduje `document.update` a slouží pouze
+k návrhu a lidskému ověření pravidel. Běžný chat a integrační spotřebitelé
+parametr nepoužívají a nadále dostávají pouze platná vydání. Řízená extrakce
+autorizuje přesné konceptní verze akcí `document.update`; obecné RAG čtení
+zůstává omezené na platné verze. Balíček nelze vyhlásit jako platný, dokud
+neexistuje poslední vytěžení, nejsou posouzeny všechny návrhy a alespoň jeden
+citovaný návrh není potvrzený nebo opravený gestorem.
+
 ## Integrace aplikací
 
 Budget ani jiná aplikace nesmí číst databázi AKB. Použije pravidlové API s

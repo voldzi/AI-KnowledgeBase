@@ -234,7 +234,11 @@ export interface RegistryApiClient {
   listControlledRules(
     domain: string,
     context: ApiRequestContext,
-    options?: { validOn?: string; approvedOnly?: boolean }
+    options?: {
+      validOn?: string;
+      approvedOnly?: boolean;
+      includeInactive?: boolean;
+    }
   ): Promise<ControlledRuleList>;
   recordControlledRuleFeedback(
     extractionId: string,

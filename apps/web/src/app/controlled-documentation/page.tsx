@@ -19,6 +19,7 @@ export default async function ControlledDocumentationPage() {
     }),
     clients.registry.listControlledRules("public_procurement", context, {
       approvedOnly: false,
+      includeInactive: authorization.can_update,
     }),
   ]);
 

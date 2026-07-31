@@ -1416,6 +1416,17 @@
               "default": true,
               "title": "Approved Only"
             }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "description": "Includes approved authoring packages for authorized document gestores. Consumer calls must keep the default false value.",
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
           }
         ],
         "responses": {

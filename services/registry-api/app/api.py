@@ -5394,6 +5394,7 @@ def transition_controlled_document_package(
         package.approved_by = principal.subject_id
         package.approved_at = utcnow()
     if target == ControlledDocumentPackageStatus.valid.value:
+        _require_controlled_package_rules_reviewed(db, package)
         for member in package.members:
             version = _get_version(db, member.document_id, member.document_version_id)
             if version.status != DocumentStatus.valid.value:
@@ -5487,6 +5488,75 @@ def _authorized_controlled_packages(
             raise
         authorized.append(package)
     return authorized
+
+
+def _require_controlled_package_rules_reviewed(
+    db: Session,
+    package: ControlledDocumentPackage,
+) -> None:
+    extraction = db.execute(
+        select(DocumentExtraction)
+        .where(
+            DocumentExtraction.entity_type == "controlled_document_package",
+            DocumentExtraction.entity_id == package.package_id,
+            DocumentExtraction.profile == "controlled_document_rules_v1",
+            DocumentExtraction.status.notin_(
+                {
+                    DocumentExtractionStatus.failed.value,
+                    DocumentExtractionStatus.superseded.value,
+                    DocumentExtractionStatus.rejected_in_source_app.value,
+                }
+            ),
+        )
+        .order_by(desc(DocumentExtraction.created_at))
+    ).scalars().first()
+    if extraction is None:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_rules_not_proposed",
+            "Controlled rules must be proposed and reviewed before the package becomes valid",
+        )
+
+    result = ControlledRuleExtractionResult.model_validate(extraction.result)
+    if not result.rules:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_rules_empty",
+            "The latest controlled-rule extraction did not produce a reviewable rule",
+        )
+
+    feedback_items = list(
+        db.execute(
+            select(DocumentExtractionFeedback)
+            .where(DocumentExtractionFeedback.extraction_id == extraction.extraction_id)
+            .order_by(DocumentExtractionFeedback.created_at)
+        ).scalars()
+    )
+    latest_feedback = {item.field: item for item in feedback_items}
+    pending_rule_ids = [
+        rule.rule_id
+        for rule in result.rules
+        if f"rules.{rule.rule_id}" not in latest_feedback
+    ]
+    if pending_rule_ids:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_rules_pending_review",
+            "Every proposed rule must be reviewed before the package becomes valid",
+            {"pending_rule_count": len(pending_rule_ids)},
+        )
+
+    verified_rule_count = sum(
+        1
+        for rule in result.rules
+        if latest_feedback[f"rules.{rule.rule_id}"].decision in {"accepted", "edited"}
+    )
+    if verified_rule_count == 0:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_rules_not_verified",
+            "At least one source-backed rule must be verified before the package becomes valid",
+        )
 
 
 def _controlled_package_freshness_warnings(
@@ -5618,16 +5688,55 @@ def list_controlled_document_rules(
     domain: str = Query(min_length=2, max_length=80),
     valid_on: date | None = Query(default=None),
     approved_only: bool = Query(default=True),
+    include_inactive: bool = Query(default=False),
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> ControlledRuleListResponse:
     applicable_on = valid_on or date.today()
-    packages = _authorized_controlled_packages(
-        db=db,
-        principal=principal,
-        domain=domain,
-        valid_on=applicable_on,
-    )
+    if include_inactive:
+        require_global_action(principal, Action.document_update, db)
+        candidates = list(
+            db.execute(
+                select(ControlledDocumentPackage)
+                .where(
+                    ControlledDocumentPackage.organization_id
+                    == principal.organization_id,
+                    ControlledDocumentPackage.domain == domain,
+                    ControlledDocumentPackage.status.in_(
+                        {
+                            ControlledDocumentPackageStatus.approved.value,
+                            ControlledDocumentPackageStatus.valid.value,
+                        }
+                    ),
+                    ControlledDocumentPackage.effective_from <= applicable_on,
+                    (
+                        ControlledDocumentPackage.effective_to.is_(None)
+                        | (ControlledDocumentPackage.effective_to >= applicable_on)
+                    ),
+                )
+                .options(selectinload(ControlledDocumentPackage.members))
+                .order_by(
+                    desc(ControlledDocumentPackage.authority_rank),
+                    desc(ControlledDocumentPackage.effective_from),
+                )
+            ).scalars()
+        )
+        packages = []
+        for package in candidates:
+            try:
+                _require_controlled_package_read(principal, package, db)
+            except HTTPException as exc:
+                if exc.status_code == status.HTTP_403_FORBIDDEN:
+                    continue
+                raise
+            packages.append(package)
+    else:
+        packages = _authorized_controlled_packages(
+            db=db,
+            principal=principal,
+            domain=domain,
+            valid_on=applicable_on,
+        )
     package_by_id = {package.package_id: package for package in packages}
     if not package_by_id:
         return ControlledRuleListResponse(
@@ -7359,6 +7468,7 @@ def create_intelligence_scope_authorization_proof(
             candidate_hashes={version.policy_hash},
             candidate_versions={version.document_version_id},
             versions_by_id={version.document_version_id: version},
+            action=Action.rag_query.value,
         ):
             omitted_reasons["coordinate_not_current"] += 1
             continue
@@ -8473,6 +8583,7 @@ def filter_authorized_documents(
             candidate_hashes=candidate_hashes,
             candidate_versions=candidate_versions,
             versions_by_id=versions_by_id,
+            action=payload.action.value,
         )
         denied_versions = candidate_versions - allowed_versions
         coordinates_allowed = (
@@ -8510,6 +8621,7 @@ def _allowed_candidate_document_versions(
     candidate_hashes: set[str],
     candidate_versions: set[str],
     versions_by_id: dict[str, DocumentVersion],
+    action: str,
 ) -> set[str]:
     if not _candidate_document_policy_allowed(
         context=context,
@@ -8527,12 +8639,27 @@ def _allowed_candidate_document_versions(
         return candidate_versions.intersection(active_public_versions)
     if context is not None and not context.access_v2:
         return set(candidate_versions)
+    authoring_version_statuses = {
+        DocumentStatus.draft.value,
+        DocumentStatus.review.value,
+        DocumentStatus.approved.value,
+        DocumentStatus.valid.value,
+    }
+    allowed_statuses = (
+        authoring_version_statuses
+        if action
+        in {
+            Action.document_update.value,
+            Action.document_version_publish.value,
+        }
+        else {DocumentStatus.valid.value}
+    )
     return {
         version_id
         for version_id in candidate_versions
         if (version := versions_by_id.get(version_id)) is not None
         and version.document_id == document.document_id
-        and version.status == DocumentStatus.valid.value
+        and version.status in allowed_statuses
         and version.policy_hash == document.policy_hash
     }
 
@@ -8559,6 +8686,7 @@ def _candidate_document_coordinates_allowed(
     candidate_hashes: set[str],
     candidate_versions: set[str],
     versions_by_id: dict[str, DocumentVersion],
+    action: str,
 ) -> bool:
     return bool(
         _allowed_candidate_document_versions(
@@ -8568,6 +8696,7 @@ def _candidate_document_coordinates_allowed(
             candidate_hashes=candidate_hashes,
             candidate_versions=candidate_versions,
             versions_by_id=versions_by_id,
+            action=action,
         )
     )
 

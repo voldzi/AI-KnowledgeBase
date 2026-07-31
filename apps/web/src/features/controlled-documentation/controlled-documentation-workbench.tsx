@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   FilePlus2,
   Files,
+  ListChecks,
   SearchCheck,
   ShieldCheck,
   Sparkles,
@@ -21,6 +22,11 @@ import {
   nextControlledPackageStatus,
   type ControlledPackageMemberRole,
 } from "@/lib/controlled-documentation/contract";
+import {
+  controlledDocumentationErrorMessage,
+  controlledDocumentationWarningLabel,
+  controlledPackageRuleProgress,
+} from "@/lib/controlled-documentation/presentation";
 import type {
   AuthorizationHint,
   ControlledDocumentPackage,
@@ -100,7 +106,7 @@ export function ControlledDocumentationWorkbench({
         ),
         fetch(
           withAppBasePath(
-            `/api/controlled-documentation/rules?domain=${encodeURIComponent(selectedDomain)}&valid_on=${encodeURIComponent(selectedDate)}&approved_only=false`,
+            `/api/controlled-documentation/rules?domain=${encodeURIComponent(selectedDomain)}&valid_on=${encodeURIComponent(selectedDate)}&approved_only=false&include_inactive=${authorization.can_update}`,
           ),
         ),
       ]);
@@ -179,6 +185,11 @@ export function ControlledDocumentationWorkbench({
         `Připraveno ${result.rules?.length ?? 0} citovaných návrhů k ověření gestorem.`,
       );
       await refresh();
+      requestAnimationFrame(() => {
+        document
+          .getElementById("controlled-rules")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (extractionError) {
       setError(
         extractionError instanceof Error
@@ -274,12 +285,14 @@ export function ControlledDocumentationWorkbench({
       </section>
 
       {notice ? <p className="controlled-docs__notice"><CheckCircle2 aria-hidden="true" />{notice}</p> : null}
-      {error ? <p className="controlled-docs__error"><XCircle aria-hidden="true" />{error}</p> : null}
-      {[...packages.warnings, ...rules.warnings].map((warning) => (
+      {error ? <p className="controlled-docs__error" role="alert"><XCircle aria-hidden="true" />{error}</p> : null}
+      {[...new Set([...packages.warnings, ...rules.warnings])].map((warning) => (
         <p className="controlled-docs__warning" key={warning}>
-          <ShieldCheck aria-hidden="true" /> {warningLabel(warning)}
+          <ShieldCheck aria-hidden="true" /> {controlledDocumentationWarningLabel(warning)}
         </p>
       ))}
+
+      {authorization.can_update ? <PublishingGuide /> : null}
 
       {authorization.can_update ? (
         <PackageComposer
@@ -302,7 +315,15 @@ export function ControlledDocumentationWorkbench({
         <div className="controlled-docs__release-list">
           {packages.items.length === 0 ? (
             <p className="muted">Pro zvolenou oblast a datum není dostupný žádný balíček.</p>
-          ) : packages.items.map((item) => (
+          ) : packages.items.map((item) => {
+            const ruleProgress = controlledPackageRuleProgress(
+              item.package_id,
+              rules.rules,
+            );
+            const nextStatus = nextControlledPackageStatus(item.status);
+            const publicationBlocked =
+              item.status === "approved" && !ruleProgress.readyForPublication;
+            return (
             <article className="controlled-docs__release" key={item.package_id}>
               <div className="controlled-docs__release-main">
                 <span className={`status-pill is-${item.status}`}>{statusLabels[item.status]}</span>
@@ -326,13 +347,27 @@ export function ControlledDocumentationWorkbench({
                   </a>
                 ))}
               </div>
+              {item.status === "approved" ? (
+                <PackageWorkflow progress={ruleProgress} />
+              ) : null}
               <div className="controlled-docs__actions">
-                {nextControlledPackageStatus(item.status) && authorization.can_publish ? (
+                {item.status === "approved" && authorization.can_update ? (
                   <StratosButton
                     type="button"
-                    tone="primary"
-                    disabled={busy === item.package_id}
-                    onClick={() => void transition(item, nextControlledPackageStatus(item.status)!)}
+                    tone={ruleProgress.total === 0 ? "primary" : undefined}
+                    disabled={busy === `extract:${item.package_id}`}
+                    onClick={() => void extract(item)}
+                  >
+                    <Sparkles aria-hidden="true" /> {ruleProgress.total === 0 ? "Navrhnout pravidla" : "Navrhnout znovu"}
+                  </StratosButton>
+                ) : null}
+                {nextStatus && authorization.can_publish ? (
+                  <StratosButton
+                    type="button"
+                    tone={item.status === "draft" || !publicationBlocked ? "primary" : undefined}
+                    disabled={busy === item.package_id || publicationBlocked}
+                    title={publicationBlocked ? publicationBlockReason(ruleProgress) : undefined}
+                    onClick={() => void transition(item, nextStatus)}
                   >
                     <CheckCircle2 aria-hidden="true" /> {nextStatusLabel(item.status)}
                   </StratosButton>
@@ -346,7 +381,7 @@ export function ControlledDocumentationWorkbench({
                     <XCircle aria-hidden="true" /> Zrušit {item.status === "draft" ? "koncept" : "vydání"}
                   </StratosButton>
                 ) : null}
-                {["approved", "valid"].includes(item.status) && authorization.can_update ? (
+                {item.status === "valid" && authorization.can_update ? (
                   <StratosButton
                     type="button"
                     disabled={busy === `extract:${item.package_id}`}
@@ -357,20 +392,21 @@ export function ControlledDocumentationWorkbench({
                 ) : null}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
 
-      <section className="panel controlled-docs__rules">
+      <section className="panel controlled-docs__rules" id="controlled-rules">
         <header className="panel__header">
           <div>
-            <p className="eyebrow">Ověřená data pro aplikace</p>
-            <h2>Pravidla a limity</h2>
+            <p className="eyebrow">Kontrola gestorem a data pro aplikace</p>
+            <h2>Návrhy, pravidla a limity</h2>
           </div>
         </header>
         <div className="controlled-docs__rule-list">
           {rules.rules.length === 0 ? (
-            <p className="muted">Z platných balíčků zatím nejsou připravena žádná pravidla.</p>
+            <p className="muted">Zatím nejsou připravena žádná pravidla. U schváleného vydání nejprve zvolte „Navrhnout pravidla“.</p>
           ) : rules.rules.map((rule) => (
             <article className="controlled-docs__rule" key={`${rule.extraction_id}:${rule.proposal.rule_id}`}>
               <div>
@@ -435,6 +471,67 @@ export function ControlledDocumentationWorkbench({
       </section>
     </div>
   );
+}
+
+function PublishingGuide() {
+  const steps = [
+    ["1", "Schválit vydání", "Potvrďte správný hlavní dokument a přílohy."],
+    ["2", "Navrhnout pravidla", "AKB připraví hodnoty s přesnými citacemi."],
+    ["3", "Ověřit návrhy", "Gestor každý návrh potvrdí, opraví nebo odmítne."],
+    ["4", "Vyhlásit jako platné", "Aplikace dostanou jen ověřená pravidla."],
+  ];
+
+  return (
+    <section className="controlled-docs__guide" aria-labelledby="publishing-guide-title">
+      <div className="controlled-docs__guide-heading">
+        <ListChecks aria-hidden="true" />
+        <div>
+          <p className="eyebrow">Doporučený postup</p>
+          <h2 id="publishing-guide-title">Od vydání k platným pravidlům</h2>
+        </div>
+      </div>
+      <ol>
+        {steps.map(([number, title, detail]) => (
+          <li key={number}>
+            <span>{number}</span>
+            <div><strong>{title}</strong><small>{detail}</small></div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+type RuleProgress = ReturnType<typeof controlledPackageRuleProgress>;
+
+function PackageWorkflow({ progress }: { progress: RuleProgress }) {
+  const detail =
+    progress.total === 0
+      ? "Další krok: nechte AKB navrhnout citovaná pravidla z hlavního dokumentu a příloh."
+      : progress.pending > 0
+        ? `Další krok: posuďte ${progress.pending} ${czechProposalCount(progress.pending)} v části Návrhy, pravidla a limity.`
+        : progress.readyForPublication
+          ? "Pravidla jsou ověřena. Po zveřejnění přesných verzí dokumentů lze vydání vyhlásit jako platné."
+          : "Všechny návrhy byly odmítnuty. Před platností spusťte vytěžení znovu a potvrďte alespoň jedno citované pravidlo.";
+
+  return (
+    <div className="controlled-docs__package-workflow">
+      <strong>Aktuální krok</strong>
+      <p>{detail}</p>
+    </div>
+  );
+}
+
+function publicationBlockReason(progress: RuleProgress) {
+  if (progress.total === 0) return "Nejprve navrhněte pravidla.";
+  if (progress.pending > 0) return "Nejprve posuďte všechny návrhy pravidel.";
+  return "Před platností musí být alespoň jedno pravidlo potvrzené.";
+}
+
+function czechProposalCount(count: number) {
+  if (count === 1) return "návrh";
+  if (count >= 2 && count <= 4) return "návrhy";
+  return "návrhů";
 }
 
 function PackageComposer({
@@ -818,15 +915,6 @@ function categoryLabel(category: string) {
   }[category] ?? category;
 }
 
-function warningLabel(warning: string) {
-  return {
-    SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE:
-      "Termín revize zdroje uplynul. Pravidla zůstávají dohledatelná, ale gestor má ověřit jejich aktuálnost.",
-    POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW:
-      "Zdroje obsahují potenciálně rozdílná pravidla. AKB konflikt nerozhodl a vyžaduje posouzení gestora.",
-  }[warning] ?? warning;
-}
-
 function formatRuleValue(value: unknown, currency: string | null, unit: string | null) {
   if (typeof value === "number") {
     return `${new Intl.NumberFormat("cs-CZ").format(value)}${currency ? ` ${currency === "CZK" ? "Kč" : currency}` : unit ? ` ${unit}` : ""}`;
@@ -866,7 +954,10 @@ function slugKey(value: string) {
 
 async function responseMessage(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
-    error?: { message?: string };
+    error?: { code?: string; message?: string };
   } | null;
-  return payload?.error?.message || "Operaci se nepodařilo dokončit.";
+  return controlledDocumentationErrorMessage(
+    payload?.error?.code,
+    payload?.error?.message || "Operaci se nepodařilo dokončit.",
+  );
 }
