@@ -30479,9 +30479,9 @@
           },
           "profile_version": {
             "type": "string",
-            "const": "1",
+            "const": "2",
             "title": "Profile Version",
-            "default": "1"
+            "default": "2"
           },
           "classification_max": {
             "type": "string",
@@ -30560,7 +30560,7 @@
           },
           "profile_version": {
             "type": "string",
-            "const": "1",
+            "const": "2",
             "title": "Profile Version"
           },
           "status": {

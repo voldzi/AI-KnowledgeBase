@@ -5524,6 +5524,13 @@ def _require_controlled_package_rules_reviewed(
             "controlled_document_package_rules_empty",
             "The latest controlled-rule extraction did not produce a reviewable rule",
         )
+    if extraction.profile_version == "2" and extraction.missing_information:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_rule_coverage_incomplete",
+            "Controlled-rule coverage is incomplete and must be resolved before publication",
+            {"missing_information": extraction.missing_information},
+        )
 
     feedback_items = list(
         db.execute(

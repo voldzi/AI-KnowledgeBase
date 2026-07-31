@@ -189,7 +189,10 @@ outside AKB.
 
 `POST /api/v1/stratos/extractions/controlled-rules/propose` retrieves exact
 authorized package-member versions and proposes cited structured rules under
-profile `controlled_document_rules_v1`. It supports definitions,
+profile `controlled_document_rules_v1`, revision `2`. The revision runs
+separate retrieval passes for limits, evidence, responsibilities, approvals,
+prohibitions and exceptions so a single broad query cannot silently omit an
+important rule family. It supports definitions,
 responsibilities, obligations, prohibitions, permissions, financial limits,
 deadlines, conditions, exceptions, required documents, evidence, approval
 steps and references.
@@ -198,6 +201,10 @@ Every proposal includes a stable `normative_key` and exact citation. No
 citations or insufficient authorized evidence produces no invented rule. RAG
 persists the proposal to Registry; acceptance, editing, precedence and
 application-consumer eligibility remain Registry responsibilities.
+
+For multi-document packages, an unexpectedly small cited result is returned
+with `CONTROLLED_RULE_COVERAGE_INSUFFICIENT`. Registry blocks publication of
+revision-2 extractions while `missing_information` is non-empty.
 
 Normal RAG retrieval accepts `valid_on`. Without it, retrieval uses current
 effective versions. An explicit historical date in a supported user query is

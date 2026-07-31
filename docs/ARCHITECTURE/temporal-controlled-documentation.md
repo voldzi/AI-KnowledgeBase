@@ -166,6 +166,12 @@ Pilot ověřuje:
 7. odmítnutí nepotvrzeného nebo rozporného pravidla;
 8. shodný výsledek v chatu a API.
 
+Profil `controlled_document_rules_v1` revize 2 odděluje tematické retrieval
+průchody a publikační brána odmítá neúplné pokrytí. Tabulková záhlaví a obecné
+výkladové definice se nesmí automaticky vydávat za provozní pravidla. Gestor
+stále posuzuje každý návrh a může opravit jeho strukturovanou hodnotu; citace a
+přesná zdrojová verze zůstávají neměnné.
+
 Pilot není automatickým právním posouzením druhu veřejné zakázky. Takové
 rozhodnutí lze zpřístupnit až nad samostatně schváleným rozhodovacím
 kontraktem, úplnou sadou časových fixtures a právní akceptací.

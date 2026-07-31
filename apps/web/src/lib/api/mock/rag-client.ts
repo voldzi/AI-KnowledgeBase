@@ -34,7 +34,7 @@ export class MockRagClient implements RagApiClient {
       package_id: request.package_id,
       domain: request.domain,
       profile: "controlled_document_rules_v1",
-      profile_version: "1",
+      profile_version: "2",
       status: "PARTIAL",
       classification: request.classification_max,
       requested_by: request.subject_id,

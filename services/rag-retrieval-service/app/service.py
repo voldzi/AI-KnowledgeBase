@@ -823,40 +823,50 @@ class RagRetrievalService:
             },
             auth_context=auth_context,
         )
-        run = await self._retrieve_authorized(
-            payload=RetrieveRequest(
-                subject_id=payload.subject_id,
-                query=_controlled_rule_extraction_query(payload),
-                filters=RagQueryFilters(
-                    document_types=[
-                        "directive",
-                        "regulation",
-                        "methodology",
-                        "policy",
-                        "procedure",
-                        "manual",
-                        "attachment",
-                        "other",
-                    ],
-                    document_ids=sorted(
-                        {document_id for document_id, _ in source_coordinates}
-                    ),
-                    document_version_ids=sorted(
-                        {version_id for _, version_id in source_coordinates}
-                    ),
-                    only_valid=False,
-                    classification_max=payload.classification_max,
-                ),
-                max_chunks=payload.max_chunks,
+        retrieval_filters = RagQueryFilters(
+            document_types=[
+                "directive",
+                "regulation",
+                "methodology",
+                "policy",
+                "procedure",
+                "manual",
+                "attachment",
+                "other",
+            ],
+            document_ids=sorted(
+                {document_id for document_id, _ in source_coordinates}
             ),
-            query_id=query_id,
-            auth_context=auth_context,
-            authorization_action="document.update",
+            document_version_ids=sorted(
+                {version_id for _, version_id in source_coordinates}
+            ),
+            only_valid=False,
+            classification_max=payload.classification_max,
+        )
+        extraction_queries = _controlled_rule_extraction_queries(payload)
+        runs = await asyncio.gather(
+            *(
+                self._retrieve_authorized(
+                    payload=RetrieveRequest(
+                        subject_id=payload.subject_id,
+                        query=extraction_query,
+                        filters=retrieval_filters,
+                        max_chunks=payload.max_chunks,
+                    ),
+                    query_id=f"{query_id}:{query_index}",
+                    auth_context=auth_context,
+                    authorization_action="document.update",
+                )
+                for query_index, extraction_query in enumerate(
+                    extraction_queries,
+                    start=1,
+                )
+            )
         )
         denied_sources = sorted(
             document_id
             for document_id, _ in source_coordinates
-            if document_id in run.denied_document_ids
+            if any(document_id in run.denied_document_ids for run in runs)
         )
         if denied_sources:
             await self._audit_extraction(
@@ -877,20 +887,30 @@ class RagRetrievalService:
                 details={"denied_document_ids": denied_sources},
             )
 
-        chunks = [
-            chunk
-            for chunk in run.response.chunks
-            if (
-                chunk.citation.document_id,
-                chunk.citation.document_version_id,
-            )
-            in source_coordinates
-        ]
+        chunks_by_id: dict[str, RetrievedChunk] = {}
+        for run in runs:
+            for chunk in run.response.chunks:
+                if (
+                    chunk.citation.document_id,
+                    chunk.citation.document_version_id,
+                ) not in source_coordinates:
+                    continue
+                current = chunks_by_id.get(chunk.chunk_id)
+                if current is None or chunk.score > current.score:
+                    chunks_by_id[chunk.chunk_id] = chunk
+        chunks = list(chunks_by_id.values())
         rules, missing_information, extraction_warnings = (
             extract_controlled_rule_proposals(chunks=chunks)
         )
+        if len(source_coordinates) > 1 and len(chunks) >= 8 and len(rules) < 5:
+            missing_information.append("CONTROLLED_RULE_COVERAGE_INSUFFICIENT")
         warnings = list(
-            dict.fromkeys([*run.response.warnings, *extraction_warnings])
+            dict.fromkeys(
+                [
+                    *(warning for run in runs for warning in run.response.warnings),
+                    *extraction_warnings,
+                ]
+            )
         )
         if not chunks:
             warnings.append("CONTROLLED_PACKAGE_SOURCES_NOT_RETRIEVED")
@@ -923,6 +943,7 @@ class RagRetrievalService:
                     "query_id": query_id,
                     "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
                     "source_document_count": len(source_coordinates),
+                    "retrieval_query_count": len(extraction_queries),
                     **payload.metadata,
                 },
             },
@@ -2802,15 +2823,34 @@ def _contract_extraction_query(payload: ContractExtractionProposeRequest) -> str
     )
 
 
-def _controlled_rule_extraction_query(
+def _controlled_rule_extraction_queries(
     payload: ControlledRuleExtractionProposeRequest,
-) -> str:
-    return (
-        "Řízený předpis: najdi přesně citovatelné finanční limity, časové lhůty, "
-        "povinnosti, zákazy, oprávnění, odpovědnosti, výjimky a požadované doklady. "
-        "Nevytvářej pravidla, která nejsou výslovně obsažena ve zdrojové verzi. "
-        f"Doména: {payload.domain}. Balíček: {payload.package_id}."
+) -> list[str]:
+    common = (
+        "Řízený předpis, pouze přesné citovatelné pasáže ze zadaných verzí. "
+        f"Doména: {payload.domain}. Balíček: {payload.package_id}. "
     )
+    queries = [
+        common
+        + "Finanční limity, hodnotové kategorie, včetně nebo bez DPH, do, nad, "
+        "od, nejvýše, předpokládaná hodnota a související povinnost či výjimka.",
+        common
+        + "Povinné kroky, průzkum trhu, počet nabídek, obvyklá cena, elektronické "
+        "tržiště, evidence, archivace, doklady, objednávka a smlouva.",
+        common
+        + "Odpovědné role, schvalování, předběžná řídicí kontrola, finanční krytí, "
+        "registr, zveřejnění, lhůty, podpisy a požadované souhlasy.",
+        common
+        + "Zákazy, sankcionovaný dodavatel, dělení nebo sčítání zakázek, opakovaný "
+        "dodavatel, výjimky, odůvodnění a pravidla pro dodatky.",
+    ]
+    if payload.domain != "public_procurement":
+        return [
+            common
+            + "Finanční limity, časové lhůty, povinnosti, zákazy, oprávnění, "
+            "odpovědnosti, výjimky a požadované doklady."
+        ]
+    return queries
 
 
 def _archflow_goal_extraction_query(payload: ArchflowGoalExtractionProposeRequest) -> str:
@@ -2916,7 +2956,7 @@ def _controlled_rule_extraction_response_from_registry(
         package_id=str(result_map.get("package_id", payload.get("entity_id", ""))),
         domain=str(result_map.get("domain", "")),
         profile="controlled_document_rules_v1",
-        profile_version="1",
+        profile_version=str(payload.get("profile_version", "2")),  # type: ignore[arg-type]
         status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
         classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
         requested_by=str(payload.get("requested_by", "")),
