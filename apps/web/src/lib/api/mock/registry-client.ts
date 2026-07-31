@@ -15,6 +15,8 @@ import type {
   CreateVersionRequest,
   ControlledDocumentPackage,
   ControlledDocumentPackageCreate,
+  OfficialLegalPackageCreate,
+  OfficialLegalPackageCreateResponse,
   ControlledDocumentPackageList,
   ControlledDocumentPackageStatus,
   ControlledRuleFeedbackRequest,
@@ -537,6 +539,74 @@ export class MockRegistryClient implements RegistryApiClient {
     };
     this.controlledPackages.set(packageId, item);
     return cloneMock(item);
+  }
+
+  async materializeOfficialLegalPackages(
+    request: OfficialLegalPackageCreate,
+    context: ApiRequestContext,
+  ): Promise<OfficialLegalPackageCreateResponse> {
+    const created: ControlledDocumentPackage[] = [];
+    const existing: ControlledDocumentPackage[] = [];
+    for (const source of request.sources) {
+      const document = this.documents.find((item) => item.document_id === source.document_id);
+      if (!document) {
+        throw new ApiClientError(
+          "Document was not found",
+          404,
+          "DOCUMENT_NOT_FOUND",
+          "mock-trace",
+        );
+      }
+      const versions = this.versions.filter(
+        (version) => version.document_id === source.document_id && version.status === "valid" && version.valid_from,
+      );
+      for (const version of versions) {
+        const current = [...this.controlledPackages.values()].find(
+          (item) => item.domain === request.domain && item.primary_document_version_id === version.document_version_id,
+        );
+        if (current) {
+          existing.push(cloneMock(current));
+          continue;
+        }
+        const packageKey = source.package_key;
+        const packageId = `cdpkg_${createHash("sha256").update(`${packageKey}:${version.document_version_id}`).digest("hex").slice(0, 16)}`;
+        const item: ControlledDocumentPackage = {
+          package_id: packageId,
+          organization_id: context.organizationId ?? "org_stratos",
+          package_key: packageKey,
+          release_label: version.version_label,
+          title: document.title,
+          domain: request.domain,
+          source_type: source.source_type,
+          authority_rank: source.source_type === "law" ? 100 : 90,
+          status: "draft",
+          effective_from: version.valid_from as string,
+          effective_to: version.valid_to,
+          primary_document_id: document.document_id,
+          primary_document_version_id: version.document_version_id,
+          replaces_package_id: null,
+          owner_id: context.subjectId,
+          approved_by: null,
+          approved_at: null,
+          metadata: { source_model: "official-public-reference-v1", collection_id: "czech-law" },
+          members: [{
+            member_id: `cdmember_${packageId}`,
+            member_role: "main_document",
+            relation_type: "related_to",
+            document_id: document.document_id,
+            document_version_id: version.document_version_id,
+            label: document.title,
+            ordinal: 0,
+            metadata: { official_legal_source: true },
+          }],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        this.controlledPackages.set(packageId, item);
+        created.push(cloneMock(item));
+      }
+    }
+    return { created, existing };
   }
 
   async updateControlledDocumentPackageStatus(

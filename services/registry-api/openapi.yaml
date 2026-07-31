@@ -553,6 +553,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/controlled-documentation/official-legal-packages:
+    post:
+      summary: Materialize Official Legal Packages
+      description: Creates idempotent draft packages for all validated, effective e-Sbirka law and implementing-regulation versions. Draft packages remain unavailable to application consumers until a human has reviewed the cited rules and made the package valid.
+      operationId: materialize_official_legal_packages_api_v1_controlled_documentation_official_legal_packages_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfficialLegalPackageCreate'
+      responses:
+        '201':
+          description: Draft packages created or already present
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfficialLegalPackageCreateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/controlled-documentation/packages/{package_id}/status:
     post:
       summary: Transition Controlled Document Package
@@ -5127,6 +5151,63 @@ components:
       - form
       - informative_guidance
       title: ControlledDocumentSourceType
+    OfficialLegalPackageCreate:
+      properties:
+        domain:
+          type: string
+          minLength: 2
+          maxLength: 80
+          pattern: ^[a-z0-9][a-z0-9_:-]+$
+          title: Domain
+        sources:
+          items:
+            $ref: '#/components/schemas/OfficialLegalPackageSourceCreate'
+          type: array
+          minItems: 1
+          maxItems: 32
+          title: Sources
+      additionalProperties: false
+      type: object
+      required:
+      - domain
+      - sources
+      title: OfficialLegalPackageCreate
+    OfficialLegalPackageCreateResponse:
+      properties:
+        created:
+          items:
+            $ref: '#/components/schemas/ControlledDocumentPackageResponse'
+          type: array
+          title: Created
+        existing:
+          items:
+            $ref: '#/components/schemas/ControlledDocumentPackageResponse'
+          type: array
+          title: Existing
+      type: object
+      title: OfficialLegalPackageCreateResponse
+    OfficialLegalPackageSourceCreate:
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          title: Document Id
+        source_type:
+          $ref: '#/components/schemas/ControlledDocumentSourceType'
+        package_key:
+          type: string
+          minLength: 3
+          maxLength: 160
+          pattern: ^[a-z0-9][a-z0-9._:-]+$
+          title: Package Key
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - source_type
+      - package_key
+      title: OfficialLegalPackageSourceCreate
     ControlledRuleCitation:
       properties:
         document_id:

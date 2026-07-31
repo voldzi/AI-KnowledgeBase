@@ -380,6 +380,38 @@ describe("production API clients", () => {
     ]);
   });
 
+  it("creates only Registry-governed draft packages for selected official legal sources", async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetcher: AklFetch = async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({ created: [], existing: [] });
+    };
+    const clients = createApiClients({ env, fetcher });
+
+    await clients.registry.materializeOfficialLegalPackages({
+      domain: "public_procurement",
+      sources: [{
+        document_id: "doc_law_134_2016",
+        source_type: "law",
+        package_key: "public_procurement:law-134-2016",
+      }],
+    }, createMockContext({ accessToken: "actor-token" }));
+
+    assert.equal(
+      calls[0]?.[0],
+      "https://registry.local/api/v1/controlled-documentation/official-legal-packages",
+    );
+    assert.equal(calls[0]?.[1]?.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[0]?.[1]?.body)), {
+      domain: "public_procurement",
+      sources: [{
+        document_id: "doc_law_134_2016",
+        source_type: "law",
+        package_key: "public_procurement:law-134-2016",
+      }],
+    });
+  });
+
   it("keeps controlled-package workflow and member relations aligned with Registry", () => {
     assert.deepEqual(controlledPackageDatesFromVersion("2023-05-30T00:00:00Z"), {
       effectiveFrom: "2023-05-30",

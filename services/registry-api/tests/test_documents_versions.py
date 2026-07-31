@@ -887,6 +887,117 @@ def test_controlled_rule_precedence_prefers_law_and_closes_equal_rank_conflict()
     assert conflicting_law.consumer_eligible is False
 
 
+def test_official_legal_packages_materialize_temporal_versions_and_reject_local_law(
+    client,
+    admin_headers,
+    monkeypatch,
+):
+    local = _create_document(client, admin_headers, title="Lokální předpis")
+    local_version_response = client.post(
+        f"/api/v1/documents/{local['document_id']}/versions",
+        headers=admin_headers,
+        json={
+            "version_label": "1",
+            "valid_from": "2023-01-01",
+            "source_file_uri": "s3://akl-documents/local.docx",
+        },
+    )
+    assert local_version_response.status_code == 201, local_version_response.text
+    local_version = local_version_response.json()
+    rejected = client.post(
+        "/api/v1/controlled-documentation/packages",
+        headers=admin_headers,
+        json={
+            "package_key": "public_procurement:local-law",
+            "release_label": "1",
+            "title": "Lokální předpis",
+            "domain": "public_procurement",
+            "source_type": "law",
+            "effective_from": "2023-01-01",
+            "primary_document_id": local["document_id"],
+            "primary_document_version_id": local_version["document_version_id"],
+            "members": [{
+                "member_role": "main_document",
+                "relation_type": "related_to",
+                "document_id": local["document_id"],
+                "document_version_id": local_version["document_version_id"],
+            }],
+        },
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["error"]["code"] == "controlled_document_legal_source_not_official"
+
+    official = _create_document(
+        client,
+        admin_headers,
+        title="Zákon č. 134/2016 Sb.",
+        document_type="regulation",
+        classification="public",
+        tags=["official-public-reference", "official-source-collection:czech-law"],
+        metadata={
+            "collection_id": "czech-law",
+            "canonical_url": "https://e-sbirka.gov.cz/sb/2016/134",
+        },
+    )
+    versions = []
+    for label, valid_from, valid_to in [
+        ("2023-01-01", "2023-01-01", "2023-12-31"),
+        ("2024-01-01", "2024-01-01", None),
+    ]:
+        response = client.post(
+            f"/api/v1/documents/{official['document_id']}/versions",
+            headers=admin_headers,
+            json={
+                "version_label": label,
+                "valid_from": valid_from,
+                "valid_to": valid_to,
+                "source_file_uri": f"s3://akl-documents/{label}.pdf",
+            },
+        )
+        assert response.status_code == 201, response.text
+        versions.append(response.json())
+    for state in ["review", "approved"]:
+        assert client.patch(
+            f"/api/v1/documents/{official['document_id']}",
+            headers=admin_headers,
+            json={"status": state},
+        ).status_code == 200
+    monkeypatch.setattr(api_module, "_is_official_public_source_document", lambda _document: True)
+    for version in reversed(versions):
+        assert client.post(
+            f"/api/v1/documents/{official['document_id']}/versions/{version['document_version_id']}/publish",
+            headers=admin_headers,
+        ).status_code == 200
+
+    payload = {
+        "domain": "public_procurement",
+        "sources": [{
+            "document_id": official["document_id"],
+            "source_type": "law",
+            "package_key": "public_procurement:law-134-2016",
+        }],
+    }
+    created = client.post(
+        "/api/v1/controlled-documentation/official-legal-packages",
+        headers=admin_headers,
+        json=payload,
+    )
+    assert created.status_code == 201, created.text
+    assert len(created.json()["created"]) == 2
+    assert {item["effective_from"] for item in created.json()["created"]} == {
+        "2023-01-01",
+        "2024-01-01",
+    }
+    idempotent = client.post(
+        "/api/v1/controlled-documentation/official-legal-packages",
+        headers=admin_headers,
+        json=payload,
+    )
+    assert idempotent.status_code == 201, idempotent.text
+    assert idempotent.json()["created"] == []
+    assert len(idempotent.json()["existing"]) == 2
+
+
 def test_analyst_case_saved_query_and_evidence_are_persisted(client, admin_headers, reader_headers):
     document = _create_document(client, admin_headers, title="Směrnice RMO 12/2024 pro řízení AI")
 

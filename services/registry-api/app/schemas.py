@@ -1250,6 +1250,42 @@ class ControlledDocumentPackageCreate(BaseModel):
         return self
 
 
+class OfficialLegalPackageSourceCreate(BaseModel):
+    """One official e-Sbirka document to materialize as temporal packages."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    source_type: ControlledDocumentSourceType
+    package_key: str = Field(
+        min_length=3,
+        max_length=160,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+
+    @model_validator(mode="after")
+    def validate_source_type(self) -> "OfficialLegalPackageSourceCreate":
+        if self.source_type not in {
+            ControlledDocumentSourceType.law,
+            ControlledDocumentSourceType.implementing_regulation,
+        }:
+            raise ValueError("Official legal packages require law or implementing_regulation")
+        return self
+
+
+class OfficialLegalPackageCreate(BaseModel):
+    """Creates draft packages for every published temporal version of a source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    domain: str = Field(
+        min_length=2,
+        max_length=80,
+        pattern=r"^[a-z0-9][a-z0-9_:-]+$",
+    )
+    sources: list[OfficialLegalPackageSourceCreate] = Field(min_length=1, max_length=32)
+
+
 class ControlledDocumentPackageStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1300,6 +1336,13 @@ class ControlledDocumentPackageResponse(BaseModel):
     members: list[ControlledDocumentPackageMemberResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+class OfficialLegalPackageCreateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    created: list[ControlledDocumentPackageResponse] = Field(default_factory=list)
+    existing: list[ControlledDocumentPackageResponse] = Field(default_factory=list)
 
 
 class ControlledDocumentPackageListResponse(BaseModel):
