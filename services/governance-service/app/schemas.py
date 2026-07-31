@@ -31,6 +31,21 @@ ConflictType = Literal["approval_owner_mismatch", "deadline_mismatch", "normativ
 AlertSeverity = Literal["info", "warning", "critical"]
 
 
+class GovernanceErrorDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    details: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str = Field(min_length=1)
+
+
+class GovernanceErrorResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    error: GovernanceErrorDetail
+
+
 class Citation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -63,10 +78,13 @@ class ChunkCitation(BaseModel):
     document_version_id: str = Field(min_length=1)
     document_title: str = Field(min_length=1)
     version_label: str = Field(min_length=1)
+    document_version: str | None = Field(default=None, min_length=1)
     page_number: int | None = Field(default=None, ge=1)
     section_path: list[str] = Field(default_factory=list)
     article_number: str | None = None
     paragraph_number: str | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
 
 
 class RetrievedChunk(BaseModel):
@@ -74,7 +92,7 @@ class RetrievedChunk(BaseModel):
 
     chunk_id: str = Field(min_length=1)
     score: float = Field(ge=0, le=1)
-    retrieval_method: Literal["dense", "sparse", "hybrid"]
+    retrieval_method: Literal["dense", "sparse", "hybrid", "qdrant", "opensearch"]
     text: str = Field(min_length=1, max_length=200000)
     citation: ChunkCitation
     metadata: dict[str, Any] = Field(default_factory=dict)

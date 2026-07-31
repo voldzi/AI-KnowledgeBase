@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import logging
 from typing import Protocol
 
+from pydantic import ValidationError
+
 from app.config import Settings
+from app.errors import GovernanceError
 from app.http_utils import request_json_with_retry
 from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 
 class RagClient(Protocol):
@@ -68,7 +74,25 @@ class HttpRagClient:
             },
             bearer_token=actor_bearer_token,
         )
-        return [RetrievedChunk.model_validate(chunk) for chunk in payload.get("chunks", [])]
+        try:
+            chunks = payload["chunks"]
+            if not isinstance(chunks, list):
+                raise TypeError("chunks must be a list")
+            return [RetrievedChunk.model_validate(chunk) for chunk in chunks]
+        except (KeyError, TypeError, ValidationError) as exc:
+            logger.warning(
+                "rag_response_contract_mismatch reason=%s content_logged=false",
+                exc.__class__.__name__,
+            )
+            raise GovernanceError(
+                "RAG_RESPONSE_CONTRACT_MISMATCH",
+                "RAG Retrieval Service returned an incompatible response.",
+                status_code=502,
+                details={
+                    "dependency": "rag-retrieval-service",
+                    "reason": "response_contract_mismatch",
+                },
+            ) from exc
 
     async def readiness(self) -> str:
         try:

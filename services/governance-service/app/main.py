@@ -27,6 +27,7 @@ from app.schemas import (
     ConflictDetectionResponse,
     GenerateKbArticleRequest,
     GenerateKbArticleResponse,
+    GovernanceErrorResponse,
     HealthResponse,
     ReadinessResponse,
     ValidityAlertsResponse,
@@ -126,6 +127,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "/api/v1/governance/check-compliance",
         response_model=ComplianceCheckResponse,
         tags=["governance"],
+        responses={
+            502: {
+                "description": (
+                    "RAG Retrieval Service is unavailable or returned an "
+                    "incompatible closed response contract."
+                ),
+                "model": GovernanceErrorResponse,
+            }
+        },
     )
     async def check_compliance(payload: ComplianceCheckRequest, request: Request) -> ComplianceCheckResponse:
         _guard_request(request)

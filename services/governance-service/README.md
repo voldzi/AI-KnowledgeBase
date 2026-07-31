@@ -41,6 +41,12 @@ OpenAPI kontrakt je v `openapi.yaml` a runtime OpenAPI je dostupne jako `/openap
 
 `check-compliance` pouzije predane `control_sources`, nebo si je vyzada z RAG Retrieval Service pres `/api/v1/rag/retrieve`. Navrh dokumentu se kontroluje proti pravidlum pro gestora, platnost, vyjimky a trasovatelnost.
 
+Governance spotrebovava uzavreny `RetrievedChunk` kontrakt publikovany RAG
+Retrieval Service, vcetne backendovych metod `qdrant` a `opensearch` a casovych
+udaju citace. Neznama metoda nebo pole nejsou ignorovana. Kontraktni drift
+selze uzavrene jako HTTP `502` s kodem `RAG_RESPONSE_CONTRACT_MISMATCH`; obsah
+chunku ani validacni vstupy se pritom neloguji.
+
 `detect-conflicts` hleda typicke rozpory mezi autorizovanymi zdroji: jiny schvalovatel, jina lhuta nebo opacna normativni tvrzeni.
 
 `generate-kb-article` vytvori pouze navrh KB clanku. Vystup ma `publication_status=draft_proposal` a seznam Registry kroku potrebnych pred publikaci.
