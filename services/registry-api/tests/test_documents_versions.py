@@ -705,6 +705,95 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     )
     assert accepted.status_code == 201, accepted.text
 
+    refreshed = client.post(
+        "/api/v1/document-extractions",
+        headers=admin_headers,
+        json={
+            "tenant_id": extraction["tenant_id"],
+            "external_system": extraction["external_system"],
+            "external_ref": extraction["external_ref"],
+            "entity_type": extraction["entity_type"],
+            "entity_id": extraction["entity_id"],
+            "document_id": extraction["document_id"],
+            "document_version_id": extraction["document_version_id"],
+            "profile": extraction["profile"],
+            "profile_version": extraction["profile_version"],
+            "status": "PROPOSED",
+            "classification": extraction["classification"],
+            "requested_by": "user_admin",
+            "refresh_existing": True,
+            "result": {
+                "domain": "public_procurement",
+                "package_id": package["package_id"],
+                "rules": [
+                    extraction["result"]["rules"][0],
+                    {
+                        "rule_id": "internal.marketplace.threshold",
+                        "normative_key": "public_procurement.marketplace.threshold",
+                        "category": "financial_limit",
+                        "title": "Elektronické tržiště",
+                        "value": 50000,
+                        "unit": "CZK",
+                        "currency": "CZK",
+                        "vat_basis": "excluding_vat",
+                        "conditions": [],
+                        "exceptions": [],
+                        "responsible_roles": ["zadavatel"],
+                        "required_evidence": [],
+                        "confidence": 0.9,
+                        "citation": {
+                            "document_id": directive["document_id"],
+                            "document_version_id": directive_version[
+                                "document_version_id"
+                            ],
+                            "chunk_id": "chunk_marketplace_threshold",
+                            "section_path": ["Elektronická tržiště"],
+                            "page_number": 9,
+                            "quoted_text": (
+                                "Standardizovaná komodita nad 50 000 Kč bez DPH "
+                                "se zadává přes elektronické tržiště."
+                            ),
+                        },
+                    },
+                ],
+            },
+        },
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["created"] is False
+    assert refreshed.json()["extraction"]["extraction_id"] == extraction["extraction_id"]
+
+    refreshed_rules = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01"
+        "&approved_only=false&include_inactive=true",
+        headers=admin_headers,
+    )
+    assert refreshed_rules.status_code == 200, refreshed_rules.text
+    statuses = {
+        item["proposal"]["rule_id"]: item["verification_status"]
+        for item in refreshed_rules.json()["rules"]
+    }
+    assert statuses == {
+        "internal.market-research.threshold": "accepted",
+        "internal.marketplace.threshold": "proposed",
+    }
+
+    accepted_marketplace = client.post(
+        f"/api/v1/document-extractions/{extraction['extraction_id']}/feedback",
+        headers=admin_headers,
+        json={
+            "field": "rules.internal.marketplace.threshold",
+            "ai_value": 50000,
+            "final_value": 50000,
+            "decision": "accepted",
+            "actor": "user_admin",
+            "source_app": "STRATOS_PLATFORM",
+            "source_entity_id": package["package_id"],
+        },
+    )
+    assert accepted_marketplace.status_code == 201, accepted_marketplace.text
+
     activated = client.post(
         f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
         headers=admin_headers,

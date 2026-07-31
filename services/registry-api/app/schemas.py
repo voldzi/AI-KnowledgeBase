@@ -1096,10 +1096,15 @@ class DocumentExtractionStoreRequest(BaseModel):
     missing_information: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    refresh_existing: bool = False
 
     @model_validator(mode="after")
     def validate_controlled_document_rules(self) -> "DocumentExtractionStoreRequest":
         if self.profile != "controlled_document_rules_v1":
+            if self.refresh_existing:
+                raise ValueError(
+                    "refresh_existing is only supported for controlled_document_rules_v1"
+                )
             return self
         if self.external_system != ExternalSourceSystem.stratos_platform:
             raise ValueError(

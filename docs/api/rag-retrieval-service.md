@@ -203,6 +203,12 @@ citations or insufficient authorized evidence produces no invented rule. RAG
 persists the proposal to Registry; acceptance, editing, precedence and
 application-consumer eligibility remain Registry responsibilities.
 
+Repeated proposal generation refreshes the stored machine result for the same
+package source version. Registry preserves existing gestor decisions by stable
+`rule_id`, while newly discovered rules remain proposed. This makes the UI
+action `Navrhnout znovu` a real re-extraction after parser or retrieval
+improvements instead of returning a stale idempotent result.
+
 For multi-document packages, an unexpectedly small cited result is returned
 with `CONTROLLED_RULE_COVERAGE_INSUFFICIENT`. Registry blocks publication of
 revision-2 extractions while `missing_information` is non-empty.

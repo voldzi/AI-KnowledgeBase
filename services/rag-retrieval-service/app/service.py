@@ -934,6 +934,7 @@ class RagRetrievalService:
                 "result": result,
                 "missing_information": missing_information,
                 "warnings": warnings,
+                "refresh_existing": True,
                 "metadata": {
                     "query_id": query_id,
                     "source_chunk_ids": [chunk.chunk_id for chunk in chunks],

@@ -259,6 +259,20 @@ class MockRegistryClient:
         )
         existing_id = self._extraction_identity.get(identity)
         if existing_id:
+            if payload.get("refresh_existing"):
+                existing = self._extractions[existing_id]
+                for key in (
+                    "status",
+                    "classification",
+                    "requested_by",
+                    "correlation_id",
+                    "result",
+                    "missing_information",
+                    "warnings",
+                    "metadata",
+                ):
+                    existing[key] = payload.get(key)
+                existing["updated_at"] = datetime.now(timezone.utc).isoformat()
             return {"extraction": self._extractions[existing_id], "created": False}
 
         for extraction in self._extractions.values():

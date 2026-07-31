@@ -147,6 +147,11 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
 - RAG Retrieval Service uklada STRATOS Document AI navrhy do
   `/document-extractions` a nasledny feedback do
   `/document-extractions/{extraction_id}/feedback`.
+- Opakované vytěžení profilu `controlled_document_rules_v1` může použít
+  `refresh_existing: true`. Registry pak nahradí pouze strojový návrh pro
+  stejný dokument, verzi a profil. Již uložená rozhodnutí gestora zůstávají
+  navázaná na stabilní `rule_id`; nově nalezená pravidla zůstávají k posouzení.
+  U ostatních profilů je refresh odmítnut, aby se nezměnila obecná idempotence.
 - AKB web bridge uklada sdilene STRATOS profilove nastaveni do
   `/user-profiles/me/settings`. Hodnoty jsou rozdelene na `settings.core` a
   `settings.apps.akb`; role a skupiny se vraci read-only z aktualni identity a
