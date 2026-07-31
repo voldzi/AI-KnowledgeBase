@@ -137,10 +137,47 @@ def test_controlled_rule_extraction_uses_authoring_authorization(monkeypatch) ->
                 ],
                 "subject_id": "user_gestor",
                 "profile": "controlled_document_rules_v1",
-                "profile_version": "1",
+                "profile_version": "2",
                 "classification_max": "internal",
             },
         )
 
     assert response.status_code == 200, response.text
     assert captured["authorization_action"] == "document.update"
+
+
+def test_keeps_procurement_threshold_with_required_follow_up() -> None:
+    proposals, missing, warnings = extract_controlled_rule_proposals(
+        chunks=[
+            _chunk(
+                "Přesáhne-li předpokládaná hodnota 20.000 Kč včetně DPH, "
+                "musí příkazce operace provést průzkum trhu. Průzkum trhu "
+                "směřuje k získání nejméně tří porovnatelných cenových nabídek."
+            )
+        ]
+    )
+
+    assert missing == []
+    assert warnings == []
+    financial = next(
+        proposal for proposal in proposals if proposal.category == "financial_limit"
+    )
+    assert financial.value == 20000
+    assert financial.vat_basis == "including_vat"
+    assert "průzkum trhu" in financial.citation.quoted_text
+    assert financial.conditions
+
+
+def test_ignores_table_headers_and_generic_explanations() -> None:
+    proposals, missing, warnings = extract_controlled_rule_proposals(
+        chunks=[
+            _chunk(
+                "Činnost | Gestor /příkazce | Nadřízený příkazce | VPÚ | PV. "
+                "Za efektivní lze obecně považovat řešení s minimálními zdroji."
+            )
+        ]
+    )
+
+    assert proposals == []
+    assert missing == ["NO_CITABLE_CONTROLLED_RULES_FOUND"]
+    assert warnings == []

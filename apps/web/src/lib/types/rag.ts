@@ -430,7 +430,7 @@ export interface ControlledRuleExtractionRequest {
   }>;
   subject_id: string;
   profile: "controlled_document_rules_v1";
-  profile_version: "1";
+  profile_version: "2";
   classification_max: Classification;
   max_chunks?: number;
   correlation_id?: string | null;
@@ -444,7 +444,7 @@ export interface ControlledRuleExtractionResponse {
   package_id: string;
   domain: string;
   profile: "controlled_document_rules_v1";
-  profile_version: "1";
+  profile_version: "2";
   status: string;
   classification: Classification;
   requested_by: string;

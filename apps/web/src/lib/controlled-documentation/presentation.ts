@@ -13,6 +13,8 @@ const errorMessages: Record<string, string> = {
     "Před vyhlášením platnosti posuďte všechny navržené hodnoty a pravidla.",
   controlled_document_package_rules_not_verified:
     "Před vyhlášením platnosti musí být alespoň jedno pravidlo potvrzené nebo opravené gestorem.",
+  controlled_document_package_rule_coverage_incomplete:
+    "Vytěžení nepokrylo dostatek zdrojových částí. Spusťte nový návrh a před vyhlášením platnosti ověřte chybějící pravidla.",
   controlled_document_package_member_not_published:
     "Nejprve zveřejněte přesnou verzi hlavního dokumentu i všech příloh.",
   controlled_document_package_member_not_effective:
@@ -36,6 +38,8 @@ const warningMessages: Record<string, string> = {
     "Návrh odkazuje mimo zvolené vydání a nebude nabídnut ke schválení.",
   CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH:
     "Návrh pravidla neodpovídá zvolenému vydání a nebude použit.",
+  CONTROLLED_RULE_COVERAGE_INSUFFICIENT:
+    "Z dokumentu a příloh vzniklo neobvykle málo pravidel. AKB vydání nepovažuje za úplně vytěžené.",
 };
 
 export function controlledDocumentationErrorMessage(

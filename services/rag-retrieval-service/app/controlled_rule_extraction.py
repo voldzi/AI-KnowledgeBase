@@ -15,7 +15,7 @@ from app.schemas import (
 
 
 PROFILE_NAME = "controlled_document_rules_v1"
-PROFILE_VERSION = "1"
+PROFILE_VERSION = "2"
 
 _AMOUNT_RE = re.compile(
     r"(?P<amount>\d[\d \u00a0.]*?(?:,\d{1,2})?)\s*"
@@ -47,6 +47,18 @@ _CATEGORY_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     ("permission", (" může ", " je oprávněn ", " lze ")),
     ("exception", (" výjim", " s výjimkou ", " nevztahuje se ")),
+    (
+        "required_document",
+        (" písemn", " doklad", " dokumentac", " objednávk", " smlouv"),
+    ),
+    (
+        "audit_evidence",
+        (" archiv", " uchov", " evidenc", " průzkum trhu ", " cenové nabíd"),
+    ),
+    (
+        "approval_step",
+        (" předběžn", " schválen", " souhlas", " podpis", " kontrola závazku "),
+    ),
 )
 
 _ROLE_RE = re.compile(
@@ -84,6 +96,9 @@ def controlled_rule_extraction_profile() -> ContractExtractionProfile:
             "responsibility",
             "permission",
             "exception",
+            "required_document",
+            "audit_evidence",
+            "approval_step",
         ],
     )
 
@@ -131,21 +146,25 @@ def extract_controlled_rule_proposals(
 
 def _candidates(text: str) -> list[_Candidate]:
     result: list[_Candidate] = []
-    for sentence, sentence_start in _sentences(text):
+    sentences = _sentences(text)
+    for index, (sentence, sentence_start) in enumerate(sentences):
+        if _is_noise(sentence):
+            continue
         normalized = f" {_fold(sentence)} "
         amount_matches = list(_AMOUNT_RE.finditer(sentence))
         for match in amount_matches:
             amount = _decimal_amount(match.group("amount"))
             if amount is None:
                 continue
+            cited_sentence = _financial_context(sentences, index)
             result.append(
                 _Candidate(
                     category="financial_limit",
-                    sentence=sentence,
+                    sentence=cited_sentence,
                     value=float(amount) if amount % 1 else int(amount),
                     unit="currency",
                     currency=_currency(match.group("currency")),
-                    vat_basis=_vat_basis(sentence),
+                    vat_basis=_vat_basis(cited_sentence),
                     confidence=0.9 if _has_limit_context(normalized) else 0.76,
                     match_start=sentence_start + match.start(),
                     match_end=sentence_start + match.end(),
@@ -173,7 +192,7 @@ def _candidates(text: str) -> list[_Candidate]:
             (
                 candidate_category
                 for candidate_category, markers in _CATEGORY_MARKERS
-                if any(marker in normalized for marker in markers)
+                if any(f" {_fold(marker)} " in normalized for marker in markers)
             ),
             None,
         )
@@ -331,8 +350,67 @@ def _contains_condition(sentence: str) -> bool:
     folded = f" {_fold(sentence)} "
     return any(
         marker in folded
-        for marker in (" pokud ", " jestlize ", " v pripade ", " za podminky ")
+        for marker in (
+            " pokud ",
+            " jestlize ",
+            " v pripade ",
+            " za podminky ",
+            " do ",
+            " nad ",
+            " vyssi nez ",
+            " presahne-li ",
+            " nepresahne ",
+        )
     )
+
+
+def _financial_context(
+    sentences: list[tuple[str, int]],
+    index: int,
+) -> str:
+    """Keep the threshold together with its immediate duty or exception."""
+
+    parts = [sentences[index][0]]
+    for offset in (1, 2):
+        next_index = index + offset
+        if next_index >= len(sentences):
+            break
+        candidate = sentences[next_index][0]
+        folded = f" {_fold(candidate)} "
+        if _is_noise(candidate) or _AMOUNT_RE.search(candidate):
+            break
+        if not any(
+            marker in folded
+            for marker in (
+                " musí ",
+                " je povinen ",
+                " provede ",
+                " zajisti ",
+                " uchova ",
+                " archivuje ",
+                " doklada ",
+                " neni-li ",
+                " pokud ",
+                " v pripade ",
+                " cenove nabidky ",
+                " pruzkum trhu ",
+            )
+        ):
+            break
+        parts.append(candidate)
+    return _clean_space(" ".join(parts))[:2000]
+
+
+def _is_noise(sentence: str) -> bool:
+    folded = f" {_fold(sentence)} "
+    if sentence.count("|") >= 2:
+        return True
+    if " lze obecne povazovat " in folded or " pro ucely teto smernice se rozumi " in folded:
+        return True
+    words = re.findall(r"[a-zá-ž0-9]+", sentence.casefold())
+    if len(words) < 4:
+        return True
+    return False
 
 
 def _fold(value: str) -> str:
