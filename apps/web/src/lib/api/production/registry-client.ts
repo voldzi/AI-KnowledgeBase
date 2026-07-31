@@ -299,12 +299,19 @@ export class ProductionRegistryClient implements RegistryApiClient {
   listControlledRules(
     domain: string,
     context: ApiRequestContext,
-    options: { validOn?: string; approvedOnly?: boolean } = {}
+    options: {
+      validOn?: string;
+      approvedOnly?: boolean;
+      includeInactive?: boolean;
+    } = {}
   ): Promise<ControlledRuleList> {
     const params = new URLSearchParams({ domain });
     if (options.validOn) params.set("valid_on", options.validOn);
     if (options.approvedOnly !== undefined) {
       params.set("approved_only", String(options.approvedOnly));
+    }
+    if (options.includeInactive !== undefined) {
+      params.set("include_inactive", String(options.includeInactive));
     }
     return this.get<ControlledRuleList>(
       `/controlled-documentation/rules?${params.toString()}`,

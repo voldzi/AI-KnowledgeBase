@@ -590,15 +590,23 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     assert package["status"] == "draft"
     assert len(package["members"]) == 2
 
-    for target in ("approved", "valid"):
-        transitioned = client.post(
-            f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
-            headers=admin_headers,
-            json={"target_status": target},
-        )
-        assert transitioned.status_code == 200, transitioned.text
-        package = transitioned.json()
-    assert package["status"] == "valid"
+    transitioned = client.post(
+        f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
+        headers=admin_headers,
+        json={"target_status": "approved"},
+    )
+    assert transitioned.status_code == 200, transitioned.text
+    package = transitioned.json()
+
+    missing_rules = client.post(
+        f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
+        headers=admin_headers,
+        json={"target_status": "valid"},
+    )
+    assert missing_rules.status_code == 409, missing_rules.text
+    assert missing_rules.json()["error"]["code"] == (
+        "controlled_document_package_rules_not_proposed"
+    )
 
     extraction_response = client.post(
         "/api/v1/document-extractions",
@@ -652,6 +660,25 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     assert extraction_response.status_code == 201, extraction_response.text
     extraction = extraction_response.json()["extraction"]
 
+    authoring_view = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01"
+        "&approved_only=false&include_inactive=true",
+        headers=admin_headers,
+    )
+    assert authoring_view.status_code == 200, authoring_view.text
+    assert authoring_view.json()["rules"][0]["verification_status"] == "proposed"
+
+    pending_review = client.post(
+        f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
+        headers=admin_headers,
+        json={"target_status": "valid"},
+    )
+    assert pending_review.status_code == 409, pending_review.text
+    assert pending_review.json()["error"]["code"] == (
+        "controlled_document_package_rules_pending_review"
+    )
+
     before_approval = client.get(
         "/api/v1/controlled-documentation/rules"
         "?domain=public_procurement&valid_on=2026-01-01",
@@ -659,7 +686,9 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     )
     assert before_approval.status_code == 200, before_approval.text
     assert before_approval.json()["rules"] == []
-    assert "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE" in before_approval.json()["warnings"]
+    assert before_approval.json()["warnings"] == [
+        "NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE"
+    ]
 
     accepted = client.post(
         f"/api/v1/document-extractions/{extraction['extraction_id']}/feedback",
@@ -676,6 +705,14 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     )
     assert accepted.status_code == 201, accepted.text
 
+    activated = client.post(
+        f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
+        headers=admin_headers,
+        json={"target_status": "valid"},
+    )
+    assert activated.status_code == 200, activated.text
+    assert activated.json()["status"] == "valid"
+
     consumable = client.get(
         "/api/v1/controlled-documentation/rules"
         "?domain=public_procurement&valid_on=2026-01-01",
@@ -690,6 +727,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     )
     assert body["rules"][0]["precedence_status"] == "supplemental"
     assert body["rules"][0]["consumer_eligible"] is True
+    assert "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE" in body["warnings"]
 
 
 def test_controlled_rule_precedence_prefers_law_and_closes_equal_rank_conflict():

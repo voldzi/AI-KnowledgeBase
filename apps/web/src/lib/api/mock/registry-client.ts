@@ -556,7 +556,11 @@ export class MockRegistryClient implements RegistryApiClient {
   async listControlledRules(
     domain: string,
     _context: ApiRequestContext,
-    options: { validOn?: string; approvedOnly?: boolean } = {},
+    options: {
+      validOn?: string;
+      approvedOnly?: boolean;
+      includeInactive?: boolean;
+    } = {},
   ): Promise<ControlledRuleList> {
     return {
       domain,

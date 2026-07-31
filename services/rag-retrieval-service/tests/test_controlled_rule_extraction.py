@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.controlled_rule_extraction import extract_controlled_rule_proposals
 from app.schemas import ChunkCitation, RetrievedChunk
+from tests.conftest import make_client
 
 
 def _chunk(text: str) -> RetrievedChunk:
@@ -92,3 +93,54 @@ def test_returns_missing_information_without_inventing_rule() -> None:
     assert proposals == []
     assert missing == ["NO_CITABLE_CONTROLLED_RULES_FOUND"]
     assert warnings == []
+
+
+def test_controlled_rule_extraction_uses_authoring_authorization(monkeypatch) -> None:
+    from app.service import RagRetrievalService
+
+    captured: dict[str, str] = {}
+    original = RagRetrievalService._retrieve_authorized
+
+    async def capture_retrieval(
+        self,
+        *,
+        payload,
+        query_id,
+        auth_context=None,
+        expand_parent=True,
+        authorization_action="rag.query",
+    ):
+        captured["authorization_action"] = authorization_action
+        return await original(
+            self,
+            payload=payload,
+            query_id=query_id,
+            auth_context=auth_context,
+            expand_parent=expand_parent,
+            authorization_action=authorization_action,
+        )
+
+    monkeypatch.setattr(RagRetrievalService, "_retrieve_authorized", capture_retrieval)
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/stratos/extractions/controlled-rules/propose",
+            json={
+                "tenant_id": "org_stratos",
+                "external_system": "STRATOS_PLATFORM",
+                "package_id": "cdpkg_test",
+                "domain": "public_procurement",
+                "documents": [
+                    {
+                        "document_id": "doc_123",
+                        "document_version_id": "ver_456",
+                    }
+                ],
+                "subject_id": "user_gestor",
+                "profile": "controlled_document_rules_v1",
+                "profile_version": "1",
+                "classification_max": "internal",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert captured["authorization_action"] == "document.update"

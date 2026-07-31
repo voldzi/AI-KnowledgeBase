@@ -203,8 +203,11 @@ disabled until that profile passes the shared production contract test again.
 
 The `/controlled-documentation` workspace is the operator surface for
 effective-dated legal and internal-document packages. A gestor creates a draft
-from exact published document versions, adds attachments/forms, reviews cited
-rule proposals and moves the package through `approved` to `valid`. A
+from exact governed document versions, adds attachments/forms, moves the
+package to `approved`, reviews cited rule proposals and only then moves the
+package to `valid`. Controlled extraction may read an exact unpublished source
+with the gestor's `document.update` decision, but ordinary RAG remains limited
+to published versions. A
 schvalovatel may perform the same final publication action when their current
 capability permits it; no separate technical-document role is required.
 

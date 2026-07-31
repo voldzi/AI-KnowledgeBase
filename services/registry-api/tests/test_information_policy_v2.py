@@ -232,6 +232,64 @@ def test_central_organization_scope_with_id_allows_document_version(client) -> N
     assert response.status_code == 201, response.text
 
 
+def test_authoring_filter_allows_exact_draft_version_only_for_document_manager(
+    client,
+) -> None:
+    document = create_document(client, information_policy=policy()).json()
+    version = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document",
+            scopes="organization:org_stratos",
+        ),
+        json={
+            "version_label": "draft-authoring",
+            "source_file_uri": "s3://akl-documents/policy-v2/draft-authoring.docx",
+            "file_hash": f"sha256:{'a' * 64}",
+        },
+    ).json()
+    coordinates = {
+        "subject_id": "user_owner",
+        "candidate_document_ids": [document["document_id"]],
+        "candidate_policy_hashes": {
+            document["document_id"]: [document["policy_hash"]]
+        },
+        "candidate_document_versions": {
+            document["document_id"]: [version["document_version_id"]]
+        },
+    }
+
+    ordinary_read = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:chat",
+            scopes="organization:org_stratos",
+        ),
+        json={**coordinates, "action": "rag.query"},
+    )
+    authoring_read = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:manage_document",
+            scopes="organization:org_stratos",
+        ),
+        json={**coordinates, "action": "document.update"},
+    )
+
+    assert ordinary_read.status_code == 200, ordinary_read.text
+    assert ordinary_read.json()["allowed_document_ids"] == []
+    assert authoring_read.status_code == 200, authoring_read.text
+    assert authoring_read.json()["allowed_document_ids"] == [
+        document["document_id"]
+    ]
+    assert authoring_read.json()["allowed_document_version_ids"] == {
+        document["document_id"]: [version["document_version_id"]]
+    }
+
+
 def test_public_chat_filter_allows_exact_valid_official_reference_version(
     client,
     db_session,
