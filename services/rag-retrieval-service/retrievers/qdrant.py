@@ -27,6 +27,74 @@ class QdrantHybridRetriever:
         self._settings = settings
         self._opensearch = OpenSearchFullTextClient(settings) if settings.fulltext_mode == "opensearch" else None
 
+    async def list_chunks(
+        self,
+        *,
+        filters: RagQueryFilters,
+        limit: int,
+    ) -> list[RetrievedChunk]:
+        """Read a bounded, exact source set without relevance ranking."""
+        chunks: list[RetrievedChunk] = []
+        offset: Any = None
+        seen_offsets: set[str] = set()
+        while len(chunks) < limit:
+            body: dict[str, Any] = {
+                "limit": min(256, limit - len(chunks)),
+                "with_payload": True,
+                "with_vector": False,
+                "filter": _qdrant_filter(filters),
+            }
+            if offset is not None:
+                body["offset"] = offset
+            payload = await _request_qdrant_json_allow_missing(
+                settings=self._settings,
+                method="POST",
+                url=(
+                    f"{self._settings.qdrant_base_url}/collections/"
+                    f"{self._settings.qdrant_collection}/points/scroll"
+                ),
+                json_body=body,
+            )
+            result = payload.get("result", {})
+            points = result.get("points", []) if isinstance(result, dict) else []
+            if not points:
+                break
+            for point in points:
+                point_payload = point.get("payload") if isinstance(point, dict) else None
+                if not isinstance(point_payload, dict):
+                    continue
+                text = str(
+                    point_payload.get("text")
+                    or point_payload.get("normalized_text")
+                    or ""
+                ).strip()
+                if not text:
+                    continue
+                chunks.append(
+                    _point_to_chunk(
+                        point_payload,
+                        score=1.0,
+                        dense_score=0.0,
+                        sparse_score=0.0,
+                    )
+                )
+                if len(chunks) >= limit:
+                    break
+            next_offset = result.get("next_page_offset") if isinstance(result, dict) else None
+            if next_offset is None:
+                break
+            offset_key = repr(next_offset)
+            if offset_key in seen_offsets:
+                raise RetrievalError(
+                    "UPSTREAM_ERROR",
+                    "qdrant returned a repeated scroll offset",
+                    status_code=502,
+                    details={"dependency": "qdrant"},
+                )
+            seen_offsets.add(offset_key)
+            offset = next_offset
+        return sorted(chunks, key=_source_chunk_sort_key)
+
     async def resolve_exact_candidates(
         self,
         *,
@@ -715,6 +783,16 @@ def _qdrant_filter(filters: RagQueryFilters) -> dict[str, Any]:
         )
 
     return {"must": must}
+
+
+def _source_chunk_sort_key(chunk: RetrievedChunk) -> tuple[str, str, int, str]:
+    chunk_index = chunk.metadata.get("chunk_index")
+    return (
+        chunk.citation.document_id,
+        chunk.citation.document_version_id,
+        chunk_index if isinstance(chunk_index, int) else 2**31 - 1,
+        chunk.chunk_id,
+    )
 
 
 def _opensearch_query(*, query: str, filters: RagQueryFilters, limit: int) -> dict[str, Any]:

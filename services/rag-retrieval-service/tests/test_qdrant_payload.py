@@ -48,6 +48,64 @@ def test_missing_qdrant_collection_is_an_empty_retrieval_result(monkeypatch) -> 
     assert asyncio.run(retriever.readiness()) == "ready"
 
 
+def test_list_chunks_scrolls_complete_exact_source(monkeypatch) -> None:
+    settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "http"})
+    retriever = QdrantHybridRetriever(settings)
+    requests: list[dict] = []
+
+    def point(chunk_id: str, chunk_index: int) -> dict:
+        return {
+            "payload": {
+                "chunk_id": chunk_id,
+                "document_id": "doc_directive",
+                "document_version_id": "ver_directive_1",
+                "document_title": "Procurement directive",
+                "version_label": "1",
+                "text": f"Rule text {chunk_index}",
+                "classification": "internal",
+                "metadata": {"chunk_index": chunk_index},
+            }
+        }
+
+    async def fake_request(**kwargs):
+        body = kwargs["json_body"]
+        requests.append(body)
+        if "offset" not in body:
+            return {
+                "result": {
+                    "points": [point("chunk_2", 2)],
+                    "next_page_offset": "page-2",
+                }
+            }
+        return {
+            "result": {
+                "points": [point("chunk_1", 1)],
+                "next_page_offset": None,
+            }
+        }
+
+    import retrievers.qdrant as qdrant_module
+
+    monkeypatch.setattr(qdrant_module, "request_json_with_retry", fake_request)
+    chunks = asyncio.run(
+        retriever.list_chunks(
+            filters=RagQueryFilters(
+                document_ids=["doc_directive"],
+                document_version_ids=["ver_directive_1"],
+                only_valid=False,
+            ),
+            limit=10,
+        )
+    )
+
+    assert [chunk.chunk_id for chunk in chunks] == ["chunk_1", "chunk_2"]
+    assert requests[1]["offset"] == "page-2"
+    assert {
+        "key": "document_version_id",
+        "match": {"any": ["ver_directive_1"]},
+    } in requests[0]["filter"]["must"]
+
+
 def test_missing_opensearch_index_is_an_empty_retrieval_result(monkeypatch) -> None:
     settings = load_settings(
         {

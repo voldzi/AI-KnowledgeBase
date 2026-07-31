@@ -5,9 +5,9 @@ from app.schemas import ChunkCitation, RetrievedChunk
 from tests.conftest import make_client
 
 
-def _chunk(text: str) -> RetrievedChunk:
+def _chunk(text: str, *, chunk_id: str = "chunk_procurement_1") -> RetrievedChunk:
     return RetrievedChunk(
-        chunk_id="chunk_procurement_1",
+        chunk_id=chunk_id,
         score=0.95,
         retrieval_method="opensearch",
         text=text,
@@ -99,28 +99,30 @@ def test_controlled_rule_extraction_uses_authoring_authorization(monkeypatch) ->
     from app.service import RagRetrievalService
 
     captured: dict[str, str] = {}
-    original = RagRetrievalService._retrieve_authorized
+    original = RagRetrievalService._filter_authorized_chunks
 
-    async def capture_retrieval(
+    async def capture_authorization(
         self,
         *,
-        payload,
-        query_id,
+        subject_id,
+        chunks,
         auth_context=None,
-        expand_parent=True,
-        authorization_action="rag.query",
+        action="rag.query",
     ):
-        captured["authorization_action"] = authorization_action
+        captured["authorization_action"] = action
         return await original(
             self,
-            payload=payload,
-            query_id=query_id,
+            subject_id=subject_id,
+            chunks=chunks,
             auth_context=auth_context,
-            expand_parent=expand_parent,
-            authorization_action=authorization_action,
+            action=action,
         )
 
-    monkeypatch.setattr(RagRetrievalService, "_retrieve_authorized", capture_retrieval)
+    monkeypatch.setattr(
+        RagRetrievalService,
+        "_filter_authorized_chunks",
+        capture_authorization,
+    )
     with make_client() as client:
         response = client.post(
             "/api/v1/stratos/extractions/controlled-rules/propose",
@@ -144,6 +146,131 @@ def test_controlled_rule_extraction_uses_authoring_authorization(monkeypatch) ->
 
     assert response.status_code == 200, response.text
     assert captured["authorization_action"] == "document.update"
+
+
+def test_controlled_rule_extraction_scans_complete_exact_source(monkeypatch) -> None:
+    from retrievers.mock import MockHybridRetriever
+
+    async def complete_source(self, *, filters, limit):
+        assert filters.document_ids == ["doc_directive"]
+        assert filters.document_version_ids == ["ver_directive_1"]
+        assert limit > 50
+        return [
+            _chunk(
+                "Nákup do 20 000 Kč včetně DPH lze uskutečnit po ověření ceny.",
+                chunk_id="chunk_procurement_20k",
+            ),
+            _chunk(
+                "Při předpokládané hodnotě nad 50 000 Kč včetně DPH musí "
+                "příkazce operace doložit průzkum trhu.",
+                chunk_id="chunk_procurement_50k",
+            ),
+        ]
+
+    monkeypatch.setattr(MockHybridRetriever, "list_chunks", complete_source)
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/stratos/extractions/controlled-rules/propose",
+            json={
+                "tenant_id": "org_stratos",
+                "external_system": "STRATOS_PLATFORM",
+                "package_id": "cdpkg_complete_scan",
+                "domain": "public_procurement",
+                "documents": [
+                    {
+                        "document_id": "doc_directive",
+                        "document_version_id": "ver_directive_1",
+                    }
+                ],
+                "subject_id": "user_gestor",
+                "profile": "controlled_document_rules_v1",
+                "profile_version": "2",
+                "classification_max": "internal",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    limits = {
+        proposal["value"]
+        for proposal in body["rules"]
+        if proposal["category"] == "financial_limit"
+    }
+    assert limits == {20000, 50000}
+    assert body["metadata"]["retrieval_mode"] == "exact_source_scan"
+    assert body["metadata"]["source_scan_chunk_count"] == 2
+
+
+def test_controlled_rule_extraction_fails_closed_for_denied_source() -> None:
+    with make_client(
+        {
+            "AKL_RAG_AUTHZ_MODE": "registry",
+            "AKL_RAG_REGISTRY_CLIENT_MODE": "mock",
+            "AKL_RAG_MOCK_DENIED_DOCUMENT_IDS": "doc_123",
+        }
+    ) as client:
+        response = client.post(
+            "/api/v1/stratos/extractions/controlled-rules/propose",
+            json={
+                "tenant_id": "org_stratos",
+                "external_system": "STRATOS_PLATFORM",
+                "package_id": "cdpkg_denied",
+                "domain": "public_procurement",
+                "documents": [
+                    {
+                        "document_id": "doc_123",
+                        "document_version_id": "ver_456",
+                    }
+                ],
+                "subject_id": "user_gestor",
+                "profile": "controlled_document_rules_v1",
+                "profile_version": "2",
+                "classification_max": "internal",
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CONTROLLED_DOCUMENT_ACCESS_DENIED"
+
+
+def test_controlled_rule_extraction_scan_limit_remains_partial(monkeypatch) -> None:
+    from app import service as service_module
+    from retrievers.mock import MockHybridRetriever
+
+    async def oversized_source(self, *, filters, limit):
+        assert limit == 2
+        return [
+            _chunk("Limit je 20 000 Kč včetně DPH.", chunk_id="chunk_limit_1"),
+            _chunk("Limit je 50 000 Kč včetně DPH.", chunk_id="chunk_limit_2"),
+        ]
+
+    monkeypatch.setattr(service_module, "CONTROLLED_RULE_SOURCE_SCAN_LIMIT", 1)
+    monkeypatch.setattr(MockHybridRetriever, "list_chunks", oversized_source)
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/stratos/extractions/controlled-rules/propose",
+            json={
+                "tenant_id": "org_stratos",
+                "external_system": "STRATOS_PLATFORM",
+                "package_id": "cdpkg_scan_limit",
+                "domain": "public_procurement",
+                "documents": [
+                    {
+                        "document_id": "doc_directive",
+                        "document_version_id": "ver_directive_1",
+                    }
+                ],
+                "subject_id": "user_gestor",
+                "profile": "controlled_document_rules_v1",
+                "profile_version": "2",
+                "classification_max": "internal",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "PARTIAL"
+    assert "CONTROLLED_RULE_SOURCE_SCAN_LIMIT_REACHED" in body["missing_information"]
 
 
 def test_keeps_procurement_threshold_with_required_follow_up() -> None:
