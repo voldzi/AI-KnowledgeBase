@@ -31,6 +31,14 @@ dokumentů, audit-read ani administraci. Jeho secret je uložen mimo Git a mimo
 Compose. Existující `stratos-akb-service` zůstává výhradně upload transportem a
 nový endpoint jej vždy odmítne.
 
+Keycloak může pro tuto vyhrazenou client-credentials identitu vydat minimální
+token bez `preferred_username`. AKB jej považuje za servisní pouze při současně
+platné audience `akl-api`, důvěryhodném `azp`, prázdném scope, absenci
+uživatelských profilových a relačních claimů, absenci klientských rolí a pouze
+servisních realm rolích. Toto rozpoznání samo přístup neuděluje: následně se
+vždy uplatní přesný trusted-client allowlist, výhradní route grant a povinná
+role `service_budget_rules_read`.
+
 AKB produkční konfigurace musí obsahovat přesné mapování:
 
 ```text

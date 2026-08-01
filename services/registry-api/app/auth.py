@@ -105,12 +105,17 @@ def _oidc_principal(request: Request, settings: Settings) -> Principal:
     groups = set(claims.get("groups") or [])
     subject_id = str(claims["sub"])
     service_client_id, conflicting_client_claims = _service_client_id(claims)
-    service_looking = _is_service_identity(claims)
+    minimal_service_looking = _is_minimal_client_credentials_identity(claims)
+    service_looking = _is_service_identity(claims) or minimal_service_looking
     trusted_service = bool(
         service_looking
         and service_client_id
         and service_client_id in settings.trusted_service_clients
-        and _service_account_matches_client(claims, service_client_id)
+        and _service_account_matches_client(
+            claims,
+            service_client_id,
+            allow_minimal_client_credentials=minimal_service_looking,
+        )
     )
     if conflicting_client_claims or (service_looking and not trusted_service):
         raise problem(
@@ -196,11 +201,71 @@ def _service_client_id(claims: dict) -> tuple[str | None, bool]:
     return authorized_party, False
 
 
-def _service_account_matches_client(claims: dict, client_id: str) -> bool:
+def _is_minimal_client_credentials_identity(claims: dict) -> bool:
+    """Recognize Keycloak's route-bound minimal service token shape.
+
+    Minimal service clients intentionally omit profile and session claims. The
+    trusted client allowlist and route grant are applied separately after this
+    structural check.
+    """
+    if claims.get("preferred_username") is not None:
+        return False
+    if any(
+        claims.get(name) is not None
+        for name in (
+            "auth_time",
+            "session_state",
+            "sid",
+            "nonce",
+            "acr",
+            "name",
+            "email",
+            "given_name",
+            "family_name",
+            "groups",
+        )
+    ):
+        return False
+    if claims.get("scope") not in {None, ""}:
+        return False
+    if claims.get("resource_access"):
+        return False
+    subject = claims.get("sub")
+    authorized_party = claims.get("azp")
+    realm_roles = (claims.get("realm_access") or {}).get("roles") or []
+    return bool(
+        isinstance(subject, str)
+        and subject
+        and isinstance(authorized_party, str)
+        and authorized_party
+        and realm_roles
+        and all(
+            isinstance(role, str) and role.startswith("service_")
+            for role in realm_roles
+        )
+    )
+
+
+def _service_account_matches_client(
+    claims: dict,
+    client_id: str,
+    *,
+    allow_minimal_client_credentials: bool = False,
+) -> bool:
     expected = f"service-account-{client_id}"
     subject = str(claims.get("sub") or "")
     username = str(claims.get("preferred_username") or "")
-    return bool(subject and username == expected)
+    return bool(
+        subject
+        and (
+            username == expected
+            or (
+                not username
+                and allow_minimal_client_credentials
+                and _is_minimal_client_credentials_identity(claims)
+            )
+        )
+    )
 
 
 def get_current_principal(

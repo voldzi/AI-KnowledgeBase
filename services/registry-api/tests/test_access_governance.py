@@ -459,6 +459,134 @@ def test_oidc_accepts_only_exact_trusted_service_account_binding(monkeypatch) ->
     assert mismatch.value.detail["error"]["code"] == "untrusted_service_identity"
 
 
+def test_oidc_accepts_route_bound_minimal_client_credentials_token(monkeypatch) -> None:
+    class JwkClient:
+        def __init__(self, _url):
+            pass
+
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key="test-key")
+
+    claims = {
+        "sub": "8128b756-7fd8-4b20-bdf9-7fb754a2af19",
+        "azp": "svc-budget-controlled-rules",
+        "scope": "",
+        "realm_access": {"roles": ["service_budget_rules_read"]},
+    }
+    monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
+    monkeypatch.setattr(auth_module.jwt, "decode", lambda *_args, **_kwargs: claims)
+    monkeypatch.setattr(
+        auth_module,
+        "governance_client",
+        lambda _settings: pytest.fail("service token must not use user projection"),
+    )
+    request = Request({
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer signed-token")],
+    })
+
+    principal = _oidc_principal(
+        request,
+        _settings(
+            AKL_TRUSTED_SERVICE_CLIENT_IDS=(
+                "akb-rag-service,aiip-document-service,svc-ingestion,"
+                "svc-budget-controlled-rules"
+            )
+        ),
+    )
+
+    assert principal.service_identity is True
+    assert principal.service_client_id == "svc-budget-controlled-rules"
+    assert principal.roles == {"service_budget_rules_read"}
+    assert principal.dynamic_access_loaded is False
+
+
+def test_oidc_rejects_minimal_service_token_from_untrusted_azp(monkeypatch) -> None:
+    class JwkClient:
+        def __init__(self, _url):
+            pass
+
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key="test-key")
+
+    monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
+    monkeypatch.setattr(
+        auth_module.jwt,
+        "decode",
+        lambda *_args, **_kwargs: {
+            "sub": "8128b756-7fd8-4b20-bdf9-7fb754a2af19",
+            "azp": "foreign-service",
+            "scope": "",
+            "realm_access": {"roles": ["service_budget_rules_read"]},
+        },
+    )
+    request = Request({
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer signed-token")],
+    })
+
+    with pytest.raises(HTTPException) as exc_info:
+        _oidc_principal(request, _settings())
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail["error"]["code"] == "untrusted_service_identity"
+
+
+@pytest.mark.parametrize(
+    "unsafe_claims",
+    [
+        {"session_state": "interactive-session"},
+        {"scope": "openid"},
+        {"resource_access": {"account": {"roles": ["view-profile"]}}},
+        {"realm_access": {"roles": ["stratos_user"]}},
+    ],
+)
+def test_oidc_does_not_promote_user_shaped_token_to_minimal_service(
+    monkeypatch,
+    unsafe_claims,
+) -> None:
+    class JwkClient:
+        def __init__(self, _url):
+            pass
+
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key="test-key")
+
+    claims = {
+        "sub": "user-123",
+        "azp": "svc-budget-controlled-rules",
+        "scope": "",
+        "realm_access": {"roles": ["service_budget_rules_read"]},
+        **unsafe_claims,
+    }
+    projection = AccessProjection(
+        capabilities=frozenset({"akb:chat"}),
+        scopes=frozenset({"public"}),
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+    )
+    monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
+    monkeypatch.setattr(auth_module.jwt, "decode", lambda *_args, **_kwargs: claims)
+    monkeypatch.setattr(
+        auth_module,
+        "governance_client",
+        lambda _settings: SimpleNamespace(
+            user_projection=lambda *_args, **_kwargs: projection
+        ),
+    )
+    request = Request({
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer signed-token")],
+    })
+
+    principal = _oidc_principal(request, _settings())
+
+    assert principal.service_identity is False
+    assert principal.dynamic_access_loaded is True
+
+
 def test_oidc_user_flow_on_trusted_client_is_not_promoted_to_service(monkeypatch) -> None:
     class JwkClient:
         def __init__(self, _url):
