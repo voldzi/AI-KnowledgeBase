@@ -620,7 +620,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
             "document_id": directive["document_id"],
             "document_version_id": directive_version["document_version_id"],
             "profile": "controlled_document_rules_v1",
-            "profile_version": "1",
+            "profile_version": "3",
             "status": "PROPOSED",
             "classification": "internal",
             "requested_by": "user_admin",
@@ -817,6 +817,119 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     assert body["rules"][0]["precedence_status"] == "supplemental"
     assert body["rules"][0]["consumer_eligible"] is True
     assert "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE" in body["warnings"]
+
+    budget_service = client.get(
+        "/api/v1/integrations/controlled-rules-read/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers={
+            "X-AKL-Subject": "service-account-svc-budget-controlled-rules",
+            "X-AKL-Service-Client-ID": "svc-budget-controlled-rules",
+            "X-AKL-Roles": "service_budget_rules_read",
+            "X-Correlation-ID": "corr-controlled-rules-budget",
+        },
+    )
+    assert budget_service.status_code == 200, budget_service.text
+    budget_body = budget_service.json()
+    assert budget_body["contract"] == "akb-controlled-rules-1"
+    assert budget_body["revision"] == "1.0.0"
+    assert budget_body["status"] == "complete_with_warning"
+    assert budget_body["decision_eligible"] is True
+    assert budget_body["source_version"].startswith("sha256:")
+    assert {
+        rule["normative_key"] for rule in budget_body["rules"]
+    } == {
+        "public_procurement.market_research.threshold",
+        "public_procurement.marketplace.threshold",
+    }
+    assert all(rule["citation"]["document_version_id"] for rule in budget_body["rules"])
+
+
+def test_budget_controlled_rules_route_is_fail_closed_and_audited(
+    client,
+    db_session,
+):
+    from app.models import AuditEvent
+
+    denied_route = client.get(
+        "/api/v1/integrations/controlled-rules-read/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers={
+            "X-AKL-Subject": "service-account-stratos-akb-service",
+            "X-AKL-Service-Client-ID": "stratos-akb-service",
+            "X-AKL-Roles": "service_budget_rules_read,service_ingestion",
+            "X-Correlation-ID": "corr-controlled-rules-route-denied",
+        },
+    )
+    assert denied_route.status_code == 403, denied_route.text
+    assert denied_route.json()["error"]["code"] == "service_route_forbidden"
+
+    denied_route_unknown_domain = client.get(
+        "/api/v1/integrations/controlled-rules-read/rules"
+        "?domain=unknown_domain&valid_on=2026-01-01",
+        headers={
+            "X-AKL-Subject": "service-account-stratos-akb-service",
+            "X-AKL-Service-Client-ID": "stratos-akb-service",
+            "X-AKL-Roles": "service_budget_rules_read,service_ingestion",
+            "X-Correlation-ID": "corr-controlled-rules-domain-route-denied",
+        },
+    )
+    assert denied_route_unknown_domain.status_code == 403
+    assert denied_route_unknown_domain.json()["error"]["code"] == (
+        "service_route_forbidden"
+    )
+
+    denied = client.get(
+        "/api/v1/integrations/controlled-rules-read/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers={
+            "X-AKL-Subject": "service-account-svc-budget-controlled-rules",
+            "X-AKL-Service-Client-ID": "svc-budget-controlled-rules",
+            "X-Correlation-ID": "corr-controlled-rules-denied",
+        },
+    )
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"]["code"] == "controlled_rules_service_required"
+    denied_events = db_session.query(AuditEvent).filter_by(
+        event_type="controlled_rules.read.denied"
+    ).all()
+    assert {event.correlation_id for event in denied_events} == {
+        "corr-controlled-rules-route-denied",
+        "corr-controlled-rules-domain-route-denied",
+        "corr-controlled-rules-denied",
+    }
+    denied_event = next(
+        event
+        for event in denied_events
+        if event.correlation_id == "corr-controlled-rules-denied"
+    )
+    assert denied_event.event_metadata["reason_code"] == (
+        "controlled_rules_service_required"
+    )
+
+    no_data = client.get(
+        "/api/v1/integrations/controlled-rules-read/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers={
+            "X-AKL-Subject": "service-account-svc-budget-controlled-rules",
+            "X-AKL-Service-Client-ID": "svc-budget-controlled-rules",
+            "X-AKL-Roles": "service_budget_rules_read",
+            "X-Correlation-ID": "corr-controlled-rules-empty",
+        },
+    )
+    assert no_data.status_code == 200, no_data.text
+    assert no_data.json()["status"] == "no_data"
+    assert no_data.json()["decision_eligible"] is False
+    assert no_data.json()["rules"] == []
+    assert no_data.json()["warnings"] == [
+        "NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE"
+    ]
+    returned_event = db_session.query(AuditEvent).filter_by(
+        event_type="controlled_rules.read.returned"
+    ).one()
+    assert returned_event.correlation_id == "corr-controlled-rules-empty"
+    assert returned_event.event_metadata["status"] == "no_data"
+    assert returned_event.event_metadata["item_count"] == 0
+    assert returned_event.event_metadata["source_version"].startswith("sha256:")
 
 
 def test_controlled_rule_precedence_prefers_law_and_closes_equal_rank_conflict():

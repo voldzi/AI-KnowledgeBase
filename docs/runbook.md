@@ -198,9 +198,19 @@ Full semantics are in
 8. Publish every exact member version and activate the package only after all
    proposals are reviewed and at least one cited rule is verified.
 9. Verify one current-date and one 2023-date query through both chat and
-   `/api/v1/controlled-documentation/rules`. A higher legal rule must shadow a
-   conflicting internal rule; a non-conflicting internal procedure may remain
-   supplemental.
+   the gestor endpoint `/api/v1/controlled-documentation/rules` and the Budget
+   contract `/api/v1/integrations/controlled-rules-read/rules`. A higher legal
+   rule must shadow a conflicting internal rule; a non-conflicting internal
+   procedure may remain supplemental. The Budget contract must return the same
+   exact source coordinates and only `decision_eligible=true` results.
+10. Verify that the dedicated `svc-budget-controlled-rules` token has role
+    `service_budget_rules_read` and only route `controlled-rules-read`. Confirm
+    that `stratos-akb-service`, a missing role and an unknown service client are
+    rejected. For authenticated denials, locate
+    `controlled_rules.read.denied` by correlation id.
+11. Exercise `no_data`, `complete_with_warning`, `conflict`, unknown catalog
+    key and source-policy denial. Budget must never substitute a local numeric
+    limit or an older cached answer.
 
 ## High Latency
 

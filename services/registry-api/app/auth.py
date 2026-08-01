@@ -206,16 +206,26 @@ def _service_account_matches_client(claims: dict, client_id: str) -> bool:
 def get_current_principal(
     request: Request, settings: Settings = Depends(get_settings)
 ) -> Principal:
-    if settings.auth_mode == "mock":
-        principal = _mock_principal(request, settings)
-    else:
-        principal = _oidc_principal(request, settings)
+    principal = get_authenticated_principal(request, settings)
     if principal.service_identity:
-        _enforce_service_route(principal, request, settings)
+        enforce_service_route(principal, request, settings)
     return principal
 
 
-def _enforce_service_route(
+def get_authenticated_principal(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> Principal:
+    """Authenticate a caller without granting access to any route family.
+
+    Dedicated integration endpoints use this dependency so they can record a
+    bounded denial audit before applying the same default-deny route check.
+    """
+    if settings.auth_mode == "mock":
+        return _mock_principal(request, settings)
+    return _oidc_principal(request, settings)
+
+
+def enforce_service_route(
     principal: Principal,
     request: Request,
     settings: Settings,
@@ -241,12 +251,18 @@ def _enforce_service_route(
         )
 
 
+# Compatibility alias for tests and internal callers that used the private name.
+_enforce_service_route = enforce_service_route
+
+
 def _service_route_for_request(request: Request) -> str | None:
     path = request.url.path.removeprefix("/api/v1")
     write = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
     path_segments = path.strip("/").split("/")
     if path.startswith("/integrations/stratos-budget-upload/"):
         return "stratos-budget-upload"
+    if path.startswith("/integrations/controlled-rules-read/"):
+        return "controlled-rules-read"
     if path.startswith("/integrations/aiip-upload/"):
         return "aiip-upload"
     if path == "/integrations/ingestion/readiness":

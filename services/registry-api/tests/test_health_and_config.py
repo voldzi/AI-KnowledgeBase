@@ -29,13 +29,15 @@ def _production_settings(**overrides):
         "AKL_OIDC_AUDIENCE": "akb-api",
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
         "AKL_TRUSTED_SERVICE_CLIENT_IDS": (
-            "akb-rag-service,aiip-document-service,stratos-akb-service,svc-ingestion,"
+            "akb-rag-service,aiip-document-service,stratos-akb-service,"
+            "svc-budget-controlled-rules,svc-ingestion,"
             "svc-akb-director-copilot"
         ),
         "AKL_SERVICE_CLIENT_ROUTE_GRANTS": (
             "akb-rag-service=authz|audit|idempotency,"
             "aiip-document-service=aiip-upload,"
             "stratos-akb-service=stratos-budget-upload,"
+            "svc-budget-controlled-rules=controlled-rules-read,"
             "svc-ingestion=authz|audit|documents-read|ingestion-status,"
             "svc-akb-director-copilot=audit"
         ),
@@ -86,11 +88,13 @@ def test_production_requires_exact_budget_upload_service_grant():
     with pytest.raises(ValidationError, match="trusted client stratos-akb-service"):
         _production_settings(
             AKL_TRUSTED_SERVICE_CLIENT_IDS=(
-                "akb-rag-service,aiip-document-service,svc-ingestion"
+                "akb-rag-service,aiip-document-service,svc-budget-controlled-rules,"
+                "svc-ingestion"
             ),
             AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
                 "akb-rag-service=authz|audit|idempotency,"
                 "aiip-document-service=aiip-upload,"
+                "svc-budget-controlled-rules=controlled-rules-read,"
                 "svc-ingestion=authz|audit|documents-read|ingestion-status"
             ),
         )
@@ -105,6 +109,7 @@ def test_production_requires_exact_budget_upload_service_grant():
                 "aiip-document-service=aiip-upload,"
                 "stratos-akb-service=stratos-budget-upload|documents-write|"
                 "external-documents-write,"
+                "svc-budget-controlled-rules=controlled-rules-read,"
                 "svc-ingestion=authz|audit|documents-read|ingestion-status"
             ),
         )
@@ -118,6 +123,7 @@ def test_production_requires_exact_budget_upload_service_grant():
                 "akb-rag-service=authz|audit|idempotency|stratos-budget-upload,"
                 "aiip-document-service=aiip-upload,"
                 "stratos-akb-service=stratos-budget-upload,"
+                "svc-budget-controlled-rules=controlled-rules-read,"
                 "svc-ingestion=authz|audit|documents-read|ingestion-status,"
                 "svc-akb-director-copilot=audit"
             ),
@@ -132,12 +138,13 @@ def test_production_requires_exact_director_copilot_audit_grant():
         _production_settings(
             AKL_TRUSTED_SERVICE_CLIENT_IDS=(
                 "akb-rag-service,aiip-document-service,stratos-akb-service,"
-                "svc-ingestion"
+                "svc-budget-controlled-rules,svc-ingestion"
             ),
             AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
                 "akb-rag-service=authz|audit|idempotency,"
                 "aiip-document-service=aiip-upload,"
                 "stratos-akb-service=stratos-budget-upload,"
+                "svc-budget-controlled-rules=controlled-rules-read,"
                 "svc-ingestion=authz|audit|documents-read|ingestion-status"
             ),
         )
@@ -151,8 +158,59 @@ def test_production_requires_exact_director_copilot_audit_grant():
                 "akb-rag-service=authz|audit|idempotency,"
                 "aiip-document-service=aiip-upload,"
                 "stratos-akb-service=stratos-budget-upload,"
+                "svc-budget-controlled-rules=controlled-rules-read,"
                 "svc-ingestion=authz|audit|documents-read|ingestion-status,"
                 "svc-akb-director-copilot=audit|audit-read"
+            ),
+        )
+
+
+def test_production_requires_exact_controlled_rules_service_grant():
+    with pytest.raises(
+        ValidationError,
+        match="trusted client svc-budget-controlled-rules",
+    ):
+        _production_settings(
+            AKL_TRUSTED_SERVICE_CLIENT_IDS=(
+                "akb-rag-service,aiip-document-service,stratos-akb-service,"
+                "svc-ingestion,svc-akb-director-copilot"
+            ),
+            AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
+                "akb-rag-service=authz|audit|idempotency,"
+                "aiip-document-service=aiip-upload,"
+                "stratos-akb-service=stratos-budget-upload,"
+                "svc-ingestion=authz|audit|documents-read|ingestion-status,"
+                "svc-akb-director-copilot=audit"
+            ),
+        )
+
+    with pytest.raises(
+        ValidationError,
+        match="svc-budget-controlled-rules grant must be exactly controlled-rules-read",
+    ):
+        _production_settings(
+            AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
+                "akb-rag-service=authz|audit|idempotency,"
+                "aiip-document-service=aiip-upload,"
+                "stratos-akb-service=stratos-budget-upload,"
+                "svc-budget-controlled-rules=controlled-rules-read|documents-read,"
+                "svc-ingestion=authz|audit|documents-read|ingestion-status,"
+                "svc-akb-director-copilot=audit"
+            ),
+        )
+
+    with pytest.raises(
+        ValidationError,
+        match="controlled-rules-read route must be granted only",
+    ):
+        _production_settings(
+            AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
+                "akb-rag-service=authz|audit|idempotency|controlled-rules-read,"
+                "aiip-document-service=aiip-upload,"
+                "stratos-akb-service=stratos-budget-upload,"
+                "svc-budget-controlled-rules=controlled-rules-read,"
+                "svc-ingestion=authz|audit|documents-read|ingestion-status,"
+                "svc-akb-director-copilot=audit"
             ),
         )
 

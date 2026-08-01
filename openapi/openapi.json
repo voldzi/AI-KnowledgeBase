@@ -1132,7 +1132,7 @@
     "/api/v1/documents/ingestion-attempts/current": {
       "get": {
         "summary": "List Document Ingestion Attempts Current",
-        "description": "Return current attempts only for documents visible to the caller.\nThe dashboard needs a complete operational projection, but issuing one\nauthorized request per document makes its latency grow linearly. Resolve\nthe document boundary once, then load all matching attempts in one query.",
+        "description": "Return current attempts only for documents visible to the caller.\n\nThe dashboard needs a complete operational projection, but issuing one\nauthorized request per document makes its latency grow linearly. Resolve\nthe document boundary once, then load all matching attempts in one query.",
         "operationId": "registry_api_list_document_ingestion_attempts_current_api_v1_documents_ingestion_attempts_current_get",
         "parameters": [
           {
@@ -1315,21 +1315,21 @@
     "/api/v1/controlled-documentation/official-legal-packages": {
       "post": {
         "summary": "Materialize Official Legal Packages",
-        "description": "Creates idempotent draft packages for all validated, effective e-Sbirka law and implementing-regulation versions. Draft packages remain unavailable to application consumers until a human has reviewed the cited rules and made the package valid.",
+        "description": "Create idempotent draft releases for all indexed temporal law versions.",
         "operationId": "registry_api_materialize_official_legal_packages_api_v1_controlled_documentation_official_legal_packages_post",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RegistryApiOfficialLegalPackageCreate"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
-            "description": "Draft packages created or already present",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -1473,7 +1473,6 @@
             "name": "include_inactive",
             "in": "query",
             "required": false,
-            "description": "Includes approved authoring packages for authorized document gestores. Consumer calls must keep the default false value.",
             "schema": {
               "type": "boolean",
               "default": false,
@@ -1488,6 +1487,70 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegistryApiControlledRuleListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/integrations/controlled-rules-read/rules": {
+      "get": {
+        "summary": "List Controlled Rules For Budget",
+        "operationId": "registry_api_list_controlled_rules_for_budget_api_v1_integrations_controlled_rules_read_rules_get",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80,
+              "title": "Domain"
+            }
+          },
+          {
+            "name": "valid_on",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Valid On"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiControlledRuleConsumerResponse"
                 }
               }
             }
@@ -19128,81 +19191,6 @@
         ],
         "title": "ControlledDocumentSourceType"
       },
-      "RegistryApiOfficialLegalPackageCreate": {
-        "properties": {
-          "domain": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 80,
-            "pattern": "^[a-z0-9][a-z0-9_:-]+$",
-            "title": "Domain"
-          },
-          "sources": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiOfficialLegalPackageSourceCreate"
-            },
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 32,
-            "title": "Sources"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "domain",
-          "sources"
-        ],
-        "title": "OfficialLegalPackageCreate"
-      },
-      "RegistryApiOfficialLegalPackageCreateResponse": {
-        "properties": {
-          "created": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiControlledDocumentPackageResponse"
-            },
-            "type": "array",
-            "title": "Created"
-          },
-          "existing": {
-            "items": {
-              "$ref": "#/components/schemas/RegistryApiControlledDocumentPackageResponse"
-            },
-            "type": "array",
-            "title": "Existing"
-          }
-        },
-        "type": "object",
-        "title": "OfficialLegalPackageCreateResponse"
-      },
-      "RegistryApiOfficialLegalPackageSourceCreate": {
-        "properties": {
-          "document_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64,
-            "title": "Document Id"
-          },
-          "source_type": {
-            "$ref": "#/components/schemas/RegistryApiControlledDocumentSourceType"
-          },
-          "package_key": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 160,
-            "pattern": "^[a-z0-9][a-z0-9._:-]+$",
-            "title": "Package Key"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "document_id",
-          "source_type",
-          "package_key"
-        ],
-        "title": "OfficialLegalPackageSourceCreate"
-      },
       "RegistryApiControlledRuleCitation": {
         "properties": {
           "document_id": {
@@ -19283,6 +19271,305 @@
           "quoted_text"
         ],
         "title": "ControlledRuleCitation"
+      },
+      "RegistryApiControlledRuleConsumerResponse": {
+        "properties": {
+          "contract": {
+            "type": "string",
+            "const": "akb-controlled-rules-1",
+            "title": "Contract",
+            "default": "akb-controlled-rules-1"
+          },
+          "revision": {
+            "type": "string",
+            "const": "1.0.0",
+            "title": "Revision",
+            "default": "1.0.0"
+          },
+          "organization_id": {
+            "type": "string",
+            "title": "Organization Id"
+          },
+          "domain": {
+            "type": "string",
+            "const": "public_procurement",
+            "title": "Domain"
+          },
+          "valid_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Valid On"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "complete_with_warning",
+              "no_data",
+              "conflict"
+            ],
+            "title": "Status"
+          },
+          "decision_eligible": {
+            "type": "boolean",
+            "title": "Decision Eligible"
+          },
+          "source_version": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Source Version"
+          },
+          "catalog_version": {
+            "type": "string",
+            "title": "Catalog Version"
+          },
+          "catalog_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Catalog Sha256"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiControlledRuleConsumerSource"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiControlledRuleConsumerRule"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "warnings": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE",
+                "CONTROLLED_RULE_EXTRACTION_V3_REQUIRED",
+                "NO_VERIFIED_CONTROLLED_RULES_AVAILABLE",
+                "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE",
+                "SOURCE_REVIEW_DATE_INVALID",
+                "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
+                "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
+                "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
+                "CONTROLLED_RULE_EDIT_INVALID",
+                "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
+                "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH"
+              ]
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "organization_id",
+          "domain",
+          "valid_on",
+          "status",
+          "decision_eligible",
+          "source_version",
+          "catalog_version",
+          "catalog_sha256"
+        ],
+        "title": "ControlledRuleConsumerResponse"
+      },
+      "RegistryApiControlledRuleConsumerRule": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "normative_key": {
+            "type": "string",
+            "title": "Normative Key"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "definition",
+              "responsibility",
+              "obligation",
+              "prohibition",
+              "permission",
+              "financial_limit",
+              "deadline",
+              "condition",
+              "exception",
+              "required_document",
+              "audit_evidence",
+              "approval_step",
+              "scope",
+              "reference"
+            ],
+            "title": "Category"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "vat_basis": {
+            "type": "string",
+            "enum": [
+              "including_vat",
+              "excluding_vat",
+              "not_applicable",
+              "unknown"
+            ],
+            "title": "Vat Basis"
+          },
+          "conditions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conditions"
+          },
+          "exceptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exceptions"
+          },
+          "responsible_roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Responsible Roles"
+          },
+          "required_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Evidence"
+          },
+          "precedence_status": {
+            "type": "string",
+            "enum": [
+              "authoritative",
+              "supplemental"
+            ],
+            "title": "Precedence Status"
+          },
+          "package_id": {
+            "type": "string",
+            "title": "Package Id"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/RegistryApiControlledRuleCitation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rule_id",
+          "normative_key",
+          "category",
+          "title",
+          "value",
+          "vat_basis",
+          "precedence_status",
+          "package_id",
+          "citation"
+        ],
+        "title": "ControlledRuleConsumerRule"
+      },
+      "RegistryApiControlledRuleConsumerSource": {
+        "properties": {
+          "package_id": {
+            "type": "string",
+            "title": "Package Id"
+          },
+          "package_key": {
+            "type": "string",
+            "title": "Package Key"
+          },
+          "release_label": {
+            "type": "string",
+            "title": "Release Label"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/RegistryApiControlledDocumentSourceType"
+          },
+          "authority_rank": {
+            "type": "integer",
+            "title": "Authority Rank"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "document_version_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Document Version Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "package_id",
+          "package_key",
+          "release_label",
+          "title",
+          "source_type",
+          "authority_rank",
+          "effective_from",
+          "document_version_ids"
+        ],
+        "title": "ControlledRuleConsumerSource"
       },
       "RegistryApiControlledRuleListResponse": {
         "properties": {
@@ -23548,6 +23835,83 @@
           "expires_at"
         ],
         "title": "IntelligenceScopeAuthorizationResponse"
+      },
+      "RegistryApiOfficialLegalPackageCreate": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "pattern": "^[a-z0-9][a-z0-9_:-]+$",
+            "title": "Domain"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiOfficialLegalPackageSourceCreate"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Sources"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "domain",
+          "sources"
+        ],
+        "title": "OfficialLegalPackageCreate",
+        "description": "Creates draft packages for every published temporal version of a source."
+      },
+      "RegistryApiOfficialLegalPackageCreateResponse": {
+        "properties": {
+          "created": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiControlledDocumentPackageResponse"
+            },
+            "type": "array",
+            "title": "Created"
+          },
+          "existing": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiControlledDocumentPackageResponse"
+            },
+            "type": "array",
+            "title": "Existing"
+          }
+        },
+        "type": "object",
+        "title": "OfficialLegalPackageCreateResponse"
+      },
+      "RegistryApiOfficialLegalPackageSourceCreate": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/RegistryApiControlledDocumentSourceType"
+          },
+          "package_key": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "pattern": "^[a-z0-9][a-z0-9._:-]+$",
+            "title": "Package Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "source_type",
+          "package_key"
+        ],
+        "title": "OfficialLegalPackageSourceCreate",
+        "description": "One official e-Sbirka document to materialize as temporal packages."
       },
       "RegistryApiPapLabel": {
         "type": "string",
@@ -30661,9 +31025,9 @@
           },
           "profile_version": {
             "type": "string",
-            "const": "2",
+            "const": "3",
             "title": "Profile Version",
-            "default": "2"
+            "default": "3"
           },
           "classification_max": {
             "type": "string",
@@ -30742,7 +31106,7 @@
           },
           "profile_version": {
             "type": "string",
-            "const": "2",
+            "const": "3",
             "title": "Profile Version"
           },
           "status": {

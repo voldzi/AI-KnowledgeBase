@@ -151,6 +151,7 @@ POST /api/v1/controlled-documentation/official-legal-packages
 GET  /api/v1/controlled-documentation/packages?domain=...&valid_on=YYYY-MM-DD
 POST /api/v1/controlled-documentation/packages/{packageId}/status
 GET  /api/v1/controlled-documentation/rules?domain=...&valid_on=YYYY-MM-DD
+GET  /api/v1/integrations/controlled-rules-read/rules?domain=public_procurement&valid_on=YYYY-MM-DD
 ```
 
 `official-legal-packages` accepts only verified e-Sbírka sources classified as
@@ -159,13 +160,14 @@ each indexed effective version of every supplied source. It never publishes a
 package or makes a rule usable by another application: the gestor must review
 cited proposals and explicitly make the relevant release valid.
 
-Omitting `valid_on` means the current date. Application consumers must use only
-rules with `consumer_eligible=true`; `shadowed`, `conflict`, unverified and
-uncited proposals are not decision inputs. RAG proposes rules through
+Omitting `valid_on` on the gestor endpoint means the current date. The Budget
+integration endpoint requires `valid_on` and returns only eligible rules in the
+closed `akb-controlled-rules-1` response. `shadowed`, `conflict`, unverified,
+uncited and non-catalogued proposals are never decision inputs. RAG proposes rules through
 `POST /api/v1/stratos/extractions/controlled-rules/propose`; Registry stores
 the proposal and human feedback. The complete hierarchy and historical
-contract are in
-`docs/ARCHITECTURE/temporal-controlled-documentation.md`.
+contract are in `docs/ARCHITECTURE/temporal-controlled-documentation.md`; the
+Budget handoff is in `docs/integration/AKB_CONTROLLED_RULES_BUDGET_API.md`.
 
 Interactive Governance operations use the internal Governance service bearer
 in `Authorization` and the independently current person bearer in

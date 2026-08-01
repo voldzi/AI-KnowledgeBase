@@ -230,6 +230,7 @@ POST /controlled-documentation/packages
 GET  /controlled-documentation/packages
 POST /controlled-documentation/packages/{package_id}/status
 GET  /controlled-documentation/rules
+GET  /integrations/controlled-rules-read/rules
 ```
 
 Package and rule list operations use `valid_on`; omission means today.
@@ -242,6 +243,16 @@ groups identical `normative_key` values, applies the closed source-authority
 rank and marks each rule `authoritative`, `supplemental`, `shadowed` or
 `conflict`. Only non-conflicting accepted/edited rules at the winning authority
 level have `consumer_eligible=true`.
+
+The generic rules endpoint is the human/gestor projection. Application
+consumers do not receive its inactive-package controls or internal verification
+fields. Budget uses the closed `akb-controlled-rules-1` contract at
+`GET /integrations/controlled-rules-read/rules` with mandatory
+`domain=public_procurement` and `valid_on`. The route returns only valid,
+catalogued, cited, precedence-eligible rules and reports `complete`,
+`complete_with_warning`, `no_data`, or `conflict`. Its dedicated service
+identity and full consumer behavior are documented in
+`docs/integration/AKB_CONTROLLED_RULES_BUDGET_API.md`.
 
 See `docs/ARCHITECTURE/temporal-controlled-documentation.md`.
 

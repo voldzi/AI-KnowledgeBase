@@ -3201,9 +3201,9 @@ components:
           default: controlled_document_rules_v1
         profile_version:
           type: string
-          const: '2'
+          const: '3'
           title: Profile Version
-          default: '2'
+          default: '3'
         classification_max:
           type: string
           enum:
@@ -3262,7 +3262,7 @@ components:
           title: Profile
         profile_version:
           type: string
-          const: '2'
+          const: '3'
           title: Profile Version
         status:
           type: string

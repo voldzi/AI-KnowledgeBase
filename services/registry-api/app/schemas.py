@@ -1364,20 +1364,7 @@ class ControlledRuleCitation(BaseModel):
     quoted_text: str = Field(min_length=1, max_length=2000)
 
 
-class ControlledRuleProposal(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    rule_id: str = Field(
-        min_length=3,
-        max_length=128,
-        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
-    )
-    normative_key: str = Field(
-        min_length=3,
-        max_length=160,
-        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
-    )
-    category: Literal[
+ControlledRuleCategory = Literal[
         "definition",
         "responsibility",
         "obligation",
@@ -1392,7 +1379,23 @@ class ControlledRuleProposal(BaseModel):
         "approval_step",
         "scope",
         "reference",
-    ]
+]
+
+
+class ControlledRuleProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str = Field(
+        min_length=3,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+    normative_key: str = Field(
+        min_length=3,
+        max_length=160,
+        pattern=r"^[a-z0-9][a-z0-9._:-]+$",
+    )
+    category: ControlledRuleCategory
     title: str = Field(min_length=1, max_length=300)
     value: Any
     unit: str | None = Field(default=None, max_length=80)
@@ -1452,6 +1455,112 @@ class ControlledRuleListResponse(BaseModel):
     packages: list[ControlledDocumentPackageResponse]
     rules: list[ControlledRuleResponse]
     warnings: list[str] = Field(default_factory=list)
+
+
+class ControlledRuleConsumerSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    package_id: str
+    package_key: str
+    release_label: str
+    title: str
+    source_type: ControlledDocumentSourceType
+    authority_rank: int
+    effective_from: date
+    effective_to: date | None = None
+    document_version_ids: list[str] = Field(min_length=1, max_length=64)
+
+
+class ControlledRuleConsumerRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str
+    normative_key: str
+    category: ControlledRuleCategory
+    title: str
+    value: Any
+    unit: str | None = None
+    currency: str | None = None
+    vat_basis: Literal[
+        "including_vat",
+        "excluding_vat",
+        "not_applicable",
+        "unknown",
+    ]
+    conditions: list[str] = Field(default_factory=list)
+    exceptions: list[str] = Field(default_factory=list)
+    responsible_roles: list[str] = Field(default_factory=list)
+    required_evidence: list[str] = Field(default_factory=list)
+    precedence_status: Literal["authoritative", "supplemental"]
+    package_id: str
+    citation: ControlledRuleCitation
+
+
+class ControlledRuleConsumerResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contract: Literal["akb-controlled-rules-1"] = "akb-controlled-rules-1"
+    revision: Literal["1.0.0"] = "1.0.0"
+    organization_id: str
+    domain: Literal["public_procurement"]
+    valid_on: date
+    status: Literal["complete", "complete_with_warning", "no_data", "conflict"]
+    decision_eligible: bool
+    source_version: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    catalog_version: str
+    catalog_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    sources: list[ControlledRuleConsumerSource] = Field(default_factory=list)
+    rules: list[ControlledRuleConsumerRule] = Field(default_factory=list)
+    warnings: list[
+        Literal[
+            "NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE",
+            "CONTROLLED_RULE_EXTRACTION_V3_REQUIRED",
+            "NO_VERIFIED_CONTROLLED_RULES_AVAILABLE",
+            "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE",
+            "SOURCE_REVIEW_DATE_INVALID",
+            "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
+            "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
+            "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
+            "CONTROLLED_RULE_EDIT_INVALID",
+            "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
+            "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH",
+        ]
+    ] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_consumer_outcome(self) -> "ControlledRuleConsumerResponse":
+        eligible_status = self.status in {"complete", "complete_with_warning"}
+        if self.decision_eligible != eligible_status:
+            raise ValueError("decision_eligible must match the response status")
+        if eligible_status and (not self.rules or not self.sources):
+            raise ValueError("decision-eligible responses require sources and rules")
+        if not eligible_status and self.rules:
+            raise ValueError("non-eligible responses cannot expose decision rules")
+        if self.status == "complete" and self.warnings:
+            raise ValueError("complete responses cannot contain warnings")
+        if self.status == "complete_with_warning" and set(self.warnings) != {
+            "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE"
+        }:
+            raise ValueError("complete_with_warning requires the bounded review warning")
+        if self.status == "conflict" and not {
+            "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
+            "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
+            "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
+            "CONTROLLED_RULE_EDIT_INVALID",
+            "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
+            "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH",
+            "SOURCE_REVIEW_DATE_INVALID",
+        }.intersection(self.warnings):
+            raise ValueError("conflict responses require a known integrity warning")
+
+        sources = {source.package_id: source for source in self.sources}
+        for rule in self.rules:
+            source = sources.get(rule.package_id)
+            if source is None:
+                raise ValueError("every rule must reference a returned source package")
+            if rule.citation.document_version_id not in source.document_version_ids:
+                raise ValueError("every rule citation must reference its source package")
+        return self
 
 
 class DocumentFileCreate(BaseModel):

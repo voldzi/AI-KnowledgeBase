@@ -56,6 +56,15 @@ služební identity bez vazby na obsahovou policy. Chybějící, cizí nebo změ
 binding zastaví obsahově specifický auditní zápis fail-closed; route grant
 `audit` sám o sobě nestačí.
 
+Produkční `svc-budget-controlled-rules` má jediný route grant
+`controlled-rules-read` a musí nést roli `service_budget_rules_read`. Endpoint
+navíc ověřuje přesné client id; stejná role na jiném klientovi přístup
+nevytvoří. Původní `stratos-akb-service` zůstává výhradně transportem
+`stratos-budget-upload` a nemůže číst pravidla ani dokumenty. Spotřebitelský
+endpoint používá organizaci z ověřené servisní identity, dovolí pouze doménu
+`public_procurement`, pouze platné balíčky a pouze zdroje klasifikace `public`
+nebo `internal`. Neověřené hlavičky ani query parametry nemohou rozšířit rozsah.
+
 Interaktivní AKB session načítá capabilities a scopes výhradně z centrálního
 `GET /api/v1/auth/me`. Keycloak token proto musí obsahovat dedikovanou
 `stratos-access-api` audience vedle AKB resource audience `akl-api`. Odmítnutá

@@ -471,7 +471,7 @@ class ControlledRuleExtractionProposeRequest(BaseModel):
     profile: Literal["controlled_document_rules_v1"] = (
         "controlled_document_rules_v1"
     )
-    profile_version: Literal["2"] = "2"
+    profile_version: Literal["3"] = "3"
     classification_max: Classification = "internal"
     max_chunks: int = Field(default=30, ge=1, le=50)
     correlation_id: str | None = Field(default=None, max_length=128)
@@ -660,7 +660,7 @@ class ControlledRuleExtractionResponse(BaseModel):
     package_id: str
     domain: str
     profile: Literal["controlled_document_rules_v1"]
-    profile_version: Literal["2"]
+    profile_version: Literal["3"]
     status: ExtractionStatus
     classification: Classification
     requested_by: str

@@ -891,7 +891,7 @@ class RagRetrievalService:
             )
 
         rules, missing_information, extraction_warnings = (
-            extract_controlled_rule_proposals(chunks=chunks)
+            extract_controlled_rule_proposals(chunks=chunks, domain=payload.domain)
         )
         missing_coordinates = sorted(source_coordinates - scanned_coordinates)
         if missing_coordinates:
@@ -2930,7 +2930,7 @@ def _controlled_rule_extraction_response_from_registry(
         package_id=str(result_map.get("package_id", payload.get("entity_id", ""))),
         domain=str(result_map.get("domain", "")),
         profile="controlled_document_rules_v1",
-        profile_version=str(payload.get("profile_version", "2")),  # type: ignore[arg-type]
+        profile_version=str(payload.get("profile_version", "3")),  # type: ignore[arg-type]
         status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
         classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
         requested_by=str(payload.get("requested_by", "")),

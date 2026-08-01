@@ -90,6 +90,12 @@ document/version/action proof přímo z Registry; `svc-ingestion` smí proof pou
 potvrdit a technicky synchronizovat autoritativní attempt, nikdy si nesmí
 zkonstruovat oprávnění za cizí subject.
 
+Produkční Budget čte ověřená pravidla pouze přes samostatnou identitu
+`svc-budget-controlled-rules` s rolí `service_budget_rules_read` a přesným
+grantem `controlled-rules-read`. Upload identita `stratos-akb-service` se
+nerozšiřuje. Spotřebitelský kontrakt, známé výsledky a fail-closed chování jsou
+v `docs/integration/AKB_CONTROLLED_RULES_BUDGET_API.md`.
+
 ## API
 
 Verzované endpointy jsou pod `/api/v1`.
@@ -125,6 +131,7 @@ PATCH  /api/v1/documents/{document_id}/external-references/current
 GET    /api/v1/integrations/ingestion/readiness
 POST   /api/v1/integrations/ingestion/authorizations/confirm
 POST   /api/v1/integrations/ingestion/intelligence-authorizations/confirm
+GET    /api/v1/integrations/controlled-rules-read/rules
 
 GET    /api/v1/public/documents/{public_slug}
 GET    /api/v1/internal/public/documents/{public_slug}/source
