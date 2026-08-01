@@ -3,11 +3,15 @@
 import {
   BookOpenCheck,
   CalendarClock,
+  ChevronDown,
   CheckCircle2,
+  CircleHelp,
+  ExternalLink,
   FilePlus2,
   Files,
   ListChecks,
   SearchCheck,
+  Settings2,
   ShieldCheck,
   Sparkles,
   XCircle,
@@ -23,7 +27,7 @@ import {
   type ControlledPackageMemberRole,
 } from "@/lib/controlled-documentation/contract";
 import {
-  controlledDocumentationErrorMessage,
+  controlledDocumentationUserErrorMessage,
   controlledDocumentationWarningLabel,
   controlledPackageRuleProgress,
 } from "@/lib/controlled-documentation/presentation";
@@ -62,6 +66,10 @@ const statusLabels: Record<ControlledDocumentPackageStatus, string> = {
   superseded: "Nahrazeno",
   cancelled: "Zrušeno",
   archived: "Archivováno",
+};
+
+const domainLabels: Record<string, string> = {
+  public_procurement: "Veřejné zakázky",
 };
 
 export function ControlledDocumentationWorkbench({
@@ -251,23 +259,61 @@ export function ControlledDocumentationWorkbench({
   return (
     <div className="controlled-docs">
       <section className="controlled-docs__metrics" aria-label="Stav řízených předpisů">
-        <Metric icon={BookOpenCheck} label="Balíčky" value={packages.items.length} detail={`${activePackages} platných k datu`} />
-        <Metric icon={SearchCheck} label="Ověřená pravidla" value={acceptedCount} detail="použitelná aplikacemi" />
-        <Metric icon={Sparkles} label="K posouzení" value={proposedCount} detail="citovaných návrhů" />
-        <Metric icon={CalendarClock} label="Stav k datu" value={formatDate(validOn)} detail="lze změnit pro historii" />
+        <Metric
+          icon={BookOpenCheck}
+          label="Vydání"
+          value={packages.items.length}
+          detail={`${activePackages} platných k datu`}
+          help="Vydání spojuje hlavní dokument, přílohy a formuláře, které mají být používány společně."
+        />
+        <Metric
+          icon={SearchCheck}
+          label="Ověřená pravidla"
+          value={acceptedCount}
+          detail="použitelná aplikacemi"
+          help="Pouze pravidla potvrzená nebo opravená gestorem může AKB předat dalším aplikacím."
+        />
+        <Metric
+          icon={Sparkles}
+          label="K posouzení"
+          value={proposedCount}
+          detail="citovaných návrhů"
+          help="Návrhy připravil automatický rozbor dokumentů. Gestor je musí potvrdit, opravit nebo odmítnout."
+        />
+        <Metric
+          icon={CalendarClock}
+          label="Stav k datu"
+          value={formatDate(validOn)}
+          detail="lze změnit pro historii"
+          help="Datum určuje, která vydání a pravidla byla nebo jsou v daný den platná."
+        />
       </section>
 
       <section className="controlled-docs__toolbar">
         <label className="stratos-field" htmlFor="controlled-domain">
-          <span>Oblast</span>
-          <input
+          <span className="controlled-docs__field-label">
+            Oblast pravidel
+            <WorkbenchHelpHint text="Vyberte agendu, jejíž předpisy a pravidla chcete zobrazit." />
+          </span>
+          <select
             id="controlled-domain"
             value={domain}
             onChange={(event) => setDomain(event.target.value)}
-          />
+          >
+            {[...new Set([domain, ...packages.items.map((item) => item.domain)])].map(
+              (itemDomain) => (
+                <option key={itemDomain} value={itemDomain}>
+                  {domainLabel(itemDomain)}
+                </option>
+              ),
+            )}
+          </select>
         </label>
         <label className="stratos-field" htmlFor="controlled-valid-on">
-          <span>Platnost k datu</span>
+          <span className="controlled-docs__field-label">
+            Platnost k datu
+            <WorkbenchHelpHint text="Pro běžnou práci ponechte dnešní datum. Starší datum použijte pouze při ověřování historického stavu." />
+          </span>
           <input
             id="controlled-valid-on"
             type="date"
@@ -325,7 +371,10 @@ export function ControlledDocumentationWorkbench({
         <header className="panel__header">
           <div>
             <p className="eyebrow">Vydání a historie</p>
-            <h2>Balíčky dokumentů</h2>
+            <div className="controlled-docs__section-title">
+              <h2>Balíčky dokumentů</h2>
+              <WorkbenchHelpHint text="Každý balíček představuje jedno řízené vydání včetně přesných verzí hlavního dokumentu a jeho příloh." />
+            </div>
           </div>
         </header>
         <div className="controlled-docs__release-list">
@@ -358,14 +407,12 @@ export function ControlledDocumentationWorkbench({
                     key={member.member_id}
                   >
                     <Files aria-hidden="true" />
-                    <span>{member.label || memberRoleLabel(member.member_role)}</span>
-                    <small>verze {shortId(member.document_version_id)}</small>
+                    <span>{documentTitle(member.document_id, documents)}</span>
+                    <small>{member.label || memberRoleLabel(member.member_role)}</small>
                   </a>
                 ))}
               </div>
-              {item.status === "approved" ? (
-                <PackageWorkflow progress={ruleProgress} />
-              ) : null}
+              <PackageWorkflow progress={ruleProgress} status={item.status} />
               <div className="controlled-docs__actions">
                 {item.status === "approved" && authorization.can_update ? (
                   <StratosButton
@@ -407,6 +454,7 @@ export function ControlledDocumentationWorkbench({
                   </StratosButton>
                 ) : null}
               </div>
+              <PackageTechnicalDetails item={item} />
             </article>
             );
           })}
@@ -417,7 +465,10 @@ export function ControlledDocumentationWorkbench({
         <header className="panel__header">
           <div>
             <p className="eyebrow">Kontrola gestorem a data pro aplikace</p>
-            <h2>Návrhy, pravidla a limity</h2>
+            <div className="controlled-docs__section-title">
+              <h2>Návrhy, pravidla a limity</h2>
+              <WorkbenchHelpHint text="Každý návrh obsahuje hodnotu a citaci. Potvrzením gestor ručí za správnost; oprava zachová původní citaci a auditní stopu." />
+            </div>
           </div>
         </header>
         <div className="controlled-docs__rule-list">
@@ -430,9 +481,18 @@ export function ControlledDocumentationWorkbench({
                 <h3>{rule.proposal.title}</h3>
                 <p className="controlled-docs__rule-value">{formatRuleValue(rule.proposal.value, rule.proposal.currency, rule.proposal.unit)}</p>
                 <blockquote>{rule.proposal.citation.quoted_text}</blockquote>
-                <p className="muted">
-                  Autorita {rule.authority_rank} · jistota {Math.round(rule.proposal.confidence * 100)} % · {rule.verification_status === "proposed" ? "čeká na ověření" : "ověřeno"}
+                <a
+                  className="controlled-docs__citation-link"
+                  href={withAppBasePath(
+                    `/documents/${encodeURIComponent(rule.proposal.citation.document_id)}?tab=viewer&chunk_id=${encodeURIComponent(rule.proposal.citation.chunk_id)}`,
+                  )}
+                >
+                  <ExternalLink aria-hidden="true" /> Otevřít citované místo
+                </a>
+                <p className="muted controlled-docs__rule-summary">
+                  {sourceLabels[rule.source_type]} · jistota návrhu {Math.round(rule.proposal.confidence * 100)} % · {rule.verification_status === "proposed" ? "čeká na ověření gestorem" : "ověřeno gestorem"}
                 </p>
+                <RuleTechnicalDetails rule={rule} />
               </div>
               {rule.verification_status === "proposed" && authorization.can_publish ? (
                 <>
@@ -520,21 +580,95 @@ function PublishingGuide() {
 
 type RuleProgress = ReturnType<typeof controlledPackageRuleProgress>;
 
-function PackageWorkflow({ progress }: { progress: RuleProgress }) {
-  const detail =
-    progress.total === 0
-      ? "Další krok: nechte AKB navrhnout citovaná pravidla z hlavního dokumentu a příloh."
-      : progress.pending > 0
-        ? `Další krok: posuďte ${progress.pending} ${czechProposalCount(progress.pending)} v části Návrhy, pravidla a limity.`
-        : progress.readyForPublication
-          ? "Pravidla jsou ověřena. Po zveřejnění přesných verzí dokumentů lze vydání vyhlásit jako platné."
-          : "Všechny návrhy byly odmítnuty. Před platností spusťte vytěžení znovu a potvrďte alespoň jedno citované pravidlo.";
+function PackageWorkflow({
+  progress,
+  status,
+}: {
+  progress: RuleProgress;
+  status: ControlledDocumentPackageStatus;
+}) {
+  const detail = packageWorkflowDetail(status, progress);
 
   return (
     <div className="controlled-docs__package-workflow">
       <strong>Aktuální krok</strong>
       <p>{detail}</p>
     </div>
+  );
+}
+
+function packageWorkflowDetail(
+  status: ControlledDocumentPackageStatus,
+  progress: RuleProgress,
+) {
+  if (status === "draft") {
+    return "Další krok: zkontrolujte hlavní dokument a přílohy a poté schvalte vydání.";
+  }
+  if (status === "valid") {
+    return "Toto vydání je platné. Ověřená pravidla mohou používat oprávnění uživatelé a aplikace.";
+  }
+  if (["cancelled", "superseded", "archived"].includes(status)) {
+    return "Toto vydání zůstává pouze v historii a neposkytuje aktuální pravidla aplikacím.";
+  }
+  if (progress.total === 0) {
+    return "Další krok: nechte AKB navrhnout citovaná pravidla z hlavního dokumentu a příloh.";
+  }
+  if (progress.pending > 0) {
+    return `Další krok: posuďte ${progress.pending} ${czechProposalCount(progress.pending)} v části Návrhy, pravidla a limity.`;
+  }
+  if (progress.readyForPublication) {
+    return "Pravidla jsou ověřena. Po zveřejnění přesných verzí dokumentů lze vydání vyhlásit jako platné.";
+  }
+  return "Všechny návrhy byly odmítnuty. Před platností spusťte vytěžení znovu a potvrďte alespoň jedno citované pravidlo.";
+}
+
+function PackageTechnicalDetails({ item }: { item: ControlledDocumentPackage }) {
+  return (
+    <details className="technical-details technical-details--compact controlled-docs__technical-details">
+      <summary>
+        <Settings2 aria-hidden="true" />
+        Technické podrobnosti
+        <ChevronDown aria-hidden="true" />
+      </summary>
+      <div className="technical-details__body">
+        <p className="technical-details__line">
+          <strong>ID vydání</strong>
+          <span>{item.package_id}</span>
+        </p>
+        {item.members.map((member) => (
+          <p className="technical-details__line" key={member.member_id}>
+            <strong>{memberRoleLabel(member.member_role)}</strong>
+            <span>{member.document_version_id}</span>
+          </p>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function RuleTechnicalDetails({ rule }: { rule: ControlledRuleList["rules"][number] }) {
+  return (
+    <details className="technical-details technical-details--compact controlled-docs__technical-details">
+      <summary>
+        <Settings2 aria-hidden="true" />
+        Technické podrobnosti
+        <ChevronDown aria-hidden="true" />
+      </summary>
+      <div className="technical-details__body">
+        <p className="technical-details__line">
+          <strong>Stálý klíč</strong>
+          <span>{rule.proposal.normative_key}</span>
+        </p>
+        <p className="technical-details__line">
+          <strong>ID pravidla</strong>
+          <span>{rule.proposal.rule_id}</span>
+        </p>
+        <p className="technical-details__line">
+          <strong>Pořadí autority</strong>
+          <span>{rule.authority_rank}</span>
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -1013,17 +1147,37 @@ function Metric({
   label,
   value,
   detail,
+  help,
 }: {
   icon: typeof BookOpenCheck;
   label: string;
   value: string | number;
   detail: string;
+  help: string;
 }) {
   return (
     <div className="controlled-docs__metric">
       <Icon aria-hidden="true" />
-      <div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>
+      <div>
+        <span className="controlled-docs__metric-label">
+          {label}
+          <WorkbenchHelpHint text={help} />
+        </span>
+        <strong>{value}</strong>
+        <small>{detail}</small>
+      </div>
     </div>
+  );
+}
+
+function WorkbenchHelpHint({ text }: { text: string }) {
+  return (
+    <details className="help-hint controlled-docs__help-hint">
+      <summary aria-label="Vysvětlení" title="Vysvětlení">
+        <CircleHelp aria-hidden="true" />
+      </summary>
+      <div role="note">{text}</div>
+    </details>
   );
 }
 
@@ -1040,6 +1194,20 @@ function memberRoleLabel(role: ControlledDocumentPackage["members"][number]["mem
     form: "Formulář",
     template: "Vzor",
   }[role];
+}
+
+function documentTitle(documentId: string, documents: Document[]) {
+  return documents.find((document) => document.document_id === documentId)?.title
+    ?? "Dokument v tomto vydání";
+}
+
+function domainLabel(domain: string) {
+  return domainLabels[domain]
+    ?? domain
+      .split(/[_-]+/)
+      .filter(Boolean)
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(" ");
 }
 
 function categoryLabel(category: string) {
@@ -1078,10 +1246,6 @@ function formatDate(value: string) {
     : new Intl.DateTimeFormat("cs-CZ").format(date);
 }
 
-function shortId(value: string) {
-  return value.length > 16 ? `${value.slice(0, 12)}…` : value;
-}
-
 function slugKey(value: string) {
   return value
     .normalize("NFD")
@@ -1095,8 +1259,5 @@ async function responseMessage(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
     error?: { code?: string; message?: string };
   } | null;
-  return controlledDocumentationErrorMessage(
-    payload?.error?.code,
-    payload?.error?.message || "Operaci se nepodařilo dokončit.",
-  );
+  return controlledDocumentationUserErrorMessage(payload?.error?.code);
 }

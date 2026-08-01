@@ -49,6 +49,15 @@ export function controlledDocumentationErrorMessage(
   return (code && errorMessages[code]) || fallback;
 }
 
+export function controlledDocumentationUserErrorMessage(
+  code: string | undefined,
+) {
+  return (
+    (code && errorMessages[code])
+    || "Operaci se nepodařilo dokončit. Obnovte stránku a zkuste doporučený krok znovu. Pokud problém trvá, předejte správci čas události."
+  );
+}
+
 export function controlledDocumentationWarningLabel(warning: string) {
   return warningMessages[warning] || "Řízené vydání vyžaduje kontrolu gestorem.";
 }
