@@ -71,7 +71,7 @@ otázku neupravuje. Dvě rozdílné hodnoty na stejné nejvyšší úrovni vytv�
 
 ## Vytěžení pravidel
 
-Profil `controlled_document_rules_v1` navrhuje definice, povinnosti, zákazy,
+Profil `controlled_document_rules_v1` revize 3 navrhuje definice, povinnosti, zákazy,
 odpovědnosti, výjimky, lhůty, finanční limity a požadované důkazy. Vytěžení je
 návrh, nikoli právní rozhodnutí. Každý návrh obsahuje:
 
@@ -106,6 +106,7 @@ POST /api/v1/controlled-documentation/official-legal-packages
 GET  /api/v1/controlled-documentation/packages?domain=...&valid_on=YYYY-MM-DD
 POST /api/v1/controlled-documentation/packages/{package_id}/status
 GET  /api/v1/controlled-documentation/rules?domain=...&valid_on=YYYY-MM-DD
+GET  /api/v1/integrations/controlled-rules-read/rules?domain=public_procurement&valid_on=YYYY-MM-DD
 
 POST /api/v1/stratos/extractions/controlled-rules/propose
 POST /api/v1/document-extractions/{extraction_id}/feedback
@@ -134,15 +135,28 @@ citovaný návrh není potvrzený nebo opravený gestorem.
 
 ## Integrace aplikací
 
-Budget ani jiná aplikace nesmí číst databázi AKB. Použije pravidlové API s
-konkrétním `domain` a `valid_on`, vezme pouze `consumer_eligible=true` a uchová
-vrácené identifikátory balíčku, verze, pravidla a citace jako rozhodovací
-evidenci. `valid_on` je datum posuzované operace, nikoli datum HTTP požadavku.
+Budget ani jiná aplikace nesmí číst databázi AKB. Gestorský endpoint
+`/controlled-documentation/rules` je určen lidem a internímu UI. Budget používá
+výhradně uzavřený kontrakt `akb-controlled-rules-1` na route
+`/integrations/controlled-rules-read/rules`, který už obsahuje pouze
+spotřebitelsky způsobilá pravidla. Uchová vrácené identifikátory balíčku, verze,
+pravidla, katalogu, `source_version` a citace jako rozhodovací evidenci.
+`valid_on` je datum posuzované operace, nikoli datum HTTP požadavku.
 
 Prázdný výsledek, konflikt, zastíněné pravidlo, chybějící citace, neznámý
 reason kód nebo nedostupná autorizační služba znamená fail-closed. Aplikace smí
 zobrazit vysvětlení uživateli, ale nesmí dopočítat limit ani nahradit pravidlo
 konfigurační konstantou.
+
+Veřejné zakázky používají uzavřený katalog `normative_key`. Známé aliasy jsou
+před porovnáním kanonizované, takže například oddělené klíče pro dodávky a
+služby sdílejí zákonný klíč VZMR. Balíček nelze nově vyhlásit jako platný,
+pokud potvrzené pravidlo používá neznámý klíč nebo kategorii odporující
+katalogu. Dříve platný balíček s neznámým klíčem není tiše opraven; aplikační
+kontrakt vrátí `conflict` bez rozhodovacích pravidel a vyžádá revizi gestorem.
+
+Přesný spotřebitelský kontrakt a předání pro Budget popisuje
+`docs/integration/AKB_CONTROLLED_RULES_BUDGET_API.md`.
 
 ## Pilot veřejných zakázek
 
@@ -183,8 +197,9 @@ Pilot ověřuje:
 7. odmítnutí nepotvrzeného nebo rozporného pravidla;
 8. shodný výsledek v chatu a API.
 
-Profil `controlled_document_rules_v1` revize 2 odděluje tematické retrieval
-průchody a publikační brána odmítá neúplné pokrytí. Tabulková záhlaví a obecné
+Profil `controlled_document_rules_v1` revize 3 odděluje tematické retrieval
+průchody, mapuje návrhy veřejných zakázek pouze na uzavřený významový katalog
+a publikační brána odmítá neúplné pokrytí. Tabulková záhlaví a obecné
 výkladové definice se nesmí automaticky vydávat za provozní pravidla. Gestor
 stále posuzuje každý návrh a může opravit jeho strukturovanou hodnotu; citace a
 přesná zdrojová verze zůstávají neměnné.

@@ -1,0 +1,401 @@
+{
+  "$defs": {
+    "ControlledDocumentSourceType": {
+      "enum": [
+        "law",
+        "implementing_regulation",
+        "internal_directive",
+        "internal_instruction",
+        "methodology",
+        "form",
+        "informative_guidance"
+      ],
+      "title": "ControlledDocumentSourceType",
+      "type": "string"
+    },
+    "ControlledRuleCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_version_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Document Version Id",
+          "type": "string"
+        },
+        "chunk_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "section_path": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Section Path",
+          "type": "array"
+        },
+        "page_number": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Number"
+        },
+        "article_number": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Article Number"
+        },
+        "paragraph_number": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paragraph Number"
+        },
+        "quoted_text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Quoted Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "document_version_id",
+        "chunk_id",
+        "quoted_text"
+      ],
+      "title": "ControlledRuleCitation",
+      "type": "object"
+    },
+    "ControlledRuleConsumerRule": {
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "normative_key": {
+          "title": "Normative Key",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "definition",
+            "responsibility",
+            "obligation",
+            "prohibition",
+            "permission",
+            "financial_limit",
+            "deadline",
+            "condition",
+            "exception",
+            "required_document",
+            "audit_evidence",
+            "approval_step",
+            "scope",
+            "reference"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "vat_basis": {
+          "enum": [
+            "including_vat",
+            "excluding_vat",
+            "not_applicable",
+            "unknown"
+          ],
+          "title": "Vat Basis",
+          "type": "string"
+        },
+        "conditions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Conditions",
+          "type": "array"
+        },
+        "exceptions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exceptions",
+          "type": "array"
+        },
+        "responsible_roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Responsible Roles",
+          "type": "array"
+        },
+        "required_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Evidence",
+          "type": "array"
+        },
+        "precedence_status": {
+          "enum": [
+            "authoritative",
+            "supplemental"
+          ],
+          "title": "Precedence Status",
+          "type": "string"
+        },
+        "package_id": {
+          "title": "Package Id",
+          "type": "string"
+        },
+        "citation": {
+          "$ref": "#/$defs/ControlledRuleCitation"
+        }
+      },
+      "required": [
+        "rule_id",
+        "normative_key",
+        "category",
+        "title",
+        "value",
+        "vat_basis",
+        "precedence_status",
+        "package_id",
+        "citation"
+      ],
+      "title": "ControlledRuleConsumerRule",
+      "type": "object"
+    },
+    "ControlledRuleConsumerSource": {
+      "additionalProperties": false,
+      "properties": {
+        "package_id": {
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_key": {
+          "title": "Package Key",
+          "type": "string"
+        },
+        "release_label": {
+          "title": "Release Label",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "source_type": {
+          "$ref": "#/$defs/ControlledDocumentSourceType"
+        },
+        "authority_rank": {
+          "title": "Authority Rank",
+          "type": "integer"
+        },
+        "effective_from": {
+          "format": "date",
+          "title": "Effective From",
+          "type": "string"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective To"
+        },
+        "document_version_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Document Version Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "package_id",
+        "package_key",
+        "release_label",
+        "title",
+        "source_type",
+        "authority_rank",
+        "effective_from",
+        "document_version_ids"
+      ],
+      "title": "ControlledRuleConsumerSource",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "const": "akb-controlled-rules-1",
+      "default": "akb-controlled-rules-1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "revision": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Revision",
+      "type": "string"
+    },
+    "organization_id": {
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "domain": {
+      "const": "public_procurement",
+      "title": "Domain",
+      "type": "string"
+    },
+    "valid_on": {
+      "format": "date",
+      "title": "Valid On",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "complete_with_warning",
+        "no_data",
+        "conflict"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "decision_eligible": {
+      "title": "Decision Eligible",
+      "type": "boolean"
+    },
+    "source_version": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Source Version",
+      "type": "string"
+    },
+    "catalog_version": {
+      "title": "Catalog Version",
+      "type": "string"
+    },
+    "catalog_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Catalog Sha256",
+      "type": "string"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/ControlledRuleConsumerSource"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/ControlledRuleConsumerRule"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "enum": [
+          "NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE",
+          "CONTROLLED_RULE_EXTRACTION_V3_REQUIRED",
+          "NO_VERIFIED_CONTROLLED_RULES_AVAILABLE",
+          "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE",
+          "SOURCE_REVIEW_DATE_INVALID",
+          "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
+          "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
+          "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
+          "CONTROLLED_RULE_EDIT_INVALID",
+          "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
+          "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH"
+        ],
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "organization_id",
+    "domain",
+    "valid_on",
+    "status",
+    "decision_eligible",
+    "source_version",
+    "catalog_version",
+    "catalog_sha256"
+  ],
+  "title": "ControlledRuleConsumerResponse",
+  "type": "object"
+}

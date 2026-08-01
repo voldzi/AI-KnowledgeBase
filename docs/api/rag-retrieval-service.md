@@ -189,7 +189,7 @@ outside AKB.
 
 `POST /api/v1/stratos/extractions/controlled-rules/propose` retrieves exact
 authorized package-member versions and proposes cited structured rules under
-profile `controlled_document_rules_v1`, revision `2`. For this governance
+profile `controlled_document_rules_v1`, revision `3`. For this governance
 operation, AKB scans every indexed chunk of the explicitly named and authorized
 source versions instead of relying on relevance-ranked search. The scan is
 bounded; an absent source version or a package exceeding the bound remains
@@ -211,7 +211,10 @@ improvements instead of returning a stale idempotent result.
 
 For multi-document packages, an unexpectedly small cited result is returned
 with `CONTROLLED_RULE_COVERAGE_INSUFFICIENT`. Registry blocks publication of
-revision-2 extractions while `missing_information` is non-empty.
+revision-3 extractions while `missing_information` is non-empty. Revision 3
+maps public-procurement proposals to the closed AKB normative catalog;
+unmapped candidates are not published as opaque generated keys and require a
+gestor-visible follow-up.
 
 Normal RAG retrieval accepts `valid_on`. Without it, retrieval uses current
 effective versions. An explicit historical date in a supported user query is

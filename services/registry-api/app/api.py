@@ -36,8 +36,20 @@ from app.access_governance import (
     governance_client,
     validate_public_decision_response,
 )
-from app.auth import Principal, get_current_principal
-from app.config import get_settings
+from app.auth import (
+    Principal,
+    enforce_service_route,
+    get_authenticated_principal,
+    get_current_principal,
+)
+from app.config import Settings, get_settings
+from app.controlled_rule_catalog import (
+    CATALOG_VERSION as CONTROLLED_RULE_CATALOG_VERSION,
+    canonical_normative_key,
+    catalog_sha256 as controlled_rule_catalog_sha256,
+    normative_key_category_matches,
+    normative_key_is_registered,
+)
 from app.content_security import (
     ContentSecurityAttestation,
     ContentSecurityAttestationError,
@@ -161,6 +173,9 @@ from app.schemas import (
     ControlledDocumentPackageStatusUpdate,
     ControlledDocumentSourceType,
     ControlledRuleExtractionResult,
+    ControlledRuleConsumerResponse,
+    ControlledRuleConsumerRule,
+    ControlledRuleConsumerSource,
     ControlledRuleListResponse,
     ControlledRuleResponse,
     DocumentAssignmentCreate,
@@ -5721,7 +5736,7 @@ def _require_controlled_package_rules_reviewed(
             "controlled_document_package_rules_empty",
             "The latest controlled-rule extraction did not produce a reviewable rule",
         )
-    if extraction.profile_version == "2" and extraction.missing_information:
+    if extraction.profile_version in {"2", "3"} and extraction.missing_information:
         raise problem(
             status.HTTP_409_CONFLICT,
             "controlled_document_package_rule_coverage_incomplete",
@@ -5748,6 +5763,51 @@ def _require_controlled_package_rules_reviewed(
             "controlled_document_package_rules_pending_review",
             "Every proposed rule must be reviewed before the package becomes valid",
             {"pending_rule_count": len(pending_rule_ids)},
+        )
+
+    unregistered_keys: set[str] = set()
+    category_mismatches: set[str] = set()
+    for rule in result.rules:
+        feedback = latest_feedback[f"rules.{rule.rule_id}"]
+        if feedback.decision == "rejected":
+            continue
+        effective_rule = rule
+        if feedback.decision == "edited":
+            try:
+                effective_rule = type(rule).model_validate(feedback.final_value)
+            except ValueError as exc:
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "controlled_document_package_rule_edit_invalid",
+                    "An edited controlled rule is not structurally valid",
+                    {"rule_id": rule.rule_id},
+                ) from exc
+        if not normative_key_is_registered(
+            package.domain,
+            effective_rule.normative_key,
+        ):
+            unregistered_keys.add(effective_rule.normative_key)
+            continue
+        if not normative_key_category_matches(
+            package.domain,
+            effective_rule.normative_key,
+            effective_rule.category,
+        ):
+            category_mismatches.add(effective_rule.normative_key)
+
+    if unregistered_keys:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_normative_keys_unregistered",
+            "Every verified public-procurement rule must use a registered normative key",
+            {"normative_keys": sorted(unregistered_keys)},
+        )
+    if category_mismatches:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_normative_key_category_mismatch",
+            "A verified rule category does not match its registered normative key",
+            {"normative_keys": sorted(category_mismatches)},
         )
 
     verified_rule_count = sum(
@@ -5785,7 +5845,7 @@ def _apply_controlled_rule_precedence(
     rules_by_normative_key: dict[str, list[ControlledRuleResponse]] = {}
     for rule in rules:
         rules_by_normative_key.setdefault(
-            rule.proposal.normative_key,
+            canonical_normative_key(rule.proposal.normative_key),
             [],
         ).append(rule)
     for candidates in rules_by_normative_key.values():
@@ -5884,6 +5944,123 @@ def list_controlled_document_packages(
     )
 
 
+def _controlled_rule_list_for_packages(
+    *,
+    db: Session,
+    domain: str,
+    applicable_on: date,
+    packages: list[ControlledDocumentPackage],
+    approved_only: bool,
+    required_profile_version: str | None = None,
+) -> ControlledRuleListResponse:
+    package_by_id = {package.package_id: package for package in packages}
+    if not package_by_id:
+        return ControlledRuleListResponse(
+            domain=domain,
+            valid_on=applicable_on,
+            packages=[],
+            rules=[],
+            warnings=["NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE"],
+        )
+
+    extraction_query = select(DocumentExtraction).where(
+        DocumentExtraction.entity_type == "controlled_document_package",
+        DocumentExtraction.entity_id.in_(package_by_id),
+        DocumentExtraction.profile == "controlled_document_rules_v1",
+        DocumentExtraction.status.notin_(
+            {
+                DocumentExtractionStatus.failed.value,
+                DocumentExtractionStatus.superseded.value,
+                DocumentExtractionStatus.rejected_in_source_app.value,
+            }
+        ),
+    )
+    if required_profile_version is not None:
+        extraction_query = extraction_query.where(
+            DocumentExtraction.profile_version == required_profile_version
+        )
+    extractions = list(db.execute(extraction_query).scalars())
+    extraction_ids = [item.extraction_id for item in extractions]
+    feedback_items = (
+        list(
+            db.execute(
+                select(DocumentExtractionFeedback).where(
+                    DocumentExtractionFeedback.extraction_id.in_(extraction_ids)
+                )
+            ).scalars()
+        )
+        if extraction_ids
+        else []
+    )
+    latest_feedback: dict[tuple[str, str], DocumentExtractionFeedback] = {}
+    for feedback in sorted(feedback_items, key=lambda item: item.created_at):
+        latest_feedback[(feedback.extraction_id, feedback.field)] = feedback
+
+    warnings = _controlled_package_freshness_warnings(packages, applicable_on)
+    if required_profile_version is not None and not extractions:
+        warnings.append("CONTROLLED_RULE_EXTRACTION_V3_REQUIRED")
+    rules: list[ControlledRuleResponse] = []
+    for extraction in extractions:
+        result = ControlledRuleExtractionResult.model_validate(extraction.result)
+        package = package_by_id.get(result.package_id)
+        if package is None or result.domain != domain:
+            warnings.append("CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH")
+            continue
+        member_versions = {
+            member.document_version_id
+            for member in package.members
+        }
+        for proposal in result.rules:
+            if proposal.citation.document_version_id not in member_versions:
+                warnings.append("CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE")
+                continue
+            feedback = latest_feedback.get(
+                (extraction.extraction_id, f"rules.{proposal.rule_id}")
+            )
+            verification_status = feedback.decision if feedback else "proposed"
+            effective_proposal = proposal
+            if feedback is not None and feedback.decision == "edited":
+                try:
+                    effective_proposal = type(proposal).model_validate(
+                        feedback.final_value
+                    )
+                except ValueError:
+                    warnings.append("CONTROLLED_RULE_EDIT_INVALID")
+                    continue
+            if approved_only and verification_status not in {"accepted", "edited"}:
+                continue
+            rules.append(
+                ControlledRuleResponse(
+                    extraction_id=extraction.extraction_id,
+                    package_id=package.package_id,
+                    source_type=package.source_type,
+                    authority_rank=package.authority_rank,
+                    proposal=effective_proposal,
+                    verification_status=verification_status,
+                    verified_by=feedback.actor_id if feedback else None,
+                    verified_at=feedback.created_at if feedback else None,
+                    verification_note=feedback.reason if feedback else None,
+                )
+            )
+
+    conflict_detected = _apply_controlled_rule_precedence(rules)
+
+    if conflict_detected:
+        warnings.append("POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW")
+    if required_profile_version is not None and extractions and not rules:
+        warnings.append("NO_VERIFIED_CONTROLLED_RULES_AVAILABLE")
+    return ControlledRuleListResponse(
+        domain=domain,
+        valid_on=applicable_on,
+        packages=[
+            ControlledDocumentPackageResponse.model_validate(package)
+            for package in packages
+        ],
+        rules=rules,
+        warnings=list(dict.fromkeys(warnings)),
+    )
+
+
 @router.get(
     "/controlled-documentation/rules",
     response_model=ControlledRuleListResponse,
@@ -5941,107 +6118,345 @@ def list_controlled_document_rules(
             domain=domain,
             valid_on=applicable_on,
         )
-    package_by_id = {package.package_id: package for package in packages}
-    if not package_by_id:
-        return ControlledRuleListResponse(
-            domain=domain,
-            valid_on=applicable_on,
-            packages=[],
-            rules=[],
-            warnings=["NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE"],
-        )
+    return _controlled_rule_list_for_packages(
+        db=db,
+        domain=domain,
+        applicable_on=applicable_on,
+        packages=packages,
+        approved_only=approved_only,
+    )
 
-    extractions = list(
+
+def _controlled_rules_source_version(
+    response: ControlledRuleConsumerResponse,
+) -> str:
+    payload = response.model_dump(
+        mode="json",
+        exclude={"source_version"},
+    )
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
+def _controlled_rules_audit(
+    db: Session,
+    *,
+    principal: Principal,
+    event_type: str,
+    domain: str,
+    valid_on: date,
+    reason_code: str | None = None,
+    status_value: str | None = None,
+    item_count: int = 0,
+    source_version: str | None = None,
+) -> None:
+    add_audit_event(
+        db,
+        actor_id=principal.service_client_id or principal.subject_id,
+        event_type=event_type,
+        resource_type="controlled_rules_snapshot",
+        resource_id=f"{domain}:{valid_on.isoformat()}",
+        severity="warning" if event_type.endswith(".denied") else "info",
+        correlation_id=get_correlation_id(),
+        metadata={
+            "service_client_id": principal.service_client_id,
+            "domain": domain,
+            "valid_on": valid_on.isoformat(),
+            "reason_code": reason_code,
+            "status": status_value,
+            "item_count": item_count,
+            "source_version": source_version,
+            "catalog_version": CONTROLLED_RULE_CATALOG_VERSION,
+        },
+    )
+
+
+def _controlled_rules_service_packages(
+    db: Session,
+    *,
+    organization_id: str,
+    domain: str,
+    valid_on: date,
+) -> list[ControlledDocumentPackage]:
+    packages = list(
         db.execute(
-            select(DocumentExtraction).where(
-                DocumentExtraction.entity_type == "controlled_document_package",
-                DocumentExtraction.entity_id.in_(package_by_id),
-                DocumentExtraction.profile == "controlled_document_rules_v1",
-                DocumentExtraction.status.notin_(
-                    {
-                        DocumentExtractionStatus.failed.value,
-                        DocumentExtractionStatus.superseded.value,
-                        DocumentExtractionStatus.rejected_in_source_app.value,
-                    }
+            select(ControlledDocumentPackage)
+            .where(
+                ControlledDocumentPackage.organization_id == organization_id,
+                ControlledDocumentPackage.domain == domain,
+                ControlledDocumentPackage.status
+                == ControlledDocumentPackageStatus.valid.value,
+                ControlledDocumentPackage.effective_from <= valid_on,
+                (
+                    ControlledDocumentPackage.effective_to.is_(None)
+                    | (ControlledDocumentPackage.effective_to >= valid_on)
                 ),
+            )
+            .options(selectinload(ControlledDocumentPackage.members))
+            .order_by(
+                desc(ControlledDocumentPackage.authority_rank),
+                desc(ControlledDocumentPackage.effective_from),
             )
         ).scalars()
     )
-    extraction_ids = [item.extraction_id for item in extractions]
-    feedback_items = (
-        list(
-            db.execute(
-                select(DocumentExtractionFeedback).where(
-                    DocumentExtractionFeedback.extraction_id.in_(extraction_ids)
-                )
-            ).scalars()
-        )
-        if extraction_ids
-        else []
-    )
-    latest_feedback: dict[tuple[str, str], DocumentExtractionFeedback] = {}
-    for feedback in sorted(feedback_items, key=lambda item: item.created_at):
-        latest_feedback[(feedback.extraction_id, feedback.field)] = feedback
-
-    rules: list[ControlledRuleResponse] = []
-    warnings = _controlled_package_freshness_warnings(packages, applicable_on)
-    for extraction in extractions:
-        result = ControlledRuleExtractionResult.model_validate(extraction.result)
-        package = package_by_id.get(result.package_id)
-        if package is None or result.domain != domain:
-            warnings.append("CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH")
-            continue
-        member_versions = {
-            member.document_version_id
-            for member in package.members
+    document_ids = {
+        document_id
+        for package in packages
+        for document_id in {
+            package.primary_document_id,
+            *(member.document_id for member in package.members),
         }
-        for proposal in result.rules:
-            if proposal.citation.document_version_id not in member_versions:
-                warnings.append("CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE")
-                continue
-            feedback = latest_feedback.get(
-                (extraction.extraction_id, f"rules.{proposal.rule_id}")
-            )
-            verification_status = feedback.decision if feedback else "proposed"
-            effective_proposal = proposal
-            if feedback is not None and feedback.decision == "edited":
-                try:
-                    effective_proposal = type(proposal).model_validate(
-                        feedback.final_value
-                    )
-                except ValueError:
-                    warnings.append("CONTROLLED_RULE_EDIT_INVALID")
-                    continue
-            if approved_only and verification_status not in {"accepted", "edited"}:
-                continue
-            rules.append(
-                ControlledRuleResponse(
-                    extraction_id=extraction.extraction_id,
-                    package_id=package.package_id,
-                    source_type=package.source_type,
-                    authority_rank=package.authority_rank,
-                    proposal=effective_proposal,
-                    verification_status=verification_status,
-                    verified_by=feedback.actor_id if feedback else None,
-                    verified_at=feedback.created_at if feedback else None,
-                    verification_note=feedback.reason if feedback else None,
-                )
-            )
+    }
+    if not document_ids:
+        return packages
+    documents = {
+        document.document_id: document
+        for document in db.execute(
+            select(Document).where(Document.document_id.in_(document_ids))
+        ).scalars()
+    }
+    denied = [
+        document_id
+        for document_id in sorted(document_ids)
+        if document_id not in documents
+        or documents[document_id].organization_id != organization_id
+        or documents[document_id].classification not in {"public", "internal"}
+    ]
+    if denied:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "controlled_rules_source_policy_denied",
+            "An applicable controlled-rule source is not eligible for Budget consumption",
+            {"denied_source_count": len(denied)},
+        )
+    return packages
 
-    conflict_detected = _apply_controlled_rule_precedence(rules)
 
-    if conflict_detected:
-        warnings.append("POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW")
-    return ControlledRuleListResponse(
+@router.get(
+    "/integrations/controlled-rules-read/rules",
+    response_model=ControlledRuleConsumerResponse,
+)
+def list_controlled_rules_for_budget(
+    request: Request,
+    domain: str = Query(min_length=2, max_length=80),
+    valid_on: date = Query(),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_authenticated_principal),
+    settings: Settings = Depends(get_settings),
+) -> ControlledRuleConsumerResponse:
+    try:
+        enforce_service_route(principal, request, settings)
+        if (
+            not principal.service_identity
+            or principal.service_client_id != "svc-budget-controlled-rules"
+            or "service_budget_rules_read" not in principal.roles
+        ):
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "controlled_rules_service_required",
+                "The dedicated Budget controlled-rules service identity is required",
+            )
+    except HTTPException as exc:
+        error = exc.detail.get("error", {}) if isinstance(exc.detail, dict) else {}
+        _controlled_rules_audit(
+            db,
+            principal=principal,
+            event_type="controlled_rules.read.denied",
+            domain=domain,
+            valid_on=valid_on,
+            reason_code=str(error.get("code") or "CONTROLLED_RULE_ACCESS_DENIED"),
+        )
+        _commit_or_conflict(db)
+        raise
+
+    if domain != "public_procurement":
+        _controlled_rules_audit(
+            db,
+            principal=principal,
+            event_type="controlled_rules.read.denied",
+            domain=domain,
+            valid_on=valid_on,
+            reason_code="CONTROLLED_RULE_DOMAIN_UNSUPPORTED",
+        )
+        _commit_or_conflict(db)
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "controlled_rule_domain_unsupported",
+            "The dedicated Budget contract supports only public_procurement",
+        )
+
+    try:
+        packages = _controlled_rules_service_packages(
+            db,
+            organization_id=principal.organization_id,
+            domain=domain,
+            valid_on=valid_on,
+        )
+    except HTTPException as exc:
+        error = exc.detail.get("error", {}) if isinstance(exc.detail, dict) else {}
+        _controlled_rules_audit(
+            db,
+            principal=principal,
+            event_type="controlled_rules.read.denied",
+            domain=domain,
+            valid_on=valid_on,
+            reason_code=str(error.get("code") or "CONTROLLED_RULE_SOURCE_POLICY_DENIED"),
+        )
+        _commit_or_conflict(db)
+        raise
+
+    internal = _controlled_rule_list_for_packages(
+        db=db,
         domain=domain,
-        valid_on=applicable_on,
-        packages=[
-            ControlledDocumentPackageResponse.model_validate(package)
-            for package in packages
-        ],
-        rules=rules,
-        warnings=list(dict.fromkeys(warnings)),
+        applicable_on=valid_on,
+        packages=packages,
+        approved_only=True,
+        required_profile_version="3",
     )
+    unknown_keys = sorted(
+        {
+            rule.proposal.normative_key
+            for rule in internal.rules
+            if rule.verification_status in {"accepted", "edited"}
+            and not normative_key_is_registered(domain, rule.proposal.normative_key)
+        }
+    )
+    category_mismatches = sorted(
+        {
+            rule.proposal.normative_key
+            for rule in internal.rules
+            if rule.verification_status in {"accepted", "edited"}
+            and normative_key_is_registered(domain, rule.proposal.normative_key)
+            and not normative_key_category_matches(
+                domain,
+                rule.proposal.normative_key,
+                rule.proposal.category,
+            )
+        }
+    )
+    warnings = list(internal.warnings)
+    if unknown_keys:
+        warnings.append("CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN")
+    if category_mismatches:
+        warnings.append("CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH")
+    warnings = list(dict.fromkeys(warnings))
+
+    conflict_warnings = {
+        "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
+        "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
+        "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
+        "CONTROLLED_RULE_EDIT_INVALID",
+        "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
+        "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH",
+        "SOURCE_REVIEW_DATE_INVALID",
+    }
+    eligible = [
+        rule
+        for rule in internal.rules
+        if rule.consumer_eligible
+        and rule.precedence_status in {"authoritative", "supplemental"}
+        and normative_key_is_registered(domain, rule.proposal.normative_key)
+        and normative_key_category_matches(
+            domain,
+            rule.proposal.normative_key,
+            rule.proposal.category,
+        )
+    ]
+    if conflict_warnings.intersection(warnings):
+        response_status = "conflict"
+        eligible = []
+    elif not internal.packages or not eligible:
+        response_status = "no_data"
+    elif "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE" in warnings:
+        response_status = "complete_with_warning"
+    else:
+        response_status = "complete"
+
+    source_ids = {rule.package_id for rule in eligible}
+    consumer_sources = sorted(
+        [
+            ControlledRuleConsumerSource(
+                package_id=package.package_id,
+                package_key=package.package_key,
+                release_label=package.release_label,
+                title=package.title,
+                source_type=package.source_type,
+                authority_rank=package.authority_rank,
+                effective_from=package.effective_from,
+                effective_to=package.effective_to,
+                document_version_ids=sorted(
+                    {member.document_version_id for member in package.members}
+                ),
+            )
+            for package in internal.packages
+            if package.package_id in source_ids
+        ],
+        key=lambda source: (
+            -source.authority_rank,
+            source.package_key,
+            source.release_label,
+            source.package_id,
+        ),
+    )
+    consumer_rules = sorted(
+        [
+            ControlledRuleConsumerRule(
+                rule_id=rule.proposal.rule_id,
+                normative_key=canonical_normative_key(rule.proposal.normative_key),
+                category=rule.proposal.category,
+                title=rule.proposal.title,
+                value=rule.proposal.value,
+                unit=rule.proposal.unit,
+                currency=rule.proposal.currency,
+                vat_basis=rule.proposal.vat_basis,
+                conditions=rule.proposal.conditions,
+                exceptions=rule.proposal.exceptions,
+                responsible_roles=rule.proposal.responsible_roles,
+                required_evidence=rule.proposal.required_evidence,
+                precedence_status=rule.precedence_status,
+                package_id=rule.package_id,
+                citation=rule.proposal.citation,
+            )
+            for rule in eligible
+        ],
+        key=lambda rule: (
+            rule.normative_key,
+            rule.precedence_status,
+            rule.package_id,
+            rule.rule_id,
+        ),
+    )
+    response = ControlledRuleConsumerResponse(
+        organization_id=principal.organization_id,
+        domain="public_procurement",
+        valid_on=valid_on,
+        status=response_status,
+        decision_eligible=response_status in {"complete", "complete_with_warning"},
+        source_version=f"sha256:{'0' * 64}",
+        catalog_version=CONTROLLED_RULE_CATALOG_VERSION,
+        catalog_sha256=controlled_rule_catalog_sha256(),
+        sources=consumer_sources,
+        rules=consumer_rules,
+        warnings=warnings,
+    )
+    response.source_version = _controlled_rules_source_version(response)
+    _controlled_rules_audit(
+        db,
+        principal=principal,
+        event_type="controlled_rules.read.returned",
+        domain=domain,
+        valid_on=valid_on,
+        status_value=response.status,
+        item_count=len(response.rules),
+        source_version=response.source_version,
+    )
+    _commit_or_conflict(db)
+    return response
 
 
 @router.post(

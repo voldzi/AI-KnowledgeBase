@@ -1,0 +1,54 @@
+{
+  "contract": "akb-controlled-rules-1",
+  "revision": "1.0.0",
+  "organization_id": "org_stratos",
+  "domain": "public_procurement",
+  "valid_on": "2026-08-01",
+  "status": "complete",
+  "decision_eligible": true,
+  "source_version": "sha256:cf5fe7ccdd10f9b38e477c508e0c5721e22be37c2c55d718230b676312e564ca",
+  "catalog_version": "public-procurement-normative-catalog-1.0.0",
+  "catalog_sha256": "43bcd6ded8e517cad0c67ed840c405cc5d2795fea18a08e6edea1765a94d79f8",
+  "sources": [
+    {
+      "package_id": "cdpkg_law_134_2016_current",
+      "package_key": "public_procurement:law-134-2016",
+      "release_label": "2026-01-01",
+      "title": "Zákon č. 134/2016 Sb.",
+      "source_type": "law",
+      "authority_rank": 100,
+      "effective_from": "2026-01-01",
+      "effective_to": null,
+      "document_version_ids": ["ver_law_134_2016_current"]
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "law.vzmr.supplies-services.threshold",
+      "normative_key": "public_procurement.vzmr.supplies_services.threshold",
+      "category": "financial_limit",
+      "title": "Limit VZMR pro dodávky a služby",
+      "value": 3000000,
+      "unit": "currency",
+      "currency": "CZK",
+      "vat_basis": "excluding_vat",
+      "conditions": [],
+      "exceptions": [],
+      "responsible_roles": [],
+      "required_evidence": [],
+      "precedence_status": "authoritative",
+      "package_id": "cdpkg_law_134_2016_current",
+      "citation": {
+        "document_id": "doc_law_134_2016",
+        "document_version_id": "ver_law_134_2016_current",
+        "chunk_id": "chunk_law_134_2016_vzmr",
+        "section_path": ["§ 27"],
+        "page_number": 12,
+        "article_number": "§ 27",
+        "paragraph_number": null,
+        "quoted_text": "Veřejnou zakázkou malého rozsahu je veřejná zakázka, jejíž předpokládaná hodnota nepřesáhne rozhodný limit."
+      }
+    }
+  ],
+  "warnings": []
+}

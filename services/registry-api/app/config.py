@@ -320,6 +320,7 @@ class Settings(BaseSettings):
                 "profile-write",
                 "aiip-upload",
                 "stratos-budget-upload",
+                "controlled-rules-read",
                 "ingestion-status",
             }
         }
@@ -383,6 +384,18 @@ class Settings(BaseSettings):
                     "Production stratos-akb-service grant must be exactly "
                     "stratos-budget-upload"
                 )
+            if "svc-budget-controlled-rules" not in trusted_service_clients:
+                raise ValueError(
+                    "Production Registry requires trusted client "
+                    "svc-budget-controlled-rules"
+                )
+            if route_grants.get("svc-budget-controlled-rules") != frozenset(
+                {"controlled-rules-read"}
+            ):
+                raise ValueError(
+                    "Production svc-budget-controlled-rules grant must be "
+                    "exactly controlled-rules-read"
+                )
             if "svc-akb-director-copilot" not in trusted_service_clients:
                 raise ValueError(
                     "Production Registry requires trusted client "
@@ -404,6 +417,16 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production stratos-budget-upload route must be granted only "
                     "to stratos-akb-service"
+                )
+            controlled_rule_clients = {
+                client_id
+                for client_id, routes in route_grants.items()
+                if "controlled-rules-read" in routes
+            }
+            if controlled_rule_clients != {"svc-budget-controlled-rules"}:
+                raise ValueError(
+                    "Production controlled-rules-read route must be granted only "
+                    "to svc-budget-controlled-rules"
                 )
             missing_governance = [
                 name

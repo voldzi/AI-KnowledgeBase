@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 
 from app.schemas import (
@@ -15,7 +15,7 @@ from app.schemas import (
 
 
 PROFILE_NAME = "controlled_document_rules_v1"
-PROFILE_VERSION = "2"
+PROFILE_VERSION = "3"
 
 _AMOUNT_RE = re.compile(
     r"(?P<amount>\d[\d \u00a0.]*?(?:,\d{1,2})?)\s*"
@@ -26,6 +26,16 @@ _DEADLINE_RE = re.compile(
     r"\b(?:nejpozději\s+)?(?:do|ve\s+lhůtě)\s+"
     r"(?P<value>\d{1,4})\s+"
     r"(?P<unit>kalendářních\s+dnů|pracovních\s+dnů|dnů|měsíců|let)\b",
+    re.IGNORECASE,
+)
+_RETENTION_RE = re.compile(
+    r"\b(?:po\s+dobu|nejméně)\s+(?P<value>\d{1,4})\s+"
+    r"(?P<unit>kalendářních\s+dnů|pracovních\s+dnů|dnů|měsíců|let)\b",
+    re.IGNORECASE,
+)
+_SUPPLIER_COUNT_RE = re.compile(
+    r"\bnejmene\s+(?P<count>\d+|jednu|jedne|dv[eě]|dvou|tri|ctyri|pet)\s+"
+    r"(?:porovnatelnych\s+|cenovych\s+)*(?:nabidek|dodavatelu)\b",
     re.IGNORECASE,
 )
 
@@ -114,24 +124,32 @@ class _Candidate:
     confidence: float
     match_start: int
     match_end: int
+    bound_kind: str | None = None
 
 
 def extract_controlled_rule_proposals(
     *,
     chunks: list[RetrievedChunk],
+    domain: str | None = None,
     max_rules: int = 250,
 ) -> tuple[list[ControlledRuleProposal], list[str], list[str]]:
     proposals: list[ControlledRuleProposal] = []
     seen: set[str] = set()
     warnings: list[str] = []
+    unmapped_candidate_count = 0
 
     for chunk in chunks:
         for candidate in _candidates(chunk.text):
-            identity = _rule_identity(candidate)
+            normative_key = _normative_key(candidate, domain=domain)
+            if normative_key is None:
+                unmapped_candidate_count += 1
+                continue
+            candidate = _canonical_candidate(candidate, normative_key)
+            identity = _rule_identity(candidate, normative_key)
             if identity in seen:
                 continue
             seen.add(identity)
-            proposals.append(_proposal(candidate, chunk, identity))
+            proposals.append(_proposal(candidate, chunk, identity, normative_key))
             if len(proposals) >= max_rules:
                 warnings.append("CONTROLLED_RULE_PROPOSAL_LIMIT_REACHED")
                 break
@@ -141,6 +159,8 @@ def extract_controlled_rule_proposals(
     missing_information: list[str] = []
     if not proposals:
         missing_information.append("NO_CITABLE_CONTROLLED_RULES_FOUND")
+    if unmapped_candidate_count:
+        warnings.append("CONTROLLED_RULE_UNMAPPED_CANDIDATES_SKIPPED")
     return proposals, missing_information, warnings
 
 
@@ -168,10 +188,15 @@ def _candidates(text: str) -> list[_Candidate]:
                     confidence=0.9 if _has_limit_context(normalized) else 0.76,
                     match_start=sentence_start + match.start(),
                     match_end=sentence_start + match.end(),
+                    bound_kind=_bound_kind(sentence, match.start()),
                 )
             )
 
-        for match in _DEADLINE_RE.finditer(sentence):
+        deadline_matches = [
+            *_DEADLINE_RE.finditer(sentence),
+            *_RETENTION_RE.finditer(sentence),
+        ]
+        for match in deadline_matches:
             result.append(
                 _Candidate(
                     category="deadline",
@@ -186,7 +211,23 @@ def _candidates(text: str) -> list[_Candidate]:
                 )
             )
 
-        if amount_matches or _DEADLINE_RE.search(sentence):
+        count_match = _SUPPLIER_COUNT_RE.search(_fold(sentence))
+        if count_match:
+            result.append(
+                _Candidate(
+                    category="condition",
+                    sentence=sentence,
+                    value=_supplier_count(count_match.group("count")),
+                    unit="count",
+                    currency=None,
+                    vat_basis="not_applicable",
+                    confidence=0.9,
+                    match_start=sentence_start,
+                    match_end=sentence_start + len(sentence),
+                )
+            )
+
+        if amount_matches or deadline_matches or count_match:
             continue
         category = next(
             (
@@ -218,6 +259,7 @@ def _proposal(
     candidate: _Candidate,
     chunk: RetrievedChunk,
     identity: str,
+    normative_key: str,
 ) -> ControlledRuleProposal:
     sentence = _clean_space(candidate.sentence)
     conditions = [sentence] if _contains_condition(sentence) else []
@@ -226,7 +268,7 @@ def _proposal(
     evidence = sorted({_clean_space(match.group(0)) for match in _EVIDENCE_RE.finditer(sentence)})
     return ControlledRuleProposal(
         rule_id=f"rule:{candidate.category}:{identity[:20]}",
-        normative_key=_normative_key(candidate),
+        normative_key=normative_key,
         category=candidate.category,  # type: ignore[arg-type]
         title=_title(candidate.category, sentence),
         value=candidate.value,
@@ -262,7 +304,14 @@ def _sentences(text: str) -> list[tuple[str, int]]:
             and text[position - 1].isdigit()
             and text[position + 1].isdigit()
         )
-        if character not in ".!?;\n" or is_numeric_separator:
+        is_roman_ordinal = (
+            character == "."
+            and position > 0
+            and text[position - 1] in "IVX"
+            and position + 1 < len(text)
+            and text[position + 1].isspace()
+        )
+        if character not in ".!?;\n" or is_numeric_separator or is_roman_ordinal:
             continue
         sentence = _clean_space(text[start : position + 1])
         if len(sentence) >= 12:
@@ -274,9 +323,10 @@ def _sentences(text: str) -> list[tuple[str, int]]:
     return result
 
 
-def _rule_identity(candidate: _Candidate) -> str:
+def _rule_identity(candidate: _Candidate, normative_key: str) -> str:
     canonical = "|".join(
         (
+            normative_key,
             candidate.category,
             _fold(candidate.sentence),
             str(candidate.value),
@@ -287,12 +337,90 @@ def _rule_identity(candidate: _Candidate) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _normative_key(candidate: _Candidate) -> str:
+def _normative_key(candidate: _Candidate, *, domain: str | None) -> str | None:
+    if domain == "public_procurement":
+        return _public_procurement_normative_key(candidate)
     subject = _fold(candidate.sentence)
     subject = re.sub(r"\b\d[\d .,\u00a0]*\b", " amount ", subject)
     subject = re.sub(r"[^a-z0-9]+", "-", subject).strip("-")
     digest = hashlib.sha256(subject.encode("utf-8")).hexdigest()[:16]
     return f"{candidate.category}:{digest}"
+
+
+def _public_procurement_normative_key(candidate: _Candidate) -> str | None:
+    sentence = f" {_fold(candidate.sentence)} "
+    if candidate.category == "financial_limit":
+        if any(marker in sentence for marker in (" dodatku ", " dodatek ")) and " schval" in sentence:
+            return "public_procurement.contract.amendment.approval_threshold"
+        if " pruzkum trhu" in sentence or (
+            " cenov" in sentence and " nabid" in sentence
+        ):
+            return "public_procurement.market_research.threshold"
+        if " trzist" in sentence:
+            return "public_procurement.marketplace.threshold"
+        if " centralni evidenc" in sentence:
+            return "public_procurement.central_evidence.threshold"
+        if " registru smluv" in sentence:
+            return "public_procurement.publication.contract_register.threshold"
+        if " profilu zadavatele" in sentence or " 219 zzvz" in sentence:
+            return "public_procurement.publication.contracting_profile.threshold"
+        if " pisemn" in sentence and " smlouv" in sentence:
+            return "public_procurement.contract.written_form.threshold"
+        if " 1. kategorie" in sentence or " i. kategorie" in sentence:
+            return "public_procurement.internal_category_1.upper_threshold"
+        if (
+            " 2. kategorie" in sentence or " ii. kategorie" in sentence
+        ) and candidate.bound_kind == "lower":
+            return None
+        if " vzmr " in sentence or " maleho rozsahu " in sentence:
+            if " staveb" in sentence:
+                return "public_procurement.vzmr.works.threshold"
+            return "public_procurement.vzmr.supplies_services.threshold"
+        if (
+            " prim" in sentence and " nakup" in sentence
+            or " nakup do " in sentence
+            or " objednavk" in sentence
+        ):
+            return "public_procurement.direct_purchase.threshold"
+        return None
+    if candidate.category == "condition" and candidate.unit == "count":
+        return "public_procurement.supplier_quotes.minimum_count"
+    if candidate.category == "deadline" and any(
+        marker in sentence for marker in (" uchov", " archiv", " skart")
+    ):
+        return "public_procurement.retention.period"
+    if " nen " in sentence or " narodni elektronick" in sentence:
+        return "public_procurement.nen.registration.required"
+    if candidate.category == "approval_step":
+        return "public_procurement.approval.workflow"
+    if candidate.category == "exception":
+        return "public_procurement.exception.conditions"
+    if candidate.category in {"required_document", "audit_evidence"}:
+        return "public_procurement.documentation.required"
+    return None
+
+
+def _canonical_candidate(candidate: _Candidate, normative_key: str) -> _Candidate:
+    category_by_key = {
+        "public_procurement.approval.workflow": "approval_step",
+        "public_procurement.documentation.required": "required_document",
+    }
+    category = category_by_key.get(normative_key)
+    return replace(candidate, category=category) if category else candidate
+
+
+def _supplier_count(value: str) -> int:
+    folded = _fold(value)
+    words = {
+        "jednu": 1,
+        "jedne": 1,
+        "dve": 2,
+        "dvou": 2,
+        "tri": 3,
+        "ctyri": 4,
+        "pet": 5,
+    }
+    return int(folded) if folded.isdigit() else words[folded]
 
 
 def _title(category: str, sentence: str) -> str:
@@ -362,6 +490,33 @@ def _contains_condition(sentence: str) -> bool:
             " nepresahne ",
         )
     )
+
+
+def _bound_kind(sentence: str, match_start: int) -> str | None:
+    prefix = f" {_fold(sentence[max(0, match_start - 80):match_start])} "
+    lower_position = max(
+        (
+            prefix.rfind(marker)
+            for marker in (" vyssi nez ", " nad ", " presahuje ", " presahujici ")
+        ),
+        default=-1,
+    )
+    upper_position = max(
+        (
+            prefix.rfind(marker)
+            for marker in (
+                " do ",
+                " nizsi nebo rovna ",
+                " rovna nebo nizsi ",
+                " nejvyse ",
+                " nepresahuje ",
+            )
+        ),
+        default=-1,
+    )
+    if lower_position >= 0 or upper_position >= 0:
+        return "upper" if upper_position > lower_position else "lower"
+    return None
 
 
 def _financial_context(

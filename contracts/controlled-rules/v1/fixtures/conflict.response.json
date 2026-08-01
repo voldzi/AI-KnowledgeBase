@@ -1,0 +1,15 @@
+{
+  "contract": "akb-controlled-rules-1",
+  "revision": "1.0.0",
+  "organization_id": "org_stratos",
+  "domain": "public_procurement",
+  "valid_on": "2026-08-01",
+  "status": "conflict",
+  "decision_eligible": false,
+  "source_version": "sha256:99870c18917ab692d6ad08add5f242067f59f7ccbcff0e19131d9803c1bc8b6e",
+  "catalog_version": "public-procurement-normative-catalog-1.0.0",
+  "catalog_sha256": "43bcd6ded8e517cad0c67ed840c405cc5d2795fea18a08e6edea1765a94d79f8",
+  "sources": [],
+  "rules": [],
+  "warnings": ["POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW"]
+}

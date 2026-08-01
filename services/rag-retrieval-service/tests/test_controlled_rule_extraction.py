@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from app.controlled_rule_extraction import extract_controlled_rule_proposals
 from app.schemas import ChunkCitation, RetrievedChunk
 from tests.conftest import make_client
@@ -24,6 +27,7 @@ def _chunk(text: str, *, chunk_id: str = "chunk_procurement_1") -> RetrievedChun
 
 def test_extracts_cited_financial_limit_deadline_and_obligation() -> None:
     proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
         chunks=[
             _chunk(
                 "Příkazce operace musí u zakázky do 100 000 Kč bez DPH "
@@ -34,9 +38,9 @@ def test_extracts_cited_financial_limit_deadline_and_obligation() -> None:
     )
 
     assert missing == []
-    assert warnings == []
+    assert warnings == ["CONTROLLED_RULE_UNMAPPED_CANDIDATES_SKIPPED"]
     categories = {proposal.category for proposal in proposals}
-    assert categories == {"financial_limit", "deadline"}
+    assert categories == {"financial_limit"}
     financial = next(
         proposal for proposal in proposals if proposal.category == "financial_limit"
     )
@@ -47,12 +51,16 @@ def test_extracts_cited_financial_limit_deadline_and_obligation() -> None:
     assert financial.required_evidence == ["objednávku"]
     assert financial.citation.document_version_id == "ver_directive_1"
     assert financial.citation.quoted_text.startswith("Příkazce operace musí")
+    assert financial.normative_key == "public_procurement.direct_purchase.threshold"
 
 
 def test_deduplicates_same_rule_across_chunks() -> None:
-    chunk = _chunk("Limit předpokládané hodnoty je do 20 000 Kč včetně DPH.")
+    chunk = _chunk("Přímý nákup je možný do 20 000 Kč včetně DPH.")
 
-    proposals, _, _ = extract_controlled_rule_proposals(chunks=[chunk, chunk])
+    proposals, _, _ = extract_controlled_rule_proposals(
+        chunks=[chunk, chunk],
+        domain="public_procurement",
+    )
 
     assert len(proposals) == 1
     assert proposals[0].value == 20000
@@ -61,6 +69,7 @@ def test_deduplicates_same_rule_across_chunks() -> None:
 
 def test_preserves_dot_separated_czech_financial_limits() -> None:
     proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
         chunks=[
             _chunk(
                 "U zakázky vyšší než 20.000 Kč s DPH se provede průzkum trhu. "
@@ -83,10 +92,16 @@ def test_preserves_dot_separated_czech_financial_limits() -> None:
         (20000, "including_vat"),
         (200000, "excluding_vat"),
     ]
+    keys = {proposal.normative_key for proposal in proposals}
+    assert keys == {
+        "public_procurement.market_research.threshold",
+        "public_procurement.internal_category_1.upper_threshold",
+    }
 
 
 def test_returns_missing_information_without_inventing_rule() -> None:
     proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
         chunks=[_chunk("Tento dokument obsahuje obecný úvod a seznam kapitol.")]
     )
 
@@ -139,7 +154,7 @@ def test_controlled_rule_extraction_uses_authoring_authorization(monkeypatch) ->
                 ],
                 "subject_id": "user_gestor",
                 "profile": "controlled_document_rules_v1",
-                "profile_version": "2",
+                "profile_version": "3",
                 "classification_max": "internal",
             },
         )
@@ -201,7 +216,7 @@ def test_controlled_rule_extraction_scans_complete_exact_source(monkeypatch) -> 
                 ],
                 "subject_id": "user_gestor",
                 "profile": "controlled_document_rules_v1",
-                "profile_version": "2",
+                "profile_version": "3",
                 "classification_max": "internal",
             },
         )
@@ -243,7 +258,7 @@ def test_controlled_rule_extraction_fails_closed_for_denied_source() -> None:
                 ],
                 "subject_id": "user_gestor",
                 "profile": "controlled_document_rules_v1",
-                "profile_version": "2",
+                "profile_version": "3",
                 "classification_max": "internal",
             },
         )
@@ -281,7 +296,7 @@ def test_controlled_rule_extraction_scan_limit_remains_partial(monkeypatch) -> N
                 ],
                 "subject_id": "user_gestor",
                 "profile": "controlled_document_rules_v1",
-                "profile_version": "2",
+                "profile_version": "3",
                 "classification_max": "internal",
             },
         )
@@ -294,6 +309,7 @@ def test_controlled_rule_extraction_scan_limit_remains_partial(monkeypatch) -> N
 
 def test_keeps_procurement_threshold_with_required_follow_up() -> None:
     proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
         chunks=[
             _chunk(
                 "Přesáhne-li předpokládaná hodnota 20.000 Kč včetně DPH, "
@@ -312,10 +328,12 @@ def test_keeps_procurement_threshold_with_required_follow_up() -> None:
     assert financial.vat_basis == "including_vat"
     assert "průzkum trhu" in financial.citation.quoted_text
     assert financial.conditions
+    assert financial.normative_key == "public_procurement.market_research.threshold"
 
 
 def test_ignores_table_headers_and_generic_explanations() -> None:
     proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
         chunks=[
             _chunk(
                 "Činnost | Gestor /příkazce | Nadřízený příkazce | VPÚ | PV. "
@@ -327,3 +345,102 @@ def test_ignores_table_headers_and_generic_explanations() -> None:
     assert proposals == []
     assert missing == ["NO_CITABLE_CONTROLLED_RULES_FOUND"]
     assert warnings == []
+
+
+def test_extracts_catalogued_minimum_supplier_count() -> None:
+    proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
+        chunks=[
+            _chunk(
+                "Průzkum trhu směřuje k získání nejméně tří porovnatelných "
+                "cenových nabídek."
+            )
+        ],
+    )
+
+    assert missing == []
+    assert warnings == []
+    assert len(proposals) == 1
+    proposal = proposals[0]
+    assert proposal.normative_key == "public_procurement.supplier_quotes.minimum_count"
+    assert proposal.category == "condition"
+    assert proposal.value == 3
+    assert proposal.unit == "count"
+
+
+def test_extracts_procurement_retention_period() -> None:
+    proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
+        chunks=[
+            _chunk(
+                "Dokumentaci k veřejné zakázce útvar archivuje po dobu 5 let "
+                "od uzavření objednávky nebo smlouvy."
+            )
+        ],
+    )
+
+    assert missing == []
+    assert warnings == []
+    assert len(proposals) == 1
+    proposal = proposals[0]
+    assert proposal.normative_key == "public_procurement.retention.period"
+    assert proposal.category == "deadline"
+    assert proposal.value == 5
+    assert proposal.unit == "let"
+
+
+def test_separates_internal_category_and_legal_vzmr_upper_limits() -> None:
+    proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
+        chunks=[
+            _chunk(
+                "VZMR I. kategorie je rovna nebo nižší než 200 000 Kč bez DPH; "
+                "VZMR II. kategorie na dodávky a služby je vyšší než 200 000 Kč "
+                "a nižší nebo rovna 2 000 000 Kč bez DPH; VZMR II. kategorie na "
+                "stavební práce je vyšší než 200 000 Kč a nižší nebo rovna "
+                "6 000 000 Kč bez DPH."
+            )
+        ],
+    )
+
+    assert missing == []
+    assert warnings == ["CONTROLLED_RULE_UNMAPPED_CANDIDATES_SKIPPED"]
+    values_by_key = {
+        proposal.normative_key: proposal.value
+        for proposal in proposals
+        if proposal.category == "financial_limit"
+    }
+    assert values_by_key == {
+        "public_procurement.internal_category_1.upper_threshold": 200000,
+        "public_procurement.vzmr.supplies_services.threshold": 2000000,
+        "public_procurement.vzmr.works.threshold": 6000000,
+    }
+
+
+def test_public_procurement_extraction_emits_only_catalogued_keys() -> None:
+    catalog_path = (
+        Path(__file__).resolve().parents[3]
+        / "contracts"
+        / "controlled-rules"
+        / "v1"
+        / "public-procurement-normative-catalog.json"
+    )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    allowed = {
+        key
+        for definition in catalog["definitions"]
+        for key in [definition["key"], *definition["aliases"]]
+    }
+    proposals, _, _ = extract_controlled_rule_proposals(
+        domain="public_procurement",
+        chunks=[
+            _chunk(
+                "Přímý nákup je možný do 20 000 Kč včetně DPH. "
+                "Nad 50 000 Kč včetně DPH se provede průzkum trhu. "
+                "VZMR na stavební práce je do 9 000 000 Kč bez DPH."
+            )
+        ],
+    )
+
+    assert proposals
+    assert {proposal.normative_key for proposal in proposals} <= allowed

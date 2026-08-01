@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
         external_system: "STRATOS_PLATFORM",
         subject_id: context.subjectId,
         profile: "controlled_document_rules_v1",
-        profile_version: "2",
+        profile_version: "3",
       },
       context,
     );
