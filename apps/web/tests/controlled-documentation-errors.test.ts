@@ -4,6 +4,7 @@ import test from "node:test";
 import { controlledDocumentationBridgeError } from "../src/app/api/controlled-documentation/errors";
 import {
   controlledDocumentationErrorMessage,
+  controlledDocumentationUserErrorMessage,
   controlledDocumentationWarningLabel,
   controlledPackageRuleProgress,
 } from "../src/lib/controlled-documentation/presentation";
@@ -60,6 +61,12 @@ test("controlled-documentation errors and warnings are human readable", () => {
       "NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE",
     ),
     /NO_APPLICABLE/,
+  );
+  assert.doesNotMatch(
+    controlledDocumentationUserErrorMessage(
+      "UNKNOWN_UPSTREAM_ERROR",
+    ),
+    /The subject|package source version/,
   );
 });
 
