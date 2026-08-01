@@ -64,6 +64,11 @@ nevytvoří. Původní `stratos-akb-service` zůstává výhradně transportem
 endpoint používá organizaci z ověřené servisní identity, dovolí pouze doménu
 `public_procurement`, pouze platné balíčky a pouze zdroje klasifikace `public`
 nebo `internal`. Neověřené hlavičky ani query parametry nemohou rozšířit rozsah.
+Minimální client-credentials token bez `preferred_username` je uznán jen při
+prázdném scope, bez uživatelských profilových a relačních claimů, bez
+klientských rolí a pouze se servisními realm rolemi. Následně se vždy uplatní
+ověření audience, trusted-client allowlistu, přesného route grantu a role;
+samotný tvar tokenu žádný přístup neuděluje.
 
 Interaktivní AKB session načítá capabilities a scopes výhradně z centrálního
 `GET /api/v1/auth/me`. Keycloak token proto musí obsahovat dedikovanou
