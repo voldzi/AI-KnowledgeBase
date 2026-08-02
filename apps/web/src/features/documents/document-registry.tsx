@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   Archive,
@@ -30,6 +31,7 @@ import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuthorizationHint, Classification, Document, DocumentStatus, DocumentType } from "@/lib/types";
 import { documentStatusLabel, documentTypeLabel, formatDateTime } from "@/lib/format";
 import { DOCUMENT_TYPE_CATALOG } from "@/lib/documents/document-workflow";
+import { buildReturnTarget, documentDetailHref } from "@/lib/navigation/document-navigation";
 
 interface DocumentRegistryProps {
   documents: Document[];
@@ -147,16 +149,32 @@ const documentTypes: DocumentType[] = DOCUMENT_TYPE_CATALOG.filter((item) => ite
 
 export function DocumentRegistry({ documents, authorization }: DocumentRegistryProps) {
   const { language } = useLanguage();
+  const searchParams = useSearchParams();
   const copy = registryCopy[language];
-  const [query, setQuery] = useState("");
-  const [view, setView] = useState<RegistryView>("all");
-  const [statuses, setStatuses] = useState<DocumentStatus[]>([]);
-  const [types, setTypes] = useState<DocumentType[]>([]);
-  const [classifications, setClassifications] = useState<Classification[]>([]);
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [view, setView] = useState<RegistryView>(() => registryView(searchParams.get("view")));
+  const [statuses, setStatuses] = useState<DocumentStatus[]>(() =>
+    selectedValues(searchParams.getAll("status"), documentStatuses),
+  );
+  const [types, setTypes] = useState<DocumentType[]>(() =>
+    selectedValues(searchParams.getAll("type"), documentTypes),
+  );
+  const [classifications, setClassifications] = useState<Classification[]>(() =>
+    selectedValues(searchParams.getAll("classification"), classificationOptions),
+  );
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const selectedDocument = selectedDocumentIds.length === 1
     ? documents.find((document) => document.document_id === selectedDocumentIds[0]) ?? null
     : null;
+  const registryReturnTo = useMemo(() => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    if (view !== "all") params.set("view", view);
+    statuses.forEach((value) => params.append("status", value));
+    types.forEach((value) => params.append("type", value));
+    classifications.forEach((value) => params.append("classification", value));
+    return buildReturnTarget("/documents", params);
+  }, [classifications, query, statuses, types, view]);
 
   const metrics = useMemo(() => {
     const reviewCount = documents.filter((document) => ["draft", "review", "approved"].includes(document.status)).length;
@@ -297,11 +315,23 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
       align: "center",
       render: (document) => (
         <span className="inline-actions">
-          <StratosIconButtonLink href={`/documents/${document.document_id}`} aria-label={`${copy.openDocument} ${document.title}`}>
+          <StratosIconButtonLink
+            href={documentDetailHref({
+              documentId: document.document_id,
+              returnTo: registryReturnTo,
+              origin: "registry",
+            })}
+            aria-label={`${copy.openDocument} ${document.title}`}
+          >
             <ArrowUpRight size={16} aria-hidden="true" />
           </StratosIconButtonLink>
           <StratosIconButtonLink
-            href={`/documents/${document.document_id}#versions`}
+            href={documentDetailHref({
+              documentId: document.document_id,
+              returnTo: registryReturnTo,
+              origin: "registry",
+              hash: "versions",
+            })}
             aria-label={`${copy.viewVersions} ${document.title}`}
           >
             <History size={16} aria-hidden="true" />
@@ -498,6 +528,19 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
       </section>
     </div>
   );
+}
+
+function registryView(value: string | null): RegistryView {
+  return (["all", "review", "valid", "restricted", "archive"] as const).includes(
+    value as RegistryView,
+  )
+    ? (value as RegistryView)
+    : "all";
+}
+
+function selectedValues<Value extends string>(values: string[], allowed: readonly Value[]): Value[] {
+  const allowedValues = new Set<string>(allowed);
+  return [...new Set(values.filter((value): value is Value => allowedValues.has(value)))];
 }
 
 function FieldSelect({

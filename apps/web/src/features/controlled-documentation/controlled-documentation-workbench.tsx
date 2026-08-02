@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   BookOpenCheck,
   CalendarClock,
@@ -20,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { StratosButton } from "@/components/stratos/button";
 import { withAppBasePath } from "@/lib/app-url";
+import { buildReturnTarget, documentDetailHref } from "@/lib/navigation/document-navigation";
 import {
   controlledPackageDatesFromVersion,
   controlledPackageMemberRelation,
@@ -72,6 +74,15 @@ const domainLabels: Record<string, string> = {
   public_procurement: "Veřejné zakázky",
 };
 
+function controlledDocumentationReturnTarget(
+  domain: string,
+  validOn: string,
+  hash?: string,
+): string {
+  const params = new URLSearchParams({ domain, valid_on: validOn });
+  return buildReturnTarget("/controlled-documentation", params, hash);
+}
+
 export function ControlledDocumentationWorkbench({
   initialPackages,
   initialRules,
@@ -83,6 +94,7 @@ export function ControlledDocumentationWorkbench({
   documents: Document[];
   authorization: AuthorizationHint;
 }) {
+  const router = useRouter();
   const [domain, setDomain] = useState(initialRules.domain);
   const [validOn, setValidOn] = useState(initialRules.valid_on);
   const [packages, setPackages] = useState(initialPackages);
@@ -132,6 +144,13 @@ export function ControlledDocumentationWorkbench({
     } finally {
       setBusy(null);
     }
+  }
+
+  async function showSnapshot() {
+    await refresh(domain, validOn);
+    router.replace(controlledDocumentationReturnTarget(domain, validOn), {
+      scroll: false,
+    });
   }
 
   async function transition(
@@ -323,7 +342,7 @@ export function ControlledDocumentationWorkbench({
         </label>
         <StratosButton
           type="button"
-          onClick={() => void refresh(domain, validOn)}
+          onClick={() => void showSnapshot()}
           disabled={busy === "refresh"}
         >
           <SearchCheck aria-hidden="true" /> Zobrazit
@@ -389,7 +408,11 @@ export function ControlledDocumentationWorkbench({
             const publicationBlocked =
               item.status === "approved" && !ruleProgress.readyForPublication;
             return (
-            <article className="controlled-docs__release" key={item.package_id}>
+            <article
+              className="controlled-docs__release"
+              id={`controlled-package-${item.package_id}`}
+              key={item.package_id}
+            >
               <div className="controlled-docs__release-main">
                 <span className={`status-pill is-${item.status}`}>{statusLabels[item.status]}</span>
                 <div>
@@ -403,7 +426,17 @@ export function ControlledDocumentationWorkbench({
               <div className="controlled-docs__member-list">
                 {item.members.map((member) => (
                   <a
-                    href={withAppBasePath(`/documents/${member.document_id}`)}
+                    href={withAppBasePath(
+                      documentDetailHref({
+                        documentId: member.document_id,
+                        returnTo: controlledDocumentationReturnTarget(
+                          domain,
+                          validOn,
+                          `controlled-package-${item.package_id}`,
+                        ),
+                        origin: "controlled_documentation",
+                      }),
+                    )}
                     key={member.member_id}
                   >
                     <Files aria-hidden="true" />
@@ -475,7 +508,11 @@ export function ControlledDocumentationWorkbench({
           {rules.rules.length === 0 ? (
             <p className="muted">Zatím nejsou připravena žádná pravidla. U schváleného vydání nejprve zvolte „Navrhnout pravidla“.</p>
           ) : rules.rules.map((rule) => (
-            <article className="controlled-docs__rule" key={`${rule.extraction_id}:${rule.proposal.rule_id}`}>
+            <article
+              className="controlled-docs__rule"
+              id={`controlled-rule-${rule.proposal.rule_id}`}
+              key={`${rule.extraction_id}:${rule.proposal.rule_id}`}
+            >
               <div>
                 <span className="controlled-docs__rule-category">{categoryLabel(rule.proposal.category)}</span>
                 <h3>{rule.proposal.title}</h3>
@@ -484,7 +521,19 @@ export function ControlledDocumentationWorkbench({
                 <a
                   className="controlled-docs__citation-link"
                   href={withAppBasePath(
-                    `/documents/${encodeURIComponent(rule.proposal.citation.document_id)}?tab=viewer&chunk_id=${encodeURIComponent(rule.proposal.citation.chunk_id)}`,
+                    documentDetailHref({
+                      documentId: rule.proposal.citation.document_id,
+                      params: {
+                        tab: "viewer",
+                        chunk_id: rule.proposal.citation.chunk_id,
+                      },
+                      returnTo: controlledDocumentationReturnTarget(
+                        domain,
+                        validOn,
+                        `controlled-rule-${rule.proposal.rule_id}`,
+                      ),
+                      origin: "controlled_documentation",
+                    }),
                   )}
                 >
                   <ExternalLink aria-hidden="true" /> Otevřít citované místo

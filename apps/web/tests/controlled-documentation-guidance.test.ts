@@ -29,7 +29,10 @@ describe("controlled documentation guidance", () => {
 
   it("links every extracted rule to its cited source", () => {
     assert.match(workbench, /Otevřít citované místo/);
-    assert.match(workbench, /tab=viewer&chunk_id=/);
+    assert.match(workbench, /tab: "viewer"/);
+    assert.match(workbench, /chunk_id: rule\.proposal\.citation\.chunk_id/);
+    assert.match(workbench, /origin: "controlled_documentation"/);
+    assert.match(workbench, /returnTo/);
   });
 
   it("provides visible help and interaction feedback", () => {

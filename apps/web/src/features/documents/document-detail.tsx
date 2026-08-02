@@ -52,6 +52,11 @@ import {
 } from "@/components/stratos";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
+import {
+  documentDetailHref,
+  documentReturnLabel,
+  resolveDocumentReturnNavigation,
+} from "@/lib/navigation/document-navigation";
 import type {
   AssignmentSubjectType,
   AuditEvent,
@@ -812,6 +817,23 @@ export function DocumentDetail({
   const versionPolicy = versionInformationPolicyDetails(currentVersion, publication);
   const documentPolicy = documentInformationPolicyDetails(document);
   const [activeTab, setActiveTab] = useState<DetailTab>(() => tabFromSearchParams(searchParams.get("tab")) ?? "overview");
+  const returnNavigation = useMemo(
+    () =>
+      resolveDocumentReturnNavigation({
+        returnTo: searchParams.get("return_to"),
+        origin: searchParams.get("origin"),
+        currentDocumentId: document.document_id,
+      }),
+    [document.document_id, searchParams],
+  );
+  const currentDocumentReturnTo = useMemo(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", activeTab);
+    return documentDetailHref({
+      documentId: document.document_id,
+      params,
+    });
+  }, [activeTab, document.document_id, searchParams]);
   const loadedRequestedChunkRef = useRef<string | null>(null);
   const [workflowAction, setWorkflowAction] = useState<"publish" | "archive" | null>(null);
   const [workflowFeedback, setWorkflowFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
@@ -1285,9 +1307,9 @@ export function DocumentDetail({
 
   return (
     <div className="stack">
-      <StratosButtonLink href="/documents">
+      <StratosButtonLink href={returnNavigation.href}>
         <ArrowLeft size={16} aria-hidden="true" />
-        {copy.back}
+        {documentReturnLabel(returnNavigation.origin, language)}
       </StratosButtonLink>
 
       <section className="panel">
@@ -1711,6 +1733,7 @@ export function DocumentDetail({
           language={language}
           members={relatedPackageMembers}
           packages={controlledPackages}
+          returnTo={currentDocumentReturnTo}
         />
         </div>
       ) : null}
@@ -1776,7 +1799,12 @@ export function DocumentDetail({
               </div>
             ) : null}
             {governanceResult ? (
-              <GovernanceResultPanel run={governanceResult} copy={copy} language={language} />
+              <GovernanceResultPanel
+                run={governanceResult}
+                copy={copy}
+                language={language}
+                returnTo={currentDocumentReturnTo}
+              />
             ) : null}
           </div>
         </section>
@@ -2128,6 +2156,7 @@ export function DocumentDetail({
                       key={`${rule.extraction_id}:${rule.proposal.rule_id}`}
                       language={language}
                       onReview={reviewControlledRule}
+                      returnTo={currentDocumentReturnTo}
                       rule={rule}
                     />
                   ))}
@@ -2388,6 +2417,7 @@ function ControlledPackageRelations({
   language,
   members,
   packages,
+  returnTo,
 }: {
   copy: Record<string, string>;
   dataAvailable: boolean;
@@ -2395,6 +2425,7 @@ function ControlledPackageRelations({
   language: AklLanguage;
   members: ControlledDocumentPackageMember[];
   packages: ControlledDocumentPackage[];
+  returnTo: string;
 }) {
   return (
     <section className="panel document-relations">
@@ -2434,7 +2465,13 @@ function ControlledPackageRelations({
                 {members.map((member) => (
                   <a
                     className="document-relation"
-                    href={withAppBasePath(`/documents/${encodeURIComponent(member.document_id)}`)}
+                    href={withAppBasePath(
+                      documentDetailHref({
+                        documentId: member.document_id,
+                        returnTo,
+                        origin: "document",
+                      }),
+                    )}
                     key={`${member.document_id}:${member.document_version_id}`}
                   >
                     <Paperclip size={18} aria-hidden="true" />
@@ -2495,6 +2532,7 @@ function ControlledRuleCard({
   copy,
   language,
   onReview,
+  returnTo,
   rule,
 }: {
   authorization: AuthorizationHint;
@@ -2502,6 +2540,7 @@ function ControlledRuleCard({
   copy: Record<string, string>;
   language: AklLanguage;
   onReview: (rule: ControlledRule, decision: "accepted" | "rejected") => Promise<void>;
+  returnTo: string;
   rule: ControlledRule;
 }) {
   const verified = ["accepted", "edited"].includes(rule.verification_status);
@@ -2520,7 +2559,15 @@ function ControlledRuleCard({
   ]
     .filter(Boolean)
     .join(" · ");
-  const citationHref = `/documents/${encodeURIComponent(citation.document_id)}?tab=viewer&chunk_id=${encodeURIComponent(citation.chunk_id)}`;
+  const citationHref = documentDetailHref({
+    documentId: citation.document_id,
+    params: {
+      tab: "viewer",
+      chunk_id: citation.chunk_id,
+    },
+    returnTo,
+    origin: "document",
+  });
 
   return (
     <article className="document-rule-card">
@@ -2987,15 +3034,17 @@ function GovernanceAction({
 function GovernanceResultPanel({
   run,
   copy,
-  language
+  language,
+  returnTo,
 }: {
   run: DocumentGovernanceRunResponse;
   copy: Record<string, string>;
   language: AklLanguage;
+  returnTo: string;
 }) {
   const result = run.result;
   const metrics = governanceMetrics(result);
-  const issues = governanceIssueItems(result, copy);
+  const issues = governanceIssueItems(result, copy, returnTo);
   const citations = governanceCitations(result);
 
   return (
@@ -4057,7 +4106,8 @@ function governanceMetrics(result: GovernanceServiceResponse): string[] {
 
 function governanceIssueItems(
   result: GovernanceServiceResponse,
-  copy: Record<string, string>
+  copy: Record<string, string>,
+  returnTo: string,
 ): GovernanceIssueListItem[] {
   if ("changes" in result) {
     return result.changes.map((change) =>
@@ -4071,7 +4121,8 @@ function governanceIssueItems(
         description: change.rationale,
         recommendedAction: copy.governanceReviewVersionChange,
         citation: change.after_citation ?? change.before_citation ?? change.citations[0] ?? null,
-        copy
+        copy,
+        returnTo,
       })
     );
   }
@@ -4087,7 +4138,8 @@ function governanceIssueItems(
         description: finding.message,
         recommendedAction: finding.recommendation,
         citation: finding.evidence_citations[0] ?? finding.sources.find((source) => source.citation)?.citation ?? null,
-        copy
+        copy,
+        returnTo,
       })
     );
   }
@@ -4103,7 +4155,8 @@ function governanceIssueItems(
         description: conflict.summary,
         recommendedAction: conflict.recommendation,
         citation: conflict.claims[0]?.citation ?? null,
-        copy
+        copy,
+        returnTo,
       })
     );
   }
@@ -4120,7 +4173,8 @@ function governanceIssueItem({
   description,
   recommendedAction,
   citation,
-  copy
+  copy,
+  returnTo,
 }: {
   id: string;
   severity: string;
@@ -4132,6 +4186,7 @@ function governanceIssueItem({
   recommendedAction: string;
   citation: GovernanceCitation | null;
   copy: Record<string, string>;
+  returnTo: string;
 }): GovernanceIssueListItem {
   return {
     id,
@@ -4147,7 +4202,7 @@ function governanceIssueItem({
       `${copy.governanceRecommendedAction}: ${recommendedAction}`
     ],
     action: citation ? (
-      <StratosButtonLink href={governanceCitationHref(citation)}>
+      <StratosButtonLink href={governanceCitationHref(citation, returnTo)}>
         <ExternalLink size={15} aria-hidden="true" />
         {copy.governanceOpenReference}
       </StratosButtonLink>
@@ -4184,9 +4239,13 @@ function governanceChangeTone(impact: string): GovernanceIssueTone {
   return "neutral";
 }
 
-function governanceCitationHref(citation: GovernanceCitation): string {
-  const params = new URLSearchParams({ tab: "viewer", chunk_id: citation.chunk_id });
-  return `/documents/${encodeURIComponent(citation.document_id)}?${params.toString()}`;
+function governanceCitationHref(citation: GovernanceCitation, returnTo: string): string {
+  return documentDetailHref({
+    documentId: citation.document_id,
+    params: { tab: "viewer", chunk_id: citation.chunk_id },
+    returnTo,
+    origin: "document",
+  });
 }
 
 function governanceCitations(result: GovernanceServiceResponse): GovernanceCitation[] {

@@ -20,12 +20,14 @@ interface DocumentDetailPageProps {
   params: Promise<{
     documentId: string;
   }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function DocumentDetailPage({ params }: DocumentDetailPageProps) {
-  const { documentId } = await params;
+export default async function DocumentDetailPage({ params, searchParams }: DocumentDetailPageProps) {
+  const [{ documentId }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const clients = getServerApiClients();
-  const context = await getServerRequestContextForPath(`/documents/${documentId}`);
+  const requestPath = documentDetailRequestPath(documentId, resolvedSearchParams);
+  const context = await getServerRequestContextForPath(requestPath);
   requirePageAccess(context, "knowledge_workspace");
 
   try {
@@ -99,6 +101,22 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
     }
     throw error;
   }
+}
+
+function documentDetailRequestPath(
+  documentId: string,
+  searchParams: Record<string, string | string[] | undefined>,
+): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => query.append(key, item));
+    } else if (value !== undefined) {
+      query.set(key, value);
+    }
+  }
+  const serialized = query.toString();
+  return `/documents/${encodeURIComponent(documentId)}${serialized ? `?${serialized}` : ""}`;
 }
 
 async function listControlledDocumentContext(

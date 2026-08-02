@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -38,6 +38,7 @@ import type {
 } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
 import { directoryUsersToPeople } from "@/lib/directory-people";
+import { buildReturnTarget, withDocumentReturnContext } from "@/lib/navigation/document-navigation";
 import {
   buildWorkflowTasks,
   isTaskOverdue,
@@ -249,6 +250,7 @@ export function WorkflowInbox({
   nowIso,
 }: WorkflowInboxProps) {
   const { language } = useLanguage();
+  const searchParams = useSearchParams();
   const copy = taskCopy[language];
   const tasks = useMemo(
     () =>
@@ -261,13 +263,17 @@ export function WorkflowInbox({
       }),
     [documents, jobs, auditEvents, registryTasks, nowIso],
   );
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [priority, setPriority] =
-    useState<FilterValue<WorkflowTaskPriority>>("all");
-  const [status, setStatus] = useState<FilterValue<WorkflowTaskStatus>>("all");
-  const [kind, setKind] = useState<FilterValue<WorkflowTaskKind>>("all");
+    useState<FilterValue<WorkflowTaskPriority>>(() => taskPriority(searchParams.get("priority")));
+  const [status, setStatus] = useState<FilterValue<WorkflowTaskStatus>>(() =>
+    taskStatus(searchParams.get("status")),
+  );
+  const [kind, setKind] = useState<FilterValue<WorkflowTaskKind>>(() =>
+    taskKind(searchParams.get("kind")),
+  );
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
-    tasks[0]?.id ?? null,
+    searchParams.get("task") ?? tasks[0]?.id ?? null,
   );
 
   const filteredTasks = tasks.filter((task) => {
@@ -301,6 +307,15 @@ export function WorkflowInbox({
   const reviewTasks = tasks.filter(
     (task) => task.kind === "review" || task.kind === "governance",
   );
+  const tasksReturnTo = useMemo(() => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    if (priority !== "all") params.set("priority", priority);
+    if (status !== "all") params.set("status", status);
+    if (kind !== "all") params.set("kind", kind);
+    if (selectedTask) params.set("task", selectedTask.id);
+    return buildReturnTarget("/tasks", params);
+  }, [kind, priority, query, selectedTask, status]);
 
   function clearFilters() {
     setQuery("");
@@ -453,6 +468,7 @@ export function WorkflowInbox({
           language={language}
           authorization={authorization}
           nowIso={nowIso}
+          returnTo={tasksReturnTo}
         />
       </section>
     </div>
@@ -497,12 +513,14 @@ function TaskDetail({
   language,
   authorization,
   nowIso,
+  returnTo,
 }: {
   task: WorkflowTask | null;
   copy: Record<string, string>;
   language: AklLanguage;
   authorization: AuthorizationHint;
   nowIso: string;
+  returnTo: string;
 }) {
   const router = useRouter();
   const [comment, setComment] = useState("");
@@ -622,12 +640,17 @@ function TaskDetail({
           <TaskField label={copy.job} value={task.job_id ?? "n/a"} />
         </div>
         <div className="task-actions">
-          <StratosButtonLink tone="primary" href={task.href}>
+          <StratosButtonLink
+            tone="primary"
+            href={withDocumentReturnContext(task.href, returnTo, "tasks")}
+          >
             {task.action_label}
             <ArrowUpRight size={15} aria-hidden="true" />
           </StratosButtonLink>
           {task.secondary_href ? (
-            <StratosButtonLink href={task.secondary_href}>
+            <StratosButtonLink
+              href={withDocumentReturnContext(task.secondary_href, returnTo, "tasks")}
+            >
               {copy.secondaryAction}
               <ArrowUpRight size={15} aria-hidden="true" />
             </StratosButtonLink>
@@ -876,6 +899,28 @@ function actionsForTask(task: WorkflowTask): RegistryWorkflowTaskAction[] {
     return ["assign", "request_changes", "resolve"];
   }
   return ["assign", "resolve"];
+}
+
+function taskPriority(value: string | null): FilterValue<WorkflowTaskPriority> {
+  return (["critical", "high", "medium", "low"] as const).includes(
+    value as WorkflowTaskPriority,
+  )
+    ? (value as WorkflowTaskPriority)
+    : "all";
+}
+
+function taskStatus(value: string | null): FilterValue<WorkflowTaskStatus> {
+  return (["open", "waiting", "blocked"] as const).includes(value as WorkflowTaskStatus)
+    ? (value as WorkflowTaskStatus)
+    : "all";
+}
+
+function taskKind(value: string | null): FilterValue<WorkflowTaskKind> {
+  return (["review", "draft", "ingestion", "governance", "audit"] as const).includes(
+    value as WorkflowTaskKind,
+  )
+    ? (value as WorkflowTaskKind)
+    : "all";
 }
 
 function workflowActionLabel(
