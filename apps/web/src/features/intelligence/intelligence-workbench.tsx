@@ -25,6 +25,7 @@ import {
 import { documentTypeLabel, formatDateTime, formatNumber } from "@/lib/format";
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
+import { buildReturnTarget, documentDetailHref } from "@/lib/navigation/document-navigation";
 import type {
   AnalystSearchField,
   AnalystSearchMode,
@@ -86,6 +87,11 @@ const INTELLIGENCE_SECTION_IDS: readonly IntelligenceSectionId[] = [
   "relationships",
   "quality",
 ];
+
+function intelligenceSectionFromHash(hash: string): IntelligenceSectionId | null {
+  const candidate = hash.replace(/^#/, "") as IntelligenceSectionId;
+  return INTELLIGENCE_SECTION_IDS.includes(candidate) ? candidate : null;
+}
 
 interface IntelligenceSectionNavItem {
   id: IntelligenceSectionId;
@@ -519,6 +525,15 @@ export function IntelligenceWorkbench({
   const [composerTokens, setComposerTokens] = useState<QueryComposerToken[]>([]);
   const [serverQueryState, setServerQueryState] = useState<QuerySuggestionResponse | null>(null);
   const [querySuggestionStatus, setQuerySuggestionStatus] = useState<"idle" | "loading" | "ready" | "partial" | "fallback">("idle");
+  const intelligenceReturnTo = useMemo(
+    () => buildReturnTarget("/intelligence", undefined, activeSection === "overview" ? null : activeSection),
+    [activeSection],
+  );
+
+  useEffect(() => {
+    const requestedSection = intelligenceSectionFromHash(window.location.hash);
+    if (requestedSection) setActiveSection(requestedSection);
+  }, []);
 
   const activeCase = useMemo(
     () => cases.find((candidate) => candidate.case_id === activeCaseId) ?? null,
@@ -1130,7 +1145,13 @@ export function IntelligenceWorkbench({
       width: 104,
       resizable: false,
       render: (document) => (
-        <StratosButtonLink href={`/documents/${document.document_id}`}>
+        <StratosButtonLink
+          href={documentDetailHref({
+            documentId: document.document_id,
+            returnTo: intelligenceReturnTo,
+            origin: "intelligence",
+          })}
+        >
           {copy.open}
           <ArrowUpRight size={15} aria-hidden="true" />
         </StratosButtonLink>
@@ -1410,6 +1431,7 @@ export function IntelligenceWorkbench({
                 <AnalystSearchResults
                   copy={copy}
                   language={language}
+                  returnTo={intelligenceReturnTo}
                   status={analystStatus}
                   error={analystError}
                   result={analystResult}
@@ -1648,6 +1670,7 @@ export function IntelligenceWorkbench({
                 <EvidenceSearchResults
                   copy={copy}
                   language={language}
+                  returnTo={intelligenceReturnTo}
                   status={evidenceStatus}
                   error={evidenceError}
                   result={evidenceResult}
@@ -1691,6 +1714,7 @@ export function IntelligenceWorkbench({
                 <RelationshipGraphResults
                   copy={copy}
                   language={language}
+                  returnTo={intelligenceReturnTo}
                   status={relationshipStatus}
                   error={relationshipError}
                   result={relationshipResult}
@@ -2255,6 +2279,7 @@ function EntityValueGroups({
 function AnalystSearchResults({
   copy,
   language,
+  returnTo,
   status,
   error,
   result,
@@ -2264,6 +2289,7 @@ function AnalystSearchResults({
 }: {
   copy: Record<string, string>;
   language: AklLanguage;
+  returnTo: string;
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
   result: AnalystSearchResponse | null;
@@ -2304,6 +2330,7 @@ function AnalystSearchResults({
           key={hit.chunk_id}
           language={language}
           onAddEvidence={onAddEvidence}
+          returnTo={returnTo}
         />
       ))}
     </div>
@@ -2313,6 +2340,7 @@ function AnalystSearchResults({
 function EvidenceSearchResults({
   copy,
   language,
+  returnTo,
   status,
   error,
   result,
@@ -2320,6 +2348,7 @@ function EvidenceSearchResults({
 }: {
   copy: Record<string, string>;
   language: AklLanguage;
+  returnTo: string;
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
   result: EntitySearchResponse | null;
@@ -2347,6 +2376,7 @@ function EvidenceSearchResults({
           key={hit.chunk_id}
           language={language}
           onAddEvidence={onAddEvidence}
+          returnTo={returnTo}
         />
       ))}
     </div>
@@ -2358,11 +2388,13 @@ function EvidenceSearchHitCard({
   hit,
   language,
   onAddEvidence,
+  returnTo,
 }: {
   copy: Record<string, string>;
   hit: EntitySearchHit;
   language: AklLanguage;
   onAddEvidence?: (hit: EntitySearchHit) => void;
+  returnTo: string;
 }) {
   const location = [
     hit.page_number ? `${copy.page} ${hit.page_number}` : null,
@@ -2378,7 +2410,13 @@ function EvidenceSearchHitCard({
             {hit.document_id} · {copy.version}: {hit.version_label ?? hit.document_version_id}
           </small>
         </span>
-        <StratosButtonLink href={`/documents/${hit.document_id}`}>
+        <StratosButtonLink
+          href={documentDetailHref({
+            documentId: hit.document_id,
+            returnTo,
+            origin: "intelligence",
+          })}
+        >
           {copy.open}
           <ArrowUpRight size={15} aria-hidden="true" />
         </StratosButtonLink>
@@ -2414,12 +2452,14 @@ function EvidenceSearchHitCard({
 function RelationshipGraphResults({
   copy,
   language,
+  returnTo,
   status,
   error,
   result,
 }: {
   copy: Record<string, string>;
   language: AklLanguage;
+  returnTo: string;
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
   result: EntityRelationshipResponse | null;
@@ -2440,7 +2480,13 @@ function RelationshipGraphResults({
   return (
     <div className="intelligence-evidence-results" aria-label={copy.relationshipResults}>
       {result.edges.map((edge) => (
-        <RelationshipEdgeCard copy={copy} edge={edge} key={edge.edge_id} language={language} />
+        <RelationshipEdgeCard
+          copy={copy}
+          edge={edge}
+          key={edge.edge_id}
+          language={language}
+          returnTo={returnTo}
+        />
       ))}
     </div>
   );
@@ -2450,10 +2496,12 @@ function RelationshipEdgeCard({
   copy,
   edge,
   language,
+  returnTo,
 }: {
   copy: Record<string, string>;
   edge: EntityRelationshipEdge;
   language: AklLanguage;
+  returnTo: string;
 }) {
   return (
     <article className="intelligence-evidence-hit">
@@ -2483,7 +2531,13 @@ function RelationshipEdgeCard({
             {item.page_number ? <span>{copy.page} {item.page_number}</span> : null}
             {item.section_title ? <span>{copy.section}: {item.section_title}</span> : null}
             {item.source_file_name ? <span>{copy.source}: {item.source_file_name}</span> : null}
-            <StratosButtonLink href={`/documents/${item.document_id}`}>
+            <StratosButtonLink
+              href={documentDetailHref({
+                documentId: item.document_id,
+                returnTo,
+                origin: "intelligence",
+              })}
+            >
               {copy.open}
               <ArrowUpRight size={15} aria-hidden="true" />
             </StratosButtonLink>

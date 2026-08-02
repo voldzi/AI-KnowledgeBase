@@ -29,6 +29,8 @@ Implementovano ve web aplikaci:
 - metriky, oblast pravidel a hlavni sekce maji dotykovou i klavesnicovou kontextovou napovedu; technicky nazev `public_procurement` se v beznem pohledu zobrazuje jako `Verejne zakazky`,
 - hlavni dokument a prilohy se zobrazuji uzivatelskym nazvem a roli, nikoliv hashem verze; package, version a rule ID zustavaji dostupne pouze ve sbalenych technickych podrobnostech,
 - kazde vytezene pravidlo ukazuje lidsky typ zdroje, stav overeni a odkaz `Otevrit citovane misto`, ktery otevre autorizovany viewer na presnem chunku,
+- detail dokumentu pouziva bezpecny kontextovy navrat: z registru, rizene dokumentace, ukolu, Intelligence nebo souvisejiciho dokumentu vede zpet na puvodni pracovni plochu a zachovava jeji podstatne filtry, datum nebo sekci; primy hluboky odkaz bez kontextu ma fallback do registru,
+- `return_to` prijima pouze povolene relativni AKB cesty svazane s pevnym typem puvodu; externi, nesouhlasne nebo poskozene cile se fail-closed nahradi registrem a stejny parametr se zachovava pres OIDC prihlaseni,
 - neznamy upstream text se do uzivatelske hlasky nepropaguje; UI pouzije cesky bezpecny postup a stabilni API chybovy kod zustava zachovan pro integrace a audit,
 - pomocne `proposed` insighty ze zdrojoveho textu aktualni verze zustavaji dostupne pouze v sekundarni rozbalovaci sekci a nejsou vydavany za zavazna pravidla,
 - viewer zalozka detailu dokumentu nabizi auditovane source-context signaly a po otevreni chunku zobrazuje citovatelny text, zdroj, verzi, stranu a sekci,
