@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 import json
 from typing import AsyncIterator
+import unicodedata
 
 from app.config import Settings
 from app.llm_client import LLMGatewayClient
@@ -17,7 +18,7 @@ from app.schemas import (
     RetrievedChunk,
 )
 from app.security import AuthContext
-from policies.no_answer import NO_ANSWER_TEXT
+from policies.no_answer import NO_ANSWER_TEXT, NO_ANSWER_TEXT_EN
 
 
 HIGH_QUALITY_ANSWER_MODES: frozenset[AnswerMode] = frozenset(
@@ -102,12 +103,23 @@ class AnswerComposer:
         if not answer:
             return RagAnswer(
                 query_id=query_id,
-                answer=NO_ANSWER_TEXT,
+                answer=_localized_no_answer(response_language),
                 confidence="insufficient_source",
                 citations=[],
                 warnings=[*warnings, "LLM_EMPTY_ANSWER"],
                 used_chunks=[],
-                missing_information="LLM Gateway nevratil odpoved.",
+                missing_information=_missing_llm_answer(response_language),
+            )
+
+        if _model_abstained(answer, response_language):
+            return RagAnswer(
+                query_id=query_id,
+                answer=_localized_no_answer(response_language),
+                confidence="insufficient_source",
+                citations=[],
+                warnings=_merge_warnings(warnings, ["LLM_DECLINED_INSUFFICIENT_CONTEXT"]),
+                used_chunks=[],
+                missing_information=_missing_source_support(response_language),
             )
 
         response_warnings = _merge_warnings(warnings, _source_quality_warnings(selected))
@@ -244,12 +256,27 @@ class AnswerComposer:
                 kind="done",
                 answer=RagAnswer(
                     query_id=query_id,
-                    answer=NO_ANSWER_TEXT,
+                    answer=_localized_no_answer(response_language),
                     confidence="insufficient_source",
                     citations=[],
                     warnings=[*warnings, "LLM_EMPTY_ANSWER"],
                     used_chunks=[],
-                    missing_information="LLM Gateway nevratil odpoved.",
+                    missing_information=_missing_llm_answer(response_language),
+                ),
+            )
+            return
+
+        if _model_abstained(answer_text, response_language):
+            yield StreamEvent(
+                kind="done",
+                answer=RagAnswer(
+                    query_id=query_id,
+                    answer=_localized_no_answer(response_language),
+                    confidence="insufficient_source",
+                    citations=[],
+                    warnings=_merge_warnings(warnings, ["LLM_DECLINED_INSUFFICIENT_CONTEXT"]),
+                    used_chunks=[],
+                    missing_information=_missing_source_support(response_language),
                 ),
             )
             return
@@ -455,7 +482,67 @@ def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage 
         "manager_brief": "Provide a short management brief with decision-relevant facts and citations.",
         "audit_question": "Answer audit questions conservatively, preserve source constraints, and cite every factual claim.",
     }
-    return f"{base} {language_instruction} {mode_prompts.get(answer_mode, mode_prompts['standard_answer'])}"
+    no_answer_instruction = (
+        f'If the supplied context does not answer the question, return exactly: "{_localized_no_answer(response_language)}"'
+    )
+    return (
+        f"{base} {language_instruction} "
+        f"{mode_prompts.get(answer_mode, mode_prompts['standard_answer'])} "
+        f"{no_answer_instruction}"
+    )
+
+
+def _localized_no_answer(response_language: ResponseLanguage) -> str:
+    return NO_ANSWER_TEXT_EN if response_language == "en" else NO_ANSWER_TEXT
+
+
+def _missing_llm_answer(response_language: ResponseLanguage) -> str:
+    return (
+        "The answer service did not return an answer."
+        if response_language == "en"
+        else "Služba pro sestavení odpovědi nevrátila odpověď."
+    )
+
+
+def _missing_source_support(response_language: ResponseLanguage) -> str:
+    return (
+        "The selected context does not support an answer to the question."
+        if response_language == "en"
+        else "Vybraný kontext nepodporuje odpověď na položený dotaz."
+    )
+
+
+def _model_abstained(answer: str, response_language: ResponseLanguage) -> bool:
+    normalized = " ".join(
+        "".join(
+            character
+            for character in unicodedata.normalize("NFD", answer.lower())
+            if unicodedata.category(character) != "Mn"
+        ).split()
+    )
+    exact = " ".join(
+        "".join(
+            character
+            for character in unicodedata.normalize(
+                "NFD",
+                _localized_no_answer(response_language).lower(),
+            )
+            if unicodedata.category(character) != "Mn"
+        ).split()
+    )
+    if normalized.rstrip(".") == exact.rstrip("."):
+        return True
+    phrases = (
+        "v poskytnutem kontextu neni uveden",
+        "v poskytnutem kontextu nejsou uveden",
+        "zdrojova podpora je nedostatecna",
+        "kontext neposkytuje dostatek informaci",
+        "the supplied context does not contain",
+        "the provided context does not contain",
+        "source support is insufficient",
+        "insufficient information in the supplied context",
+    )
+    return any(phrase in normalized for phrase in phrases)
 
 
 def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:

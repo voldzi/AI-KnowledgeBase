@@ -5668,6 +5668,7 @@ def _authorized_controlled_packages(
     principal: Principal,
     domain: str,
     valid_on: date,
+    authorization_actions: tuple[Action, ...] = (Action.document_read,),
 ) -> list[ControlledDocumentPackage]:
     packages = list(
         db.execute(
@@ -5694,13 +5695,44 @@ def _authorized_controlled_packages(
     authorized: list[ControlledDocumentPackage] = []
     for package in packages:
         try:
-            _require_controlled_package_read(principal, package, db)
+            _require_controlled_package_access(
+                principal,
+                package,
+                db,
+                actions=authorization_actions,
+            )
         except HTTPException as exc:
             if exc.status_code == status.HTTP_403_FORBIDDEN:
                 continue
             raise
         authorized.append(package)
     return authorized
+
+
+def _require_controlled_package_access(
+    principal: Principal,
+    package: ControlledDocumentPackage,
+    db: Session,
+    *,
+    actions: tuple[Action, ...],
+) -> None:
+    last_forbidden: HTTPException | None = None
+    for action in actions:
+        try:
+            document_ids = {
+                package.primary_document_id,
+                *(member.document_id for member in package.members),
+            }
+            for document_id in document_ids:
+                document = _get_document(db, document_id)
+                require_document_action(principal, action, document, db)
+            return
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_403_FORBIDDEN:
+                raise
+            last_forbidden = exc
+    if last_forbidden is not None:
+        raise last_forbidden
 
 
 def _require_controlled_package_rules_reviewed(
@@ -6118,6 +6150,7 @@ def list_controlled_document_rules(
             principal=principal,
             domain=domain,
             valid_on=applicable_on,
+            authorization_actions=(Action.document_read, Action.rag_query),
         )
     return _controlled_rule_list_for_packages(
         db=db,

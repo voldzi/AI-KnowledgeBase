@@ -5,6 +5,7 @@ import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
+import { buildControlledRuleAssistantResponse } from "@/lib/assistant/controlled-rule-answer";
 import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
 import {
   auditDirectorCopilotV2Failure,
@@ -124,6 +125,73 @@ export async function POST(request: NextRequest) {
       });
     }
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
+
+    if (assistantRoute.tool === "controlled_rule_answer" && assistantRoute.controlledRuleIntent) {
+      const validOn = assistantRoute.controlledRuleIntent.validOn ?? new Date().toISOString().slice(0, 10);
+      const controlledRules = await clients.registry.listControlledRules(
+        assistantRoute.controlledRuleIntent.domain,
+        context,
+        { validOn, approvedOnly: true },
+      );
+      const controlledResponse = normalizeAssistantChatResponse({
+        response: buildControlledRuleAssistantResponse({
+          message,
+          conversationId,
+          context: requestContext,
+          language: responseLanguage,
+          result: controlledRules,
+        }),
+        message,
+        language: responseLanguage,
+        route: assistantRoute,
+      });
+      const persistedConversation = await clients.registry
+        .appendAssistantConversationMessages(
+          controlledResponse.conversation_id,
+          {
+            user_id: context.subjectId,
+            title: titleFromMessage(message),
+            messages: assistantTurnMessages(message, controlledResponse, {
+              assistant_tool: assistantRoute.tool,
+              assistant_tool_reason: assistantRoute.reason,
+              confidence: controlledResponse.confidence,
+              current_context: controlledResponse.current_context,
+              warnings: controlledResponse.warnings,
+            }),
+          },
+          context,
+        )
+        .catch(() => undefined);
+      await clients.registry.createAuditEvent(
+        {
+          actor_id: context.subjectId,
+          event_type: "assistant.controlled_rules_returned",
+          resource_type: "assistant_conversation",
+          resource_id: controlledResponse.conversation_id,
+          severity: controlledResponse.response_type === "answer" ? "info" : "warning",
+          metadata: {
+            assistant_tool: assistantRoute.tool,
+            domain: assistantRoute.controlledRuleIntent.domain,
+            valid_on: validOn,
+            response_type: controlledResponse.response_type,
+            rule_count: typeof controlledResponse.current_context.controlled_rule_count === "number"
+              ? controlledResponse.current_context.controlled_rule_count
+              : 0,
+            warning_count: controlledResponse.warnings.length,
+            warning_codes: controlledResponse.warnings.join(",").slice(0, 512),
+          },
+        },
+        context,
+      ).catch(() => undefined);
+      return NextResponse.json({
+        response: persistedConversation
+          ? controlledResponse
+          : withHistoryPersistenceWarning(controlledResponse),
+        message_id: latestAssistantMessageId(persistedConversation),
+        persistence_status: persistedConversation ? "persisted" : "failed",
+      });
+    }
+
     const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
     const registryReportKind = assistantRoute.registryReportKind ?? "document_inventory_summary";
     const inferredDocumentType = registryDocumentTypeFilterForReport(message, registryReportKind);

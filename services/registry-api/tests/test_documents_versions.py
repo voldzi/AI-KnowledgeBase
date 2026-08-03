@@ -557,6 +557,11 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     admin_headers,
 ):
     def published_document(title, document_type, version_label, source_uri):
+        policy_binding_id = (
+            "pol_controlled_directive01"
+            if document_type == "directive"
+            else "pol_controlled_attachment01"
+        )
         document = _create_document(
             client,
             admin_headers,
@@ -564,6 +569,27 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
             document_type=document_type,
             tags=["controlled-document", "public_procurement"],
             metadata={"domain": "public_procurement"},
+            governance_scope={"type": "organization", "id": "org_stratos"},
+            information_policy={
+                "schemaVersion": "stratos-information-policy-2",
+                "policyBindingId": policy_binding_id,
+                "policyVersion": "information-policy-2.0.0",
+                "handlingClass": "INTERNAL",
+                "legalClassification": "NONE",
+                "tlp": None,
+                "pap": None,
+                "contentCategories": ["CONTRACTUAL"],
+                "audience": {
+                    "organizationId": "org_stratos",
+                    "scopeType": "organization",
+                    "scopeIds": [],
+                    "recipientSubjectIds": [],
+                },
+                "obligations": ["AUDIT_ACCESS", "NO_EXTERNAL_AI"],
+                "originatorId": "user_owner",
+                "issuedAt": "2023-05-30T00:00:00Z",
+                "reviewAt": "2024-05-30T00:00:00Z",
+            },
         )
         created = client.post(
             f"/api/v1/documents/{document['document_id']}/versions",
@@ -869,6 +895,33 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     assert body["rules"][0]["precedence_status"] == "supplemental"
     assert body["rules"][0]["consumer_eligible"] is True
     assert "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE" in body["warnings"]
+
+    chat_headers = {
+        "X-AKL-Subject": "user_chat_only",
+        "X-AKL-Roles": "stratos_user",
+        "X-STRATOS-Capabilities": "akb:chat",
+        "X-STRATOS-Scopes": "organization:org_stratos",
+    }
+    hidden_management_packages = client.get(
+        "/api/v1/controlled-documentation/packages"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers=chat_headers,
+    )
+    assert hidden_management_packages.status_code == 200
+    assert hidden_management_packages.json()["items"] == []
+
+    chat_consumable = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers=chat_headers,
+    )
+    assert chat_consumable.status_code == 200, chat_consumable.text
+    assert {
+        rule["proposal"]["rule_id"] for rule in chat_consumable.json()["rules"]
+    } == {
+        "internal.market-research.threshold",
+        "internal.marketplace.threshold",
+    }, chat_consumable.json()
 
     budget_service = client.get(
         "/api/v1/integrations/controlled-rules-read/rules"

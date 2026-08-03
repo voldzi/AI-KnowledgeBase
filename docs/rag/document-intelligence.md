@@ -341,6 +341,30 @@ current subject and returns its server-generated identifier. New-thread
 navigation clears dialogue state before any Director Copilot or RAG request is
 accepted.
 
+If the browser or reverse proxy stops waiting before a long-running answer is
+returned, the UI does not submit the question again. It polls the existing
+Registry conversation for the exact newly persisted user/assistant turn and
+replaces the pending bubble when that turn appears. This prevents duplicate
+LLM work and keeps a completed answer visible without requiring a manual page
+reload.
+
+Questions about effective public-procurement limits, duties, evidence,
+exceptions and approvals use the Registry controlled-rule catalog before
+document RAG. This path is deterministic and does not call an LLM. It returns
+only rules that are effective for the requested date, verified by the gestor,
+`consumer_eligible`, and resolved as `authoritative` or `supplemental` by the
+precedence engine. A matching conflict or missing rule fails closed with no
+replacement amount. Every returned rule retains its exact document-version
+and chunk citation, and follow-up questions keep the same governed domain and
+date without treating conversation context as authorization.
+
+The chat path authorizes every package source with `akb:chat` and the same
+fresh Information Policy decision used for RAG. It does not grant the caller
+`akb:read_document` or expose the controlled-documentation management list.
+Users who have only the employee-chat application profile can therefore
+receive an eligible governed rule without gaining access to Registry or
+authoring functions.
+
 New conversations default to private visibility and 180-day retention. Owners
 and admins may rename, pin, archive or restore a conversation, shorten or
 extend `retention_until`, and replace active user/group shares. Archived

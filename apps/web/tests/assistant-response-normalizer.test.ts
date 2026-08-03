@@ -38,6 +38,33 @@ function responseFixture(input: Partial<AssistantChatResponse> = {}): AssistantC
 }
 
 describe("assistant response normalizer", () => {
+  it("never presents a no-answer response with high confidence or citations", () => {
+    const route = routeAssistantMessage("Co stanoví dokument?", "cs");
+    const normalized = normalizeAssistantChatResponse({
+      response: {
+        ...responseFixture(),
+        response_type: "no_answer",
+        confidence: "high",
+        citations: [{
+          document_id: "doc_unrelated",
+          document_version_id: "ver_unrelated",
+          document_title: "Nesouvisející dokument",
+          version_label: "1",
+          document_version: "1",
+          section_path: [],
+          page_number: 1,
+          chunk_id: "chunk_unrelated",
+        }],
+      },
+      message: "Co stanoví dokument?",
+      language: "cs",
+      route,
+    });
+
+    assert.equal(normalized.confidence, "insufficient_source");
+    assert.deepEqual(normalized.citations, []);
+  });
+
   it("adds enterprise routing context and promotes a useful RAG markdown table once", () => {
     const message = "vytvoř tabulku kde bude seznam povinností";
     const route = routeAssistantMessage(message, "cs");

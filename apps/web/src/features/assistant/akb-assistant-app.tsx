@@ -54,6 +54,7 @@ import {
   type AssistantReportRequest,
   type AssistantReportTemplate
 } from "@/lib/assistant/assistant-report-request";
+import { recoverPersistedAssistantTurn } from "@/lib/assistant/late-response-recovery";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import {
   directoryUserDisplayName,
@@ -253,6 +254,8 @@ const assistantAppCopy = {
     composerPlaceholder: "Např. Jaký je stav projektů nebo co stanoví směrnice?",
     ask: "Odeslat",
     asking: "Odesílám",
+    answerStillPreparing: "Odpověď se stále připravuje. Čekám na její bezpečné uložení…",
+    answerRecoveryFailed: "Odpověď se nepodařilo dokončit ani načíst z historie. Dotaz můžete odeslat znovu.",
     emptyQuestion: "Napište dotaz.",
     requestFailed: "Dotaz se nepodařilo odeslat. Zkuste to prosím znovu.",
     assistantServiceUnavailable: "AI služba teď není dostupná. Zkuste to prosím za chvíli znovu.",
@@ -402,6 +405,8 @@ const assistantAppCopy = {
     composerPlaceholder: "For example: What is the project status or what does the directive require?",
     ask: "Send",
     asking: "Sending",
+    answerStillPreparing: "The answer is still being prepared. Waiting for it to be stored safely…",
+    answerRecoveryFailed: "The answer could not be completed or recovered from history. You can send the question again.",
     emptyQuestion: "Enter a question.",
     requestFailed: "The question could not be sent. Please try again.",
     assistantServiceUnavailable: "The AI service is unavailable. Please try again shortly.",
@@ -1049,6 +1054,12 @@ export function AkbAssistantApp({
     }
 
     const threadId = activeThread.id;
+    const activeConversationId = activeThread.conversationId;
+    const knownAssistantMessageIds = new Set(
+      activeThread.messages
+        .filter((message) => message.role === "assistant" && message.persisted)
+        .map((message) => message.id),
+    );
     const effectiveContext = contextWithReportRequest(nextContext, reportModeEnabled ? {
       enabled: true,
       output_kind: "table",
@@ -1086,6 +1097,52 @@ export function AkbAssistantApp({
       updatedAt: new Date().toISOString()
     }));
 
+    const recoverLateResponse = async () => {
+      if (!activeConversationId) return false;
+      updateThread(threadId, (thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) => (
+          message.id === pendingMessage.id
+            ? { ...message, content: copy.answerStillPreparing }
+            : message
+        )),
+      }));
+      const conversation = await recoverPersistedAssistantTurn({
+        conversationId: activeConversationId,
+        submittedQuestion: trimmed,
+        knownAssistantMessageIds,
+        loadConversation: async (conversationId) => {
+          const response = await fetch(
+            withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(conversationId)}`),
+            { credentials: "same-origin", headers: { Accept: "application/json" } },
+          );
+          if (!response.ok) return null;
+          const payload = await response.json() as { conversation: AssistantConversationDetail };
+          return payload.conversation;
+        },
+      });
+      if (!conversation) return false;
+      updateThread(threadId, (thread) => ({
+        ...threadFromConversation(conversation, language),
+        id: thread.id,
+        draft: thread.draft,
+      }));
+      setStatusMessage(null);
+      return true;
+    };
+
+    const showRecoveryFailure = () => {
+      setStatusMessage(copy.answerRecoveryFailed);
+      updateThread(threadId, (thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) => (
+          message.id === pendingMessage.id
+            ? { ...message, content: copy.answerRecoveryFailed, pending: false }
+            : message
+        )),
+      }));
+    };
+
     try {
       const httpResponse = await fetch(withAppBasePath(endpoint), {
         method: "POST",
@@ -1106,6 +1163,11 @@ export function AkbAssistantApp({
             ...thread,
             messages: thread.messages.filter((message) => message.id !== pendingMessage.id)
           }));
+          return;
+        }
+        if (httpResponse.status === 408 || httpResponse.status >= 500) {
+          if (await recoverLateResponse()) return;
+          showRecoveryFailure();
           return;
         }
         setStatusMessage(await assistantHttpErrorMessage(httpResponse, copy));
@@ -1144,12 +1206,9 @@ export function AkbAssistantApp({
         messages: thread.messages.map((message) => (message.id === pendingMessage.id ? assistantMessage : message)),
         updatedAt: new Date().toISOString()
       }));
-    } catch (error) {
-      setStatusMessage(copy.requestFailed);
-      updateThread(threadId, (thread) => ({
-        ...thread,
-        messages: thread.messages.filter((message) => message.id !== pendingMessage.id)
-      }));
+    } catch {
+      if (await recoverLateResponse()) return;
+      showRecoveryFailure();
     } finally {
       setSubmitting(false);
     }
