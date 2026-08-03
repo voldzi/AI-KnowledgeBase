@@ -8,6 +8,31 @@ import {
 } from "../src/lib/assistant/assistant-tool-router";
 
 describe("assistant tool router", () => {
+  it("routes public procurement rules to the governed rule catalog", () => {
+    const route = routeAssistantMessage(
+      "Jaký je limit pro veřejnou zakázku malého rozsahu podle směrnice č. 2/2023?",
+      "cs",
+    );
+
+    assert.equal(route.tool, "controlled_rule_answer");
+    assert.equal(route.reason, "controlled_rule_intent");
+    assert.equal(route.controlledRuleIntent?.domain, "public_procurement");
+    assert.equal(route.controlledRuleIntent?.validOn, null);
+    assert.equal(route.queryPlan.intent, "controlled_rule_answer");
+    assert.equal(route.queryPlan.quality_gates.citations_required, true);
+  });
+
+  it("keeps controlled-rule follow-ups in the governed domain", () => {
+    const route = routeAssistantMessage("A jaké doklady jsou potřeba?", "cs", {
+      answer_source: "controlled_rules",
+      controlled_rule_domain: "public_procurement",
+      controlled_rule_valid_on: "2026-08-03",
+    });
+
+    assert.equal(route.tool, "controlled_rule_answer");
+    assert.equal(route.controlledRuleIntent?.validOn, "2026-08-03");
+  });
+
   it("routes inventory questions to registry metadata reports", () => {
     const route = routeAssistantMessage("Kolik máme dokumentů na téma digitalizace?", "cs");
 

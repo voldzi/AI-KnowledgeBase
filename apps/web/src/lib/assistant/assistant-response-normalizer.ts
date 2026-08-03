@@ -17,8 +17,15 @@ export function normalizeAssistantChatResponse({
   route: AssistantToolRoute;
 }): AssistantChatResponse {
   const normalized = normalizeAssistantAnswerReports(response, message, language, { queryPlan: route.queryPlan });
+  const noAnswer = normalized.response_type === "no_answer";
   return {
     ...normalized,
+    confidence: noAnswer
+      ? normalized.confidence === "conflicting_sources"
+        ? "conflicting_sources"
+        : "insufficient_source"
+      : normalized.confidence,
+    citations: noAnswer ? [] : normalized.citations,
     current_context: compactContext({
       ...normalized.current_context,
       answer_source: normalized.current_context.answer_source ?? answerSourceForRoute(route),
@@ -36,7 +43,9 @@ export function normalizeAssistantChatResponse({
 }
 
 function answerSourceForRoute(route: AssistantToolRoute): string {
-  return route.tool === "registry_document_report" ? "registry_metadata" : "rag_retrieval";
+  if (route.tool === "registry_document_report") return "registry_metadata";
+  if (route.tool === "controlled_rule_answer") return "controlled_rules";
+  return "rag_retrieval";
 }
 
 function compactContext(context: Record<string, unknown>): Record<string, unknown> {

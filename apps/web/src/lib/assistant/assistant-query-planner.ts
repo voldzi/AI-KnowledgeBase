@@ -14,6 +14,7 @@ export const ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION = "report.v2";
 export type AssistantQueryIntent =
   | "document_metadata_report"
   | "document_list"
+  | "controlled_rule_answer"
   | "grounded_answer"
   | "structured_report"
   | "obligation_table";
@@ -91,7 +92,7 @@ export function buildAssistantQueryPlan(input: {
       preferred_export_formats: assistantReportExportFormats(input.reportRequest ?? null)
     },
     quality_gates: {
-      citations_required: input.tool === "rag_document_answer",
+      citations_required: input.tool !== "registry_document_report",
       row_citations_required: input.tool === "rag_document_answer" && input.structuredOutput,
       min_columns: input.structuredOutput || input.tool === "registry_document_report" ? Math.min(Math.max(requiredColumns.length, 2), 8) : null,
       min_informative_cells_per_row: input.structuredOutput ? 2 : null,
@@ -113,6 +114,9 @@ function queryIntentFor(input: {
 }): AssistantQueryIntent {
   if (input.tool === "registry_document_report") {
     return input.registryReportKind === "document_list" ? "document_list" : "document_metadata_report";
+  }
+  if (input.tool === "controlled_rule_answer") {
+    return "controlled_rule_answer";
   }
   if (input.reportRequest?.template === "obligation_table" || (input.structuredOutput && input.obligationOutput)) {
     return "obligation_table";

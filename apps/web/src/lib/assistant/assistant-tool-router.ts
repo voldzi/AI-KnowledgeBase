@@ -15,9 +15,17 @@ import {
   buildAssistantQueryPlan,
   type AssistantQueryPlan
 } from "./assistant-query-planner";
+import {
+  controlledRuleIntentFromMessage,
+  type ControlledRuleIntent,
+} from "./controlled-rule-answer";
 
-export type AssistantToolName = "registry_document_report" | "rag_document_answer";
-export type AssistantToolRouteReason = "registry_metadata_intent" | "rag_structured_output" | "rag_grounded_answer";
+export type AssistantToolName = "controlled_rule_answer" | "registry_document_report" | "rag_document_answer";
+export type AssistantToolRouteReason =
+  | "controlled_rule_intent"
+  | "registry_metadata_intent"
+  | "rag_structured_output"
+  | "rag_grounded_answer";
 
 export interface AssistantToolRoute {
   tool: AssistantToolName;
@@ -29,6 +37,7 @@ export interface AssistantToolRoute {
   answerFormatInstruction: string | null;
   queryPlan: AssistantQueryPlan;
   reportRequest: AssistantReportRequest | null;
+  controlledRuleIntent: ControlledRuleIntent | null;
 }
 
 const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf|graf|diagram|vizualiz|chart|plot)/i;
@@ -42,6 +51,20 @@ export function routeAssistantMessage(
   const reportRequest = assistantReportRequestFromContext(context);
   const structuredOutput = Boolean(reportRequest) || STRUCTURED_OUTPUT_RE.test(message);
   const obligationOutput = reportRequest?.template === "obligation_table" || OBLIGATION_OUTPUT_RE.test(message);
+  const controlledRuleIntent = controlledRuleIntentFromMessage(message, context);
+  if (controlledRuleIntent) {
+    return withQueryPlan(message, language, {
+      tool: "controlled_rule_answer",
+      reason: "controlled_rule_intent",
+      structuredOutput: false,
+      obligationOutput: false,
+      registryReportKind: null,
+      registryTopics: [],
+      answerFormatInstruction: null,
+      reportRequest: null,
+      controlledRuleIntent,
+    });
+  }
   if (isRegistryDocumentReportQuestion(message, context)) {
     return withQueryPlan(message, language, {
       tool: "registry_document_report",
@@ -51,7 +74,8 @@ export function routeAssistantMessage(
       registryReportKind: registryReportKindFromMessage(message, context),
       registryTopics: extractRegistryDocumentTopics(message, language),
       answerFormatInstruction: null,
-      reportRequest
+      reportRequest,
+      controlledRuleIntent: null,
     });
   }
   return withQueryPlan(message, language, {
@@ -62,7 +86,8 @@ export function routeAssistantMessage(
     registryReportKind: null,
     registryTopics: [],
     answerFormatInstruction: structuredOutput ? answerFormatInstruction(language, obligationOutput, reportRequest) : null,
-    reportRequest
+    reportRequest,
+    controlledRuleIntent: null,
   });
 }
 
@@ -93,7 +118,8 @@ export function routeAssistantMessageForRag(
       registryTopics: [],
       reportRequest: route.reportRequest
     }),
-    reportRequest: route.reportRequest
+    reportRequest: route.reportRequest,
+    controlledRuleIntent: null
   };
 }
 

@@ -10,9 +10,10 @@ from app.security import AuthContext
 
 
 class CaptureLLMClient:
-    def __init__(self) -> None:
+    def __init__(self, answer: str = "Citovana odpoved.") -> None:
         self.models: list[str | None] = []
         self.metadata: list[dict[str, Any]] = []
+        self.answer = answer
 
     async def embeddings(
         self,
@@ -32,7 +33,7 @@ class CaptureLLMClient:
     ) -> str:
         self.models.append(model)
         self.metadata.append(metadata)
-        return "Citovana odpoved."
+        return self.answer
 
     async def readiness(self) -> str:
         return "ready"
@@ -181,6 +182,32 @@ def test_source_quality_metadata_is_promoted_to_answer_warnings() -> None:
         "SOURCE_OCR_USED",
         "SOURCE_QUALITY_REVIEW_REQUIRED",
     ]
+
+
+def test_model_abstention_drops_unrelated_citations_and_confidence() -> None:
+    llm = CaptureLLMClient(
+        "V poskytnutém kontextu není uveden limit veřejné zakázky."
+    )
+    composer = AnswerComposer(_settings(), llm)
+
+    answer = asyncio.run(
+        composer.compose(
+            query_id="query-unsupported",
+            query="Jaký je limit veřejné zakázky?",
+            chunks=[_chunk("chunk_unrelated")],
+            confidence="high",
+            warnings=[],
+            max_chunks=4,
+            answer_mode="it_support_answer",
+            response_language="cs",
+        )
+    )
+
+    assert answer.confidence == "insufficient_source"
+    assert answer.citations == []
+    assert answer.used_chunks == []
+    assert answer.warnings == ["LLM_DECLINED_INSUFFICIENT_CONTEXT"]
+    assert "dostatečně důvěryhodný zdroj" in answer.answer
 
 
 def _settings():
