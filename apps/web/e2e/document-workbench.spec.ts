@@ -49,13 +49,13 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Smernice pro spravu rizene dokumentace")).toBeVisible();
 
     await page.getByPlaceholder("Název, ID, gestor, vlastník nebo štítek").fill("bezpecnostnich");
-    await expect(page.getByText("Zobrazeno 1 z 9")).toBeVisible();
+    await expect(page.getByText("Zobrazeno 1 z 1")).toBeVisible();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel")).toBeVisible();
 
     await page.locator("#document-registry-classification").click();
     await page.getByRole("option", { name: /restricted/ }).click();
     await page.getByRole("button", { name: "Zavřít filtr" }).click();
-    await expect(page.getByText("Zobrazeno 1 z 9")).toBeVisible();
+    await expect(page.getByText("Zobrazeno 1 z 1")).toBeVisible();
 
     await page.getByRole("button", { name: "Vyčistit" }).click();
     await expect(page.getByText("Zobrazeno 9 z 9")).toBeVisible();
