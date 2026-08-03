@@ -83,8 +83,11 @@ návrh, nikoli právní rozhodnutí. Každý návrh obsahuje:
 - míru jistoty.
 
 Bez citovatelného podkladu se pravidlo nevytvoří. Gestor přijme, upraví nebo
-odmítne návrh. AKB zaznamená audit, ale do provozních logů neukládá text
-dokumentu ani citovaný výňatek.
+odmítne návrh. Rozhodnutí se vztahuje pouze k danému pravidlu: odmítnutí
+nekvalitního návrhu nesmí zneplatnit nebo skrýt ostatní návrhy ze stejné
+extrakce. Vydání lze vyhlásit jako platné až po posouzení všech návrhů a po
+potvrzení alespoň jednoho citovaného pravidla. AKB zaznamená audit, ale do
+provozních logů neukládá text dokumentu ani citovaný výňatek.
 
 ## Zastaralost a změny
 

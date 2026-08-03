@@ -274,10 +274,16 @@ tenant_id + external_system + external_ref + document_id + document_version_id +
 ```
 
 When a new `document_version_id` is stored for the same tenant/external ref,
-older non-final extractions are marked `SUPERSEDED`. Feedback decisions update
-the extraction status to `ACCEPTED_IN_SOURCE_APP` for `accepted`/`edited` and
-`REJECTED_IN_SOURCE_APP` for `rejected`. The source app still owns final writes
-to its own domain model.
+older non-final extractions are marked `SUPERSEDED`. For generic extraction
+profiles, feedback decisions update the extraction status to
+`ACCEPTED_IN_SOURCE_APP` for `accepted`/`edited` and
+`REJECTED_IN_SOURCE_APP` for `rejected`. Controlled-document rule feedback is
+rule-scoped: rejecting one proposal does not reject or hide the complete
+extraction. It remains `PROPOSED` until every proposal is reviewed and becomes
+`ACCEPTED_IN_SOURCE_APP` only when review is complete and at least one cited
+rule is accepted or edited. Package publication separately rejects an
+all-rejected review. The source app still owns final writes to its own domain
+model.
 
 ## Canonical Sources
 

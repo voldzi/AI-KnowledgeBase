@@ -6714,7 +6714,30 @@ def store_document_extraction_feedback(
         feedback_metadata=payload.metadata,
     )
     db.add(feedback)
-    if payload.decision.value in {"accepted", "edited"}:
+    if extraction.profile == "controlled_document_rules_v1":
+        reviewed_decisions = {
+            item.field: item.decision
+            for item in db.execute(
+                select(DocumentExtractionFeedback)
+                .where(
+                    DocumentExtractionFeedback.extraction_id
+                    == extraction.extraction_id
+                )
+                .order_by(DocumentExtractionFeedback.created_at)
+            ).scalars()
+        }
+        reviewed_decisions[payload.field] = payload.decision.value
+        all_rules_reviewed = allowed_fields.issubset(reviewed_decisions)
+        has_verified_rule = any(
+            reviewed_decisions.get(field) in {"accepted", "edited"}
+            for field in allowed_fields
+        )
+        extraction.status = (
+            DocumentExtractionStatus.accepted_in_source_app.value
+            if all_rules_reviewed and has_verified_rule
+            else DocumentExtractionStatus.proposed.value
+        )
+    elif payload.decision.value in {"accepted", "edited"}:
         extraction.status = DocumentExtractionStatus.accepted_in_source_app.value
     elif payload.decision.value == "rejected":
         extraction.status = DocumentExtractionStatus.rejected_in_source_app.value

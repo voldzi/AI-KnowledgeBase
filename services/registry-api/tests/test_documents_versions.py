@@ -768,6 +768,33 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         "NO_APPLICABLE_AUTHORIZED_CONTROLLED_DOCUMENT_PACKAGE"
     ]
 
+    rejected_only_rule = client.post(
+        f"/api/v1/document-extractions/{extraction['extraction_id']}/feedback",
+        headers=admin_headers,
+        json={
+            "field": "rules.internal.market-research.threshold",
+            "ai_value": 20000,
+            "final_value": None,
+            "decision": "rejected",
+            "reason": "Návrh vyžaduje další kontrolu.",
+            "actor": "user_admin",
+            "source_app": "STRATOS_PLATFORM",
+            "source_entity_id": package["package_id"],
+        },
+    )
+    assert rejected_only_rule.status_code == 201, rejected_only_rule.text
+    assert rejected_only_rule.json()["extraction"]["status"] == "PROPOSED"
+
+    no_verified_rules = client.post(
+        f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
+        headers=admin_headers,
+        json={"target_status": "valid"},
+    )
+    assert no_verified_rules.status_code == 409, no_verified_rules.text
+    assert no_verified_rules.json()["error"]["code"] == (
+        "controlled_document_package_rules_not_verified"
+    )
+
     accepted = client.post(
         f"/api/v1/document-extractions/{extraction['extraction_id']}/feedback",
         headers=admin_headers,
@@ -782,6 +809,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         },
     )
     assert accepted.status_code == 201, accepted.text
+    assert accepted.json()["extraction"]["status"] == "ACCEPTED_IN_SOURCE_APP"
 
     refreshed = client.post(
         "/api/v1/document-extractions",
@@ -833,6 +861,31 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
                             ),
                         },
                     },
+                    {
+                        "rule_id": "internal.incomplete-fragment",
+                        "normative_key": "public_procurement.market_research.threshold",
+                        "category": "financial_limit",
+                        "title": "Neúplný návrh",
+                        "value": 10000,
+                        "unit": "CZK",
+                        "currency": "CZK",
+                        "vat_basis": "including_vat",
+                        "conditions": [],
+                        "exceptions": [],
+                        "responsible_roles": [],
+                        "required_evidence": [],
+                        "confidence": 0.4,
+                        "citation": {
+                            "document_id": directive["document_id"],
+                            "document_version_id": directive_version[
+                                "document_version_id"
+                            ],
+                            "chunk_id": "chunk_incomplete_fragment",
+                            "section_path": ["Neúplná věta"],
+                            "page_number": 10,
+                            "quoted_text": "Návrh bez dostatečného normativního významu.",
+                        },
+                    },
                 ],
             },
         },
@@ -855,6 +908,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     assert statuses == {
         "internal.market-research.threshold": "accepted",
         "internal.marketplace.threshold": "proposed",
+        "internal.incomplete-fragment": "proposed",
     }
 
     accepted_marketplace = client.post(
@@ -871,6 +925,26 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         },
     )
     assert accepted_marketplace.status_code == 201, accepted_marketplace.text
+    assert accepted_marketplace.json()["extraction"]["status"] == "PROPOSED"
+
+    rejected_fragment = client.post(
+        f"/api/v1/document-extractions/{extraction['extraction_id']}/feedback",
+        headers=admin_headers,
+        json={
+            "field": "rules.internal.incomplete-fragment",
+            "ai_value": 10000,
+            "final_value": None,
+            "decision": "rejected",
+            "reason": "Citace neobsahuje úplné normativní pravidlo.",
+            "actor": "user_admin",
+            "source_app": "STRATOS_PLATFORM",
+            "source_entity_id": package["package_id"],
+        },
+    )
+    assert rejected_fragment.status_code == 201, rejected_fragment.text
+    assert rejected_fragment.json()["extraction"]["status"] == (
+        "ACCEPTED_IN_SOURCE_APP"
+    )
 
     activated = client.post(
         f"/api/v1/controlled-documentation/packages/{package['package_id']}/status",
