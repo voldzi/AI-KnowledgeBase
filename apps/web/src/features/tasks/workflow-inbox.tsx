@@ -47,6 +47,7 @@ import {
   type WorkflowTaskPriority,
   type WorkflowTaskStatus,
 } from "./workflow-task-model";
+import { workflowTaskPresentation } from "./workflow-task-presentation";
 
 interface WorkflowInboxProps {
   documents: Document[];
@@ -90,6 +91,11 @@ const taskCopy = {
     document: "Dokument",
     version: "Verze",
     job: "Úloha",
+    notSpecified: "Neuvedeno",
+    technicalDetails: "Technické podrobnosti",
+    technicalOwner: "Interní identifikátor odpovědnosti",
+    technicalVersion: "Identifikátor verze",
+    technicalJob: "Identifikátor zpracování",
     primaryAction: "Primární akce",
     secondaryAction: "Souvislost",
     implementationNote:
@@ -157,6 +163,11 @@ const taskCopy = {
     document: "Document",
     version: "Version",
     job: "Job",
+    notSpecified: "Not specified",
+    technicalDetails: "Technical details",
+    technicalOwner: "Internal responsibility identifier",
+    technicalVersion: "Version identifier",
+    technicalJob: "Processing identifier",
     primaryAction: "Primary action",
     secondaryAction: "Related context",
     implementationNote:
@@ -278,15 +289,16 @@ export function WorkflowInbox({
 
   const filteredTasks = tasks.filter((task) => {
     const normalizedQuery = query.trim().toLowerCase();
+    const presentation = workflowTaskPresentation(task, language);
     const matchesQuery =
       normalizedQuery.length === 0 ||
       [
-        task.title,
-        task.description,
+        presentation.title,
+        presentation.description,
         task.document_title,
-        task.owner,
-        task.role,
-        task.source,
+        presentation.owner,
+        presentation.role,
+        presentation.source,
         task.job_id,
       ]
         .filter(Boolean)
@@ -430,32 +442,35 @@ export function WorkflowInbox({
             <h2>{copy.task}</h2>
           </div>
           <div className="task-list">
-            {filteredTasks.map((task) => (
-              <button
-                className={`task-row ${selectedTask?.id === task.id ? "task-row--active" : ""}`}
-                key={task.id}
-                type="button"
-                onClick={() => setSelectedTaskId(task.id)}
-              >
-                <span className="task-row__main">
-                  <strong>{task.title}</strong>
-                  <span>{task.document_title ?? task.source}</span>
-                </span>
-                <span className="task-row__badges">
-                  <StatusBadge
-                    value={priorityTone(task.priority)}
-                    label={priorityLabels[language][task.priority]}
-                  />
-                  <StatusBadge
-                    value={statusTone(task.status)}
-                    label={statusLabels[language][task.status]}
-                  />
-                </span>
-                <span className="task-row__meta">
-                  {task.owner} · {formatDateTime(task.due_at, language)}
-                </span>
-              </button>
-            ))}
+            {filteredTasks.map((task) => {
+              const presentation = workflowTaskPresentation(task, language);
+              return (
+                <button
+                  className={`task-row ${selectedTask?.id === task.id ? "task-row--active" : ""}`}
+                  key={task.id}
+                  type="button"
+                  onClick={() => setSelectedTaskId(task.id)}
+                >
+                  <span className="task-row__main">
+                    <strong>{presentation.title}</strong>
+                    <span>{task.document_title ?? presentation.source}</span>
+                  </span>
+                  <span className="task-row__badges">
+                    <StatusBadge
+                      value={priorityTone(task.priority)}
+                      label={priorityLabels[language][task.priority]}
+                    />
+                    <StatusBadge
+                      value={statusTone(task.status)}
+                      label={statusLabels[language][task.status]}
+                    />
+                  </span>
+                  <span className="task-row__meta">
+                    {presentation.owner} · {formatDateTime(task.due_at, language)}
+                  </span>
+                </button>
+              );
+            })}
             {filteredTasks.length === 0 ? (
               <div className="empty-state">{copy.noResults}</div>
             ) : null}
@@ -553,6 +568,7 @@ function TaskDetail({
   }
 
   const actions = actionsForTask(task);
+  const presentation = workflowTaskPresentation(task, language);
 
   async function submitAction(action: RegistryWorkflowTaskAction) {
     if (!task?.registry_task_id || submittingAction) {
@@ -616,35 +632,57 @@ function TaskDetail({
       <div className="panel__body stack">
         <div className="task-detail__title">
           <span className="task-kind">{kindLabels[language][task.kind]}</span>
-          <h3>{task.title}</h3>
-          <p>{task.description}</p>
+          <h3>{presentation.title}</h3>
+          <p>{presentation.description}</p>
         </div>
         <div className="detail-kv-grid">
           <TaskField
             label={copy.owner}
-            value={`${task.owner} · ${task.role}`}
+            value={presentation.owner === presentation.role
+              ? presentation.owner
+              : `${presentation.owner} · ${presentation.role}`}
           />
           <TaskField
             label={copy.due}
             value={formatDateTime(task.due_at, language)}
           />
-          <TaskField label={copy.source} value={task.source} />
+          <TaskField label={copy.source} value={presentation.source} />
           <TaskField
             label={copy.document}
-            value={task.document_title ?? "n/a"}
+            value={task.document_title ?? copy.notSpecified}
           />
-          <TaskField
-            label={copy.version}
-            value={task.document_version_id ?? "n/a"}
-          />
-          <TaskField label={copy.job} value={task.job_id ?? "n/a"} />
         </div>
+        {presentation.technicalOwner || task.document_version_id || task.job_id ? (
+          <details className="technical-details technical-details--compact">
+            <summary>{copy.technicalDetails}</summary>
+            <div className="technical-details__body">
+              {presentation.technicalOwner ? (
+                <p className="technical-details__line">
+                  <strong>{copy.technicalOwner}</strong>
+                  <span>{presentation.technicalOwner}</span>
+                </p>
+              ) : null}
+              {task.document_version_id ? (
+                <p className="technical-details__line">
+                  <strong>{copy.technicalVersion}</strong>
+                  <span>{task.document_version_id}</span>
+                </p>
+              ) : null}
+              {task.job_id ? (
+                <p className="technical-details__line">
+                  <strong>{copy.technicalJob}</strong>
+                  <span>{task.job_id}</span>
+                </p>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
         <div className="task-actions">
           <StratosButtonLink
             tone="primary"
             href={withDocumentReturnContext(task.href, returnTo, "tasks")}
           >
-            {task.action_label}
+            {presentation.actionLabel}
             <ArrowUpRight size={15} aria-hidden="true" />
           </StratosButtonLink>
           {task.secondary_href ? (

@@ -1828,6 +1828,39 @@ button {
   padding: 14px;
 }
 
+.assistant-live-source-list {
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-live-source {
+  align-items: flex-start;
+  background: #f1f8f7;
+  border: 1px solid #cfe3e0;
+  border-radius: 8px;
+  color: #173c3f;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  padding: 11px;
+}
+
+.assistant-live-source div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assistant-live-source strong {
+  font-size: 13px;
+}
+
+.assistant-live-source span,
+.assistant-live-source small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .akb-chat-access {
   border-top: 1px solid var(--border);
   display: grid;
@@ -3767,6 +3800,20 @@ button {
   font-size: 12px;
   font-weight: 700;
   justify-content: space-between;
+}
+
+.registry-pagination {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.registry-pagination > span {
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 150px;
+  text-align: center;
 }
 
 .registry-result-bar span {

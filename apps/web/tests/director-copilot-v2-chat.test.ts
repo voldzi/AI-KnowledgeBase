@@ -109,6 +109,9 @@ describe("Director Copilot V2 active chat", () => {
       serializedHistory,
       /"project_ids":\["project-001"\]/,
     );
+    assert.match(serializedHistory, /"live_sources":\[/);
+    assert.match(serializedHistory, /"application":"budget"/);
+    assert.match(serializedHistory, /"item_count":1/);
     assert.equal(serializedHistory.includes("actor-token"), false);
     assert.equal(serializedHistory.includes("Projekt Alfa"), false);
     const originalFetch = globalThis.fetch;

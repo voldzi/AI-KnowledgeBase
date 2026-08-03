@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArrowUpRight,
@@ -28,15 +28,18 @@ import {
   type StratosDataTableColumn
 } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
-import type { AuthorizationHint, Classification, Document, DocumentStatus, DocumentType } from "@/lib/types";
+import { withAppBasePath } from "@/lib/app-url";
+import type { AuthorizationHint, Classification, Document, DocumentListPage, DocumentStatus, DocumentType } from "@/lib/types";
 import { documentStatusLabel, documentTypeLabel, formatDateTime } from "@/lib/format";
 import { DOCUMENT_TYPE_CATALOG } from "@/lib/documents/document-workflow";
 import { buildReturnTarget, documentDetailHref } from "@/lib/navigation/document-navigation";
 
 interface DocumentRegistryProps {
-  documents: Document[];
+  initialPage: DocumentListPage;
   authorization: AuthorizationHint;
 }
+
+const REGISTRY_PAGE_SIZE = 50;
 
 const registryCopy = {
   cs: {
@@ -75,6 +78,12 @@ const registryCopy = {
     restrictedDocuments: "Citlivé",
     restrictedDocumentsDetail: "omezené nebo důvěrné",
     showing: "Zobrazeno",
+    page: "Strana",
+    previousPage: "Předchozí",
+    nextPage: "Další",
+    loading: "Načítám dokumenty…",
+    loadFailed: "Dokumenty se nepodařilo načíst. Zkuste to znovu.",
+    retry: "Načíst znovu",
     selected: "vybráno",
     of: "z",
     noResults: "Nenalezen žádný dokument pro aktuální filtr.",
@@ -125,6 +134,12 @@ const registryCopy = {
     restrictedDocuments: "Sensitive",
     restrictedDocumentsDetail: "restricted or confidential",
     showing: "Showing",
+    page: "Page",
+    previousPage: "Previous",
+    nextPage: "Next",
+    loading: "Loading documents…",
+    loadFailed: "Documents could not be loaded. Please try again.",
+    retry: "Try again",
     selected: "selected",
     of: "of",
     noResults: "No document matches the current filter.",
@@ -147,7 +162,7 @@ const documentStatuses: DocumentStatus[] = ["draft", "review", "approved", "vali
 const classificationOptions: Classification[] = ["public", "internal", "restricted", "confidential"];
 const documentTypes: DocumentType[] = DOCUMENT_TYPE_CATALOG.filter((item) => item.active).map((item) => item.code);
 
-export function DocumentRegistry({ documents, authorization }: DocumentRegistryProps) {
+export function DocumentRegistry({ initialPage, authorization }: DocumentRegistryProps) {
   const { language } = useLanguage();
   const searchParams = useSearchParams();
   const copy = registryCopy[language];
@@ -162,10 +177,22 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
   const [classifications, setClassifications] = useState<Classification[]>(() =>
     selectedValues(searchParams.getAll("classification"), classificationOptions),
   );
+  const [page, setPage] = useState(initialPage);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const initialRequestSkipped = useRef(false);
+  const documents = page.items;
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const selectedDocument = selectedDocumentIds.length === 1
     ? documents.find((document) => document.document_id === selectedDocumentIds[0]) ?? null
     : null;
+  const metrics = {
+    valid: page.summary.valid_documents,
+    review: page.summary.review_documents,
+    restricted: page.summary.restricted_documents,
+  };
   const registryReturnTo = useMemo(() => {
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
@@ -176,62 +203,71 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
     return buildReturnTarget("/documents", params);
   }, [classifications, query, statuses, types, view]);
 
-  const metrics = useMemo(() => {
-    const reviewCount = documents.filter((document) => ["draft", "review", "approved"].includes(document.status)).length;
-    const restrictedCount = documents.filter(
-      (document) => document.classification === "restricted" || document.classification === "confidential"
-    ).length;
+  const effectiveStatuses = useMemo(
+    () => registryViewStatuses(view, statuses),
+    [statuses, view],
+  );
+  const effectiveClassifications = useMemo(
+    () => registryViewClassifications(view, classifications),
+    [classifications, view],
+  );
 
-    return {
-      valid: documents.filter((document) => document.status === "valid").length,
-      review: reviewCount,
-      restricted: restrictedCount
+  useEffect(() => {
+    if (!initialRequestSkipped.current) {
+      initialRequestSkipped.current = true;
+      if (
+        !query.trim()
+        && view === "all"
+        && statuses.length === 0
+        && types.length === 0
+        && classifications.length === 0
+        && pageIndex === 0
+        && reloadNonce === 0
+      ) return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setLoadFailed(false);
+      const params = new URLSearchParams({
+        limit: String(REGISTRY_PAGE_SIZE),
+        offset: String(pageIndex * REGISTRY_PAGE_SIZE),
+      });
+      if (query.trim()) params.set("q", query.trim());
+      effectiveStatuses.forEach((value) => params.append("status", value));
+      effectiveClassifications.forEach((value) => params.append("classification", value));
+      types.forEach((value) => params.append("type", value));
+      fetch(withAppBasePath(`/api/documents?${params.toString()}`), {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Document page request failed");
+          return response.json() as Promise<DocumentListPage>;
+        })
+        .then((nextPage) => {
+          if (nextPage.total > 0 && pageIndex * REGISTRY_PAGE_SIZE >= nextPage.total) {
+            setPageIndex(Math.max(0, Math.ceil(nextPage.total / REGISTRY_PAGE_SIZE) - 1));
+            return;
+          }
+          setPage(nextPage);
+          setSelectedDocumentIds([]);
+        })
+        .catch((error) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            setLoadFailed(true);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    }, query.trim() ? 250 : 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
     };
-  }, [documents]);
-
-  const filteredDocuments = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return documents.filter((document) => {
-      if (view === "review" && !["draft", "review"].includes(document.status)) {
-        return false;
-      }
-      if (view === "valid" && document.status !== "valid") {
-        return false;
-      }
-      if (view === "restricted" && !["restricted", "confidential"].includes(document.classification)) {
-        return false;
-      }
-      if (view === "archive" && !["archived", "superseded", "cancelled"].includes(document.status)) {
-        return false;
-      }
-      if (statuses.length > 0 && !statuses.includes(document.status)) {
-        return false;
-      }
-      if (types.length > 0 && !types.includes(document.document_type)) {
-        return false;
-      }
-      if (classifications.length > 0 && !classifications.includes(document.classification)) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      const haystack = [
-        document.title,
-        document.document_id,
-        document.owner_id,
-        document.gestor_unit ?? "",
-        document.classification,
-        document.document_type,
-        ...document.tags
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [classifications, documents, query, statuses, types, view]);
+  }, [effectiveClassifications, effectiveStatuses, pageIndex, query, reloadNonce, types]);
 
   function clearFilters() {
     setQuery("");
@@ -239,6 +275,12 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
     setStatuses([]);
     setTypes([]);
     setClassifications([]);
+    setPageIndex(0);
+  }
+
+  function changeView(nextView: RegistryView) {
+    setView(nextView);
+    setPageIndex(0);
   }
 
   const columns: Array<StratosDataTableColumn<Document>> = [
@@ -251,7 +293,7 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
       render: (document) => (
         <span className="cell-title">
           <strong>{document.title}</strong>
-          <span>{document.document_id} - {document.gestor_unit}</span>
+          <span>{document.gestor_unit ?? documentTypeLabel(document.document_type, language)}</span>
         </span>
       )
     },
@@ -277,15 +319,15 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
       width: 132,
       sortable: true,
       sortAccessor: (document) => document.classification,
-      render: (document) => document.classification
+      render: (document) => classificationLabel(document.classification, language)
     },
     {
       id: "owner",
       label: copy.owner,
       width: "minmax(140px, 0.8fr)",
       sortable: true,
-      sortAccessor: (document) => document.owner_id,
-      render: (document) => document.owner_id
+      sortAccessor: (document) => documentOwnerLabel(document, language),
+      render: (document) => documentOwnerLabel(document, language)
     },
     {
       id: "tags",
@@ -346,7 +388,7 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
       <section className="grid grid--metrics" aria-label={copy.summaryTitle}>
         <MetricCard
           label={copy.totalDocuments}
-          value={String(documents.length)}
+          value={String(page.summary.total_documents)}
           detail={copy.totalDocumentsDetail}
           icon={FileSearch}
         />
@@ -413,7 +455,7 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
                 <span>{selectedDocument ? copy.selectedDocument : copy.selectedDocuments}</span>
                 <strong>{selectedDocument?.title ?? `${selectedDocumentIds.length} ${copy.selected}`}</strong>
                 {selectedDocument ? (
-                  <small>{documentTypeLabel(selectedDocument.document_type, language)} · {selectedDocument.classification}</small>
+                  <small>{documentTypeLabel(selectedDocument.document_type, language)} · {classificationLabel(selectedDocument.classification, language)}</small>
                 ) : null}
               </div>
               <StratosButton type="button" onClick={() => setSelectedDocumentIds([])}>
@@ -428,7 +470,10 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
               label={copy.searchLabel}
               value={query}
               placeholder={copy.searchPlaceholder}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPageIndex(0);
+              }}
             />
             <div className="registry-filter-grid">
               <FieldSelect
@@ -438,7 +483,7 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
                 filterTitlePrefix={copy.filterTitlePrefix}
                 noResultsLabel={copy.noFilterResults}
                 value={view}
-                onChange={(value) => setView(value as RegistryView)}
+                onChange={(value) => changeView(value as RegistryView)}
               >
                 <option value="all">{copy.allViews}</option>
                 <option value="review">{copy.reviewQueue}</option>
@@ -456,7 +501,10 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
                 filterTitlePrefix={copy.filterTitlePrefix}
                 noResultsLabel={copy.noFilterResults}
                 value={statuses}
-                onValuesChange={(values) => setStatuses(values as DocumentStatus[])}
+                onValuesChange={(values) => {
+                  setStatuses(values as DocumentStatus[]);
+                  setPageIndex(0);
+                }}
               >
                 {documentStatuses.map((item) => (
                   <option key={item} value={item}>{documentStatusLabel(item, language)}</option>
@@ -472,7 +520,10 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
                 filterTitlePrefix={copy.filterTitlePrefix}
                 noResultsLabel={copy.noFilterResults}
                 value={types}
-                onValuesChange={(values) => setTypes(values as DocumentType[])}
+                onValuesChange={(values) => {
+                  setTypes(values as DocumentType[]);
+                  setPageIndex(0);
+                }}
               >
                 {documentTypes.map((item) => (
                   <option key={item} value={item}>{documentTypeLabel(item, language)}</option>
@@ -488,10 +539,13 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
                 filterTitlePrefix={copy.filterTitlePrefix}
                 noResultsLabel={copy.noFilterResults}
                 value={classifications}
-                onValuesChange={(values) => setClassifications(values as Classification[])}
+                onValuesChange={(values) => {
+                  setClassifications(values as Classification[]);
+                  setPageIndex(0);
+                }}
               >
                 {classificationOptions.map((item) => (
-                  <option key={item} value={item}>{item}</option>
+                  <option key={item} value={item}>{classificationLabel(item, language)}</option>
                 ))}
               </FieldSelect>
             </div>
@@ -504,26 +558,58 @@ export function DocumentRegistry({ documents, authorization }: DocumentRegistryP
           <div className="registry-result-bar">
             <span>
               <Filter size={15} aria-hidden="true" />
-              {copy.showing} {filteredDocuments.length} {copy.of} {documents.length}
+              {copy.showing} {page.items.length} {copy.of} {page.total}
               {selectedDocumentIds.length > 0 ? ` · ${selectedDocumentIds.length} ${copy.selected}` : ""}
             </span>
           </div>
 
-          <StratosDataTable
-            rows={filteredDocuments}
-            columns={columns}
-            getRowId={(document) => document.document_id}
-            selectableRows
-            selectedRowIds={selectedDocumentIds}
-            onSelectedRowIdsChange={setSelectedDocumentIds}
-            emptyLabel={
-              <span className="empty-state empty-state--inline">
-                <Archive size={22} aria-hidden="true" />
-                {copy.noResults}
-              </span>
-            }
-            aria-label={copy.title}
-          />
+          {loadFailed ? (
+            <div className="notice notice--danger" role="alert">
+              <span>{copy.loadFailed}</span>
+              <StratosButton type="button" onClick={() => setReloadNonce((value) => value + 1)}>
+                {copy.retry}
+              </StratosButton>
+            </div>
+          ) : null}
+
+          <div aria-busy={loading}>
+            <StratosDataTable
+              rows={documents}
+              columns={columns}
+              getRowId={(document) => document.document_id}
+              selectableRows
+              selectedRowIds={selectedDocumentIds}
+              onSelectedRowIdsChange={setSelectedDocumentIds}
+              emptyLabel={
+                <span className="empty-state empty-state--inline">
+                  <Archive size={22} aria-hidden="true" />
+                  {copy.noResults}
+                </span>
+              }
+              aria-label={copy.title}
+            />
+          </div>
+          <nav className="registry-pagination" aria-label={copy.page}>
+            <StratosButton
+              type="button"
+              disabled={loading || pageIndex === 0}
+              onClick={() => setPageIndex((value) => Math.max(0, value - 1))}
+            >
+              {copy.previousPage}
+            </StratosButton>
+            <span aria-live="polite">
+              {loading
+                ? copy.loading
+                : `${copy.page} ${pageIndex + 1} ${copy.of} ${Math.max(1, Math.ceil(page.total / REGISTRY_PAGE_SIZE))}`}
+            </span>
+            <StratosButton
+              type="button"
+              disabled={loading || (pageIndex + 1) * REGISTRY_PAGE_SIZE >= page.total}
+              onClick={() => setPageIndex((value) => value + 1)}
+            >
+              {copy.nextPage}
+            </StratosButton>
+          </nav>
         </div>
       </section>
     </div>
@@ -541,6 +627,55 @@ function registryView(value: string | null): RegistryView {
 function selectedValues<Value extends string>(values: string[], allowed: readonly Value[]): Value[] {
   const allowedValues = new Set<string>(allowed);
   return [...new Set(values.filter((value): value is Value => allowedValues.has(value)))];
+}
+
+function registryViewStatuses(
+  view: RegistryView,
+  selected: DocumentStatus[],
+): DocumentStatus[] {
+  if (selected.length > 0) return selected;
+  if (view === "review") return ["draft", "review"];
+  if (view === "valid") return ["valid"];
+  if (view === "archive") return ["archived", "superseded", "cancelled"];
+  return [];
+}
+
+function registryViewClassifications(
+  view: RegistryView,
+  selected: Classification[],
+): Classification[] {
+  if (selected.length > 0) return selected;
+  return view === "restricted" ? ["restricted", "confidential"] : [];
+}
+
+function classificationLabel(
+  value: Classification,
+  language: AklLanguage,
+): string {
+  const labels: Record<Classification, [string, string]> = {
+    public: ["Veřejné", "Public"],
+    internal: ["Interní", "Internal"],
+    restricted: ["Omezené", "Restricted"],
+    confidential: ["Důvěrné", "Confidential"],
+  };
+  return labels[value][language === "en" ? 1 : 0];
+}
+
+function documentOwnerLabel(document: Document, language: AklLanguage): string {
+  const assignment = (document.assignments ?? []).find((candidate) => (
+    candidate.active
+    && (candidate.role === "owner" || candidate.role === "gestor")
+    && candidate.display_label?.trim()
+  ));
+  if (assignment?.display_label) return assignment.display_label;
+  if (document.owner.trim() && !isTechnicalIdentifier(document.owner)) return document.owner;
+  if (document.gestor_unit?.trim()) return document.gestor_unit;
+  return language === "en" ? "Assigned owner" : "Přiřazený vlastník";
+}
+
+function isTechnicalIdentifier(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(value)
+    || /^(?:user|subject|sub|svc|usr)[:_-]/i.test(value);
 }
 
 function FieldSelect({

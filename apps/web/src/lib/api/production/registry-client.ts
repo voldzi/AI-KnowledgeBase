@@ -29,6 +29,7 @@ import type {
   ControlledRuleList,
   DirectoryUser,
   Document,
+  DocumentListPage,
   DocumentAuthorizationDecision,
   DocumentListOptions,
   DocumentAssignment,
@@ -77,36 +78,50 @@ export class ProductionRegistryClient implements RegistryApiClient {
   ) {}
 
   async listDocuments(context: ApiRequestContext, options: DocumentListOptions = {}): Promise<Document[]> {
-    if (options.recentLimit !== undefined) {
-      const recentLimit = Math.max(1, Math.min(50, Math.trunc(options.recentLimit)));
-      const params = registryDocumentParams(options);
-      params.set("recent_limit", String(recentLimit));
-      params.set("limit", String(recentLimit));
-      params.set("offset", "0");
-      const response = await this.get<ListEnvelope<Document>>(
-        `/documents?${params.toString()}`,
-        "listDocuments",
-        context,
-      );
-      return response.items;
+    if (
+      options.recentLimit !== undefined
+      || options.limit !== undefined
+      || options.offset !== undefined
+    ) {
+      return (await this.listDocumentPage(context, options)).items;
     }
     const documents: Document[] = [];
     for (let page = 0; page < DOCUMENT_PAGE_LIMIT; page += 1) {
       const offset = page * DOCUMENT_PAGE_SIZE;
-      const params = registryDocumentParams(options);
-      params.set("limit", String(DOCUMENT_PAGE_SIZE));
-      params.set("offset", String(offset));
-      const response = await this.get<ListEnvelope<Document>>(
-        `/documents?${params.toString()}`,
-        "listDocuments",
-        context
-      );
+      const response = await this.listDocumentPage(context, {
+        ...options,
+        limit: DOCUMENT_PAGE_SIZE,
+        offset,
+      });
       documents.push(...response.items);
-      if (response.items.length < DOCUMENT_PAGE_SIZE) {
+      if (documents.length >= response.total || response.items.length < DOCUMENT_PAGE_SIZE) {
         break;
       }
     }
     return documents;
+  }
+
+  async listDocumentPage(
+    context: ApiRequestContext,
+    options: DocumentListOptions = {},
+  ): Promise<DocumentListPage> {
+    const params = registryDocumentParams(options);
+    const recentLimit = options.recentLimit === undefined
+      ? null
+      : Math.max(1, Math.min(50, Math.trunc(options.recentLimit)));
+    const limit = recentLimit
+      ?? Math.max(1, Math.min(DOCUMENT_PAGE_SIZE, Math.trunc(options.limit ?? 50)));
+    const offset = recentLimit
+      ? 0
+      : Math.max(0, Math.trunc(options.offset ?? 0));
+    if (recentLimit) params.set("recent_limit", String(recentLimit));
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    return this.get<DocumentListPage>(
+      `/documents?${params.toString()}`,
+      "listDocumentPage",
+      context,
+    );
   }
 
   getDocumentMetadataSummary(
@@ -946,6 +961,22 @@ function registryDocumentParams(options: DocumentMetadataSummaryOptions | Docume
   for (const contextTag of options.contextTags ?? []) {
     if (contextTag.trim()) {
       params.append("context_tag", contextTag.trim());
+    }
+  }
+  if ("query" in options && options.query?.trim()) {
+    params.set("q", options.query.trim());
+  }
+  if ("statuses" in options) {
+    for (const status of options.statuses ?? []) params.append("status_in", status);
+  }
+  if ("classifications" in options) {
+    for (const classification of options.classifications ?? []) {
+      params.append("classification_in", classification);
+    }
+  }
+  if ("documentTypes" in options) {
+    for (const documentType of options.documentTypes ?? []) {
+      params.append("document_type_in", documentType);
     }
   }
   return params;

@@ -49,13 +49,13 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Smernice pro spravu rizene dokumentace")).toBeVisible();
 
     await page.getByPlaceholder("Název, ID, gestor, vlastník nebo štítek").fill("bezpecnostnich");
-    await expect(page.getByText("Zobrazeno 1 z 9")).toBeVisible();
+    await expect(page.getByText("Zobrazeno 1 z 1")).toBeVisible();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel")).toBeVisible();
 
     await page.locator("#document-registry-classification").click();
-    await page.getByRole("option", { name: /restricted/ }).click();
+    await page.getByRole("option", { name: /Omezené/ }).click();
     await page.getByRole("button", { name: "Zavřít filtr" }).click();
-    await expect(page.getByText("Zobrazeno 1 z 9")).toBeVisible();
+    await expect(page.getByText("Zobrazeno 1 z 1")).toBeVisible();
 
     await page.getByRole("button", { name: "Vyčistit" }).click();
     await expect(page.getByText("Zobrazeno 9 z 9")).toBeVisible();
@@ -421,7 +421,7 @@ test.describe("Document Workbench product paths", () => {
     await page.goto(appPath("/tasks"));
 
     await expect(page.getByRole("heading", { name: "Workflow úkoly" })).toBeVisible();
-    await page.getByRole("button", { name: /Document review required/ }).click();
+    await page.getByRole("button", { name: /Dokument čeká na věcnou kontrolu/ }).click();
     await expect(page.getByRole("heading", { name: "Detail úkolu" })).toBeVisible();
 
     await page.getByLabel("Komentář").fill("E2E approval check");
@@ -434,7 +434,7 @@ test.describe("Document Workbench product paths", () => {
 
     await expect(page.getByRole("heading", { name: "Znalostní chat" }).first()).toBeVisible();
     await page
-      .getByLabel("Zeptejte se na dokument, postup nebo odpovědnost")
+      .getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS")
       .fill("Kdo schvaluje výjimku ze směrnice?");
     await page.getByRole("button", { name: "Odeslat" }).click();
     await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();
@@ -460,7 +460,7 @@ test.describe("Document Workbench product paths", () => {
   test("DW-14F knowledge chat renders requested obligation tables as structured output", async ({ page }) => {
     await page.goto(appPath("/chat"));
 
-    await page.getByLabel("Zeptejte se na dokument, postup nebo odpovědnost").fill("vytvoř tabulku kde bude seznam povinností");
+    await page.getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS").fill("vytvoř tabulku kde bude seznam povinností");
     await page.getByRole("button", { name: "Odeslat" }).click();
 
     const assistantMessage = page.locator(".akb-chat-message--assistant").last();
@@ -483,7 +483,7 @@ test.describe("Document Workbench product paths", () => {
     await reportMode.locator(".akb-chat-report-mode__toggle").click();
     await expect(reportMode.locator(".akb-chat-report-mode__panel")).toBeVisible();
     await reportMode.getByText("Vlastník nebo role").click();
-    await page.getByLabel("Zeptejte se na dokument, postup nebo odpovědnost").fill("Jaké povinnosti z toho plynou?");
+    await page.getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS").fill("Jaké povinnosti z toho plynou?");
     await page.getByRole("button", { name: "Odeslat" }).click();
 
     const assistantMessage = page.locator(".akb-chat-message--assistant").last();
@@ -524,7 +524,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(reportSettings).toBeHidden();
 
     await page
-      .getByLabel("Zeptejte se na dokument, postup nebo odpovědnost")
+      .getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS")
       .fill("Kdo schvaluje výjimku ze směrnice?");
     await page.getByRole("button", { name: "Odeslat" }).click();
     await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();

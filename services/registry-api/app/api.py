@@ -191,6 +191,7 @@ from app.schemas import (
     DocumentAssignmentRole,
     DocumentCreate,
     DocumentListResponse,
+    DocumentListSummary,
     DocumentMetadataSummaryBucket,
     DocumentMetadataSummaryResponse,
     DocumentMetadataSummaryTopic,
@@ -6814,6 +6815,10 @@ def list_documents(
     entity_id: str | None = None,
     external_ref: str | None = None,
     context_tag: list[str] | None = Query(default=None),
+    search_query: str | None = Query(default=None, alias="q", max_length=200),
+    status_in: list[DocumentStatus] | None = Query(default=None),
+    classification_in: list[Classification] | None = Query(default=None),
+    document_type_in: list[DocumentType] | None = Query(default=None),
     recent_limit: int | None = Query(default=None, ge=1, le=50),
     limit: Limit = 100,
     offset: Offset = 0,
@@ -6842,9 +6847,69 @@ def list_documents(
             if any(_document_matches_metadata_topic(document, candidate) for candidate in topics)
         ]
 
+    summary = DocumentListSummary(
+        total_documents=len(documents),
+        valid_documents=sum(document.status == DocumentStatus.valid for document in documents),
+        review_documents=sum(
+            document.status in {DocumentStatus.draft, DocumentStatus.review, DocumentStatus.approved}
+            for document in documents
+        ),
+        restricted_documents=sum(
+            document.classification in {Classification.restricted, Classification.confidential}
+            for document in documents
+        ),
+    )
+
+    if status_in:
+        allowed_statuses = set(status_in)
+        documents = [document for document in documents if document.status in allowed_statuses]
+    if classification_in:
+        allowed_classifications = set(classification_in)
+        documents = [
+            document for document in documents
+            if document.classification in allowed_classifications
+        ]
+    if document_type_in:
+        allowed_document_types = set(document_type_in)
+        documents = [
+            document for document in documents
+            if document.document_type in allowed_document_types
+        ]
+    normalized_query = (search_query or "").strip().casefold()
+    if normalized_query:
+        documents = [
+            document for document in documents
+            if normalized_query in " ".join(
+                [
+                    document.title,
+                    document.document_id,
+                    document.owner_id,
+                    document.owner,
+                    document.gestor_unit or "",
+                    str(document.classification),
+                    str(document.document_type),
+                    *document.tags,
+                ]
+            ).casefold()
+        ]
+
+    total = len(documents)
+
     if recent_limit is not None:
-        return DocumentListResponse(items=documents[:recent_limit], limit=recent_limit, offset=0)
-    return DocumentListResponse(items=documents[offset : offset + limit], limit=limit, offset=offset)
+        return DocumentListResponse(
+            items=documents[:recent_limit],
+            limit=recent_limit,
+            offset=0,
+            total=total,
+            summary=summary,
+        )
+    return DocumentListResponse(
+        items=documents[offset : offset + limit],
+        limit=limit,
+        offset=offset,
+        total=total,
+        summary=summary,
+    )
 
 
 @router.get("/documents/metadata-summary", response_model=DocumentMetadataSummaryResponse)

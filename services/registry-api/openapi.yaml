@@ -894,6 +894,45 @@ paths:
               type: string
           - type: 'null'
           title: Context Tag
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: status_in
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/DocumentStatus'
+          - type: 'null'
+          title: Status In
+      - name: classification_in
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/Classification'
+          - type: 'null'
+          title: Classification In
+      - name: document_type_in
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/DocumentType'
+          - type: 'null'
+          title: Document Type In
       - name: recent_limit
         in: query
         required: false
@@ -6366,12 +6405,40 @@ components:
         offset:
           type: integer
           title: Offset
+        total:
+          type: integer
+          title: Total
+        summary:
+          $ref: '#/components/schemas/DocumentListSummary'
       type: object
       required:
       - items
       - limit
       - offset
+      - total
+      - summary
       title: DocumentListResponse
+    DocumentListSummary:
+      properties:
+        total_documents:
+          type: integer
+          title: Total Documents
+        valid_documents:
+          type: integer
+          title: Valid Documents
+        review_documents:
+          type: integer
+          title: Review Documents
+        restricted_documents:
+          type: integer
+          title: Restricted Documents
+      type: object
+      required:
+      - total_documents
+      - valid_documents
+      - review_documents
+      - restricted_documents
+      title: DocumentListSummary
     DocumentMetadataSummaryBucket:
       properties:
         key:

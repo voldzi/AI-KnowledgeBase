@@ -114,6 +114,14 @@ Podporovane filtry:
 - `entity_id`,
 - `external_ref`,
 - opakovany `context_tag`.
+- pro stránkovaný registr také `q`, opakovaný `status_in`,
+  `classification_in`, `document_type_in`, `limit` a `offset`.
+
+Odpověď `/documents` obsahuje stránku `items`, `limit`, `offset`, počet
+filtrovaných výsledků `total` a autorizovaný souhrn celého korpusu `summary`
+(`total_documents`, `valid_documents`, `review_documents`,
+`restricted_documents`). Vyhledávání a vícenásobné filtry se aplikují až nad
+dokumenty, které prošly `document.read` a Information Policy kontrolou.
 
 STRATOS aplikace musi pouzivat wire pole `external_system`; historicke
 `source_system` neni kontrakt pro externi integrace.

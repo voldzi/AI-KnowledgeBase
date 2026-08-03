@@ -31,6 +31,16 @@ workspace:
   signals from the current subject's own retained threads. It does not call an
   LLM, copy historical prompt text or expose a domain that the Director
   Copilot V2 planner cannot authorize and execute.
+- Opening a persisted thread has an explicit loading and retry state. The UI
+  does not render a false empty-thread state while Registry history is still
+  being authorized and loaded.
+- Federated answers show a compact, human-readable list of the authorized live
+  STRATOS sources used for the answer. The persisted history keeps only source
+  identity, status, item count and timestamp; it never duplicates Budget,
+  ProjectFlow, ArchFlow or AIIP business payloads.
+- The source panel distinguishes live application sources from cited controlled
+  documents and gives links a usable label even when an upstream Markdown link
+  does not contain display text.
 - Questions are sent through `POST /api/v1/assistant/chat`.
 - Clarifying answers continue through `POST /api/v1/assistant/clarify`.
 - Citations are clickable.
@@ -72,7 +82,15 @@ Markdown sources render as formatted documents with GFM tables, a generated cont
 
 Phase 05 introduces the Document Workbench direction:
 
-- `/documents` now supports registry metrics, search, filters, and work views.
+- `/documents` now supports registry metrics, search, filters, work views and
+  server-side pagination. The first 50 authorized records are rendered by the
+  server; subsequent pages and filters use the private no-store web bridge.
+  Registry returns the filtered total separately from the corpus summary, so
+  the screen does not download the complete document corpus to calculate its
+  four headline metrics.
+- Search and filtering remain authorization-scoped in Registry. The main table
+  uses human owner/gestor labels and keeps technical identifiers out of the
+  ordinary operator view.
 - Registry create/version actions are contextual: create is available with no
   selection, while version upload requires exactly one selected document.
 - Document detail is split into overview, viewer, workflow, insights, versions, and ingestion sections.
@@ -138,6 +156,9 @@ The first organizational workflow increment adds `/tasks`:
 - filters cover priority, status and task type,
 - task detail links back to the document workbench, ingestion board or audit viewer,
 - Registry-owned tasks can be assigned, returned for changes, approved or resolved from the inbox,
+- generated workflow titles, descriptions, source names, responsibilities and
+  actions are localized for the selected UI language; UUIDs, job ids and other
+  machine coordinates are available only in collapsed technical details,
 - document workflow tab shows task history for the selected document,
 - document workflow tab exposes publish only for `approved` documents and archive only for the current `valid` version.
 

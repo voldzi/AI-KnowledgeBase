@@ -78,6 +78,12 @@ import type {
   SourceContext
 } from "@/lib/types";
 import { finiteNumber } from "@/lib/reporting/assistant-chart";
+import {
+  assistantLiveSourceApplicationLabel,
+  assistantLiveSources,
+  assistantLiveSourceStatusLabel,
+  assistantLiveSourceTimestamp,
+} from "@/lib/assistant/live-source-presentation";
 
 interface AkbAssistantAppProps {
   currentSubjectId: string;
@@ -129,6 +135,7 @@ interface AssistantThread {
     permission: SharePermission;
   }>;
   historyLoaded?: boolean;
+  historyLoadFailed?: boolean;
 }
 
 type AssistantAppLabels = CitationViewerLabels & Record<string, string>;
@@ -140,31 +147,34 @@ interface SlashCommandOption {
   label: string;
 }
 
-const assistantMarkdownComponents: Components = {
-  a({ children, href }) {
-    return (
-      <a href={href} target="_blank" rel="noreferrer">
-        {children}
-      </a>
-    );
-  },
-  table({ children }) {
-    return (
-      <div className="akb-chat-message__table-wrap">
-        <table>{children}</table>
-      </div>
-    );
-  },
-  td({ children }) {
-    return (
-      <td>
-        {hasMarkdownCellContent(children)
-          ? children
-          : <span className="akb-chat-message__empty-cell">neuvedeno</span>}
-      </td>
-    );
-  }
-};
+function assistantMarkdownComponents(openLinkLabel: string): Components {
+  return {
+    a({ children, href }) {
+      const hasLabel = hasMarkdownCellContent(children);
+      return (
+        <a href={href} target="_blank" rel="noreferrer">
+          {hasLabel ? children : openLinkLabel}
+        </a>
+      );
+    },
+    table({ children }) {
+      return (
+        <div className="akb-chat-message__table-wrap">
+          <table>{children}</table>
+        </div>
+      );
+    },
+    td({ children }) {
+      return (
+        <td>
+          {hasMarkdownCellContent(children)
+            ? children
+            : <span className="akb-chat-message__empty-cell">neuvedeno</span>}
+        </td>
+      );
+    },
+  };
+}
 
 function hasMarkdownCellContent(children: ReactNode): boolean {
   if (children === null || children === undefined || children === false) {
@@ -182,7 +192,7 @@ function hasMarkdownCellContent(children: ReactNode): boolean {
 const assistantAppCopy = {
   cs: {
     appTitle: "Znalostní chat",
-    appSubtitle: "AKB Assistant pro práci s řízenými dokumenty, citacemi a sdílenými vlákny.",
+    appSubtitle: "Ptejte se na dokumenty i aktuální data z aplikací STRATOS.",
     newThread: "Nové vlákno",
     searchThreads: "Hledat vlákna",
     threadList: "Vlákna",
@@ -219,7 +229,11 @@ const assistantAppCopy = {
     threadActions: "Další akce vlákna",
     sourcesPanel: "Zdroje odpovědi",
     threadAccess: "Přístup k vláknu",
-    noSources: "Zdroje se zobrazí po první odpovědi s citacemi.",
+    noSources: "U odpovědi se zobrazí použité dokumenty nebo živé aplikace STRATOS.",
+    liveSource: "Živý zdroj",
+    liveSources: "Živé zdroje",
+    liveSourceAsOf: "Stav k",
+    liveSourceItems: "položek",
     sourceOpened: "Citace otevřena",
     sourceTitle: "Zdroj odpovědi",
     sourceOpenFailed: "Zdroj se nepodařilo otevřít.",
@@ -235,8 +249,8 @@ const assistantAppCopy = {
     noSection: "Bez oddílu",
     beforeContext: "Před citací",
     afterContext: "Po citaci",
-    composerLabel: "Zeptejte se na dokument, postup nebo odpovědnost",
-    composerPlaceholder: "Např. Kdo schvaluje výjimku ze směrnice?",
+    composerLabel: "Zeptejte se na informace v AKB a aplikacích STRATOS",
+    composerPlaceholder: "Např. Jaký je stav projektů nebo co stanoví směrnice?",
     ask: "Odeslat",
     asking: "Odesílám",
     emptyQuestion: "Napište dotaz.",
@@ -245,7 +259,10 @@ const assistantAppCopy = {
     sessionExpired: "Relace vypršela. Přesměrovávám na přihlášení.",
     suggestionsLabel: "Doporučené dotazy",
     emptyThreadTitle: "Nové vlákno",
-    emptyThreadBody: "Začněte dotazem nebo vyberte doporučení. Každá odpověď má držet citace na konkrétní verze dokumentů.",
+    emptyThreadBody: "Začněte vlastním dotazem nebo vyberte doporučení. AKB použije jen zdroje, ke kterým máte oprávnění.",
+    historyLoading: "Načítám uložené vlákno…",
+    retryHistory: "Načíst znovu",
+    openLink: "Otevřít položku",
     answer: "Odpověď",
     sources: "Použité zdroje",
     clarificationTitle: "Potřebuji doplnit",
@@ -324,7 +341,7 @@ const assistantAppCopy = {
   },
   en: {
     appTitle: "Knowledge chat",
-    appSubtitle: "AKB Assistant for controlled documents, citations, and shared threads.",
+    appSubtitle: "Ask about documents and current data from STRATOS applications.",
     newThread: "New thread",
     searchThreads: "Search threads",
     threadList: "Threads",
@@ -361,7 +378,11 @@ const assistantAppCopy = {
     threadActions: "More thread actions",
     sourcesPanel: "Answer sources",
     threadAccess: "Thread access",
-    noSources: "Sources appear after the first cited answer.",
+    noSources: "The documents or live STRATOS applications used for an answer appear here.",
+    liveSource: "Live source",
+    liveSources: "Live sources",
+    liveSourceAsOf: "As of",
+    liveSourceItems: "items",
     sourceOpened: "Citation opened",
     sourceTitle: "Answer source",
     sourceOpenFailed: "The source could not be opened.",
@@ -377,8 +398,8 @@ const assistantAppCopy = {
     noSection: "No section",
     beforeContext: "Before citation",
     afterContext: "After citation",
-    composerLabel: "Ask about a document, procedure, or responsibility",
-    composerPlaceholder: "For example: Who approves an exception to a directive?",
+    composerLabel: "Ask about information in AKB and STRATOS applications",
+    composerPlaceholder: "For example: What is the project status or what does the directive require?",
     ask: "Send",
     asking: "Sending",
     emptyQuestion: "Enter a question.",
@@ -387,7 +408,10 @@ const assistantAppCopy = {
     sessionExpired: "The session expired. Redirecting to sign in.",
     suggestionsLabel: "Suggested questions",
     emptyThreadTitle: "New thread",
-    emptyThreadBody: "Start with a question or choose a suggestion. Every answer should keep citations to concrete document versions.",
+    emptyThreadBody: "Start with your own question or choose a suggestion. AKB uses only sources you are authorized to access.",
+    historyLoading: "Loading the saved thread…",
+    retryHistory: "Try again",
+    openLink: "Open item",
     answer: "Answer",
     sources: "Sources used",
     clarificationTitle: "I need more details",
@@ -533,6 +557,12 @@ export function AkbAssistantApp({
     activeThread.ownerSubjectId === currentSubjectId;
   const composer = activeThread?.draft ?? "";
   const lastAssistantResponse = findLastAssistantResponse(activeThread);
+  const lastAssistantLiveSources = assistantLiveSources(lastAssistantResponse?.current_context);
+  const sourceSummary = assistantSourceSummary(
+    lastAssistantResponse?.citations.length ?? 0,
+    lastAssistantLiveSources.length,
+    language,
+  );
   const visibleThreads = useMemo(() => {
     const query = threadSearch.trim().toLowerCase();
     const byView = threads.filter((thread) => {
@@ -590,7 +620,11 @@ export function AkbAssistantApp({
   }, [mobileActionsOpen]);
 
   useEffect(() => {
-    if (!activeThread?.conversationId || activeThread.historyLoaded) {
+    if (
+      !activeThread?.conversationId
+      || activeThread.historyLoaded
+      || activeThread.historyLoadFailed
+    ) {
       return;
     }
     let active = true;
@@ -622,6 +656,11 @@ export function AkbAssistantApp({
       .catch(() => {
         if (active) {
           setStatusMessage(copy.historyUnavailable);
+          setThreads((current) => current.map((thread) => (
+            thread.id === activeThread.id
+              ? { ...thread, historyLoadFailed: true }
+              : thread
+          )));
         }
       });
     return () => {
@@ -1734,11 +1773,42 @@ export function AkbAssistantApp({
             ref={transcriptRef}
             className="akb-chat-transcript"
             role="log"
+            aria-busy={Boolean(
+              activeThread.conversationId
+              && !activeThread.historyLoaded
+              && !activeThread.historyLoadFailed
+            )}
             aria-live="polite"
             aria-relevant="additions text"
             onScroll={handleTranscriptScroll}
           >
-            {activeThread.messages.length === 0 ? (
+            {activeThread.conversationId
+              && !activeThread.historyLoaded
+              && !activeThread.historyLoadFailed ? (
+              <div className="akb-chat-empty akb-chat-empty--loading">
+                <Clock3 size={24} aria-hidden="true" />
+                <h2>{copy.historyLoading}</h2>
+              </div>
+            ) : activeThread.historyLoadFailed ? (
+              <div className="akb-chat-empty">
+                <ShieldAlert size={24} aria-hidden="true" />
+                <h2>{copy.historyUnavailable}</h2>
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => {
+                    setStatusMessage(null);
+                    setThreads((current) => current.map((thread) => (
+                      thread.id === activeThread.id
+                        ? { ...thread, historyLoadFailed: false }
+                        : thread
+                    )));
+                  }}
+                >
+                  {copy.retryHistory}
+                </button>
+              </div>
+            ) : activeThread.messages.length === 0 ? (
               <div className="akb-chat-empty">
                 <MessageSquare size={24} aria-hidden="true" />
                 <h2>{copy.emptyThreadTitle}</h2>
@@ -1948,11 +2018,41 @@ export function AkbAssistantApp({
           <div className="akb-chat-context__header">
             <div>
               <h2>{copy.sourcesPanel}</h2>
-              <span>{lastAssistantResponse?.citations.length ?? 0} cit.</span>
+              <span>{sourceSummary}</span>
             </div>
             <PanelRightOpen size={17} aria-hidden="true" />
           </div>
           <div className="akb-chat-context__body">
+            {lastAssistantLiveSources.length ? (
+              <div
+                className="assistant-live-source-list"
+                aria-label={lastAssistantLiveSources.length === 1 ? copy.liveSource : copy.liveSources}
+              >
+                {lastAssistantLiveSources.map((source) => {
+                  const timestamp = assistantLiveSourceTimestamp(source);
+                  return (
+                    <article
+                      className="assistant-live-source"
+                      key={`${source.application}:${source.as_of ?? source.generated_at ?? source.status}`}
+                    >
+                      <BarChart3 size={18} aria-hidden="true" />
+                      <div>
+                        <strong>{assistantLiveSourceApplicationLabel(source)}</strong>
+                        <span>{assistantLiveSourceStatusLabel(source, language)}</span>
+                        <small>
+                          {timestamp
+                            ? `${copy.liveSourceAsOf} ${formatLiveSourceTimestamp(timestamp, language)}`
+                            : assistantLiveSourceStatusLabel(source, language)}
+                          {source.item_count > 0
+                            ? ` · ${source.item_count} ${copy.liveSourceItems}`
+                            : ""}
+                        </small>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
             {lastAssistantResponse?.citations.length ? (
               <CitationList
                 citations={lastAssistantResponse.citations}
@@ -1962,12 +2062,12 @@ export function AkbAssistantApp({
                 labels={copy}
                 onOpenCitation={openSource}
               />
-            ) : (
+            ) : lastAssistantLiveSources.length === 0 ? (
               <div className="assistant-source-empty">
                 <FileText size={20} aria-hidden="true" />
                 {copy.noSources}
               </div>
-            )}
+            ) : null}
             {sourceError ? <div className="notice">{sourceError}</div> : null}
             {sourceContext ? <SourceContextCard labels={copy} sourceContext={sourceContext} showStatus={false} /> : null}
           </div>
@@ -2418,6 +2518,7 @@ function ChatBubble({
         <ChatMessageContent
           role={message.role}
           content={message.content}
+          openLinkLabel={copy.openLink}
           hideMarkdownTables={Boolean(response?.report_artifacts.length)}
         />
         {message.pending ? <div className="akb-chat-loader" /> : null}
@@ -2489,10 +2590,12 @@ function ChatBubble({
 function ChatMessageContent({
   role,
   content,
+  openLinkLabel,
   hideMarkdownTables = false
 }: {
   role: ChatMessage["role"];
   content: string;
+  openLinkLabel: string;
   hideMarkdownTables?: boolean;
 }) {
   if (role !== "assistant") {
@@ -2506,7 +2609,12 @@ function ChatMessageContent({
 
   return (
     <div className="akb-chat-message__markdown">
-      <ReactMarkdown components={assistantMarkdownComponents} remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
+      <ReactMarkdown
+        components={assistantMarkdownComponents(openLinkLabel)}
+        remarkPlugins={[remarkGfm]}
+      >
+        {displayContent}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -3551,4 +3659,33 @@ function formatRetentionDate(value: string, language: AklLanguage): string {
   return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "cs-CZ", {
     dateStyle: "long",
   }).format(date);
+}
+
+function formatLiveSourceTimestamp(value: string, language: AklLanguage): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "cs-CZ", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Prague",
+  }).format(date);
+}
+
+function assistantSourceSummary(
+  citationCount: number,
+  liveSourceCount: number,
+  language: AklLanguage,
+): string {
+  const parts: string[] = [];
+  if (citationCount > 0) {
+    parts.push(language === "en"
+      ? `${citationCount} ${citationCount === 1 ? "citation" : "citations"}`
+      : `${citationCount} ${citationCount === 1 ? "citace" : "citací"}`);
+  }
+  if (liveSourceCount > 0) {
+    parts.push(language === "en"
+      ? `${liveSourceCount} live ${liveSourceCount === 1 ? "source" : "sources"}`
+      : `${liveSourceCount} ${liveSourceCount === 1 ? "živý zdroj" : "živé zdroje"}`);
+  }
+  return parts.join(" · ") || (language === "en" ? "No sources yet" : "Zatím bez zdrojů");
 }

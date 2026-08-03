@@ -23,6 +23,8 @@ import type {
   ControlledRuleList,
   DirectoryUser,
   Document,
+  DocumentListOptions,
+  DocumentListPage,
   DocumentAssignment,
   DocumentMetadataSummary,
   DocumentMetadataSummaryBucket,
@@ -86,14 +88,75 @@ export class MockRegistryClient implements RegistryApiClient {
   >();
 
   async listDocuments(
-    _context: ApiRequestContext,
-    options: DocumentMetadataSummaryOptions = {},
+    context: ApiRequestContext,
+    options: DocumentListOptions = {},
   ): Promise<Document[]> {
-    return cloneMock(
-      this.documents.filter((document) =>
-        documentMatchesSummaryOptions(document, options),
-      ),
+    if (
+      options.recentLimit !== undefined
+      || options.limit !== undefined
+      || options.offset !== undefined
+    ) {
+      return (await this.listDocumentPage(context, options)).items;
+    }
+    return cloneMock(this.filteredDocuments(options));
+  }
+
+  async listDocumentPage(
+    _context: ApiRequestContext,
+    options: DocumentListOptions = {},
+  ): Promise<DocumentListPage> {
+    const visibleDocuments = this.documents.filter((document) =>
+      documentMatchesSummaryOptions(document, options),
     );
+    const documents = this.filteredDocuments(options);
+    const recentLimit = options.recentLimit === undefined
+      ? null
+      : Math.max(1, Math.min(50, Math.trunc(options.recentLimit)));
+    const limit = recentLimit ?? Math.max(1, Math.min(200, Math.trunc(options.limit ?? 50)));
+    const offset = recentLimit ? 0 : Math.max(0, Math.trunc(options.offset ?? 0));
+    return cloneMock({
+      items: documents.slice(offset, offset + limit),
+      limit,
+      offset,
+      total: documents.length,
+      summary: {
+        total_documents: visibleDocuments.length,
+        valid_documents: visibleDocuments.filter((document) => document.status === "valid").length,
+        review_documents: visibleDocuments.filter((document) =>
+          ["draft", "review", "approved"].includes(document.status),
+        ).length,
+        restricted_documents: visibleDocuments.filter((document) =>
+          ["restricted", "confidential"].includes(document.classification),
+        ).length,
+      },
+    });
+  }
+
+  private filteredDocuments(options: DocumentListOptions): Document[] {
+    const normalizedQuery = options.query?.trim().toLowerCase() ?? "";
+    return this.documents.filter((document) => {
+      if (!documentMatchesSummaryOptions(document, options)) return false;
+      if (options.statuses?.length && !options.statuses.includes(document.status)) return false;
+      if (
+        options.classifications?.length
+        && !options.classifications.includes(document.classification)
+      ) return false;
+      if (
+        options.documentTypes?.length
+        && !options.documentTypes.includes(document.document_type)
+      ) return false;
+      if (!normalizedQuery) return true;
+      return [
+        document.title,
+        document.document_id,
+        document.owner_id,
+        document.owner,
+        document.gestor_unit ?? "",
+        document.classification,
+        document.document_type,
+        ...document.tags,
+      ].join(" ").toLowerCase().includes(normalizedQuery);
+    });
   }
 
   async getDocumentMetadataSummary(

@@ -162,6 +162,27 @@ export interface DocumentMetadataSummaryOptions {
 
 export interface DocumentListOptions extends DocumentMetadataSummaryOptions {
   recentLimit?: number;
+  query?: string;
+  statuses?: DocumentStatus[];
+  classifications?: Classification[];
+  documentTypes?: DocumentType[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface DocumentListSummary {
+  total_documents: number;
+  valid_documents: number;
+  review_documents: number;
+  restricted_documents: number;
+}
+
+export interface DocumentListPage {
+  items: Document[];
+  limit: number;
+  offset: number;
+  total: number;
+  summary: DocumentListSummary;
 }
 
 export type DocumentReadinessSeverity = "critical" | "warning" | "info";

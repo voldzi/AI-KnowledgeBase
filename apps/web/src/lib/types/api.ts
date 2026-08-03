@@ -12,6 +12,7 @@ import type {
   CreateDocumentRequest,
   CreateVersionRequest,
   Document,
+  DocumentListPage,
   DocumentListOptions,
   DocumentAssignment,
   DocumentMetadataSummary,
@@ -174,6 +175,10 @@ export interface DocumentAuthorizationDecision {
 
 export interface RegistryApiClient {
   listDocuments(context: ApiRequestContext, options?: DocumentListOptions): Promise<Document[]>;
+  listDocumentPage(
+    context: ApiRequestContext,
+    options?: DocumentListOptions,
+  ): Promise<DocumentListPage>;
   getDocumentMetadataSummary(
     context: ApiRequestContext,
     options?: DocumentMetadataSummaryOptions
