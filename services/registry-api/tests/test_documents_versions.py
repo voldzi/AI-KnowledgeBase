@@ -123,6 +123,58 @@ def test_document_list_caches_identical_runtime_policy_coordinates(
     assert len(calls) == 1
 
 
+def test_document_list_supports_registry_filters_paging_and_global_summary(
+    client,
+    admin_headers,
+):
+    contract = _create_document(
+        client,
+        admin_headers,
+        title="Smlouva o servisní podpoře",
+        document_type="contract",
+        classification="internal",
+        tags=["servis", "ict"],
+    )
+    directive = _create_document(
+        client,
+        admin_headers,
+        title="Interní bezpečnostní směrnice",
+        document_type="directive",
+        classification="restricted",
+        tags=["bezpečnost"],
+    )
+    updated = client.patch(
+        f"/api/v1/documents/{directive['document_id']}",
+        headers=admin_headers,
+        json={"status": "review"},
+    )
+    assert updated.status_code == 200, updated.text
+
+    listing = client.get(
+        "/api/v1/documents"
+        "?q=servisní"
+        "&status_in=draft"
+        "&classification_in=internal"
+        "&document_type_in=contract"
+        "&limit=1"
+        "&offset=0",
+        headers=admin_headers,
+    )
+
+    assert listing.status_code == 200, listing.text
+    payload = listing.json()
+    assert payload["limit"] == 1
+    assert payload["offset"] == 0
+    assert payload["total"] == 1
+    assert [item["document_id"] for item in payload["items"]] == [contract["document_id"]]
+    assert payload["summary"] == {
+        "total_documents": 2,
+        "valid_documents": 0,
+        "review_documents": 2,
+        "restricted_documents": 1,
+    }
+
+
 def test_rag_metadata_summary_uses_rag_query_authorization(
     client,
     admin_headers,

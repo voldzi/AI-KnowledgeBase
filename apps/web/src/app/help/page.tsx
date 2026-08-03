@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/page-header";
 import { HelpCenter } from "@/features/help/help-center";
 
+export const dynamic = "force-dynamic";
+
 export default function HelpPage() {
   return (
     <>

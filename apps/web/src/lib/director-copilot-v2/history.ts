@@ -5,6 +5,7 @@ import {
   conversationQueryState,
   type ConversationQueryState,
 } from "@/lib/director-copilot/query-state";
+import { assistantLiveSourcesFromOutcomes } from "@/lib/assistant/live-source-presentation";
 import type {
   ApiClients,
   ApiRequestContext,
@@ -78,6 +79,7 @@ export function directorCopilotV2PersistenceMetadata(
       requested_director_copilot_intent: snapshot?.plan.intent ?? null,
       stratos_query_state: conversationQueryState(response.current_context.stratos_query_state)
         ?? snapshot?.plan.query_state,
+      live_sources: assistantLiveSourcesFromOutcomes(snapshot?.outcomes),
     },
     director_copilot_history: envelope,
     follow_up_questions: response.follow_up_questions,
@@ -101,6 +103,7 @@ export function persistedDirectorCopilotV2Response(
       requested_director_copilot_intent: snapshot?.plan.intent ?? null,
       stratos_query_state: conversationQueryState(response.current_context.stratos_query_state)
         ?? snapshot?.plan.query_state,
+      live_sources: assistantLiveSourcesFromOutcomes(snapshot?.outcomes),
     },
   };
 }

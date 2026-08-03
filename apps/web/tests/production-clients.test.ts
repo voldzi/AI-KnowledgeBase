@@ -245,7 +245,14 @@ describe("production API clients", () => {
       return Response.json({
         items: [documentFixture("doc_1")],
         limit: 200,
-        offset: 0
+        offset: 0,
+        total: 1,
+        summary: {
+          total_documents: 1,
+          valid_documents: 0,
+          review_documents: 1,
+          restricted_documents: 0,
+        },
       });
     };
 
@@ -280,7 +287,14 @@ describe("production API clients", () => {
       return Response.json({
         items: Array.from({ length: count }, (_, index) => documentFixture(`doc_${offset + index + 1}`)),
         limit: 200,
-        offset
+        offset,
+        total: 222,
+        summary: {
+          total_documents: 222,
+          valid_documents: 0,
+          review_documents: 222,
+          restricted_documents: 0,
+        },
       });
     };
 
@@ -339,6 +353,41 @@ describe("production API clients", () => {
       calls[0][0],
       "https://registry.local/api/v1/documents?topic=smlouvy&tenant_id=tenant-a&external_system=STRATOS_BUDGET&entity_type=contract&entity_id=contract-1&context_tag=budget-contract%3Acontract-1&limit=200&offset=0"
     );
+  });
+
+  it("loads one server-filtered registry page with totals and summary", async () => {
+    const calls: string[] = [];
+    const fetcher: AklFetch = async (input) => {
+      calls.push(String(input));
+      return Response.json({
+        items: [documentFixture("doc_filtered")],
+        limit: 50,
+        offset: 50,
+        total: 73,
+        summary: {
+          total_documents: 223,
+          valid_documents: 150,
+          review_documents: 73,
+          restricted_documents: 30,
+        },
+      });
+    };
+
+    const clients = createApiClients({ env, fetcher });
+    const page = await clients.registry.listDocumentPage(createMockContext(), {
+      query: "smlouva",
+      statuses: ["draft", "review"],
+      classifications: ["internal", "restricted"],
+      documentTypes: ["contract"],
+      limit: 50,
+      offset: 50,
+    });
+
+    assert.equal(page.total, 73);
+    assert.equal(page.summary.total_documents, 223);
+    assert.deepEqual(calls, [
+      "https://registry.local/api/v1/documents?q=smlouva&status_in=draft&status_in=review&classification_in=internal&classification_in=restricted&document_type_in=contract&limit=50&offset=50",
+    ]);
   });
 
   it("loads temporal controlled packages and consumer rules for one exact date", async () => {

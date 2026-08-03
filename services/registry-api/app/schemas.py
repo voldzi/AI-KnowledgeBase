@@ -403,10 +403,19 @@ class DocumentResponse(BaseModel):
     assignments: list[DocumentAssignmentResponse] = Field(default_factory=list)
 
 
+class DocumentListSummary(BaseModel):
+    total_documents: int
+    valid_documents: int
+    review_documents: int
+    restricted_documents: int
+
+
 class DocumentListResponse(BaseModel):
     items: list[DocumentResponse]
     limit: int
     offset: int
+    total: int
+    summary: DocumentListSummary
 
 
 class DocumentMetadataSummaryBucket(BaseModel):
