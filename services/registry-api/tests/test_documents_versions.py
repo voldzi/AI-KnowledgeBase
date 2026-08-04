@@ -1042,6 +1042,30 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         headers=chat_headers,
     )
     assert employee_directive_versions.status_code == 200, employee_directive_versions.text
+    employee_directive_rag_filter = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=chat_headers,
+        json={
+            "subject_id": "user_employee",
+            "action": "rag.query",
+            "candidate_document_ids": [directive["document_id"]],
+            "candidate_policy_hashes": {
+                directive["document_id"]: [directive["policy_hash"]]
+            },
+            "candidate_document_versions": {
+                directive["document_id"]: [directive_version["document_version_id"]]
+            },
+        },
+    )
+    assert employee_directive_rag_filter.status_code == 200, (
+        employee_directive_rag_filter.text
+    )
+    assert employee_directive_rag_filter.json()["allowed_document_ids"] == [
+        directive["document_id"]
+    ]
+    assert employee_directive_rag_filter.json()["allowed_document_version_ids"] == {
+        directive["document_id"]: [directive_version["document_version_id"]]
+    }
 
     chat_without_document_read = {
         **chat_headers,
@@ -1067,6 +1091,20 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         headers=chat_headers,
     )
     assert unrelated_detail.status_code == 403
+    unrelated_rag_filter = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=chat_headers,
+        json={
+            "subject_id": "user_employee",
+            "action": "rag.query",
+            "candidate_document_ids": [unrelated["document_id"]],
+            "candidate_policy_hashes": {
+                unrelated["document_id"]: [unrelated["policy_hash"]]
+            },
+        },
+    )
+    assert unrelated_rag_filter.status_code == 200
+    assert unrelated_rag_filter.json()["allowed_document_ids"] == []
 
     from app.models import ControlledDocumentPackage, Document
 

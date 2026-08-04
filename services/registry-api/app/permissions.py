@@ -529,6 +529,9 @@ def _employee_directive_source_allows(
         or action not in _EMPLOYEE_DIRECTIVE_ACTIONS
         or document.organization_id != context.organization_id
         or version.organization_id != context.organization_id
+        or version.policy_binding_id != document.policy_binding_id
+        or version.policy_version != document.policy_version
+        or version.policy_hash != document.policy_hash
         or document.classification not in {
             Classification.public.value,
             Classification.internal.value,
@@ -559,7 +562,7 @@ def _employee_directive_source_allows(
     return True
 
 
-def _employee_directive_projection_decision(
+def evaluate_employee_directive_projection(
     *,
     db: Session | None,
     context: SubjectContext,
@@ -1181,7 +1184,7 @@ def require_document_action(
     context = context_for_principal(principal, db)
     decision = evaluate_document_access(context, action.value, document)
     if not decision.allowed:
-        employee_directive_decision = _employee_directive_projection_decision(
+        employee_directive_decision = evaluate_employee_directive_projection(
             db=db,
             context=context,
             action=action.value,
@@ -1223,7 +1226,7 @@ def require_document_version_action(
         ),
     )
     if not decision.allowed:
-        employee_directive_decision = _employee_directive_projection_decision(
+        employee_directive_decision = evaluate_employee_directive_projection(
             db=db,
             context=context,
             action=action.value,
