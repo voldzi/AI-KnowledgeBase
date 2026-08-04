@@ -29,7 +29,7 @@
       "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
       "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0}, "id": 3,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"editorMode": "code", "expr": "sum(rate(traces_span_metrics_calls_total{service_name=~\"akb-.*\"}[5m]))", "instant": false, "legendFormat": "requests", "range": true, "refId": "A"}],
+      "targets": [{"editorMode": "code", "expr": "sum(rate(traces_span_metrics_calls_total{service_name=~\"(akb-(web|chat-web)|registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service)\"}[5m]))", "instant": false, "legendFormat": "requests", "range": true, "refId": "A"}],
       "title": "Požadavky AKB", "type": "stat"
     },
     {
@@ -45,7 +45,7 @@
       "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
       "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5}, "id": 5,
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"editorMode": "code", "expr": "sum by (service_name) (rate(traces_span_metrics_calls_total{service_name=~\"akb-.*\"}[5m]))", "legendFormat": "{{service_name}}", "range": true, "refId": "A"}],
+      "targets": [{"editorMode": "code", "expr": "sum by (service_name) (rate(traces_span_metrics_calls_total{service_name=~\"(akb-(web|chat-web)|registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service)\"}[5m]))", "legendFormat": "{{service_name}}", "range": true, "refId": "A"}],
       "title": "Provoz podle služby", "type": "timeseries"
     },
     {
@@ -53,7 +53,7 @@
       "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "ms"}, "overrides": []},
       "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5}, "id": 6,
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"akb-.*\"}[10m])))", "legendFormat": "{{service_name}}", "range": true, "refId": "A"}],
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"(akb-(web|chat-web)|registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service)\"}[10m])))", "legendFormat": "{{service_name}}", "range": true, "refId": "A"}],
       "title": "p95 podle služby", "type": "timeseries"
     },
     {
@@ -61,7 +61,7 @@
       "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14}, "id": 7,
       "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"editorMode": "code", "expr": "sum by (service_name, http_status_code) (rate(traces_span_metrics_calls_total{service_name=~\"akb-.*\",http_status_code=~\"4..|5..\"}[5m]))", "legendFormat": "{{service_name}} / {{http_status_code}}", "range": true, "refId": "A"}],
+      "targets": [{"editorMode": "code", "expr": "sum by (service_name, http_status_code) (rate(traces_span_metrics_calls_total{service_name=~\"(akb-(web|chat-web)|registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service)\",http_status_code=~\"4..|5..\"}[5m]))", "legendFormat": "{{service_name}} / {{http_status_code}}", "range": true, "refId": "A"}],
       "title": "Chybové odpovědi", "type": "timeseries"
     },
     {

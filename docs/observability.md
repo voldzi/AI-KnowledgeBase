@@ -109,12 +109,14 @@ Central Prometheus alert rules are stored in
 
 ## Tracing
 
-AKB keeps request id and correlation id propagation in the application code and
-adds OpenTelemetry tracing when `OTEL_SDK_DISABLED=false`. Production services
-export OTLP over the private server network directly to the central Collector.
-Python services use OTLP/gRPC on port `4317`; the two Next.js services use
-OTLP/HTTP protobuf on port `4318`. The endpoints are not published by the AKB
-reverse proxy.
+AKB keeps request id and correlation id propagation in the application code.
+Python services add OpenTelemetry tracing when `OTEL_SDK_DISABLED=false`.
+Next.js uses the explicit `AKL_OTEL_ENABLED=true` switch and must not receive
+`OTEL_SDK_DISABLED`, because the Next.js telemetry library treats any defined
+value as disabled. Production services export OTLP over the private server
+network directly to the central Collector. Python services use OTLP/gRPC on
+port `4317`; the two Next.js services use OTLP/HTTP protobuf on port `4318`.
+The endpoints are not published by the AKB reverse proxy.
 
 The central Collector removes request and response bodies, authorization and
 cookie headers, query-bearing URL attributes, SQL statements, user identifiers,

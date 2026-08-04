@@ -82,7 +82,7 @@ services:
     restart: unless-stopped
     labels: *immutable-release-labels
     environment:
-      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
+      AKL_OTEL_ENABLED: ${AKL_OTEL_ENABLED:-true}
       OTEL_SERVICE_NAME: akb-web
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_WEB_EXPORTER_OTLP_ENDPOINT:-http://192.168.10.156:4318}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_WEB_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
@@ -194,7 +194,7 @@ services:
     restart: unless-stopped
     labels: *immutable-release-labels
     environment:
-      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
+      AKL_OTEL_ENABLED: ${AKL_OTEL_ENABLED:-true}
       OTEL_SERVICE_NAME: akb-chat-web
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_WEB_EXPORTER_OTLP_ENDPOINT:-http://192.168.10.156:4318}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_WEB_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
