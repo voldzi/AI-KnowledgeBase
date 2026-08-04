@@ -541,6 +541,18 @@ paths:
           type: boolean
           default: false
           title: Include Inactive
+      - name: consumer_view
+        in: query
+        required: false
+        description: >-
+          Returns the user-authorized decision view used by AKB chat: verified
+          profile revision 3 rules registered in the closed normative catalog.
+          Blocking catalog, citation or precedence warnings produce no rules.
+          It cannot be combined with include_inactive=true.
+        schema:
+          type: boolean
+          default: false
+          title: Consumer View
       responses:
         '200':
           description: Successful Response

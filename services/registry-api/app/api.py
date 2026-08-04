@@ -5985,6 +5985,7 @@ def _controlled_rule_list_for_packages(
     packages: list[ControlledDocumentPackage],
     approved_only: bool,
     required_profile_version: str | None = None,
+    registered_only: bool = False,
 ) -> ControlledRuleListResponse:
     package_by_id = {package.package_id: package for package in packages}
     if not package_by_id:
@@ -6062,6 +6063,22 @@ def _controlled_rule_list_for_packages(
                     continue
             if approved_only and verification_status not in {"accepted", "edited"}:
                 continue
+            if registered_only:
+                if not normative_key_is_registered(
+                    domain,
+                    effective_proposal.normative_key,
+                ):
+                    warnings.append("CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN")
+                    continue
+                if not normative_key_category_matches(
+                    domain,
+                    effective_proposal.normative_key,
+                    effective_proposal.category,
+                ):
+                    warnings.append(
+                        "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH"
+                    )
+                    continue
             rules.append(
                 ControlledRuleResponse(
                     extraction_id=extraction.extraction_id,
@@ -6094,6 +6111,40 @@ def _controlled_rule_list_for_packages(
     )
 
 
+_CONTROLLED_RULE_CONSUMER_BLOCKING_WARNINGS = {
+    "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
+    "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
+    "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
+    "CONTROLLED_RULE_EDIT_INVALID",
+    "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
+    "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH",
+    "SOURCE_REVIEW_DATE_INVALID",
+}
+
+
+def _controlled_rule_consumer_view_for_packages(
+    *,
+    db: Session,
+    domain: str,
+    applicable_on: date,
+    packages: list[ControlledDocumentPackage],
+) -> ControlledRuleListResponse:
+    response = _controlled_rule_list_for_packages(
+        db=db,
+        domain=domain,
+        applicable_on=applicable_on,
+        packages=packages,
+        approved_only=True,
+        required_profile_version="3",
+        registered_only=True,
+    )
+    if _CONTROLLED_RULE_CONSUMER_BLOCKING_WARNINGS.intersection(
+        response.warnings
+    ):
+        response.rules = []
+    return response
+
+
 @router.get(
     "/controlled-documentation/rules",
     response_model=ControlledRuleListResponse,
@@ -6103,10 +6154,17 @@ def list_controlled_document_rules(
     valid_on: date | None = Query(default=None),
     approved_only: bool = Query(default=True),
     include_inactive: bool = Query(default=False),
+    consumer_view: bool = Query(default=False),
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> ControlledRuleListResponse:
     applicable_on = valid_on or date.today()
+    if consumer_view and include_inactive:
+        raise problem(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "controlled_rule_consumer_view_inactive_forbidden",
+            "The controlled-rule consumer view can contain only effective packages",
+        )
     if include_inactive:
         require_global_action(principal, Action.document_update, db)
         candidates = list(
@@ -6151,6 +6209,13 @@ def list_controlled_document_rules(
             domain=domain,
             valid_on=applicable_on,
             authorization_actions=(Action.document_read, Action.rag_query),
+        )
+    if consumer_view:
+        return _controlled_rule_consumer_view_for_packages(
+            db=db,
+            domain=domain,
+            applicable_on=applicable_on,
+            packages=packages,
         )
     return _controlled_rule_list_for_packages(
         db=db,
@@ -6344,51 +6409,13 @@ def list_controlled_rules_for_budget(
         _commit_or_conflict(db)
         raise
 
-    internal = _controlled_rule_list_for_packages(
+    internal = _controlled_rule_consumer_view_for_packages(
         db=db,
         domain=domain,
         applicable_on=valid_on,
         packages=packages,
-        approved_only=True,
-        required_profile_version="3",
-    )
-    unknown_keys = sorted(
-        {
-            rule.proposal.normative_key
-            for rule in internal.rules
-            if rule.verification_status in {"accepted", "edited"}
-            and not normative_key_is_registered(domain, rule.proposal.normative_key)
-        }
-    )
-    category_mismatches = sorted(
-        {
-            rule.proposal.normative_key
-            for rule in internal.rules
-            if rule.verification_status in {"accepted", "edited"}
-            and normative_key_is_registered(domain, rule.proposal.normative_key)
-            and not normative_key_category_matches(
-                domain,
-                rule.proposal.normative_key,
-                rule.proposal.category,
-            )
-        }
     )
     warnings = list(internal.warnings)
-    if unknown_keys:
-        warnings.append("CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN")
-    if category_mismatches:
-        warnings.append("CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH")
-    warnings = list(dict.fromkeys(warnings))
-
-    conflict_warnings = {
-        "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
-        "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
-        "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
-        "CONTROLLED_RULE_EDIT_INVALID",
-        "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
-        "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH",
-        "SOURCE_REVIEW_DATE_INVALID",
-    }
     eligible = [
         rule
         for rule in internal.rules
@@ -6401,7 +6428,7 @@ def list_controlled_rules_for_budget(
             rule.proposal.category,
         )
     ]
-    if conflict_warnings.intersection(warnings):
+    if _CONTROLLED_RULE_CONSUMER_BLOCKING_WARNINGS.intersection(warnings):
         response_status = "conflict"
         eligible = []
     elif not internal.packages or not eligible:

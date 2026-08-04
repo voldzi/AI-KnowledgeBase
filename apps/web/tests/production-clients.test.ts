@@ -421,11 +421,12 @@ describe("production API clients", () => {
     await clients.registry.listControlledRules("public_procurement", context, {
       validOn: "2024-01-01",
       approvedOnly: true,
+      consumerView: true,
     });
 
     assert.deepEqual(calls, [
       "https://registry.local/api/v1/controlled-documentation/packages?domain=public_procurement&valid_on=2024-01-01&include_inactive=true",
-      "https://registry.local/api/v1/controlled-documentation/rules?domain=public_procurement&valid_on=2024-01-01&approved_only=true",
+      "https://registry.local/api/v1/controlled-documentation/rules?domain=public_procurement&valid_on=2024-01-01&approved_only=true&consumer_view=true",
     ]);
   });
 

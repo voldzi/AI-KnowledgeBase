@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       const controlledRules = await clients.registry.listControlledRules(
         assistantRoute.controlledRuleIntent.domain,
         context,
-        { validOn, approvedOnly: true },
+        { validOn, approvedOnly: true, consumerView: true },
       );
       const controlledResponse = normalizeAssistantChatResponse({
         response: buildControlledRuleAssistantResponse({

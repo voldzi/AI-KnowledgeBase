@@ -139,7 +139,11 @@ citovaný návrh není potvrzený nebo opravený gestorem.
 ## Integrace aplikací
 
 Budget ani jiná aplikace nesmí číst databázi AKB. Gestorský endpoint
-`/controlled-documentation/rules` je určen lidem a internímu UI. Budget používá
+`/controlled-documentation/rules` je určen lidem a internímu UI. Chat používá
+`consumer_view=true`, které zachová uživatelskou autorizaci, ale zúží výsledek
+na ověřenou revizi profilu 3 a uzavřený katalog rozhodovacích pravidel. Starší
+vytěžení, neznámé klíče a neodpovídající kategorie se do odpovědi nedostanou;
+blokující chyba katalogu, citace nebo precedence skončí bez pravidel. Budget používá
 výhradně uzavřený kontrakt `akb-controlled-rules-1` na route
 `/integrations/controlled-rules-read/rules`, který už obsahuje pouze
 spotřebitelsky způsobilá pravidla. Uchová vrácené identifikátory balíčku, verze,

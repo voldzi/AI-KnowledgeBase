@@ -249,6 +249,7 @@ export interface RegistryApiClient {
       validOn?: string;
       approvedOnly?: boolean;
       includeInactive?: boolean;
+      consumerView?: boolean;
     }
   ): Promise<ControlledRuleList>;
   recordControlledRuleFeedback(

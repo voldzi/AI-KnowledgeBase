@@ -244,9 +244,15 @@ rank and marks each rule `authoritative`, `supplemental`, `shadowed` or
 `conflict`. Only non-conflicting accepted/edited rules at the winning authority
 level have `consumer_eligible=true`.
 
-The generic rules endpoint is the human/gestor projection. Application
-consumers do not receive its inactive-package controls or internal verification
-fields. Budget uses the closed `akb-controlled-rules-1` contract at
+The generic rules endpoint is the human/gestor projection. `consumer_view=true`
+provides AKB chat with a narrower user-authorized decision view: only verified
+profile revision 3 rules registered in the normative catalog are returned, and
+catalog, citation or precedence defects fail closed. This mode does not grant
+access; it only narrows the effective packages already authorized for the
+signed-in user and cannot be combined with `include_inactive=true`.
+Application consumers do not receive the generic endpoint's inactive-package
+controls or internal verification fields. Budget uses the closed
+`akb-controlled-rules-1` contract at
 `GET /integrations/controlled-rules-read/rules` with mandatory
 `domain=public_procurement` and `valid_on`. The route returns only valid,
 catalogued, cited, precedence-eligible rules and reports `complete`,

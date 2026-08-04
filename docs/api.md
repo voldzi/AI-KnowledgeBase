@@ -165,7 +165,10 @@ integration endpoint requires `valid_on` and returns only eligible rules in the
 closed `akb-controlled-rules-1` response. `shadowed`, `conflict`, unverified,
 uncited and non-catalogued proposals are never decision inputs. RAG proposes rules through
 `POST /api/v1/stratos/extractions/controlled-rules/propose`; Registry stores
-the proposal and human feedback. The complete hierarchy and historical
+the proposal and human feedback. The AKB chat calls the user-authorized rules
+endpoint with `consumer_view=true`; this narrows the result to effective,
+verified profile revision 3 rules from the closed normative catalog and never
+widens the caller's document access. The complete hierarchy and historical
 contract are in `docs/ARCHITECTURE/temporal-controlled-documentation.md`; the
 Budget handoff is in `docs/integration/AKB_CONTROLLED_RULES_BUDGET_API.md`.
 

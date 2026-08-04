@@ -44,7 +44,123 @@ describe("controlled rule assistant answer", () => {
     assert.deepEqual(response.citations, []);
     assert.ok(response.warnings.includes("CONTROLLED_RULE_CONFLICT"));
   });
+
+  it("answers a market-research question with only the relevant human-readable rules", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_market_research",
+        normativeKey: "public_procurement.market_research.threshold",
+        title: "Finanční limit: dlouhý technický název",
+        value: 20000,
+        unit: "currency",
+        currency: "CZK",
+        vatBasis: "including_vat",
+      }),
+      controlledRule({
+        ruleId: "rule_quotes",
+        normativeKey: "public_procurement.supplier_quotes.minimum_count",
+        title: "Pravidlo: několik dodavatelů",
+        value: 3,
+        unit: "count",
+        currency: null,
+      }),
+      controlledRule({
+        ruleId: "rule_marketplace",
+        normativeKey: "public_procurement.marketplace.threshold",
+        title: "Elektronické tržiště",
+        value: 50000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaký limit platí pro průzkum trhu a kolik nabídek je potřeba?",
+      conversationId: "conv_market_research",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "answer");
+    assert.deepEqual(response.current_context.controlled_rule_ids, [
+      "rule_market_research",
+      "rule_quotes",
+    ]);
+    assert.match(response.answer ?? "", /Limit průzkumu trhu.*20\s000 Kč včetně DPH/s);
+    assert.match(response.answer ?? "", /Minimální počet nabídek.*nejméně 3 nabídky/s);
+    assert.doesNotMatch(response.answer ?? "", /elektronického tržiště/i);
+    assert.doesNotMatch(response.answer ?? "", /CZK currency|count/i);
+    assert.equal(response.citations.length, 2);
+  });
+
+  it("fails closed when the Registry consumer projection is not decision-ready", () => {
+    const data = fixture();
+    data.warnings = ["CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN"];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaký je limit pro veřejnou zakázku?",
+      conversationId: "conv_blocked",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.equal(response.confidence, "conflicting_sources");
+    assert.deepEqual(response.citations, []);
+    assert.ok(response.warnings.includes("CONTROLLED_RULE_CONFLICT"));
+  });
 });
+
+function controlledRule(input: {
+  ruleId: string;
+  normativeKey: string;
+  title: string;
+  value: unknown;
+  unit: string | null;
+  currency: string | null;
+  vatBasis?: string;
+}): ControlledRuleList["rules"][number] {
+  return {
+    extraction_id: "extract_current",
+    package_id: "package_1",
+    source_type: "internal_directive",
+    authority_rank: 60,
+    verification_status: "accepted",
+    verified_by: "gestor",
+    verified_at: "2026-08-01T10:00:00Z",
+    verification_note: null,
+    precedence_status: "supplemental",
+    consumer_eligible: true,
+    proposal: {
+      rule_id: input.ruleId,
+      normative_key: input.normativeKey,
+      category: input.normativeKey.endsWith("minimum_count") ? "condition" : "financial_limit",
+      title: input.title,
+      value: input.value,
+      unit: input.unit,
+      currency: input.currency,
+      vat_basis: input.vatBasis ?? "excluding_vat",
+      conditions: [],
+      exceptions: [],
+      responsible_roles: [],
+      required_evidence: [],
+      confidence: 0.93,
+      citation: {
+        document_id: "doc_directive",
+        document_version_id: "ver_directive",
+        chunk_id: `chunk_${input.ruleId}`,
+        section_path: ["Článek 6"],
+        page_number: 8,
+        article_number: "6",
+        paragraph_number: null,
+        quoted_text: input.title,
+      },
+    },
+  };
+}
 
 function fixture(): ControlledRuleList {
   return {
