@@ -74,4 +74,27 @@ describe("chat viewport layout", () => {
       /id="akb-chat-report-settings"[\s\S]*role="region"[\s\S]*aria-label=\{copy\.reportSettings\}/,
     );
   });
+
+  it("lets desktop users hide and resize both supporting panels", () => {
+    assert.match(
+      css,
+      /\.akb-chat-app\s*\{[\s\S]*grid-template-columns:\s*var\(--akb-chat-thread-track\)[\s\S]*var\(--akb-chat-source-track\);/,
+    );
+    assert.match(
+      css,
+      /\.akb-chat-panel-resizer\s*\{[^}]*cursor:\s*col-resize;[^}]*touch-action:\s*none;/s,
+    );
+    assert.match(
+      assistantApp,
+      /onClick=\{closeThreadPanel\}[\s\S]*<PanelLeftClose/,
+    );
+    assert.match(
+      assistantApp,
+      /onPointerDown=\{\(event\) => startPanelResize\("threads", event\)\}[\s\S]*onKeyDown=\{\(event\) => handlePanelResizeKeyDown\("threads", event\)\}/,
+    );
+    assert.match(
+      assistantApp,
+      /onPointerDown=\{\(event\) => startPanelResize\("sources", event\)\}[\s\S]*onKeyDown=\{\(event\) => handlePanelResizeKeyDown\("sources", event\)\}/,
+    );
+  });
 });

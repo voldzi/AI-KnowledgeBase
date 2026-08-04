@@ -95,6 +95,106 @@ describe("controlled rule assistant answer", () => {
     assert.equal(response.citations.length, 2);
   });
 
+  it("answers a general VZMR question with both statutory thresholds before internal rules", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_supplies_services",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Statutory supplies and services threshold",
+        value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_works",
+        normativeKey: "public_procurement.vzmr.works.threshold",
+        title: "Statutory works threshold",
+        value: 9000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_market_research",
+        normativeKey: "public_procurement.market_research.threshold",
+        title: "Internal market research threshold",
+        value: 20000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaké jsou limity pro VZMR?",
+      conversationId: "conv_vzmr",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "answer");
+    assert.deepEqual(response.current_context.controlled_rule_ids, [
+      "rule_supplies_services",
+      "rule_works",
+    ]);
+    assert.match(response.answer ?? "", /Zákonné limity účinné/);
+    assert.match(response.answer ?? "", /dodávky a služby.*3\s000\s000 Kč/s);
+    assert.match(response.answer ?? "", /stavební práce.*9\s000\s000 Kč/s);
+    assert.doesNotMatch(response.answer ?? "", /průzkumu trhu/i);
+    assert.equal(response.citations.length, 2);
+  });
+
+  it("answers a statutory follow-up from the governed catalog instead of document RAG", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_supplies_services",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Statutory supplies and services threshold",
+        value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_works",
+        normativeKey: "public_procurement.vzmr.works.threshold",
+        title: "Statutory works threshold",
+        value: 9000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "A co zákon?",
+      conversationId: "conv_vzmr",
+      context: {
+        answer_source: "controlled_rules",
+        controlled_rule_domain: "public_procurement",
+        controlled_rule_valid_on: "2026-08-03",
+      },
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "answer");
+    assert.deepEqual(response.current_context.controlled_rule_source_types, ["law"]);
+    assert.match(response.answer ?? "", /Zákonné limity účinné/);
+    assert.equal(response.citations.length, 2);
+  });
+
   it("fails closed when the Registry consumer projection is not decision-ready", () => {
     const data = fixture();
     data.warnings = ["CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN"];
@@ -122,17 +222,20 @@ function controlledRule(input: {
   unit: string | null;
   currency: string | null;
   vatBasis?: string;
+  sourceType?: ControlledRuleList["rules"][number]["source_type"];
+  authorityRank?: number;
+  precedenceStatus?: ControlledRuleList["rules"][number]["precedence_status"];
 }): ControlledRuleList["rules"][number] {
   return {
     extraction_id: "extract_current",
     package_id: "package_1",
-    source_type: "internal_directive",
-    authority_rank: 60,
+    source_type: input.sourceType ?? "internal_directive",
+    authority_rank: input.authorityRank ?? 60,
     verification_status: "accepted",
     verified_by: "gestor",
     verified_at: "2026-08-01T10:00:00Z",
     verification_note: null,
-    precedence_status: "supplemental",
+    precedence_status: input.precedenceStatus ?? "supplemental",
     consumer_eligible: true,
     proposal: {
       rule_id: input.ruleId,

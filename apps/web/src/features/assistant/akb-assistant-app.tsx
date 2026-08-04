@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -14,10 +23,13 @@ import {
   Ellipsis,
   FileSpreadsheet,
   FileText,
+  GripVertical,
   LifeBuoy,
   MessageSquare,
   MessageSquarePlus,
+  PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
   PanelRightOpen,
   Pencil,
   Pin,
@@ -31,7 +43,7 @@ import {
   ThumbsUp,
   Trash2,
   Users,
-  X
+  X,
 } from "lucide-react";
 import {
   DirectoryPersonPicker as PersonPicker,
@@ -99,6 +111,13 @@ interface AkbAssistantAppProps {
 type ThreadVisibility = "private" | "shared";
 type SharePermission = "viewer" | "commenter";
 type ThreadFilter = "active" | "shared" | "archived";
+type ResizableChatPanel = "threads" | "sources";
+
+const CHAT_LAYOUT_STORAGE_KEY = "akb-chat-layout-v1";
+const THREAD_PANEL_MIN_WIDTH = 220;
+const THREAD_PANEL_MAX_WIDTH = 420;
+const SOURCE_PANEL_MIN_WIDTH = 280;
+const SOURCE_PANEL_MAX_WIDTH = 520;
 
 interface ChatMessage {
   id: string;
@@ -338,6 +357,12 @@ const assistantAppCopy = {
     historySourceTemporarilyUnavailable: "Zdroj historické odpovědi se teď nepodařilo bezpečně ověřit. Obsah zůstává skrytý; zkuste vlákno načíst později.",
     newMessagesBelow: "Nová odpověď",
     close: "Zavřít",
+    hideThreads: "Skrýt vlákna",
+    showThreads: "Zobrazit vlákna",
+    resizeThreads: "Změnit šířku seznamu vláken",
+    hideSources: "Skrýt zdroje",
+    showSources: "Zobrazit zdroje",
+    resizeSources: "Změnit šířku panelu zdrojů",
     owner: "Vlastník",
     anotherUser: "Uživatel",
     you: "Vy"
@@ -489,6 +514,12 @@ const assistantAppCopy = {
     historySourceTemporarilyUnavailable: "The source of this historical answer could not be verified safely right now. The content remains hidden; try loading the thread later.",
     newMessagesBelow: "New answer",
     close: "Close",
+    hideThreads: "Hide threads",
+    showThreads: "Show threads",
+    resizeThreads: "Resize thread list",
+    hideSources: "Hide sources",
+    showSources: "Show sources",
+    resizeSources: "Resize sources panel",
     owner: "Owner",
     anotherUser: "User",
     you: "You"
@@ -511,6 +542,11 @@ export function AkbAssistantApp({
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("active");
   const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
+  const [desktopThreadsOpen, setDesktopThreadsOpen] = useState(true);
+  const [desktopSourcesOpen, setDesktopSourcesOpen] = useState(true);
+  const [threadPanelWidth, setThreadPanelWidth] = useState(268);
+  const [sourcePanelWidth, setSourcePanelWidth] = useState(340);
+  const [chatLayoutHydrated, setChatLayoutHydrated] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(() => {
     if (initialRequestedThreadUnavailable) {
@@ -544,6 +580,9 @@ export function AkbAssistantApp({
   const [reportDetailLevel, setReportDetailLevel] = useState<AssistantReportDetailLevel>("standard");
   const [reportExportFormat, setReportExportFormat] = useState<AssistantReportExportPreference>("xlsx");
   const [reportColumns, setReportColumns] = useState<AssistantReportColumnKey[]>(ASSISTANT_REPORT_TEMPLATE_DEFAULT_COLUMNS.obligation_table);
+  const chatAppRef = useRef<HTMLElement | null>(null);
+  const restoreThreadsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const restoreSourcesButtonRef = useRef<HTMLButtonElement | null>(null);
   const transcriptRef = useRef<HTMLElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -588,6 +627,47 @@ export function AkbAssistantApp({
     return [...filtered].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
   }, [currentSubjectId, threadFilter, threadSearch, threads]);
   const visibleSuggestions = personalizedSuggestions.slice(0, 4);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(CHAT_LAYOUT_STORAGE_KEY);
+      if (stored) {
+        const layout = JSON.parse(stored) as Record<string, unknown>;
+        if (typeof layout.threadsOpen === "boolean") setDesktopThreadsOpen(layout.threadsOpen);
+        if (typeof layout.sourcesOpen === "boolean") setDesktopSourcesOpen(layout.sourcesOpen);
+        if (typeof layout.threadWidth === "number") {
+          setThreadPanelWidth(clamp(layout.threadWidth, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH));
+        }
+        if (typeof layout.sourceWidth === "number") {
+          setSourcePanelWidth(clamp(layout.sourceWidth, SOURCE_PANEL_MIN_WIDTH, SOURCE_PANEL_MAX_WIDTH));
+        }
+      }
+    } catch {
+      // A damaged local preference must never block the chat.
+    } finally {
+      setChatLayoutHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!chatLayoutHydrated) return;
+    try {
+      window.localStorage.setItem(CHAT_LAYOUT_STORAGE_KEY, JSON.stringify({
+        threadsOpen: desktopThreadsOpen,
+        sourcesOpen: desktopSourcesOpen,
+        threadWidth: threadPanelWidth,
+        sourceWidth: sourcePanelWidth,
+      }));
+    } catch {
+      // The layout remains usable when browser storage is unavailable.
+    }
+  }, [
+    chatLayoutHydrated,
+    desktopSourcesOpen,
+    desktopThreadsOpen,
+    sourcePanelWidth,
+    threadPanelWidth,
+  ]);
   const visibleSlashCommands = useMemo(() => slashCommandOptions(composer, language), [composer, language]);
   const hasMobileThreadActions = Boolean(
     activeThread.conversationId ||
@@ -1517,9 +1597,100 @@ export function AkbAssistantApp({
     items[nextIndex]?.focus();
   }
 
+  function closeThreadPanel() {
+    if (window.matchMedia("(max-width: 860px)").matches) {
+      setMobileThreadsOpen(false);
+      return;
+    }
+    setDesktopThreadsOpen(false);
+    window.requestAnimationFrame(() => restoreThreadsButtonRef.current?.focus());
+  }
+
+  function closeSourcePanel() {
+    setDesktopSourcesOpen(false);
+    window.requestAnimationFrame(() => restoreSourcesButtonRef.current?.focus());
+  }
+
+  function toggleThreadPanel() {
+    if (window.matchMedia("(max-width: 860px)").matches) {
+      setMobileThreadsOpen((open) => !open);
+      return;
+    }
+    setDesktopThreadsOpen((open) => !open);
+  }
+
+  function resizePanel(panel: ResizableChatPanel, value: number) {
+    if (panel === "threads") {
+      setThreadPanelWidth(clamp(value, THREAD_PANEL_MIN_WIDTH, THREAD_PANEL_MAX_WIDTH));
+      return;
+    }
+    setSourcePanelWidth(clamp(value, SOURCE_PANEL_MIN_WIDTH, SOURCE_PANEL_MAX_WIDTH));
+  }
+
+  function startPanelResize(
+    panel: ResizableChatPanel,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const separator = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startWidth = panel === "threads" ? threadPanelWidth : sourcePanelWidth;
+    separator.setPointerCapture(pointerId);
+    separator.classList.add("is-resizing");
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const horizontalChange = moveEvent.clientX - startX;
+      resizePanel(panel, startWidth + (panel === "threads" ? horizontalChange : -horizontalChange));
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      separator.classList.remove("is-resizing");
+      if (separator.hasPointerCapture(pointerId)) separator.releasePointerCapture(pointerId);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  }
+
+  function handlePanelResizeKeyDown(
+    panel: ResizableChatPanel,
+    event: KeyboardEvent<HTMLButtonElement>,
+  ) {
+    const current = panel === "threads" ? threadPanelWidth : sourcePanelWidth;
+    const minimum = panel === "threads" ? THREAD_PANEL_MIN_WIDTH : SOURCE_PANEL_MIN_WIDTH;
+    const maximum = panel === "threads" ? THREAD_PANEL_MAX_WIDTH : SOURCE_PANEL_MAX_WIDTH;
+    if (event.key === "Home") {
+      event.preventDefault();
+      resizePanel(panel, minimum);
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      resizePanel(panel, maximum);
+      return;
+    }
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    resizePanel(panel, current + (panel === "threads" ? direction : -direction) * 16);
+  }
+
   return (
     <>
-      <section className="akb-chat-app" aria-label="AKB Assistant">
+      <section
+        ref={chatAppRef}
+        className={`akb-chat-app${desktopThreadsOpen ? "" : " is-threads-closed"}${desktopSourcesOpen ? "" : " is-sources-closed"}`}
+        style={{
+          "--akb-chat-thread-width": `${threadPanelWidth}px`,
+          "--akb-chat-source-width": `${sourcePanelWidth}px`,
+        } as CSSProperties}
+        aria-label="AKB Assistant"
+      >
         <aside
           id="akb-chat-thread-panel"
           className={`akb-chat-sidebar${mobileThreadsOpen ? " is-mobile-open" : ""}`}
@@ -1536,11 +1707,11 @@ export function AkbAssistantApp({
             <button
               className="akb-chat-icon-button akb-chat-sidebar__close"
               type="button"
-              onClick={() => setMobileThreadsOpen(false)}
-              title={copy.close}
-              aria-label={copy.close}
+              onClick={closeThreadPanel}
+              title={copy.hideThreads}
+              aria-label={copy.hideThreads}
             >
-              <X size={16} aria-hidden="true" />
+              <PanelLeftClose size={17} aria-hidden="true" />
             </button>
           </div>
           <StratosButton
@@ -1595,6 +1766,22 @@ export function AkbAssistantApp({
           </div>
         </aside>
 
+        <button
+          className="akb-chat-panel-resizer akb-chat-panel-resizer--threads"
+          type="button"
+          role="separator"
+          aria-label={copy.resizeThreads}
+          aria-orientation="vertical"
+          aria-valuemin={THREAD_PANEL_MIN_WIDTH}
+          aria-valuemax={THREAD_PANEL_MAX_WIDTH}
+          aria-valuenow={threadPanelWidth}
+          title={copy.resizeThreads}
+          onPointerDown={(event) => startPanelResize("threads", event)}
+          onKeyDown={(event) => handlePanelResizeKeyDown("threads", event)}
+        >
+          <GripVertical size={15} aria-hidden="true" />
+        </button>
+
         <main className="akb-chat-main">
           <header className="akb-chat-header">
             <div className="akb-chat-header__identity">
@@ -1602,6 +1789,31 @@ export function AkbAssistantApp({
               <p>{copy.appSubtitle}</p>
             </div>
             <div className="akb-chat-header__actions akb-chat-header__actions--desktop">
+              {!desktopThreadsOpen ? (
+                <button
+                  ref={restoreThreadsButtonRef}
+                  className="akb-chat-icon-button"
+                  type="button"
+                  onClick={() => setDesktopThreadsOpen(true)}
+                  title={copy.showThreads}
+                  aria-label={copy.showThreads}
+                  aria-controls="akb-chat-thread-panel"
+                >
+                  <PanelLeftOpen size={17} aria-hidden="true" />
+                </button>
+              ) : null}
+              {!desktopSourcesOpen ? (
+                <button
+                  ref={restoreSourcesButtonRef}
+                  className="akb-chat-icon-button"
+                  type="button"
+                  onClick={() => setDesktopSourcesOpen(true)}
+                  title={copy.showSources}
+                  aria-label={copy.showSources}
+                >
+                  <PanelRightOpen size={17} aria-hidden="true" />
+                </button>
+              ) : null}
               {canManageActiveThread && activeThread.status === "active" ? (
                 <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                   <Archive size={16} aria-hidden="true" />
@@ -1681,11 +1893,11 @@ export function AkbAssistantApp({
               <button
                 className="akb-chat-icon-button akb-chat-mobile-threads"
                 type="button"
-                onClick={() => setMobileThreadsOpen((open) => !open)}
+                onClick={toggleThreadPanel}
                 title={copy.threadList}
                 aria-label={copy.threadList}
                 aria-controls="akb-chat-thread-panel"
-                aria-expanded={mobileThreadsOpen}
+                aria-expanded={mobileThreadsOpen || desktopThreadsOpen}
               >
                 <PanelLeftOpen size={18} aria-hidden="true" />
               </button>
@@ -2073,13 +2285,37 @@ export function AkbAssistantApp({
           </form>
         </main>
 
+        <button
+          className="akb-chat-panel-resizer akb-chat-panel-resizer--sources"
+          type="button"
+          role="separator"
+          aria-label={copy.resizeSources}
+          aria-orientation="vertical"
+          aria-valuemin={SOURCE_PANEL_MIN_WIDTH}
+          aria-valuemax={SOURCE_PANEL_MAX_WIDTH}
+          aria-valuenow={sourcePanelWidth}
+          title={copy.resizeSources}
+          onPointerDown={(event) => startPanelResize("sources", event)}
+          onKeyDown={(event) => handlePanelResizeKeyDown("sources", event)}
+        >
+          <GripVertical size={15} aria-hidden="true" />
+        </button>
+
         <aside className="akb-chat-context" aria-label={copy.sourcesPanel}>
           <div className="akb-chat-context__header">
             <div>
               <h2>{copy.sourcesPanel}</h2>
               <span>{sourceSummary}</span>
             </div>
-            <PanelRightOpen size={17} aria-hidden="true" />
+            <button
+              className="akb-chat-icon-button akb-chat-context__close"
+              type="button"
+              onClick={closeSourcePanel}
+              title={copy.hideSources}
+              aria-label={copy.hideSources}
+            >
+              <PanelRightClose size={17} aria-hidden="true" />
+            </button>
           </div>
           <div className="akb-chat-context__body">
             {lastAssistantLiveSources.length ? (
@@ -3688,6 +3924,10 @@ function titleFromQuestion(question: string): string {
 
 function createClientId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
 function isTranscriptNearBottom(element: HTMLElement): boolean {
