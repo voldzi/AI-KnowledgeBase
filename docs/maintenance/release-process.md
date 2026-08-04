@@ -142,20 +142,27 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
      reindex --root .
    ```
 
-7. **Deploy the exact merge SHA once.** Confirm the SHA is reachable from
+7. **Reserve the shared production host.** Before starting AKB, prove that no
+   STRATOS or other application deployment is running on `docker.home.cz`.
+   Check the relevant deployment processes and application locks, then verify
+   that the current AKB public health and readiness probes both pass. Do not
+   overlap releases: wait for the other deployment to finish and for the
+   shared routes and upstream manifests to stabilize. Record this preflight in
+   the operator log.
+8. **Deploy the exact merge SHA once.** Confirm the SHA is reachable from
    protected `origin/main`, then start the immutable release through the
    current verified release. Run it detached with a durable owner-only
    operator log so an SSH or agent transport interruption cannot terminate or
    obscure the release.
-8. **Monitor durable evidence.** Follow the deployment PID, deployment record,
+9. **Monitor durable evidence.** Follow the deployment PID, deployment record,
    and operator log until completion. Do not report success while the process
    is still running.
-9. **Verify production.** Confirm `/srv/akl/current`, image revisions,
+10. **Verify production.** Confirm `/srv/akl/current`, image revisions,
    container health, public `/akb/api/health`, `/akb/api/ready`, and one narrow
    authorized application/source smoke. For a shadow integration, separately
    verify service-token issuance, exact single audience, pinned manifest
    loading, and upstream readiness before any active promotion.
-10. **Close the release.** Record the merge SHA, active release SHA, affected
+11. **Close the release.** Record the merge SHA, active release SHA, affected
     services, checks run, health result, known shadow blockers, and Chroma
     reindex result.
 
