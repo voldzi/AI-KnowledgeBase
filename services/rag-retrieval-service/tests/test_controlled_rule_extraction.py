@@ -417,6 +417,35 @@ def test_separates_internal_category_and_legal_vzmr_upper_limits() -> None:
     }
 
 
+def test_extracts_current_vzmr_limits_from_line_split_official_law_pdf() -> None:
+    proposals, missing, warnings = extract_controlled_rule_proposals(
+        domain="public_procurement",
+        chunks=[
+            _chunk(
+                "§ 27 Veřejná zakázka malého rozsahu\n"
+                "Veřejnou zakázkou malého rozsahu je veřejná zakázka, jejíž "
+                "předpokládaná hodnota je rovna nebo nižší v případě veřejné zakázky\n"
+                "a) na dodávky nebo na služby částce 3 000 000 Kč, nebo\n"
+                "b) na stavební práce částce 9 000 000 Kč.\n"
+                "§ 28 Vymezení některých dalších pojmů"
+            )
+        ],
+    )
+
+    assert missing == []
+    assert warnings == []
+    values_by_key = {
+        proposal.normative_key: proposal.value
+        for proposal in proposals
+        if proposal.category == "financial_limit"
+    }
+    assert values_by_key == {
+        "public_procurement.vzmr.supplies_services.threshold": 3000000,
+        "public_procurement.vzmr.works.threshold": 9000000,
+    }
+    assert all("malého rozsahu" in proposal.citation.quoted_text for proposal in proposals)
+
+
 def test_public_procurement_extraction_emits_only_catalogued_keys() -> None:
     catalog_path = (
         Path(__file__).resolve().parents[3]

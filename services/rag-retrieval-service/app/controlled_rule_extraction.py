@@ -38,6 +38,12 @@ _SUPPLIER_COUNT_RE = re.compile(
     r"(?:porovnatelnych\s+|cenovych\s+)*(?:nabidek|dodavatelu)\b",
     re.IGNORECASE,
 )
+_ENUMERATED_CLAUSE_RE = re.compile(r"^[a-z]\)|^\d+[.)]", re.IGNORECASE)
+_PUBLIC_PROCUREMENT_LEGAL_CONTEXT = (
+    " vzmr ",
+    " verejna zakazka maleho rozsahu ",
+    " verejnou zakazkou maleho rozsahu ",
+)
 
 _CATEGORY_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("prohibition", (" nesmí ", " zakazuje se ", " není dovoleno ")),
@@ -525,7 +531,31 @@ def _financial_context(
 ) -> str:
     """Keep the threshold together with its immediate duty or exception."""
 
-    parts = [sentences[index][0]]
+    current = sentences[index][0]
+    parts = [current]
+    folded_current = f" {_fold(current)} "
+    if (
+        _ENUMERATED_CLAUSE_RE.match(current)
+        and any(
+            marker in folded_current
+            for marker in (" dodavk", " sluzb", " stavebn")
+        )
+    ):
+        # Official legal PDFs often put the introductory sentence and each
+        # lettered alternative on separate lines. Preserve the nearest legal
+        # heading, while skipping sibling amount clauses so their values and
+        # subject types cannot bleed into one another.
+        for offset in range(1, 5):
+            previous_index = index - offset
+            if previous_index < 0:
+                break
+            previous = sentences[previous_index][0]
+            if _AMOUNT_RE.search(previous):
+                continue
+            folded_previous = f" {_fold(previous)} "
+            if any(marker in folded_previous for marker in _PUBLIC_PROCUREMENT_LEGAL_CONTEXT):
+                parts.insert(0, previous)
+                break
     for offset in (1, 2):
         next_index = index + offset
         if next_index >= len(sentences):
