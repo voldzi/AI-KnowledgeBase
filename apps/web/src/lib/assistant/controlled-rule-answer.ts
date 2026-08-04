@@ -258,11 +258,15 @@ function targetedNormativeKeys(message: string) {
     keys.add("public_procurement.internal_category_1.upper_threshold");
   }
   if ((/\bvzmr\b/.test(value) && !asksForInternalRule) || asksForLaw) {
-    if (/stavebn/.test(value)) {
+    const asksForWorks = /stavebn/.test(value);
+    const asksForSuppliesOrServices = /dodav|sluzb/.test(value);
+    if (asksForWorks) {
       keys.add("public_procurement.vzmr.works.threshold");
-    } else if (/dodav|sluzb/.test(value)) {
+    }
+    if (asksForSuppliesOrServices) {
       keys.add("public_procurement.vzmr.supplies_services.threshold");
-    } else {
+    }
+    if (!asksForWorks && !asksForSuppliesOrServices) {
       keys.add("public_procurement.vzmr.supplies_services.threshold");
       keys.add("public_procurement.vzmr.works.threshold");
     }
