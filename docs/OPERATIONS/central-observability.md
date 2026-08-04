@@ -21,6 +21,11 @@ Application startup and request handling do not depend on successful telemetry
 delivery. Health, readiness, request ids and correlation ids remain available
 if central observability is unavailable.
 
+The standalone Next.js images preload `/app/otel-bootstrap.cjs`. The bootstrap
+invokes the compiled instrumentation hook before `server.js`, because the
+standalone launcher does not reliably invoke that hook itself. Registration is
+idempotent and remains disabled unless `AKL_OTEL_ENABLED=true`.
+
 ## Privacy Boundary
 
 The central Collector must delete these attribute classes before export:

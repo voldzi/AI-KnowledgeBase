@@ -32,6 +32,7 @@ RUN mkdir -p /data/object-storage && chown -R nextjs:nextjs /data
 COPY --from=builder --chown=nextjs:nextjs /app/public ./public
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
+COPY --chown=nextjs:nextjs apps/web/otel-bootstrap.cjs ./otel-bootstrap.cjs
 COPY apps/web/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
@@ -41,4 +42,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -qO- "http://$HOSTNAME:3000${NEXT_PUBLIC_AKL_BASE_PATH:-}/health" >/dev/null || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["node", "server.js"]
+CMD ["node", "--require", "/app/otel-bootstrap.cjs", "server.js"]

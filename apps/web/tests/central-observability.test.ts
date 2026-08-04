@@ -10,6 +10,14 @@ const instrumentation = readFileSync(
   new URL("../src/instrumentation.ts", import.meta.url),
   "utf8",
 );
+const telemetryBootstrap = readFileSync(
+  new URL("../otel-bootstrap.cjs", import.meta.url),
+  "utf8",
+);
+const dockerfile = readFileSync(
+  new URL("../Dockerfile", import.meta.url),
+  "utf8",
+);
 const assistantRoute = readFileSync(
   new URL("../src/app/api/assistant/chat/route.ts", import.meta.url),
   "utf8",
@@ -43,6 +51,20 @@ describe("central production observability", () => {
     assert.match(instrumentation, /process\.env\.NEXT_RUNTIME !== "nodejs"/);
     assert.match(instrumentation, /AKL_OTEL_ENABLED/);
     assert.match(instrumentation, /registerOTel/);
+    assert.match(instrumentation, /Symbol\.for\("akb\.otel\.registered"\)/);
+  });
+
+  it("preloads the compiled instrumentation hook in the standalone image", () => {
+    assert.match(telemetryBootstrap, /AKL_OTEL_ENABLED/);
+    assert.match(
+      telemetryBootstrap,
+      /require\("\.\/\.next\/server\/instrumentation\.js"\)/,
+    );
+    assert.match(telemetryBootstrap, /instrumentation\.register\(\)/);
+    assert.match(
+      dockerfile,
+      /CMD \["node", "--require", "\/app\/otel-bootstrap\.cjs", "server\.js"\]/,
+    );
   });
 
   it("does not pass OTEL_SDK_DISABLED to the Next.js runtime", () => {
