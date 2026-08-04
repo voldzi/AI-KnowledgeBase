@@ -1,3 +1,5 @@
+from datetime import date
+
 import app.api as api_module
 from app.schemas import (
     ControlledDocumentSourceType,
@@ -555,6 +557,7 @@ def test_non_overlapping_legal_versions_remain_valid_and_resolve_by_date(
 def test_controlled_document_package_and_approved_rule_are_consumable(
     client,
     admin_headers,
+    db_session,
 ):
     def published_document(title, document_type, version_label, source_uri):
         policy_binding_id = (
@@ -970,11 +973,25 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     assert body["rules"][0]["consumer_eligible"] is True
     assert "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE" in body["warnings"]
 
-    chat_headers = {
+    public_only_headers = {
         "X-AKL-Subject": "user_chat_only",
         "X-AKL-Roles": "stratos_user",
         "X-STRATOS-Capabilities": "akb:chat",
-        "X-STRATOS-Scopes": "organization:org_stratos",
+        "X-STRATOS-Scopes": "public",
+    }
+    public_only_rules = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01&consumer_view=true",
+        headers=public_only_headers,
+    )
+    assert public_only_rules.status_code == 200
+    assert public_only_rules.json()["rules"] == []
+
+    chat_headers = {
+        "X-AKL-Subject": "user_employee",
+        "X-AKL-Roles": "stratos_user",
+        "X-STRATOS-Capabilities": "akb:chat,akb:read_document",
+        "X-STRATOS-Scopes": "public,recipient_set:employee-directives",
     }
     hidden_management_packages = client.get(
         "/api/v1/controlled-documentation/packages"
@@ -982,11 +999,14 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         headers=chat_headers,
     )
     assert hidden_management_packages.status_code == 200
-    assert hidden_management_packages.json()["items"] == []
+    assert [
+        item["package_id"]
+        for item in hidden_management_packages.json()["items"]
+    ] == [package["package_id"]]
 
     chat_consumable = client.get(
         "/api/v1/controlled-documentation/rules"
-        "?domain=public_procurement&valid_on=2026-01-01",
+        "?domain=public_procurement&valid_on=2026-01-01&consumer_view=true",
         headers=chat_headers,
     )
     assert chat_consumable.status_code == 200, chat_consumable.text
@@ -996,6 +1016,109 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         "internal.market-research.threshold",
         "internal.marketplace.threshold",
     }, chat_consumable.json()
+    from app.models import AuditEvent
+
+    employee_rule_audit = (
+        db_session.query(AuditEvent)
+        .filter_by(
+            actor_id="user_employee",
+            event_type="controlled_rules.user_read",
+            resource_id="public_procurement:2026-01-01",
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .first()
+    )
+    assert employee_rule_audit is not None
+    assert employee_rule_audit.event_metadata["consumer_view"] is True
+    assert employee_rule_audit.event_metadata["rule_count"] == 2
+    assert "quoted_text" not in str(employee_rule_audit.event_metadata)
+    employee_directive_detail = client.get(
+        f"/api/v1/documents/{directive['document_id']}",
+        headers=chat_headers,
+    )
+    assert employee_directive_detail.status_code == 200, employee_directive_detail.text
+    employee_directive_versions = client.get(
+        f"/api/v1/documents/{directive['document_id']}/versions",
+        headers=chat_headers,
+    )
+    assert employee_directive_versions.status_code == 200, employee_directive_versions.text
+
+    chat_without_document_read = {
+        **chat_headers,
+        "X-STRATOS-Capabilities": "akb:chat",
+    }
+    hidden_source_detail = client.get(
+        f"/api/v1/documents/{directive['document_id']}",
+        headers=chat_without_document_read,
+    )
+    assert hidden_source_detail.status_code == 403
+    assert "CAPABILITY_MISSING" in hidden_source_detail.json()["error"]["details"][
+        "reason_codes"
+    ]
+
+    unrelated, _ = published_document(
+        "Interní pracovní podklad mimo řízené směrnice",
+        "other",
+        "1",
+        "s3://akl-documents/procurement/unrelated.docx",
+    )
+    unrelated_detail = client.get(
+        f"/api/v1/documents/{unrelated['document_id']}",
+        headers=chat_headers,
+    )
+    assert unrelated_detail.status_code == 403
+
+    from app.models import ControlledDocumentPackage, Document
+
+    stored_package = db_session.get(ControlledDocumentPackage, package["package_id"])
+    assert stored_package is not None
+    stored_directive = db_session.get(Document, directive["document_id"])
+    assert stored_directive is not None
+    stored_directive.classification = "restricted"
+    db_session.commit()
+    restricted_rules = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01&consumer_view=true",
+        headers=chat_headers,
+    )
+    assert restricted_rules.status_code == 200
+    assert restricted_rules.json()["rules"] == []
+    restricted_detail = client.get(
+        f"/api/v1/documents/{directive['document_id']}",
+        headers=chat_headers,
+    )
+    assert restricted_detail.status_code == 403
+    stored_directive.classification = "internal"
+    db_session.commit()
+
+    stored_package.package_metadata = {
+        **stored_package.package_metadata,
+        "employee_access": False,
+    }
+    db_session.commit()
+    opted_out_rules = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01&consumer_view=true",
+        headers=chat_headers,
+    )
+    assert opted_out_rules.status_code == 200
+    assert opted_out_rules.json()["rules"] == []
+    stored_package.package_metadata = {
+        key: value
+        for key, value in stored_package.package_metadata.items()
+        if key != "employee_access"
+    }
+    db_session.commit()
+
+    stored_package.effective_to = date(2025, 12, 31)
+    db_session.commit()
+    expired_source_detail = client.get(
+        f"/api/v1/documents/{directive['document_id']}",
+        headers=chat_headers,
+    )
+    assert expired_source_detail.status_code == 403
+    stored_package.effective_to = None
+    db_session.commit()
 
     legacy_extraction_response = client.post(
         "/api/v1/document-extractions",

@@ -165,6 +165,23 @@ scope PDP, protože jde o jiný resource contract. Plné `/documents*` pohledy
 zůstávají pro public-only subjekt zakázané i tehdy, když má capability
 `akb:read_document`.
 
+### Zaměstnanecké interní směrnice
+
+Scope `recipient_set:employee-directives` není organization-wide čtení. Je to
+odvozená projekce přesných verzí dokumentů, které tvoří platné vydání řízeného
+balíčku `internal_directive`. Registry současně vyžaduje aktivní identitu,
+členství a AKB grant, příslušnou capability, klasifikaci nejvýše `internal`,
+policy `INTERNAL` s organizačním publikem bez užších příjemců a nulové TLP/PAP.
+Balíček může zaměstnaneckou projekci explicitně zakázat metadatem
+`employee_access=false`.
+
+`akb:chat` dovoluje pouze deterministické použití ověřených pravidel v chatu.
+Otevření přesného zdroje nebo přílohy vyžaduje navíc `akb:read_document`.
+Nezařazený interní dokument, koncept, budoucí vydání, citlivější klasifikace,
+užší audience nebo neaktivní scope vždy končí `DENY`. Produkce nikdy nepřebírá
+tento scope z neověřené hlavičky; pochází výhradně z aktuální STRATOS access
+projection.
+
 ### Audit a idempotency service boundaries
 
 U externě zapsaného auditu je `actor_id` vždy skutečný ověřený caller subject.

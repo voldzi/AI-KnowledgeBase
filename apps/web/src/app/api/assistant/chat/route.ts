@@ -162,27 +162,6 @@ export async function POST(request: NextRequest) {
           context,
         )
         .catch(() => undefined);
-      await clients.registry.createAuditEvent(
-        {
-          actor_id: context.subjectId,
-          event_type: "assistant.controlled_rules_returned",
-          resource_type: "assistant_conversation",
-          resource_id: controlledResponse.conversation_id,
-          severity: controlledResponse.response_type === "answer" ? "info" : "warning",
-          metadata: {
-            assistant_tool: assistantRoute.tool,
-            domain: assistantRoute.controlledRuleIntent.domain,
-            valid_on: validOn,
-            response_type: controlledResponse.response_type,
-            rule_count: typeof controlledResponse.current_context.controlled_rule_count === "number"
-              ? controlledResponse.current_context.controlled_rule_count
-              : 0,
-            warning_count: controlledResponse.warnings.length,
-            warning_codes: controlledResponse.warnings.join(",").slice(0, 512),
-          },
-        },
-        context,
-      ).catch(() => undefined);
       return NextResponse.json({
         response: persistedConversation
           ? controlledResponse
