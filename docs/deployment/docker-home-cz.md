@@ -48,11 +48,9 @@ Na `docker.home.cz` připravit:
   repo/                   # volitelný legacy/maintenance checkout, ne deploy source
 ```
 
-Volitelný observability stack používá stejný immutable release a env soubor. Hodnota
-`GRAFANA_ADMIN_USER` a `GRAFANA_ADMIN_PASSWORD` musí být nastavené v
-`/srv/akl/env/akl.prod.env`, ne v Gitu. Tento účet je jen break-glass přístup.
-Cílové přihlašování Grafany používá STRATOS Keycloak realm přes klienta
-`akb-grafana`; role `stratos_admin` se mapuje na Grafana `GrafanaAdmin`.
+Produkční AKB odesílá bezpečně omezenou OpenTelemetry telemetrii do centrálního
+dohledu na `observability.home.cz`. Na `docker.home.cz` se nespouští samostatná
+Grafana, Prometheus, Tempo ani Loki.
 
 Produkční hodnoty patří mimo Git do `/srv/akl/env/akl.prod.env` s oprávněním
 `0600`. Release workflow vždy předává Docker Compose explicitní project,
@@ -93,42 +91,11 @@ Docker musí používat lokální `default` context na
 Úplný one-time bootstrap a běžný postup je v
 `docs/OPERATIONS/immutable-docker-home-release.md`.
 
-Volitelný OpenTelemetry/observability override:
-
-```bash
-docker compose \
-  --project-name akl \
-  --env-file /srv/akl/env/akl.prod.env \
-  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml \
-  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home-observability.yml \
-  config
-
-docker compose \
-  --project-name akl \
-  --env-file /srv/akl/env/akl.prod.env \
-  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml \
-  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home-observability.yml \
-  up -d tempo loki otel-collector prometheus grafana
-```
-
-Tento override přidá `otel-collector`, `tempo`, `prometheus`, `grafana` a
-`loki` pouze do Docker management sítí. OTLP collector se nevystavuje veřejně.
-Grafana je dostupná přes AKB Caddy trasu `/akb/grafana/`, pokud je override
-spuštěný. Nepřesměrovávat veřejné STRATOS aplikace přímo na Prometheus, Tempo
-nebo Loki.
-
-Před zapnutím Grafana OIDC vytvořit nebo aktualizovat Keycloak klienta:
-
-```bash
-KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
-/srv/akl/current/scripts/ensure_grafana_keycloak_client.sh
-docker compose \
-  --project-name akl \
-  --env-file /srv/akl/env/akl.prod.env \
-  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml \
-  -f /srv/akl/current/infra/docker-compose/docker-compose.docker-home-observability.yml \
-  up -d grafana
-```
+Povinné produkční klíče jsou `OTEL_SDK_DISABLED=false`, privátní
+`OTEL_EXPORTER_OTLP_ENDPOINT`, protokol `grpc` a resource atributy
+`deployment.environment=production,service.namespace=akb`. Výpadek dohledu
+nesmí zastavit aplikaci; export probíhá asynchronně. Podrobný provozní postup je
+v `docs/OPERATIONS/central-observability.md`.
 
 ## 2. PostgreSQL
 

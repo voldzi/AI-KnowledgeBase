@@ -1,0 +1,86 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {"asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": true, "title": "AKB", "type": "link", "url": "https://stratos.zeleznalady.cz/akb/"}
+  ],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "red", "text": "NEDOSTUPNÉ"}, "1": {"color": "green", "text": "OK"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0}, "id": 1,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "probe_success{job=\"docker-app-health-blackbox\",service=\"akb-health\"}", "instant": true, "legendFormat": "health", "range": false, "refId": "A"}],
+      "title": "Veřejná dostupnost", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "red", "text": "NEPŘIPRAVENO"}, "1": {"color": "green", "text": "PŘIPRAVENO"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0}, "id": 2,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "probe_success{job=\"docker-app-health-blackbox\",service=\"akb-ready\"}", "instant": true, "legendFormat": "ready", "range": false, "refId": "A"}],
+      "title": "Připravenost závislostí", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0}, "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"editorMode": "code", "expr": "sum(rate(traces_span_metrics_calls_total{service_name=~\"akb-.*\"}[5m]))", "instant": false, "legendFormat": "requests", "range": true, "refId": "A"}],
+      "title": "Požadavky AKB", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5000}, {"color": "red", "value": 10000}]}, "unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0}, "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"akb-(web|chat-web)\",span_name=\"akb.assistant.chat\"}[10m])))", "instant": false, "legendFormat": "p95", "range": true, "refId": "A"}],
+      "title": "Chat p95", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5}, "id": 5,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "sum by (service_name) (rate(traces_span_metrics_calls_total{service_name=~\"akb-.*\"}[5m]))", "legendFormat": "{{service_name}}", "range": true, "refId": "A"}],
+      "title": "Provoz podle služby", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5}, "id": 6,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"akb-.*\"}[10m])))", "legendFormat": "{{service_name}}", "range": true, "refId": "A"}],
+      "title": "p95 podle služby", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14}, "id": 7,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "sum by (service_name, http_status_code) (rate(traces_span_metrics_calls_total{service_name=~\"akb-.*\",http_status_code=~\"4..|5..\"}[5m]))", "legendFormat": "{{service_name}} / {{http_status_code}}", "range": true, "refId": "A"}],
+      "title": "Chybové odpovědi", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "obs-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14}, "id": 8,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "sum by (receiver, transport) (rate(otelcol_receiver_accepted_spans_total{receiver=\"otlp\"}[5m]))", "legendFormat": "{{receiver}} / {{transport}}", "range": true, "refId": "A"}],
+      "title": "Příjem tras", "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["akb", "observability", "performance"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "AKB – výkon a dostupnost",
+  "uid": "akb-central-overview",
+  "version": 1,
+  "weekStart": ""
+}

@@ -18,6 +18,7 @@ import {
   persistedDirectorCopilotV2Response,
 } from "@/lib/director-copilot-v2/history";
 import { isAklLanguage } from "@/lib/language";
+import { withServerSpan } from "@/lib/observability/server-tracing";
 import {
   buildRegistryDocumentReport,
   buildRegistryDocumentReportFromSummary,
@@ -40,6 +41,21 @@ import { assistantBridgeError, badAssistantRequest, unauthorizedAssistantRequest
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  return withServerSpan(
+    "akb.assistant.chat",
+    {
+      "akb.operation": "assistant_chat",
+      "akb.channel": process.env.AKL_WEB_PROFILE === "chat" ? "chat" : "workspace",
+    },
+    async (span) => {
+      const response = await handlePost(request);
+      span.setAttribute("http.response.status_code", response.status);
+      return response;
+    },
+  );
+}
+
+async function handlePost(request: NextRequest) {
   try {
     const body = await request.json();
     const context = await getOptionalServerRequestContext(request);

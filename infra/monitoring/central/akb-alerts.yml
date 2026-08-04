@@ -1,0 +1,52 @@
+groups:
+  - name: akb-central
+    rules:
+      - alert: AkbPublicHealthUnavailable
+        expr: probe_success{job="docker-app-health-blackbox",service="akb-health"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: akb
+        annotations:
+          summary: "AKB není veřejně dostupné"
+          description: "Centrální sonda nedokáže dvě minuty načíst veřejný health endpoint AKB."
+
+      - alert: AkbPublicReadinessUnavailable
+        expr: probe_success{job="docker-app-health-blackbox",service="akb-ready"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "AKB není připravené obsluhovat celý provoz"
+          description: "Centrální sonda pět minut nedokáže načíst dependency-aware ready endpoint AKB."
+
+      - alert: AkbTelemetryRejected
+        expr: increase(otelcol_receiver_refused_spans_total{receiver="otlp"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "Centrální Collector odmítá telemetry"
+          description: "OTLP receiver odmítl během posledních pěti minut alespoň jeden span."
+
+      - alert: AkbChatServerErrors
+        expr: sum(rate(traces_span_metrics_calls_total{service_name=~"akb-(web|chat-web)",http_route=~".*/api/assistant/chat",http_status_code=~"5.."}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "AKB chat vrací serverové chyby"
+          description: "Chatová cesta vrací HTTP 5xx alespoň pět minut."
+
+      - alert: AkbChatLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~"akb-(web|chat-web)",span_name="akb.assistant.chat"}[10m]))) > 10000
+        for: 10m
+        labels:
+          severity: warning
+          service: akb
+        annotations:
+          summary: "AKB chat má vysokou odezvu"
+          description: "p95 celé chatové cesty je déle než deset minut nad 10 sekund."
