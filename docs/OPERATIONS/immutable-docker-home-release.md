@@ -545,6 +545,15 @@ curl -fsS https://stratos.zeleznalady.cz/akb/api/health
 curl -fsS https://stratos.zeleznalady.cz/akb/api/ready
 ```
 
+The AKB lock serializes AKB releases only; `docker.home.cz` also hosts STRATOS
+services and routes used by AKB readiness. Before entering the immutable build
+boundary, inspect the host for a live STRATOS or other application deployment
+and its lock. Do not start AKB while another release is recreating shared
+upstreams or proxies. Wait until that release is complete, then require both
+public AKB probes above to pass before continuing. A temporarily unavailable
+upstream during another deployment is not a reason to weaken the AKB readiness
+gate.
+
 ## Deploy An Exact SHA
 
 Set `RELEASE_SHA` to the approved full SHA and invoke the script from the last
