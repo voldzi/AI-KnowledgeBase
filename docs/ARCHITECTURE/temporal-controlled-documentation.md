@@ -163,6 +163,15 @@ reason kód nebo nedostupná autorizační služba znamená fail-closed. Aplikac
 zobrazit vysvětlení uživateli, ale nesmí dopočítat limit ani nahradit pravidlo
 konfigurační konstantou.
 
+Chat při obecném dotazu na limity VZMR nejprve vyžaduje dvě autoritativní
+zákonné hodnoty: limit pro dodávky a služby a limit pro stavební práce. Interní
+směrnice se nesmí tvářit jako náhrada zákonného limitu; zobrazuje se odděleně
+jako doplňující postup nebo přísnější interní pravidlo. Dotaz na zákon v
+navazujícím kontextu zůstává v tomto řízeném katalogu a nesmí přepadnout do
+obecného dokumentového RAG. Pokud zákon existuje pouze jako uložený dokument,
+ale nebyl převeden do právního balíčku, citovaně vytěžen a schválen gestorem,
+chat vrátí bezpečný stav bez odpovědi.
+
 Veřejné zakázky používají uzavřený katalog `normative_key`. Známé aliasy jsou
 před porovnáním kanonizované, takže například oddělené klíče pro dodávky a
 služby sdílejí zákonný klíč VZMR. Balíček nelze nově vyhlásit jako platný,

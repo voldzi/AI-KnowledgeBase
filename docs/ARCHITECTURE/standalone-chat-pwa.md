@@ -428,6 +428,10 @@ DNS alias bez samostatného aplikačního profilu se nepovažuje za dokončené
   omezeném spodním panelu;
 - editor dotazu zůstává dostupný při zobrazení softwarové klávesnice;
 - seznam konverzací a citace lze ovládat klávesnicí;
+- na desktopu lze seznam vláken a panel zdrojů samostatně skrýt a znovu otevřít;
+- šířku obou desktopových panelů lze měnit myší, dotykem i klávesami; zvolená
+  šířka a viditelnost se ukládají pouze jako neobsahová lokální preference;
+- skrytí panelu přesune focus na ovládací prvek, kterým jej lze znovu zobrazit;
 - focus se po zavření panelu nebo dialogu vrací na spouštěcí prvek;
 - stavy loading, offline, chyba, restricted a no-answer jsou srozumitelné i bez
   barvy.

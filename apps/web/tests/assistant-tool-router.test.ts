@@ -33,6 +33,18 @@ describe("assistant tool router", () => {
     assert.equal(route.controlledRuleIntent?.validOn, "2026-08-03");
   });
 
+  it("keeps a statutory-source follow-up in the governed domain", () => {
+    const route = routeAssistantMessage("A co zákon?", "cs", {
+      answer_source: "controlled_rules",
+      controlled_rule_domain: "public_procurement",
+      controlled_rule_valid_on: "2026-08-03",
+    });
+
+    assert.equal(route.tool, "controlled_rule_answer");
+    assert.equal(route.controlledRuleIntent?.domain, "public_procurement");
+    assert.equal(route.controlledRuleIntent?.validOn, "2026-08-03");
+  });
+
   it("recognizes a governed procurement concept without requiring the formal domain name", () => {
     const route = routeAssistantMessage(
       "Jaký limit platí pro průzkum trhu a kolik nabídek je potřeba?",

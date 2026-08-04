@@ -509,10 +509,29 @@ button {
 }
 
 .akb-chat-app {
+  --akb-chat-source-resizer-track: 14px;
+  --akb-chat-source-track: var(--akb-chat-source-width, 340px);
+  --akb-chat-thread-resizer-track: 14px;
+  --akb-chat-thread-track: var(--akb-chat-thread-width, 268px);
   display: grid;
-  gap: 14px;
-  grid-template-columns: 268px minmax(420px, 1fr) minmax(300px, 360px);
+  grid-template-columns:
+    var(--akb-chat-thread-track)
+    var(--akb-chat-thread-resizer-track)
+    minmax(420px, 1fr)
+    var(--akb-chat-source-resizer-track)
+    var(--akb-chat-source-track);
   min-height: calc(100vh - 104px);
+  row-gap: 14px;
+}
+
+.akb-chat-app.is-threads-closed {
+  --akb-chat-thread-resizer-track: 0px;
+  --akb-chat-thread-track: 0px;
+}
+
+.akb-chat-app.is-sources-closed {
+  --akb-chat-source-resizer-track: 0px;
+  --akb-chat-source-track: 0px;
 }
 
 .akb-employee-portal-shell {
@@ -772,6 +791,83 @@ button {
 }
 
 .akb-chat-sidebar {
+  grid-column: 1;
+}
+
+.akb-chat-main {
+  grid-column: 3;
+}
+
+.akb-chat-context {
+  grid-column: 5;
+}
+
+.akb-chat-app.is-threads-closed .akb-chat-sidebar,
+.akb-chat-app.is-threads-closed .akb-chat-panel-resizer--threads,
+.akb-chat-app.is-sources-closed .akb-chat-context,
+.akb-chat-app.is-sources-closed .akb-chat-panel-resizer--sources {
+  display: none;
+}
+
+.akb-chat-panel-resizer {
+  align-items: center;
+  align-self: stretch;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+  min-height: 64px;
+  padding: 0;
+  touch-action: none;
+  width: 100%;
+}
+
+.akb-chat-panel-resizer--threads {
+  grid-column: 2;
+}
+
+.akb-chat-panel-resizer--sources {
+  grid-column: 4;
+}
+
+.akb-chat-panel-resizer::before {
+  background: var(--border);
+  border-radius: 2px;
+  content: "";
+  height: 56px;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 2px;
+}
+
+.akb-chat-panel-resizer {
+  position: relative;
+}
+
+.akb-chat-panel-resizer svg {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  position: relative;
+  z-index: 1;
+}
+
+.akb-chat-panel-resizer:hover::before,
+.akb-chat-panel-resizer:focus-visible::before,
+.akb-chat-panel-resizer.is-resizing::before {
+  background: var(--accent);
+  width: 3px;
+}
+
+.akb-chat-panel-resizer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.akb-chat-sidebar {
   align-content: start;
   display: grid;
   gap: 12px;
@@ -786,7 +882,7 @@ button {
 }
 
 .akb-chat-sidebar__close {
-  display: none;
+  display: inline-flex;
   margin-left: auto;
 }
 
@@ -1821,6 +1917,10 @@ button {
   margin-top: 2px;
 }
 
+.akb-chat-context__close {
+  flex: 0 0 auto;
+}
+
 .akb-chat-context__body {
   display: grid;
   gap: 10px;
@@ -2061,17 +2161,30 @@ button {
   .akb-chat-mobile-toolbar .akb-chat-mobile-threads {
     display: none;
   }
+
+  .akb-chat-app.is-threads-closed .akb-chat-mobile-toolbar .akb-chat-mobile-threads {
+    display: inline-flex;
+  }
 }
 
-@media (max-width: 1240px) {
+@media (max-width: 1320px) {
   .akb-chat-app {
-    grid-template-columns: 250px minmax(0, 1fr);
+    --akb-chat-source-resizer-track: 0px;
+    grid-template-columns:
+      var(--akb-chat-thread-track)
+      var(--akb-chat-thread-resizer-track)
+      minmax(0, 1fr);
   }
 
   .akb-chat-context {
-    grid-column: 1 / -1;
+    grid-column: 1 / 4;
     max-height: none;
     position: static;
+  }
+
+  .akb-chat-panel-resizer--sources,
+  .akb-chat-context__close {
+    display: none;
   }
 }
 
@@ -2093,6 +2206,7 @@ button {
   }
 
   .akb-chat-main {
+    grid-column: 1;
     grid-row: 1;
     grid-template-areas: "header" "transcript" "status" "composer";
     grid-template-rows: auto minmax(0, 1fr) auto auto;
@@ -2115,11 +2229,19 @@ button {
     z-index: 45;
   }
 
+  .akb-chat-app.is-threads-closed .akb-chat-sidebar.is-mobile-open {
+    display: grid;
+  }
+
   .akb-chat-sidebar__close {
     display: inline-flex;
   }
 
   .akb-chat-context {
+    display: none;
+  }
+
+  .akb-chat-panel-resizer {
     display: none;
   }
 

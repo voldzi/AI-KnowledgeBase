@@ -14,7 +14,9 @@ export interface ControlledRuleIntent {
 }
 
 const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e|ych|ou)\s+zakaz|\bvzmr\b|zadáván(?:í|i)\s+zakáz|zadavani\s+zakaz|průzkum\s+trhu|pruzkum\s+trhu|elektronick\w*\s+tržišt|elektronick\w*\s+trzist|profil\w*\s+zadavatele|registr\w*\s+smluv|přím\w*\s+nákup|prim\w*\s+nakup|public\s+procurement)/i;
-const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim)/i;
+const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim|zákon|zakon|legislativ|právn|pravn)/i;
+const LEGAL_SOURCE_RE = /(?:zákon|zakon|zákonn|zakonn|legislativ|právn|pravn)/i;
+const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*\s+pravidl|vnitřn|vnitrn)/i;
 
 const CONSUMER_BLOCKING_WARNINGS = new Set([
   "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
@@ -164,12 +166,12 @@ export function buildControlledRuleAssistantResponse(input: {
     current_context: {
       ...baseContext,
       controlled_rule_ids: matching.map((item) => item.rule.proposal.rule_id),
+      controlled_rule_normative_keys: matching.map((item) => item.rule.proposal.normative_key),
+      controlled_rule_source_types: [...new Set(matching.map((item) => item.rule.source_type))],
       controlled_rule_count: matching.length,
     },
     citations,
-    follow_up_questions: input.language === "en"
-      ? ["Which evidence is required?", "Which exceptions apply?"]
-      : ["Jaké doklady jsou vyžadovány?", "Jaké výjimky se uplatní?"],
+    follow_up_questions: controlledRuleFollowUps(matching.map((item) => item.rule), input.language),
     suggested_actions: [],
     report_artifacts: [],
     confidence: matching.every((item) => item.rule.proposal.confidence >= 0.85) ? "high" : "medium",
@@ -214,6 +216,8 @@ function selectMatchingRules(message: string, rules: ControlledRule[]) {
 function targetedNormativeKeys(message: string) {
   const value = normalized(message);
   const keys = new Set<string>();
+  const asksForLaw = LEGAL_SOURCE_RE.test(message);
+  const asksForInternalRule = INTERNAL_SOURCE_RE.test(message);
   if (/pruzkum\w*\s+trh/.test(value)) {
     keys.add("public_procurement.market_research.threshold");
     if (/nabid|dodavatel|kolik/.test(value)) {
@@ -253,10 +257,15 @@ function targetedNormativeKeys(message: string) {
   if (/prvn\w*\s+kategor|(?:^|\s)1\.?(?:\s+|$)kategor/.test(value)) {
     keys.add("public_procurement.internal_category_1.upper_threshold");
   }
-  if (/\bvzmr\b/.test(value) && /stavebn/.test(value)) {
-    keys.add("public_procurement.vzmr.works.threshold");
-  } else if (/\bvzmr\b/.test(value) && /dodav|sluzb/.test(value)) {
-    keys.add("public_procurement.vzmr.supplies_services.threshold");
+  if ((/\bvzmr\b/.test(value) && !asksForInternalRule) || asksForLaw) {
+    if (/stavebn/.test(value)) {
+      keys.add("public_procurement.vzmr.works.threshold");
+    } else if (/dodav|sluzb/.test(value)) {
+      keys.add("public_procurement.vzmr.supplies_services.threshold");
+    } else {
+      keys.add("public_procurement.vzmr.supplies_services.threshold");
+      keys.add("public_procurement.vzmr.works.threshold");
+    }
   }
   if (/vyjim/.test(value)) keys.add("public_procurement.exception.conditions");
   if (/povinn\w*\s+dokument|jake\s+doklad/.test(value)) {
@@ -297,21 +306,57 @@ function controlledRuleAnswerText(
   result: ControlledRuleList,
   language: ResponseLanguage,
 ) {
-  const heading = language === "en"
-    ? `Verified rules effective on ${result.valid_on}:`
-    : `Ověřená pravidla účinná k ${formatDate(result.valid_on, language)}:`;
-  const lines = rules.map((rule) => {
-    const value = formattedRuleValue(rule);
-    const title = ruleTitle(rule, language);
-    const fallback = conciseText(rule.proposal.conditions[0] ?? rule.proposal.title);
-    return `- **${title}:** ${value ? `**${value}**` : fallback}`;
-  });
+  const statutoryRules = rules.filter(isStatutoryRule);
+  const internalRules = rules.filter((rule) => !isStatutoryRule(rule));
+  const sections: string[] = [];
+  if (statutoryRules.length > 0) {
+    sections.push(
+      language === "en"
+        ? `Statutory limits effective on ${result.valid_on}:`
+        : `Zákonné limity účinné k ${formatDate(result.valid_on, language)}:`,
+      ...statutoryRules.map((rule) => controlledRuleLine(rule, language)),
+    );
+  }
+  if (internalRules.length > 0) {
+    if (sections.length > 0) sections.push("");
+    sections.push(
+      language === "en"
+        ? "Supplementary internal rules:"
+        : "Doplňující interní pravidla:",
+      ...internalRules.map((rule) => controlledRuleLine(rule, language)),
+    );
+  }
   const stale = result.warnings.includes("SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE")
     ? language === "en"
       ? "\nThe source review date has passed; the document owner should confirm that it is still current."
       : "\nTermín revize zdroje uplynul; gestor má potvrdit jeho aktuálnost."
     : "";
-  return [heading, ...lines].join("\n") + stale;
+  return sections.join("\n") + stale;
+}
+
+function controlledRuleLine(rule: ControlledRule, language: ResponseLanguage) {
+  const value = formattedRuleValue(rule);
+  const title = ruleTitle(rule, language);
+  const fallback = conciseText(rule.proposal.conditions[0] ?? rule.proposal.title);
+  return `- **${title}:** ${value ? `**${value}**` : fallback}`;
+}
+
+function isStatutoryRule(rule: ControlledRule) {
+  return rule.source_type === "law"
+    || rule.source_type === "implementing_regulation"
+    || rule.precedence_status === "authoritative";
+}
+
+function controlledRuleFollowUps(rules: ControlledRule[], language: ResponseLanguage) {
+  const hasStatutoryRule = rules.some(isStatutoryRule);
+  if (language === "en") {
+    return hasStatutoryRule
+      ? ["Which internal procedures supplement these limits?", "Which evidence is required?"]
+      : ["Which statutory VZMR limits apply?", "Which exceptions apply?"];
+  }
+  return hasStatutoryRule
+    ? ["Jaké interní postupy tyto limity doplňují?", "Jaké doklady jsou vyžadovány?"]
+    : ["Jaké zákonné limity VZMR platí?", "Jaké výjimky se uplatní?"];
 }
 
 function formattedRuleValue(rule: ControlledRule) {
