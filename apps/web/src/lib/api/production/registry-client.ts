@@ -332,6 +332,7 @@ export class ProductionRegistryClient implements RegistryApiClient {
       validOn?: string;
       approvedOnly?: boolean;
       includeInactive?: boolean;
+      consumerView?: boolean;
     } = {}
   ): Promise<ControlledRuleList> {
     const params = new URLSearchParams({ domain });
@@ -341,6 +342,9 @@ export class ProductionRegistryClient implements RegistryApiClient {
     }
     if (options.includeInactive !== undefined) {
       params.set("include_inactive", String(options.includeInactive));
+    }
+    if (options.consumerView !== undefined) {
+      params.set("consumer_view", String(options.consumerView));
     }
     return this.get<ControlledRuleList>(
       `/controlled-documentation/rules?${params.toString()}`,

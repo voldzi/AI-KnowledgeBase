@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
           request.nextUrl.searchParams.get("approved_only") !== "false",
         includeInactive:
           request.nextUrl.searchParams.get("include_inactive") === "true",
+        consumerView:
+          request.nextUrl.searchParams.get("consumer_view") === "true",
       },
     );
     return NextResponse.json(result);

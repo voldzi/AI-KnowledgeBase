@@ -13,8 +13,38 @@ export interface ControlledRuleIntent {
   validOn: string | null;
 }
 
-const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e|ych|ou)\s+zakaz|\bvzmr\b|zadáván(?:í|i)\s+zakáz|zadavani\s+zakaz|public\s+procurement)/i;
-const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim)/i;
+const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e|ych|ou)\s+zakaz|\bvzmr\b|zadáván(?:í|i)\s+zakáz|zadavani\s+zakaz|průzkum\s+trhu|pruzkum\s+trhu|elektronick\w*\s+tržišt|elektronick\w*\s+trzist|profil\w*\s+zadavatele|registr\w*\s+smluv|přím\w*\s+nákup|prim\w*\s+nakup|public\s+procurement)/i;
+const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim)/i;
+
+const CONSUMER_BLOCKING_WARNINGS = new Set([
+  "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
+  "CONTROLLED_RULE_PACKAGE_COORDINATES_MISMATCH",
+  "CONTROLLED_RULE_CITATION_OUTSIDE_PACKAGE",
+  "CONTROLLED_RULE_EDIT_INVALID",
+  "CONTROLLED_RULE_NORMATIVE_KEY_UNKNOWN",
+  "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH",
+  "SOURCE_REVIEW_DATE_INVALID",
+]);
+
+const RULE_LABELS_CS: Record<string, string> = {
+  "public_procurement.vzmr.supplies_services.threshold": "Limit VZMR pro dodávky a služby",
+  "public_procurement.vzmr.works.threshold": "Limit VZMR pro stavební práce",
+  "public_procurement.internal_category_1.upper_threshold": "Horní limit interní kategorie VZMR I",
+  "public_procurement.direct_purchase.threshold": "Limit přímého nákupu",
+  "public_procurement.market_research.threshold": "Limit průzkumu trhu",
+  "public_procurement.marketplace.threshold": "Limit elektronického tržiště",
+  "public_procurement.central_evidence.threshold": "Limit centrální evidence veřejných zakázek",
+  "public_procurement.publication.contract_register.threshold": "Limit zveřejnění v registru smluv",
+  "public_procurement.publication.contracting_profile.threshold": "Limit zveřejnění na profilu zadavatele",
+  "public_procurement.supplier_quotes.minimum_count": "Minimální počet nabídek",
+  "public_procurement.nen.registration.required": "Povinnost použít NEN",
+  "public_procurement.contract.written_form.threshold": "Limit písemné smlouvy",
+  "public_procurement.contract.amendment.approval_threshold": "Limit schválení dodatku",
+  "public_procurement.approval.workflow": "Schvalovací postup",
+  "public_procurement.exception.conditions": "Podmínky výjimky",
+  "public_procurement.documentation.required": "Povinná dokumentace",
+  "public_procurement.retention.period": "Doba uchování dokumentace",
+};
 
 const CZECH_STOP_WORDS = new Set([
   "a", "ale", "co", "do", "je", "jaky", "jake", "jakou", "kdo", "ma",
@@ -51,6 +81,29 @@ export function buildControlledRuleAssistantResponse(input: {
   language: ResponseLanguage;
   result: ControlledRuleList;
 }): AssistantChatResponse {
+  const blockingWarnings = input.result.warnings.filter((warning) =>
+    CONSUMER_BLOCKING_WARNINGS.has(warning)
+  );
+  if (blockingWarnings.length > 0) {
+    return emptyResponse({
+      conversationId: input.conversationId,
+      language: input.language,
+      context: {
+        ...input.context,
+        answer_source: "controlled_rules",
+        controlled_rule_domain: input.result.domain,
+        controlled_rule_valid_on: input.result.valid_on,
+      },
+      confidence: "conflicting_sources",
+      warnings: [...input.result.warnings, "CONTROLLED_RULE_CONFLICT"],
+      message: input.language === "en"
+        ? "The governed rule set is not decision-ready and must be reviewed by the document owner."
+        : "Ověřená pravidla nejsou v rozhodnutelném stavu a musí je posoudit gestor dokumentace.",
+      missingInformation: input.language === "en"
+        ? "A conflict-free governed rule set is unavailable."
+        : "Chybí bezrozporná sada ověřených pravidel.",
+    });
+  }
   const eligible = input.result.rules.filter(
     (rule) => rule.consumer_eligible
       && ["accepted", "edited"].includes(rule.verification_status)
@@ -59,7 +112,7 @@ export function buildControlledRuleAssistantResponse(input: {
   const matchingConflicts = rankedRules(input.message, input.result.rules.filter(
     (rule) => rule.precedence_status === "conflict",
   ));
-  const matching = rankedRules(input.message, eligible).slice(0, 6);
+  const matching = selectMatchingRules(input.message, eligible);
   const baseContext = {
     ...input.context,
     answer_source: "controlled_rules",
@@ -128,10 +181,88 @@ export function buildControlledRuleAssistantResponse(input: {
 
 function rankedRules(message: string, rules: ControlledRule[]) {
   const queryTokens = meaningfulTokens(message);
+  const preferredKeys = targetedNormativeKeys(message);
   return rules
-    .map((rule) => ({ rule, score: ruleScore(rule, queryTokens) }))
+    .map((rule) => ({
+      rule,
+      score: ruleScore(rule, queryTokens)
+        + (preferredKeys.has(rule.proposal.normative_key) ? 40 : 0),
+    }))
     .filter((item) => item.score > 0)
     .sort((left, right) => right.score - left.score || right.rule.authority_rank - left.rule.authority_rank);
+}
+
+function selectMatchingRules(message: string, rules: ControlledRule[]) {
+  const preferredKeys = targetedNormativeKeys(message);
+  const normalizedMessage = normalized(message);
+  const allLimits = /\b(?:vsechny|prehled|seznam)\b/.test(normalizedMessage)
+    && /\b(?:limit|castk|hranic)\w*\b/.test(normalizedMessage);
+  const candidates = preferredKeys.size > 0
+    ? rules.filter((rule) => preferredKeys.has(rule.proposal.normative_key))
+    : allLimits
+      ? rules.filter((rule) => rule.proposal.category === "financial_limit")
+      : rules;
+  const ranked = rankedRules(message, candidates);
+  if (allLimits) return ranked.slice(0, 10);
+  if (preferredKeys.size > 0) return ranked.slice(0, Math.min(preferredKeys.size, 4));
+  const topScore = ranked[0]?.score ?? 0;
+  return ranked
+    .filter((item) => item.score >= Math.max(4, Math.ceil(topScore * 0.65)))
+    .slice(0, 4);
+}
+
+function targetedNormativeKeys(message: string) {
+  const value = normalized(message);
+  const keys = new Set<string>();
+  if (/pruzkum\w*\s+trh/.test(value)) {
+    keys.add("public_procurement.market_research.threshold");
+    if (/nabid|dodavatel|kolik/.test(value)) {
+      keys.add("public_procurement.supplier_quotes.minimum_count");
+    }
+    if (/vyjim/.test(value)) keys.add("public_procurement.exception.conditions");
+    if (/kdy|postup|schval/.test(value)) keys.add("public_procurement.approval.workflow");
+  }
+  if (/nabid|dodavatel/.test(value)) {
+    keys.add("public_procurement.supplier_quotes.minimum_count");
+  }
+  if (/elektronick\w*\s+trzist/.test(value)) {
+    keys.add("public_procurement.marketplace.threshold");
+  }
+  if (/\bnen\b/.test(value)) keys.add("public_procurement.nen.registration.required");
+  if (/centraln\w*\s+evidenc/.test(value)) {
+    keys.add("public_procurement.central_evidence.threshold");
+  }
+  if (/registr\w*\s+smluv/.test(value)) {
+    keys.add("public_procurement.publication.contract_register.threshold");
+  }
+  if (/profil\w*\s+zadavatel/.test(value)) {
+    keys.add("public_procurement.publication.contracting_profile.threshold");
+  }
+  if (/pisemn\w*\s+smlouv|najemn\w*\s+smlouv/.test(value)) {
+    keys.add("public_procurement.contract.written_form.threshold");
+  }
+  if (/dodat\w*.*schval|schval\w*.*dodat/.test(value)) {
+    keys.add("public_procurement.contract.amendment.approval_threshold");
+  }
+  if (/uchov|archiv|retenc/.test(value)) {
+    keys.add("public_procurement.retention.period");
+  }
+  if (/prim\w*\s+nakup/.test(value)) {
+    keys.add("public_procurement.direct_purchase.threshold");
+  }
+  if (/prvn\w*\s+kategor|(?:^|\s)1\.?(?:\s+|$)kategor/.test(value)) {
+    keys.add("public_procurement.internal_category_1.upper_threshold");
+  }
+  if (/\bvzmr\b/.test(value) && /stavebn/.test(value)) {
+    keys.add("public_procurement.vzmr.works.threshold");
+  } else if (/\bvzmr\b/.test(value) && /dodav|sluzb/.test(value)) {
+    keys.add("public_procurement.vzmr.supplies_services.threshold");
+  }
+  if (/vyjim/.test(value)) keys.add("public_procurement.exception.conditions");
+  if (/povinn\w*\s+dokument|jake\s+doklad/.test(value)) {
+    keys.add("public_procurement.documentation.required");
+  }
+  return keys;
 }
 
 function ruleScore(rule: ControlledRule, queryTokens: string[]) {
@@ -171,9 +302,9 @@ function controlledRuleAnswerText(
     : `Ověřená pravidla účinná k ${formatDate(result.valid_on, language)}:`;
   const lines = rules.map((rule) => {
     const value = formattedRuleValue(rule);
-    const conditions = rule.proposal.conditions.filter(Boolean).slice(0, 2);
-    const detail = conditions.length > 0 ? ` ${conditions.join(" ")}` : "";
-    return `- **${rule.proposal.title}**${value ? `: **${value}**` : "."}${detail}`;
+    const title = ruleTitle(rule, language);
+    const fallback = conciseText(rule.proposal.conditions[0] ?? rule.proposal.title);
+    return `- **${title}:** ${value ? `**${value}**` : fallback}`;
   });
   const stale = result.warnings.includes("SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE")
     ? language === "en"
@@ -186,15 +317,66 @@ function controlledRuleAnswerText(
 function formattedRuleValue(rule: ControlledRule) {
   const value = rule.proposal.value;
   if (value === null || value === undefined || value === "") return "";
+  const key = rule.proposal.normative_key;
+  if (typeof value === "number" && key === "public_procurement.supplier_quotes.minimum_count") {
+    return `nejméně ${value} ${czechOfferUnit(value)}`;
+  }
+  if (typeof value === "number" && key === "public_procurement.retention.period") {
+    return `${value} ${czechYearUnit(value)}`;
+  }
   const rendered = typeof value === "number"
     ? new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 2 }).format(value)
     : typeof value === "string"
-      ? value
+      ? conciseText(value)
       : JSON.stringify(value);
-  const suffix = [rule.proposal.currency, rule.proposal.unit]
-    .filter((item, index, all): item is string => Boolean(item) && all.indexOf(item) === index)
-    .join(" ");
-  return `${rendered}${suffix ? ` ${suffix}` : ""}`;
+  const currency = normalizedCurrency(rule.proposal.currency, rule.proposal.unit);
+  const unit = humanUnit(rule.proposal.unit, rule.proposal.currency);
+  const vat = vatLabel(rule.proposal.vat_basis);
+  return [rendered, currency, unit, vat].filter(Boolean).join(" ");
+}
+
+function ruleTitle(rule: ControlledRule, language: ResponseLanguage) {
+  if (language === "cs") {
+    return RULE_LABELS_CS[rule.proposal.normative_key] ?? conciseText(rule.proposal.title, 120);
+  }
+  return conciseText(rule.proposal.title, 120);
+}
+
+function normalizedCurrency(currency: string | null, unit: string | null) {
+  const value = normalized(currency ?? "");
+  const unitValue = normalized(unit ?? "");
+  return value === "czk" || value === "kc" || unitValue === "czk" ? "Kč" : currency ?? "";
+}
+
+function humanUnit(unit: string | null, currency: string | null) {
+  if (!unit) return "";
+  const value = normalized(unit);
+  if (["currency", "czk", "count", "let", "year", "years"].includes(value)) return "";
+  if (currency && normalized(currency) === value) return "";
+  return unit;
+}
+
+function vatLabel(value: string) {
+  if (["including_vat", "with_vat"].includes(value)) return "včetně DPH";
+  if (["excluding_vat", "without_vat"].includes(value)) return "bez DPH";
+  return "";
+}
+
+function czechOfferUnit(value: number) {
+  if (value === 1) return "nabídku";
+  if (value >= 2 && value <= 4) return "nabídky";
+  return "nabídek";
+}
+
+function czechYearUnit(value: number) {
+  if (value === 1) return "rok";
+  if (value >= 2 && value <= 4) return "roky";
+  return "let";
+}
+
+function conciseText(value: string, limit = 320) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length <= limit ? compact : `${compact.slice(0, limit - 1).trimEnd()}…`;
 }
 
 function citationForRule(rule: ControlledRule, result: ControlledRuleList): Citation {

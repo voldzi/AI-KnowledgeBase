@@ -693,6 +693,7 @@ export class MockRegistryClient implements RegistryApiClient {
       validOn?: string;
       approvedOnly?: boolean;
       includeInactive?: boolean;
+      consumerView?: boolean;
     } = {},
   ): Promise<ControlledRuleList> {
     return {

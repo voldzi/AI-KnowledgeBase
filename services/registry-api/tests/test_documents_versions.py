@@ -997,6 +997,108 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         "internal.marketplace.threshold",
     }, chat_consumable.json()
 
+    legacy_extraction_response = client.post(
+        "/api/v1/document-extractions",
+        headers=admin_headers,
+        json={
+            "tenant_id": "org_stratos",
+            "external_system": "STRATOS_PLATFORM",
+            "external_ref": package["package_id"],
+            "entity_type": "controlled_document_package",
+            "entity_id": package["package_id"],
+            "document_id": directive["document_id"],
+            "document_version_id": directive_version["document_version_id"],
+            "profile": "controlled_document_rules_v1",
+            "profile_version": "2",
+            "status": "PROPOSED",
+            "classification": "internal",
+            "requested_by": "user_admin",
+            "result": {
+                "domain": "public_procurement",
+                "package_id": package["package_id"],
+                "rules": [
+                    {
+                        "rule_id": "legacy.market-research.threshold",
+                        "normative_key": (
+                            "public_procurement.market_research.threshold"
+                        ),
+                        "category": "financial_limit",
+                        "title": "Historický návrh limitu",
+                        "value": 99000,
+                        "unit": "CZK",
+                        "currency": "CZK",
+                        "vat_basis": "including_vat",
+                        "conditions": [],
+                        "exceptions": [],
+                        "responsible_roles": [],
+                        "required_evidence": [],
+                        "confidence": 0.8,
+                        "citation": {
+                            "document_id": directive["document_id"],
+                            "document_version_id": directive_version[
+                                "document_version_id"
+                            ],
+                            "chunk_id": "chunk_legacy_threshold",
+                            "section_path": ["Historický návrh"],
+                            "page_number": 1,
+                            "quoted_text": "Historický návrh 99 000 Kč.",
+                        },
+                    }
+                ],
+            },
+        },
+    )
+    assert legacy_extraction_response.status_code == 201
+    legacy_extraction = legacy_extraction_response.json()["extraction"]
+    accepted_legacy = client.post(
+        f"/api/v1/document-extractions/{legacy_extraction['extraction_id']}/feedback",
+        headers=admin_headers,
+        json={
+            "field": "rules.legacy.market-research.threshold",
+            "ai_value": 99000,
+            "final_value": 99000,
+            "decision": "accepted",
+            "actor": "user_admin",
+            "source_app": "STRATOS_PLATFORM",
+            "source_entity_id": package["package_id"],
+        },
+    )
+    assert accepted_legacy.status_code == 201, accepted_legacy.text
+
+    broad_rules = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01",
+        headers=chat_headers,
+    )
+    assert broad_rules.status_code == 200, broad_rules.text
+    assert "legacy.market-research.threshold" in {
+        rule["proposal"]["rule_id"] for rule in broad_rules.json()["rules"]
+    }
+
+    consumer_view = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01&consumer_view=true",
+        headers=chat_headers,
+    )
+    assert consumer_view.status_code == 200, consumer_view.text
+    assert {
+        rule["proposal"]["rule_id"] for rule in consumer_view.json()["rules"]
+    } == {
+        "internal.market-research.threshold",
+        "internal.marketplace.threshold",
+    }, consumer_view.json()
+
+    inactive_consumer_view = client.get(
+        "/api/v1/controlled-documentation/rules"
+        "?domain=public_procurement&valid_on=2026-01-01"
+        "&consumer_view=true&include_inactive=true",
+        headers=admin_headers,
+    )
+    assert inactive_consumer_view.status_code == 422
+    assert inactive_consumer_view.json()["error"]["code"] == (
+        "controlled_rule_consumer_view_inactive_forbidden"
+    )
+
     budget_service = client.get(
         "/api/v1/integrations/controlled-rules-read/rules"
         "?domain=public_procurement&valid_on=2026-01-01",
