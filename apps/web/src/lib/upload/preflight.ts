@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { link, mkdir, open, readFile, unlink } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { copyFile, link, mkdir, open, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -250,11 +251,15 @@ export function getUploadSettings(env: Record<string, string | undefined> = proc
     );
   }
 
+  const storage = objectStorageSettingsFromEnv(env);
+  const objectStorageRoot = env.AKL_WEB_OBJECT_STORAGE_ROOT ?? "./object-storage";
   return {
-    ...objectStorageSettingsFromEnv(env),
-    objectStorageRoot: env.AKL_WEB_OBJECT_STORAGE_ROOT ?? "./object-storage",
+    ...storage,
+    objectStorageRoot,
     bucket: env.AKL_S3_BUCKET ?? env.AKL_WEB_UPLOAD_BUCKET ?? "akl-documents",
-    quarantineRoot: env.AKL_WEB_UPLOAD_QUARANTINE_ROOT ?? "./upload-quarantine",
+    quarantineRoot:
+      env.AKL_WEB_UPLOAD_QUARANTINE_ROOT ??
+      (storage.storageMode === "s3" ? "./upload-quarantine" : objectStorageRoot),
     signingSecret: signingSecret || "akl-local-upload-signing-secret",
     maxFileBytes: parsePositiveInteger(env.AKL_WEB_UPLOAD_MAX_FILE_BYTES, DEFAULT_MAX_FILE_BYTES),
     publicUploadBasePath: env.AKL_WEB_UPLOAD_PUBLIC_BASE_PATH ?? "/api/controlled-document/upload/sessions",
@@ -630,10 +635,27 @@ export async function promoteQuarantinedUploadObject(
   const targetPath = resolveObjectPath(payload, settings);
   const parentPath = path.dirname(targetPath);
   await mkdir(parentPath, { recursive: true });
+  let copiedTarget = false;
   try {
-    await link(quarantined.path, targetPath);
+    try {
+      await link(quarantined.path, targetPath);
+    } catch (error) {
+      if (!isCrossDeviceError(error)) throw error;
+      await copyFile(quarantined.path, targetPath, fsConstants.COPYFILE_EXCL);
+      copiedTarget = true;
+      const copiedHandle = await open(targetPath, "r+");
+      try {
+        await copiedHandle.datasync();
+      } finally {
+        await copiedHandle.close();
+      }
+      await verifyUploadObjectAtPath(payload, targetPath);
+    }
   } catch (error) {
-    if (!isFileExistsError(error)) throw error;
+    if (!isFileExistsError(error)) {
+      if (copiedTarget) await unlink(targetPath).catch(() => undefined);
+      throw error;
+    }
     const existing = await verifyPersistedUploadedObject(payload, settings).catch(() => null);
     if (!existing) {
       throw new UploadPreflightError(
@@ -682,6 +704,10 @@ async function syncDirectory(directoryPath: string): Promise<void> {
 
 function isFileExistsError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
+}
+
+function isCrossDeviceError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "EXDEV";
 }
 
 /**
