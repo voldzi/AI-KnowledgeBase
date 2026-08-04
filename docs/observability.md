@@ -86,81 +86,49 @@ latency, requested/actual model, fallback flag, token counts, index version,
 and candidate/suggestion counts. They must not include AIIP record bodies,
 prompts, model responses, citation text, vectors, bearer tokens, or credentials.
 
-Prometheus/Grafana/Loki are included in the local deployment stack for
-observability experiments and dashboards.
+Production telemetry is centralized on `observability.home.cz`. AKB does not
+run a second production Grafana, Prometheus, Tempo or Loki stack on
+`docker.home.cz`.
 
-Provisioned dashboards:
+Central dashboards:
 
-- `AKB Platform Health` for target health and platform status request rate.
-- `AKB Observability` for target health, OpenTelemetry accepted spans, trace
-  exporter throughput, span errors, and platform status request rate.
+- `AKB – výkon a dostupnost` for public health/readiness, request rate, p95
+  latency, errors and telemetry ingestion.
 - Central OpenSearch index health at
   `https://wazuh.home.cz/observability/d/akl-opensearch-index/akl-opensearch-index`.
   The matching Dashboards tenant is `akl` with data view
   `akl_document_chunks*`.
 
-Provisioned Prometheus alert rules are stored in
-`infra/monitoring/prometheus/rules/akb-alerts.yml` and cover:
+Central Prometheus alert rules are stored in
+`infra/monitoring/central/akb-alerts.yml` and cover:
 
-- down monitoring targets,
-- platform status 5xx responses,
-- refused spans,
-- failed span export,
-- trace exporter queue backlog.
+- public health and dependency-aware readiness,
+- refused telemetry,
+- chat HTTP 5xx responses,
+- chat p95 latency.
 
 ## Tracing
 
 AKB keeps request id and correlation id propagation in the application code and
-adds OpenTelemetry tracing when `OTEL_SDK_DISABLED=false`. The docker-home
-deployment has an optional OpenTelemetry foundation:
+adds OpenTelemetry tracing when `OTEL_SDK_DISABLED=false`. Production services
+export OTLP over the private server network directly to the central Collector.
+Python services use OTLP/gRPC on port `4317`; the two Next.js services use
+OTLP/HTTP protobuf on port `4318`. The endpoints are not published by the AKB
+reverse proxy.
 
-- `otel-collector` receives OTLP traces, metrics and logs inside Docker networks,
-- `tempo` stores traces,
-- `prometheus` scrapes platform metrics and the collector metrics exporter,
-- `grafana` is provisioned with Prometheus, Loki and Tempo datasources,
-- `loki` is available for controlled log ingestion.
-
-The optional production override is:
-
-```bash
-docker compose \
-  -f infra/docker-compose/docker-compose.docker-home.yml \
-  -f infra/docker-compose/docker-compose.docker-home-observability.yml \
-  up -d
-```
-
-The collector is intentionally not exposed through the public reverse proxy.
-Grafana is reachable through the AKB Caddy `/akb/grafana/` route when the
-observability override is enabled. The target production login model is STRATOS
-Keycloak OIDC through the `akb-grafana` client:
-
-- Keycloak realm: `stratos`
-- Grafana callback: `/akb/grafana/login/generic_oauth`
-- Keycloak role `stratos_admin` maps to Grafana `GrafanaAdmin`
-- Keycloak roles `stratos_auditor` and `stratos_user` map to Grafana `Viewer`
-
-Keep the local Grafana admin login configured through `GRAFANA_ADMIN_USER` and
-`GRAFANA_ADMIN_PASSWORD` as a break-glass account. Do not route public STRATOS
-application traffic directly to Prometheus, Tempo or Loki.
-
-To create or update the Keycloak client and write the generated secret into the
-docker-home env file, run:
-
-```bash
-KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
-  ./scripts/ensure_grafana_keycloak_client.sh
-```
-
-If bootstrap admin service creation is not allowed in the environment, provide a
-realm admin password instead with `KEYCLOAK_ADMIN_PASSWORD`. The script sets
-`GRAFANA_OAUTH_ENABLED=true` in `/srv/akl/env/akl.prod.env`. Restart the
-Grafana service after running it.
+The central Collector removes request and response bodies, authorization and
+cookie headers, query-bearing URL attributes, SQL statements, user identifiers,
+client addresses and generative-AI prompt/response attributes before storage.
+AKB telemetry must contain operational metadata only. It must never include a
+prompt, answer, document content, signed source URL, bearer token or secret.
 
 Application services do not depend on the collector for startup. If the
 observability stack is unavailable, AKB services should continue to run and keep
 using health/readiness plus request/correlation ids.
 
-The following Python FastAPI services emit inbound HTTP spans and `httpx`
+The Next.js workspace and standalone chat emit server and fetch spans, including
+the bounded `akb.assistant.chat` span for the complete chat request. The
+following Python FastAPI services emit inbound HTTP spans and `httpx`
 outbound client spans when telemetry is enabled. Registry also exports the
 implemented assistant-retention counters through the same OTLP collector:
 
@@ -173,13 +141,14 @@ implemented assistant-retention counters through the same OTLP collector:
 
 The next observability rollout steps are:
 
-1. Next.js web bridge spans for `/akb/api/*`, especially STRATOS upload,
-   source open, viewer, citation and RAG flows.
-2. Additional domain metrics for ingestion duration, retrieval latency, LLM
+1. Additional domain metrics for ingestion duration, retrieval latency, LLM
    latency, citation coverage, source-open failures and authorization denied
    counts.
-3. Logs enriched with `trace_id` and `span_id` while preserving the existing
+2. Logs enriched with `trace_id` and `span_id` while preserving the existing
    AKB `trace_id` error field compatibility.
+
+Deployment, validation and rollback details are in
+`docs/OPERATIONS/central-observability.md`.
 
 ## Health And Readiness
 

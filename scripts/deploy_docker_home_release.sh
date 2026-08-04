@@ -1134,6 +1134,10 @@ else
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
     case "$path" in
+      scripts/deploy_docker_home_release.sh|infra/monitoring/central/*|infra/docker-compose/docker-compose.docker-home-observability.yml)
+        # Release mechanics, centrally installed monitoring assets, and removal
+        # of the retired local monitoring override do not alter an app image.
+        ;;
       scripts/*|infra/docker-compose/docker-home.env.example)
         add_service registry-api
         add_service ingestion-service
@@ -1176,7 +1180,7 @@ else
         # service.
         # Live-realm reconciliation evidence remains an independent prerequisite.
         ;;
-      services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*|infra/docker-compose/docker-compose.docker-home-observability.yml)
+      services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*)
         akl_fail "Release changes unsupported runtime path outside registry/ingestion/rag/web/chat-web: $path"
         ;;
     esac
