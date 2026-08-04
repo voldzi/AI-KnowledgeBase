@@ -7,16 +7,17 @@ service README files.
 ## STRATOS content-security profile
 
 AKB owns the central Document Intake malware boundary for all document
-origins. Web uploads use ClamAV `INSTREAM` only through
-`tcp://clamav:3310` on the private application network. Registry independently
-verifies the signed clean attestation and Ingestion verifies the Registry state
-before reading the object.
+origins. Web uploads use ClamAV `INSTREAM` through the shared internal service
+at `tcp://scan.home.cz:3310`. The scanner is operated for applications in the
+server VLAN; it is not a Docker service, volume or public endpoint owned by
+AKB. Registry independently verifies the signed clean attestation and
+Ingestion verifies the Registry state before reading the object.
 
-Migration starts with `STRATOS_CONTENT_SECURITY_MODE=clamd` and
-`STRATOS_CONTENT_SECURITY_REQUIRED=false`: every new file is scanned, while
-legacy unattested versions remain readable. After the corpus reset or
-controlled rescan and source-application acceptance, set `REQUIRED=true`.
-Scanner errors and timeouts always fail closed for new uploads in both modes.
+Production runs with `STRATOS_CONTENT_SECURITY_MODE=clamd` and
+`STRATOS_CONTENT_SECURITY_REQUIRED=true`. Scanner errors and timeouts fail
+closed: an unscanned binary cannot become an available document. A temporary
+scanner outage therefore makes Document Intake unavailable rather than
+silently accepting content.
 The exact contract and promotion gates are in
 `docs/integration/AKB_DOCUMENT_INTAKE_V1.md` and ADR 0010.
 
@@ -35,7 +36,7 @@ document hashes, ingestion indexes or source citations.
 ### Controlled legacy rescan
 
 Legacy files are scanned only by the Registry one-off command. It mounts the
-object store read-only, streams one file at a time through private ClamAV and
+object store read-only, streams one file at a time through the shared ClamAV and
 writes only the verdict and an audit event. It never moves, deletes, reindexes
 or republishes a document. Start with a dry run, then use bounded batches:
 
