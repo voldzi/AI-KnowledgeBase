@@ -439,7 +439,7 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Odeslat" }).click();
     await expect(
       page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu."),
-    ).toBeVisible({ timeout: 20_000 });
+    ).toBeVisible();
 
     const sourcesPanel = page.getByRole("complementary", { name: "Zdroje odpovědi" });
     await expect(sourcesPanel.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
