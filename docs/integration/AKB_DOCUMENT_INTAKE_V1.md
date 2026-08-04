@@ -107,25 +107,28 @@ The application-specific mapping and migration acceptance suite are defined in
 Required internal connection:
 
 ```text
-hostname: clamav
+hostname: scan.home.cz
 port: 3310/TCP
 protocol: clamd INSTREAM
-network: akl_app_zone only
+network: shared service in the server VLAN
 ```
+
+The scanner is not part of the AKB Docker Compose project and must not expose
+a public port. Network policy limits access to approved application hosts.
 
 Recommended production settings:
 
 ```text
 STRATOS_CONTENT_SECURITY_MODE=clamd
-STRATOS_CONTENT_SECURITY_REQUIRED=false
-STRATOS_CONTENT_SECURITY_ENDPOINT=tcp://clamav:3310
+STRATOS_CONTENT_SECURITY_REQUIRED=true
+STRATOS_CONTENT_SECURITY_ENDPOINT=tcp://scan.home.cz:3310
 STRATOS_CONTENT_SECURITY_CONNECT_TIMEOUT_MS=3000
 STRATOS_CONTENT_SECURITY_SCAN_TIMEOUT_MS=120000
 STRATOS_CONTENT_SECURITY_MAX_FILE_BYTES=104857600
 ```
 
-Keep `REQUIRED=false` only during the measured migration. Set it to `true`
-after current source applications and corpus data satisfy ADR 0010.
+`REQUIRED=false` is a non-production migration mode only. Production remains
+fail-closed with `REQUIRED=true`.
 
 `GET /api/ready` reports `document_intake_content_security`. A required or
 configured scanner that is unavailable makes web readiness fail.

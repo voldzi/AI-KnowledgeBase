@@ -87,7 +87,7 @@ For every existing application:
    local UI without exposing scanner internals;
 7. delete any temporary local copy according to the application's approved
    retry policy after confirmation;
-8. never expose the ClamAV host or port outside the AKB private network.
+8. never expose the shared ClamAV host or port outside the server VLAN.
 
 ## Acceptance
 
@@ -106,15 +106,13 @@ Each application must provide positive and negative fixtures proving:
 
 ## Coordinated rollout
 
-1. Deploy AKB with `STRATOS_CONTENT_SECURITY_MODE=clamd` and
-   `STRATOS_CONTENT_SECURITY_REQUIRED=false`.
+1. Deploy AKB with `STRATOS_CONTENT_SECURITY_MODE=clamd`,
+   `STRATOS_CONTENT_SECURITY_REQUIRED=true` and the approved shared scanner
+   endpoint.
 2. Migrate all source applications and observe clean/error counters.
-3. Perform the planned non-production data reset or controlled rescan of
-   legacy unattested files.
+3. Perform any controlled rescan of legacy unattested files.
 4. Run the cross-application acceptance suite and EICAR test.
-5. Set `STRATOS_CONTENT_SECURITY_REQUIRED=true` in web, Registry and Ingestion
-   as one coordinated release.
-6. Remove legacy content URLs only after telemetry proves that no supported
+5. Remove legacy content URLs only after telemetry proves that no supported
    client uses them.
 
 Production enforcement must not be enabled application by application. A
