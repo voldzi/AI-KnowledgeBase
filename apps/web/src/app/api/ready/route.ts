@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
+import { evaluateWebReadiness } from "@/lib/api/readiness";
 import { loadDirectorCopilotV2ManifestCatalog } from "@/lib/director-copilot-v2/manifest-catalog";
 import { contentSecurityReadiness } from "@/lib/upload/content-security";
 
@@ -24,19 +25,20 @@ export async function GET() {
       ? "disabled"
       : await loadDirectorCopilotV2ManifestCatalog({ config })
           .then(() => "ready" as const)
-          .catch(() => "not_ready" as const);
+          .catch(() => "degraded" as const);
     const documentIntake = await contentSecurityReadiness();
-    const dependenciesReady = Object.values(dependencies)
-      .every((status) => status === "ready" || status === "mock");
-    const isReady = dependenciesReady
-      && (!directorConfig.enabled || directorCopilotV2 === "ready")
-      && documentIntake !== "not_ready";
+    const readiness = evaluateWebReadiness({
+      dependencies,
+      directorCopilotV2,
+      documentIntake,
+    });
     return NextResponse.json(
       {
         service: "web-frontend",
-        status: isReady ? "ready" : "not_ready",
+        status: readiness.ready ? "ready" : "not_ready",
         api_client_mode: config.apiClientMode,
         auth_mode: config.authMode,
+        degraded_dependencies: readiness.degradedDependencies,
         dependencies: {
           ...dependencies,
           director_copilot_v2: directorCopilotV2,
@@ -44,7 +46,7 @@ export async function GET() {
         }
       },
       {
-        status: isReady ? 200 : 503,
+        status: readiness.ready ? 200 : 503,
         headers: {
           "cache-control": "no-store, max-age=0"
         }

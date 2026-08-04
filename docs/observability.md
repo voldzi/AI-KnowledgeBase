@@ -173,7 +173,11 @@ GET /api/ready
 `GET /api/health` reports only web-process liveness. `GET /api/ready` checks
 the configured Registry, Ingestion, RAG and Governance service readiness in
 production mode with a bounded timeout and returns `503 not_ready` when any
-required dependency is unavailable. The web top-bar indicator polls this
+required internal dependency is unavailable. A temporary Director Copilot
+domain-source failure is reported as `dependencies.director_copilot_v2=degraded`
+and in `degraded_dependencies`, but does not remove the whole web frontend from
+service; affected live-data queries remain fail-closed and are never replaced
+with document RAG. The web top-bar indicator polls this
 dependency-aware endpoint every 60 seconds. It names the affected user
 capability (for example AI answers) instead of showing an opaque HTTP status;
 dependency degradation is a warning, while an unreadable readiness response is
