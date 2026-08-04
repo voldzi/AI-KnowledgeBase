@@ -118,6 +118,10 @@ network directly to the central Collector. Python services use OTLP/gRPC on
 port `4317`; the two Next.js services use OTLP/HTTP protobuf on port `4318`.
 The endpoints are not published by the AKB reverse proxy.
 
+Standalone web and chat images preload a small telemetry bootstrap before the
+Next.js server. It invokes the compiled instrumentation hook exactly once and
+does not block application startup if telemetry initialization fails.
+
 The central Collector removes request and response bodies, authorization and
 cookie headers, query-bearing URL attributes, SQL statements, user identifiers,
 client addresses and generative-AI prompt/response attributes before storage.
