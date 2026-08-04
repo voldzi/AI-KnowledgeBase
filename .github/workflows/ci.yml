@@ -283,7 +283,6 @@ jobs:
 
       - name: Validate docker.home.cz compose config
         run: |
-          GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
           AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
           docker compose \
@@ -293,14 +292,3 @@ jobs:
           grep -F \
             'AKL_STRATOS_BUDGET_AKB_RESOURCES_URL: http://stratos-api:4000/api/v1/integrations/budget/akb/resources' \
             /tmp/akl-compose-docker-home.yml
-
-      - name: Validate docker.home.cz observability compose config
-        run: |
-          GRAFANA_ADMIN_PASSWORD=dummy-grafana-admin \
-          AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
-          AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
-          docker compose \
-            --env-file infra/docker-compose/docker-home.env.example \
-            -f infra/docker-compose/docker-compose.docker-home.yml \
-            -f infra/docker-compose/docker-compose.docker-home-observability.yml \
-            config >/tmp/akl-compose-docker-home-observability.yml
