@@ -126,6 +126,7 @@ from app.permissions import (
     context_for_subject,
     document_governance_scope,
     evaluate_document_access,
+    evaluate_employee_directive_projection,
     evaluate_global_action,
     evaluate_runtime_document_access,
     require_document_action,
@@ -9392,6 +9393,26 @@ def filter_authorized_documents(
         )
         candidate_hashes = set(payload.candidate_policy_hashes.get(document_id, []))
         candidate_versions = set(payload.candidate_document_versions.get(document_id, []))
+        employee_directive_allowed_versions: set[str] = set()
+        if context is not None and candidate_versions:
+            for version_id in candidate_versions:
+                version = versions_by_id.get(version_id)
+                if version is None or version.document_id != document.document_id:
+                    continue
+                employee_decision = evaluate_employee_directive_projection(
+                    db=db,
+                    context=context,
+                    action=payload.action.value,
+                    document=document,
+                    version=version,
+                )
+                if employee_decision is not None and _candidate_document_policy_allowed(
+                    context=context,
+                    decision=employee_decision,
+                    document=document,
+                    candidate_hashes=candidate_hashes,
+                ):
+                    employee_directive_allowed_versions.add(version_id)
         allowed_versions = _allowed_candidate_document_versions(
             context=context,
             decision=decision,
@@ -9401,6 +9422,7 @@ def filter_authorized_documents(
             versions_by_id=versions_by_id,
             action=payload.action.value,
         )
+        allowed_versions.update(employee_directive_allowed_versions)
         denied_versions = candidate_versions - allowed_versions
         coordinates_allowed = (
             _candidate_document_policy_allowed(
