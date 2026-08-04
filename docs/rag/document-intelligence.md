@@ -359,11 +359,14 @@ and chunk citation, and follow-up questions keep the same governed domain and
 date without treating conversation context as authorization.
 
 The chat path authorizes every package source with `akb:chat` and the same
-fresh Information Policy decision used for RAG. It does not grant the caller
-`akb:read_document` or expose the controlled-documentation management list.
-Users who have only the employee-chat application profile can therefore
-receive an eligible governed rule without gaining access to Registry or
-authoring functions.
+fresh Information Policy decision used for RAG. The default employee profile
+also carries `akb:read_document`, but only inside the narrow
+`recipient_set:employee-directives` projection. This lets an employee open the
+exact cited directive or attachment without granting access to unrelated
+internal documents, drafts, authoring, upload, export, audit, or policy
+management. Registry writes a bounded `controlled_rules.user_read` event for
+the deterministic rule lookup; the web layer does not impersonate an audit
+writer.
 
 New conversations default to private visibility and 180-day retention. Owners
 and admins may rename, pin, archive or restore a conversation, shorten or

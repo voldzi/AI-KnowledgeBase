@@ -136,6 +136,14 @@ zůstává omezené na platné verze. Balíček nelze vyhlásit jako platný, do
 neexistuje poslední vytěžení, nejsou posouzeny všechny návrhy a alespoň jeden
 citovaný návrh není potvrzený nebo opravený gestorem.
 
+Běžný aktivní zaměstnanec dostává z centrální správy přístupů jen scope
+`recipient_set:employee-directives`. AKB ho promítne pouze na přesné verze
+hlavního dokumentu a příloh platného balíčku `internal_directive`, pokud mají
+interní klasifikaci a organizační Information Policy bez užších příjemců,
+TLP/PAP. Gestor může konkrétní balíček z výchozího zaměstnaneckého čtení vyjmout
+metadatem `employee_access=false`. Projekce neotevírá ostatní interní dokumenty
+ani správcovské operace a nenahrazuje kontrolu capability.
+
 ## Integrace aplikací
 
 Budget ani jiná aplikace nesmí číst databázi AKB. Gestorský endpoint

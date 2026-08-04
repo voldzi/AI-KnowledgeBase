@@ -1,10 +1,11 @@
 from dataclasses import dataclass
+from datetime import date
 from hashlib import sha256
 import json
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session, selectinload
 from starlette import status
 
 from app.auth import Principal
@@ -22,7 +23,13 @@ from app.information_policy import (
     anonymous_public_eligible,
     canonical_policy_hash,
 )
-from app.models import Document, DocumentVersion, RoleMapping
+from app.models import (
+    ControlledDocumentPackage,
+    ControlledDocumentPackageMember,
+    Document,
+    DocumentVersion,
+    RoleMapping,
+)
 from app.official_public_sources import is_official_public_source_document
 from app.public_documents import PublicDocumentIntegrityError, validate_publication_integrity
 from app.schemas import Action, Classification, GovernanceScope
@@ -170,6 +177,14 @@ ACTION_CAPABILITIES: dict[str, set[str]] = {
     Action.audit_read.value: {"akb:read_audit"},
     Action.audit_write.value: {"akb:manage_document", "akb:read_audit"},
     Action.admin_manage.value: {"akb:manage_access"},
+}
+
+EMPLOYEE_DIRECTIVES_SCOPE = "recipient_set:employee-directives"
+_EMPLOYEE_DIRECTIVE_ACTIONS = {
+    Action.document_read.value,
+    Action.rag_query.value,
+    Action.rag_compare.value,
+    Action.rag_check_compliance.value,
 }
 
 
@@ -502,6 +517,134 @@ def _scope_allows(
     )
 
 
+def _employee_directive_source_allows(
+    context: SubjectContext,
+    action: str,
+    document: Document,
+    version: DocumentVersion,
+) -> bool:
+    if (
+        not context.access_v2
+        or EMPLOYEE_DIRECTIVES_SCOPE not in context.scopes
+        or action not in _EMPLOYEE_DIRECTIVE_ACTIONS
+        or document.organization_id != context.organization_id
+        or version.organization_id != context.organization_id
+        or document.classification not in {
+            Classification.public.value,
+            Classification.internal.value,
+        }
+        or document.status not in {"valid", "superseded"}
+        or version.status != "valid"
+        or not document.policy_summary
+        or not version.policy_summary
+    ):
+        return False
+    try:
+        document_binding = InformationPolicyBinding.model_validate(document.policy_summary)
+        version_binding = InformationPolicyBinding.model_validate(version.policy_summary)
+    except ValueError:
+        return False
+    for binding in (document_binding, version_binding):
+        audience = binding.audience
+        if (
+            binding.handling_class != "INTERNAL"
+            or binding.tlp is not None
+            or binding.pap is not None
+            or audience.organization_id != context.organization_id
+            or audience.scope_type != "organization"
+            or audience.scope_ids
+            or audience.recipient_subject_ids
+        ):
+            return False
+    return True
+
+
+def _employee_directive_projection_decision(
+    *,
+    db: Session | None,
+    context: SubjectContext,
+    action: str,
+    document: Document,
+    version: DocumentVersion | None = None,
+) -> Decision | None:
+    if db is None or EMPLOYEE_DIRECTIVES_SCOPE not in context.scopes:
+        return None
+    base = _v2_base_decision(context, action)
+    if base is not None or action not in _EMPLOYEE_DIRECTIVE_ACTIONS:
+        return None
+    package_query = (
+        select(ControlledDocumentPackage)
+        .outerjoin(
+            ControlledDocumentPackageMember,
+            ControlledDocumentPackageMember.package_id
+            == ControlledDocumentPackage.package_id,
+        )
+        .where(
+            ControlledDocumentPackage.organization_id == context.organization_id,
+            ControlledDocumentPackage.source_type == "internal_directive",
+            ControlledDocumentPackage.status == "valid",
+            ControlledDocumentPackage.effective_from <= date.today(),
+            or_(
+                ControlledDocumentPackage.effective_to.is_(None),
+                ControlledDocumentPackage.effective_to >= date.today(),
+            ),
+            or_(
+                ControlledDocumentPackage.primary_document_id == document.document_id,
+                ControlledDocumentPackageMember.document_id == document.document_id,
+            ),
+        )
+        .options(selectinload(ControlledDocumentPackage.members))
+    )
+    for package in db.execute(package_query).scalars().unique():
+        if (package.package_metadata or {}).get("employee_access") is False:
+            continue
+        source_version_ids = {
+            package.primary_document_version_id
+            if package.primary_document_id == document.document_id
+            else None,
+            *(
+                member.document_version_id
+                for member in package.members
+                if member.document_id == document.document_id
+            ),
+        }
+        source_version_ids.discard(None)
+        if version is not None:
+            source_version_ids.intersection_update({version.document_version_id})
+        candidate_versions = [
+            source_version
+            for source_version_id in source_version_ids
+            if (source_version := db.get(DocumentVersion, source_version_id))
+            is not None
+        ]
+        if not candidate_versions:
+            continue
+        if all(
+            _employee_directive_source_allows(
+                context,
+                action,
+                document,
+                source_version,
+            )
+            for source_version in candidate_versions
+        ):
+            return Decision(
+                True,
+                "The active employee-directives projection allows this exact controlled source",
+                {
+                    "employee_directive_projection": True,
+                    "projection_scope": EMPLOYEE_DIRECTIVES_SCOPE,
+                    "controlled_package_id": package.package_id,
+                    "policy_binding_id": document.policy_binding_id,
+                    "policy_version": document.policy_version,
+                    "policy_hash": document.policy_hash,
+                    "governance_scope": document_governance_scope(document),
+                },
+                ("EMPLOYEE_DIRECTIVE_PROJECTION_ALLOW",),
+            )
+    return None
+
+
 def _v2_document_decision(context: SubjectContext, action: str, document: Document) -> Decision:
     base = _v2_base_decision(context, action)
     if base is not None:
@@ -795,6 +938,11 @@ def evaluate_runtime_document_version_access(
 ) -> Decision:
     if not local_decision.allowed:
         return local_decision
+    if local_decision.constraints.get("employee_directive_projection") is True:
+        # This derived projection is narrower than the organization-owned
+        # source. Its active recipient_set comes from the verified STRATOS
+        # access projection and exact package membership is checked locally.
+        return local_decision
     settings = get_settings()
     context = context_for_principal(principal)
     if (
@@ -875,6 +1023,8 @@ def evaluate_runtime_document_access(
         or evaluate_document_access(context_for_principal(principal), action, document)
     )
     if not decision.allowed:
+        return decision
+    if decision.constraints.get("employee_directive_projection") is True:
         return decision
     # The public-projection branch above has already performed a fresh anonymous
     # decision for each exact immutable publication/version. Curated official
@@ -1030,6 +1180,15 @@ def require_document_action(
 ) -> SubjectContext:
     context = context_for_principal(principal, db)
     decision = evaluate_document_access(context, action.value, document)
+    if not decision.allowed:
+        employee_directive_decision = _employee_directive_projection_decision(
+            db=db,
+            context=context,
+            action=action.value,
+            document=document,
+        )
+        if employee_directive_decision is not None:
+            decision = employee_directive_decision
     decision = evaluate_runtime_document_access(principal, action.value, document, decision)
     if not decision.allowed:
         details = {**decision.constraints, "reason_codes": list(decision.reason_codes)}
@@ -1063,6 +1222,16 @@ def require_document_version_action(
             and is_official_public_source_document(document)
         ),
     )
+    if not decision.allowed:
+        employee_directive_decision = _employee_directive_projection_decision(
+            db=db,
+            context=context,
+            action=action.value,
+            document=document,
+            version=version,
+        )
+        if employee_directive_decision is not None:
+            decision = employee_directive_decision
     decision = evaluate_runtime_document_version_access(
         principal,
         action.value,

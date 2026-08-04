@@ -6211,19 +6211,39 @@ def list_controlled_document_rules(
             authorization_actions=(Action.document_read, Action.rag_query),
         )
     if consumer_view:
-        return _controlled_rule_consumer_view_for_packages(
+        response = _controlled_rule_consumer_view_for_packages(
             db=db,
             domain=domain,
             applicable_on=applicable_on,
             packages=packages,
         )
-    return _controlled_rule_list_for_packages(
-        db=db,
-        domain=domain,
-        applicable_on=applicable_on,
-        packages=packages,
-        approved_only=approved_only,
+    else:
+        response = _controlled_rule_list_for_packages(
+            db=db,
+            domain=domain,
+            applicable_on=applicable_on,
+            packages=packages,
+            approved_only=approved_only,
+        )
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="controlled_rules.user_read",
+        resource_type="controlled_rules_snapshot",
+        resource_id=f"{domain}:{applicable_on.isoformat()}",
+        severity="warning" if response.warnings else "info",
+        correlation_id=get_correlation_id(),
+        metadata={
+            "domain": domain,
+            "valid_on": applicable_on.isoformat(),
+            "consumer_view": consumer_view,
+            "package_count": len(response.packages),
+            "rule_count": len(response.rules),
+            "warning_codes": response.warnings,
+        },
     )
+    _commit_or_conflict(db)
+    return response
 
 
 def _controlled_rules_source_version(

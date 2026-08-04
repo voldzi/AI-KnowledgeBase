@@ -101,6 +101,23 @@ documents through Registry authorization before answer composition. If sources
 are unauthorized or insufficient, the assistant returns a no-answer or handoff
 state instead of inventing unsupported information.
 
+The default active employee projection is deliberately narrower than general
+organization access. STRATOS grants `akb:access`, `akb:chat`, and
+`akb:read_document` in scopes `public` and
+`recipient_set:employee-directives`. The recipient scope authorizes only exact
+document versions referenced by a `valid` controlled package whose source type
+is `internal_directive`, whose effective date has started, and whose package
+metadata does not set `employee_access=false`. Registry additionally requires
+an `INTERNAL` Information Policy with organization-wide audience, no explicit
+recipients, no narrower scope IDs, no TLP/PAP, and document classification no
+higher than `internal`. A matching scope therefore cannot expose an unrelated
+internal document, a draft or future package, or a restricted/confidential
+source. Direct source opening still requires `akb:read_document`; deterministic
+chat rule resolution requires `akb:chat` and reauthorizes every package source.
+The derived projection is evaluated from the fresh STRATOS access projection
+and exact package membership. It is never inferred from a role, prompt, tag, or
+client-supplied scope header in production.
+
 Director Copilot semantic resolution uses an immutable local SSP snapshot.
 Only code-reviewed bindings can map an imported concept to a known STRATOS
 source or metric. Imported labels, external APIs, prompts, browser context and
@@ -372,6 +389,11 @@ AKB records audit events for document changes, workflow decisions, assistant
 queries, answer/no-answer events, source opening, and citation opening. Audit
 events carry correlation ids and avoid storing full prompt/answer/source text
 by default.
+
+Employee controlled-rule reads are written by Registry as
+`controlled_rules.user_read`. The event records only the domain, requested
+date, consumer-view flag, package/rule counts, and warning codes. The web BFF
+does not need or receive a separate audit-write permission for this path.
 
 Conversation deletion is a physical data operation. Only the owner may request
 it interactively; the retention worker performs the same cascade after
