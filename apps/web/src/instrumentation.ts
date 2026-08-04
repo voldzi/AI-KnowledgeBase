@@ -1,7 +1,7 @@
 import { registerOTel } from "@vercel/otel";
 
 function telemetryEnabled(): boolean {
-  return (process.env.OTEL_SDK_DISABLED ?? "true").trim().toLowerCase() === "false";
+  return (process.env.AKL_OTEL_ENABLED ?? "false").trim().toLowerCase() === "true";
 }
 
 export function register() {

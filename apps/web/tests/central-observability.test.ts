@@ -14,6 +14,10 @@ const assistantRoute = readFileSync(
   new URL("../src/app/api/assistant/chat/route.ts", import.meta.url),
   "utf8",
 );
+const centralDashboard = readFileSync(
+  new URL("../../../infra/monitoring/central/akb-overview.json", import.meta.url),
+  "utf8",
+);
 
 describe("central production observability", () => {
   it("uses the transport supported by each runtime", () => {
@@ -37,8 +41,27 @@ describe("central production observability", () => {
 
   it("registers tracing only in an explicitly enabled Node runtime", () => {
     assert.match(instrumentation, /process\.env\.NEXT_RUNTIME !== "nodejs"/);
-    assert.match(instrumentation, /OTEL_SDK_DISABLED/);
+    assert.match(instrumentation, /AKL_OTEL_ENABLED/);
     assert.match(instrumentation, /registerOTel/);
+  });
+
+  it("does not pass OTEL_SDK_DISABLED to the Next.js runtime", () => {
+    const webEnvironment = compose.match(
+      /\n  web:\n[\s\S]*?(?=\n  chat-web:)/,
+    )?.[0] ?? "";
+    const chatEnvironment = compose.match(
+      /\n  chat-web:\n[\s\S]*?(?=\n  registry-api:)/,
+    )?.[0] ?? "";
+
+    for (const environment of [webEnvironment, chatEnvironment]) {
+      assert.match(environment, /AKL_OTEL_ENABLED: \$\{AKL_OTEL_ENABLED:-true\}/);
+      assert.doesNotMatch(environment, /OTEL_SDK_DISABLED:/);
+    }
+
+    assert.match(
+      compose.match(/\n  registry-api:\n[\s\S]*/)?.[0] ?? "",
+      /OTEL_SDK_DISABLED: \$\{OTEL_SDK_DISABLED:-false\}/,
+    );
   });
 
   it("records a bounded assistant span without prompt or answer attributes", () => {
@@ -49,5 +72,17 @@ describe("central production observability", () => {
       /"akb\.channel": process\.env\.AKL_WEB_PROFILE === "chat" \? "chat" : "workspace"/,
     );
     assert.doesNotMatch(assistantRoute, /setAttribute\([^\n]*(prompt|answer|message|document|token)/i);
+  });
+
+  it("keeps compatibility-named Python services in the central dashboard", () => {
+    for (const serviceName of [
+      "registry-api",
+      "ingestion-service",
+      "rag-retrieval-service",
+      "evaluation-service",
+      "governance-service",
+    ]) {
+      assert.match(centralDashboard, new RegExp(serviceName));
+    }
   });
 });

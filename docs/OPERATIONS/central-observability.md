@@ -52,7 +52,10 @@ The central Grafana datasource UIDs are `obs-prometheus`, `obs-tempo` and
 2. Deploy the immutable release.
 3. Verify `/akb/api/health` and `/akb/api/ready`.
 4. Verify that all AKB application containers have a distinct
-   `OTEL_SERVICE_NAME` and the central private endpoint.
+   tracing service name and the central private endpoint. The two Next.js
+   services use `akb-web` and `akb-chat-web`; Python services retain their
+   compatibility `AKL_SERVICE_NAME` values such as `registry-api` and
+   `rag-retrieval-service`.
 5. Run one authorized chat request without recording its text.
 6. Confirm `akb.assistant.chat` and downstream service spans in central Tempo.
 7. Confirm central span metrics for every exercised AKB service.
@@ -65,5 +68,5 @@ The central Grafana datasource UIDs are `obs-prometheus`, `obs-tempo` and
 
 Rollback the AKB immutable release if telemetry initialization affects health,
 readiness or application traffic. A central Collector outage alone is not an
-AKB rollback condition; disable export with `OTEL_SDK_DISABLED=true` while the
-collector is repaired.
+AKB rollback condition. Disable Next.js export with `AKL_OTEL_ENABLED=false`;
+Python services continue to use `OTEL_SDK_DISABLED=true`.
