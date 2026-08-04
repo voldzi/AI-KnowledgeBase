@@ -1134,9 +1134,9 @@ else
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
     case "$path" in
-      scripts/deploy_docker_home_release.sh|infra/monitoring/central/*|infra/docker-compose/docker-compose.docker-home-observability.yml)
-        # Release mechanics, centrally installed monitoring assets, and removal
-        # of the retired local monitoring override do not alter an app image.
+      infra/monitoring/central/*|infra/docker-compose/docker-compose.docker-home-observability.yml)
+        # Centrally installed monitoring assets and removal of the retired
+        # local monitoring override do not alter an app image.
         ;;
       scripts/*|infra/docker-compose/docker-home.env.example)
         add_service registry-api
