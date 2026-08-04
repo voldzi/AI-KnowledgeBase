@@ -639,7 +639,11 @@ A backup becomes an approved restore point only after this rehearsal succeeds
 on an isolated, unpublished Docker network. Run it from the local default
 Docker socket; never pass the production database URL, never attach the
 rehearsal containers to a production network, and never restore into the HA
-endpoint. Replace only `BACKUP_DIR` with the selected immutable artifact:
+endpoint. The temporary database mounts `/var/lib/postgresql`, which is the
+required parent data location for the pinned PostgreSQL 18 image. The restore
+client runs as the host operator so it can read the owner-only backup without
+weakening backup directory or dump permissions. Replace only `BACKUP_DIR` with
+the selected immutable artifact:
 
 ```bash
 set -Eeuo pipefail
@@ -672,7 +676,7 @@ cleanup_restore_rehearsal() {
 trap 'cleanup_restore_rehearsal || true' EXIT
 docker network create --internal "$NETWORK" >/dev/null
 docker run -d --pull never --name "$SERVER" --network "$NETWORK" \
-  --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,nodev,size=2g \
+  --tmpfs /var/lib/postgresql:rw,noexec,nosuid,nodev,size=2g \
   -e POSTGRES_HOST_AUTH_METHOD=trust \
   -e POSTGRES_DB=akl_registry_restore \
   -e POSTGRES_USER=akl_restore \
@@ -691,6 +695,7 @@ done
 
 docker run --rm --pull never --network "$NETWORK" --read-only \
   --cap-drop ALL --security-opt no-new-privileges \
+  --user "$(id -u):$(id -g)" \
   --mount "type=bind,src=${BACKUP_DIR},dst=/backup,readonly" \
   "$TOOL_IMAGE" pg_restore --exit-on-error --single-transaction \
     --no-owner --no-privileges \
