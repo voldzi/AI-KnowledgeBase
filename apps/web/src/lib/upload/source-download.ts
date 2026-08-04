@@ -1,7 +1,13 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { open, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
+
+import {
+  headStoredObject,
+  ObjectStorageBackendError,
+  objectStorageSettingsFromEnv,
+  readStoredObject,
+  type ObjectStorageSettings,
+} from "@/lib/storage/object-storage";
 
 export interface SourceOpenRequest {
   document_id: string;
@@ -52,7 +58,7 @@ export interface SourceDownloadTokenPayload {
   policy_hash: string | null;
 }
 
-export interface SourceDownloadSettings {
+export interface SourceDownloadSettings extends ObjectStorageSettings {
   objectStorageRoot: string;
   bucket: string;
   signingSecret: string;
@@ -150,8 +156,9 @@ export function getSourceDownloadSettings(
   const basePath = env.NEXT_PUBLIC_AKL_BASE_PATH?.replace(/\/+$/, "") ?? "";
 
   return {
+    ...objectStorageSettingsFromEnv(env),
     objectStorageRoot: env.AKL_WEB_OBJECT_STORAGE_ROOT ?? "./object-storage",
-    bucket: env.AKL_WEB_UPLOAD_BUCKET ?? "akl-documents",
+    bucket: env.AKL_S3_BUCKET ?? env.AKL_WEB_UPLOAD_BUCKET ?? "akl-documents",
     signingSecret: signingSecret || "akl-local-download-signing-secret",
     publicDownloadBasePath: env.AKL_WEB_DOWNLOAD_PUBLIC_BASE_PATH ?? `${basePath}/api/documents/source/content`,
     expiresInSeconds: parsePositiveInteger(env.AKL_WEB_DOWNLOAD_TOKEN_TTL_SECONDS, DEFAULT_EXPIRES_IN_SECONDS)
@@ -167,7 +174,6 @@ export async function createSourceOpenDecision(
   const { bucket, objectKey } = parseSourceFileUri(request.source_file_uri, settings);
   const filename = normalizeFilename(path.posix.basename(objectKey));
   const mimeType = mimeTypeFor(filename);
-  const targetPath = resolveObjectPath({ bucket, object_key: objectKey }, settings);
   const sourceOpenId = `src_${randomUUID().replaceAll("-", "")}`;
   const expiresAt = new Date(Date.now() + settings.expiresInSeconds * 1000).toISOString();
   const expectedHash = normalizeOptionalSha256(request.file_hash);
@@ -186,12 +192,7 @@ export async function createSourceOpenDecision(
     policy_version: request.policy_version ?? null,
     policy_hash: request.policy_hash ?? null
   };
-  const objectStat = await stat(targetPath).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") {
-      return null;
-    }
-    throw error;
-  });
+  const objectStat = await headStoredObject(settings, bucket, objectKey);
 
   return {
     source_open_id: sourceOpenId,
@@ -208,7 +209,7 @@ export async function createSourceOpenDecision(
     file: {
       filename,
       mime_type: mimeType,
-      size_bytes: objectStat?.size ?? null,
+      size_bytes: objectStat?.size_bytes ?? null,
       sha256: expectedHash
     },
     viewer_mode: request.viewer_mode,
@@ -247,14 +248,14 @@ export function verifySourceDownloadToken(
   if (payload.policy_hash && normalizeOptionalSha256(payload.policy_hash) !== payload.policy_hash.toLowerCase()) {
     throw new SourceDownloadError(401, "INVALID_SOURCE_DOWNLOAD_TOKEN", "Source policy hash is invalid.");
   }
-  if (payload.bucket !== settings.bucket) {
+  if (payload.bucket !== settings.bucket && !(settings.legacyBuckets ?? []).includes(payload.bucket)) {
     throw new SourceDownloadError(401, "INVALID_SOURCE_DOWNLOAD_TOKEN", "Source download bucket is not valid.");
   }
   if (payload.source_file_uri !== `s3://${payload.bucket}/${payload.object_key}`) {
     throw new SourceDownloadError(401, "INVALID_SOURCE_DOWNLOAD_TOKEN", "Source download URI is inconsistent.");
   }
   mimeTypeFor(payload.file_name);
-  resolveObjectPath({ bucket: payload.bucket, object_key: payload.object_key }, settings);
+  assertSafeObjectKey(payload.object_key);
   const expiresAtMillis = new Date(payload.expires_at).getTime();
   if (!Number.isFinite(expiresAtMillis) || expiresAtMillis <= Date.now()) {
     throw new SourceDownloadError(410, "SOURCE_DOWNLOAD_TOKEN_EXPIRED", "Source download token has expired.", {
@@ -271,13 +272,8 @@ export async function readSourceObject(
   payload: SourceDownloadTokenPayload,
   settings: SourceDownloadSettings = getSourceDownloadSettings()
 ): Promise<{ bytes: Uint8Array; mime_type: string; filename: string; sha256: string }> {
-  const targetPath = resolveObjectPath({ bucket: payload.bucket, object_key: payload.object_key }, settings);
-  const bytes = await readFile(targetPath).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") {
-      throw new SourceDownloadError(404, "SOURCE_OBJECT_NOT_FOUND", "Source object is not available in object storage.");
-    }
-    throw error;
-  });
+  const stored = await readSourceStoredObject(settings, payload.bucket, payload.object_key);
+  const bytes = stored.content;
   const sha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
   if (payload.sha256 && payload.sha256 !== sha256) {
     throw new SourceDownloadError(409, "SOURCE_HASH_MISMATCH", "Source object SHA-256 does not match Registry metadata.", {
@@ -293,77 +289,56 @@ export async function openVerifiedSourceObject(
   expectedSize: number,
   settings: SourceDownloadSettings = getSourceDownloadSettings()
 ): Promise<VerifiedSourceObject> {
-  const targetPath = resolveObjectPath({ bucket: payload.bucket, object_key: payload.object_key }, settings);
-  const handle = await open(targetPath, "r").catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") {
-      throw new SourceDownloadError(404, "SOURCE_OBJECT_NOT_FOUND", "Source object is not available in object storage.");
-    }
-    throw error;
-  });
+  const stored = await readSourceStoredObject(settings, payload.bucket, payload.object_key);
+  const bytes = stored.content;
   let streamOpened = false;
-  try {
-    const sourceStat = await handle.stat();
-    if (!sourceStat.isFile() || sourceStat.size !== expectedSize) {
-      throw new SourceDownloadError(
-        409,
-        "SOURCE_DESCRIPTOR_MISMATCH",
-        "Source object size does not match Registry metadata."
-      );
-    }
-    const digest = createHash("sha256");
-    if (sourceStat.size > 0) {
-      const verificationStream = handle.createReadStream({
-        autoClose: false,
-        start: 0,
-        end: sourceStat.size - 1,
-        highWaterMark: 64 * 1024
-      });
-      for await (const chunk of verificationStream) digest.update(chunk as Buffer);
-    }
-    const sha256 = `sha256:${digest.digest("hex")}`;
-    if (payload.sha256 && payload.sha256 !== sha256) {
-      throw new SourceDownloadError(409, "SOURCE_HASH_MISMATCH", "Source object SHA-256 does not match Registry metadata.", {
-        expected_sha256: payload.sha256,
-        actual_sha256: sha256
-      });
-    }
-    return {
-      size_bytes: sourceStat.size,
-      mime_type: payload.file_type,
-      filename: payload.file_name,
-      sha256,
-      openStream(start = 0, end = Math.max(0, sourceStat.size - 1)) {
-        if (streamOpened) {
-          throw new SourceDownloadError(500, "SOURCE_STREAM_ALREADY_OPEN", "Source object stream is already open.");
-        }
-        streamOpened = true;
-        if (sourceStat.size === 0) {
-          void handle.close();
-          return new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.close();
-            }
-          });
-        }
-        if (start < 0 || end < start || end >= sourceStat.size) {
-          void handle.close();
-          throw new SourceDownloadError(416, "SOURCE_RANGE_INVALID", "Source byte range is invalid.");
-        }
-        return Readable.toWeb(
-          handle.createReadStream({ autoClose: true, start, end, highWaterMark: 64 * 1024 })
-        ) as ReadableStream<Uint8Array>;
-      },
-      async close() {
-        if (!streamOpened) {
-          streamOpened = true;
-          await handle.close();
-        }
-      }
-    };
-  } catch (error) {
-    await handle.close().catch(() => undefined);
-    throw error;
+  if (bytes.byteLength !== expectedSize) {
+    throw new SourceDownloadError(
+      409,
+      "SOURCE_DESCRIPTOR_MISMATCH",
+      "Source object size does not match Registry metadata."
+    );
   }
+  const sha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+  if (payload.sha256 && payload.sha256 !== sha256) {
+    throw new SourceDownloadError(409, "SOURCE_HASH_MISMATCH", "Source object SHA-256 does not match Registry metadata.", {
+      expected_sha256: payload.sha256,
+      actual_sha256: sha256
+    });
+  }
+  return {
+    size_bytes: bytes.byteLength,
+    mime_type: payload.file_type,
+    filename: payload.file_name,
+    sha256,
+    openStream(start = 0, end = Math.max(0, bytes.byteLength - 1)) {
+      if (streamOpened) {
+        throw new SourceDownloadError(500, "SOURCE_STREAM_ALREADY_OPEN", "Source object stream is already open.");
+      }
+      streamOpened = true;
+      if (bytes.byteLength === 0) {
+        return new ReadableStream<Uint8Array>({ start(controller) { controller.close(); } });
+      }
+      if (start < 0 || end < start || end >= bytes.byteLength) {
+        throw new SourceDownloadError(416, "SOURCE_RANGE_INVALID", "Source byte range is invalid.");
+      }
+      let offset = start;
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (offset > end) {
+            controller.close();
+            return;
+          }
+          const chunkEnd = Math.min(end + 1, offset + 64 * 1024);
+          controller.enqueue(bytes.slice(offset, chunkEnd));
+          offset = chunkEnd;
+        }
+      });
+    },
+    async close() {
+      streamOpened = true;
+    }
+  };
 }
 
 export function sourceContentTypeHeader(mimeType: string): string {
@@ -417,7 +392,7 @@ function parseSourceFileUri(sourceFileUri: string, settings: SourceDownloadSetti
   }
   const bucket = parsed.hostname;
   const objectKey = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
-  if (bucket !== settings.bucket) {
+  if (bucket !== settings.bucket && !(settings.legacyBuckets ?? []).includes(bucket)) {
     throw new SourceDownloadError(403, "SOURCE_BUCKET_NOT_ALLOWED", "Source bucket is not allowed for this web boundary.");
   }
   if (!objectKey || objectKey.includes("\0")) {
@@ -426,17 +401,29 @@ function parseSourceFileUri(sourceFileUri: string, settings: SourceDownloadSetti
   return { bucket, objectKey };
 }
 
-function resolveObjectPath(
-  payload: { bucket: string; object_key: string },
-  settings: SourceDownloadSettings
-): string {
-  const root = path.resolve(settings.objectStorageRoot);
-  const bucketRoot = path.resolve(root, payload.bucket);
-  const targetPath = path.resolve(bucketRoot, ...payload.object_key.split("/"));
-  if (!targetPath.startsWith(`${bucketRoot}${path.sep}`)) {
+function assertSafeObjectKey(objectKey: string): void {
+  if (!objectKey || objectKey.startsWith("/") || objectKey.split("/").includes("..")) {
     throw new SourceDownloadError(400, "SOURCE_OBJECT_KEY_INVALID", "Source object key is outside the configured bucket.");
   }
-  return targetPath;
+}
+
+async function readSourceStoredObject(
+  settings: SourceDownloadSettings,
+  bucket: string,
+  objectKey: string,
+) {
+  try {
+    return await readStoredObject(settings, bucket, objectKey);
+  } catch (error) {
+    if (error instanceof ObjectStorageBackendError && error.code === "OBJECT_STORAGE_NOT_FOUND") {
+      throw new SourceDownloadError(404, "SOURCE_OBJECT_NOT_FOUND", "Source object is not available in object storage.");
+    }
+    throw new SourceDownloadError(
+      503,
+      "SOURCE_OBJECT_STORAGE_UNAVAILABLE",
+      "Object storage is temporarily unavailable.",
+    );
+  }
 }
 
 function normalizeId(value: string, field: string): string {

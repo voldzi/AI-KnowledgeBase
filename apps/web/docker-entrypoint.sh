@@ -2,7 +2,11 @@
 set -eu
 
 OBJECT_STORAGE_ROOT="${AKL_WEB_OBJECT_STORAGE_ROOT:-/data/object-storage}"
-if [ "${AKL_WEB_PROFILE:-platform}" = "chat" ]; then
+QUARANTINE_ROOT="${AKL_WEB_UPLOAD_QUARANTINE_ROOT:-/data/upload-quarantine}"
+if [ "${AKL_OBJECT_STORAGE_MODE:-local}" = "s3" ]; then
+  mkdir -p "$QUARANTINE_ROOT"
+  chown -R nextjs:nextjs "$QUARANTINE_ROOT"
+elif [ "${AKL_WEB_PROFILE:-platform}" = "chat" ]; then
   if [ ! -d "$OBJECT_STORAGE_ROOT" ]; then
     echo "chat object storage is not available" >&2
     exit 1
@@ -37,6 +41,17 @@ install_secret \
   "web ingestion" \
   "${AKL_WEB_INGESTION_CLIENT_SECRET_SOURCE_FILE:-}" \
   "${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-}"
+
+if [ "${AKL_OBJECT_STORAGE_MODE:-local}" = "s3" ]; then
+  install_secret \
+    "S3 access key id" \
+    "${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-}" \
+    "${AKL_S3_ACCESS_KEY_ID_FILE:-}"
+  install_secret \
+    "S3 secret access key" \
+    "${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-}" \
+    "${AKL_S3_SECRET_ACCESS_KEY_FILE:-}"
+fi
 
 if [ "${AKL_DIRECTOR_COPILOT_ENABLED:-false}" = "true" ]; then
   if [ -z "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE:-}" ] || [ -z "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-}" ]; then

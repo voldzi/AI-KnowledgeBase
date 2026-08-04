@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 KNOWN_AUTH_MODES = {"disabled", "bearer", "mock", "oidc"}
 KNOWN_REGISTRY_MODES = {"http", "mock"}
-KNOWN_OBJECT_STORAGE_MODES = {"local", "http", "mock"}
+KNOWN_OBJECT_STORAGE_MODES = {"local", "s3", "http", "mock"}
 KNOWN_EMBEDDING_MODES = {"http", "mock"}
 KNOWN_INDEXER_TARGETS = {"qdrant", "opensearch", "mock"}
 KNOWN_OCR_PROVIDERS = {"disabled", "sidecar", "tesseract", "ocrmypdf"}
@@ -180,6 +180,14 @@ class Settings:
 
     object_storage_mode: str
     object_storage_root: Path
+    s3_endpoint: str | None
+    s3_bucket: str
+    s3_region: str
+    s3_force_path_style: bool
+    s3_access_key_id: str | None
+    s3_secret_access_key: str | None
+    object_storage_legacy_buckets: tuple[str, ...]
+    object_storage_local_fallback_read: bool
     max_file_bytes: int
     content_security_required: bool
 
@@ -254,7 +262,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env_name = _get(source, "AKL_ENV", "development").strip().lower()
     auth_mode = _get(source, "AKL_AUTH_MODE", "disabled").strip().lower()
     registry_mode = _get(source, "AKL_INGESTION_REGISTRY_CLIENT_MODE", "mock").strip().lower()
-    object_storage_mode = _get(source, "AKL_INGESTION_OBJECT_STORAGE_MODE", "local").strip().lower()
+    object_storage_mode = _get(
+        source,
+        "AKL_OBJECT_STORAGE_MODE",
+        _get(source, "AKL_INGESTION_OBJECT_STORAGE_MODE", "local"),
+    ).strip().lower()
     embedding_mode = _get(source, "AKL_INGESTION_EMBEDDING_CLIENT_MODE", "mock").strip().lower()
     indexer_mode = _get(source, "AKL_INGESTION_INDEXER_MODE", "mock").strip().lower()
     indexer_targets = _parse_indexer_targets(indexer_mode)
@@ -266,7 +278,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if registry_mode not in KNOWN_REGISTRY_MODES:
         raise ConfigError("AKL_INGESTION_REGISTRY_CLIENT_MODE must be one of: http, mock")
     if object_storage_mode not in KNOWN_OBJECT_STORAGE_MODES:
-        raise ConfigError("AKL_INGESTION_OBJECT_STORAGE_MODE must be one of: local, http, mock")
+        raise ConfigError("AKL_OBJECT_STORAGE_MODE must be one of: local, s3, http, mock")
     if embedding_mode not in KNOWN_EMBEDDING_MODES:
         raise ConfigError("AKL_INGESTION_EMBEDDING_CLIENT_MODE must be one of: http, mock")
     if ocr_provider not in KNOWN_OCR_PROVIDERS:
@@ -415,6 +427,38 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     object_storage_root = Path(
         _get(source, "AKL_OBJECT_STORAGE_ROOT", "./object-storage")
     )
+    s3_endpoint = _get(source, "AKL_S3_ENDPOINT", "").rstrip("/") or None
+    s3_bucket = _get(source, "AKL_S3_BUCKET", "akl-documents")
+    s3_region = _get(source, "AKL_S3_REGION", "us-east-1")
+    s3_force_path_style = _parse_bool(_get(source, "AKL_S3_FORCE_PATH_STYLE", "true"))
+    s3_access_key_id = (
+        _secret_value(source, "AKL_S3_ACCESS_KEY_ID", "AKL_S3_ACCESS_KEY_ID_FILE")
+        if object_storage_mode == "s3"
+        else None
+    )
+    s3_secret_access_key = (
+        _secret_value(
+            source,
+            "AKL_S3_SECRET_ACCESS_KEY",
+            "AKL_S3_SECRET_ACCESS_KEY_FILE",
+        )
+        if object_storage_mode == "s3"
+        else None
+    )
+    object_storage_legacy_buckets = _parse_csv(
+        _get(source, "AKL_OBJECT_STORAGE_LEGACY_BUCKETS", "")
+    )
+    object_storage_local_fallback_read = _parse_bool(
+        _get(source, "AKL_OBJECT_STORAGE_LOCAL_FALLBACK_READ", "false")
+    )
+    if object_storage_mode == "s3":
+        if not s3_endpoint or not _is_internal_url(s3_endpoint):
+            raise ConfigError("AKL_S3_ENDPOINT must be an internal URL in s3 mode")
+        if not s3_access_key_id or not s3_secret_access_key:
+            raise ConfigError(
+                "S3 mode requires AKL_S3_ACCESS_KEY_ID and AKL_S3_SECRET_ACCESS_KEY "
+                "or their *_FILE variants"
+            )
     rendition_cache_root = Path(
         _get(source, "AKL_INGESTION_RENDITION_CACHE_ROOT", "./rendition-cache")
     )
@@ -543,6 +587,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ),
         object_storage_mode=object_storage_mode,
         object_storage_root=object_storage_root,
+        s3_endpoint=s3_endpoint,
+        s3_bucket=s3_bucket,
+        s3_region=s3_region,
+        s3_force_path_style=s3_force_path_style,
+        s3_access_key_id=s3_access_key_id,
+        s3_secret_access_key=s3_secret_access_key,
+        object_storage_legacy_buckets=object_storage_legacy_buckets,
+        object_storage_local_fallback_read=object_storage_local_fallback_read,
         max_file_bytes=max_file_bytes,
         content_security_required=_parse_bool(
             _get(source, "STRATOS_CONTENT_SECURITY_REQUIRED", "false")
