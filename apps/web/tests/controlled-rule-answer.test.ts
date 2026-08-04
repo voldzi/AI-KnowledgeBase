@@ -150,6 +150,91 @@ describe("controlled rule assistant answer", () => {
     assert.equal(response.citations.length, 2);
   });
 
+  it("answers an explicit combined historical VZMR question with both statutory thresholds", () => {
+    const data = fixture();
+    data.valid_on = "2023-06-30";
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_supplies_services_2023",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Statutory supplies and services threshold",
+        value: 2000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_works_2023",
+        normativeKey: "public_procurement.vzmr.works.threshold",
+        title: "Statutory works threshold",
+        value: 6000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaké byly zákonné limity veřejné zakázky malého rozsahu k 30. 6. 2023 pro dodávky a služby a pro stavební práce?",
+      conversationId: "conv_vzmr_2023",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "answer");
+    assert.deepEqual(response.current_context.controlled_rule_ids, [
+      "rule_supplies_services_2023",
+      "rule_works_2023",
+    ]);
+    assert.match(response.answer ?? "", /dodávky a služby.*2\s000\s000 Kč/s);
+    assert.match(response.answer ?? "", /stavební práce.*6\s000\s000 Kč/s);
+    assert.equal(response.citations.length, 2);
+  });
+
+  it("keeps a single explicit VZMR category narrow", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_supplies_services",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Statutory supplies and services threshold",
+        value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_works",
+        normativeKey: "public_procurement.vzmr.works.threshold",
+        title: "Statutory works threshold",
+        value: 9000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaký je zákonný limit VZMR pro stavební práce?",
+      conversationId: "conv_vzmr_works",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.deepEqual(response.current_context.controlled_rule_ids, ["rule_works"]);
+    assert.doesNotMatch(response.answer ?? "", /dodávky a služby/i);
+  });
+
   it("answers a statutory follow-up from the governed catalog instead of document RAG", () => {
     const data = fixture();
     data.rules = [
