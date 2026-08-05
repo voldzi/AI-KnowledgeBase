@@ -186,6 +186,8 @@ services:
     image: ${WEB_IMAGE}
   chat-web:
     image: ${CHAT_WEB_IMAGE}
+  llm-gateway-service:
+    image: ${LLM_GATEWAY_SERVICE_IMAGE}
 YAML
 printf 'registry-v1\n' >"$WORK_REPO/services/registry-api/release.txt"
 printf 'FROM scratch\n' >"$WORK_REPO/services/ingestion-service/Dockerfile"
@@ -283,6 +285,7 @@ image_ref_for_service() {
     governance-service) printf '%s\n' "$GOVERNANCE_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
     chat-web) printf '%s\n' "$CHAT_WEB_IMAGE" ;;
+    llm-gateway-service) printf '%s\n' "$LLM_GATEWAY_SERVICE_IMAGE" ;;
     *) return 1 ;;
   esac
 }
@@ -290,7 +293,7 @@ image_ref_for_service() {
 service_for_image_ref() {
   local ref="$1"
   local service
-  for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web; do
+  for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
     if [[ "$(image_ref_for_service "$service")" == "$ref" ]]; then
       printf '%s\n' "$service"
       return 0
@@ -321,7 +324,7 @@ write_image_state() {
 container_service_for_id() {
   local requested_id="$1"
   local service state_dir
-  for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web; do
+  for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
     state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
     if [[ -f "${state_dir}/id" && "$(<"${state_dir}/id")" == "$requested_id" ]]; then
       printf '%s\n' "$service"
@@ -667,7 +670,7 @@ if [[ "${1-}" == "ps" ]]; then
   shift 2
   [[ "${1-}" == "--format" && "${2-}" == '{{.ID}}' && $# -eq 2 ]]
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service) ;;
     *) exit 98 ;;
   esac
   if [[ "$service" == "registry-api" \
@@ -687,6 +690,16 @@ if [[ "${1-}" == "ps" ]]; then
 fi
 
 if [[ "${1-}" == "exec" ]]; then
+  if [[ $# -eq 5 \
+    && "${3-}" == "python" \
+    && "${4-}" == "-c" ]]; then
+    requested_id="${2-}"
+    service="$(container_service_for_id "$requested_id")" || exit 1
+    [[ "$service" == "llm-gateway-service" ]] || exit 98
+    printf 'docker_exec_readiness:llm-gateway-service\n' >>"$CALL_LOG"
+    [[ "${FAKE_LLM_GATEWAY_READINESS_FAIL:-false}" != "true" ]] || exit 1
+    exit 0
+  fi
   if [[ $# -eq 5 ]]; then
     requested_id="${2-}"
     service="$(container_service_for_id "$requested_id")" || exit 1
@@ -862,7 +875,7 @@ case "$command_name" in
     printf 'up:%s\n' "$*" >>"$CALL_LOG"
     for argument in "$@"; do
       case "$argument" in
-        registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web)
+        registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)
           if [[ "${FAKE_IMAGE_RETARGET_DURING_UP_SERVICE:-}" == "$argument" \
             && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up" ]]; then
             : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up"
@@ -892,14 +905,14 @@ case "$command_name" in
   ps)
     case "$*" in
       '--status running --services')
-        for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web; do
+        for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
           state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
           if [[ -f "${state_dir}/running" && "$(<"${state_dir}/running")" == "true" ]]; then
             printf '%s\n' "$service"
           fi
         done
         ;;
-      '-q registry-api'|'-q ingestion-service'|'-q rag-retrieval-service'|'-q evaluation-service'|'-q governance-service'|'-q web'|'-q chat-web')
+      '-q registry-api'|'-q ingestion-service'|'-q rag-retrieval-service'|'-q evaluation-service'|'-q governance-service'|'-q web'|'-q chat-web'|'-q llm-gateway-service')
         service="${2-}"
         state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
         [[ ! -f "${state_dir}/id" ]] || cat "${state_dir}/id"
@@ -1076,7 +1089,7 @@ if [[ -n "${FAKE_IMAGE_RETARGET_DURING_SMOKE_SERVICE:-}" \
   && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-smoke" ]]; then
   service="$FAKE_IMAGE_RETARGET_DURING_SMOKE_SERVICE"
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service) ;;
     *) exit 98 ;;
   esac
   : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-smoke"
@@ -1701,8 +1714,10 @@ migration_line="$(grep -n '^alembic_upgrade$' "$CALL_LOG" | head -n 1 | cut -d: 
 first_success_log="$(awk '/^MARK first-immutable-success$/ {capture=1; next} capture' "$CALL_LOG")"
 grep -Fxq "bootstrap_target_deploy:${AKL_RELEASE_ROOT}/releases/${SHA_ONE}" <<<"$first_success_log" \
   || fail 'first rollout did not execute the orchestrator from the exact target release'
-grep -Fxq 'build:registry-api rag-retrieval-service evaluation-service governance-service web chat-web' <<<"$first_success_log" \
-  || fail 'first rollout did not Compose-build the immutable Registry, RAG, evaluation, Governance, web, and chat-web images'
+grep -Fxq 'build:registry-api rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service' <<<"$first_success_log" \
+  || fail 'first rollout did not Compose-build every immutable non-ingestion service'
+grep -Fxq 'docker_exec_readiness:llm-gateway-service' <<<"$first_success_log" \
+  || fail 'first rollout did not prove the internal LLM gateway health and readiness'
 grep -Fxq 'build:ingestion-service' <<<"$first_success_log" \
   || fail 'first rollout did not directly build the immutable ingestion image'
 grep -Fxq 'docker_exec_readiness:web-ingestion-transport:nextjs' <<<"$first_success_log" \
@@ -1979,7 +1994,7 @@ fi
 assert_current_sha "$TRANSITION_FAILED_LEGACY_SHA"
 assert_runtime_marker "$TRANSITION_FAILED_SHA" failed
 transition_failed_record="$(deployment_record_for_sha "$TRANSITION_FAILED_SHA")"
-for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web; do
+for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
   [[ ! -e "${FAKE_RUNTIME_DIR}/containers/${service}" ]] \
     || fail "transition verification failure left the unverified ${service} container present"
 done
@@ -2075,8 +2090,8 @@ import sys
 
 path = Path(sys.argv[1])
 text = path.read_text()
-old = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=3"
-new = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=4"
+old = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=4"
+new = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=5"
 if text.count(old) != 1:
     raise SystemExit("fixture managed-boundary revision is not unique")
 path.write_text(text.replace(old, new))
@@ -2102,7 +2117,7 @@ managed_boundary_log="$(
   awk '/^MARK managed-boundary-upgrade$/ {capture=1; next} capture' "$CALL_LOG"
 )"
 grep -Fxq \
-  'build:registry-api rag-retrieval-service evaluation-service governance-service web chat-web' \
+  'build:registry-api rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service' \
   <<<"$managed_boundary_log" \
   || fail 'managed-boundary upgrade did not build every supported non-ingestion service'
 grep -Fxq 'build:ingestion-service' <<<"$managed_boundary_log" \
@@ -2248,7 +2263,7 @@ printf 'MARK scripts-only-release\n' >>"$CALL_LOG"
 assert_current_sha "$SCRIPTS_ONLY_SHA"
 assert_runtime_marker "$SCRIPTS_ONLY_SHA" verified
 scripts_only_log="$(awk '/^MARK scripts-only-release$/ {capture=1; next} capture' "$CALL_LOG")"
-grep -Fxq 'build:registry-api rag-retrieval-service evaluation-service governance-service web chat-web' <<<"$scripts_only_log" \
+grep -Fxq 'build:registry-api rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service' <<<"$scripts_only_log" \
   || fail 'scripts-only release did not Compose-build every supported non-ingestion service'
 grep -Fxq 'build:ingestion-service' <<<"$scripts_only_log" \
   || fail 'scripts-only release did not build ingestion-service'
@@ -3068,7 +3083,7 @@ fi
 assert_current_sha "$SHA_SIX"
 assert_runtime_marker "$PARTIAL_UP_FAILED_SHA" failed
 partial_up_record="$(deployment_record_for_sha "$PARTIAL_UP_FAILED_SHA")"
-grep -Fxq 'services=registry-api,ingestion-service,rag-retrieval-service,evaluation-service,governance-service,web,chat-web' "$partial_up_record" \
+grep -Fxq 'services=registry-api,ingestion-service,rag-retrieval-service,evaluation-service,governance-service,web,chat-web,llm-gateway-service' "$partial_up_record" \
   || fail 'partial-up fixture did not select every release service'
 grep -Fxq 'migration_started=true' "$partial_up_record" \
   || fail 'partial-up fixture did not cross the forward-only migration boundary'
@@ -3086,6 +3101,8 @@ grep -Fxq 'target_web_quarantine_failed=true' "$partial_up_record" \
   || fail 'partial-up failure did not preserve the unmatched web predecessor'
 grep -Fxq 'target_chat_web_quarantine_failed=true' "$partial_up_record" \
   || fail 'partial-up failure did not preserve the unmatched chat web predecessor'
+grep -Fxq 'target_llm_gateway_quarantine_failed=true' "$partial_up_record" \
+  || fail 'partial-up failure did not preserve the unmatched LLM gateway predecessor'
 grep -Fxq 'deploy_lock_preserved=true' "$partial_up_record" \
   || fail 'partial-up failure did not durably preserve the incident lock'
 partial_up_registry_image_id="$(awk -F= '$1 == "target_registry_image_id" {print $2}' "$partial_up_record")"
@@ -3097,7 +3114,7 @@ grep -Fxq "container_execution:registry-api:${partial_up_registry_image_id}:${pa
   || fail 'partial Compose up did not create Registry from its durable image ID'
 grep -q '^docker_rm:registry-api:' <<<"$partial_up_log" \
   || fail 'partial Compose up did not remove the proven Registry target'
-if grep -q '^docker_rm:ingestion-service:\|^docker_rm:rag-retrieval-service:\|^docker_rm:evaluation-service:\|^docker_rm:governance-service:\|^docker_rm:web:\|^docker_rm:chat-web:' <<<"$partial_up_log"; then
+if grep -q '^docker_rm:ingestion-service:\|^docker_rm:rag-retrieval-service:\|^docker_rm:evaluation-service:\|^docker_rm:governance-service:\|^docker_rm:web:\|^docker_rm:chat-web:\|^docker_rm:llm-gateway-service:' <<<"$partial_up_log"; then
   fail 'partial Compose up removed unmatched predecessor containers'
 fi
 [[ ! -e "${FAKE_RUNTIME_DIR}/containers/registry-api" ]] \
@@ -3107,7 +3124,8 @@ fi
   && -d "${FAKE_RUNTIME_DIR}/containers/evaluation-service" \
   && -d "${FAKE_RUNTIME_DIR}/containers/governance-service" \
   && -d "${FAKE_RUNTIME_DIR}/containers/web" \
-  && -d "${FAKE_RUNTIME_DIR}/containers/chat-web" ]] \
+  && -d "${FAKE_RUNTIME_DIR}/containers/chat-web" \
+  && -d "${FAKE_RUNTIME_DIR}/containers/llm-gateway-service" ]] \
   || fail 'partial Compose-up recovery lost an unmatched predecessor container'
 [[ -d "${AKL_RELEASE_ROOT}/.immutable-deploy.lock" ]] \
   || fail 'partial Compose-up failure lost the preserved deployment lock'

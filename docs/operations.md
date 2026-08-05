@@ -411,11 +411,12 @@ deployment runbook; the sequence is mandatory:
    a proven restore point; only the documented isolated restore rehearsal does
    that.
 2. Deploy full-Git-SHA image tags for only the affected Registry, Ingestion,
-   RAG, Evaluation, Governance, web, and standalone chat services, then run
+   RAG, Evaluation, Governance, web, standalone chat, and internal LLM gateway
+   services, then run
    `alembic upgrade head` in the target
    `registry-api` image. A shared production Compose change is accepted only
    when a structural comparison proves that it changes complete blocks of
-   those seven services and leaves every unmanaged block and the top-level
+   those eight services and leaves every unmanaged block and the top-level
    envelope byte-identical. Durably record each post-build image ID and verify exact
    SHA/project/service labels again before Alembic/restart, after recreation,
    and after all smoke tests immediately before activation. Reconciliation loads

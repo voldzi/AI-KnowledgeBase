@@ -52,7 +52,8 @@ akl_assert_no_ambient_compose_overrides \
   EVALUATION_SERVICE_IMAGE \
   GOVERNANCE_SERVICE_IMAGE \
   WEB_IMAGE \
-  CHAT_WEB_IMAGE
+  CHAT_WEB_IMAGE \
+  LLM_GATEWAY_SERVICE_IMAGE
 [[ "$PUBLIC_BASE_URL" == https://* ]] \
   || akl_fail "Public verification URL must use HTTPS"
 [[ "$CHAT_PUBLIC_BASE_URL" == https://* ]] \
@@ -71,6 +72,7 @@ export EVALUATION_SERVICE_IMAGE="akl/evaluation-service:${TARGET_SHA}"
 export GOVERNANCE_SERVICE_IMAGE="akl/governance-service:${TARGET_SHA}"
 export WEB_IMAGE="akl/web:${TARGET_SHA}"
 export CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
+export LLM_GATEWAY_SERVICE_IMAGE="akl/llm-gateway-service:${TARGET_SHA}"
 COMPOSE=(
   docker compose
   --project-name "$PROJECT_NAME"
@@ -85,7 +87,7 @@ CHAT_WEB_AFFECTED="false"
 INGESTION_AFFECTED="false"
 for service in "${services[@]}"; do
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web) ;;
+    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service) ;;
     *) akl_fail "Unsupported verification service: $service" ;;
   esac
   [[ "$service" != "web" ]] || WEB_AFFECTED="true"
@@ -102,6 +104,7 @@ expected_image_for_service() {
     governance-service) printf '%s\n' "$GOVERNANCE_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
     chat-web) printf '%s\n' "$CHAT_WEB_IMAGE" ;;
+    llm-gateway-service) printf '%s\n' "$LLM_GATEWAY_SERVICE_IMAGE" ;;
     *) akl_fail "Unsupported image identity service: $1" ;;
   esac
 }
@@ -115,6 +118,7 @@ expected_image_id_for_service() {
     governance-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_GOVERNANCE_IMAGE_ID:-}" ;;
     web) printf '%s\n' "${AKL_RELEASE_EXPECTED_WEB_IMAGE_ID:-}" ;;
     chat-web) printf '%s\n' "${AKL_RELEASE_EXPECTED_CHAT_WEB_IMAGE_ID:-}" ;;
+    llm-gateway-service) printf '%s\n' "${AKL_RELEASE_EXPECTED_LLM_GATEWAY_IMAGE_ID:-}" ;;
     *) akl_fail "Unsupported durable image identity service: $1" ;;
   esac
 }
@@ -232,6 +236,38 @@ verify_ingestion_readiness() {
   container_id="${container_ids[0]}"
   docker exec "$container_id" python -m app.readiness_probe \
     || akl_fail "Ingestion authenticated readiness probe failed"
+}
+
+verify_llm_gateway_readiness() {
+  local container_ps_output container_id
+  local -a container_ids=()
+  akl_assert_expected_env_snapshot "$ENV_FILE"
+  container_ps_output="$("${COMPOSE[@]}" ps -q llm-gateway-service)" \
+    || akl_fail "Could not enumerate llm-gateway-service for readiness"
+  if [[ -n "$container_ps_output" ]]; then
+    mapfile -t container_ids <<<"$container_ps_output"
+  fi
+  [[ ${#container_ids[@]} -eq 1 && -n "${container_ids[0]}" ]] \
+    || akl_fail "LLM gateway readiness requires exactly one container"
+  container_id="${container_ids[0]}"
+  docker exec "$container_id" python -c '
+import json
+import os
+from urllib.request import urlopen
+
+for path in ("/health", "/ready"):
+    with urlopen(f"http://127.0.0.1:8080{path}", timeout=5) as response:
+        body = json.load(response)
+    if path == "/health":
+        if (
+            body.get("status") != "ok"
+            or body.get("service") != "llm-gateway-service"
+            or body.get("version") != os.environ["AKL_SERVICE_VERSION"]
+        ):
+            raise SystemExit("llm_gateway_health_invalid")
+    elif body.get("status") != "ready":
+        raise SystemExit("llm_gateway_not_ready")
+' || akl_fail "LLM gateway health or readiness probe failed"
 }
 
 verify_web_ingestion_transport_readiness() {
@@ -388,6 +424,10 @@ PY
 
 local_base="http://127.0.0.1:${PROXY_PORT}"
 for service in "${services[@]}"; do
+  if [[ "$service" == "llm-gateway-service" ]]; then
+    verify_llm_gateway_readiness
+    continue
+  fi
   case "$service" in
     registry-api)
       health_url="${local_base}/registry/health"
