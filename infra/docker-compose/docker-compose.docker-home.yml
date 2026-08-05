@@ -145,7 +145,7 @@ services:
       AKL_DIRECTOR_COPILOT_TIMEOUT_MS: ${AKL_DIRECTOR_COPILOT_TIMEOUT_MS:-8000}
       AKL_DIRECTOR_COPILOT_MAX_RESPONSE_BYTES: ${AKL_DIRECTOR_COPILOT_MAX_RESPONSE_BYTES:-262144}
       AKL_WEB_OBJECT_STORAGE_ROOT: /data/object-storage
-      AKL_WEB_UPLOAD_QUARANTINE_ROOT: /data/upload-quarantine
+      AKL_WEB_UPLOAD_QUARANTINE_ROOT: /data/object-storage/.quarantine
       AKL_WEB_UPLOAD_BUCKET: ${AKL_WEB_UPLOAD_BUCKET:-akl-documents}
       AKL_WEB_UPLOAD_SIGNING_SECRET: ${AKL_WEB_UPLOAD_SIGNING_SECRET:?AKL_WEB_UPLOAD_SIGNING_SECRET must be set}
       AKL_WEB_UPLOAD_MAX_FILE_BYTES: ${AKL_WEB_UPLOAD_MAX_FILE_BYTES:-52428800}
@@ -161,7 +161,6 @@ services:
       PORT: 3000
     volumes:
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage
-      - upload-quarantine:/data/upload-quarantine
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-secret-access-key:ro
       - ${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-/srv/akl/env/svc-akb-web-ingestion.client-secret}:/run/secrets/svc-akb-web-ingestion-client-secret:ro
@@ -781,7 +780,6 @@ networks:
         - subnet: ${AKL_MANAGEMENT_ZONE_SUBNET:-10.246.244.0/24}
 
 volumes:
-  upload-quarantine:
   caddy-data:
   caddy-config:
   qdrant-data:
