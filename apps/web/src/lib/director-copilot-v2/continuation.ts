@@ -7,7 +7,7 @@ import type {
 import type { DirectorCopilotV2ManifestCatalog } from "./manifest-catalog";
 import type { DirectorCopilotV2SourceOutcome } from "./orchestrator";
 
-const MAX_CONTINUATION_IDS = 100;
+const MAX_CONTINUATION_IDS = 8;
 
 type EntityFilterKey = keyof ConversationQueryState["entity_filters"];
 
@@ -28,7 +28,7 @@ export function directorCopilotV2ContinuationQueryState(
     if (outcome.status !== "complete" && outcome.status !== "partial") continue;
     const manifest = catalog.byTool.get(outcome.tool_id);
     if (!manifest) continue;
-    for (const item of outcome.items) {
+    for (const item of focusedItems(state, outcome)) {
       const linkedSelections = preferredLinkedSelections(
         selectionsForTypedLinks(item, manifest),
       );
@@ -45,6 +45,36 @@ export function directorCopilotV2ContinuationQueryState(
     next.entity_filters[key] = [...values].sort().slice(0, MAX_CONTINUATION_IDS);
   }
   return next;
+}
+
+function focusedItems(
+  state: ConversationQueryState,
+  outcome: DirectorCopilotV2SourceOutcome,
+): DirectorCopilotV2Item[] {
+  if (outcome.candidate_count === 1 && outcome.items.length === 1) {
+    return outcome.items;
+  }
+  if (
+    state.operation !== "rank"
+    || !state.sort
+    || !outcome.authorized_result_complete
+    || outcome.candidate_count > outcome.items.length
+  ) {
+    return [];
+  }
+  const comparable = outcome.items.flatMap((item) => {
+    const fact = item.facts.find((candidate) => candidate.key === state.sort?.metric);
+    return typeof fact?.value === "number" ? [{ item, value: fact.value }] : [];
+  });
+  if (comparable.length !== outcome.items.length) return [];
+  const direction = state.sort.direction === "asc" ? 1 : -1;
+  return comparable
+    .sort((left, right) => (
+      (left.value - right.value) * direction
+      || left.item.canonical_id.localeCompare(right.item.canonical_id)
+    ))
+    .slice(0, 1)
+    .map(({ item }) => item);
 }
 
 function preferredLinkedSelections(selections: Selection[]): Selection[] {

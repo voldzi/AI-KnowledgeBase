@@ -245,6 +245,47 @@ function composeResponse(
       missingInformation: answer,
     });
   }
+  const shapeMismatch = orchestration.snapshot.outcomes.find((outcome) => (
+    sourceShapeDoesNotMatchQuery(outcome, orchestration.snapshot)
+  ));
+  if (shapeMismatch) {
+    const answer = language === "en"
+      ? "The live STRATOS source did not return the requested entity detail. I did not present an aggregate as an item-level answer or replace it with document search."
+      : "Živý zdroj STRATOS nevrátil požadovanou podrobnost dat. Souhrn jsem nevydával za jednotlivé položky ani jej nenahradil vyhledáváním v dokumentech.";
+    return baseResponse({
+      conversationId,
+      responseType: "no_answer",
+      answer,
+      confidence: "insufficient_source",
+      queryState: orchestration.continuation_query_state,
+      snapshot: orchestration.snapshot,
+      warnings: [
+        ...outcomeWarnings(orchestration.snapshot),
+        "LIVE_DATA_ENTITY_TYPE_MISMATCH",
+        "LIVE_DATA_FALLBACK_BLOCKED",
+      ],
+      missingInformation: answer,
+    });
+  }
+  if (orchestration.snapshot.evidence.status === "failed") {
+    const answer = language === "en"
+      ? "The live STRATOS data did not pass the evidence check required for this answer. I did not present an incomplete count, unsupported ranking, or unverified relationship as a fact."
+      : "Živá data STRATOS neprošla důkazní kontrolou nutnou pro tuto odpověď. Neúplný počet, nepodložené pořadí ani neověřenou vazbu jsem nevydával za skutečnost.";
+    return baseResponse({
+      conversationId,
+      responseType: "no_answer",
+      answer,
+      confidence: "insufficient_source",
+      queryState: orchestration.continuation_query_state,
+      snapshot: orchestration.snapshot,
+      warnings: [
+        ...outcomeWarnings(orchestration.snapshot),
+        "LIVE_DATA_EVIDENCE_GATE_FAILED",
+        "LIVE_DATA_FALLBACK_BLOCKED",
+      ],
+      missingInformation: answer,
+    });
+  }
   const sections = orchestration.snapshot.outcomes
     .filter((outcome) => outcome.items.length > 0)
     .map((outcome) => renderSource(
@@ -253,9 +294,10 @@ function composeResponse(
       language,
     ));
   const correlations = [
-    renderProjectCorrelation(orchestration.snapshot, language),
+    renderStratosRelationships(orchestration.snapshot, language),
   ].filter(Boolean);
   const partialNotice = orchestration.status === "partial"
+    || orchestration.snapshot.evidence.status === "partial"
     ? language === "en"
       ? "The result is partial because at least one authorized source did not return a complete result."
       : "Výsledek je částečný, protože nejméně jeden oprávněný zdroj neposkytl úplný výsledek."
@@ -275,7 +317,10 @@ function composeResponse(
     conversationId,
     responseType: "answer",
     answer,
-    confidence: orchestration.status === "partial" ? "medium" : "high",
+    confidence: orchestration.status === "partial"
+      || orchestration.snapshot.evidence.status === "partial"
+      ? "medium"
+      : "high",
     queryState: orchestration.continuation_query_state,
     snapshot: orchestration.snapshot,
     warnings: outcomeWarnings(orchestration.snapshot),
@@ -284,40 +329,79 @@ function composeResponse(
   });
 }
 
-function renderProjectCorrelation(
+function renderStratosRelationships(
   snapshot: DirectorCopilotV2Snapshot,
   language: ResponseLanguage,
 ): string {
   const budget = snapshot.outcomes.find((outcome) => outcome.application === "budget");
   const projectflow = snapshot.outcomes.find((outcome) => outcome.application === "projectflow");
-  if (!budget || !projectflow) return "";
-  const projectflowById = new Map(
-    projectflow.items
+  const archflow = snapshot.outcomes.find((outcome) => outcome.application === "archflow");
+  if (!budget && !projectflow && !archflow) return "";
+  const budgetById = new Map(
+    (budget?.items ?? [])
       .filter((item) => item.canonical_id.startsWith("stratos:project:"))
       .map((item) => [item.canonical_id, item]),
   );
-  const pairs = budget.items
+  const projectflowById = new Map(
+    (projectflow?.items ?? [])
     .filter((item) => item.canonical_id.startsWith("stratos:project:"))
-    .flatMap((financial) => {
-      const delivery = projectflowById.get(financial.canonical_id);
-      return delivery ? [{ financial, delivery }] : [];
-    })
-    .slice(0, 25);
-  if (!pairs.length) return "";
+    .map((item) => [item.canonical_id, item]),
+  );
+  const needsByProject = new Map<string, DirectorCopilotV2Item[]>();
+  for (const need of archflow?.items ?? []) {
+    for (const link of need.links.filter((candidate) => (
+      candidate.key === "archflow.need.linked_project"
+      && candidate.relation_type === "direct"
+      && candidate.target_entity_type === "project"
+      && candidate.target_canonical_id.startsWith("stratos:project:")
+    ))) {
+      const needs = needsByProject.get(link.target_canonical_id) ?? [];
+      needs.push(need);
+      needsByProject.set(link.target_canonical_id, needs);
+    }
+  }
+  const projectIds = [...new Set([
+    ...budgetById.keys(),
+    ...projectflowById.keys(),
+    ...needsByProject.keys(),
+  ])].filter((projectId) => (
+    Number(budgetById.has(projectId))
+    + Number(projectflowById.has(projectId))
+    + Number(needsByProject.has(projectId))
+  ) >= 2).slice(0, 25);
+  if (!projectIds.length) return "";
   const headers = language === "en"
-    ? ["Project", "Plan", "Forecast/actual", "Variance", "Schedule", "Maximum delay"]
-    : ["Projekt", "Plán", "Výhled/skutečnost", "Odchylka", "Harmonogram", "Nejvyšší zpoždění"];
-  const rows = pairs.map(({ financial, delivery }, index) => {
-    const forecastOrActual = financial.facts.find(
+    ? ["Need", "Project", "Plan", "Variance", "Schedule", "Maximum delay", "Authorized documents"]
+    : ["Potřeba", "Projekt", "Plán", "Odchylka", "Harmonogram", "Nejvyšší zpoždění", "Oprávněné dokumenty"];
+  const authorizedDocuments = new Set(snapshot.authorized_document_ids);
+  const rows = projectIds.map((projectId, index) => {
+    const financial = budgetById.get(projectId);
+    const delivery = projectflowById.get(projectId);
+    const needs = needsByProject.get(projectId) ?? [];
+    const documentCount = delivery?.links.filter((link) => (
+      link.key === "projectflow.project.document"
+      && link.relation_type === "direct"
+      && link.target_entity_type === "document"
+      && link.target_canonical_id.startsWith("stratos:document:")
+      && authorizedDocuments.has(link.target_canonical_id.slice("stratos:document:".length))
+    )).length ?? 0;
+    const forecastOrActual = financial?.facts.find(
       (fact) => fact.key === "budget.forecast_amount",
-    ) ?? financial.facts.find((fact) => fact.key === "budget.actual_amount");
+    ) ?? financial?.facts.find((fact) => fact.key === "budget.actual_amount");
     return [
-      safeItemLabel(financial, index, language),
-      formatFact(financial.facts.find((fact) => fact.key === "budget.plan_amount"), language),
-      formatFact(forecastOrActual, language),
-      formatFact(financial.facts.find((fact) => fact.key === "budget.variance_amount"), language),
-      formatFact(delivery.facts.find((fact) => fact.key === "project.schedule_status"), language),
-      formatFact(delivery.facts.find((fact) => fact.key === "milestone.max_delay_days"), language),
+      needs.length
+        ? needs.map((need, needIndex) => safeItemLabel(need, needIndex, language)).join(", ")
+        : "—",
+      financial
+        ? safeItemLabel(financial, index, language)
+        : delivery
+          ? safeItemLabel(delivery, index, language)
+          : "—",
+      formatFact(financial?.facts.find((fact) => fact.key === "budget.plan_amount"), language),
+      formatFact(financial?.facts.find((fact) => fact.key === "budget.variance_amount") ?? forecastOrActual, language),
+      formatFact(delivery?.facts.find((fact) => fact.key === "project.schedule_status"), language),
+      formatFact(delivery?.facts.find((fact) => fact.key === "milestone.max_delay_days"), language),
+      new Intl.NumberFormat(language === "en" ? "en-US" : "cs-CZ").format(documentCount),
     ];
   });
   const table = [
@@ -325,9 +409,13 @@ function renderProjectCorrelation(
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
   ].join("\n");
-  const title = language === "en"
-    ? "### Financial and delivery correlation"
-    : "### Souvislost financí a realizace";
+  const title = archflow
+    ? language === "en"
+      ? "### Verified relationships across STRATOS"
+      : "### Ověřené souvislosti napříč STRATOS"
+    : language === "en"
+      ? "### Financial and delivery correlation"
+      : "### Souvislost financí a realizace";
   return `${title}\n\n${table}`;
 }
 
@@ -344,6 +432,15 @@ function renderSource(
     projectflow: "ProjectFlow",
     archflow: "ArchFlow",
   }[application];
+  if (queryState.operation === "count") {
+    const count = new Intl.NumberFormat(language === "en" ? "en-US" : "cs-CZ")
+      .format(outcome.candidate_count);
+    const entityLabel = countEntityLabel(application, queryState, language);
+    const summary = language === "en"
+      ? `${sourceName} contains **${count}** authorized ${entityLabel} for the selected period and scope.`
+      : `${sourceName} eviduje **${count}** oprávněných ${entityLabel} pro zvolené období a rozsah.`;
+    return `### ${sourceName}\n\n${sourcePresentationLine(outcome, queryState, 0, false, language)}\n\n${summary}\n\n${sourceEvidenceLine(outcome, language)}`;
+  }
   const selectedFacts = preferredFactKeys(application, items);
   const headers = [
     language === "en" ? "Item" : "Položka",
@@ -365,17 +462,153 @@ function renderSource(
   ].join("\n");
   const summary = ranked.topOnly && queryState.sort
     ? language === "en"
-      ? `Highest authorized item by ${factLabel(queryState.sort.metric, language)} from ${outcome.items.length} returned item(s).`
-      : `Nejvyšší oprávněná položka podle metriky ${factLabel(queryState.sort.metric, language)} z ${outcome.items.length} vrácených položek.`
+      ? `Highest authorized item by ${factLabel(queryState.sort.metric, language)} from ${outcome.candidate_count} matching item(s).`
+      : `Nejvyšší oprávněná položka podle metriky ${factLabel(queryState.sort.metric, language)} z ${outcome.candidate_count} odpovídajících položek.`
     : language === "en"
-      ? `${sourceName} returned ${outcome.items.length} authorized item(s).`
-      : `${sourceName} vrátil ${outcome.items.length} oprávněných položek.`;
+      ? `${sourceName} returned ${outcome.candidate_count} authorized item(s).`
+      : `${sourceName} vrátil ${outcome.candidate_count} oprávněných položek.`;
   const truncated = !ranked.topOnly && items.length > rows.length
     ? language === "en"
       ? `\n\nThe table shows the first ${rows.length} items.`
       : `\n\nTabulka zobrazuje prvních ${rows.length} položek.`
     : "";
-  return `### ${sourceName}\n\n${summary}\n\n${table}${truncated}`;
+  return `### ${sourceName}\n\n${sourcePresentationLine(outcome, queryState, rows.length, ranked.topOnly, language)}\n\n${summary}\n\n${table}${truncated}\n\n${sourceEvidenceLine(outcome, language)}`;
+}
+
+function sourcePresentationLine(
+  outcome: DirectorCopilotV2SourceOutcome,
+  queryState: ConversationQueryState,
+  visibleItems: number,
+  topOnly: boolean,
+  language: ResponseLanguage,
+): string {
+  const scope = queryScopeLabel(queryState, language);
+  const complete = outcome.status === "complete" && outcome.authorized_result_complete;
+  const count = new Intl.NumberFormat(language === "en" ? "en-US" : "cs-CZ")
+    .format(outcome.candidate_count);
+  const shown = new Intl.NumberFormat(language === "en" ? "en-US" : "cs-CZ")
+    .format(visibleItems);
+  const result = queryState.operation === "count"
+    ? language === "en"
+      ? `${complete ? "complete" : "partial"} count (${count})`
+      : `${complete ? "úplný" : "částečný"} počet (${count})`
+    : queryState.operation === "rank" && topOnly
+      ? language === "en"
+        ? `highest item from ${count} matching items`
+        : `nejvyšší položka z ${count} odpovídajících položek`
+      : queryState.operation === "list"
+        ? language === "en"
+          ? `shown ${shown} of ${count} matching items`
+          : `zobrazeno ${shown} z ${count} odpovídajících položek`
+        : language === "en"
+          ? `summary over ${count} matching items`
+          : `souhrn za ${count} odpovídajících položek`;
+  const dataStatus = language === "en"
+    ? complete ? "complete" : "partial"
+    : complete ? "úplná" : "částečná";
+  const asOf = outcome.as_of ? formatDateTime(outcome.as_of, language) : null;
+  const updated = asOf ?? (language === "en" ? "not provided" : "neuvedeno");
+  const grouping = queryState.group_by.length
+    ? language === "en"
+      ? ` · **Grouping:** ${queryState.group_by.map((item) => queryGroupingLabel(item, language)).join(", ")}`
+      : ` · **Seskupení:** ${queryState.group_by.map((item) => queryGroupingLabel(item, language)).join(", ")}`
+    : "";
+  return language === "en"
+    ? `**Scope:** ${scope} · **Result:** ${result} · **Data status:** ${dataStatus} · **Updated:** ${updated}${grouping}`
+    : `**Rozsah:** ${scope} · **Výsledek:** ${result} · **Stav dat:** ${dataStatus} · **Aktualizováno:** ${updated}${grouping}`;
+}
+
+function queryScopeLabel(
+  queryState: ConversationQueryState,
+  language: ResponseLanguage,
+): string {
+  if (queryState.scope_label) {
+    return queryState.granularity === "organization_unit"
+      ? language === "en"
+        ? `organization unit ${queryState.scope_label}`
+        : `organizační jednotka ${queryState.scope_label}`
+      : queryState.scope_label;
+  }
+  const labels: Record<ConversationQueryState["granularity"], [string, string]> = {
+    authorized_scope: ["authorized user scope", "oprávněný rozsah uživatele"],
+    organization: ["organization", "celá oprávněná organizace"],
+    organization_unit: ["authorized organization units", "oprávněné organizační jednotky"],
+    portfolio: ["authorized portfolios", "oprávněná portfolia"],
+    project: ["authorized projects", "oprávněné projekty"],
+    item: ["authorized items", "oprávněné položky"],
+  };
+  return labels[queryState.granularity][language === "en" ? 0 : 1];
+}
+
+function queryGroupingLabel(
+  grouping: ConversationQueryState["group_by"][number],
+  language: ResponseLanguage,
+): string {
+  const labels: Record<ConversationQueryState["group_by"][number], [string, string]> = {
+    organization: ["organization", "organizace"],
+    organization_unit: ["organization unit", "organizační jednotka"],
+    portfolio: ["portfolio", "portfolio"],
+    project: ["project", "projekt"],
+    item: ["item", "položka"],
+    schedule_status: ["schedule status", "stav harmonogramu"],
+  };
+  return labels[grouping][language === "en" ? 0 : 1];
+}
+
+function sourceShapeDoesNotMatchQuery(
+  outcome: DirectorCopilotV2SourceOutcome,
+  snapshot: DirectorCopilotV2Snapshot,
+): boolean {
+  if (!outcome.items.length) return false;
+  const granularity = snapshot.plan.nodes.find(
+    (node) => node.application === outcome.application,
+  )?.request?.parameters.granularity;
+  const expected = expectedEntityType(outcome.application, granularity ?? null);
+  return expected !== null && outcome.items.some((item) => item.entity_type !== expected);
+}
+
+function expectedEntityType(
+  application: DirectorCopilotV2SourceOutcome["application"],
+  granularity: string | null,
+): DirectorCopilotV2Item["entity_type"] | null {
+  if (granularity === "project") return "project";
+  if (granularity === "portfolio") return "portfolio";
+  if (granularity !== "item") return null;
+  if (application === "budget") return "budget_item";
+  if (application === "projectflow") return "project";
+  return "need";
+}
+
+function sourceEvidenceLine(
+  outcome: DirectorCopilotV2SourceOutcome,
+  language: ResponseLanguage,
+): string {
+  const asOf = outcome.as_of ? formatDateTime(outcome.as_of, language) : null;
+  if (language === "en") {
+    return asOf
+      ? `_Authorized live source verified as of ${asOf}._`
+      : "_Authorized live source verified._";
+  }
+  return asOf
+    ? `_Oprávněný živý zdroj ověřen ke ${asOf}._`
+    : "_Oprávněný živý zdroj ověřen._";
+}
+
+function countEntityLabel(
+  application: DirectorCopilotV2SourceOutcome["application"],
+  queryState: ConversationQueryState,
+  language: ResponseLanguage,
+): string {
+  if (language === "en") {
+    if (application === "budget" && queryState.granularity === "item") return "plan items";
+    if (application === "projectflow") return "projects";
+    if (application === "archflow") return "needs";
+    return "items";
+  }
+  if (application === "budget" && queryState.granularity === "item") return "položek plánu";
+  if (application === "projectflow") return "projektů";
+  if (application === "archflow") return "potřeb";
+  return "položek";
 }
 
 function rankItems(
@@ -653,6 +886,20 @@ async function auditResult(
       returned_item_count: orchestration.snapshot.outcomes.reduce(
         (total, outcome) => total + outcome.items.length,
         0,
+      ),
+      query_operation: orchestration.plan.query_state.operation,
+      requested_granularities_json: JSON.stringify(
+        orchestration.plan.nodes.map((node) => ({
+          application: node.application,
+          granularity: node.request?.parameters.granularity ?? null,
+        })),
+      ),
+      semantic_shape_valid: !response.warnings.includes("LIVE_DATA_ENTITY_TYPE_MISMATCH"),
+      evidence_status: orchestration.snapshot.evidence.status,
+      evidence_checked_claim_count: orchestration.snapshot.evidence.checked_claim_count,
+      evidence_supported_claim_count: orchestration.snapshot.evidence.supported_claim_count,
+      evidence_issue_codes_json: JSON.stringify(
+        orchestration.snapshot.evidence.issues.map((issue) => issue.code),
       ),
       authorized_document_link_count:
         orchestration.snapshot.authorized_document_ids.length,

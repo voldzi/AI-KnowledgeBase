@@ -121,6 +121,20 @@ describe("Director Copilot compositional semantic routing", () => {
     }
   });
 
+  it("keeps every detected live domain in a cross-application question", () => {
+    const message = "Které potřeby mají navázané projekty, jaký mají plán a které jsou zpožděné?";
+    const resolved = resolveConversationQuery({ message, now: NOW });
+
+    assert.deepEqual(
+      new Set(resolved.state.sources),
+      new Set(["budget", "projectflow", "archflow"]),
+    );
+    assert.equal(
+      classifyDirectorCopilotV2Intent(message),
+      "portfolio_performance_overview",
+    );
+  });
+
   it("does not turn unrelated conversation into a live STRATOS data request", () => {
     const messages = [
       "Jak se dnes máš?",

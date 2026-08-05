@@ -101,8 +101,9 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   source-provided context tags for dependent AKB retrieval. The assistant
   planner uses a versioned semantic catalog, a closed machine-readable domain
   tool/metric/relation catalog and a bounded
-  `ConversationQueryState` for source, metric, period, granularity and narrowing
-  entity filters. The planner composes approved domain concepts and inflected
+  `ConversationQueryState` for source, metric, period, requested operation
+  (`summary`, `list`, `count`, `rank`), per-source granularity, grouping,
+  ordering and narrowing entity filters. The planner composes approved domain concepts and inflected
   aliases rather than enumerating complete user sentences. Source ownership
   disambiguates generic terms, and generated positive and negative routing
   matrices guard the catalog. Routing itself is deterministic and does not
@@ -111,13 +112,35 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   ArchFlow. ArchFlow owns both needs and submitted ideas. It correlates only
   byte-identical canonical identities or typed
   manifest relationships and never calculates source-owned financial totals.
-  The query state never carries authorization;
+  When a question spans several domains, the selected Budget, ProjectFlow and
+  ArchFlow nodes execute concurrently and receive their own entity shape; for
+  example, a need-project-finance question requests needs from ArchFlow and
+  project-level facts from ProjectFlow and Budget. Synthesis joins a need to a project only
+  through `archflow.need.linked_project`, joins Budget and ProjectFlow only by
+  their byte-identical `stratos:project:*` identity, and presents a ProjectFlow
+  document relation only after independent AKB document authorization.
+  Requested data shape is independent from authorization coverage: an
+  organization-wide grant can authorize item-level results without converting
+  an item question into an organization aggregate. AKB verifies the returned
+  entity type before presentation and fails closed on a shape mismatch. The
+  continuation state focuses an entity only when the source returned exactly
+  one candidate or a complete, comparable ranking produced one winner. Broad
+  lists never become dozens of implicit filters on the next turn. Before any
+  live answer is rendered, an evidence gate checks source revision and time,
+  candidate completeness, item and fact provenance, declared relationships,
+  requested entity shape and operation-specific count/rank guarantees. The
+  query state never carries authorization;
   every turn reloads the current STRATOS access projection and every source
   applies its local PEP. Explicit live-data questions and contextual follow-ups
   are routed before the document router. Missing source access, an unconnected
   ArchFlow tool, disabled federation or source failure is reported
   explicitly; a live-data question is never silently answered from historical
   documents.
+- Live-source answer sections expose the authorized scope, complete versus
+  partial result shape, source timestamp and safe detail links. Lists disclose
+  displayed versus matching counts. Desktop support panels are resizable and
+  collapsible; compact layouts use focus-safe drawers so navigation and source
+  context do not reduce the transcript to an unusable column.
 - Director Copilot V2 is the sole live-data path after joint production
   acceptance. A slow, failed, denied or contract-drifting source returns its
   explicit V2 result and cannot be substituted by document RAG. The runtime

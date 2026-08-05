@@ -542,6 +542,8 @@ export function AkbAssistantApp({
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("active");
   const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
+  const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
+  const [compactSourcePanel, setCompactSourcePanel] = useState(false);
   const [desktopThreadsOpen, setDesktopThreadsOpen] = useState(true);
   const [desktopSourcesOpen, setDesktopSourcesOpen] = useState(true);
   const [threadPanelWidth, setThreadPanelWidth] = useState(268);
@@ -583,6 +585,8 @@ export function AkbAssistantApp({
   const chatAppRef = useRef<HTMLElement | null>(null);
   const restoreThreadsButtonRef = useRef<HTMLButtonElement | null>(null);
   const restoreSourcesButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileThreadsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mobileSourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
   const transcriptRef = useRef<HTMLElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -607,6 +611,7 @@ export function AkbAssistantApp({
     lastAssistantLiveSources.length,
     language,
   );
+  const sourcePanelVisible = compactSourcePanel ? mobileSourcesOpen : desktopSourcesOpen;
   const visibleThreads = useMemo(() => {
     const query = threadSearch.trim().toLowerCase();
     const byView = threads.filter((thread) => {
@@ -676,6 +681,19 @@ export function AkbAssistantApp({
   );
 
   useEffect(() => {
+    const media = window.matchMedia("(max-width: 1320px)");
+    const sync = () => {
+      setCompactSourcePanel(media.matches);
+      if (!media.matches) {
+        setMobileSourcesOpen(false);
+      }
+    };
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
     const textarea = composerTextareaRef.current;
     if (!textarea) {
       return;
@@ -686,7 +704,32 @@ export function AkbAssistantApp({
 
   useEffect(() => {
     setMobileActionsOpen(false);
+    setMobileThreadsOpen(false);
+    setMobileSourcesOpen(false);
   }, [activeThreadId]);
+
+  useEffect(() => {
+    if (!mobileThreadsOpen && !mobileSourcesOpen) {
+      return;
+    }
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      if (mobileSourcesOpen) {
+        setMobileSourcesOpen(false);
+        window.requestAnimationFrame(() => {
+          (mobileSourcesTriggerRef.current ?? restoreSourcesButtonRef.current)?.focus();
+        });
+        return;
+      }
+      setMobileThreadsOpen(false);
+      window.requestAnimationFrame(() => mobileThreadsTriggerRef.current?.focus());
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mobileSourcesOpen, mobileThreadsOpen]);
 
   useEffect(() => {
     void refreshSuggestions();
@@ -820,6 +863,7 @@ export function AkbAssistantApp({
     setOpeningSourceId(null);
     setCitationModalOpen(false);
     setMobileThreadsOpen(false);
+    setMobileSourcesOpen(false);
   }
 
   async function refreshSuggestions() {
@@ -1446,6 +1490,13 @@ export function AkbAssistantApp({
       return items;
     }, {});
     const nextContext = { ...activeThread.context, ...answers };
+    if (response.current_context.clarification_kind === "director_plan_meaning") {
+      const selectedPlan = answers.director_plan_meaning;
+      if (selectedPlan) {
+        void submitQuestion(selectedPlan, "/api/assistant/chat", nextContext);
+      }
+      return;
+    }
     const previousQuestion = [...activeThread.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     void submitQuestion(previousQuestion, "/api/assistant/clarify", nextContext);
   }
@@ -1600,6 +1651,7 @@ export function AkbAssistantApp({
   function closeThreadPanel() {
     if (window.matchMedia("(max-width: 860px)").matches) {
       setMobileThreadsOpen(false);
+      window.requestAnimationFrame(() => mobileThreadsTriggerRef.current?.focus());
       return;
     }
     setDesktopThreadsOpen(false);
@@ -1607,16 +1659,46 @@ export function AkbAssistantApp({
   }
 
   function closeSourcePanel() {
+    if (window.matchMedia("(max-width: 1320px)").matches) {
+      setMobileSourcesOpen(false);
+      window.requestAnimationFrame(() => {
+        (mobileSourcesTriggerRef.current ?? restoreSourcesButtonRef.current)?.focus();
+      });
+      return;
+    }
     setDesktopSourcesOpen(false);
     window.requestAnimationFrame(() => restoreSourcesButtonRef.current?.focus());
   }
 
   function toggleThreadPanel() {
     if (window.matchMedia("(max-width: 860px)").matches) {
+      setMobileSourcesOpen(false);
       setMobileThreadsOpen((open) => !open);
       return;
     }
     setDesktopThreadsOpen((open) => !open);
+  }
+
+  function toggleSourcePanel() {
+    if (window.matchMedia("(max-width: 1320px)").matches) {
+      setMobileThreadsOpen(false);
+      setMobileSourcesOpen((open) => !open);
+      return;
+    }
+    setDesktopSourcesOpen((open) => !open);
+  }
+
+  function closeOverlayPanels() {
+    const restoreSourceFocus = mobileSourcesOpen;
+    setMobileThreadsOpen(false);
+    setMobileSourcesOpen(false);
+    window.requestAnimationFrame(() => {
+      if (restoreSourceFocus) {
+        (mobileSourcesTriggerRef.current ?? restoreSourcesButtonRef.current)?.focus();
+      } else {
+        mobileThreadsTriggerRef.current?.focus();
+      }
+    });
   }
 
   function resizePanel(panel: ResizableChatPanel, value: number) {
@@ -1691,6 +1773,14 @@ export function AkbAssistantApp({
         } as CSSProperties}
         aria-label="AKB Assistant"
       >
+        {mobileThreadsOpen || mobileSourcesOpen ? (
+          <button
+            className="akb-chat-panel-backdrop"
+            type="button"
+            onClick={closeOverlayPanels}
+            aria-label={copy.close}
+          />
+        ) : null}
         <aside
           id="akb-chat-thread-panel"
           className={`akb-chat-sidebar${mobileThreadsOpen ? " is-mobile-open" : ""}`}
@@ -1802,18 +1892,20 @@ export function AkbAssistantApp({
                   <PanelLeftOpen size={17} aria-hidden="true" />
                 </button>
               ) : null}
-              {!desktopSourcesOpen ? (
-                <button
-                  ref={restoreSourcesButtonRef}
-                  className="akb-chat-icon-button"
-                  type="button"
-                  onClick={() => setDesktopSourcesOpen(true)}
-                  title={copy.showSources}
-                  aria-label={copy.showSources}
-                >
-                  <PanelRightOpen size={17} aria-hidden="true" />
-                </button>
-              ) : null}
+              <button
+                ref={restoreSourcesButtonRef}
+                className="akb-chat-icon-button"
+                type="button"
+                onClick={toggleSourcePanel}
+                title={sourcePanelVisible ? copy.hideSources : copy.showSources}
+                aria-label={sourcePanelVisible ? copy.hideSources : copy.showSources}
+                aria-controls="akb-chat-source-panel"
+                aria-expanded={sourcePanelVisible}
+              >
+                {sourcePanelVisible
+                  ? <PanelRightClose size={17} aria-hidden="true" />
+                  : <PanelRightOpen size={17} aria-hidden="true" />}
+              </button>
               {canManageActiveThread && activeThread.status === "active" ? (
                 <button className="akb-chat-icon-button" type="button" onClick={() => void archiveActiveThread()} title={copy.archive} aria-label={copy.archive}>
                   <Archive size={16} aria-hidden="true" />
@@ -1891,6 +1983,7 @@ export function AkbAssistantApp({
             </div>
             <div className="akb-chat-mobile-toolbar">
               <button
+                ref={mobileThreadsTriggerRef}
                 className="akb-chat-icon-button akb-chat-mobile-threads"
                 type="button"
                 onClick={toggleThreadPanel}
@@ -1904,6 +1997,20 @@ export function AkbAssistantApp({
               <span className="akb-chat-mobile-toolbar__title" title={activeThread.title}>
                 {activeThread.title}
               </span>
+              <button
+                ref={mobileSourcesTriggerRef}
+                className="akb-chat-icon-button akb-chat-mobile-sources"
+                type="button"
+                onClick={toggleSourcePanel}
+                title={mobileSourcesOpen ? copy.hideSources : copy.showSources}
+                aria-label={mobileSourcesOpen ? copy.hideSources : copy.showSources}
+                aria-controls="akb-chat-source-panel"
+                aria-expanded={mobileSourcesOpen}
+              >
+                {mobileSourcesOpen
+                  ? <PanelRightClose size={18} aria-hidden="true" />
+                  : <PanelRightOpen size={18} aria-hidden="true" />}
+              </button>
               <button
                 className="akb-chat-icon-button"
                 type="button"
@@ -2301,7 +2408,11 @@ export function AkbAssistantApp({
           <GripVertical size={15} aria-hidden="true" />
         </button>
 
-        <aside className="akb-chat-context" aria-label={copy.sourcesPanel}>
+        <aside
+          id="akb-chat-source-panel"
+          className={`akb-chat-context${mobileSourcesOpen ? " is-overlay-open" : ""}`}
+          aria-label={copy.sourcesPanel}
+        >
           <div className="akb-chat-context__header">
             <div>
               <h2>{copy.sourcesPanel}</h2>

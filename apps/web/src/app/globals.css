@@ -534,6 +534,10 @@ button {
   --akb-chat-source-track: 0px;
 }
 
+.akb-chat-panel-backdrop {
+  display: none;
+}
+
 .akb-employee-portal-shell {
   background: var(--background);
   display: flex;
@@ -2154,7 +2158,7 @@ button {
     align-items: center;
     display: grid;
     gap: 8px;
-    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    grid-template-columns: minmax(0, 1fr) 44px 44px 44px;
     width: 100%;
   }
 
@@ -2177,14 +2181,36 @@ button {
   }
 
   .akb-chat-context {
-    grid-column: 1 / 4;
+    display: none;
+    inset: 84px 16px 16px auto;
     max-height: none;
-    position: static;
+    position: fixed;
+    width: min(92vw, var(--akb-chat-source-width, 420px));
+    z-index: 46;
   }
 
-  .akb-chat-panel-resizer--sources,
-  .akb-chat-context__close {
+  .akb-chat-context.is-overlay-open,
+  .akb-chat-app.is-sources-closed .akb-chat-context.is-overlay-open {
+    display: grid;
+  }
+
+  .akb-chat-panel-backdrop {
+    background: rgba(8, 25, 31, 0.36);
+    border: 0;
+    display: block;
+    inset: 0;
+    padding: 0;
+    position: fixed;
+    width: 100%;
+    z-index: 44;
+  }
+
+  .akb-chat-panel-resizer--sources {
     display: none;
+  }
+
+  .akb-chat-context__close {
+    display: inline-flex;
   }
 }
 
@@ -2239,6 +2265,13 @@ button {
 
   .akb-chat-context {
     display: none;
+    inset: 68px 10px 10px;
+    width: auto;
+  }
+
+  .akb-chat-context.is-overlay-open,
+  .akb-chat-app.is-sources-closed .akb-chat-context.is-overlay-open {
+    display: grid;
   }
 
   .akb-chat-panel-resizer {
@@ -2268,7 +2301,7 @@ button {
     align-items: center;
     display: grid;
     gap: 8px;
-    grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px 44px 44px;
   }
 
   .akb-chat-mobile-toolbar .akb-chat-mobile-threads {

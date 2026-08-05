@@ -23,6 +23,7 @@ describe("Director Copilot conversation query state", () => {
     assert.equal(resolved.state.period.fiscal_year, 2025);
     assert.match(resolved.state.period.as_of, /^2025-/);
     assert.equal(resolved.state.granularity, "organization_unit");
+    assert.equal(resolved.state.operation, "summary");
     assert.equal(resolved.state.scope_label, "IT");
   });
 
@@ -212,11 +213,69 @@ describe("Director Copilot conversation query state", () => {
     assert.deepEqual(resolved.state.sources, ["budget"]);
     assert.deepEqual(resolved.state.metrics, ["budget.plan_amount"]);
     assert.equal(resolved.state.granularity, "item");
+    assert.equal(resolved.state.operation, "rank");
     assert.deepEqual(resolved.state.sort, {
       metric: "budget.plan_amount",
       direction: "desc",
     });
     assert.deepEqual(resolved.state.entity_filters.project_ids, []);
+  });
+
+  it("treats a planned action as a Budget item rather than an organizational aggregate", () => {
+    const resolved = resolveConversationQuery({
+      message: "Jaká je největší akce plánovaná v roce 2025?",
+      now: NOW,
+    });
+
+    assert.equal(resolved.recognized, true);
+    assert.deepEqual(resolved.state.sources, ["budget"]);
+    assert.deepEqual(resolved.state.metrics, ["budget.plan_amount"]);
+    assert.equal(resolved.state.period.fiscal_year, 2025);
+    assert.equal(resolved.state.granularity, "item");
+    assert.equal(resolved.state.operation, "rank");
+    assert.deepEqual(resolved.state.sort, {
+      metric: "budget.plan_amount",
+      direction: "desc",
+    });
+  });
+
+  it("distinguishes counts and lists of Budget actions from a financial summary", () => {
+    const count = resolveConversationQuery({
+      message: "Kolik akcí má plán na rok 2025?",
+      now: NOW,
+    });
+    const list = resolveConversationQuery({
+      message: "Jaké akce máme v plánu?",
+      now: NOW,
+    });
+    const summary = resolveConversationQuery({
+      message: "Kolik máme v rozpočtu?",
+      now: NOW,
+    });
+
+    assert.equal(count.state.granularity, "item");
+    assert.equal(count.state.operation, "count");
+    assert.equal(list.state.granularity, "item");
+    assert.equal(list.state.operation, "list");
+    assert.equal(summary.state.granularity, "authorized_scope");
+    assert.equal(summary.state.operation, "summary");
+  });
+
+  it("resets a previous ranking when a follow-up asks for a different metric without a superlative", () => {
+    const previous = resolveConversationQuery({
+      message: "Která akce má nejvyšší plán?",
+      now: NOW,
+    }).state;
+    const resolved = resolveConversationQuery({
+      message: "A jaký má výhled?",
+      context: { stratos_query_state: previous },
+      now: NOW,
+    });
+
+    assert.equal(previous.operation, "rank");
+    assert.equal(resolved.state.operation, "summary");
+    assert.equal(resolved.state.sort, null);
+    assert.deepEqual(resolved.state.metrics, ["budget.forecast_amount"]);
   });
 
   it("does not divert a document question to a live domain tool", () => {
@@ -270,6 +329,7 @@ describe("Director Copilot conversation query state", () => {
       metrics: ["budget.forecast_amount", "admin:all"],
       period: { type: "fiscal_year", fiscal_year: 2025, as_of: "forged" },
       granularity: "organization",
+      operation: "count",
       scope_label: "IT",
       entity_filters: {
         project_ids: ["project-001", "invalid id with spaces"],
@@ -290,6 +350,7 @@ describe("Director Copilot conversation query state", () => {
     assert.deepEqual(parsed?.metrics, ["budget.forecast_amount"]);
     assert.deepEqual(parsed?.entity_filters.project_ids, ["project-001"]);
     assert.deepEqual(parsed?.entity_filters.organization_unit_ids, ["unit-it"]);
+    assert.equal(parsed?.operation, "count");
     assert.equal(JSON.stringify(parsed).includes("requested_scopes"), false);
     assert.equal(JSON.stringify(parsed).includes("capabilities"), false);
   });
@@ -310,6 +371,8 @@ describe("Director Copilot conversation query state", () => {
     }, NOW);
 
     assert.equal(parsed?.catalog_version, "stratos-semantic-catalog-2");
+    assert.equal(parsed?.schema_version, "stratos-conversation-query-state-4");
+    assert.equal(parsed?.operation, "summary");
     assert.deepEqual(parsed?.sources, ["budget"]);
   });
 
@@ -346,5 +409,51 @@ describe("Director Copilot conversation query state", () => {
       assert.deepEqual(resolved.pending_sources, [], message);
       assert.deepEqual(resolved.state.sources, ["archflow"], message);
     }
+  });
+
+  it("decomposes explicit grouping independently from the requested metric", () => {
+    const resolved = resolveConversationQuery({
+      message: "Rozděl schválený rozpočet na rok 2025 podle portfolií.",
+      now: NOW,
+    });
+
+    assert.deepEqual(resolved.state.sources, ["budget"]);
+    assert.deepEqual(resolved.state.metrics, ["budget.plan_amount"]);
+    assert.deepEqual(resolved.state.group_by, ["portfolio"]);
+    assert.equal(resolved.state.period.fiscal_year, 2025);
+  });
+
+  it("asks for clarification only when plan can mean finance or delivery", () => {
+    const ambiguous = resolveConversationQuery({
+      message: "Jaký je plán na rok 2026?",
+      now: NOW,
+    });
+    const financial = resolveConversationQuery({
+      message: "Jaký je finanční plán na rok 2026?",
+      now: NOW,
+    });
+    const delivery = resolveConversationQuery({
+      message: "Jaký je plán milníků na rok 2026?",
+      now: NOW,
+    });
+
+    assert.deepEqual(ambiguous.clarification, { kind: "plan_meaning" });
+    assert.equal(financial.clarification, null);
+    assert.equal(delivery.clarification, null);
+  });
+
+  it("uses the single active conversation source to resolve a plan follow-up", () => {
+    const previous = resolveConversationQuery({
+      message: "Jaký je stav projektového portfolia?",
+      now: NOW,
+    }).state;
+    const resolved = resolveConversationQuery({
+      message: "A jaký je plán pro rok 2026?",
+      context: { stratos_query_state: previous },
+      now: NOW,
+    });
+
+    assert.equal(resolved.clarification, null);
+    assert.deepEqual(resolved.state.sources, ["projectflow"]);
   });
 });

@@ -142,12 +142,52 @@ describe("controlled rule assistant answer", () => {
     assert.deepEqual(response.current_context.controlled_rule_ids, [
       "rule_supplies_services",
       "rule_works",
+      "rule_market_research",
     ]);
     assert.match(response.answer ?? "", /Zákonné limity účinné/);
     assert.match(response.answer ?? "", /dodávky a služby.*3\s000\s000 Kč/s);
     assert.match(response.answer ?? "", /stavební práce.*9\s000\s000 Kč/s);
+    assert.match(response.answer ?? "", /Doplňující interní pravidla/);
+    assert.match(response.answer ?? "", /průzkumu trhu.*20\s000 Kč/s);
+    assert.equal(response.citations.length, 3);
+  });
+
+  it("keeps an explicit statutory VZMR overview separate from internal procedures", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_supplies_services",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Statutory supplies and services threshold",
+        value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_market_research",
+        normativeKey: "public_procurement.market_research.threshold",
+        title: "Internal market research threshold",
+        value: 20000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaké jsou zákonné limity pro VZMR?",
+      conversationId: "conv_vzmr_law",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.deepEqual(response.current_context.controlled_rule_ids, [
+      "rule_supplies_services",
+    ]);
     assert.doesNotMatch(response.answer ?? "", /průzkumu trhu/i);
-    assert.equal(response.citations.length, 2);
   });
 
   it("answers an explicit combined historical VZMR question with both statutory thresholds", () => {

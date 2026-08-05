@@ -15,6 +15,12 @@ Endpoint vrací pouze pravidla, která jsou:
 - bez konfliktu a bez zastínění vyšším účinným předpisem;
 - registrovaná v uzavřeném katalogu významových klíčů.
 
+Stejný řízený katalog používá AKB chat. Obecný dotaz na VZMR zobrazuje nejprve
+účinné zákonné limity a následně samostatně platná interní doplnění, například
+průzkum trhu, počet nabídek nebo dokumentační postup. Výslovný dotaz pouze na
+zákon nebo pouze na interní směrnici zůstává úzký. Chat ani Budget nesmí sloučit
+pravidla různé autority do jednoho odvozeného limitu.
+
 ## Identita a síťová hranice
 
 STRATOS vytvoří samostatný confidential OIDC client:

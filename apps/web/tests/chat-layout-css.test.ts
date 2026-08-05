@@ -40,7 +40,7 @@ describe("chat viewport layout", () => {
   it("uses one compact mobile conversation toolbar", () => {
     assert.match(
       css,
-      /\.akb-chat-mobile-toolbar\s*\{[^}]*grid-template-columns:\s*44px minmax\(0,\s*1fr\) 44px 44px;/s,
+      /\.akb-chat-mobile-toolbar\s*\{[^}]*grid-template-columns:\s*44px minmax\(0,\s*1fr\) 44px 44px 44px;/s,
     );
     assert.match(
       css,
@@ -95,6 +95,29 @@ describe("chat viewport layout", () => {
     assert.match(
       assistantApp,
       /onPointerDown=\{\(event\) => startPanelResize\("sources", event\)\}[\s\S]*onKeyDown=\{\(event\) => handlePanelResizeKeyDown\("sources", event\)\}/,
+    );
+  });
+
+  it("turns supporting panels into accessible compact-view drawers", () => {
+    assert.match(
+      css,
+      /@media \(max-width: 1320px\)[\s\S]*\.akb-chat-context\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*46;/s,
+    );
+    assert.match(
+      css,
+      /\.akb-chat-panel-backdrop\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*44;/s,
+    );
+    assert.match(
+      assistantApp,
+      /className="akb-chat-panel-backdrop"[\s\S]*onClick=\{closeOverlayPanels\}/,
+    );
+    assert.match(
+      assistantApp,
+      /event\.key !== "Escape"[\s\S]*mobileSourcesTriggerRef\.current[\s\S]*mobileThreadsTriggerRef\.current/,
+    );
+    assert.match(
+      assistantApp,
+      /aria-controls="akb-chat-source-panel"[\s\S]*aria-expanded=\{mobileSourcesOpen\}/,
     );
   });
 });

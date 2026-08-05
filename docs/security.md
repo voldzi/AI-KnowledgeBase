@@ -301,13 +301,33 @@ projection. A changed policy, missing item, missing capability or uncovered
 scope still withholds the answer.
 
 The chat may persist a bounded `ConversationQueryState` containing only query
-semantics: selected source domains, metrics, period, granularity, narrowing
-entity IDs, filters and ordering. The server validates this browser-provided
+semantics: selected source domains, metrics, period, operation, granularity,
+narrowing entity IDs, filters and ordering. The server validates this browser-provided
 state against a closed catalog and discards unknown fields. It never accepts
 capabilities, requested authorization scopes, policy claims or identity data
 from the state. Source scopes are rebuilt from the current verified STRATOS
 access projection for every turn, and query-state entity IDs can only narrow a
 source request.
+
+Authorization coverage and requested result shape are evaluated separately.
+An organization or portfolio scope may authorize a bounded item list, count or
+ranking, but it does not force an aggregate response. AKB validates the entity
+type returned by each live source and withholds a mismatched response instead
+of exposing an aggregate under an item label or falling back to document RAG.
+
+The Director Copilot V2 evidence gate runs after source authorization and
+before synthesis. It verifies source revision and timestamps, candidate
+completeness, item provenance, fact quality, manifest-declared relationships
+and operation-specific guarantees. A count requires an explicitly complete
+authorized result. A maximum or minimum additionally requires every candidate,
+a numeric source-owned metric and comparable currencies. Failed evidence is
+audited through bounded reason codes; document content, tokens and raw source
+payloads are not added to the audit event.
+
+Conversation focus is also fail-closed. AKB persists at most a bounded set of
+canonical entity identifiers and automatically focuses only a single source
+candidate or the winner of a complete ranking. A broad list cannot silently
+narrow a later turn to the first page of results.
 
 Temporal controlled-document rules are never authorized by a client-supplied
 date, package id or scope. Registry first selects packages effective on
