@@ -13,7 +13,7 @@ AKB FastAPI services -> private OTLP/gRPC endpoint :4317
 AKB web and chat     -> private OTLP/HTTP endpoint :4318
   -> central OpenTelemetry Collector
   -> privacy processor
-  -> Tempo, Prometheus span metrics and Loki
+  -> Tempo, Prometheus span metrics, service graph metrics and Loki
   -> central Grafana and Alertmanager
 ```
 
@@ -49,7 +49,13 @@ tokens or signed URLs as custom span attributes.
 - Production OTLP settings: `infra/docker-compose/docker-compose.docker-home.yml`
 
 The central Grafana datasource UIDs are `obs-prometheus`, `obs-tempo` and
-`obs-loki`.
+`obs-loki`. The LLM Gateway participates in the same immutable AKB release and
+exports OTLP/gRPC as `akb-llm-gateway-service`; it must not be deployed as a
+separate unversioned `docker-home` image.
+
+Tempo retains traces for 14 days. The Collector also derives service graph
+metrics from trace parent/child relationships, so the critical path can be
+inspected without recording source content.
 
 ## Release Validation
 

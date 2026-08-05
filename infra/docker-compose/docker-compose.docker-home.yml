@@ -610,9 +610,20 @@ services:
   llm-gateway-service:
     build:
       context: ../../services/llm-gateway-service
-    image: ${LLM_GATEWAY_SERVICE_IMAGE:-akl/llm-gateway-service:docker-home}
+      labels: *immutable-release-labels
+    image: ${LLM_GATEWAY_SERVICE_IMAGE:-akl/llm-gateway-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    labels: *immutable-release-labels
     environment:
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
+      OTEL_SERVICE_NAME: akb-llm-gateway-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://192.168.10.156:4317}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-true}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=production,service.namespace=akb}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
       AKL_ENV: production
       AKL_SERVICE_NAME: llm-gateway-service
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}

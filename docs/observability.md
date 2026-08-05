@@ -90,6 +90,11 @@ Production telemetry is centralized on `observability.home.cz`. AKB does not
 run a second production Grafana, Prometheus, Tempo or Loki stack on
 `docker.home.cz`.
 
+The central Collector derives both span metrics and service graph metrics from
+privacy-filtered traces. Tempo retains traces for 14 days. Container-level
+metrics from `docker.home.cz` remain a separate infrastructure concern: they
+must be exposed only through an approved, source-restricted collector path.
+
 Central dashboards:
 
 - `AKB – výkon a dostupnost` for public health/readiness, request rate, p95
