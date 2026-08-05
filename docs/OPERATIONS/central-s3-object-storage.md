@@ -40,6 +40,13 @@ AKL_S3_ACCESS_KEY_ID_SOURCE_FILE=/srv/akl/env/akb-s3.access-key-id
 AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE=/srv/akl/env/akb-s3.secret-access-key
 ```
 
+The production environment also sets `AKL_IMAGE_TAG` to the full Git SHA of
+the deployed release. This protects a manual Compose restart from resolving
+the web, chat, Registry, or ingestion service to the mutable `docker-home`
+fallback while storage mode is being changed. The immutable release workflow
+remains authoritative: its explicit `*_IMAGE` values and verified image ids
+take precedence over `AKL_IMAGE_TAG`.
+
 The two credential files must be owned by the deployment operator and readable
 only by the required service boundary. Never place their values in Compose,
 Git, command output, or an incident report.
@@ -62,7 +69,8 @@ Git, command output, or an incident report.
 5. Stop document writes briefly, rerun `--apply`, and require zero conflicts and
    errors with all discovered bytes verified.
 6. Run `scripts/s3_object_storage_smoke.py` using credential file variables.
-7. Set `AKL_OBJECT_STORAGE_MODE=s3`, retain fallback reads, and deploy once.
+7. Set `AKL_OBJECT_STORAGE_MODE=s3`, retain fallback reads, set
+   `AKL_IMAGE_TAG` to the exact release SHA, and deploy that release once.
 8. Verify `/akb/api/health`, `/akb/api/ready`, upload, ClamAV scan, confirmation,
    ingestion, preview/download, historical publication delivery, and an
    authorized chat citation.
