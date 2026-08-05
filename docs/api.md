@@ -106,6 +106,10 @@ authorization and policy, and calls internal
 `POST /api/v1/renditions/pdf` with a dedicated service identity. The original
 document remains authoritative; the rendition is private, non-cacheable in the
 browser and keyed by immutable source SHA-256 plus rendering engine revision.
+The web bridge validates the declared size and PDF signature before returning
+the first bytes, then streams the rendition with a hard byte limit instead of
+buffering the complete preview in web-process memory. Direct opening of the
+authoritative source keeps its full SHA-256 verification boundary.
 | Platform Status | root paths | `/health`, `/ready`, `/metrics`, `/openapi.json`. |
 
 All supported document origins share the canonical binary security boundary:

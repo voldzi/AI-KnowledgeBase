@@ -6945,10 +6945,20 @@ def list_documents(
         candidate_limit=min(recent_limit * 5, 250) if recent_limit is not None else None,
     )
     if topics:
+        topic_haystacks = {
+            document.document_id: _document_metadata_search_text(document)
+            for document in documents
+        }
         documents = [
             document
             for document in documents
-            if any(_document_matches_metadata_topic(document, candidate) for candidate in topics)
+            if any(
+                _metadata_topic_matches_haystack(
+                    topic_haystacks[document.document_id],
+                    candidate,
+                )
+                for candidate in topics
+            )
         ]
 
     summary = DocumentListSummary(
@@ -7102,6 +7112,19 @@ def _document_metadata_summary_response(
     if not topics:
         topics = ["all documents"]
 
+    filtered_topics = [
+        topic_label
+        for topic_label in topics[:12]
+        if not _is_all_documents_topic(topic_label)
+    ]
+    topic_haystacks = (
+        {
+            document.document_id: _document_metadata_search_text(document)
+            for document in documents
+        }
+        if filtered_topics
+        else {}
+    )
     topic_summaries: list[DocumentMetadataSummaryTopic] = []
     matched_document_ids: set[str] = set()
     for topic_label in topics[:12]:
@@ -7111,7 +7134,10 @@ def _document_metadata_summary_response(
             else [
                 document
                 for document in documents
-                if _document_matches_metadata_topic(document, topic_label)
+                if _metadata_topic_matches_haystack(
+                    topic_haystacks[document.document_id],
+                    topic_label,
+                )
             ]
         )
         matched_document_ids.update(document.document_id for document in topic_documents)
@@ -7163,13 +7189,24 @@ def document_readiness_report(
         entity_id=entity_id,
         external_ref=external_ref,
         context_tags=[candidate.strip() for candidate in context_tag or [] if candidate.strip()],
+        include_version_details=True,
     )
     topics = [candidate.strip() for candidate in topic or [] if candidate.strip()]
     if topics:
+        topic_haystacks = {
+            document.document_id: _document_metadata_search_text(document)
+            for document in documents
+        }
         documents = [
             document
             for document in documents
-            if any(_document_matches_metadata_topic(document, candidate) for candidate in topics)
+            if any(
+                _metadata_topic_matches_haystack(
+                    topic_haystacks[document.document_id],
+                    candidate,
+                )
+                for candidate in topics
+            )
         ]
 
     duplicate_hashes = _duplicate_source_hashes(documents)
@@ -7562,16 +7599,23 @@ def _authorized_document_metadata_rows(
     authorization_action: Action = Action.document_read,
     document_ids: list[str] | None = None,
     candidate_limit: int | None = None,
+    include_version_details: bool = False,
 ) -> list[Document]:
+    relationship_options = [
+        selectinload(Document.access_policies),
+        selectinload(Document.assignments),
+        selectinload(Document.external_refs),
+    ]
+    if include_version_details or authorization_action == Action.rag_query:
+        relationship_options.extend(
+            [
+                selectinload(Document.versions),
+                selectinload(Document.publications),
+            ]
+        )
     stmt = (
         select(Document)
-        .options(
-            selectinload(Document.access_policies),
-            selectinload(Document.assignments),
-            selectinload(Document.external_refs),
-            selectinload(Document.versions),
-            selectinload(Document.publications),
-        )
+        .options(*relationship_options)
         .order_by(desc(Document.created_at))
     )
     if any([tenant_id, external_system, entity_type, entity_id, external_ref]):
@@ -7688,10 +7732,16 @@ def _counter_buckets(counter: Counter[str], limit: int = 12) -> list[DocumentMet
 
 
 def _document_matches_metadata_topic(document: Document, topic: str) -> bool:
+    return _metadata_topic_matches_haystack(
+        _document_metadata_search_text(document),
+        topic,
+    )
+
+
+def _metadata_topic_matches_haystack(haystack: str, topic: str) -> bool:
     topic_text = _normalize_metadata_text(topic)
     if not topic_text:
         return False
-    haystack = _document_metadata_search_text(document)
     if topic_text in haystack:
         return True
     topic_tokens = [token for token in topic_text.split() if len(token) >= 3]
