@@ -24,12 +24,12 @@ do
     }
 done
 
-if grep -Fq 'AKL_S3_BUCKET: ${AKL_S3_BUCKET:-akl-documents}' "$COMPOSE_FILE"; then
+if grep -Fq "AKL_S3_BUCKET: \${AKL_S3_BUCKET:-akl-documents}" "$COMPOSE_FILE"; then
   printf 'Docker Home services must default to the physical akb-documents bucket.\n' >&2
   exit 1
 fi
 
-[[ "$(grep -Fc 'AKL_S3_BUCKET: ${AKL_S3_BUCKET:-akb-documents}' "$COMPOSE_FILE")" -eq 4 ]] \
+[[ "$(grep -Fc "AKL_S3_BUCKET: \${AKL_S3_BUCKET:-akb-documents}" "$COMPOSE_FILE")" -eq 4 ]] \
   || {
     printf 'All four document-storage boundary services must share the akb-documents bucket.\n' >&2
     exit 1
