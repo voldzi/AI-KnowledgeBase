@@ -30,6 +30,10 @@ grep -Fqx 'LABEL cz.zeleznalady.akl.service="governance-service"' \
   "${SOURCE_ROOT}/services/governance-service/Dockerfile" \
   || fail "Governance Dockerfile is missing its immutable service label"
 
+grep -Fqx 'LABEL cz.zeleznalady.akl.service="llm-gateway-service"' \
+  "${SOURCE_ROOT}/services/llm-gateway-service/Dockerfile" \
+  || fail "LLM Gateway Dockerfile is missing its immutable service label"
+
 assert_current_sha() {
   local expected_sha="$1"
   local target
