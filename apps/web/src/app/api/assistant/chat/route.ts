@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
@@ -78,6 +79,37 @@ async function handlePost(request: NextRequest) {
       context: requestContext,
     });
     const directorIntent = classifyDirectorCopilotV2Intent(message, requestContext);
+    if (directorIntent && directorQuery.clarification?.kind === "plan_meaning") {
+      const clarificationResponse = directorPlanClarificationResponse({
+        conversationId,
+        language: responseLanguage,
+        queryState: directorQuery.state,
+      });
+      const persistedConversation = await clients.registry
+        .appendAssistantConversationMessages(
+          clarificationResponse.conversation_id,
+          {
+            user_id: context.subjectId,
+            title: titleFromMessage(message),
+            messages: assistantTurnMessages(message, clarificationResponse, {
+              assistant_tool: "director_copilot_v2_clarification",
+              clarification_kind: "director_plan_meaning",
+              current_context: clarificationResponse.current_context,
+              questions: clarificationResponse.questions,
+              why_needed: clarificationResponse.why_needed,
+            }),
+          },
+          context,
+        )
+        .catch(() => undefined);
+      return NextResponse.json({
+        response: persistedConversation
+          ? clarificationResponse
+          : withHistoryPersistenceWarning(clarificationResponse),
+        message_id: latestAssistantMessageId(persistedConversation),
+        persistence_status: persistedConversation ? "persisted" : "failed",
+      });
+    }
     if (directorIntent) {
       const refreshActorContext = context.accessToken
         ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
@@ -361,6 +393,49 @@ async function handlePost(request: NextRequest) {
   } catch (error) {
     return assistantBridgeError(error);
   }
+}
+
+function directorPlanClarificationResponse(input: {
+  conversationId: string | null;
+  language: "cs" | "en";
+  queryState: ReturnType<typeof resolveConversationQuery>["state"];
+}): AssistantChatResponse {
+  const english = input.language === "en";
+  return {
+    response_type: "clarification_needed",
+    conversation_id: input.conversationId
+      ?? `conv_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
+    answer: null,
+    message: english
+      ? "Please clarify what kind of plan you mean."
+      : "Upřesněte prosím, jaký druh plánu máte na mysli.",
+    questions: [{
+      id: "director_plan_meaning",
+      question: english
+        ? "Which plan should AKB use?"
+        : "Který plán má AKB použít?",
+      type: "single_choice",
+      options: english
+        ? ["Financial plan and budget", "Project schedule and deadlines"]
+        : ["Finanční plán a rozpočet", "Projektový harmonogram a termíny"],
+    }],
+    why_needed: english
+      ? "The word plan can refer to financial data in Budget or delivery dates in ProjectFlow."
+      : "Slovo plán může znamenat finanční údaje v Budgetu nebo termíny realizace v ProjectFlow.",
+    current_context: {
+      answer_source: "director_copilot_v2_clarification",
+      clarification_kind: "director_plan_meaning",
+      stratos_query_state: input.queryState,
+    },
+    citations: [],
+    follow_up_questions: [],
+    suggested_actions: [],
+    report_artifacts: [],
+    confidence: "high",
+    warnings: [],
+    missing_information: english ? "Plan meaning" : "Význam plánu",
+    recommended_action: null,
+  };
 }
 
 function assistantTurnMessages(

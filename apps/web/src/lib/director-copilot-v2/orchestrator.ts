@@ -15,6 +15,10 @@ import {
   type DirectorCopilotV2ToolId,
 } from "./contracts";
 import type { DirectorCopilotV2DomainToolClient } from "./domain-tool-client";
+import {
+  evaluateDirectorCopilotV2Evidence,
+  type DirectorCopilotV2EvidenceGate,
+} from "./evidence";
 import type { DirectorCopilotV2ManifestCatalog } from "./manifest-catalog";
 import { directorCopilotV2ContinuationQueryState } from "./continuation";
 import {
@@ -58,6 +62,7 @@ export interface DirectorCopilotV2Snapshot {
   plan: DirectorCopilotV2Plan;
   outcomes: DirectorCopilotV2SourceOutcome[];
   authorized_document_ids: string[];
+  evidence: DirectorCopilotV2EvidenceGate;
   internal_warnings: string[];
 }
 
@@ -96,7 +101,13 @@ export async function orchestrateDirectorCopilotV2(input: {
     now,
   });
   const outcomes = await Promise.all(
-    plan.nodes.map((node) => executeNode(node, input.context, input.catalog, input.client)),
+    plan.nodes.map((node) => executeNode(
+      node,
+      plan.query_state.operation,
+      input.context,
+      input.catalog,
+      input.client,
+    )),
   );
   const refreshedContext = input.refreshActorContext
     ? await input.refreshActorContext()
@@ -108,6 +119,11 @@ export async function orchestrateDirectorCopilotV2(input: {
     input.authorizeDocument,
   );
   const status = aggregateStatus(outcomes);
+  const evidence = evaluateDirectorCopilotV2Evidence({
+    plan,
+    outcomes,
+    catalog: input.catalog,
+  });
   const continuationQueryState = directorCopilotV2ContinuationQueryState(
     plan.query_state,
     outcomes,
@@ -125,7 +141,11 @@ export async function orchestrateDirectorCopilotV2(input: {
     plan,
     outcomes,
     authorized_document_ids: authorizedDocumentIds,
-    internal_warnings: warnings,
+    evidence,
+    internal_warnings: [
+      ...warnings,
+      ...evidence.issues.map((issue) => issue.code),
+    ],
   };
   const snapshotHash = `sha256:${
     await crypto.subtle.digest(
@@ -148,6 +168,7 @@ export async function orchestrateDirectorCopilotV2(input: {
 
 async function executeNode(
   node: DirectorCopilotV2PlanNode,
+  operation: ConversationQueryState["operation"],
   context: ApiRequestContext,
   catalog: DirectorCopilotV2ManifestCatalog,
   client: V2Executor,
@@ -207,6 +228,7 @@ async function executeNode(
       const response = await client.execute(node.application, request, context);
       responses.push(response);
       cursor = response.next_cursor;
+      if (operation === "count") break;
       if (!cursor) break;
       if (responses.reduce((count, candidate) => count + candidate.items.length, 0) >= MAX_ITEMS_PER_TOOL) {
         break;
@@ -225,11 +247,12 @@ async function executeNode(
       );
     }
   }
-  return mergeResponses(node, responses, cursor, elapsedMilliseconds(startedAt));
+  return mergeResponses(node, operation, responses, cursor, elapsedMilliseconds(startedAt));
 }
 
 function mergeResponses(
   node: DirectorCopilotV2PlanNode,
+  operation: ConversationQueryState["operation"],
   responses: DirectorCopilotV2Response[],
   remainingCursor: string | null,
   latencyMs: number,
@@ -262,7 +285,7 @@ function mergeResponses(
     ...response.completeness.missing_reasons,
   ]))];
   const sourceStatuses = responses.map((response) => response.status);
-  const pageLimitReached = Boolean(remainingCursor);
+  const pageLimitReached = operation !== "count" && Boolean(remainingCursor);
   return {
     application: node.application,
     tool_id: node.tool_id,

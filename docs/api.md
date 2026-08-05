@@ -39,8 +39,9 @@ PEP. See `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 The web `POST /api/assistant/chat` bridge resolves a versioned semantic
 `ConversationQueryState` and typed Director Copilot intent before the document
 assistant router. The state carries only bounded query semantics such as
-source, metric, period, granularity and entity filters; it never carries
-capabilities or authorization scopes. Project delivery questions use
+source, metric, period, operation (`summary`, `list`, `count`, `rank`),
+granularity and entity filters; it never carries capabilities or authorization
+scopes. Project delivery questions use
 `projectflow.portfolio_delivery_overview.v1`. Financial questions use
 `budget.organization_financial_summary.v1` or
 `budget.project_financial_snapshot.v1` according to the bounded query state.
@@ -48,12 +49,25 @@ Need and idea-intake questions use ArchFlow through
 `archflow.need_portfolio_overview.v1`. Each response is limited to
 source-authorized facts, source timestamps and safe deep links.
 
+Budget action, purchase and plan-line questions request `item` granularity with
+`budget_item` grouping. Count answers use the source-provided authorized
+`candidate_count`; ranking is presented only over a complete comparable result.
+An aggregate response to an item request is rejected with
+`LIVE_DATA_ENTITY_TYPE_MISMATCH` and is never relabeled as an action.
+Before rendering, AKB validates source metadata, candidate completeness,
+source-declared facts and typed relationships. Incomplete counts, rankings
+over incomplete or currency-incomparable sets, unknown facts and undeclared
+relationships return a bounded `no_answer` with a `LIVE_DATA_EVIDENCE_*`
+reason and cannot fall back to document RAG.
+
 A question about access availability is distinct from a request to grant or
 change access. If a live source is disabled, unavailable or denies the request,
 the bridge returns an explicit no-answer or restricted response and never
-falls back to document RAG. Budget and ProjectFlow can run in parallel only
-when the V2 plan has a declared typed join. No mode silently answers an
-unavailable live-data question from documents.
+falls back to document RAG. Budget, ProjectFlow and ArchFlow nodes selected by
+a compositional V2 question run in parallel. Cross-source presentation still
+requires byte-identical canonical identities or a relationship declared by
+the source manifest; mere coexistence in one response is not a join. No mode
+silently answers an unavailable live-data question from documents.
 
 Every successful browser bridge response also returns
 `persistence_status: persisted | failed` and the durable assistant

@@ -162,7 +162,9 @@ function requestForNode(input: {
       scenario: scenarios(input.queryState, input.manifest),
       as_of: input.queryState.period.as_of,
       cursor: null,
-      limit: Math.min(100, input.manifest.limits.max_items),
+      limit: input.queryState.operation === "count"
+        ? 1
+        : Math.min(100, input.manifest.limits.max_items),
     },
   };
   assertDirectorCopilotV2Request(request);
@@ -174,13 +176,18 @@ function applicationsForIntent(
   sources: string[],
 ): ActiveDirectorCopilotV2Application[] {
   if (intent === "portfolio_risk_correlation" || intent === "portfolio_performance_overview") {
-    return ["budget", "projectflow"];
+    const selected = selectedApplications(sources);
+    return selected.length > 1 ? selected : ["budget", "projectflow"];
   }
   if (intent === "budget_portfolio_status") return ["budget"];
   if (intent === "project_portfolio_status" || intent === "project_access_overview") {
     return ["projectflow"];
   }
   if (intent === "archflow_demand_overview") return ["archflow"];
+  return selectedApplications(sources);
+}
+
+function selectedApplications(sources: string[]): ActiveDirectorCopilotV2Application[] {
   const selected = sources.filter(
     (source): source is ActiveDirectorCopilotV2Application => (
       source === "budget"
@@ -188,7 +195,9 @@ function applicationsForIntent(
       || source === "archflow"
     ),
   );
-  return [...new Set(selected)];
+  const selectedSet = new Set(selected);
+  return (["budget", "projectflow", "archflow"] as const)
+    .filter((application) => selectedSet.has(application));
 }
 
 function toolForApplication(
@@ -211,13 +220,33 @@ function granularityForManifest(
   application: ActiveDirectorCopilotV2Application,
   manifest: DirectorCopilotV2Manifest,
 ): DirectorCopilotV2Granularity {
-  const requested = state.granularity === "authorized_scope"
-    ? inferredGranularityFromProjection(context, application)
-    : state.granularity;
+  const requested = crossSourceGranularity(state, application)
+    ?? (state.granularity === "authorized_scope"
+      ? operationGranularity(state, application)
+        ?? inferredGranularityFromProjection(context, application)
+      : state.granularity);
   if (manifest.granularities.includes(requested)) return requested;
   if (manifest.granularities.includes("item")) return "item";
   if (manifest.granularities.includes("organization")) return "organization";
   return manifest.granularities[0]!;
+}
+
+function crossSourceGranularity(
+  state: ConversationQueryState,
+  application: ActiveDirectorCopilotV2Application,
+): DirectorCopilotV2Granularity | null {
+  if (state.sources.length < 2 || !state.sources.includes("projectflow")) return null;
+  if (application === "archflow") return "item";
+  return "project";
+}
+
+function operationGranularity(
+  state: ConversationQueryState,
+  application: ActiveDirectorCopilotV2Application,
+): DirectorCopilotV2Granularity | null {
+  if (state.operation === "summary") return null;
+  if (application === "projectflow") return "project";
+  return "item";
 }
 
 function inferredGranularityFromProjection(
@@ -313,7 +342,11 @@ function groupBy(
     && manifest.entity_types.includes("budget_item")
     ? "budget_item"
     : null;
+  const requestedDimensions = state.group_by.map((dimension) => (
+    dimension === "item" && itemDimension ? itemDimension : dimension
+  ));
   const candidates = [
+    ...requestedDimensions,
     itemDimension,
     granularity === "item" ? null : granularity,
     state.filters.schedule_status ? "schedule_status" : null,

@@ -442,6 +442,10 @@ test.describe("Document Workbench product paths", () => {
     ).toBeVisible();
 
     const sourcesPanel = page.getByRole("complementary", { name: "Zdroje odpovědi" });
+    if (!(await sourcesPanel.isVisible())) {
+      await page.getByRole("button", { name: "Zobrazit zdroje" }).click();
+      await expect(sourcesPanel).toBeVisible();
+    }
     await expect(sourcesPanel.getByText("Metodika vyjimek z bezpecnostnich pravidel").first()).toBeVisible();
     await sourcesPanel.getByRole("button", { name: "Otevřít citaci" }).first().click();
 

@@ -239,7 +239,7 @@ describe("Director Copilot V2 active chat", () => {
 
   it("requests Budget items and returns only the highest comparable plan item", async () => {
     const requests: DirectorCopilotV2Request[] = [];
-    const message = "Jaká je nejvyšší položka plánu?";
+    const message = "Jaká je největší akce plánovaná v roce 2025?";
     const queryState = resolveConversationQuery({
       message,
       now: new Date("2026-07-25T10:00:00.000Z"),
@@ -273,7 +273,197 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(response.answer ?? "", /Nejvyšší oprávněná položka/);
     assert.match(response.answer ?? "", /Servery/);
     assert.match(response.answer ?? "", /500[  ]000/);
+    assert.match(response.answer ?? "", /\*\*Rozsah:\*\* oprávněné položky/);
+    assert.match(response.answer ?? "", /\*\*Výsledek:\*\* nejvyšší položka z 3/);
+    assert.match(response.answer ?? "", /\*\*Stav dat:\*\* úplná/);
+    assert.match(response.answer ?? "", /\[Servery\]\(https:\/\/stratos\.example\.test\/budget\/items\/servery\)/);
     assert.equal((response.answer ?? "").includes("Licence"), false);
+  });
+
+  it("counts authorized Budget actions from item-level completeness metadata", async () => {
+    const requests: DirectorCopilotV2Request[] = [];
+    const message = "Kolik akcí má plán na rok 2025?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-budget-count",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: budgetItemFetcher(requests),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(requests[0]?.parameters.granularity, "item");
+    assert.deepEqual(requests[0]?.parameters.group_by, ["budget_item"]);
+    assert.match(response.answer ?? "", /eviduje \*\*3\*\* oprávněných položek plánu/);
+    assert.match(response.answer ?? "", /\*\*Výsledek:\*\* úplný počet \(3\)/);
+    assert.match(response.answer ?? "", /\*\*Aktualizováno:\*\*/);
+    assert.doesNotMatch(response.answer ?? "", /Sekce IT/);
+  });
+
+  it("returns the complete authorized Budget item list rather than an organization aggregate", async () => {
+    const requests: DirectorCopilotV2Request[] = [];
+    const message = "Jaké akce máme v plánu na rok 2025?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-budget-list",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: budgetItemFetcher(requests),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(queryState.operation, "list");
+    assert.equal(requests[0]?.parameters.granularity, "item");
+    assert.match(response.answer ?? "", /Licence/);
+    assert.match(response.answer ?? "", /Servery/);
+    assert.match(response.answer ?? "", /Školení/);
+    assert.match(response.answer ?? "", /\*\*Výsledek:\*\* zobrazeno 3 z 3 odpovídajících položek/);
+  });
+
+  it("renders only exact typed need-project-finance relationships across three live sources", async () => {
+    const message = "Které potřeby mají navázané projekty, jaký mají plán a které jsou zpožděné?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-cross-source",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => ({}) as never,
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "portfolio_performance_overview",
+      queryState,
+      mode: "active",
+      fetcher: fetcher(),
+      refreshActorContext: async () => context(),
+    });
+
+    const persistedQueryState = response.current_context.stratos_query_state as {
+      sources?: string[];
+    };
+    assert.deepEqual(
+      new Set(persistedQueryState.sources ?? []),
+      new Set(["budget", "projectflow", "archflow"]),
+    );
+    assert.match(response.answer ?? "", /Ověřené souvislosti napříč STRATOS/);
+    assert.match(response.answer ?? "", /Potřeba Alfa/);
+    assert.match(response.answer ?? "", /Projekt Alfa/);
+    assert.match(response.answer ?? "", /14 dní/);
+    assert.equal((response.answer ?? "").includes("stratos:project:"), false);
+  });
+
+  it("rejects an incomplete count at the evidence gate", async () => {
+    const requests: DirectorCopilotV2Request[] = [];
+    const message = "Kolik akcí má plán na rok 2025?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-incomplete-count",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: budgetItemFetcher(requests, { incomplete: true }),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.ok(
+      response.warnings.includes("LIVE_DATA_EVIDENCE_COUNT_INCOMPLETE"),
+      JSON.stringify(response.warnings),
+    );
+    assert.ok(response.warnings.includes("LIVE_DATA_EVIDENCE_GATE_FAILED"));
+    assert.doesNotMatch(response.answer ?? "", /\*\*3\*\*/);
+  });
+
+  it("fails closed when an item query receives an organizational aggregate", async () => {
+    const auditEvents: unknown[] = [];
+    const message = "Jaká je největší akce plánovaná v roce 2025?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-budget-shape-mismatch",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async (event: unknown) => {
+            auditEvents.push(event);
+            return {};
+          },
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: aggregateBudgetFetcher(),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.ok(response.warnings.includes("LIVE_DATA_ENTITY_TYPE_MISMATCH"));
+    assert.match(response.answer ?? "", /nevrátil požadovanou podrobnost dat/i);
+    assert.doesNotMatch(response.answer ?? "", /Sekce IT/);
+    assert.match(JSON.stringify(auditEvents), /"semantic_shape_valid":false/);
   });
 
   it("distinguishes a rejected live contract from a source outage", async () => {
@@ -373,7 +563,36 @@ function invalidBudgetItemFetcher(): typeof fetch {
   };
 }
 
-function budgetItemFetcher(requests: DirectorCopilotV2Request[]): typeof fetch {
+function aggregateBudgetFetcher(): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (init?.method === "GET") {
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    const response = structuredClone(budgetOrganization.responses.complete);
+    return Response.json({
+      ...response,
+      tool_id: request.tool_id,
+      tool_call_id: request.tool_call_id,
+    });
+  };
+}
+
+function budgetItemFetcher(
+  requests: DirectorCopilotV2Request[],
+  options: { incomplete?: boolean } = {},
+): typeof fetch {
   return async (input, init) => {
     if (init?.method === "GET") {
       const url = String(input);
@@ -399,6 +618,12 @@ function budgetItemFetcher(requests: DirectorCopilotV2Request[]): typeof fetch {
       budgetItem(base, "skoleni", "Školení", 80_000),
     ];
     response.completeness.candidate_count = response.items.length;
+    if (options.incomplete) {
+      response.status = "partial";
+      response.completeness.authorized_result_complete = false;
+      response.completeness.source_coverage = "partial";
+      response.completeness.missing_reasons = [];
+    }
     return Response.json({
       ...response,
       tool_id: request.tool_id,

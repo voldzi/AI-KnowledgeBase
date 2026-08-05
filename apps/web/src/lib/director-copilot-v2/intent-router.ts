@@ -29,12 +29,12 @@ export function classifyDirectorCopilotV2Intent(
   ) return "project_access_overview";
   if (accessMutation || (documentQuestion && !explicitProjectFlow)) return null;
   const sourceSet = new Set(resolved.state.sources);
-  if (sourceSet.has("archflow")) return "archflow_demand_overview";
-  if (sourceSet.has("budget") && sourceSet.has("projectflow")) {
+  if (sourceSet.size > 1) {
     return CONTRACT_SIGNAL.test(normalized) || resolved.state.document_evidence_requested
       ? "portfolio_risk_correlation"
       : "portfolio_performance_overview";
   }
+  if (sourceSet.has("archflow")) return "archflow_demand_overview";
   if (sourceSet.has("budget")) return "budget_portfolio_status";
   if (sourceSet.has("projectflow")) return "project_portfolio_status";
   return null;

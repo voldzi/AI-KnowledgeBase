@@ -48,6 +48,25 @@ const RULE_LABELS_CS: Record<string, string> = {
   "public_procurement.retention.period": "Doba uchování dokumentace",
 };
 
+const VZMR_STATUTORY_RULE_KEYS = [
+  "public_procurement.vzmr.supplies_services.threshold",
+  "public_procurement.vzmr.works.threshold",
+] as const;
+const VZMR_SUPPLEMENTAL_RULE_KEYS = [
+  "public_procurement.internal_category_1.upper_threshold",
+  "public_procurement.direct_purchase.threshold",
+  "public_procurement.market_research.threshold",
+  "public_procurement.marketplace.threshold",
+  "public_procurement.central_evidence.threshold",
+  "public_procurement.publication.contract_register.threshold",
+  "public_procurement.publication.contracting_profile.threshold",
+  "public_procurement.supplier_quotes.minimum_count",
+  "public_procurement.nen.registration.required",
+  "public_procurement.contract.written_form.threshold",
+  "public_procurement.approval.workflow",
+  "public_procurement.documentation.required",
+] as const;
+
 const CZECH_STOP_WORDS = new Set([
   "a", "ale", "co", "do", "je", "jaky", "jake", "jakou", "kdo", "ma",
   "na", "nebo", "od", "podle", "pro", "se", "smernice", "ve", "verejna",
@@ -206,7 +225,10 @@ function selectMatchingRules(message: string, rules: ControlledRule[]) {
       : rules;
   const ranked = rankedRules(message, candidates);
   if (allLimits) return ranked.slice(0, 10);
-  if (preferredKeys.size > 0) return ranked.slice(0, Math.min(preferredKeys.size, 4));
+  if (preferredKeys.size > 0) {
+    const limit = isBroadVzmrOverview(message) ? 14 : 4;
+    return ranked.slice(0, Math.min(preferredKeys.size, limit));
+  }
   const topScore = ranked[0]?.score ?? 0;
   return ranked
     .filter((item) => item.score >= Math.max(4, Math.ceil(topScore * 0.65)))
@@ -257,6 +279,7 @@ function targetedNormativeKeys(message: string) {
   if (/prvn\w*\s+kategor|(?:^|\s)1\.?(?:\s+|$)kategor/.test(value)) {
     keys.add("public_procurement.internal_category_1.upper_threshold");
   }
+  const broadVzmrOverview = isBroadVzmrOverview(message);
   if ((/\bvzmr\b/.test(value) && !asksForInternalRule) || asksForLaw) {
     const asksForWorks = /stavebn/.test(value);
     const asksForSuppliesOrServices = /dodav|sluzb/.test(value);
@@ -267,15 +290,25 @@ function targetedNormativeKeys(message: string) {
       keys.add("public_procurement.vzmr.supplies_services.threshold");
     }
     if (!asksForWorks && !asksForSuppliesOrServices) {
-      keys.add("public_procurement.vzmr.supplies_services.threshold");
-      keys.add("public_procurement.vzmr.works.threshold");
+      for (const key of VZMR_STATUTORY_RULE_KEYS) keys.add(key);
     }
+  }
+  if (broadVzmrOverview && !asksForLaw) {
+    for (const key of VZMR_SUPPLEMENTAL_RULE_KEYS) keys.add(key);
   }
   if (/vyjim/.test(value)) keys.add("public_procurement.exception.conditions");
   if (/povinn\w*\s+dokument|jake\s+doklad/.test(value)) {
     keys.add("public_procurement.documentation.required");
   }
   return keys;
+}
+
+function isBroadVzmrOverview(message: string): boolean {
+  const value = normalized(message);
+  if (!/\bvzmr\b/.test(value)) return false;
+  if (LEGAL_SOURCE_RE.test(message) || INTERNAL_SOURCE_RE.test(message)) return false;
+  const specificTopic = /stavebn|dodav|sluzb|pruzkum|nabid|dodavatel|trzist|\bnen\b|centraln\w*\s+evidenc|registr\w*\s+smluv|profil\w*\s+zadavatel|pisemn\w*\s+smlouv|dodat|uchov|archiv|retenc|prim\w*\s+nakup|vyjim|doklad/.test(value);
+  return !specificTopic;
 }
 
 function ruleScore(rule: ControlledRule, queryTokens: string[]) {

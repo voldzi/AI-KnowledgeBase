@@ -315,6 +315,72 @@ describe("Director Copilot V2 orchestration", () => {
     assert.equal(calls[1]?.parameters.cursor, "cursor-page-2");
   });
 
+  it("uses one bounded page for a complete count and trusts only source-owned completeness metadata", async () => {
+    const state = resolveConversationQuery({
+      message: "Kolik projektů evidujeme?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const calls: DirectorCopilotV2Request[] = [];
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Kolik projektů evidujeme?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "project_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async (_application, request) => {
+          calls.push(request);
+          const response = structuredClone(projectflow.responses.complete);
+          response.tool_call_id = request.tool_call_id;
+          response.next_cursor = "unused-item-page";
+          response.completeness.candidate_count = 91;
+          response.completeness.authorized_result_complete = true;
+          return response;
+        },
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.parameters.limit, 1);
+    assert.equal(result.snapshot.outcomes[0]?.candidate_count, 91);
+    assert.equal(result.snapshot.outcomes[0]?.authorized_result_complete, true);
+    assert.equal(result.snapshot.evidence.status, "passed");
+  });
+
+  it("does not turn a broad authorized list into dozens of implicit entity filters", async () => {
+    const state = resolveConversationQuery({
+      message: "Které projekty evidujeme?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Které projekty evidujeme?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "project_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async (_application, request) => {
+          const response = structuredClone(projectflow.responses.complete);
+          const second = structuredClone(response.items[0]);
+          second.entity_id = "project-002";
+          second.canonical_id = "stratos:project:project-002";
+          second.deep_link = "https://stratos.example.test/projectflow/projects/project-002";
+          second.facts[0].value = "Projekt Beta";
+          response.items.push(second);
+          response.completeness.candidate_count = 2;
+          return { ...response, tool_call_id: request.tool_call_id };
+        },
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.equal(state.operation, "list");
+    assert.deepEqual(result.continuation_query_state.entity_filters.project_ids, []);
+  });
+
   it("stores canonical project identities from authorized source results for a follow-up", async () => {
     const state = resolveConversationQuery({
       message: "Jaký je rozpočet projektu v roce 2025?",

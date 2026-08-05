@@ -84,7 +84,12 @@ service client and grant it only the `audit` route family.
 Every new chat thread is persisted before its first question and starts with
 an empty query state. An explicit organization, organization-unit, portfolio
 or item turn clears incompatible project filters. Budget item questions use
-the closed `item` granularity and `budget_item` grouping. Comparative wording
+the closed `item` granularity and `budget_item` grouping. The query state also
+records whether the user requested a summary, list, count or ranking. This
+requested shape is independent from the authorization scope: an organization
+grant bounds which items may be returned but does not turn an item question
+into an organization aggregate. AKB rejects a response whose entity type does
+not match the requested shape. Comparative wording
 such as highest or lowest is evaluated only over a complete authorized result
 with comparable currencies; incomplete results are not presented as an
 absolute maximum or minimum. Follow-up grouping by portfolio inherits the
@@ -92,11 +97,28 @@ financial metric and fiscal year without inheriting a project restriction.
 Failures record a bounded `failure_reason_code`; a recognized live-data
 request is never replaced by document RAG.
 
+For a compositional question, all selected Budget, ProjectFlow and ArchFlow
+nodes execute concurrently. Rendering may combine Budget and ProjectFlow only
+through the same canonical `stratos:project:*` identity. A need can join a
+project only through the manifest-declared `archflow.need.linked_project`
+relationship. ProjectFlow document links are counted or cited only after an
+independent AKB authorization check for the target document.
+
 The continuation state exposed to the next turn contains canonical entity
-identities derived from the authorized response. Governed history still keeps
+identities only when the authorized response identifies exactly one candidate
+or a complete comparable ranking yields one winner. Broad lists and partial
+rankings do not populate entity filters. Governed history still keeps
 the original query state inside its reauthorization envelope, so reopening a
 thread replays the original authorized request while the visible conversation
 continues with the derived entity context.
+
+Every successful source result passes an evidence gate before synthesis. The
+gate validates source version and timestamps, completeness counters, item and
+fact provenance, relationship declarations and the requested entity shape.
+Counts require source-owned complete `candidate_count`; ranking requires the
+complete candidate set, a numeric declared metric and compatible currencies.
+Failure produces a bounded `LIVE_DATA_EVIDENCE_*` reason, blocks document RAG
+fallback and is included in the content-free audit metadata.
 
 ## Universal semantic planning
 
@@ -107,6 +129,8 @@ planner composes each turn from independently versioned concepts:
 - source-owned metric;
 - period or explicit interval;
 - organization, unit, portfolio, project or item granularity;
+- summary, list, count or rank operation;
+- optional grouping and ordering independent from the selected metric;
 - authorized entity filters;
 - schedule state, ranking direction and document-evidence request;
 - bounded context inherited from the previous authorized turn.
@@ -124,10 +148,44 @@ Routing does not require an LLM and cannot grant access. A recognized governed
 data question is resolved through Director Copilot V2. Exact registry
 inventory is handled by deterministic Registry tools. Document questions use
 authorized OpenSearch/Qdrant retrieval and citations. The LLM is reserved for
-grounded synthesis or genuinely generative conversation after the relevant
-authorization and evidence gates. Unknown, ambiguous or unsupported concepts
+grounded synthesis, final natural-language formulation or genuinely generative
+conversation after the relevant authorization and evidence gates. A genuinely
+ambiguous first-turn `plan` question asks whether the user means financial plan
+or delivery schedule. A follow-up in a conversation with one active source
+inherits that source instead of asking again. Unknown or unsupported concepts
 must produce clarification, `no_data` or an explicit bounded failure; they
 must not be converted into invented live facts.
+
+Cross-source granularity is resolved per application. In one joined
+need-project-finance question, ArchFlow returns needs, ProjectFlow returns
+projects and Budget returns project-level financial facts. AKB does not force
+one global entity shape on every source and never infers a relationship from
+co-occurrence alone.
+
+Every rendered live-source section identifies the authorized scope, requested
+result shape, completeness status and source timestamp. Lists explicitly state
+how many matching items are shown, rankings identify the complete candidate
+set and counts are labelled complete or partial. Safe source-owned deep links
+open the corresponding detail; technical canonical identifiers remain hidden.
+
+The chat workbench keeps the transcript as the primary surface. Supporting
+thread and source panels can be hidden and resized by pointer, touch or
+keyboard on wide screens. At compact widths they become independently
+closable drawers with backdrop and Escape handling; focus returns to the
+control that opened the drawer.
+
+The continuous semantic acceptance suite is documented in
+`docs/qa/director-copilot-continuous-semantic-acceptance.md`. It generates
+hundreds of Czech wording combinations from concepts, not copied sentence
+allowlists, and verifies tool selection, operation, period, grouping,
+authorization, evidence gates, citations, continuation and deterministic
+planning latency.
+
+General VZMR questions are resolved from the governed controlled-rule catalog,
+not document similarity. They present authoritative statutory thresholds first
+and then independently applicable supplemental internal procedures. An
+explicit statutory-only or internal-only question stays narrow. Rules with the
+same normative meaning remain subject to precedence and conflict gates.
 
 ## Contract closure
 
