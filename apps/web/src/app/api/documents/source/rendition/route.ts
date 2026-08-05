@@ -7,6 +7,10 @@ import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/
 import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
 import { getContentSecuritySettings } from "@/lib/upload/content-security";
 import {
+  openValidatedPdfStream,
+  PdfStreamValidationError,
+} from "@/lib/upload/pdf-stream";
+import {
   assertSourceContentSecurityAllowed,
   SourceDownloadError,
   verifySourceDownloadToken
@@ -46,7 +50,6 @@ function contentDispositionFilename(filename: string): string {
 }
 
 const MAX_RENDITION_BYTES = 128 * 1024 * 1024;
-const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d] as const;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -173,29 +176,7 @@ export async function GET(request: NextRequest) {
         correlationId
       );
     }
-    const declaredLength = Number(upstream.headers.get("content-length") ?? "0");
-    if (declaredLength > MAX_RENDITION_BYTES) {
-      return errorResponse(
-        413,
-        "DOCUMENT_RENDITION_OUTPUT_TOO_LARGE",
-        "The rendered preview exceeds its size limit.",
-        correlationId
-      );
-    }
-    const content = await upstream.arrayBuffer();
-    const prefix = new Uint8Array(content, 0, Math.min(content.byteLength, 5));
-    if (
-      content.byteLength < 5 ||
-      content.byteLength > MAX_RENDITION_BYTES ||
-      PDF_MAGIC.some((value, index) => prefix[index] !== value)
-    ) {
-      return errorResponse(
-        502,
-        "DOCUMENT_RENDITION_CONTRACT_MISMATCH",
-        "The rendition service returned an invalid PDF preview.",
-        correlationId
-      );
-    }
+    const rendition = await openValidatedPdfStream(upstream, MAX_RENDITION_BYTES);
 
     void clients.registry.createAuditEvent(
       {
@@ -220,22 +201,26 @@ export async function GET(request: NextRequest) {
       context
     ).catch(() => undefined);
 
-    return new Response(content, {
-      headers: {
-        "Cache-Control": "private, no-store",
-        "Content-Disposition": contentDispositionFilename(payload.file_name),
-        "Content-Length": String(content.byteLength),
-        "Content-Type": "application/pdf",
-        "X-AKL-Rendition-Engine":
-          upstream.headers.get("x-akl-rendition-engine") ?? "unknown",
-        "X-AKL-Rendition-Engine-Revision":
-          upstream.headers.get("x-akl-rendition-engine-revision") ?? "unknown",
-        "X-Content-Type-Options": "nosniff"
-      }
+    const responseHeaders = new Headers({
+      "Cache-Control": "private, no-store",
+      "Content-Disposition": contentDispositionFilename(payload.file_name),
+      "Content-Type": "application/pdf",
+      "X-AKL-Rendition-Engine":
+        upstream.headers.get("x-akl-rendition-engine") ?? "unknown",
+      "X-AKL-Rendition-Engine-Revision":
+        upstream.headers.get("x-akl-rendition-engine-revision") ?? "unknown",
+      "X-Content-Type-Options": "nosniff",
     });
+    if (rendition.contentLength !== null) {
+      responseHeaders.set("Content-Length", String(rendition.contentLength));
+    }
+    return new Response(rendition.body, { headers: responseHeaders });
   } catch (error) {
     if (error instanceof SourceDownloadError) {
       return sourceErrorResponse(error);
+    }
+    if (error instanceof PdfStreamValidationError) {
+      return errorResponse(error.status, error.code, error.message, correlationId);
     }
     if (error instanceof Error && error.name === "TimeoutError") {
       return errorResponse(

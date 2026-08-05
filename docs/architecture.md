@@ -81,6 +81,11 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   policies, versions, source hashes, external ingestion status, and quality
   flags. These reports are governance evidence; they do not inspect document
   bodies.
+- Registry document lists and ordinary metadata summaries load only the
+  relationships required for authorization and display. Version/publication
+  collections are loaded for readiness and RAG authorization paths that need
+  them. Metadata-topic search builds each document search representation once
+  per request and reuses it across requested topics.
 - Intelligence Workbench is an analytical surface in `apps/web` over
   permission-scoped Registry document lists, metadata summaries, readiness
   aggregates, analyst-owned cases, saved queries, evidence references, and
