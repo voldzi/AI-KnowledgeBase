@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+LABEL cz.zeleznalady.akl.service="llm-gateway-service"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     AKL_SERVICE_NAME=llm-gateway-service
