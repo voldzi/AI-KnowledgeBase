@@ -1,6 +1,15 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { link, mkdir, open, unlink } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { copyFile, link, mkdir, open, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
+
+import {
+  headStoredObject,
+  objectStorageSettingsFromEnv,
+  putStoredObject,
+  readStoredObject,
+  type ObjectStorageSettings,
+} from "@/lib/storage/object-storage";
 
 export interface UploadPreflightRequest {
   document_id: string;
@@ -121,9 +130,10 @@ export interface PersistedUploadObject {
   size_bytes: number;
 }
 
-export interface UploadSettings {
+export interface UploadSettings extends ObjectStorageSettings {
   objectStorageRoot: string;
   bucket: string;
+  quarantineRoot?: string;
   signingSecret: string;
   maxFileBytes: number;
   publicUploadBasePath: string;
@@ -241,9 +251,15 @@ export function getUploadSettings(env: Record<string, string | undefined> = proc
     );
   }
 
+  const storage = objectStorageSettingsFromEnv(env);
+  const objectStorageRoot = env.AKL_WEB_OBJECT_STORAGE_ROOT ?? "./object-storage";
   return {
-    objectStorageRoot: env.AKL_WEB_OBJECT_STORAGE_ROOT ?? "./object-storage",
-    bucket: env.AKL_WEB_UPLOAD_BUCKET ?? "akl-documents",
+    ...storage,
+    objectStorageRoot,
+    bucket: env.AKL_S3_BUCKET ?? env.AKL_WEB_UPLOAD_BUCKET ?? "akl-documents",
+    quarantineRoot:
+      env.AKL_WEB_UPLOAD_QUARANTINE_ROOT ??
+      (storage.storageMode === "s3" ? "./upload-quarantine" : objectStorageRoot),
     signingSecret: signingSecret || "akl-local-upload-signing-secret",
     maxFileBytes: parsePositiveInteger(env.AKL_WEB_UPLOAD_MAX_FILE_BYTES, DEFAULT_MAX_FILE_BYTES),
     publicUploadBasePath: env.AKL_WEB_UPLOAD_PUBLIC_BASE_PATH ?? "/api/controlled-document/upload/sessions",
@@ -474,6 +490,30 @@ export async function persistUploadedObject(
     );
   }
 
+  if (settings.storageMode === "s3") {
+    try {
+      const stored = await putStoredObject(settings, {
+        bucket: payload.bucket,
+        key: payload.object_key,
+        content,
+        sha256,
+        contentType: payload.file_type,
+        originalFilename: payload.file_name,
+      });
+      return {
+        path: payload.source_file_uri,
+        sha256: stored.sha256 ?? sha256,
+        size_bytes: stored.size_bytes,
+      };
+    } catch (error) {
+      throw new UploadPreflightError(
+        503,
+        "OBJECT_STORAGE_WRITE_FAILED",
+        "The uploaded object could not be stored.",
+      );
+    }
+  }
+
   const targetPath = resolveObjectPath(payload, settings);
   const parentPath = path.dirname(targetPath);
   await mkdir(parentPath, { recursive: true });
@@ -565,13 +605,57 @@ export async function promoteQuarantinedUploadObject(
   settings: UploadSettings = getUploadSettings(),
 ): Promise<PersistedUploadObject> {
   const verified = await verifyUploadObjectAtPath(payload, quarantined.path);
+  if (settings.storageMode === "s3") {
+    try {
+      const content = await readFile(quarantined.path);
+      const stored = await putStoredObject(settings, {
+        bucket: payload.bucket,
+        key: payload.object_key,
+        content,
+        sha256: payload.sha256,
+        contentType: payload.file_type,
+        originalFilename: payload.file_name,
+      });
+      await unlink(quarantined.path);
+      await syncDirectory(path.dirname(quarantined.path));
+      return {
+        path: payload.source_file_uri,
+        sha256: stored.sha256 ?? payload.sha256,
+        size_bytes: stored.size_bytes,
+      };
+    } catch (error) {
+      if (error instanceof UploadPreflightError) throw error;
+      throw new UploadPreflightError(
+        503,
+        "OBJECT_STORAGE_WRITE_FAILED",
+        "The clean upload could not be published to object storage.",
+      );
+    }
+  }
   const targetPath = resolveObjectPath(payload, settings);
   const parentPath = path.dirname(targetPath);
   await mkdir(parentPath, { recursive: true });
+  let copiedTarget = false;
   try {
-    await link(quarantined.path, targetPath);
+    try {
+      await link(quarantined.path, targetPath);
+    } catch (error) {
+      if (!isCrossDeviceError(error)) throw error;
+      await copyFile(quarantined.path, targetPath, fsConstants.COPYFILE_EXCL);
+      copiedTarget = true;
+      const copiedHandle = await open(targetPath, "r+");
+      try {
+        await copiedHandle.datasync();
+      } finally {
+        await copiedHandle.close();
+      }
+      await verifyUploadObjectAtPath(payload, targetPath);
+    }
   } catch (error) {
-    if (!isFileExistsError(error)) throw error;
+    if (!isFileExistsError(error)) {
+      if (copiedTarget) await unlink(targetPath).catch(() => undefined);
+      throw error;
+    }
     const existing = await verifyPersistedUploadedObject(payload, settings).catch(() => null);
     if (!existing) {
       throw new UploadPreflightError(
@@ -620,6 +704,10 @@ async function syncDirectory(directoryPath: string): Promise<void> {
 
 function isFileExistsError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
+}
+
+function isCrossDeviceError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "EXDEV";
 }
 
 /**
@@ -754,6 +842,49 @@ export async function verifyPersistedUploadedObject(
   payload: UploadTokenPayload,
   settings: UploadSettings = getUploadSettings()
 ): Promise<PersistedUploadObject> {
+  if (settings.storageMode === "s3") {
+    try {
+      const descriptor = await headStoredObject(settings, payload.bucket, payload.object_key);
+      if (!descriptor || descriptor.size_bytes !== payload.file_size) {
+        throw new UploadPreflightError(
+          409,
+          descriptor ? "UPLOADED_OBJECT_MISMATCH" : "UPLOADED_OBJECT_MISSING",
+          descriptor
+            ? "Persisted upload object size does not match the signed upload decision."
+            : "Persisted upload object is not available for confirmation.",
+        );
+      }
+      if (descriptor.sha256 && descriptor.sha256 !== payload.sha256) {
+        throw new UploadPreflightError(
+          409,
+          "UPLOADED_OBJECT_MISMATCH",
+          "Persisted upload object hash does not match the signed upload decision.",
+        );
+      }
+      if (!descriptor.sha256) {
+        const object = await readStoredObject(settings, payload.bucket, payload.object_key);
+        if (object.sha256 !== payload.sha256) {
+          throw new UploadPreflightError(
+            409,
+            "UPLOADED_OBJECT_MISMATCH",
+            "Persisted upload object hash does not match the signed upload decision.",
+          );
+        }
+      }
+      return {
+        path: payload.source_file_uri,
+        sha256: payload.sha256,
+        size_bytes: payload.file_size,
+      };
+    } catch (error) {
+      if (error instanceof UploadPreflightError) throw error;
+      throw new UploadPreflightError(
+        503,
+        "OBJECT_STORAGE_READ_FAILED",
+        "Persisted upload object could not be verified.",
+      );
+    }
+  }
   const targetPath = resolveObjectPath(payload, settings);
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
@@ -1209,8 +1340,8 @@ function resolveQuarantinePath(
   settings: UploadSettings,
   outcome: "pending" | "infected" | "failed",
 ): string {
-  const root = path.resolve(settings.objectStorageRoot);
-  const quarantineRoot = path.resolve(root, ".quarantine", outcome);
+  const root = path.resolve(settings.quarantineRoot ?? settings.objectStorageRoot);
+  const quarantineRoot = path.resolve(root, outcome);
   const targetPath = path.resolve(
     quarantineRoot,
     payload.session_id,

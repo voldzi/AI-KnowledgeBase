@@ -4,13 +4,15 @@ import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { evaluateWebReadiness } from "@/lib/api/readiness";
 import { loadDirectorCopilotV2ManifestCatalog } from "@/lib/director-copilot-v2/manifest-catalog";
 import { contentSecurityReadiness } from "@/lib/upload/content-security";
+import { checkObjectStorageReadiness } from "@/lib/storage/object-storage";
+import { getUploadSettings } from "@/lib/upload/preflight";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
     const config = getAklConfig();
-    const dependencies = config.apiClientMode === "mock"
+    const serviceDependencies = config.apiClientMode === "mock"
       ? Object.fromEntries(Object.keys(config.serviceBaseUrls).map((name) => [name, "mock"]))
       : Object.fromEntries(
           await Promise.all(
@@ -20,6 +22,12 @@ export async function GET() {
             ]),
           ),
         );
+    const objectStorage = config.apiClientMode === "mock"
+      ? "mock" as const
+      : await checkObjectStorageReadiness(getUploadSettings())
+          .then(() => "ready" as const)
+          .catch(() => "not_ready" as const);
+    const dependencies = { ...serviceDependencies, object_storage: objectStorage };
     const directorConfig = getDirectorCopilotConfig(config);
     const directorCopilotV2 = !directorConfig.enabled
       ? "disabled"

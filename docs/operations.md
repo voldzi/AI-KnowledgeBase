@@ -648,3 +648,8 @@ Detailed references:
 - `docs/OPERATIONS/immutable-docker-home-release.md`
 - `docs/OPERATIONS/reset-pdf-first-corpus.md`
 - `docs/OPERATIONS/akb-epoch-reset.md`
+# Central document storage
+
+Production storage configuration, migration, verification, rollback, and
+credential handling are defined in
+[Central S3 Object Storage](OPERATIONS/central-s3-object-storage.md).

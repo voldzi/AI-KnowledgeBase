@@ -142,11 +142,13 @@ První nasazení:
 
 ## 3. SeaweedFS Pro Dokumenty
 
-SeaweedFS lze použít, ale AKL potřebuje jasný storage kontrakt.
+Produkce používá nativní S3 adapter AKB proti centrálnímu SeaweedFS na
+`storage.home.cz:8333`. Detailní migrační a rollback postup je v
+[`docs/OPERATIONS/central-s3-object-storage.md`](../OPERATIONS/central-s3-object-storage.md).
 
 Doporučený cílový model:
 
-- bucket nebo dedikovaný prefix: `akl-documents`
+- fyzický bucket: `akb-documents`
 - prefixy:
   - `sources/` pro originální soubory,
   - `previews/` pro renderované náhledy,
@@ -156,14 +158,16 @@ Doporučený cílový model:
 Preferovaná produkční integrace:
 
 1. SeaweedFS S3 gateway vystavit pouze v interní Docker síti.
-2. Doplnit v AKL storage adapter pro S3 kompatibilní API.
+2. AKB používá nativní S3 adapter; lokální backend zůstává pro vývoj a rollback.
 3. Konfigurace:
 
 ```env
-AKL_OBJECT_STORAGE_PROVIDER=seaweedfs-s3
-AKL_OBJECT_STORAGE_BUCKET=akl-documents
-AKL_OBJECT_STORAGE_ENDPOINT=http://seaweedfs-s3:8333
-AKL_OBJECT_STORAGE_REGION=local
+AKL_OBJECT_STORAGE_MODE=s3
+AKL_S3_BUCKET=akb-documents
+AKL_S3_ENDPOINT=http://storage.home.cz:8333
+AKL_S3_REGION=us-east-1
+AKL_S3_FORCE_PATH_STYLE=true
+AKL_OBJECT_STORAGE_LEGACY_BUCKETS=akl-documents
 ```
 
 Dočasný kompatibilní model, pokud je SeaweedFS připojený jako filesystem:

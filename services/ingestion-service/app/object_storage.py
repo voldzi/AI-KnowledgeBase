@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+import boto3
 import httpx
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import Settings
 from app.errors import IngestionError
@@ -29,12 +32,15 @@ class SourceObject:
 class ObjectStorageClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._cached_s3_client = None
 
     async def read(self, uri: str) -> SourceObject:
         if self.settings.object_storage_mode == "mock":
             return self._mock_read(uri)
         if self.settings.object_storage_mode == "http":
             return await self._http_read(uri)
+        if self.settings.object_storage_mode == "s3":
+            return self._s3_read(uri)
         return self._local_read(uri)
 
     def readiness(self) -> str:
@@ -42,6 +48,12 @@ class ObjectStorageClient:
             return "mock"
         if self.settings.object_storage_mode == "http":
             return "ready"
+        if self.settings.object_storage_mode == "s3":
+            try:
+                self._s3_client().head_bucket(Bucket=self.settings.s3_bucket)
+                return "ready"
+            except (BotoCoreError, ClientError):
+                return "not_ready"
         root = self.settings.object_storage_root
         return "ready" if root.exists() and root.is_dir() else "not_ready"
 
@@ -79,6 +91,76 @@ class ObjectStorageClient:
         self._validate_size(path.stat().st_size)
         content = path.read_bytes()
         return _source_object(uri=uri, content=content, local_path=path)
+
+    def _s3_read(self, uri: str) -> SourceObject:
+        parsed = urlparse(uri)
+        if parsed.scheme != "s3" or not parsed.netloc or not parsed.path:
+            raise IngestionError(
+                "UNSUPPORTED_OBJECT_STORAGE_URI",
+                "Source file URI must use s3://bucket/key in S3 mode",
+                status_code=400,
+                details={"uri_scheme": parsed.scheme},
+            )
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        allowed_buckets = {self.settings.s3_bucket, *self.settings.object_storage_legacy_buckets}
+        if bucket not in allowed_buckets or not key or "\0" in key:
+            raise IngestionError(
+                "OBJECT_STORAGE_PATH_FORBIDDEN",
+                "Source object is outside the configured S3 bucket",
+                status_code=403,
+                details={"uri_scheme": "s3"},
+            )
+        try:
+            response = self._s3_client().get_object(Bucket=self.settings.s3_bucket, Key=key)
+            content = response["Body"].read(self.settings.max_file_bytes + 1)
+        except ClientError as exc:
+            status = int(exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 502))
+            if status == 404 and self.settings.object_storage_local_fallback_read:
+                return self._local_read(uri)
+            raise IngestionError(
+                "SOURCE_FILE_NOT_FOUND" if status == 404 else "OBJECT_STORAGE_READ_FAILED",
+                "Source file could not be read from S3 object storage",
+                status_code=404 if status == 404 else 502,
+                details={"uri_scheme": "s3"},
+            ) from exc
+        except BotoCoreError as exc:
+            raise IngestionError(
+                "OBJECT_STORAGE_READ_FAILED",
+                "Source file could not be read from S3 object storage",
+                status_code=502,
+                details={"uri_scheme": "s3"},
+            ) from exc
+        self._validate_size(len(content))
+        metadata = response.get("Metadata") or {}
+        expected_sha256 = metadata.get("sha256")
+        actual_sha256 = f"sha256:{hashlib.sha256(content).hexdigest()}"
+        if expected_sha256 and not expected_sha256.startswith("sha256:"):
+            expected_sha256 = f"sha256:{expected_sha256}"
+        if expected_sha256 and expected_sha256 != actual_sha256:
+            raise IngestionError(
+                "OBJECT_STORAGE_INTEGRITY_FAILED",
+                "S3 object SHA-256 metadata does not match its content",
+                status_code=409,
+                details={"uri_scheme": "s3"},
+            )
+        mime_type = str(response.get("ContentType") or _guess_mime_type(uri))
+        return _source_object(uri=uri, content=content, local_path=None, mime_type=mime_type)
+
+    def _s3_client(self):
+        if self._cached_s3_client is None:
+            self._cached_s3_client = boto3.client(
+                "s3",
+                endpoint_url=self.settings.s3_endpoint,
+                region_name=self.settings.s3_region,
+                aws_access_key_id=self.settings.s3_access_key_id,
+                aws_secret_access_key=self.settings.s3_secret_access_key,
+                config=Config(
+                    s3={"addressing_style": "path" if self.settings.s3_force_path_style else "auto"},
+                    retries={"max_attempts": 3, "mode": "standard"},
+                ),
+            )
+        return self._cached_s3_client
 
     def _local_path_for_uri(self, uri: str) -> Path:
         parsed = urlparse(uri)

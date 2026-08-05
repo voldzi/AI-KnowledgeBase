@@ -171,3 +171,10 @@ Detailed architecture references:
 - `docs/ARCHITECTURE/standalone-chat-pwa.md`
 - `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`
+# Object storage
+
+Production document binaries use the native S3 adapter against the internal
+SeaweedFS gateway. Registry remains the metadata and authorization authority;
+S3 is never exposed directly to browsers. Local filesystem mode remains for
+development and rollback. The migration and compatibility model is documented
+in [Central S3 Object Storage](OPERATIONS/central-s3-object-storage.md).

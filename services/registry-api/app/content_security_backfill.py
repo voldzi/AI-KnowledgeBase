@@ -17,6 +17,7 @@ from sqlalchemy import or_, select
 from app.audit import add_audit_event
 from app.database import SessionLocal
 from app.models import DocumentFile
+from app.s3_storage import S3ConfigurationError, S3Settings, open_s3_body, physical_bucket
 
 CHUNK_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 8 * 1024
@@ -68,7 +69,7 @@ def _version(timeout_seconds: float) -> str:
         return _response(connection)
 
 
-def scan_file(path: Path, timeout_seconds: float) -> tuple[str, str | None, str, str | None, int, str]:
+def _scan_stream(source, timeout_seconds: float) -> tuple[str, str | None, str, str | None, int, str]:
     version = _version(timeout_seconds).removeprefix("ClamAV ")
     engine_version, _, signature_version = version.partition("/")
     host, port = _endpoint()
@@ -77,12 +78,11 @@ def scan_file(path: Path, timeout_seconds: float) -> tuple[str, str | None, str,
     with socket.create_connection((host, port), timeout=timeout_seconds) as connection:
         connection.settimeout(timeout_seconds)
         connection.sendall(b"zINSTREAM\0")
-        with path.open("rb") as source:
-            while block := source.read(CHUNK_BYTES):
-                size += len(block)
-                digest.update(block)
-                connection.sendall(struct.pack("!I", len(block)))
-                connection.sendall(block)
+        while block := source.read(CHUNK_BYTES):
+            size += len(block)
+            digest.update(block)
+            connection.sendall(struct.pack("!I", len(block)))
+            connection.sendall(block)
         connection.sendall(struct.pack("!I", 0))
         response = _response(connection)
     if response.endswith(" OK"):
@@ -94,8 +94,34 @@ def scan_file(path: Path, timeout_seconds: float) -> tuple[str, str | None, str,
     return status, signature, engine_version or "clamav", signature_version or None, size, f"sha256:{digest.hexdigest()}"
 
 
+def scan_file(path: Path, timeout_seconds: float) -> tuple[str, str | None, str, str | None, int, str]:
+    with path.open("rb") as source:
+        return _scan_stream(source, timeout_seconds)
+
+
+def scan_s3_uri(
+    uri: str,
+    timeout_seconds: float,
+    settings: S3Settings,
+) -> tuple[str, str | None, str, str | None, int, str]:
+    parsed = urlparse(uri)
+    if parsed.scheme != "s3" or not parsed.netloc or not parsed.path:
+        raise ScanError("unsupported_source_uri")
+    try:
+        physical_bucket(settings, parsed.netloc)
+        body, _response_metadata = open_s3_body(settings, parsed.path.lstrip("/"))
+    except Exception as exc:
+        raise ScanError("source_object_unavailable") from exc
+    try:
+        return _scan_stream(body, timeout_seconds)
+    finally:
+        body.close()
+
+
 def rescan(*, apply: bool, limit: int, retry_failures: bool, timeout_seconds: float, storage_root: Path) -> int:
     run_id = f"scan_{uuid4().hex}"
+    storage_mode = os.getenv("AKL_OBJECT_STORAGE_MODE", "local").strip().lower()
+    s3_settings = S3Settings.from_env() if storage_mode == "s3" else None
     with SessionLocal() as db:
         failed_statuses = ["scan_error", "integrity_error"] if retry_failures else []
         candidate_filter = DocumentFile.content_security_status.is_(None)
@@ -109,8 +135,15 @@ def rescan(*, apply: bool, limit: int, retry_failures: bool, timeout_seconds: fl
             outcome = "scan_error"
             metadata: dict[str, object] = {"run_id": run_id, "file_id": file.file_id}
             try:
-                path = _source_path(file.uri, storage_root)
-                status, signature, engine, signatures, size, sha256 = scan_file(path, timeout_seconds)
+                if s3_settings is not None:
+                    status, signature, engine, signatures, size, sha256 = scan_s3_uri(
+                        file.uri,
+                        timeout_seconds,
+                        s3_settings,
+                    )
+                else:
+                    path = _source_path(file.uri, storage_root)
+                    status, signature, engine, signatures, size, sha256 = scan_file(path, timeout_seconds)
                 if file.size_bytes is not None and file.size_bytes != size:
                     raise ScanError("registered_size_mismatch")
                 if file.sha256 and file.sha256.lower() != sha256:
@@ -125,7 +158,7 @@ def rescan(*, apply: bool, limit: int, retry_failures: bool, timeout_seconds: fl
                 metadata.update({"outcome": status, "engine": "clamav", "signature_version": signatures})
                 if signature:
                     metadata["signature_name"] = signature
-            except ScanError as error:
+            except (ScanError, S3ConfigurationError) as error:
                 outcome = "integrity_error" if str(error).startswith("registered_") else "scan_error"
                 file.content_security_status = outcome
                 file.content_security_engine = "clamav"
