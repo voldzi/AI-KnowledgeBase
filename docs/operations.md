@@ -166,14 +166,14 @@ specific deployment document.
 
 Director Copilot V2 is the only AKB federation path. It is pinned to wire
 contract `director-copilot-2`, revision `2.0.3`, and is enabled only when all
-four governed sources and the dedicated service identity are configured:
+three governed sources and the dedicated service identity are configured:
 
 ```text
 AKL_DIRECTOR_COPILOT_ENABLED=false
 AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS=300000
 ```
 
-Set all four governed source URLs, token URL, exact client ID and host secret
+Set all three governed source URLs, token URL, exact client ID and host secret
 path in the private production environment:
 
 ```text
@@ -184,8 +184,12 @@ AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE=/srv/akl/env/svc-akb-director-copilot.cl
 AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL=http://stratos-api:4000
 AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL=http://projectflow-api:4010
 AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL=http://stratos-api:4000
-AKL_DIRECTOR_COPILOT_AIIP_BASE_URL=http://aiip-web:3000
 ```
+
+AIIP is not an active Director Copilot source. ArchFlow owns need and idea
+intake data. Do not provision an AIIP audience, route-bound scope or base URL
+for this runtime. Separate legacy AIIP document-ingestion APIs remain isolated
+from Director Copilot until they are retired independently.
 
 V2 returns the user-visible live-data answer and writes
 `assistant.director_copilot_v2_returned`. A live-source failure never falls

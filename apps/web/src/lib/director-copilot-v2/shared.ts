@@ -5,8 +5,7 @@ import type { ApiRequestContext } from "@/lib/types";
 export type DirectorCopilotApplication =
   | "budget"
   | "projectflow"
-  | "archflow"
-  | "aiip";
+  | "archflow";
 
 export type DirectorCopilotIntent =
   | "portfolio_risk_correlation"
@@ -14,9 +13,7 @@ export type DirectorCopilotIntent =
   | "project_portfolio_status"
   | "budget_portfolio_status"
   | "project_access_overview"
-  | "archflow_demand_overview"
-  | "aiip_idea_overview"
-  | "innovation_delivery_trace";
+  | "archflow_demand_overview";
 
 const APPLICATION_ALIASES: Readonly<Record<string, DirectorCopilotApplication>> = {
   budget: "budget",
@@ -25,8 +22,6 @@ const APPLICATION_ALIASES: Readonly<Record<string, DirectorCopilotApplication>> 
   "project-flow": "projectflow",
   archflow: "archflow",
   "arch-flow": "archflow",
-  aiip: "aiip",
-  "ai-innovation-portal": "aiip",
 };
 
 export function canonicalDirectorCopilotApplication(

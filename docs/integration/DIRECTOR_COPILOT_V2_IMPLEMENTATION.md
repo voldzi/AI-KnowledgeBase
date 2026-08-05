@@ -7,7 +7,6 @@ Wire contract: `director-copilot-2`, revision `2.0.3`
 ## Pinned upstream
 
 - STRATOS: `663e71820b93c5801a27f393eae63a24ba118745`
-- AIIP: `32ee68228a9ac29c945f4a876c67dbec878a86ad`
 - request SHA-256: `c4faf33dfecc59bba1e7ef28cd2bd315183ffb6583c9a6b4da4dae4e3829bdd5`
 - response SHA-256: `22caad5e8dacfd9d3e0451f64c638e91c4d0deb649e091cf1e16fb12e8da51dd`
 - manifest SHA-256: `713d8b7d8a3a1b7873d244d4a244c3d08b1f43d0692669656100ba1454ff99a6`
@@ -16,18 +15,20 @@ Wire contract: `director-copilot-2`, revision `2.0.3`
 - manifest bundle SHA-256: `3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5`
 
 The production build verifies these hashes and byte identity of runtime schema
-copies.
+copies. The immutable `2.0.3` bundle still contains the retired AIIP manifest;
+AKB preserves those bytes for contract verification but excludes that manifest
+from the active runtime catalog.
 
 ## AKB behavior
 
-1. Load all four source manifests and reject unknown revision, tool, metric,
-   fact, relationship, link or reason code.
+1. Load the active Budget, ProjectFlow and ArchFlow source manifests and reject
+   unknown revision, tool, metric, fact, relationship, link or reason code.
 2. Resolve a bounded conversation state containing source, metric, year or
    interval, granularity and entity filters.
 3. Derive requested scopes only from the fresh STRATOS access projection.
 4. Obtain a separate service token for every source audience and pass the
    independent current actor bearer.
-   The same service client obtains a fifth route-bound token with scope
+   The same service client obtains another route-bound token with scope
    `director-copilot-akl-api` and the single audience `akl-api` for the
    mandatory metadata-only Registry audit. A source token, default token or
    interactive user token must not be reused for this audit.
@@ -59,10 +60,9 @@ The central access projection may identify the Budget application as either
 `budget` or the STRATOS catalog id `budget-contract`. AKB maps only this closed
 alias to the Budget domain. Unknown application ids remain unauthorized.
 
-On `docker.home.cz`, the AKB web containers define
-`host.docker.internal:host-gateway`. This permits a source application that is
-published only on the host, such as the separate AIIP Compose stack, to be
-reached through a stable internal hostname rather than a Docker bridge IP.
+ArchFlow is the single source for organizational needs and submitted ideas.
+AI-related needs and ideas are recognized only in the ArchFlow context; AKB
+does not retain a historical AIIP query route or replay old AIIP history.
 
 ## Runtime control
 
@@ -70,13 +70,12 @@ reached through a stable internal hostname rather than a Docker bridge IP.
 V2. Setting it to `false` does not restore V1; it produces a bounded
 fail-closed result for recognized live-data requests.
 
-Activation requires all five route-bound service scopes:
+Activation requires these four route-bound service scopes:
 
 - `director-copilot-akl-api` -> exactly `akl-api`;
 - `director-copilot-budget-api` -> exactly `budget-api`;
 - `director-copilot-projectflow-api` -> exactly `projectflow-api`;
-- `director-copilot-archflow-api` -> exactly `archflow-api`;
-- `director-copilot-aiip-api` -> exactly `aiip-api`.
+- `director-copilot-archflow-api` -> exactly `archflow-api`.
 
 The client must not receive a default or multi-audience token.
 Registry must additionally list `svc-akb-director-copilot` as an exact trusted
@@ -136,8 +135,7 @@ STRATOS revision `2.0.3` closes the ProjectFlow manifest mismatch. The pinned
 bundle now declares `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`, and AKB accepts
 that code only for the exact ProjectFlow manifest in this revision. Unknown
 runtime revisions, hashes, tools, facts, links and reason codes continue to
-fail closed. Acceptance is valid only for matching STRATOS, AIIP and AKB
-revisions.
+fail closed. Acceptance is valid only for matching STRATOS and AKB revisions.
 
 ## Joint acceptance
 
@@ -149,7 +147,7 @@ Run one uninterrupted conversation:
 4. `Které projekty překračují plán?`
 5. `Které z nich mají současně zpožděný milník?`
 
-Also verify needs without Budget handoff, ideas without ArchFlow handoff,
+Also verify needs and ideas without Budget handoff,
 capability and scope revocation between turns, policy denial, currency
 conflict, ambiguous entity, each source outage, history reopening, pagination
 and an unauthorized ProjectFlow document link.

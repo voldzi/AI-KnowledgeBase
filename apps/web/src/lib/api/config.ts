@@ -12,7 +12,6 @@ export interface DirectorCopilotConfig {
   budgetBaseUrl?: string;
   projectflowBaseUrl?: string;
   archflowBaseUrl?: string;
-  aiipBaseUrl?: string;
   timeoutMs: number;
   maxResponseBytes: number;
 }
@@ -266,7 +265,6 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     budgetBaseUrl: env.AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL?.replace(/\/+$/, "") || undefined,
     projectflowBaseUrl: env.AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL?.replace(/\/+$/, "") || undefined,
     archflowBaseUrl: env.AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL?.replace(/\/+$/, "") || undefined,
-    aiipBaseUrl: env.AKL_DIRECTOR_COPILOT_AIIP_BASE_URL?.replace(/\/+$/, "") || undefined,
     timeoutMs: positiveNumber(
       env.AKL_DIRECTOR_COPILOT_TIMEOUT_MS,
       8_000,
@@ -304,9 +302,8 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     !directorCopilot.budgetBaseUrl
     || !directorCopilot.projectflowBaseUrl
     || !directorCopilot.archflowBaseUrl
-    || !directorCopilot.aiipBaseUrl
   )) {
-    throw new Error("Director Copilot requires Budget, ProjectFlow, ArchFlow and AIIP base URLs");
+    throw new Error("Director Copilot requires Budget, ProjectFlow and ArchFlow base URLs");
   }
 
   return {

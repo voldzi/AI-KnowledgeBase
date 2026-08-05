@@ -6,7 +6,7 @@ export type AssistantLiveSourceStatus =
   | "unavailable";
 
 export interface AssistantLiveSource {
-  application: "budget" | "projectflow" | "archflow" | "aiip";
+  application: "budget" | "projectflow" | "archflow";
   status: AssistantLiveSourceStatus;
   as_of: string | null;
   generated_at: string | null;
@@ -17,7 +17,6 @@ const APPLICATIONS = new Set<AssistantLiveSource["application"]>([
   "budget",
   "projectflow",
   "archflow",
-  "aiip",
 ]);
 
 const STATUSES = new Set<AssistantLiveSourceStatus>([
@@ -52,7 +51,6 @@ export function assistantLiveSourceApplicationLabel(
     budget: "Budget",
     projectflow: "ProjectFlow",
     archflow: "ArchFlow",
-    aiip: "AI Innovation Portal",
   };
   return labels[source.application];
 }

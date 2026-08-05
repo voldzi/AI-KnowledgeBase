@@ -102,7 +102,6 @@ function config(): AklConfig {
       budgetBaseUrl: "https://budget.example",
       projectflowBaseUrl: "https://projectflow.example",
       archflowBaseUrl: "https://archflow.example",
-      aiipBaseUrl: "https://aiip.example",
       timeoutMs: 1_000,
       maxResponseBytes: 262_144,
     },

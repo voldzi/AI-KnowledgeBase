@@ -189,7 +189,6 @@ export function ProjectTopbar({
         projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
         "security-preflight": process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_URL,
         archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
-        aiip: process.env.NEXT_PUBLIC_AIIP_URL,
       }}
       mobileBehavior={{
         context: "hide",

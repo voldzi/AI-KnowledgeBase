@@ -25,8 +25,8 @@ import { stableSha256, type DirectorCopilotIntent } from "./shared";
 const HISTORY_SCHEMA_VERSION = "director-copilot-history-1";
 const MAX_SOURCE_REFERENCES = 200;
 
-type SourceApplication = "budget" | "projectflow" | "archflow" | "aiip";
-type SourceSystem = "STRATOS_BUDGET" | "STRATOS_PROJECTFLOW" | "STRATOS_ARCHFLOW" | "STRATOS_AIIP";
+type SourceApplication = "budget" | "projectflow" | "archflow";
+type SourceSystem = "STRATOS_BUDGET" | "STRATOS_PROJECTFLOW" | "STRATOS_ARCHFLOW";
 
 interface SourceReference {
   source_system: SourceSystem;
@@ -254,12 +254,12 @@ function canonicalApplication(value: string): SourceApplication {
 }
 
 function isSourceApplication(value: unknown): value is SourceApplication {
-  return value === "budget" || value === "projectflow" || value === "archflow" || value === "aiip";
+  return value === "budget" || value === "projectflow" || value === "archflow";
 }
 
 function sourceSystemFor(value: string | null): SourceSystem | null {
   return value === "STRATOS_BUDGET" || value === "STRATOS_PROJECTFLOW"
-    || value === "STRATOS_ARCHFLOW" || value === "STRATOS_AIIP" ? value : null;
+    || value === "STRATOS_ARCHFLOW" ? value : null;
 }
 
 function isSourceReference(value: unknown): value is SourceReference {
@@ -282,8 +282,7 @@ function sourceAuthorizationKey(reference: SourceReference): string {
 function isIntent(value: unknown): value is DirectorCopilotIntent {
   return value === "portfolio_risk_correlation" || value === "portfolio_performance_overview"
     || value === "project_portfolio_status" || value === "budget_portfolio_status"
-    || value === "project_access_overview" || value === "archflow_demand_overview"
-    || value === "aiip_idea_overview" || value === "innovation_delivery_trace";
+    || value === "project_access_overview" || value === "archflow_demand_overview";
 }
 
 function stringValue(value: unknown): string | null {

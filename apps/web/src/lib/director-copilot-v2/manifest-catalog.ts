@@ -19,7 +19,7 @@ import {
   parseDirectorCopilotV2ManifestEnvelope,
   pinnedDirectorCopilotV2Manifest,
   pinnedDirectorCopilotV2ManifestBundle,
-  type DirectorCopilotV2Application,
+  type ActiveDirectorCopilotV2Application,
   type DirectorCopilotV2Manifest,
   type DirectorCopilotV2ToolId,
 } from "./contracts";
@@ -27,7 +27,7 @@ import {
 const MANIFEST_PATH = "/api/v1/integrations/akb/domain-tools/manifests";
 
 export const DIRECTOR_COPILOT_V2_TARGETS: Record<
-  DirectorCopilotV2Application,
+  ActiveDirectorCopilotV2Application,
   DirectorCopilotServiceTarget
 > = {
   budget: {
@@ -42,25 +42,27 @@ export const DIRECTOR_COPILOT_V2_TARGETS: Record<
     audience: "archflow-api",
     scope: "director-copilot-archflow-api",
   },
-  aiip: {
-    audience: "aiip-api",
-    scope: "director-copilot-aiip-api",
-  },
 };
+
+export const ACTIVE_DIRECTOR_COPILOT_V2_APPLICATIONS = [
+  "budget",
+  "projectflow",
+  "archflow",
+] as const satisfies readonly ActiveDirectorCopilotV2Application[];
 
 export interface DirectorCopilotV2ManifestCatalog {
   contractRevision: typeof DIRECTOR_COPILOT_V2_REVISION;
   loadedAt: string;
   manifests: DirectorCopilotV2Manifest[];
   byTool: ReadonlyMap<DirectorCopilotV2ToolId, DirectorCopilotV2Manifest>;
-  byApplication: ReadonlyMap<DirectorCopilotV2Application, DirectorCopilotV2Manifest[]>;
+  byApplication: ReadonlyMap<ActiveDirectorCopilotV2Application, DirectorCopilotV2Manifest[]>;
 }
 
 export interface DirectorCopilotV2ManifestCatalogOptions {
   config: AklConfig;
   fetcher?: typeof fetch;
   serviceToken?: (
-    application: DirectorCopilotV2Application,
+    application: ActiveDirectorCopilotV2Application,
     target: DirectorCopilotServiceTarget,
   ) => Promise<string>;
   context?: Pick<ApiRequestContext, "requestId" | "correlationId">;
@@ -84,7 +86,6 @@ export async function loadDirectorCopilotV2ManifestCatalog(
     config.budgetBaseUrl,
     config.projectflowBaseUrl,
     config.archflowBaseUrl,
-    config.aiipBaseUrl,
     config.clientId,
     DIRECTOR_COPILOT_V2_REVISION,
   ].join("|");
@@ -114,17 +115,20 @@ export function resetDirectorCopilotV2ManifestCacheForTests(): void {
 }
 
 export function pinnedDirectorCopilotV2Catalog(): DirectorCopilotV2ManifestCatalog {
-  const manifests = pinnedDirectorCopilotV2ManifestBundle().manifests
-    .sort((left, right) => left.tool_id.localeCompare(right.tool_id));
-  const applications = (
-    Object.keys(DIRECTOR_COPILOT_V2_TARGETS) as DirectorCopilotV2Application[]
+  const activeAudiences = new Set<string>(
+    ACTIVE_DIRECTOR_COPILOT_V2_APPLICATIONS.map(
+      (application) => DIRECTOR_COPILOT_V2_TARGETS[application].audience,
+    ),
   );
+  const manifests = pinnedDirectorCopilotV2ManifestBundle().manifests
+    .filter((manifest) => activeAudiences.has(manifest.audience))
+    .sort((left, right) => left.tool_id.localeCompare(right.tool_id));
   return {
     contractRevision: DIRECTOR_COPILOT_V2_REVISION,
     loadedAt: "2026-07-25T00:00:00.000Z",
     manifests,
     byTool: new Map(manifests.map((manifest) => [manifest.tool_id, manifest])),
-    byApplication: new Map(applications.map((application) => [
+    byApplication: new Map(ACTIVE_DIRECTOR_COPILOT_V2_APPLICATIONS.map((application) => [
       application,
       manifests.filter(
         (manifest) => manifest.audience === DIRECTOR_COPILOT_V2_TARGETS[application].audience,
@@ -147,7 +151,7 @@ async function fetchCatalog(
     ...options.context,
   });
   const manifestsByApplication = await Promise.all(
-    (Object.keys(DIRECTOR_COPILOT_V2_TARGETS) as DirectorCopilotV2Application[])
+    ACTIVE_DIRECTOR_COPILOT_V2_APPLICATIONS
       .map(async (application) => {
         const target = DIRECTOR_COPILOT_V2_TARGETS[application];
         const token = options.serviceToken
@@ -205,6 +209,7 @@ async function fetchCatalog(
     .flatMap(([, applicationManifests]) => applicationManifests)
     .sort((left, right) => left.tool_id.localeCompare(right.tool_id));
   const pinned = pinnedDirectorCopilotV2ManifestBundle().manifests
+    .filter((manifest) => manifests.some((candidate) => candidate.audience === manifest.audience))
     .sort((left, right) => left.tool_id.localeCompare(right.tool_id));
   if (canonicalJson(manifests) !== canonicalJson(pinned)) {
     throw new DirectorCopilotTransportError(
@@ -224,13 +229,12 @@ async function fetchCatalog(
 
 function baseUrlForApplication(
   config: ReturnType<typeof getDirectorCopilotConfig>,
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
 ): string {
   const baseUrl = {
     budget: config.budgetBaseUrl,
     projectflow: config.projectflowBaseUrl,
     archflow: config.archflowBaseUrl,
-    aiip: config.aiipBaseUrl,
   }[application];
   if (!baseUrl) {
     throw unavailable(application, "DIRECTOR_COPILOT_V2_SOURCE_UNCONFIGURED");
@@ -239,18 +243,17 @@ function baseUrlForApplication(
 }
 
 function expectedToolForError(
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
 ): DirectorCopilotV2ToolId {
   return {
     budget: V2_TOOL_IDS.budgetOrganization,
     projectflow: V2_TOOL_IDS.projectflow,
     archflow: V2_TOOL_IDS.archflow,
-    aiip: V2_TOOL_IDS.aiip,
   }[application];
 }
 
 function unavailable(
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
   code: string,
 ): DirectorCopilotTransportError {
   return new DirectorCopilotTransportError(
@@ -263,7 +266,7 @@ function unavailable(
 
 function parseJson(
   bytes: Uint8Array,
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
 ): unknown {
   try {
     return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
@@ -274,7 +277,7 @@ function parseJson(
 
 function assertJson(
   response: Response,
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
 ): void {
   if (!(response.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) {
     throw unavailable(application, "DIRECTOR_COPILOT_V2_MANIFEST_CONTENT_TYPE_INVALID");
@@ -323,7 +326,7 @@ function responseTooLarge(status: number): DirectorCopilotTransportError {
 }
 
 function logManifest(
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
   status: number,
   startedAt: number,
   context: Required<Pick<ApiRequestContext, "requestId" | "correlationId">>,

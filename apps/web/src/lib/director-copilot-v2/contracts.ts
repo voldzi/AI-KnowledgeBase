@@ -24,6 +24,10 @@ export const V2_TOOL_IDS = {
 
 export type DirectorCopilotV2ToolId = (typeof V2_TOOL_IDS)[keyof typeof V2_TOOL_IDS];
 export type DirectorCopilotV2Application = "budget" | "projectflow" | "archflow" | "aiip";
+export type ActiveDirectorCopilotV2Application = Exclude<
+  DirectorCopilotV2Application,
+  "aiip"
+>;
 export type DirectorCopilotV2Audience = "budget-api" | "projectflow-api" | "archflow-api" | "aiip-api";
 export type DirectorCopilotV2ScopeType =
   | "own"

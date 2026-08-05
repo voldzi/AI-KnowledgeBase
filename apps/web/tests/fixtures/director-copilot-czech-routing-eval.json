@@ -82,33 +82,15 @@
       ]
     },
     {
-      "id": "aiip-status",
+      "id": "archflow-ai-status",
       "turns": [
-        {"message": "Jaký je stav AI podnětů v AIIP?", "sources": ["aiip"], "metrics": ["aiip.idea.status"], "intent": "aiip_idea_overview"}
+        {"message": "Jaký je stav AI podnětů v ArchFlow?", "sources": ["archflow"], "metrics": ["archflow.need.status"], "intent": "archflow_demand_overview"}
       ]
     },
     {
-      "id": "aiip-value-risk",
+      "id": "archflow-ai-intake",
       "turns": [
-        {"message": "Které AI nápady mají nejvyšší hodnotu a riziko?", "sources": ["aiip"], "metrics": ["aiip.idea.value_score", "aiip.idea.risk_score"], "intent": "aiip_idea_overview"}
-      ]
-    },
-    {
-      "id": "aiip-handoff",
-      "turns": [
-        {"message": "Které AI podněty ještě nebyly předány do ArchFlow?", "sources": ["aiip"], "metrics": ["aiip.idea.handoff_status"], "intent": "aiip_idea_overview"}
-      ]
-    },
-    {
-      "id": "innovation-trace",
-      "turns": [
-        {"message": "Jak pokračují AI podněty z AIIP přes ArchFlow?", "sources": ["archflow", "aiip"], "metrics": [], "intent": "innovation_delivery_trace"}
-      ]
-    },
-    {
-      "id": "full-chain",
-      "turns": [
-        {"message": "Ukaž cestu AI nápadů přes ArchFlow do Budgetu a realizovaných projektů.", "sources": ["budget", "projectflow", "archflow", "aiip"], "metrics": [], "intent": "innovation_delivery_trace"}
+        {"message": "Které AI podněty v ArchFlow čekají na rozhodnutí?", "sources": ["archflow"], "metrics": ["archflow.need.decision"], "intent": "archflow_demand_overview"}
       ]
     },
     {

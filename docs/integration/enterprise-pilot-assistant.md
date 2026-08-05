@@ -32,7 +32,7 @@ Phase 04 prepares AKB for an enterprise pilot as a central knowledge platform wi
   - persisted threads with default 180-day retention, archive, and user/group sharing.
   - an explicit history loading/retry state so an authorized persisted thread is
     never presented as a newly created empty conversation while it loads.
-  - a compact source summary for live Budget, ProjectFlow, ArchFlow and AIIP
+  - a compact source summary for live Budget, ProjectFlow and ArchFlow
     results alongside controlled-document citations. Persisted source metadata
     is bounded and does not contain domain business payloads.
 - Web UI route `/chat` provides the standalone Employee Chat Portal for ordinary

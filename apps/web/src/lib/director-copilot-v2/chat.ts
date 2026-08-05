@@ -254,7 +254,6 @@ function composeResponse(
     ));
   const correlations = [
     renderProjectCorrelation(orchestration.snapshot, language),
-    renderInnovationTrace(orchestration.snapshot, language),
   ].filter(Boolean);
   const partialNotice = orchestration.status === "partial"
     ? language === "en"
@@ -283,55 +282,6 @@ function composeResponse(
     missingInformation: null,
     followUps: followUps(language, orchestration.plan.intent),
   });
-}
-
-function renderInnovationTrace(
-  snapshot: DirectorCopilotV2Snapshot,
-  language: ResponseLanguage,
-): string {
-  const ideas = snapshot.outcomes.find((outcome) => outcome.application === "aiip");
-  const needs = snapshot.outcomes.find((outcome) => outcome.application === "archflow");
-  if (!ideas || !needs) return "";
-  const needsById = new Map(needs.items.map((item) => [item.canonical_id, item]));
-  const rows = ideas.items.flatMap((idea, index) => {
-    const needLink = idea.links.find((link) => (
-      link.key === "aiip.idea.archflow_need"
-      && link.relation_type === "direct"
-      && link.target_entity_type === "need"
-    ));
-    if (!needLink) return [];
-    const need = needsById.get(needLink.target_canonical_id);
-    if (!need) return [];
-    const linkedProject = need.links.some((link) => (
-      link.key === "archflow.need.linked_project"
-      && link.relation_type === "direct"
-      && link.target_entity_type === "project"
-    ));
-    return [[
-      safeItemLabel(idea, index, language),
-      safeItemLabel(need, index, language),
-      formatFact(
-        need.facts.find((fact) => fact.key === "archflow.need.status"),
-        language,
-      ),
-      linkedProject
-        ? language === "en" ? "yes" : "ano"
-        : language === "en" ? "no" : "ne",
-    ]];
-  }).slice(0, 25);
-  if (!rows.length) return "";
-  const headers = language === "en"
-    ? ["Idea", "Need", "Need status", "Linked project"]
-    : ["Podnět", "Potřeba", "Stav potřeby", "Navázaný projekt"];
-  const table = [
-    `| ${headers.join(" | ")} |`,
-    `| ${headers.map(() => "---").join(" | ")} |`,
-    ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
-  ].join("\n");
-  const title = language === "en"
-    ? "### Idea to delivery trace"
-    : "### Cesta podnětu k realizaci";
-  return `${title}\n\n${table}`;
 }
 
 function renderProjectCorrelation(
@@ -393,7 +343,6 @@ function renderSource(
     budget: "Budget",
     projectflow: "ProjectFlow",
     archflow: "ArchFlow",
-    aiip: "AI Innovation Portal",
   }[application];
   const selectedFacts = preferredFactKeys(application, items);
   const headers = [
@@ -467,7 +416,7 @@ function comparableCurrencies(facts: DirectorCopilotV2Fact[]): boolean {
 }
 
 function preferredFactKeys(
-  application: "budget" | "projectflow" | "archflow" | "aiip",
+  application: "budget" | "projectflow" | "archflow",
   items: DirectorCopilotV2Item[],
 ): string[] {
   const available = new Set(items.flatMap((item) => item.facts.map((fact) => fact.key)));
@@ -492,13 +441,6 @@ function preferredFactKeys(
       "archflow.need.impact_score",
       "archflow.need.decision",
       "archflow.need.budget_handoff_status",
-    ],
-    aiip: [
-      "aiip.idea.pipeline_status",
-      "aiip.idea.category",
-      "aiip.idea.value_score",
-      "aiip.idea.risk_manageability_score",
-      "aiip.idea.archflow_handoff_status",
     ],
   }[application];
   return preferences.filter((key) => available.has(key)).slice(0, 5);
@@ -572,11 +514,6 @@ function factLabel(key: string, language: ResponseLanguage): string {
     "archflow.need.impact_score": ["Impact", "Dopad"],
     "archflow.need.decision": ["Decision", "Rozhodnutí"],
     "archflow.need.budget_handoff_status": ["Budget handoff", "Předání do Budgetu"],
-    "aiip.idea.pipeline_status": ["Status", "Stav"],
-    "aiip.idea.category": ["Category", "Kategorie"],
-    "aiip.idea.value_score": ["Value", "Přínos"],
-    "aiip.idea.risk_manageability_score": ["Risk", "Riziko"],
-    "aiip.idea.archflow_handoff_status": ["ArchFlow handoff", "Předání do ArchFlow"],
   };
   return labels[key]?.[language === "en" ? 0 : 1] ?? key;
 }

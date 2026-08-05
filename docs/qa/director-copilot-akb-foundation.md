@@ -98,6 +98,6 @@ kontrakt a eval dataset.
 ## Navazující kontraktní rozšíření 2026-07-25
 
 Tento historický základ předcházel produkčnímu přijetí V2. Aktuální stav,
-včetně ArchFlow a AIIP jako připojených řízených zdrojů, popisuje
+včetně ArchFlow jako zdroje potřeb i podnětů, popisuje
 `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md` a společná akceptace
 je evidována v `docs/qa/director-copilot-v2-production-acceptance.md`.

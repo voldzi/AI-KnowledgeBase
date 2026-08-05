@@ -18,8 +18,10 @@ The active Director Copilot contract is pinned under:
 contracts/director-copilot/v2/
 ```
 
-V2 revision `2.0.3` dynamically validates source manifests for Budget,
-ProjectFlow, ArchFlow and AIIP, but only accepts the exact pinned manifest set.
+V2 revision `2.0.3` dynamically validates the active source manifests for
+Budget, ProjectFlow and ArchFlow. The immutable bundle still carries the
+retired AIIP manifest for byte-level contract compatibility, but AKB neither
+loads nor calls it.
 Every target uses a separate single-audience service token and the independent
 current actor bearer. The shared request includes period, entity filters,
 granularity, grouping, scenario, `as_of`, cursor and limit. The assistant
@@ -42,9 +44,8 @@ capabilities or authorization scopes. Project delivery questions use
 `projectflow.portfolio_delivery_overview.v1`. Financial questions use
 `budget.organization_financial_summary.v1` or
 `budget.project_financial_snapshot.v1` according to the bounded query state.
-ArchFlow and AIIP live-data questions use
-`archflow.need_portfolio_overview.v1` and
-`aiip.idea_portfolio_overview.v1`. Each response is limited to
+Need and idea-intake questions use ArchFlow through
+`archflow.need_portfolio_overview.v1`. Each response is limited to
 source-authorized facts, source timestamps and safe deep links.
 
 A question about access availability is distinct from a request to grant or

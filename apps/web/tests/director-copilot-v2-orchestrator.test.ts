@@ -473,7 +473,6 @@ function projectedContext(
       access(budgetApplication, ["budget:access", "budget:read"]),
       access("projectflow", ["projectflow:access", "projectflow:read"]),
       access("archflow", ["archflow:access", "archflow:read_organization"]),
-      access("aiip", ["aiip:access", "aiip:read_organization"]),
     ],
   };
 }

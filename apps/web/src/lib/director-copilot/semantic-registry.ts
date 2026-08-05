@@ -57,7 +57,6 @@ const SOURCE_VALUES = new Set<StratosSemanticSource>([
   "budget",
   "projectflow",
   "archflow",
-  "aiip",
 ]);
 const METRIC_VALUES = new Set<StratosSemanticMetric>([
   "budget.plan_amount",
@@ -74,11 +73,6 @@ const METRIC_VALUES = new Set<StratosSemanticMetric>([
   "archflow.need.impact_score",
   "archflow.need.decision",
   "archflow.need.budget_handoff_status",
-  "aiip.idea.status",
-  "aiip.idea.value_score",
-  "aiip.idea.risk_score",
-  "aiip.idea.expected_benefit",
-  "aiip.idea.handoff_status",
 ]);
 
 const snapshot = parseSnapshot(snapshotJson);

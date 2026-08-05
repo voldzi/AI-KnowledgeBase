@@ -9,7 +9,7 @@ import {
   DIRECTOR_COPILOT_V2_CONTRACT,
   canonicalJson,
   directorCopilotV2StableId,
-  type DirectorCopilotV2Application,
+  type ActiveDirectorCopilotV2Application,
   type DirectorCopilotV2Item,
   type DirectorCopilotV2Response,
   type DirectorCopilotV2ToolId,
@@ -31,7 +31,7 @@ export const DIRECTOR_COPILOT_V2_SNAPSHOT_VERSION =
   "director-copilot-v2-analysis-snapshot-1" as const;
 
 export interface DirectorCopilotV2SourceOutcome {
-  application: DirectorCopilotV2Application;
+  application: ActiveDirectorCopilotV2Application;
   tool_id: DirectorCopilotV2ToolId;
   schema_revision: string;
   status: "complete" | "partial" | "no_data" | "not_authorized" | "unavailable";

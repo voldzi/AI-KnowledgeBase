@@ -180,7 +180,6 @@ describe("AKL web config", () => {
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
       AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: "http://archflow-api:4000",
-      AKL_DIRECTOR_COPILOT_AIIP_BASE_URL: "http://aiip-api:3000",
     });
 
     assert.equal(config.directorCopilot?.enabled, true);
@@ -195,7 +194,7 @@ describe("AKL web config", () => {
         AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
         AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
       }),
-      /requires Budget, ProjectFlow, ArchFlow and AIIP base URLs/,
+      /requires Budget, ProjectFlow and ArchFlow base URLs/,
     );
   });
 
@@ -206,7 +205,6 @@ describe("AKL web config", () => {
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
       AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: "http://archflow-api:4000",
-      AKL_DIRECTOR_COPILOT_AIIP_BASE_URL: "http://aiip-api:3000",
     });
 
     assert.equal(config.directorCopilot?.v2ManifestCacheTtlMs, 120000);
@@ -235,7 +233,6 @@ describe("AKL web config", () => {
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://budget-api:4000",
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "http://projectflow-api:3000",
       AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: "http://archflow-api:4000",
-      AKL_DIRECTOR_COPILOT_AIIP_BASE_URL: "http://aiip-api:3000",
     }), /must use AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE/);
   });
 });
