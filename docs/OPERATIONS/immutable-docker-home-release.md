@@ -84,11 +84,12 @@ deploy from the mutable `/srv/akl/repo` working tree.
   mode-`0600` deployment record named by the marker deployment ID and repeats
   the same final gate; it does not re-declare identity from the current tag.
   Only changed `registry-api`, `ingestion-service`,
-  `rag-retrieval-service`, and `web` services are built and recreated. A
+  `rag-retrieval-service`, `evaluation-service`, `governance-service`, `web`,
+  `chat-web`, and `llm-gateway-service` services are built and recreated. A
   release touching another runtime service fails closed. A change to the shared
   production Compose file is accepted only when a structural comparison proves
   that its complete top-level envelope and every unmanaged service block are
-  byte-identical; only changed blocks belonging to those four managed services
+  byte-identical; only changed blocks belonging to those managed services
   are selected. Adding/removing a service or changing reverse proxy,
   platform-status, networks, volumes, or another unmanaged block fails before
   build.
@@ -311,7 +312,7 @@ Before the SHA is burned or any image is built, the deploy script also requires
 every private file needed by the selected service set to be an absolute,
 single-link, non-symlink regular file owned by the release operator with exact
 mode `0600` and non-empty content. Registry additionally requires at least 32
-bytes. First rollout selects all seven managed services, so all four
+bytes. First rollout selects all eight managed services, so all four
 confidential transport files are mandatory even if an older runtime did not
 use them.
 
@@ -521,9 +522,9 @@ downgrade, in-place restore, reset, tag deletion, or volume removal.
    `applied_sha` must equal the
    current SHA and `state` must be `verified` for an ordinary deployment.
 3. Confirm the change contains only the supported Registry, Ingestion, RAG,
-   Evaluation, Governance, web, or standalone chat runtime scope. Shared policy
-   contracts are treated as Registry changes. A shared Compose change may alter
-   only complete blocks of these seven services;
+   Evaluation, Governance, web, standalone chat, or internal LLM gateway runtime
+   scope. Shared policy contracts are treated as Registry changes. A shared
+   Compose change may alter only complete blocks of these eight services;
    any other service or top-level change is rejected.
 4. Confirm no database reset, corpus reset, volume removal, Alembic downgrade,
    or network change is included in the change window.
@@ -569,9 +570,9 @@ The script, in order:
 1. obtains an exclusive host deployment lock;
 2. fetches into the bare mirror and verifies exact SHA ancestry;
 3. extracts and verifies the read-only release directory;
-4. determines the affected Registry/Ingestion/RAG/web services from the Git
-   diff and structurally constrains any shared Compose change to those exact
-   service blocks;
+4. determines the affected managed services from the Git diff, including the
+   internal LLM gateway, and structurally constrains any shared Compose change
+   to those exact service blocks;
 5. preflights every selected service's private signing/client-secret file before
    the burn/build boundary; when Registry is affected, verifies the configured exact local PostgreSQL
    tool image, records its image ID and client versions, and obtains three

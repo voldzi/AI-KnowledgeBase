@@ -477,6 +477,7 @@ SUPPORTED = (
     "governance-service",
     "web",
     "chat-web",
+    "llm-gateway-service",
 )
 SERVICE_HEADER = re.compile(r"^  ([a-z0-9][a-z0-9_-]*):(?:[ \t]*#[^\r\n]*)?\r?\n?$")
 TOP_LEVEL = re.compile(r"^[A-Za-z0-9_.-]+:")
@@ -562,7 +563,7 @@ if current_envelope_for_comparison != target_envelope:
         "shared production Compose change modifies top-level configuration outside the managed-service release boundary"
     )
 if current_services.keys() != target_services.keys():
-    if not central_opensearch_cutover and (removed or added != {"chat-web"}):
+    if not central_opensearch_cutover and (removed or added not in ({"chat-web"}, {"llm-gateway-service"})):
         raise SystemExit("shared production Compose change adds or removes an unsupported service")
 
 changed = []
@@ -1715,7 +1716,7 @@ if values["phase"] not in {
     "verified",
 }:
     raise SystemExit("runtime marker phase is invalid")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web))*)", values["services"]):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service))*)", values["services"]):
     raise SystemExit("runtime marker services are invalid")
 if values["migration_started"] not in {"true", "false"}:
     raise SystemExit("runtime marker migration flag is invalid")
@@ -1757,7 +1758,7 @@ if state not in {"applying", "failed", "verified"}:
     raise SystemExit("invalid runtime marker state")
 if phase not in {"seeded", "migrating", "migrated", "restarting", "verifying", "verified"}:
     raise SystemExit("invalid runtime marker phase")
-if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web))*)", services):
+if not re.fullmatch(r"(?:none|legacy|(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)(?:,(?:registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service))*)", services):
     raise SystemExit("invalid runtime marker services")
 if migration_started not in {"true", "false"}:
     raise SystemExit("invalid runtime marker migration flag")
@@ -2375,7 +2376,8 @@ akl_assert_existing_current_transition_state() {
       "akl/evaluation-service:${target_sha}" \
       "akl/governance-service:${target_sha}" \
       "akl/web:${target_sha}" \
-      "akl/chat-web:${target_sha}"; do
+      "akl/chat-web:${target_sha}" \
+      "akl/llm-gateway-service:${target_sha}"; do
       if docker image inspect "$target_image" >/dev/null 2>&1; then
         akl_fail "Clean transition target image tag already exists: $target_image"
       fi
@@ -2663,7 +2665,7 @@ akl_quarantine_unverified_compose_service() {
   local -a container_ids=()
 
   akl_validate_project_name "$project_name"
-  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web)$ ]] \
+  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)$ ]] \
     || akl_fail "Unverified Compose service name is invalid"
   [[ "$target_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || akl_fail "Unverified durable target image ID is invalid"

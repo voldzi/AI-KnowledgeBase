@@ -294,14 +294,14 @@ The persistent production environment remains
 `/srv/akl/env/akl.prod.env`; each attempt copies it once into the private linked
 snapshot described below. Every Compose operation receives that snapshot, the
 Compose project, and the target release compose file explicitly. The managed
-immutable set is Registry, Ingestion, RAG, Evaluation, Governance, web, and
-standalone chat. Before the SHA burn/build
+immutable set is Registry, Ingestion, RAG, Evaluation, Governance, web,
+standalone chat, and the internal LLM gateway. Before the SHA burn/build
 boundary the workflow requires the Registry proof-signing file and each
 selected Ingestion/RAG/web confidential-client secret to be an absolute,
 operator-owned, single-link regular file with exact mode `0600`. When Director
 Copilot is enabled and either web profile changes, the same preflight applies
 to its dedicated client-secret file. First rollout
-selects all seven services. A Registry
+selects all eight services. A Registry
 change first quiesces the Registry writer and is then backed up and verified
 before Alembic runs. PostgreSQL clients come only from the already-local exact
 digest or image ID configured by `AKL_RELEASE_POSTGRES_TOOL_IMAGE`; no mutable
@@ -347,7 +347,7 @@ printed, and a SIGKILL remnant blocks deployment until the exact validated
 cleanup command in the runbook is used. A change to the shared
 production Compose file is accepted only when its top-level envelope and every
 unmanaged service block are byte-identical and changes are confined to complete
-Registry/Ingestion/RAG/web blocks. All other Compose changes fail before build.
+managed service blocks. All other Compose changes fail before build.
 The realm export and `infra/keycloak/update-stratos-public-routing.sh` are
 non-runtime resources: immutable AKB deployment ignores them and their live
 application and verification remain a separate Keycloak administration step.

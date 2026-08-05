@@ -4,7 +4,7 @@ set -Eeuo pipefail
 AKL_IMMUTABLE_ORCHESTRATOR_CONTRACT=2
 # Read from immutable release files by the target-side boundary transition.
 # shellcheck disable=SC2034
-AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=3
+AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=4
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/immutable_release_common.sh
@@ -80,6 +80,7 @@ TARGET_EVALUATION_IMAGE_ID="not-affected"
 TARGET_GOVERNANCE_IMAGE_ID="not-affected"
 TARGET_WEB_IMAGE_ID="not-affected"
 TARGET_CHAT_WEB_IMAGE_ID="not-affected"
+TARGET_LLM_GATEWAY_IMAGE_ID="not-affected"
 TARGET_SERVICES_START_MAY_HAVE_STARTED="false"
 TARGET_REGISTRY_QUARANTINED="false"
 TARGET_REGISTRY_QUARANTINE_FAILED="false"
@@ -95,6 +96,8 @@ TARGET_WEB_QUARANTINED="false"
 TARGET_WEB_QUARANTINE_FAILED="false"
 TARGET_CHAT_WEB_QUARANTINED="false"
 TARGET_CHAT_WEB_QUARANTINE_FAILED="false"
+TARGET_LLM_GATEWAY_QUARANTINED="false"
+TARGET_LLM_GATEWAY_QUARANTINE_FAILED="false"
 PRESERVE_DEPLOY_LOCK="false"
 ENV_SNAPSHOT_DIR=""
 ENV_SNAPSHOT_PATH=""
@@ -311,6 +314,7 @@ write_deployment_record() {
     printf 'target_governance_image_id=%s\n' "$TARGET_GOVERNANCE_IMAGE_ID"
     printf 'target_web_image_id=%s\n' "$TARGET_WEB_IMAGE_ID"
     printf 'target_chat_web_image_id=%s\n' "$TARGET_CHAT_WEB_IMAGE_ID"
+    printf 'target_llm_gateway_image_id=%s\n' "$TARGET_LLM_GATEWAY_IMAGE_ID"
     printf 'target_services_start_may_have_started=%s\n' "$TARGET_SERVICES_START_MAY_HAVE_STARTED"
     printf 'target_registry_quarantined=%s\n' "$TARGET_REGISTRY_QUARANTINED"
     printf 'target_registry_quarantine_failed=%s\n' "$TARGET_REGISTRY_QUARANTINE_FAILED"
@@ -326,6 +330,8 @@ write_deployment_record() {
     printf 'target_web_quarantine_failed=%s\n' "$TARGET_WEB_QUARANTINE_FAILED"
     printf 'target_chat_web_quarantined=%s\n' "$TARGET_CHAT_WEB_QUARANTINED"
     printf 'target_chat_web_quarantine_failed=%s\n' "$TARGET_CHAT_WEB_QUARANTINE_FAILED"
+    printf 'target_llm_gateway_quarantined=%s\n' "$TARGET_LLM_GATEWAY_QUARANTINED"
+    printf 'target_llm_gateway_quarantine_failed=%s\n' "$TARGET_LLM_GATEWAY_QUARANTINE_FAILED"
     printf 'deploy_lock_preserved=%s\n' "$PRESERVE_DEPLOY_LOCK"
     printf 'retry_requires_descendant_sha=%s\n' "$RETRY_REQUIRES_DESCENDANT_SHA"
     printf 'recorded_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -414,6 +420,7 @@ expected_keys = [
     "target_governance_image_id",
     "target_web_image_id",
     "target_chat_web_image_id",
+    "target_llm_gateway_image_id",
     "target_services_start_may_have_started",
     "target_registry_quarantined",
     "target_registry_quarantine_failed",
@@ -429,6 +436,8 @@ expected_keys = [
     "target_web_quarantine_failed",
     "target_chat_web_quarantined",
     "target_chat_web_quarantine_failed",
+    "target_llm_gateway_quarantined",
+    "target_llm_gateway_quarantine_failed",
     "deploy_lock_preserved",
     "retry_requires_descendant_sha",
     "recorded_utc",
@@ -465,6 +474,7 @@ image_fields = {
     "governance-service": "target_governance_image_id",
     "web": "target_web_image_id",
     "chat-web": "target_chat_web_image_id",
+    "llm-gateway-service": "target_llm_gateway_image_id",
 }
 if any(service not in image_fields for service in selected_services):
     raise SystemExit("verified deployment record contains an unsupported service")
@@ -491,6 +501,8 @@ for field in {
     "target_web_quarantine_failed",
     "target_chat_web_quarantined",
     "target_chat_web_quarantine_failed",
+    "target_llm_gateway_quarantined",
+    "target_llm_gateway_quarantine_failed",
     "deploy_lock_preserved",
 }:
     if values[field] not in {"true", "false"}:
@@ -505,6 +517,7 @@ print(
             values["target_governance_image_id"],
             values["target_web_image_id"],
             values["target_chat_web_image_id"],
+            values["target_llm_gateway_image_id"],
         ]
     )
 )
@@ -520,6 +533,7 @@ expected_image_for_service() {
     governance-service) printf '%s\n' "$GOVERNANCE_SERVICE_IMAGE" ;;
     web) printf '%s\n' "$WEB_IMAGE" ;;
     chat-web) printf '%s\n' "$CHAT_WEB_IMAGE" ;;
+    llm-gateway-service) printf '%s\n' "$LLM_GATEWAY_SERVICE_IMAGE" ;;
     *) akl_fail "Unsupported immutable image service: $1" ;;
   esac
 }
@@ -541,6 +555,7 @@ verify_target_image_identity() {
       "GOVERNANCE_SERVICE_IMAGE=${GOVERNANCE_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
+      "LLM_GATEWAY_SERVICE_IMAGE=${LLM_GATEWAY_SERVICE_IMAGE}" \
       docker image inspect --format '{{.Id}}' "$target_image"
   )" || akl_fail "Immutable target image tag is missing during ${phase}: $target_image"
   [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
@@ -556,6 +571,7 @@ verify_target_image_identity() {
       "GOVERNANCE_SERVICE_IMAGE=${GOVERNANCE_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
+      "LLM_GATEWAY_SERVICE_IMAGE=${LLM_GATEWAY_SERVICE_IMAGE}" \
       docker image inspect --format '{{json .RepoTags}}' "$target_image"
   )" || akl_fail "Could not inspect immutable target image tags during ${phase}: $target_image"
   python3 - "$repo_tags_json" "$target_image" <<'PY' \
@@ -578,6 +594,7 @@ PY
       "GOVERNANCE_SERVICE_IMAGE=${GOVERNANCE_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
+      "LLM_GATEWAY_SERVICE_IMAGE=${LLM_GATEWAY_SERVICE_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$target_image"
   )" || akl_fail "Could not inspect target image revision label during ${phase}: $target_image"
   image_project="$(
@@ -591,6 +608,7 @@ PY
       "GOVERNANCE_SERVICE_IMAGE=${GOVERNANCE_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
+      "LLM_GATEWAY_SERVICE_IMAGE=${LLM_GATEWAY_SERVICE_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$target_image"
   )" || akl_fail "Could not inspect target image project label during ${phase}: $target_image"
   image_service="$(
@@ -604,6 +622,7 @@ PY
       "GOVERNANCE_SERVICE_IMAGE=${GOVERNANCE_SERVICE_IMAGE}" \
       "WEB_IMAGE=${WEB_IMAGE}" \
       "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}" \
+      "LLM_GATEWAY_SERVICE_IMAGE=${LLM_GATEWAY_SERVICE_IMAGE}" \
       docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$target_image"
   )" || akl_fail "Could not inspect target image service label during ${phase}: $target_image"
   [[ "$image_revision" == "$TARGET_SHA" \
@@ -762,6 +781,7 @@ quarantine_unverified_target_services() {
       governance-service) target_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
       web) target_image_id="$TARGET_WEB_IMAGE_ID" ;;
       chat-web) target_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
+      llm-gateway-service) target_image_id="$TARGET_LLM_GATEWAY_IMAGE_ID" ;;
       *) akl_fail "Unsupported target service during quarantine" ;;
     esac
     if (
@@ -780,6 +800,7 @@ quarantine_unverified_target_services() {
         governance-service) TARGET_GOVERNANCE_QUARANTINED="true" ;;
         web) TARGET_WEB_QUARANTINED="true" ;;
         chat-web) TARGET_CHAT_WEB_QUARANTINED="true" ;;
+        llm-gateway-service) TARGET_LLM_GATEWAY_QUARANTINED="true" ;;
       esac
       printf 'Unverified AKB target service was quarantined: %s. No predecessor rollback was attempted.\n' \
         "$service" >&2
@@ -792,6 +813,7 @@ quarantine_unverified_target_services() {
         governance-service) TARGET_GOVERNANCE_QUARANTINE_FAILED="true" ;;
         web) TARGET_WEB_QUARANTINE_FAILED="true" ;;
         chat-web) TARGET_CHAT_WEB_QUARANTINE_FAILED="true" ;;
+        llm-gateway-service) TARGET_LLM_GATEWAY_QUARANTINE_FAILED="true" ;;
       esac
       PRESERVE_DEPLOY_LOCK="true"
       printf 'CRITICAL: AKB target verification failed and quarantine could not be proven: %s.\n' \
@@ -913,7 +935,8 @@ akl_assert_no_ambient_compose_overrides \
   EVALUATION_SERVICE_IMAGE \
   GOVERNANCE_SERVICE_IMAGE \
   WEB_IMAGE \
-  CHAT_WEB_IMAGE
+  CHAT_WEB_IMAGE \
+  LLM_GATEWAY_SERVICE_IMAGE
 AKL_SERVICE_VERSION="$TARGET_SHA"
 REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
 INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
@@ -922,6 +945,7 @@ EVALUATION_SERVICE_IMAGE="akl/evaluation-service:${TARGET_SHA}"
 GOVERNANCE_SERVICE_IMAGE="akl/governance-service:${TARGET_SHA}"
 WEB_IMAGE="akl/web:${TARGET_SHA}"
 CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
+LLM_GATEWAY_SERVICE_IMAGE="akl/llm-gateway-service:${TARGET_SHA}"
 COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
@@ -932,6 +956,7 @@ COMPOSE=(
   "GOVERNANCE_SERVICE_IMAGE=${GOVERNANCE_SERVICE_IMAGE}"
   "WEB_IMAGE=${WEB_IMAGE}"
   "CHAT_WEB_IMAGE=${CHAT_WEB_IMAGE}"
+  "LLM_GATEWAY_SERVICE_IMAGE=${LLM_GATEWAY_SERVICE_IMAGE}"
   "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}"
   docker compose
   --project-name "$PROJECT_NAME"
@@ -1000,7 +1025,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   && "$RUNTIME_MARKER_PHASE" == "verified" ]]; then
   [[ -z "${AKL_FORWARD_FIX_FROM_SHA:-}" ]] \
     || akl_fail "Forward-fix context is invalid for verified-release reconciliation"
-  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web)(,(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web))*$ ]] \
+  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)(,(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service))*$ ]] \
     || akl_fail "Verified runtime marker has an invalid service set"
   SERVICE_CSV="$RUNTIME_MARKER_SERVICES"
   IFS='|' read -r \
@@ -1011,6 +1036,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
     TARGET_GOVERNANCE_IMAGE_ID \
     TARGET_WEB_IMAGE_ID \
     TARGET_CHAT_WEB_IMAGE_ID \
+    TARGET_LLM_GATEWAY_IMAGE_ID \
     <<<"$(load_reconciliation_image_ids \
       "$RUNTIME_MARKER_DEPLOYMENT_ID" \
       "$RUNTIME_MARKER_SERVICES")"
@@ -1024,6 +1050,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
       governance-service) reconciled_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
       web) reconciled_image_id="$TARGET_WEB_IMAGE_ID" ;;
       chat-web) reconciled_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
+      llm-gateway-service) reconciled_image_id="$TARGET_LLM_GATEWAY_IMAGE_ID" ;;
       *) akl_fail "Verified reconciliation contains an unsupported service" ;;
     esac
     assert_runtime_container_bound_to_image \
@@ -1045,6 +1072,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
   AKL_RELEASE_EXPECTED_GOVERNANCE_IMAGE_ID="$TARGET_GOVERNANCE_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_WEB_IMAGE_ID="$TARGET_WEB_IMAGE_ID" \
   AKL_RELEASE_EXPECTED_CHAT_WEB_IMAGE_ID="$TARGET_CHAT_WEB_IMAGE_ID" \
+  AKL_RELEASE_EXPECTED_LLM_GATEWAY_IMAGE_ID="$TARGET_LLM_GATEWAY_IMAGE_ID" \
     "${release_dir}/scripts/verify_docker_home_release.sh" \
       "$TARGET_SHA" "$release_dir" "$SERVICE_CSV"
   for reconciled_service in "${reconciled_services[@]}"; do
@@ -1056,6 +1084,7 @@ if [[ "$RUNTIME_MARKER_SHA" == "$TARGET_SHA" \
       governance-service) reconciled_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
       web) reconciled_image_id="$TARGET_WEB_IMAGE_ID" ;;
       chat-web) reconciled_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
+      llm-gateway-service) reconciled_image_id="$TARGET_LLM_GATEWAY_IMAGE_ID" ;;
       *) akl_fail "Verified reconciliation contains an unsupported service" ;;
     esac
     assert_runtime_container_bound_to_image \
@@ -1108,7 +1137,7 @@ add_service() {
 }
 
 if [[ -z "$current_sha" ]]; then
-  services=(registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web)
+  services=(registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service)
 else
   current_compose_file="${current_release_dir}/infra/docker-compose/docker-compose.docker-home.yml"
   current_compose_sha256="$(sha256sum "$current_compose_file" | awk '{print $1}')"
@@ -1146,6 +1175,7 @@ else
         add_service governance-service
         add_service web
         add_service chat-web
+        add_service llm-gateway-service
         ;;
       infra/docker-compose/docker-compose.docker-home.yml)
         [[ "$compose_change_detected" == "true" ]] \
@@ -1173,6 +1203,9 @@ else
         add_service web
         add_service chat-web
         ;;
+      services/llm-gateway-service/*)
+        add_service llm-gateway-service
+        ;;
       infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh)
         # The shared Keycloak realm and public-routing client reconciliation
         # are applied and verified outside the AKB Compose release. These exact
@@ -1181,14 +1214,14 @@ else
         # Live-realm reconciliation evidence remains an independent prerequisite.
         ;;
       services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*)
-        akl_fail "Release changes unsupported runtime path outside registry/ingestion/rag/web/chat-web: $path"
+        akl_fail "Release changes unsupported runtime path outside registry/ingestion/rag/web/chat-web/llm-gateway: $path"
         ;;
     esac
   done <<<"$changed_paths"
 fi
 
 if [[ -n "${AKL_FORWARD_FIX_FROM_SHA:-}" ]]; then
-  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web)(,(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web))*$ ]] \
+  [[ "$RUNTIME_MARKER_SERVICES" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)(,(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service))*$ ]] \
     || akl_fail "Failed runtime marker has an invalid service set"
   IFS=',' read -r -a recovery_services <<<"$RUNTIME_MARKER_SERVICES"
   for recovery_service in "${recovery_services[@]}"; do
@@ -1196,7 +1229,7 @@ if [[ -n "${AKL_FORWARD_FIX_FROM_SHA:-}" ]]; then
   done
 fi
 
-[[ ${#services[@]} -gt 0 ]] || akl_fail "Release has no deployable registry/ingestion/rag/web/chat-web changes"
+[[ ${#services[@]} -gt 0 ]] || akl_fail "Release has no deployable AKB runtime changes"
 SERVICE_CSV="$(IFS=,; printf '%s' "${services[*]}")"
 if [[ " ${services[*]} " == *" registry-api "* ]]; then
   [[ "$INGESTION_AUTHORIZATION_SECRET_FILE" == /* ]] \
@@ -1258,6 +1291,7 @@ for service in "${services[@]}"; do
     governance-service) target_image="$GOVERNANCE_SERVICE_IMAGE" ;;
     web) target_image="$WEB_IMAGE" ;;
     chat-web) target_image="$CHAT_WEB_IMAGE" ;;
+    llm-gateway-service) target_image="$LLM_GATEWAY_SERVICE_IMAGE" ;;
   esac
   if docker image inspect "$target_image" >/dev/null 2>&1; then
     TARGET_BUILD_MAY_HAVE_STARTED="true"
@@ -1308,6 +1342,7 @@ for service in "${services[@]}"; do
     governance-service) TARGET_GOVERNANCE_IMAGE_ID="$verified_image_id" ;;
     web) TARGET_WEB_IMAGE_ID="$verified_image_id" ;;
     chat-web) TARGET_CHAT_WEB_IMAGE_ID="$verified_image_id" ;;
+    llm-gateway-service) TARGET_LLM_GATEWAY_IMAGE_ID="$verified_image_id" ;;
   esac
 done
 write_deployment_record target_images_verified
@@ -1319,6 +1354,7 @@ PINNED_EVALUATION_SERVICE_IMAGE="$EVALUATION_SERVICE_IMAGE"
 PINNED_GOVERNANCE_SERVICE_IMAGE="$GOVERNANCE_SERVICE_IMAGE"
 PINNED_WEB_IMAGE="$WEB_IMAGE"
 PINNED_CHAT_WEB_IMAGE="$CHAT_WEB_IMAGE"
+PINNED_LLM_GATEWAY_SERVICE_IMAGE="$LLM_GATEWAY_SERVICE_IMAGE"
 [[ "$TARGET_REGISTRY_IMAGE_ID" == "not-affected" ]] \
   || PINNED_REGISTRY_API_IMAGE="$TARGET_REGISTRY_IMAGE_ID"
 [[ "$TARGET_INGESTION_IMAGE_ID" == "not-affected" ]] \
@@ -1333,6 +1369,8 @@ PINNED_CHAT_WEB_IMAGE="$CHAT_WEB_IMAGE"
   || PINNED_WEB_IMAGE="$TARGET_WEB_IMAGE_ID"
 [[ "$TARGET_CHAT_WEB_IMAGE_ID" == "not-affected" ]] \
   || PINNED_CHAT_WEB_IMAGE="$TARGET_CHAT_WEB_IMAGE_ID"
+[[ "$TARGET_LLM_GATEWAY_IMAGE_ID" == "not-affected" ]] \
+  || PINNED_LLM_GATEWAY_SERVICE_IMAGE="$TARGET_LLM_GATEWAY_IMAGE_ID"
 PINNED_COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
@@ -1343,6 +1381,7 @@ PINNED_COMPOSE=(
   "GOVERNANCE_SERVICE_IMAGE=${PINNED_GOVERNANCE_SERVICE_IMAGE}"
   "WEB_IMAGE=${PINNED_WEB_IMAGE}"
   "CHAT_WEB_IMAGE=${PINNED_CHAT_WEB_IMAGE}"
+  "LLM_GATEWAY_SERVICE_IMAGE=${PINNED_LLM_GATEWAY_SERVICE_IMAGE}"
   "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}"
   docker compose
   --project-name "$PROJECT_NAME"
@@ -1512,6 +1551,7 @@ for service in "${services[@]}"; do
     governance-service) expected_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
     chat-web) expected_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
+    llm-gateway-service) expected_image_id="$TARGET_LLM_GATEWAY_IMAGE_ID" ;;
   esac
   assert_target_image_identity_unchanged "$service" "$expected_image_id" pre-restart
 done
@@ -1535,6 +1575,7 @@ for service in "${services[@]}"; do
     governance-service) expected_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
     chat-web) expected_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
+    llm-gateway-service) expected_image_id="$TARGET_LLM_GATEWAY_IMAGE_ID" ;;
   esac
   assert_runtime_container_bound_to_image "$service" "$expected_image_id" post-restart
 done
@@ -1550,6 +1591,7 @@ AKL_RELEASE_EXPECTED_EVALUATION_IMAGE_ID="$TARGET_EVALUATION_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_GOVERNANCE_IMAGE_ID="$TARGET_GOVERNANCE_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_WEB_IMAGE_ID="$TARGET_WEB_IMAGE_ID" \
 AKL_RELEASE_EXPECTED_CHAT_WEB_IMAGE_ID="$TARGET_CHAT_WEB_IMAGE_ID" \
+AKL_RELEASE_EXPECTED_LLM_GATEWAY_IMAGE_ID="$TARGET_LLM_GATEWAY_IMAGE_ID" \
   "${release_dir}/scripts/verify_docker_home_release.sh" \
     "$TARGET_SHA" "$release_dir" "$SERVICE_CSV"
 
@@ -1562,6 +1604,7 @@ for service in "${services[@]}"; do
     governance-service) expected_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
     web) expected_image_id="$TARGET_WEB_IMAGE_ID" ;;
     chat-web) expected_image_id="$TARGET_CHAT_WEB_IMAGE_ID" ;;
+    llm-gateway-service) expected_image_id="$TARGET_LLM_GATEWAY_IMAGE_ID" ;;
   esac
   assert_runtime_container_bound_to_image "$service" "$expected_image_id" pre-verified-marker
 done
