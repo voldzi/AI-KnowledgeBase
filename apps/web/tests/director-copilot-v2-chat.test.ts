@@ -25,7 +25,6 @@ const budgetOrganization = fixture("budget-organization-financial-summary.json")
 const budgetProject = fixture("budget-project-financial-snapshot.json");
 const projectflow = fixture("projectflow-portfolio-delivery-overview.json");
 const archflow = fixture("archflow-need-portfolio-overview.json");
-const aiip = fixture("aiip-idea-portfolio-overview.json");
 
 describe("Director Copilot V2 active chat", () => {
   afterEach(() => resetDirectorCopilotV2ManifestCacheForTests());
@@ -152,21 +151,21 @@ describe("Director Copilot V2 active chat", () => {
     }
   });
 
-  it("traverses only the typed AIIP to ArchFlow relationship", async () => {
-    const message = "Které AI podněty mají navázanou potřebu v ArchFlow?";
+  it("routes AI idea wording to the current ArchFlow intake source", async () => {
+    const message = "Které AI podněty v ArchFlow čekají na rozhodnutí?";
     const queryState = resolveConversationQuery({
       message,
       now: new Date("2026-07-25T10:00:00.000Z"),
     }).state;
     const response = await runDirectorCopilotV2Chat({
       message,
-      conversationId: "conversation-v2-innovation",
+      conversationId: "conversation-v2-intake",
       responseLanguage: "cs",
       actorContext: context(),
       clients: {
         rag: {
           assistantChat: async () => {
-            throw new Error("Typed live relationships must not use RAG");
+            throw new Error("ArchFlow live intake must not use RAG");
           },
         },
         registry: {
@@ -177,18 +176,16 @@ describe("Director Copilot V2 active chat", () => {
         },
       } as unknown as ApiClients,
       config: config(),
-      intent: "innovation_delivery_trace",
+      intent: "archflow_demand_overview",
       queryState,
       mode: "active",
-      fetcher: innovationFetcher(),
+      fetcher: fetcher(),
       refreshActorContext: async () => context(),
     });
 
     assert.equal(response.response_type, "answer");
-    assert.match(response.answer ?? "", /Cesta podnětu k realizaci/);
-    assert.match(response.answer ?? "", /Podnět Alfa/);
+    assert.match(response.answer ?? "", /ArchFlow/);
     assert.match(response.answer ?? "", /Potřeba Alfa/);
-    assert.equal((response.answer ?? "").includes("stratos:idea:"), false);
     assert.equal((response.answer ?? "").includes("stratos:need:"), false);
   });
 
@@ -323,9 +320,7 @@ function fetcher(): typeof fetch {
         ? "projectflow-api"
         : url.includes("archflow")
           ? "archflow-api"
-          : url.includes("aiip")
-            ? "aiip-api"
-            : "budget-api";
+          : "budget-api";
       return Response.json({
         schema_version: "director-copilot-2",
         manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
@@ -336,7 +331,9 @@ function fetcher(): typeof fetch {
     const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
     const source = url.includes("projectflow")
       ? structuredClone(projectflow.responses.complete)
-      : budgetProjectShapedOrganizationResponse();
+      : url.includes("archflow")
+        ? structuredClone(archflow.responses.complete)
+        : budgetProjectShapedOrganizationResponse();
     return Response.json({
       ...source,
       tool_id: request.tool_id,
@@ -352,35 +349,6 @@ function budgetProjectShapedOrganizationResponse(): Record<string, unknown> {
   return response;
 }
 
-function innovationFetcher(): typeof fetch {
-  return async (input, init) => {
-    const url = String(input);
-    if (init?.method === "GET") {
-      const audience = url.includes("projectflow")
-        ? "projectflow-api"
-        : url.includes("archflow")
-          ? "archflow-api"
-          : url.includes("aiip")
-            ? "aiip-api"
-            : "budget-api";
-      return Response.json({
-        schema_version: "director-copilot-2",
-        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
-          (manifest) => manifest.audience === audience,
-        ),
-      });
-    }
-    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
-    const source = url.includes("archflow")
-      ? archflow.responses.complete
-      : aiip.responses.complete;
-    return Response.json({
-      ...structuredClone(source),
-      tool_call_id: request.tool_call_id,
-    });
-  };
-}
-
 function invalidBudgetItemFetcher(): typeof fetch {
   return async (input, init) => {
     const url = String(input);
@@ -389,9 +357,7 @@ function invalidBudgetItemFetcher(): typeof fetch {
         ? "projectflow-api"
         : url.includes("archflow")
           ? "archflow-api"
-          : url.includes("aiip")
-            ? "aiip-api"
-            : "budget-api";
+          : "budget-api";
       return Response.json({
         schema_version: "director-copilot-2",
         manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
@@ -415,9 +381,7 @@ function budgetItemFetcher(requests: DirectorCopilotV2Request[]): typeof fetch {
         ? "projectflow-api"
         : url.includes("archflow")
           ? "archflow-api"
-          : url.includes("aiip")
-            ? "aiip-api"
-            : "budget-api";
+          : "budget-api";
       return Response.json({
         schema_version: "director-copilot-2",
         manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
@@ -491,7 +455,6 @@ function context(): ApiRequestContext {
       access("budget", ["budget:access", "budget:read"]),
       access("projectflow", ["projectflow:access", "projectflow:read"]),
       access("archflow", ["archflow:access", "archflow:read_organization"]),
-      access("aiip", ["aiip:access", "aiip:read_organization"]),
     ],
   };
 }
@@ -525,7 +488,6 @@ function config(): AklConfig {
       budgetBaseUrl: "https://budget.example",
       projectflowBaseUrl: "https://projectflow.example",
       archflowBaseUrl: "https://archflow.example",
-      aiipBaseUrl: "https://aiip.example",
       timeoutMs: 1_000,
       maxResponseBytes: 262_144,
     },

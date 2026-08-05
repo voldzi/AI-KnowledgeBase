@@ -1,8 +1,7 @@
 export type StratosSemanticSource =
   | "budget"
   | "projectflow"
-  | "archflow"
-  | "aiip";
+  | "archflow";
 
 export type StratosSemanticMetric =
   | "budget.plan_amount"
@@ -18,9 +17,4 @@ export type StratosSemanticMetric =
   | "archflow.need.readiness_score"
   | "archflow.need.impact_score"
   | "archflow.need.decision"
-  | "archflow.need.budget_handoff_status"
-  | "aiip.idea.status"
-  | "aiip.idea.value_score"
-  | "aiip.idea.risk_score"
-  | "aiip.idea.expected_benefit"
-  | "aiip.idea.handoff_status";
+  | "archflow.need.budget_handoff_status";

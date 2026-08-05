@@ -107,14 +107,15 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   disambiguates generic terms, and generated positive and negative routing
   matrices guard the catalog. Routing itself is deterministic and does not
   require an LLM. V2 discovers the exact source-owned tool surface from
-  schema-validated, revision-pinned manifests for Budget, ProjectFlow, ArchFlow
-  and AIIP. It correlates only byte-identical canonical identities or typed
+  schema-validated, revision-pinned manifests for Budget, ProjectFlow and
+  ArchFlow. ArchFlow owns both needs and submitted ideas. It correlates only
+  byte-identical canonical identities or typed
   manifest relationships and never calculates source-owned financial totals.
   The query state never carries authorization;
   every turn reloads the current STRATOS access projection and every source
   applies its local PEP. Explicit live-data questions and contextual follow-ups
   are routed before the document router. Missing source access, an unconnected
-  ArchFlow/AIIP tool, disabled federation or source failure is reported
+  ArchFlow tool, disabled federation or source failure is reported
   explicitly; a live-data question is never silently answered from historical
   documents.
 - Director Copilot V2 is the sole live-data path after joint production

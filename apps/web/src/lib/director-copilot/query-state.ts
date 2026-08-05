@@ -64,7 +64,7 @@ export interface ResolvedConversationQuery {
 }
 
 const DOCUMENT_SIGNAL = /\b(dokument|priloh|smernic|metodik|citac|soubor|pdf)/;
-const LIVE_APPLICATION_SIGNAL = /\b(budget\w*|project\s*flow|projectflow|arch\s*flow|archflow|aiip|ai innovation portal)\b/;
+const LIVE_APPLICATION_SIGNAL = /\b(budget\w*|project\s*flow|projectflow|arch\s*flow|archflow)\b/;
 const CONTRACT_SIGNAL = /\b(smlouv|contract|dodavatel|supplier|smluvni rizik)\b/;
 const FOLLOW_UP_SIGNAL = /\b(a|ale|jen|pouze|celkove|dohromady|vsichni|vsechny|jejich|tento|tahle|tyto|oproti|rozdil|vyvoj|trend|letos|loni|rok|kvartal|mesic|stejne|jinak)\b/;
 const OVERALL_SIGNAL = /\b(celkove|dohromady|za celou organizaci|cela organizace|vsechny projekty|vsechny polozky|ne jen)\b/;
@@ -110,7 +110,6 @@ const SOURCE_VALUES = new Set<StratosSemanticSource>([
   "budget",
   "projectflow",
   "archflow",
-  "aiip",
 ]);
 const METRIC_VALUES = new Set<StratosSemanticMetric>([
   "budget.plan_amount",
@@ -127,11 +126,6 @@ const METRIC_VALUES = new Set<StratosSemanticMetric>([
   "archflow.need.impact_score",
   "archflow.need.decision",
   "archflow.need.budget_handoff_status",
-  "aiip.idea.status",
-  "aiip.idea.value_score",
-  "aiip.idea.risk_score",
-  "aiip.idea.expected_benefit",
-  "aiip.idea.handoff_status",
 ]);
 const GRANULARITY_VALUES = new Set<QueryGranularity>([
   "authorized_scope",
@@ -155,7 +149,9 @@ export function resolveConversationQuery(input: {
   const normalized = normalizeSemanticText(input.message);
   const previous = conversationQueryState(input.context?.stratos_query_state, now)
     ?? legacyConversationQueryState(input.context ?? {}, now);
-  const explicitMetrics = semanticMetricsForText(normalized);
+  const explicitMetrics = unique(
+    semanticMetricsForText(normalized),
+  );
   const metricSources = unique(explicitMetrics.map(sourceForMetric));
   const detectedSemanticSources = semanticSourcesForText(normalized);
   const registrySources = semanticRegistrySourcesForText(normalized);
@@ -337,19 +333,11 @@ function sourceOwnedHandoffSources(
 ): StratosSemanticSource[] {
   const metricSet = new Set(metrics);
   const hasBudgetMetric = metrics.some((metric) => metric.startsWith("budget."));
-  const hasArchFlowMetric = metrics.some((metric) => metric.startsWith("archflow."));
   return sources.filter((source) => {
     if (
       source === "budget"
       && metricSet.has("archflow.need.budget_handoff_status")
       && !hasBudgetMetric
-    ) {
-      return false;
-    }
-    if (
-      source === "archflow"
-      && metricSet.has("aiip.idea.handoff_status")
-      && !hasArchFlowMetric
     ) {
       return false;
     }
@@ -370,10 +358,7 @@ function legacyConversationQueryState(
         : context.active_source_application === "archflow"
           || context.answer_source === "director_copilot_archflow"
           ? "archflow"
-          : context.active_source_application === "aiip"
-            || context.answer_source === "director_copilot_aiip"
-            ? "aiip"
-            : null;
+          : null;
   if (!source) return null;
   return {
     schema_version: CONVERSATION_QUERY_STATE_VERSION,
@@ -509,8 +494,6 @@ function sortMetricForQuery(
     metric === "budget.variance_amount"
     || metric === "milestone.max_delay_days"
     || metric === "archflow.need.impact_score"
-    || metric === "aiip.idea.value_score"
-    || metric === "aiip.idea.risk_score"
   )) ?? metrics[0] ?? null;
 }
 

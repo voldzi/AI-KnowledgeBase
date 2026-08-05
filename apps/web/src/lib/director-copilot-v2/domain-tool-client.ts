@@ -13,7 +13,7 @@ import {
   assertDirectorCopilotV2Request,
   parseDirectorCopilotV2Error,
   parseDirectorCopilotV2Response,
-  type DirectorCopilotV2Application,
+  type ActiveDirectorCopilotV2Application,
   type DirectorCopilotV2Request,
   type DirectorCopilotV2Response,
 } from "./contracts";
@@ -28,7 +28,7 @@ export interface DirectorCopilotV2DomainToolClientOptions {
   config: AklConfig;
   catalog: DirectorCopilotV2ManifestCatalog;
   fetcher?: typeof fetch;
-  serviceToken?: (application: DirectorCopilotV2Application) => Promise<string>;
+  serviceToken?: (application: ActiveDirectorCopilotV2Application) => Promise<string>;
 }
 
 export class DirectorCopilotV2DomainToolClient {
@@ -39,7 +39,7 @@ export class DirectorCopilotV2DomainToolClient {
   }
 
   async execute(
-    application: DirectorCopilotV2Application,
+    application: ActiveDirectorCopilotV2Application,
     request: DirectorCopilotV2Request,
     actorContext: ApiRequestContext,
   ): Promise<DirectorCopilotV2Response> {
@@ -65,7 +65,6 @@ export class DirectorCopilotV2DomainToolClient {
       budget: config.budgetBaseUrl,
       projectflow: config.projectflowBaseUrl,
       archflow: config.archflowBaseUrl,
-      aiip: config.aiipBaseUrl,
     }[application];
     if (!baseUrl) {
       throw new DirectorCopilotTransportError(
@@ -183,7 +182,7 @@ export class DirectorCopilotV2DomainToolClient {
   }
 
   private log(
-    application: DirectorCopilotV2Application,
+    application: ActiveDirectorCopilotV2Application,
     toolId: string,
     status: number,
     startedAt: number,
@@ -250,7 +249,7 @@ function tooLarge(status: number): DirectorCopilotTransportError {
 
 function parseJson(
   bytes: Uint8Array,
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
   status: number,
 ): unknown {
   try {

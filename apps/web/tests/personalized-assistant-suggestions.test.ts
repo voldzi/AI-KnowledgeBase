@@ -83,7 +83,7 @@ describe("personalized assistant suggestions", () => {
 
   it("uses the Prague month-end cadence without overriding authorization", async () => {
     const response = await personalizedAssistantSuggestions({
-      context: projectedContext(["budget", "projectflow", "archflow", "aiip"]),
+      context: projectedContext(["budget", "projectflow", "archflow"]),
       config: CONFIG,
       now: NOW,
     });
@@ -94,7 +94,7 @@ describe("personalized assistant suggestions", () => {
 
   it("offers a complete executable English set for the same projection", async () => {
     const response = await personalizedAssistantSuggestions({
-      context: projectedContext(["budget", "projectflow", "archflow", "aiip"]),
+      context: projectedContext(["budget", "projectflow", "archflow"]),
       config: CONFIG,
       language: "en",
       now: NOW,
@@ -137,24 +137,24 @@ describe("personalized assistant suggestions", () => {
 
   it("raises historically useful domains without copying raw prompts into suggestions", async () => {
     const conversations = [0, 1, 2].map((index) => conversationListItem(
-      `conv_aiip_${index}`,
+      `conv_archflow_${index}`,
       "user-1",
       [
         signal(
-          "aiip_idea_overview",
+          "archflow_demand_overview",
           `Vlastní historická formulace ${index}`,
           `2026-07-${20 + index}T08:00:02.000Z`,
         ),
       ],
     ));
     const response = await personalizedAssistantSuggestions({
-      context: projectedContext(["budget", "projectflow", "archflow", "aiip"]),
+      context: projectedContext(["budget", "projectflow", "archflow"]),
       config: CONFIG,
       conversations,
       now: NOW,
     });
 
-    assert.equal(response.suggestions[0]?.domain, "AIIP");
+    assert.equal(response.suggestions[0]?.domain, "ArchFlow");
     assert.ok(response.suggestions.every((item) => !item.prompt.includes("Vlastní historická formulace")));
   });
 
@@ -169,19 +169,19 @@ describe("personalized assistant suggestions", () => {
       ]),
       conversationListItem("conv_shared", "other-user", [
         signal(
-          "aiip_idea_overview",
+          "archflow_demand_overview",
           "AI podněty",
           "2026-07-28T08:00:00.000Z",
         ),
         signal(
-          "aiip_idea_overview",
+          "archflow_demand_overview",
           "Další AI podněty",
           "2026-07-28T09:00:00.000Z",
         ),
       ]),
     ];
     const response = await personalizedAssistantSuggestions({
-      context: projectedContext(["projectflow", "aiip"]),
+      context: projectedContext(["projectflow", "archflow"]),
       config: CONFIG,
       conversations,
       now: NOW,
@@ -191,7 +191,7 @@ describe("personalized assistant suggestions", () => {
   });
 
   it("keeps every Czech template on an executable bounded chat route", () => {
-    const context = projectedContext(["budget", "projectflow", "archflow", "aiip"]);
+    const context = projectedContext(["budget", "projectflow", "archflow"]);
     const catalog = pinnedDirectorCopilotV2Catalog();
     for (const template of suggestionTemplatesForTesting("cs", NOW)) {
       if (template.kind === "registry_documents") {
@@ -238,7 +238,7 @@ describe("personalized assistant suggestions", () => {
 });
 
 function projectedContext(
-  applications: Array<"budget" | "projectflow" | "archflow" | "aiip">,
+  applications: Array<"budget" | "projectflow" | "archflow">,
 ): ApiRequestContext {
   return {
     subjectId: "user-1",
@@ -259,11 +259,10 @@ function projectedContext(
   };
 }
 
-function capabilities(application: "budget" | "projectflow" | "archflow" | "aiip"): string[] {
+function capabilities(application: "budget" | "projectflow" | "archflow"): string[] {
   if (application === "budget") return ["budget:access", "budget:read"];
   if (application === "projectflow") return ["projectflow:access", "projectflow:read"];
-  if (application === "archflow") return ["archflow:access", "archflow:read_organization"];
-  return ["aiip:access", "aiip:read_organization"];
+  return ["archflow:access", "archflow:read_organization"];
 }
 
 function conversationListItem(

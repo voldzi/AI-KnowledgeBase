@@ -1,6 +1,6 @@
 # ADR 0012: Director Copilot V2 uses pinned dynamic manifests
 
-Status: Accepted
+Status: Superseded in active-source topology by ADR 0013
 
 Date: 2026-07-25
 

@@ -25,8 +25,8 @@ Retained:
 
 ## Runtime configuration
 
-`AKL_DIRECTOR_COPILOT_ENABLED=true` enables the sole V2 path. It requires all
-four source URLs, the dedicated file-backed service credential in production,
+`AKL_DIRECTOR_COPILOT_ENABLED=true` enables the sole V2 path. It requires the
+three active source URLs, the dedicated file-backed service credential in production,
 and the pinned V2 manifest catalog. Setting it to `false` is the controlled
 kill switch and returns a bounded unavailable response for recognized live-data
 requests.
@@ -35,7 +35,7 @@ requests.
 
 1. Confirm `/akb/api/health` returns `200` and `/akb/api/ready` returns `200`
    with `director_copilot_v2: ready`.
-2. Submit one Budget, ProjectFlow, ArchFlow and AIIP live-data request using a
+2. Submit one Budget, ProjectFlow and ArchFlow live-data request using a
    test account. Confirm V2 audit event
    `assistant.director_copilot_v2_returned` and no document-RAG fallback.
 3. Reopen the thread and confirm V2 reauthorization preserves data only while

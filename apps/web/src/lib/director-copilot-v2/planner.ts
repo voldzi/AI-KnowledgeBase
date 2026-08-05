@@ -7,7 +7,7 @@ import {
   V2_TOOL_IDS,
   assertDirectorCopilotV2Request,
   directorCopilotV2StableId,
-  type DirectorCopilotV2Application,
+  type ActiveDirectorCopilotV2Application,
   type DirectorCopilotV2EntityFilters,
   type DirectorCopilotV2Granularity,
   type DirectorCopilotV2Manifest,
@@ -27,7 +27,7 @@ export const DIRECTOR_COPILOT_V2_PLAN_VERSION = "director-copilot-v2-query-plan-
 
 export interface DirectorCopilotV2PlanNode {
   node_id: string;
-  application: DirectorCopilotV2Application;
+  application: ActiveDirectorCopilotV2Application;
   tool_id: DirectorCopilotV2ToolId;
   schema_revision: string;
   required_capabilities: string[];
@@ -172,7 +172,7 @@ function requestForNode(input: {
 function applicationsForIntent(
   intent: DirectorCopilotIntent,
   sources: string[],
-): DirectorCopilotV2Application[] {
+): ActiveDirectorCopilotV2Application[] {
   if (intent === "portfolio_risk_correlation" || intent === "portfolio_performance_overview") {
     return ["budget", "projectflow"];
   }
@@ -181,20 +181,18 @@ function applicationsForIntent(
     return ["projectflow"];
   }
   if (intent === "archflow_demand_overview") return ["archflow"];
-  if (intent === "aiip_idea_overview") return ["aiip"];
   const selected = sources.filter(
-    (source): source is DirectorCopilotV2Application => (
+    (source): source is ActiveDirectorCopilotV2Application => (
       source === "budget"
       || source === "projectflow"
       || source === "archflow"
-      || source === "aiip"
     ),
   );
   return [...new Set(selected)];
 }
 
 function toolForApplication(
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
   queryState: ConversationQueryState,
 ): DirectorCopilotV2ToolId {
   if (application === "budget") {
@@ -204,14 +202,13 @@ function toolForApplication(
       : V2_TOOL_IDS.budgetOrganization;
   }
   if (application === "projectflow") return V2_TOOL_IDS.projectflow;
-  if (application === "archflow") return V2_TOOL_IDS.archflow;
-  return V2_TOOL_IDS.aiip;
+  return V2_TOOL_IDS.archflow;
 }
 
 function granularityForManifest(
   state: ConversationQueryState,
   context: ApiRequestContext,
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
   manifest: DirectorCopilotV2Manifest,
 ): DirectorCopilotV2Granularity {
   const requested = state.granularity === "authorized_scope"
@@ -225,7 +222,7 @@ function granularityForManifest(
 
 function inferredGranularityFromProjection(
   context: ApiRequestContext,
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
 ): DirectorCopilotV2Granularity {
   const access = (context.applicationAccess ?? []).find(
     (candidate) => canonicalDirectorCopilotApplication(candidate.application) === application,
@@ -274,7 +271,7 @@ function entityFilters(state: ConversationQueryState): DirectorCopilotV2EntityFi
 
 function entityFiltersForApplication(
   state: ConversationQueryState,
-  application: DirectorCopilotV2Application,
+  application: ActiveDirectorCopilotV2Application,
 ): {
   filters: DirectorCopilotV2EntityFilters;
   errorCode: string | null;

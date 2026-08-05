@@ -232,21 +232,34 @@ describe("Director Copilot conversation query state", () => {
     );
   });
 
-  it("routes an explicit AIIP live-data question to V2 instead of allowing a RAG fallback", () => {
+  it("routes AI intake concepts to ArchFlow", () => {
     const resolved = resolveConversationQuery({
-      message: "Kolik podnětů eviduje AIIP a v jakém jsou stavu?",
+      message: "V jakém stavu jsou AI podněty v ArchFlow?",
       now: NOW,
     });
 
     assert.equal(resolved.recognized, true);
     assert.deepEqual(resolved.pending_sources, []);
+    assert.deepEqual(resolved.state.sources, ["archflow"]);
+    assert.deepEqual(resolved.state.metrics, ["archflow.need.status"]);
     assert.equal(
       classifyDirectorCopilotV2Intent(
-        "Kolik podnětů eviduje AIIP a v jakém jsou stavu?",
+        "V jakém stavu jsou AI podněty v ArchFlow?",
         {},
       ),
-      "aiip_idea_overview",
+      "archflow_demand_overview",
     );
+  });
+
+  it("does not preserve the retired AIIP application name as a live source", () => {
+    const resolved = resolveConversationQuery({
+      message: "Kolik podnětů eviduje AIIP?",
+      now: NOW,
+    });
+
+    assert.equal(resolved.recognized, false);
+    assert.deepEqual(resolved.state.sources, []);
+    assert.equal(classifyDirectorCopilotV2Intent("Kolik podnětů eviduje AIIP?"), null);
   });
 
   it("sanitizes untrusted persisted context and never accepts authorization fields", () => {
@@ -325,13 +338,13 @@ describe("Director Copilot conversation query state", () => {
     const governedSourceCases = [
       "Kolik máme business požadavků v ArchFlow?",
       "Které potřeby v ArchFlow jsou připravené?",
-      "Kolik AI nápadů čeká v AIIP na posouzení?",
-      "Jaký přínos mají podněty v AI Innovation Portal?",
+      "Které AI nápady čekají v ArchFlow na posouzení?",
     ] as const;
     for (const message of governedSourceCases) {
       const resolved = resolveConversationQuery({ message, now: NOW });
       assert.equal(resolved.recognized, true, message);
       assert.deepEqual(resolved.pending_sources, [], message);
+      assert.deepEqual(resolved.state.sources, ["archflow"], message);
     }
   });
 });

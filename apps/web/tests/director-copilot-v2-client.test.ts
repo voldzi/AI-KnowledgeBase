@@ -39,7 +39,6 @@ describe("Director Copilot V2 manifest and execute client", () => {
           budget: "budget-api",
           projectflow: "projectflow-api",
           archflow: "archflow-api",
-          aiip: "aiip-api",
         }[application];
         return Response.json({
           schema_version: "director-copilot-2",
@@ -51,8 +50,8 @@ describe("Director Copilot V2 manifest and execute client", () => {
     });
 
     assert.equal(catalog.contractRevision, "2.0.3");
-    assert.equal(catalog.manifests.length, 5);
-    assert.deepEqual(applications.sort(), ["aiip", "archflow", "budget", "projectflow"]);
+    assert.equal(catalog.manifests.length, 4);
+    assert.deepEqual(applications.sort(), ["archflow", "budget", "projectflow"]);
   });
 
   it("sends independent credentials and the V2 contract header", async () => {
@@ -97,7 +96,6 @@ describe("Director Copilot V2 manifest and execute client", () => {
             budget: "budget-api",
             projectflow: "projectflow-api",
             archflow: "archflow-api",
-            aiip: "aiip-api",
           }[application];
           const manifests = pinnedDirectorCopilotV2ManifestBundle().manifests
             .filter((manifest) => manifest.audience === audience);
@@ -165,10 +163,9 @@ describe("Director Copilot V2 manifest and execute client", () => {
 
 function applicationFromUrl(
   url: string,
-): "budget" | "projectflow" | "archflow" | "aiip" {
+): "budget" | "projectflow" | "archflow" {
   if (url.includes("projectflow")) return "projectflow";
   if (url.includes("archflow")) return "archflow";
-  if (url.includes("aiip")) return "aiip";
   return "budget";
 }
 
@@ -214,7 +211,6 @@ function config(): AklConfig {
       budgetBaseUrl: "https://budget.example",
       projectflowBaseUrl: "https://projectflow.example",
       archflowBaseUrl: "https://archflow.example",
-      aiipBaseUrl: "https://aiip.example",
       timeoutMs: 1_000,
       maxResponseBytes: 262_144,
     },

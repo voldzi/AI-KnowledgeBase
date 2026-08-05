@@ -71,16 +71,10 @@ const CONCEPTS: Array<{
     intent: "archflow_demand_overview",
   },
   {
-    phrase: "rizikovém skóre AI nápadů",
-    metric: "aiip.idea.risk_score",
-    source: "aiip",
-    intent: "aiip_idea_overview",
-  },
-  {
-    phrase: "měřitelných přínosech AI podnětů",
-    metric: "aiip.idea.expected_benefit",
-    source: "aiip",
-    intent: "aiip_idea_overview",
+    phrase: "stavu AI podnětů",
+    metric: "archflow.need.status",
+    source: "archflow",
+    intent: "archflow_demand_overview",
   },
 ];
 

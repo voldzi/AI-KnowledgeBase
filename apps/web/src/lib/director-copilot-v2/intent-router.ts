@@ -29,11 +29,7 @@ export function classifyDirectorCopilotV2Intent(
   ) return "project_access_overview";
   if (accessMutation || (documentQuestion && !explicitProjectFlow)) return null;
   const sourceSet = new Set(resolved.state.sources);
-  if ((sourceSet.has("archflow") || sourceSet.has("aiip")) && sourceSet.size > 1) {
-    return "innovation_delivery_trace";
-  }
   if (sourceSet.has("archflow")) return "archflow_demand_overview";
-  if (sourceSet.has("aiip")) return "aiip_idea_overview";
   if (sourceSet.has("budget") && sourceSet.has("projectflow")) {
     return CONTRACT_SIGNAL.test(normalized) || resolved.state.document_evidence_requested
       ? "portfolio_risk_correlation"

@@ -73,32 +73,18 @@ export const STRATOS_SEMANTIC_SOURCES: readonly StratosSemanticSourceDefinition[
     displayName: "ArchFlow",
     terms: [
       "business pozadavek", "business potreba", "architektonicky pozadavek",
-      "pripravenost potreby", "predani do budgetu",
+      "pripravenost potreby", "predani do budgetu", "ai podnet", "ai napad",
+      "inovacni podnet", "inovacni napad",
     ],
     patterns: [
       /\barch\s*flow\b/,
       /\barchflow\b/,
       /\bpozadav/,
       /\bpotreb(?:a|y|e|u|ou|ami|ach)\b/,
+      /\b(?:ai|inovacni) (?:podnet|napad)/,
       /\barchitektonick/,
       /\bpripravenost/,
       /\bpredani do budget/,
-    ],
-  },
-  {
-    id: "aiip",
-    displayName: "AI Innovation Portal",
-    terms: [
-      "ai podnet", "ai napad", "inovacni podnet", "inovacni napad",
-      "umela inteligence", "vyuziti ai",
-    ],
-    patterns: [
-      /\baiip\b/,
-      /\bai innovation portal\b/,
-      /\bai podnet/,
-      /\bai napad/,
-      /\binovacni podnet/,
-      /\bnapad na (?:vyuziti )?ai\b/,
     ],
   },
 ] as const;
@@ -199,9 +185,9 @@ export const STRATOS_SEMANTIC_METRICS: readonly StratosSemanticMetricDefinition[
     description: "Stav business potreby nebo pozadavku.",
     terms: [
       "stav potreby", "stav pozadavku", "status pozadavku",
-      "prehled potreb",
+      "prehled potreb", "stav ai podnetu", "stav ai napadu",
     ],
-    patterns: [/\bstav pozadav/, /\bstav potreb/],
+    patterns: [/\bstav pozadav/, /\bstav potreb/, /\bstav ai (?:podnet|napad)/],
   },
   {
     id: "archflow.need.readiness_score",
@@ -242,55 +228,6 @@ export const STRATOS_SEMANTIC_METRICS: readonly StratosSemanticMetricDefinition[
       "predani do rozpoctu",
     ],
     patterns: [/\bpredan\w*(?:\s+\w+){0,4}\s+do budget\w*/, /\bpredan[oy] do rozpoctu/],
-  },
-  {
-    id: "aiip.idea.status",
-    source: "aiip",
-    description: "Stav AI podnetu.",
-    terms: [
-      "stav ai podnetu", "stav ai napadu", "status inovacniho podnetu",
-    ],
-    patterns: [/\bstav ai podnet/, /\bstav ai napad/],
-  },
-  {
-    id: "aiip.idea.value_score",
-    source: "aiip",
-    description: "Hodnoceni hodnoty AI podnetu.",
-    terms: [
-      "hodnota ai podnetu", "hodnota ai napadu", "value score",
-      "hodnoceni prinosu",
-    ],
-    patterns: [/\bhodnot/, /\bvalue score/],
-  },
-  {
-    id: "aiip.idea.risk_score",
-    source: "aiip",
-    description: "Hodnoceni rizika AI podnetu.",
-    terms: [
-      "riziko ai podnetu", "riziko ai napadu", "rizikove skore",
-      "zvladnutelnost rizika",
-    ],
-    patterns: [/\brizik/],
-  },
-  {
-    id: "aiip.idea.expected_benefit",
-    source: "aiip",
-    description: "Ocekavany nebo meritelny prinos AI podnetu.",
-    terms: [
-      "ocekavany prinos", "meritelny prinos", "prinos ai podnetu",
-      "benefit ai napadu",
-    ],
-    patterns: [/\bprinos/, /\bbenefit/, /\buspor/],
-  },
-  {
-    id: "aiip.idea.handoff_status",
-    source: "aiip",
-    description: "Stav predani AI podnetu do ArchFlow.",
-    terms: [
-      "predani ai podnetu do archflow", "predani ai napadu do archflow",
-      "handoff do archflow",
-    ],
-    patterns: [/\bpredani do archflow/, /\bpredan[oy] do archflow/],
   },
 ] as const;
 

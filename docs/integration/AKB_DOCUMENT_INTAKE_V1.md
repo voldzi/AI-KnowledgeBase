@@ -94,7 +94,7 @@ Document workflow remains deliberately small:
 - gestor: content, metadata and lifecycle owner;
 - approver: independent governed decision when required.
 
-The role catalog of Budget, ProjectFlow, ArchFlow and AIIP is not duplicated in
+The role catalog of Budget, ProjectFlow and ArchFlow is not duplicated in
 AKB. Those applications decide who may initiate their domain action; AKB
 decides whether the resulting document binary and document record may enter
 the governed document estate.

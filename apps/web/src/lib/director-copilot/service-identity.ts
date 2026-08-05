@@ -19,14 +19,12 @@ export interface DirectorCopilotServiceTarget {
     | "akl-api"
     | "budget-api"
     | "projectflow-api"
-    | "archflow-api"
-    | "aiip-api";
+    | "archflow-api";
   scope:
     | "director-copilot-akl-api"
     | "director-copilot-budget-api"
     | "director-copilot-projectflow-api"
-    | "director-copilot-archflow-api"
-    | "director-copilot-aiip-api";
+    | "director-copilot-archflow-api";
 }
 
 export const DIRECTOR_COPILOT_AUDIT_TARGET: DirectorCopilotServiceTarget = {

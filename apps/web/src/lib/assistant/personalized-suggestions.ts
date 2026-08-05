@@ -252,8 +252,8 @@ function suggestionTemplates(
       live("projects-milestones", "Upcoming milestones", "Which project milestones are due next?", "ProjectFlow", "project_portfolio_status", 0.95, ["week_start"]),
       live("needs-decision", "Needs awaiting decision", "Which business needs are awaiting a decision?", "ArchFlow", "archflow_demand_overview", 1, ["week_start", "month_end"]),
       live("needs-handoff", "Needs not handed over", "Which needs have not yet been handed over from ArchFlow to Budget?", "ArchFlow", "archflow_demand_overview", 0.9, ["month_end"]),
-      live("ideas-harmonization", "Ideas awaiting harmonization", "Which AI ideas are awaiting harmonization?", "AIIP", "aiip_idea_overview", 1, ["week_start"]),
-      live("ideas-value-risk", "AI value and risk", "Which AI ideas have the highest value and risk scores?", "AIIP", "aiip_idea_overview", 0.9, ["quarter_end"]),
+      live("ideas-review", "New ideas to review", "Which new ideas in ArchFlow are awaiting a decision?", "ArchFlow", "archflow_demand_overview", 1, ["week_start"]),
+      live("ideas-impact", "Highest-impact ideas", "Which ideas in ArchFlow have the highest impact?", "ArchFlow", "archflow_demand_overview", 0.9, ["quarter_end"]),
       live("portfolio-variance-delay", "Variance and delay", "Which projects are financially above plan and delayed at the same time?", "STRATOS", "portfolio_performance_overview", 1.1, ["month_end", "quarter_end"]),
       documents("document-overview", "Available documents", "What types of documents are available to me in AKB?", "Documents", 0.9),
     ];
@@ -267,8 +267,8 @@ function suggestionTemplates(
     live("projects-milestones", "Nejbližší milníky", "Které projektové milníky nás čekají nejdříve?", "ProjectFlow", "project_portfolio_status", 0.95, ["week_start"]),
     live("needs-decision", "Potřeby k rozhodnutí", "Které business potřeby čekají na rozhodnutí?", "ArchFlow", "archflow_demand_overview", 1, ["week_start", "month_end"]),
     live("needs-handoff", "Nepředané potřeby", "Které potřeby ještě nebyly předány z ArchFlow do Budgetu?", "ArchFlow", "archflow_demand_overview", 0.9, ["month_end"]),
-    live("ideas-harmonization", "Podněty k harmonizaci", "Které AI podněty čekají na harmonizaci?", "AIIP", "aiip_idea_overview", 1, ["week_start"]),
-    live("ideas-value-risk", "Hodnota a riziko AI", "Které AI podněty mají nejvyšší hodnotové a rizikové skóre?", "AIIP", "aiip_idea_overview", 0.9, ["quarter_end"]),
+    live("ideas-review", "Nové podněty k posouzení", "Které nové podněty v ArchFlow čekají na rozhodnutí?", "ArchFlow", "archflow_demand_overview", 1, ["week_start"]),
+    live("ideas-impact", "Podněty s nejvyšším dopadem", "Které podněty v ArchFlow mají nejvyšší dopad?", "ArchFlow", "archflow_demand_overview", 0.9, ["quarter_end"]),
     live("portfolio-variance-delay", "Odchylka a zpoždění", "Které projekty jsou finančně nad plánem a zároveň zpožděné?", "STRATOS", "portfolio_performance_overview", 1.1, ["month_end", "quarter_end"]),
     documents("document-overview", "Dostupné dokumenty", "Jakého typu jsou dokumenty, které mám v AKB k dispozici?", "Dokumenty", 0.9),
   ];
@@ -381,7 +381,5 @@ function isDirectorIntent(value: unknown): value is DirectorCopilotIntent {
     || value === "project_portfolio_status"
     || value === "budget_portfolio_status"
     || value === "project_access_overview"
-    || value === "archflow_demand_overview"
-    || value === "aiip_idea_overview"
-    || value === "innovation_delivery_trace";
+    || value === "archflow_demand_overview";
 }

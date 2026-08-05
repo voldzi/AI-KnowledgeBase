@@ -14,7 +14,7 @@ remains contract drift.
 
 This is the joint production acceptance record for Director Copilot V2. It
 proves that AKB can safely combine live, authorized facts from Budget,
-ProjectFlow, ArchFlow and AIIP. V1 is retired by the subsequent AKB-only
+ProjectFlow and ArchFlow. V1 is retired by the subsequent AKB-only
 cleanup release documented in `docs/maintenance/director-copilot-v1-retirement.md`.
 
 The run must use an approved test account and explicitly marked integration
@@ -26,16 +26,16 @@ records to satisfy a test.
 Record these values in the execution evidence before testing:
 
 - AKB release SHA and `/akb/api/health` version;
-- STRATOS, Budget, ProjectFlow, ArchFlow and AIIP release SHAs;
+- STRATOS, Budget, ProjectFlow and ArchFlow release SHAs;
 - contract revision `2.0.3` and the six pinned contract hashes from
   `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`;
-- a test account with an active organisation scope, the five required source
-  capabilities and no privileged global role;
-- the `svc-akb-director-copilot` client with five optional route-bound scopes,
+- a test account with an active organisation scope, the required Budget,
+  ProjectFlow and ArchFlow capabilities and no privileged global role;
+- the `svc-akb-director-copilot` client with four optional route-bound scopes,
   including `director-copilot-akl-api` with exactly the `akl-api` audience for
   the mandatory Registry audit;
 - one authorised project with Budget plan/forecast, ProjectFlow delivery data,
-  a linked ArchFlow need, a linked AIIP idea and an independently authorised
+  a linked ArchFlow need or idea and an independently authorised
   AKB document;
 - separate fixtures for no-data, currency conflict, information-policy denial,
   an ambiguous project name and a ProjectFlow document that AKB must deny.
@@ -59,8 +59,8 @@ evidence.
 | S4 | `Které projekty překračují plán?` | Returns only Budget-authorized projects, with source-owned plan/forecast/variance semantics. |
 | S5 | `Které z nich mají současně zpožděný milník?` | Preserves the year and canonical project set; ProjectFlow receives only supported canonical filters and joins only on byte-identical `stratos:project:<id>`. |
 | S6 | `Jaké potřeby čekají na rozhodnutí?` | Uses `archflow.need_portfolio_overview.v1`; a no-data result remains distinct from a denial. |
-| S7 | `Jaké AI podněty čekají na harmonizaci?` | Uses `aiip.idea_portfolio_overview.v1`. |
-| S8 | Follow the returned idea to its need, then to its project. | Traverses only the declared typed relationship; unknown or untyped links are omitted. |
+| S7 | `Jaké AI podněty čekají na posouzení?` | Uses `archflow.need_portfolio_overview.v1`; AI intake is owned by ArchFlow. |
+| S8 | Follow the returned need or idea to its linked project. | Traverses only the declared typed relationship; unknown or untyped links are omitted. |
 | S9 | Open a ProjectFlow document link returned with a project. | AKB performs independent document authorization. An unauthorized document is neither named nor linked. |
 | S10 | Reopen the thread, then repeat a live-data question. | Persisted history triggers a fresh authorized source query; unchanged access remains visible. |
 
