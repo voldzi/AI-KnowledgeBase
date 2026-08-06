@@ -63,8 +63,21 @@ jobs:
       - name: Validate immutable release workflow
         run: |
           set -euo pipefail
-          shellcheck --version
-          bash scripts/check_immutable_release_workflow.sh
+          # The contract test deliberately injects SIGKILL at release boundaries.
+          # Keep that signal inside a disposable, non-privileged container rather
+          # than allowing a host executor to mistake it for a failed worker.
+          docker run --rm --pull never --init \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=2g \
+            --user 1001:107 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --volume "$PWD:/workspace:ro" \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --workdir /workspace \
+            akb/gitea-actions-runner:0.1.0 \
+            bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
