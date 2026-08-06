@@ -11,10 +11,10 @@ on:
   workflow_dispatch:
 
 env:
-  AKB_CI_CACHE_ROOT: /home/github-runner/.cache/akb-ci
-  PIP_CACHE_DIR: /home/github-runner/.cache/akb-ci/pip
-  PLAYWRIGHT_BROWSERS_PATH: /home/github-runner/.cache/akb-ci/playwright
-  PNPM_STORE_DIR: /home/github-runner/.cache/akb-ci/pnpm-store
+  AKB_CI_CACHE_ROOT: /cache/akb-ci
+  PIP_CACHE_DIR: /cache/akb-ci/pip
+  PLAYWRIGHT_BROWSERS_PATH: /cache/akb-ci/playwright
+  PNPM_STORE_DIR: /cache/akb-ci/pnpm-store
 
 jobs:
   standards:
@@ -48,7 +48,7 @@ jobs:
             curl --fail --location --silent --show-error \
               "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}" \
               --output "${tmp_dir}/${archive}"
-            printf '%s  %s\n' "${expected_sha256}" "${tmp_dir}/${archive}" | sha256sum --check
+            printf '%s  %s\n' "${expected_sha256}" "${tmp_dir}/${archive}" | sha256sum -c
             tar -xzf "${tmp_dir}/${archive}" -C "${cache_root}" gitleaks
             chmod 0755 "${binary}"
           fi
@@ -77,7 +77,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          corepack enable
           pnpm --version
           pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
       - name: Validate, test, and build
