@@ -66,6 +66,12 @@ jobs:
           # The contract test deliberately injects SIGKILL at release boundaries.
           # Keep that signal inside a disposable, non-privileged container rather
           # than allowing a host executor to mistake it for a failed worker.
+          # The Docker daemon sees the runner's host paths, not its /data bind
+          # mount. Resolve the corresponding host path from the runner itself.
+          runner_data_host_path="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' "$HOSTNAME")"
+          test -n "$runner_data_host_path"
+          workspace_host_path="${runner_data_host_path}${PWD#/data}"
+          test -f "$workspace_host_path/scripts/check_immutable_release_workflow.sh"
           docker run --rm --pull never --init \
             --entrypoint /bin/bash \
             --network none \
@@ -74,7 +80,7 @@ jobs:
             --user 1001:107 \
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
-            --volume "$PWD:/workspace:ro" \
+            --volume "$workspace_host_path:/workspace:ro" \
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --workdir /workspace \
             akb/gitea-actions-runner:0.1.0 \
