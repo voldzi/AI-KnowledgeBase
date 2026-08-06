@@ -13,13 +13,40 @@ RUN apt-get update \
         ca-certificates \
         coreutils \
         curl \
+        fonts-liberation \
         git \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libatspi2.0-0 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libgbm1 \
+        libglib2.0-0 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libx11-6 \
+        libx11-xcb1 \
+        libxcb1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxext6 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        libxrender1 \
+        libxshmfence1 \
+        libxss1 \
+        libxtst6 \
         python3 \
         python3-pip \
         python3-venv \
         ruby-full \
         shellcheck \
         tini \
+        xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker

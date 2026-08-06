@@ -3,7 +3,7 @@
 This image is the non-production executor for the AKB repository-scoped
 Gitea Actions runner on VM125. It intentionally uses Debian Bookworm rather
 than Alpine: the Playwright Chromium binaries used by `apps/web` require a
-glibc runtime.
+glibc runtime and the standard Linux browser libraries.
 
 Build and operate it only on VM125 through the runner's local Compose project.
 The private `git.home.cz.crt` is provisioned on the VM and is not tracked in
