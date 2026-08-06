@@ -23,6 +23,13 @@ describe("chat viewport layout", () => {
     );
   });
 
+  it("keeps the composer inside the bounded chat workspace", () => {
+    assert.match(
+      css,
+      /\.akb-chat-app\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s,
+    );
+  });
+
   it("keeps the new-answer control visible without moving the composer", () => {
     assert.match(
       css,
