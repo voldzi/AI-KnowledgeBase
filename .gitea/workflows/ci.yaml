@@ -78,7 +78,7 @@ jobs:
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --workdir /workspace \
             akb/gitea-actions-runner:0.1.0 \
-            bash scripts/check_immutable_release_workflow.sh
+            scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web

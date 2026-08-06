@@ -25,12 +25,9 @@
   ],
   "security": [
     {
-      "bearerAuth": [
-
-      ]
+      "bearerAuth": []
     },
-    {
-    }
+    {}
   ],
   "tags": [
     {
@@ -3829,9 +3826,7 @@
             }
           }
         },
-        "security": [
-
-        ],
+        "security": [],
         "tags": [
           "Registry API"
         ]
@@ -3853,9 +3848,7 @@
         "operationId": "registry_api_resolve_public_document_source_api_v1_internal_public_documents__public_slug__source_get",
         "security": [
           {
-            "akbPublicDeliveryToken": [
-
-            ]
+            "akbPublicDeliveryToken": []
           }
         ],
         "parameters": [
@@ -5901,11 +5894,9 @@
             "description": "Immutable, cached PDF display rendition.",
             "content": {
               "application/json": {
-                "schema": {
-                }
+                "schema": {}
               },
-              "application/pdf": {
-              }
+              "application/pdf": {}
             }
           },
           "422": {
@@ -6621,8 +6612,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                }
+                "schema": {}
               }
             }
           },
@@ -7744,9 +7734,7 @@
         "summary": "List configured LLM providers and availability",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "responses": {
@@ -7785,9 +7773,7 @@
         "summary": "List available models from enabled providers",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "responses": {
@@ -7829,9 +7815,7 @@
         "summary": "List recommended local models",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "responses": {
@@ -7868,9 +7852,7 @@
         "description": "Pull is never automatic at service startup and must be enabled with configuration.",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "requestBody": {
@@ -7925,9 +7907,7 @@
         "summary": "Test a chat model",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "requestBody": {
@@ -7982,9 +7962,7 @@
         "summary": "Test an embedding model",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "requestBody": {
@@ -8039,9 +8017,7 @@
         "summary": "Return effective non-secret LLM Gateway configuration",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "responses": {
@@ -8081,9 +8057,7 @@
         "description": "Set `stream=true` to receive `text/event-stream` chunks followed by `data: [DONE]`. Production service callers also send `X-AKL-Subject`, `X-AKL-Audience`, and `X-AKL-Roles`.",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "requestBody": {
@@ -8150,9 +8124,7 @@
         "description": "Production service callers use an audience-bound gateway token plus `X-AKL-Subject`, `X-AKL-Audience`, and `X-AKL-Roles`.",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "requestBody": {
@@ -11595,9 +11567,7 @@
         "operationId": "aiip_duplicates_search_v1",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -11787,9 +11757,7 @@
         "operationId": "aiip_harmonize_v1",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -12676,9 +12644,7 @@
         "summary": "Read sanitized immutable public document metadata",
         "description": "Anonymous delivery. The Registry performs a fresh central public_read decision and the web boundary applies an exact metadata allowlist. No document body, extracted text, chunk, embedding, prompt, answer, RAG output, or storage URI is returned.",
         "operationId": "web_get_public_document_metadata",
-        "security": [
-
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "publicSlug",
@@ -12781,9 +12747,7 @@
         "summary": "Download a verified immutable public document source",
         "description": "Anonymous delivery. The web boundary requests a fresh central public_download decision through the private Registry resolver, verifies size and SHA-256 with bounded-memory I/O before streaming, supports Range/ETag, and never exposes the storage URI. Per-client/publicSlug and global rate limits plus held-through-stream concurrency limits return 429 when exceeded.",
         "operationId": "web_download_public_document_source",
-        "security": [
-
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "publicSlug",
@@ -13660,12 +13624,8 @@
         "operationId": "web_create_governed_aiip_upload_preflight",
         "security": [
           {
-            "bearerAuth": [
-
-            ],
-            "aiipActorAuthorization": [
-
-            ]
+            "bearerAuth": [],
+            "aiipActorAuthorization": []
           }
         ],
         "requestBody": {
@@ -13802,12 +13762,8 @@
         "operationId": "web_confirm_governed_aiip_upload",
         "security": [
           {
-            "bearerAuth": [
-
-            ],
-            "aiipActorAuthorization": [
-
-            ]
+            "bearerAuth": [],
+            "aiipActorAuthorization": []
           }
         ],
         "parameters": [
@@ -13964,9 +13920,7 @@
         "operationId": "web_upload_governed_aiip_content",
         "security": [
           {
-            "uploadTokenAuth": [
-
-            ]
+            "uploadTokenAuth": []
           }
         ],
         "parameters": [
@@ -20471,8 +20425,7 @@
           },
           "ai_value": {
             "anyOf": [
-              {
-              },
+              {},
               {
                 "type": "null"
               }
@@ -20481,8 +20434,7 @@
           },
           "final_value": {
             "anyOf": [
-              {
-              },
+              {},
               {
                 "type": "null"
               }
@@ -20576,8 +20528,7 @@
           },
           "ai_value": {
             "anyOf": [
-              {
-              },
+              {},
               {
                 "type": "null"
               }
@@ -20586,8 +20537,7 @@
           },
           "final_value": {
             "anyOf": [
-              {
-              },
+              {},
               {
                 "type": "null"
               }
@@ -32273,8 +32223,7 @@
           },
           "ai_value": {
             "anyOf": [
-              {
-              },
+              {},
               {
                 "type": "null"
               }
@@ -32283,8 +32232,7 @@
           },
           "final_value": {
             "anyOf": [
-              {
-              },
+              {},
               {
                 "type": "null"
               }
@@ -33026,9 +32974,7 @@
             "items": {
               "type": "string"
             },
-            "default": [
-
-            ]
+            "default": []
           },
           "policy_version": {
             "type": [
@@ -33053,9 +32999,7 @@
               "type": "string",
               "pattern": "^sha256:[a-f0-9]{64}$"
             },
-            "default": [
-
-            ]
+            "default": []
           },
           "handling_class": {
             "type": [
@@ -33096,9 +33040,7 @@
                 "PAP_ENFORCEMENT"
               ]
             },
-            "default": [
-
-            ]
+            "default": []
           }
         },
         "additionalProperties": true
