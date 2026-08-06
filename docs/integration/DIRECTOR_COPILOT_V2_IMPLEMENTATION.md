@@ -12,7 +12,7 @@ Wire contract: `director-copilot-2`, revision `2.0.3`
 - manifest SHA-256: `713d8b7d8a3a1b7873d244d4a244c3d08b1f43d0692669656100ba1454ff99a6`
 - error SHA-256: `99949d198294a947366cf099b2af7023979f538fadab8bbec48fffce8e9bdeab`
 - OpenAPI SHA-256: `9c94e2f75953511d17b178085ac57cf34594dd9f3cb2ed56799093611e8fb373`
-- manifest bundle SHA-256: `3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5`
+- manifest bundle SHA-256: `5f4428e6a77d1c41f7d804d23cdf9263c57b15a2643cbde080e1be3de1e95c78`
 
 The production build verifies these hashes and byte identity of runtime schema
 copies. The immutable `2.0.3` bundle still contains the retired AIIP manifest;
@@ -96,6 +96,17 @@ absolute maximum or minimum. Follow-up grouping by portfolio inherits the
 financial metric and fiscal year without inheriting a project restriction.
 Failures record a bounded `failure_reason_code`; a recognized live-data
 request is never replaced by document RAG.
+
+Budget action questions such as "kolik akcí je v plánu" and "jaká je největší
+akce" use item granularity with `group_by: ["procurement_action"]`. The
+response must contain non-aggregate `stratos:procurement-action:` entities
+with `procurement_action.display_name` and
+`procurement_action.planned_amount`; an organization aggregate is rejected.
+This preserves the authorization and Information Policy filtering performed by
+Budget while allowing AKB to count or rank only the complete returned set.
+Contract hash or manifest-shape drift is exposed as the safe reason code
+`DIRECTOR_COPILOT_V2_MANIFEST_DRIFT`. Transport and availability failures remain
+`DIRECTOR_COPILOT_V2_MANIFEST_UNAVAILABLE`.
 
 For a compositional question, all selected Budget, ProjectFlow and ArchFlow
 nodes execute concurrently. Rendering may combine Budget and ProjectFlow only

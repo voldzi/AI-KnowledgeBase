@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { evaluateWebReadiness } from "@/lib/api/readiness";
 import { loadDirectorCopilotV2ManifestCatalog } from "@/lib/director-copilot-v2/manifest-catalog";
+import { DirectorCopilotTransportError } from "@/lib/director-copilot/transport-error";
 import { contentSecurityReadiness } from "@/lib/upload/content-security";
 import { checkObjectStorageReadiness } from "@/lib/storage/object-storage";
 import { getUploadSettings } from "@/lib/upload/preflight";
@@ -30,14 +31,17 @@ export async function GET() {
     const dependencies = { ...serviceDependencies, object_storage: objectStorage };
     const directorConfig = getDirectorCopilotConfig(config);
     const directorCopilotV2 = !directorConfig.enabled
-      ? "disabled"
+      ? { status: "disabled" as const, reason: null }
       : await loadDirectorCopilotV2ManifestCatalog({ config })
-          .then(() => "ready" as const)
-          .catch(() => "degraded" as const);
+          .then(() => ({ status: "ready" as const, reason: null }))
+          .catch((error: unknown) => ({
+            status: "degraded" as const,
+            reason: directorCopilotReadinessReason(error),
+          }));
     const documentIntake = await contentSecurityReadiness();
     const readiness = evaluateWebReadiness({
       dependencies,
-      directorCopilotV2,
+      directorCopilotV2: directorCopilotV2.status,
       documentIntake,
     });
     return NextResponse.json(
@@ -49,7 +53,8 @@ export async function GET() {
         degraded_dependencies: readiness.degradedDependencies,
         dependencies: {
           ...dependencies,
-          director_copilot_v2: directorCopilotV2,
+          director_copilot_v2: directorCopilotV2.status,
+          director_copilot_v2_reason: directorCopilotV2.reason,
           document_intake_content_security: documentIntake,
         }
       },
@@ -75,6 +80,15 @@ export async function GET() {
       }
     );
   }
+}
+
+function directorCopilotReadinessReason(error: unknown): string {
+  if (error instanceof DirectorCopilotTransportError) {
+    return error.code === "DIRECTOR_COPILOT_V2_MANIFEST_DRIFT"
+      ? error.code
+      : "DIRECTOR_COPILOT_V2_MANIFEST_UNAVAILABLE";
+  }
+  return "DIRECTOR_COPILOT_V2_MANIFEST_UNAVAILABLE";
 }
 
 async function dependencyReadiness(name: string, baseUrl: string): Promise<"ready" | "not_ready"> {

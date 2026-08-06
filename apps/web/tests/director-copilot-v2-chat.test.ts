@@ -268,15 +268,15 @@ describe("Director Copilot V2 active chat", () => {
     assert.equal(requests.length, 1);
     assert.equal(requests[0]?.tool_id, "budget.organization_financial_summary.v1");
     assert.equal(requests[0]?.parameters.granularity, "item");
-    assert.deepEqual(requests[0]?.parameters.group_by, ["budget_item"]);
+    assert.deepEqual(requests[0]?.parameters.group_by, ["procurement_action"]);
     assert.deepEqual(requests[0]?.parameters.scenario, ["plan"]);
-    assert.match(response.answer ?? "", /Nejvyšší oprávněná položka/);
+    assert.match(response.answer ?? "", /Nejvyšší oprávněná akce/);
     assert.match(response.answer ?? "", /Servery/);
     assert.match(response.answer ?? "", /500[  ]000/);
-    assert.match(response.answer ?? "", /\*\*Rozsah:\*\* oprávněné položky/);
-    assert.match(response.answer ?? "", /\*\*Výsledek:\*\* nejvyšší položka z 3/);
+    assert.match(response.answer ?? "", /\*\*Rozsah:\*\* oprávněné plánované akce/);
+    assert.match(response.answer ?? "", /\*\*Výsledek:\*\* nejvyšší akce z 3/);
     assert.match(response.answer ?? "", /\*\*Stav dat:\*\* úplná/);
-    assert.match(response.answer ?? "", /\[Servery\]\(https:\/\/stratos\.example\.test\/budget\/items\/servery\)/);
+    assert.match(response.answer ?? "", /\[Servery\]\(https:\/\/stratos\.example\.test\/budget\/actions\/servery\)/);
     assert.equal((response.answer ?? "").includes("Licence"), false);
   });
 
@@ -309,8 +309,8 @@ describe("Director Copilot V2 active chat", () => {
     });
 
     assert.equal(requests[0]?.parameters.granularity, "item");
-    assert.deepEqual(requests[0]?.parameters.group_by, ["budget_item"]);
-    assert.match(response.answer ?? "", /eviduje \*\*3\*\* oprávněných položek plánu/);
+    assert.deepEqual(requests[0]?.parameters.group_by, ["procurement_action"]);
+    assert.match(response.answer ?? "", /eviduje \*\*3\*\* oprávněných plánovaných akcí/);
     assert.match(response.answer ?? "", /\*\*Výsledek:\*\* úplný počet \(3\)/);
     assert.match(response.answer ?? "", /\*\*Aktualizováno:\*\*/);
     assert.doesNotMatch(response.answer ?? "", /Sekce IT/);
@@ -613,9 +613,9 @@ function budgetItemFetcher(
     const response = structuredClone(budgetOrganization.responses.complete);
     const base = structuredClone(response.items[0]);
     response.items = [
-      budgetItem(base, "licence", "Licence", 120_000),
-      budgetItem(base, "servery", "Servery", 500_000),
-      budgetItem(base, "skoleni", "Školení", 80_000),
+      procurementAction(base, "licence", "Licence", 120_000),
+      procurementAction(base, "servery", "Servery", 500_000),
+      procurementAction(base, "skoleni", "Školení", 80_000),
     ];
     response.completeness.candidate_count = response.items.length;
     if (options.incomplete) {
@@ -632,20 +632,20 @@ function budgetItemFetcher(
   };
 }
 
-function budgetItem(
+function procurementAction(
   base: DirectorCopilotV2Item,
   id: string,
   displayName: string,
   planAmount: number,
 ): DirectorCopilotV2Item {
-  const canonicalId = `stratos:budget-aggregate:budget_item:${id}`;
+  const canonicalId = `stratos:procurement-action:${id}`;
   return {
     ...structuredClone(base),
-    entity_type: "budget_item",
+    entity_type: "procurement_action",
     entity_id: id,
     canonical_id: canonicalId,
-    deep_link: `https://stratos.example.test/budget/items/${id}`,
-    document_context_tags: [`budget_item:${id}`],
+    deep_link: `https://stratos.example.test/budget/actions/${id}`,
+    document_context_tags: [`procurement_action:${id}`],
     policy_lineage: base.policy_lineage.map((entry) => ({
       ...structuredClone(entry),
       resource_id: canonicalId,
@@ -653,12 +653,12 @@ function budgetItem(
     facts: [
       {
         ...structuredClone(base.facts[0]),
-        key: "budget_item.display_name",
+        key: "procurement_action.display_name",
         value: displayName,
       },
       {
         ...structuredClone(base.facts[1]),
-        key: "budget.plan_amount",
+        key: "procurement_action.planned_amount",
         value: planAmount,
       },
     ],

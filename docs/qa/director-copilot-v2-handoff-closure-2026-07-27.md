@@ -63,9 +63,10 @@ Verification completed on the final working state:
 STRATOS commit `663e71820b93c5801a27f393eae63a24ba118745`
 publishes wire revision `2.0.3`. AIIP source revision
 `32ee68228a9ac29c945f4a876c67dbec878a86ad` uses the same closure.
-The canonical manifest bundle SHA-256 is
+At this historical closure the canonical manifest bundle SHA-256 was
 `3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5`
-and now includes `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`.
+and included `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`. The active pinned bundle
+is documented in `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 
 AKB pins the byte-identical bundle and still rejects every unknown revision,
 hash, fact, link and reason code. Joint S1-S10 acceptance can begin after the

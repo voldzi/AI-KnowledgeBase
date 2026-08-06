@@ -337,13 +337,20 @@ function groupBy(
   granularity: DirectorCopilotV2Granularity,
   manifest: DirectorCopilotV2Manifest,
 ): string[] {
-  const itemDimension = granularity === "item"
+  const actionDimension = granularity === "item"
+    && state.group_by.includes("procurement_action")
+    && manifest.entity_types.includes("procurement_action")
+    ? "procurement_action"
+    : null;
+  const itemDimension = actionDimension ?? (granularity === "item"
     && state.metrics.some((metric) => metric.startsWith("budget."))
     && manifest.entity_types.includes("budget_item")
     ? "budget_item"
-    : null;
+    : null);
   const requestedDimensions = state.group_by.map((dimension) => (
-    dimension === "item" && itemDimension ? itemDimension : dimension
+    (dimension === "item" || dimension === "procurement_action") && itemDimension
+      ? itemDimension
+      : dimension
   ));
   const candidates = [
     ...requestedDimensions,

@@ -539,6 +539,21 @@
           "description": "Zobrazený název rozpočtové položky."
         },
         {
+          "key": "procurement_action.display_name",
+          "value_type": "text",
+          "description": "Zobrazený název plánované akce."
+        },
+        {
+          "key": "procurement_action.planned_amount",
+          "value_type": "currency",
+          "description": "Plánovaná hodnota samostatné akce."
+        },
+        {
+          "key": "procurement_action.count",
+          "value_type": "number",
+          "description": "Počet autorizovaných plánovaných akcí."
+        },
+        {
           "key": "budget.plan_amount",
           "value_type": "currency",
           "description": "Schválený finanční plán."
@@ -575,7 +590,8 @@
         "budget_scope",
         "portfolio",
         "project",
-        "budget_item"
+        "budget_item",
+        "procurement_action"
       ],
       "canonical_id_prefixes": [
         {
@@ -607,6 +623,11 @@
           "entity_type": "budget_item",
           "prefix": "stratos:budget-aggregate:",
           "aggregate": true
+        },
+        {
+          "entity_type": "procurement_action",
+          "prefix": "stratos:procurement-action:",
+          "aggregate": false
         }
       ],
       "relationships": [],
@@ -627,7 +648,8 @@
         "budget_scope",
         "portfolio",
         "project",
-        "budget_item"
+        "budget_item",
+        "procurement_action"
       ],
       "scenarios": [
         "plan",

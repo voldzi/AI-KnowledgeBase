@@ -218,6 +218,7 @@ describe("Director Copilot conversation query state", () => {
       metric: "budget.plan_amount",
       direction: "desc",
     });
+    assert.deepEqual(resolved.state.group_by, []);
     assert.deepEqual(resolved.state.entity_filters.project_ids, []);
   });
 
@@ -237,6 +238,7 @@ describe("Director Copilot conversation query state", () => {
       metric: "budget.plan_amount",
       direction: "desc",
     });
+    assert.deepEqual(resolved.state.group_by, ["procurement_action"]);
   });
 
   it("distinguishes counts and lists of Budget actions from a financial summary", () => {
@@ -255,8 +257,10 @@ describe("Director Copilot conversation query state", () => {
 
     assert.equal(count.state.granularity, "item");
     assert.equal(count.state.operation, "count");
+    assert.deepEqual(count.state.group_by, ["procurement_action"]);
     assert.equal(list.state.granularity, "item");
     assert.equal(list.state.operation, "list");
+    assert.deepEqual(list.state.group_by, ["procurement_action"]);
     assert.equal(summary.state.granularity, "authorized_scope");
     assert.equal(summary.state.operation, "summary");
   });

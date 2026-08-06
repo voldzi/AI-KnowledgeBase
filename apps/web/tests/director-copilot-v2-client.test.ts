@@ -108,7 +108,11 @@ describe("Director Copilot V2 manifest and execute client", () => {
           });
         },
       }),
-      /differs from the pinned contract/,
+      (error: unknown) => {
+        assert.ok(error instanceof DirectorCopilotTransportError);
+        assert.equal(error.code, "DIRECTOR_COPILOT_V2_MANIFEST_DRIFT");
+        return true;
+      },
     );
   });
 

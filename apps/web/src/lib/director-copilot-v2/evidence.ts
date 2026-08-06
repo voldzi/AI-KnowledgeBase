@@ -127,6 +127,7 @@ export function evaluateDirectorCopilotV2Evidence(input: {
     const expectedEntityType = entityTypeForGranularity(
       outcome.application,
       node.request.parameters.granularity,
+      node.request.parameters.group_by,
     );
     if (expectedEntityType && outcome.items.some((item) => item.entity_type !== expectedEntityType)) {
       addIssue(issues, "LIVE_DATA_ENTITY_TYPE_MISMATCH", "error", outcome.application);
@@ -211,7 +212,9 @@ function verifyOperationEvidence(input: {
   }
   const metric = input.state.sort?.metric;
   const facts = metric
-    ? input.outcome.items.map((item) => item.facts.find((fact) => fact.key === metric))
+    ? input.outcome.items.map((item) => item.facts.find(
+      (fact) => fact.key === operationFactKey(item, metric),
+    ))
     : [];
   if (!metric || facts.some((fact) => typeof fact?.value !== "number")) {
     addIssue(
@@ -273,13 +276,23 @@ function comparableCurrencies(facts: DirectorCopilotV2Fact[]): boolean {
 function entityTypeForGranularity(
   application: ActiveDirectorCopilotV2Application,
   granularity: string,
+  groupBy: string[],
 ): string | null {
   if (granularity === "project") return "project";
   if (granularity === "portfolio") return "portfolio";
   if (granularity !== "item") return null;
-  if (application === "budget") return "budget_item";
+  if (application === "budget") {
+    return groupBy.includes("procurement_action") ? "procurement_action" : "budget_item";
+  }
   if (application === "projectflow") return "project";
   return "need";
+}
+
+function operationFactKey(item: DirectorCopilotV2Item, metric: string): string {
+  if (item.entity_type === "procurement_action" && metric === "budget.plan_amount") {
+    return "procurement_action.planned_amount";
+  }
+  return metric;
 }
 
 function addIssue(
