@@ -270,44 +270,79 @@ function mergeResponses(
     responses.some((response) => (
       response.source_system !== first.source_system
       || response.source_version !== first.source_version
-      || response.period.fiscal_year !== first.period.fiscal_year
+      || canonicalJson(response.period) !== canonicalJson(first.period)
     ))
   ) {
     return unavailableOutcome(node, "DIRECTOR_COPILOT_V2_PAGE_CONFLICT", latencyMs);
   }
-  const itemsByKey = new Map<string, DirectorCopilotV2Item>();
-  for (const item of responses.flatMap((response) => response.items)) {
-    const key = `${item.canonical_id}|${item.source_version}`;
-    const existing = itemsByKey.get(key);
-    if (existing && canonicalJson(existing) !== canonicalJson(item)) {
-      return unavailableOutcome(node, "DIRECTOR_COPILOT_V2_PAGE_ITEM_CONFLICT", latencyMs);
-    }
-    itemsByKey.set(key, item);
+  const candidateCounts = new Set(
+    responses.map((response) => response.completeness.candidate_count),
+  );
+  if (candidateCounts.size !== 1) {
+    return unavailableOutcome(
+      node,
+      "DIRECTOR_COPILOT_V2_PAGE_CANDIDATE_COUNT_CONFLICT",
+      latencyMs,
+    );
   }
-  const items = [...itemsByKey.values()].slice(0, MAX_ITEMS_PER_TOOL);
+  const itemsByCanonicalId = new Map<string, DirectorCopilotV2Item>();
+  for (const item of responses.flatMap((response) => response.items)) {
+    if (itemsByCanonicalId.has(item.canonical_id)) {
+      return unavailableOutcome(
+        node,
+        "DIRECTOR_COPILOT_V2_PAGE_ITEM_DUPLICATE",
+        latencyMs,
+      );
+    }
+    itemsByCanonicalId.set(item.canonical_id, item);
+  }
+  const items = [...itemsByCanonicalId.values()].slice(0, MAX_ITEMS_PER_TOOL);
   const reasonCodes = [...new Set(responses.flatMap((response) => [
     ...response.warnings,
     ...response.completeness.missing_reasons,
   ]))];
   const sourceStatuses = responses.map((response) => response.status);
-  const candidateCount = Math.max(
-    ...responses.map((response) => response.completeness.candidate_count),
-  );
+  const candidateCount = [...candidateCounts][0] ?? 0;
   const pageLimitReached = Boolean(remainingCursor);
+  const finalResponse = responses.at(-1)!;
+  const countPageSequenceComplete = operation === "count"
+    && !pageLimitReached
+    && finalResponse.status === "complete"
+    && finalResponse.next_cursor === null
+    && finalResponse.completeness.authorized_result_complete
+    && responses.slice(0, -1).every((response) => (
+      response.status === "partial"
+      && response.next_cursor !== null
+    ));
+  const countMateriallyComplete = operation === "count"
+    && countPageSequenceComplete
+    && reasonCodes.length === 0
+    && items.length === candidateCount;
+  const status = operation === "count"
+    ? countMateriallyComplete
+      ? "complete"
+      : "partial"
+    : pageLimitReached || sourceStatuses.includes("partial")
+      ? "partial"
+      : sourceStatuses.every((sourceStatus) => sourceStatus === "not_authorized")
+        ? "not_authorized"
+        : sourceStatuses.every((sourceStatus) => sourceStatus === "no_data")
+          ? "no_data"
+          : "complete";
   return {
     application: node.application,
     tool_id: node.tool_id,
     schema_revision: node.schema_revision,
-    status: pageLimitReached || sourceStatuses.includes("partial")
-      ? "partial"
-      : sourceStatuses.every((status) => status === "not_authorized")
-        ? "not_authorized"
-        : sourceStatuses.every((status) => status === "no_data")
-          ? "no_data"
-          : "complete",
+    status,
     reason_codes: [
       ...reasonCodes,
       ...(pageLimitReached ? ["DIRECTOR_COPILOT_V2_PAGE_LIMIT_REACHED"] : []),
+      ...(operation === "count" && !countPageSequenceComplete
+        ? ["DIRECTOR_COPILOT_V2_COUNT_PAGE_SEQUENCE_INCOMPLETE"]
+        : []),
+      ...(operation === "count" && countPageSequenceComplete && items.length !== candidateCount
+        ? ["DIRECTOR_COPILOT_V2_COUNT_ITEM_COUNT_MISMATCH"]
+        : []),
     ],
     source_system: first.source_system,
     source_version: first.source_version,
@@ -316,9 +351,10 @@ function mergeResponses(
     pages: responses.length,
     latency_ms: latencyMs,
     candidate_count: candidateCount,
-    authorized_result_complete: !pageLimitReached
-      && responses.every((response) => response.completeness.authorized_result_complete)
-      && (operation !== "count" || items.length === candidateCount),
+    authorized_result_complete: operation === "count"
+      ? countMateriallyComplete
+      : !pageLimitReached
+        && responses.every((response) => response.completeness.authorized_result_complete),
     items,
   };
 }

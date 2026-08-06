@@ -496,6 +496,8 @@ describe("Director Copilot V2 active chat", () => {
     assert.equal(response.response_type, "answer");
     assert.match(response.answer ?? "", /oprávněná část organizace/i);
     assert.match(response.answer ?? "", /výsledek není úplný za celou organizaci/i);
+    assert.match(response.answer ?? "", /nemají pro zvolené období schválený plán/i);
+    assert.match(response.answer ?? "", /nejsou zahrnuty do součtu ani nahrazeny nulou/i);
     assert.doesNotMatch(response.answer ?? "", /celá oprávněná organizace/i);
   });
 
