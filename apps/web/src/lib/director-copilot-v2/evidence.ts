@@ -171,7 +171,11 @@ function verifyOperationEvidence(input: {
 }): void {
   if (input.state.operation === "count") {
     input.addChecked();
-    if (input.outcome.authorized_result_complete && input.outcome.status === "complete") {
+    if (
+      input.outcome.authorized_result_complete
+      && input.outcome.status === "complete"
+      && input.outcome.items.length === input.outcome.candidate_count
+    ) {
       input.addSupported();
     } else {
       addIssue(

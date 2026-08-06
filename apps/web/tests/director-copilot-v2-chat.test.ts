@@ -466,6 +466,39 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(JSON.stringify(auditEvents), /"semantic_shape_valid":false/);
   });
 
+  it("labels a partial organization aggregate as incomplete instead of an organization-wide total", async () => {
+    const message = "Jaký je celkový schválený rozpočet organizace na rok 2025?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-06T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-partial-organization",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          getDocument: async () => {
+            throw new Error("no document authorization expected");
+          },
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: aggregateBudgetFetcher({ partial: true }),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "answer");
+    assert.match(response.answer ?? "", /oprávněná část organizace/i);
+    assert.match(response.answer ?? "", /výsledek není úplný za celou organizaci/i);
+    assert.doesNotMatch(response.answer ?? "", /celá oprávněná organizace/i);
+  });
+
   it("distinguishes a rejected live contract from a source outage", async () => {
     const message = "Vypiš mi největší položky výdajového plánu roku 2025";
     const queryState = resolveConversationQuery({
@@ -563,7 +596,7 @@ function invalidBudgetItemFetcher(): typeof fetch {
   };
 }
 
-function aggregateBudgetFetcher(): typeof fetch {
+function aggregateBudgetFetcher(options: { partial?: boolean } = {}): typeof fetch {
   return async (input, init) => {
     const url = String(input);
     if (init?.method === "GET") {
@@ -581,6 +614,12 @@ function aggregateBudgetFetcher(): typeof fetch {
     }
     const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
     const response = structuredClone(budgetOrganization.responses.complete);
+    if (options.partial) {
+      response.status = "partial";
+      response.completeness.authorized_result_complete = false;
+      response.completeness.source_coverage = "partial";
+      response.completeness.missing_reasons = ["BUDGET_APPROVED_PLAN_MISSING"];
+    }
     return Response.json({
       ...response,
       tool_id: request.tool_id,

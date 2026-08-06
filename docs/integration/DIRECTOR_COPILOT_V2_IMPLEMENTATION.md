@@ -32,7 +32,11 @@ from the active runtime catalog.
    `director-copilot-akl-api` and the single audience `akl-api` for the
    mandatory metadata-only Registry audit. A source token, default token or
    interactive user token must not be reused for this audit.
-5. Traverse at most five cursor pages and 500 authorized items per tool.
+5. Traverse at most five cursor pages and 500 authorized items per tool for
+   list and detail queries. For a count, traverse every cursor page up to the
+   same 500-item safety bound; AKB returns a count only when the unique loaded
+   items equal the source-owned `candidate_count` and the final cursor is empty.
+   An unfinished page sequence remains fail-closed as partial.
 6. Distinguish `complete`, `partial`, `no_data`, `not_authorized` and
    `unavailable`.
 7. Reauthorize the actor and exact scope before synthesis.
@@ -55,6 +59,11 @@ from the active runtime catalog.
     portfolio or project, planning stops locally with
     `DIRECTOR_COPILOT_V2_ENTITY_FILTER_RESOLUTION_REQUIRED`; the filter is not
     ignored and the request is not widened.
+
+For a partial organization aggregate, the chat labels the source as an
+**authorized part of the organization** and states directly beside the result
+that it is not complete for the entire organization. AKB never presents a
+partial aggregate as an organization-wide total.
 
 The central access projection may identify the Budget application as either
 `budget` or the STRATOS catalog id `budget-contract`. AKB maps only this closed
