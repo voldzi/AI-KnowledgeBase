@@ -309,7 +309,6 @@ function mergeResponses(
     && !pageLimitReached
     && finalResponse.status === "complete"
     && finalResponse.next_cursor === null
-    && finalResponse.completeness.authorized_result_complete
     && responses.slice(0, -1).every((response) => (
       response.status === "partial"
       && response.next_cursor !== null
