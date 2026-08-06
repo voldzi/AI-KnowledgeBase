@@ -488,8 +488,8 @@ function sourcePresentationLine(
   topOnly: boolean,
   language: ResponseLanguage,
 ): string {
-  const scope = queryScopeLabel(queryState, language);
   const complete = outcome.status === "complete" && outcome.authorized_result_complete;
+  const scope = queryScopeLabel(queryState, language, complete);
   const count = new Intl.NumberFormat(language === "en" ? "en-US" : "cs-CZ")
     .format(outcome.candidate_count);
   const shown = new Intl.NumberFormat(language === "en" ? "en-US" : "cs-CZ")
@@ -527,6 +527,7 @@ function sourcePresentationLine(
 function queryScopeLabel(
   queryState: ConversationQueryState,
   language: ResponseLanguage,
+  complete = true,
 ): string {
   if (queryState.scope_label) {
     return queryState.granularity === "organization_unit"
@@ -537,7 +538,12 @@ function queryScopeLabel(
   }
   const labels: Record<ConversationQueryState["granularity"], [string, string]> = {
     authorized_scope: ["authorized user scope", "oprávněný rozsah uživatele"],
-    organization: ["organization", "celá oprávněná organizace"],
+    organization: complete
+      ? ["authorized organization scope", "oprávněná část organizace"]
+      : [
+          "authorized organization scope (not complete for the entire organization)",
+          "oprávněná část organizace (výsledek není úplný za celou organizaci)",
+        ],
     organization_unit: ["authorized organization units", "oprávněné organizační jednotky"],
     portfolio: ["authorized portfolios", "oprávněná portfolia"],
     project: ["authorized projects", "oprávněné projekty"],

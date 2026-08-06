@@ -315,7 +315,7 @@ describe("Director Copilot V2 orchestration", () => {
     assert.equal(calls[1]?.parameters.cursor, "cursor-page-2");
   });
 
-  it("uses one bounded page for a complete count and trusts only source-owned completeness metadata", async () => {
+  it("follows every cursor page for a count and verifies the complete authorized result set", async () => {
     const state = resolveConversationQuery({
       message: "Kolik projektů evidujeme?",
       now: new Date("2026-07-25T10:00:00.000Z"),
@@ -333,8 +333,12 @@ describe("Director Copilot V2 orchestration", () => {
           calls.push(request);
           const response = structuredClone(projectflow.responses.complete);
           response.tool_call_id = request.tool_call_id;
-          response.next_cursor = "unused-item-page";
-          response.completeness.candidate_count = 91;
+          const item = response.items[0]!;
+          item.entity_id = `project-${calls.length}`;
+          item.canonical_id = `stratos:project:project-${calls.length}`;
+          item.deep_link = `https://stratos.example.test/projectflow/projects/project-${calls.length}`;
+          response.next_cursor = calls.length < 3 ? `cursor-page-${calls.length + 1}` : null;
+          response.completeness.candidate_count = 3;
           response.completeness.authorized_result_complete = true;
           return response;
         },
@@ -342,9 +346,12 @@ describe("Director Copilot V2 orchestration", () => {
       now: new Date("2026-07-25T10:00:00.000Z"),
     });
 
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 3);
     assert.equal(calls[0]?.parameters.limit, 1);
-    assert.equal(result.snapshot.outcomes[0]?.candidate_count, 91);
+    assert.equal(calls[1]?.parameters.cursor, "cursor-page-2");
+    assert.equal(calls[2]?.parameters.cursor, "cursor-page-3");
+    assert.equal(result.snapshot.outcomes[0]?.candidate_count, 3);
+    assert.equal(result.snapshot.outcomes[0]?.items.length, 3);
     assert.equal(result.snapshot.outcomes[0]?.authorized_result_complete, true);
     assert.equal(result.snapshot.evidence.status, "passed");
   });

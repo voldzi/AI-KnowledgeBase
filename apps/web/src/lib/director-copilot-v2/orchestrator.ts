@@ -30,6 +30,9 @@ import { accessProjectionHash, type DirectorCopilotIntent } from "./shared";
 
 const MAX_PAGES_PER_TOOL = 5;
 const MAX_ITEMS_PER_TOOL = 500;
+// A count is only safe when AKB has traversed every cursor page and can compare
+// the unique result set with the source-owned candidate count.
+const MAX_COUNT_PAGES_PER_TOOL = MAX_ITEMS_PER_TOOL;
 
 export const DIRECTOR_COPILOT_V2_SNAPSHOT_VERSION =
   "director-copilot-v2-analysis-snapshot-1" as const;
@@ -209,7 +212,10 @@ async function executeNode(
   }
   const responses: DirectorCopilotV2Response[] = [];
   let cursor: string | null = null;
-  for (let page = 0; page < MAX_PAGES_PER_TOOL; page += 1) {
+  const maximumPages = operation === "count"
+    ? MAX_COUNT_PAGES_PER_TOOL
+    : MAX_PAGES_PER_TOOL;
+  for (let page = 0; page < maximumPages; page += 1) {
     const request = page === 0
       ? node.request
       : {
@@ -228,7 +234,6 @@ async function executeNode(
       const response = await client.execute(node.application, request, context);
       responses.push(response);
       cursor = response.next_cursor;
-      if (operation === "count") break;
       if (!cursor) break;
       if (responses.reduce((count, candidate) => count + candidate.items.length, 0) >= MAX_ITEMS_PER_TOOL) {
         break;
@@ -285,7 +290,10 @@ function mergeResponses(
     ...response.completeness.missing_reasons,
   ]))];
   const sourceStatuses = responses.map((response) => response.status);
-  const pageLimitReached = operation !== "count" && Boolean(remainingCursor);
+  const candidateCount = Math.max(
+    ...responses.map((response) => response.completeness.candidate_count),
+  );
+  const pageLimitReached = Boolean(remainingCursor);
   return {
     application: node.application,
     tool_id: node.tool_id,
@@ -307,9 +315,10 @@ function mergeResponses(
     as_of: responses.map((response) => response.as_of).sort().at(-1) ?? null,
     pages: responses.length,
     latency_ms: latencyMs,
-    candidate_count: Math.max(...responses.map((response) => response.completeness.candidate_count)),
+    candidate_count: candidateCount,
     authorized_result_complete: !pageLimitReached
-      && responses.every((response) => response.completeness.authorized_result_complete),
+      && responses.every((response) => response.completeness.authorized_result_complete)
+      && (operation !== "count" || items.length === candidateCount),
     items,
   };
 }
