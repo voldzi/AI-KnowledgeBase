@@ -83,7 +83,7 @@ jobs:
             --volume "$workspace_host_path:/workspace:ro" \
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --workdir /workspace \
-            akb/gitea-actions-runner:0.1.0 \
+            akb/gitea-actions-runner:0.2.0 \
             scripts/check_immutable_release_workflow.sh
 
   web:
