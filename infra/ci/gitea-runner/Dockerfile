@@ -3,7 +3,7 @@ FROM docker:27-cli AS docker_cli
 
 # Playwright's Linux browser binaries need glibc and the Debian browser
 # dependencies. Alpine can download the cache but cannot reliably execute it.
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS ci-tools
 
 USER root
 
@@ -60,9 +60,6 @@ COPY --from=docker_cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr
 RUN groupadd --gid 107 akbci-docker \
     && useradd --uid 1001 --gid akbci-docker --create-home --home-dir /home/akbci --shell /bin/bash akbci
 
-COPY --from=act_runner /usr/local/bin/act_runner /usr/local/bin/act_runner
-COPY --from=act_runner /opt/act/run.sh /opt/act/run.sh
-
 # The private home CA is copied by the VM bootstrap process, never from Git.
 COPY git.home.cz.crt /usr/local/share/ca-certificates/git.home.cz.crt
 RUN update-ca-certificates
@@ -73,5 +70,10 @@ RUN npm install --global pnpm@11.7.0 \
     && python3 --version \
     && ruby --version \
     && docker compose version
+
+FROM ci-tools AS runner
+
+COPY --from=act_runner /usr/local/bin/act_runner /usr/local/bin/act_runner
+COPY --from=act_runner /opt/act/run.sh /opt/act/run.sh
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/act/run.sh"]

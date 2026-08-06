@@ -1,9 +1,14 @@
 # AKB Gitea Actions Runner Image
 
-This image is the non-production executor for the AKB repository-scoped
-Gitea Actions runner on VM125. It intentionally uses Debian Bookworm rather
-than Alpine: the Playwright Chromium binaries used by `apps/web` require a
-glibc runtime and the standard Linux browser libraries.
+This Dockerfile builds two non-production AKB CI images for VM125:
+
+- `akb/gitea-actions-runner:0.2.0` is the repository-scoped Gitea Actions
+  runner.
+- `akb/gitea-ci-tools:0.2.0` is the stateless image for isolated CI jobs.
+
+They intentionally use Debian Bookworm rather than Alpine: the Playwright
+Chromium binaries used by `apps/web` require a glibc runtime and the standard
+Linux browser libraries.
 
 Build and operate it only on VM125 through the runner's local Compose project.
 The private `git.home.cz.crt` is provisioned on the VM and is not tracked in

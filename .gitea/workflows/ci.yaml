@@ -57,6 +57,7 @@ jobs:
   immutable-release:
     name: Immutable release contract
     runs-on: akb-gitea-exclusive
+    container: akb/gitea-ci-tools:0.2.0
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -83,7 +84,7 @@ jobs:
             --volume "$workspace_host_path:/workspace:ro" \
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --workdir /workspace \
-            akb/gitea-actions-runner:0.2.0 \
+            akb/gitea-ci-tools:0.2.0 \
             scripts/check_immutable_release_workflow.sh
 
   web:
