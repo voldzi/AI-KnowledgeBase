@@ -67,6 +67,7 @@ jobs:
           # Keep that signal inside a disposable, non-privileged container rather
           # than allowing a host executor to mistake it for a failed worker.
           docker run --rm --pull never --init \
+            --entrypoint /bin/bash \
             --network none \
             --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,size=2g \
