@@ -18,15 +18,19 @@ The token is single-use and must be entered directly on VM 125; do not place it
 in a shell history, repository file, workflow, or chat transcript.
 
 The `github-runner` account on VM 125 runs the Gitea runner in addition to the
-existing GitHub runners. Register two host-executor labels:
+existing GitHub runners. The runner has a single execution slot and registers
+two host-executor labels:
 
 - `akb-gitea-light`: standards, web, Python, and Compose checks.
-- `akb-gitea-exclusive`: immutable-release contract checks on a separate,
-  serialized runner process.
+- `akb-gitea-exclusive`: immutable-release contract checks, serialized with
+  every other AKB Gitea job by the single execution slot.
 
-The runner must deny privileged containers and mount no host paths except its
-own work and cache directories. It has no production env file, deployment
-credential, or permitted path to production promotion.
+Its maintained image provides Node.js, pnpm, Python, Ruby, ShellCheck and the
+Docker Compose plugin. Persistent package and browser caches are mounted only
+inside the runner. A Docker socket is mounted solely to validate Compose files;
+the runner has no production env file, deployment credential, or permitted
+path to production promotion. Treat the runner host as CI-administration
+infrastructure and keep it separate from application production hosts.
 
 ## Promotion Criteria
 
