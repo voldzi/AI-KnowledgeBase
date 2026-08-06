@@ -25,8 +25,8 @@ two host-executor labels:
 - `akb-gitea-exclusive`: immutable-release contract checks, serialized with
   every other AKB Gitea job by the single execution slot.
 
-Its maintained image provides Node.js, pnpm, Python, Ruby, ShellCheck and the
-Docker Compose plugin. Persistent package and browser caches are mounted only
+Its maintained image provides Node.js, pnpm, Python, Ruby, ShellCheck, GNU
+core utilities and the Docker Compose plugin. Persistent package and browser caches are mounted only
 inside the runner. A Docker socket is mounted solely to validate Compose files;
 the runner has no production env file, deployment credential, or permitted
 path to production promotion. Treat the runner host as CI-administration
