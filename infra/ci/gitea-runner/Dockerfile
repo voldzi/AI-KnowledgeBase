@@ -7,6 +7,11 @@ FROM node:22-bookworm-slim
 
 USER root
 
+# Service and OpenAPI contracts include Czech text. Keep Ruby and Python
+# deterministic instead of inheriting the host executor's ASCII locale.
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
