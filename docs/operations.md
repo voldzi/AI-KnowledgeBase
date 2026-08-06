@@ -106,6 +106,14 @@ The supported production host name is:
 docker.home.cz
 ```
 
+## Source Control
+
+AKB development uses private internal Gitea as its primary Git source. GitHub
+remains an external mirror while GitHub Actions and the current immutable
+production release continue unchanged during the transition. The required
+remote URLs, mirror flow and future Gitea Actions proposal are documented in
+[`docs/OPERATIONS/gitea-primary-mirror.md`](OPERATIONS/gitea-primary-mirror.md).
+
 Before changing production, verify current state non-destructively:
 
 ```text

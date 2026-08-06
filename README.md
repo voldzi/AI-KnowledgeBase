@@ -21,9 +21,15 @@ The runtime still uses `AKL_*` environment variables and selected internal ids a
 Clone and enter the repository:
 
 ```bash
-git clone https://github.com/voldzi/AI-KnowledgeBase.git
+git clone ssh://git@git.home.cz:2222/AKB/ai-knowledgebase.git
 cd AI-KnowledgeBase
 ```
+
+The internal Gitea repository is the primary source for AKB development. The
+GitHub repository remains an external mirror and recovery copy. Clone and push
+ordinary development branches through the Gitea `origin`; use the `github`
+remote only for the controlled mirror workflow described in
+[`docs/OPERATIONS/gitea-primary-mirror.md`](docs/OPERATIONS/gitea-primary-mirror.md).
 
 Create local configuration:
 

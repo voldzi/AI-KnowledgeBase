@@ -2,6 +2,27 @@
 
 This process keeps `main` stable and reproducible.
 
+## Repository Sources
+
+The primary internal repository is Gitea:
+
+```text
+origin = ssh://git@git.home.cz:2222/AKB/ai-knowledgebase.git
+```
+
+GitHub remains an external mirror and recovery copy:
+
+```text
+github = https://github.com/voldzi/AI-KnowledgeBase.git
+```
+
+This migration does not change CI or production release sources. GitHub
+Actions and the immutable `docker.home.cz` workflow continue to use their
+existing verified GitHub configuration until a separately reviewed Gitea
+Actions and release-source transition is accepted. The exact mirror procedure,
+verification and future transition gates are in
+[`docs/OPERATIONS/gitea-primary-mirror.md`](../OPERATIONS/gitea-primary-mirror.md).
+
 ## Branch Rules
 
 The `main` branch is protected:
@@ -80,7 +101,8 @@ volumes, or images used by another repository.
 2. Keep the PR scoped to one coherent change.
 3. Run relevant local validation before pushing.
 4. Push the branch and open a PR.
-5. Wait for GitHub CI to pass.
+5. Mirror the final candidate to GitHub and wait for the current GitHub CI to
+   pass. Gitea Actions are not a release gate yet.
 6. Review the diff for runtime contracts, generated files, secrets, and documentation drift.
 7. Squash merge into `main` after checks are green.
 8. Delete the feature branch.

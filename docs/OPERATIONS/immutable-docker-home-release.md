@@ -5,6 +5,12 @@ Registry, Ingestion, RAG retrieval, Evaluation, Governance, web, and standalone
 chat runtime. It deliberately does not
 deploy from the mutable `/srv/akl/repo` working tree.
 
+Gitea is the primary internal development repository, but the production
+release source remains GitHub during the current transition. This procedure
+therefore continues to use the configured GitHub release URL until the separate
+Gitea release-source transition described in
+[`gitea-primary-mirror.md`](gitea-primary-mirror.md) is accepted.
+
 ## Safety Invariants
 
 - Every release is a full, lowercase 40-character Git commit SHA reachable
