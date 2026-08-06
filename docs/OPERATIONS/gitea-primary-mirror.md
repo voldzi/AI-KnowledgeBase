@@ -25,6 +25,20 @@ github  https://github.com/voldzi/AI-KnowledgeBase.git
 The Gitea organisation and repository are private. Credentials, deploy keys,
 tokens, secrets, uploaded documents and database backups do not belong in Git.
 
+## Migration Record
+
+The initial migration completed on 2026-08-06. It transferred all 94 standard
+branches, the `v0.1.0-local-platform` tag and its corresponding release from
+GitHub. GitHub pull-request implementation refs (`refs/pull/*`) are not part
+of normal branch or tag history and Gitea correctly rejects them; pull-request
+metadata is intentionally not treated as a deployable Git reference.
+
+The migration was verified with an isolated Gitea clone and a temporary branch
+and tag push. Both temporary references were removed after verification. A
+full history scan across 543 commits found no secret leaks under the repository
+Gitleaks policy. This is evidence for the migration date, not a substitute for
+ongoing secret scanning in CI.
+
 ## Development and Mirror Flow
 
 1. Fetch, branch and push normal work through `origin`.
@@ -91,4 +105,3 @@ After a mirror or migration operation, verify:
 - a temporary branch and tag can be pushed and removed again;
 - tracked-file and history scans do not report real environment files, keys,
   token files, database dumps or uploaded document storage.
-
