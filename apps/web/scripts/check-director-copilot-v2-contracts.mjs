@@ -23,7 +23,7 @@ const expected = {
   "director-copilot-2.openapi.json":
     "9c94e2f75953511d17b178085ac57cf34594dd9f3cb2ed56799093611e8fb373",
   "director-copilot-2-manifests.json":
-    "3cf0248f1db9ee8742af25b546a209ce9bbe9c4938dc9c88240ae45f97245bf5",
+    "5f4428e6a77d1c41f7d804d23cdf9263c57b15a2643cbde080e1be3de1e95c78",
 };
 
 for (const [name, expectedHash] of Object.entries(expected)) {

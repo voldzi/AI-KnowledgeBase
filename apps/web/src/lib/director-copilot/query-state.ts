@@ -34,6 +34,7 @@ export type QueryGrouping =
   | "portfolio"
   | "project"
   | "item"
+  | "procurement_action"
   | "schedule_status";
 
 export interface QueryClarification {
@@ -123,6 +124,9 @@ const ITEM_TERMS = [
   "radek rozpoctu", "akce", "planovana akce", "nakup", "porizeni", "zakazka",
   "potreba", "business potreba", "pozadavek", "podnet",
 ] as const;
+const PROCUREMENT_ACTION_TERMS = [
+  "akce", "planovana akce", "nakup", "porizeni", "zakazka",
+] as const;
 const DELAYED_TERMS = ["zpozdeni", "prodleni", "po terminu", "skluz"] as const;
 const AT_RISK_TERMS = ["ohrozeny", "rizikovy", "at risk"] as const;
 const ON_TRACK_TERMS = ["podle planu", "v terminu", "on track"] as const;
@@ -175,6 +179,7 @@ const GROUPING_VALUES = new Set<QueryGrouping>([
   "portfolio",
   "project",
   "item",
+  "procurement_action",
   "schedule_status",
 ]);
 const LEGACY_CATALOG_VERSIONS = new Set([
@@ -290,8 +295,13 @@ export function resolveConversationQuery(input: {
         : "summary"
     );
   const explicitGrouping = explicitGroupingForText(normalized);
-  const groupBy = explicitGrouping.length
+  const procurementActionGrouping = granularity === "item"
+    && sources.includes("budget")
+    && isProcurementActionQuestion(normalized);
+  const groupBy: QueryGrouping[] = explicitGrouping.length
     ? explicitGrouping
+    : procurementActionGrouping
+      ? ["procurement_action"]
     : inherited
       ? previous?.group_by ?? []
       : [];
@@ -466,12 +476,19 @@ function explicitGroupingForText(normalized: string): QueryGrouping[] {
   if (ORGANIZATION_UNIT_SIGNAL.test(normalized)) groups.push("organization_unit");
   if (PORTFOLIO_SIGNAL.test(normalized)) groups.push("portfolio");
   if (PROJECT_GRANULARITY_SIGNAL.test(normalized)) groups.push("project");
-  if (ITEM_GRANULARITY_SIGNAL.test(normalized)) groups.push("item");
+  if (ITEM_GRANULARITY_SIGNAL.test(normalized)) {
+    groups.push(isProcurementActionQuestion(normalized) ? "procurement_action" : "item");
+  }
   if (/\b(stav\w*|harmonogram\w*)\b/.test(normalized)) groups.push("schedule_status");
   if (/\b(organizac\w*|organizace)\b/.test(normalized) && groups.length === 0) {
     groups.push("organization");
   }
   return unique(groups);
+}
+
+function isProcurementActionQuestion(normalized: string): boolean {
+  return matchesSemanticConcept(normalized, PROCUREMENT_ACTION_TERMS)
+    || /\b(akc\w*|nakup\w*|porizen\w*|zakazk\w*)\b/.test(normalized);
 }
 
 function planMeaningClarification(

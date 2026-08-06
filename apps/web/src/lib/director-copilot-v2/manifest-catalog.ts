@@ -15,6 +15,7 @@ import {
   DIRECTOR_COPILOT_V2_REVISION,
   V2_TOOL_IDS,
   canonicalJson,
+  DirectorCopilotV2ContractError,
   parseDirectorCopilotV2Error,
   parseDirectorCopilotV2ManifestEnvelope,
   pinnedDirectorCopilotV2Manifest,
@@ -199,7 +200,21 @@ async function fetchCatalog(
           );
         }
         assertJson(response, application);
-        const manifests = parseDirectorCopilotV2ManifestEnvelope(payload, application);
+        let manifests: DirectorCopilotV2Manifest[];
+        try {
+          manifests = parseDirectorCopilotV2ManifestEnvelope(payload, application);
+        } catch (error) {
+          const errorCode = error instanceof DirectorCopilotV2ContractError
+            ? error.code
+            : "DIRECTOR_COPILOT_V2_MANIFEST_INVALID";
+          logManifest(application, response.status, startedAt, context, errorCode);
+          throw new DirectorCopilotTransportError(
+            errorCode,
+            `Director Copilot V2 ${application} manifest does not match the pinned contract.`,
+            "unavailable",
+            response.status,
+          );
+        }
         logManifest(application, response.status, startedAt, context);
         return [application, manifests] as const;
       }),
@@ -212,6 +227,16 @@ async function fetchCatalog(
     .filter((manifest) => manifests.some((candidate) => candidate.audience === manifest.audience))
     .sort((left, right) => left.tool_id.localeCompare(right.tool_id));
   if (canonicalJson(manifests) !== canonicalJson(pinned)) {
+    logIntegrationEvent({
+      level: "error",
+      service: "director-copilot",
+      operation: "v2_manifest_catalog",
+      status: 200,
+      latencyMs: 0,
+      requestId: context.requestId,
+      correlationId: context.correlationId,
+      errorCode: "DIRECTOR_COPILOT_V2_MANIFEST_DRIFT",
+    });
     throw new DirectorCopilotTransportError(
       "DIRECTOR_COPILOT_V2_MANIFEST_DRIFT",
       "Runtime Director Copilot V2 manifests differ from the pinned contract.",

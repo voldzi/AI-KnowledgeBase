@@ -460,10 +460,16 @@ function renderSource(
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
   ].join("\n");
+  const rankedLabel = queryState.group_by.includes("procurement_action")
+    ? language === "en" ? "action" : "akce"
+    : language === "en" ? "item" : "položka";
+  const rankedPlural = queryState.group_by.includes("procurement_action")
+    ? language === "en" ? "actions" : "akcí"
+    : language === "en" ? "items" : "položek";
   const summary = ranked.topOnly && queryState.sort
     ? language === "en"
-      ? `Highest authorized item by ${factLabel(queryState.sort.metric, language)} from ${outcome.candidate_count} matching item(s).`
-      : `Nejvyšší oprávněná položka podle metriky ${factLabel(queryState.sort.metric, language)} z ${outcome.candidate_count} odpovídajících položek.`
+      ? `Highest authorized ${rankedLabel} by ${factLabel(queryState.sort.metric, language)} from ${outcome.candidate_count} matching ${rankedLabel}(s).`
+      : `Nejvyšší oprávněná ${rankedLabel} podle metriky ${factLabel(queryState.sort.metric, language)} z ${outcome.candidate_count} odpovídajících ${rankedPlural}.`
     : language === "en"
       ? `${sourceName} returned ${outcome.candidate_count} authorized item(s).`
       : `${sourceName} vrátil ${outcome.candidate_count} oprávněných položek.`;
@@ -494,8 +500,8 @@ function sourcePresentationLine(
       : `${complete ? "úplný" : "částečný"} počet (${count})`
     : queryState.operation === "rank" && topOnly
       ? language === "en"
-        ? `highest item from ${count} matching items`
-        : `nejvyšší položka z ${count} odpovídajících položek`
+        ? `highest ${queryState.group_by.includes("procurement_action") ? "action" : "item"} from ${count} matching ${queryState.group_by.includes("procurement_action") ? "actions" : "items"}`
+        : `nejvyšší ${queryState.group_by.includes("procurement_action") ? "akce" : "položka"} z ${count} odpovídajících ${queryState.group_by.includes("procurement_action") ? "akcí" : "položek"}`
       : queryState.operation === "list"
         ? language === "en"
           ? `shown ${shown} of ${count} matching items`
@@ -535,7 +541,9 @@ function queryScopeLabel(
     organization_unit: ["authorized organization units", "oprávněné organizační jednotky"],
     portfolio: ["authorized portfolios", "oprávněná portfolia"],
     project: ["authorized projects", "oprávněné projekty"],
-    item: ["authorized items", "oprávněné položky"],
+    item: queryState.group_by.includes("procurement_action")
+      ? ["authorized planned actions", "oprávněné plánované akce"]
+      : ["authorized items", "oprávněné položky"],
   };
   return labels[queryState.granularity][language === "en" ? 0 : 1];
 }
@@ -550,6 +558,7 @@ function queryGroupingLabel(
     portfolio: ["portfolio", "portfolio"],
     project: ["project", "projekt"],
     item: ["item", "položka"],
+    procurement_action: ["planned action", "plánovaná akce"],
     schedule_status: ["schedule status", "stav harmonogramu"],
   };
   return labels[grouping][language === "en" ? 0 : 1];
@@ -560,21 +569,28 @@ function sourceShapeDoesNotMatchQuery(
   snapshot: DirectorCopilotV2Snapshot,
 ): boolean {
   if (!outcome.items.length) return false;
-  const granularity = snapshot.plan.nodes.find(
+  const request = snapshot.plan.nodes.find(
     (node) => node.application === outcome.application,
-  )?.request?.parameters.granularity;
-  const expected = expectedEntityType(outcome.application, granularity ?? null);
+  )?.request?.parameters;
+  const expected = expectedEntityType(
+    outcome.application,
+    request?.granularity ?? null,
+    request?.group_by ?? [],
+  );
   return expected !== null && outcome.items.some((item) => item.entity_type !== expected);
 }
 
 function expectedEntityType(
   application: DirectorCopilotV2SourceOutcome["application"],
   granularity: string | null,
+  groupBy: string[],
 ): DirectorCopilotV2Item["entity_type"] | null {
   if (granularity === "project") return "project";
   if (granularity === "portfolio") return "portfolio";
   if (granularity !== "item") return null;
-  if (application === "budget") return "budget_item";
+  if (application === "budget") {
+    return groupBy.includes("procurement_action") ? "procurement_action" : "budget_item";
+  }
   if (application === "projectflow") return "project";
   return "need";
 }
@@ -600,11 +616,13 @@ function countEntityLabel(
   language: ResponseLanguage,
 ): string {
   if (language === "en") {
+    if (application === "budget" && queryState.group_by.includes("procurement_action")) return "planned actions";
     if (application === "budget" && queryState.granularity === "item") return "plan items";
     if (application === "projectflow") return "projects";
     if (application === "archflow") return "needs";
     return "items";
   }
+  if (application === "budget" && queryState.group_by.includes("procurement_action")) return "plánovaných akcí";
   if (application === "budget" && queryState.granularity === "item") return "položek plánu";
   if (application === "projectflow") return "projektů";
   if (application === "archflow") return "potřeb";
@@ -618,7 +636,9 @@ function rankItems(
   const sort = queryState.sort;
   if (!sort) return { items: outcome.items, topOnly: false };
   const comparable = outcome.items.flatMap((item) => {
-    const fact = item.facts.find((candidate) => candidate.key === sort.metric);
+    const fact = item.facts.find(
+      (candidate) => candidate.key === operationFactKey(item, sort.metric),
+    );
     return typeof fact?.value === "number" ? [{ item, fact }] : [];
   });
   if (!comparable.length || !comparableCurrencies(comparable.map(({ fact }) => fact))) {
@@ -655,6 +675,7 @@ function preferredFactKeys(
   const available = new Set(items.flatMap((item) => item.facts.map((fact) => fact.key)));
   const preferences = {
     budget: [
+      "procurement_action.planned_amount",
       "budget.plan_amount",
       "budget.actual_amount",
       "budget.forecast_amount",
@@ -733,6 +754,7 @@ function formatFact(
 function factLabel(key: string, language: ResponseLanguage): string {
   const labels: Record<string, [string, string]> = {
     "budget.plan_amount": ["Plan", "Plán"],
+    "procurement_action.planned_amount": ["Planned amount", "Plánovaná hodnota"],
     "budget.actual_amount": ["Actual", "Skutečnost"],
     "budget.forecast_amount": ["Forecast", "Výhled"],
     "budget.commitments_amount": ["Commitments", "Závazky"],
@@ -749,6 +771,13 @@ function factLabel(key: string, language: ResponseLanguage): string {
     "archflow.need.budget_handoff_status": ["Budget handoff", "Předání do Budgetu"],
   };
   return labels[key]?.[language === "en" ? 0 : 1] ?? key;
+}
+
+function operationFactKey(item: DirectorCopilotV2Item, metric: string): string {
+  if (item.entity_type === "procurement_action" && metric === "budget.plan_amount") {
+    return "procurement_action.planned_amount";
+  }
+  return metric;
 }
 
 function baseResponse(input: {
