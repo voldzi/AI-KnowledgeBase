@@ -108,9 +108,9 @@ jobs:
           pnpm build
       - name: Run end-to-end tests
         run: |
-          # A partial cache can contain the browser manifest but not its binary.
-          # Force Playwright to reconcile Chromium before relying on the cache.
-          pnpm exec playwright install --force chromium
+          # The runner keeps this cache across jobs. Playwright verifies it and
+          # downloads Chromium only when it is missing or incompatible.
+          pnpm exec playwright install chromium
           pnpm test:e2e
 
   python-services:
