@@ -158,6 +158,12 @@ spotřebitelsky způsobilá pravidla. Uchová vrácené identifikátory balíčk
 pravidla, katalogu, `source_version` a citace jako rozhodovací evidenci.
 `valid_on` je datum posuzované operace, nikoli datum HTTP požadavku.
 
+Pokud autorizace vyřadí jinak účinný balíček, `consumer_view=true` může vrátit
+výhradně omezené varování `CONTROLLED_RULE_RELEVANT_SOURCE_ACCESS_DENIED`.
+Varování neobsahuje identifikátor, název, počet ani obsah skrytého balíčku.
+Chat je používá jen k odlišení nepřístupného pravidla od pravidla, které v daný
+den skutečně neexistuje; v obou případech zůstává odpověď fail-closed.
+
 Prázdný výsledek, konflikt, zastíněné pravidlo, chybějící citace, neznámý
 reason kód nebo nedostupná autorizační služba znamená fail-closed. Aplikace smí
 zobrazit vysvětlení uživateli, ale nesmí dopočítat limit ani nahradit pravidlo

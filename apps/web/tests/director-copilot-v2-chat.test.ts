@@ -535,6 +535,32 @@ describe("Director Copilot V2 active chat", () => {
     assert.ok(response.warnings.includes("LIVE_DATA_CONTRACT_REJECTED"));
     assert.ok(response.warnings.includes("LIVE_DATA_FALLBACK_BLOCKED"));
   });
+
+  it("explains a ProjectFlow no-data reason without falling back to documents", async () => {
+    const message = "Jaký je stav projektů?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-06T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-projectflow-scope",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: { registry: { createAuditEvent: async () => ({}) } } as unknown as ApiClients,
+      config: config(),
+      intent: "project_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: projectflowNoDataFetcher("PROJECTFLOW_SCOPE_NOT_COVERED"),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.match(response.answer ?? "", /nepokrývá požadované portfolio/i);
+    assert.ok(response.warnings.includes("PROJECTFLOW_SCOPE_NOT_COVERED"));
+    assert.equal((response.answer ?? "").includes("dokument"), false);
+  });
 });
 
 function fetcher(): typeof fetch {
@@ -561,6 +587,34 @@ function fetcher(): typeof fetch {
         : budgetProjectShapedOrganizationResponse();
     return Response.json({
       ...source,
+      tool_id: request.tool_id,
+      tool_call_id: request.tool_call_id,
+    });
+  };
+}
+
+function projectflowNoDataFetcher(reason: string): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (init?.method === "GET") {
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    const response = structuredClone(projectflow.responses.no_data);
+    response.completeness.missing_reasons = [reason];
+    response.warnings = [reason];
+    return Response.json({
+      ...response,
       tool_id: request.tool_id,
       tool_call_id: request.tool_call_id,
     });

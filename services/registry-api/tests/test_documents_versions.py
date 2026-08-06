@@ -986,6 +986,11 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     )
     assert public_only_rules.status_code == 200
     assert public_only_rules.json()["rules"] == []
+    assert public_only_rules.json()["packages"] == []
+    assert "CONTROLLED_RULE_RELEVANT_SOURCE_ACCESS_DENIED" in public_only_rules.json()[
+        "warnings"
+    ]
+    assert directive["document_id"] not in str(public_only_rules.json())
 
     chat_headers = {
         "X-AKL-Subject": "user_employee",

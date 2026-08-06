@@ -337,6 +337,27 @@ describe("controlled rule assistant answer", () => {
     assert.deepEqual(response.citations, []);
     assert.ok(response.warnings.includes("CONTROLLED_RULE_CONFLICT"));
   });
+
+  it("explains a relevant but inaccessible governed source without disclosing it", () => {
+    const data = fixture();
+    data.rules = [];
+    data.packages = [];
+    data.warnings = ["CONTROLLED_RULE_RELEVANT_SOURCE_ACCESS_DENIED"];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaký je limit na průzkum trhu?",
+      conversationId: "conv_access_denied",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.match(response.answer ?? "", /mimo váš aktuální přístup/i);
+    assert.match(response.missing_information ?? "", /přístup/i);
+    assert.equal(response.citations.length, 0);
+    assert.equal((response.answer ?? "").includes("Směrnice"), false);
+  });
 });
 
 function controlledRule(input: {

@@ -250,6 +250,10 @@ profile revision 3 rules registered in the normative catalog are returned, and
 catalog, citation or precedence defects fail closed. This mode does not grant
 access; it only narrows the effective packages already authorized for the
 signed-in user and cannot be combined with `include_inactive=true`.
+When authorization excludes an otherwise effective package, this user-facing
+projection can include the bounded warning
+`CONTROLLED_RULE_RELEVANT_SOURCE_ACCESS_DENIED`. It does not disclose the
+package identity, title, number of rules, or rule content.
 Application consumers do not receive the generic endpoint's inactive-package
 controls or internal verification fields. Budget uses the closed
 `akb-controlled-rules-1` contract at
