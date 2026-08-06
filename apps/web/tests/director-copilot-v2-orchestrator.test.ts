@@ -361,6 +361,45 @@ describe("Director Copilot V2 orchestration", () => {
     assert.equal(result.snapshot.evidence.status, "passed");
   });
 
+  it("treats cursor-only partial pages as complete after the full verified set is loaded", async () => {
+    const state = resolveConversationQuery({
+      message: "Kolik projektů evidujeme?",
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    }).state;
+    let calls = 0;
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Kolik projektů evidujeme?",
+      language: "cs",
+      context: projectedContext(),
+      intent: "project_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async (_application, request) => {
+          calls += 1;
+          const response = structuredClone(projectflow.responses.complete);
+          response.tool_call_id = request.tool_call_id;
+          response.items[0]!.entity_id = `project-${calls}`;
+          response.items[0]!.canonical_id = `stratos:project:project-${calls}`;
+          response.items[0]!.deep_link = `https://stratos.example.test/projectflow/projects/project-${calls}`;
+          response.status = calls < 3 ? "partial" : "complete";
+          response.next_cursor = calls < 3 ? `cursor-page-${calls + 1}` : null;
+          response.completeness.candidate_count = 3;
+          // Source pages attest their own page coverage. AKB establishes the
+          // complete result only after it has verified the cursor sequence.
+          response.completeness.authorized_result_complete = false;
+          return response;
+        },
+      },
+      now: new Date("2026-07-25T10:00:00.000Z"),
+    });
+
+    assert.equal(calls, 3);
+    assert.equal(result.snapshot.outcomes[0]?.status, "complete");
+    assert.equal(result.snapshot.outcomes[0]?.authorized_result_complete, true);
+    assert.equal(result.snapshot.evidence.status, "passed");
+  });
+
   it("fails closed when any count page changes the source-owned candidate count", async () => {
     const state = resolveConversationQuery({
       message: "Kolik projektů evidujeme?",

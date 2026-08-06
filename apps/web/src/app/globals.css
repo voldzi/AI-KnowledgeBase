@@ -520,7 +520,9 @@ button {
     minmax(420px, 1fr)
     var(--akb-chat-source-resizer-track)
     var(--akb-chat-source-track);
+  grid-template-rows: minmax(0, 1fr);
   min-height: calc(100vh - 104px);
+  overflow: hidden;
   row-gap: 14px;
 }
 
