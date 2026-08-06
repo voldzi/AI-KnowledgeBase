@@ -153,6 +153,13 @@ Git replacement refs/config injection and
 ambient Docker daemon routing are rejected; production Docker must be the
 local default Unix socket.
 
+## Internal CI
+
+AKB uses internal Gitea as its primary Git source. The first Gitea Actions
+workflow is a shadow verification path only and cannot deploy AKB. Its runner
+isolation, required evidence before promotion, and rollback are documented in
+`docs/OPERATIONS/gitea-actions-shadow-ci.md`.
+
 ## Configuration
 
 Configuration starts from `.env.example`. Values are namespaced with `AKL_*`
