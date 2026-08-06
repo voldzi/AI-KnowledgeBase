@@ -561,6 +561,32 @@ describe("Director Copilot V2 active chat", () => {
     assert.ok(response.warnings.includes("PROJECTFLOW_SCOPE_NOT_COVERED"));
     assert.equal((response.answer ?? "").includes("dokument"), false);
   });
+
+  it("explains an authorized ProjectFlow scope with no matching projects", async () => {
+    const message = "Jaký je aktuální stav projektového portfolia?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-06T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-projectflow-empty-scope",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: { registry: { createAuditEvent: async () => ({}) } } as unknown as ApiClients,
+      config: config(),
+      intent: "project_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: projectflowNoDataFetcher("PROJECTFLOW_NO_PROJECTS_IN_SCOPE"),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.match(response.answer ?? "", /oprávněném rozsahu ProjectFlow nejsou projekty/i);
+    assert.ok(response.warnings.includes("PROJECTFLOW_NO_PROJECTS_IN_SCOPE"));
+    assert.equal((response.answer ?? "").includes("dokument"), false);
+  });
 });
 
 function fetcher(): typeof fetch {

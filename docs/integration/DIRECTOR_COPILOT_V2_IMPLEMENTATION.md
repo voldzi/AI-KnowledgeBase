@@ -12,12 +12,15 @@ Wire contract: `director-copilot-2`, revision `2.0.3`
 - manifest SHA-256: `713d8b7d8a3a1b7873d244d4a244c3d08b1f43d0692669656100ba1454ff99a6`
 - error SHA-256: `99949d198294a947366cf099b2af7023979f538fadab8bbec48fffce8e9bdeab`
 - OpenAPI SHA-256: `9c94e2f75953511d17b178085ac57cf34594dd9f3cb2ed56799093611e8fb373`
-- manifest bundle SHA-256: `5f4428e6a77d1c41f7d804d23cdf9263c57b15a2643cbde080e1be3de1e95c78`
+- manifest bundle SHA-256: `a13c8b1e9724c7547bbf6cc7936c8f06c9bbea587beab230a754ac67e69e7716`
 
 The production build verifies these hashes and byte identity of runtime schema
-copies. The immutable `2.0.3` bundle still contains the retired AIIP manifest;
-AKB preserves those bytes for contract verification but excludes that manifest
-from the active runtime catalog.
+copies. The immutable `2.0.3` bundle pins ProjectFlow manifest
+`projectflow-portfolio-delivery-overview-1.0.3`, including bounded no-data
+reasons for an unassigned portfolio and a covered scope with no matching
+projects. The bundle still contains the retired AIIP manifest; AKB preserves
+those bytes for contract verification but excludes that manifest from the active
+runtime catalog.
 
 ## AKB behavior
 

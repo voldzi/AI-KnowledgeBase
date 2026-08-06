@@ -357,6 +357,16 @@ function noDataAnswer(
       ? "The current ProjectFlow scope cannot be matched to an organizational unit yet."
       : "Aktuální rozsah ProjectFlow zatím nelze přiřadit k organizační jednotce.";
   }
+  if (reasons.has("PROJECTFLOW_PORTFOLIO_UNASSIGNED")) {
+    return language === "en"
+      ? "The current ProjectFlow scope is not assigned to a portfolio yet."
+      : "Aktuální rozsah ProjectFlow zatím není přiřazen k portfoliu.";
+  }
+  if (reasons.has("PROJECTFLOW_NO_PROJECTS_IN_SCOPE")) {
+    return language === "en"
+      ? "The authorized ProjectFlow scope contains no projects matching this query."
+      : "V oprávněném rozsahu ProjectFlow nejsou projekty odpovídající tomuto dotazu.";
+  }
   if (reasons.has("PROJECTFLOW_NO_DATA")) {
     return language === "en"
       ? "ProjectFlow contains no authorized projects matching this query."
