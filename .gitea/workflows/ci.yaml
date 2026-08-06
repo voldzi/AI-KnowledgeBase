@@ -123,8 +123,11 @@ jobs:
         env:
           PYTHONPATH: .
         run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
           ${{ matrix.install-command }}
-          python3 -m pytest
+          python -m pytest
 
   compose:
     name: Docker Compose configuration
