@@ -44,6 +44,16 @@ export function evaluateDirectorCopilotV2Evidence(input: {
   let supportedClaims = 0;
 
   for (const outcome of input.outcomes) {
+    if (outcome.status === "unavailable" && input.plan.query_state.operation === "count") {
+      checkedClaims += 1;
+      addIssue(
+        issues,
+        "LIVE_DATA_EVIDENCE_COUNT_INCOMPLETE",
+        "error",
+        outcome.application,
+      );
+      continue;
+    }
     if (outcome.status === "no_data" || outcome.status === "not_authorized" || outcome.status === "unavailable") {
       continue;
     }

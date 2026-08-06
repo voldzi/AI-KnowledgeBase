@@ -302,6 +302,10 @@ function composeResponse(
       ? "The result is partial because at least one authorized source did not return a complete result."
       : "Výsledek je částečný, protože nejméně jeden oprávněný zdroj neposkytl úplný výsledek."
     : "";
+  const partialReasonNotice = partialReasonsNotice(
+    orchestration.snapshot,
+    language,
+  );
   const documentNotice = orchestration.snapshot.authorized_document_ids.length
     ? language === "en"
       ? `${orchestration.snapshot.authorized_document_ids.length} related AKB document(s) were independently authorized.`
@@ -309,6 +313,7 @@ function composeResponse(
     : "";
   const answer = [
     partialNotice,
+    partialReasonNotice,
     ...correlations,
     ...sections,
     documentNotice,
@@ -327,6 +332,35 @@ function composeResponse(
     missingInformation: null,
     followUps: followUps(language, orchestration.plan.intent),
   });
+}
+
+function partialReasonsNotice(
+  snapshot: DirectorCopilotV2Snapshot,
+  language: ResponseLanguage,
+): string {
+  const reasons = new Set(snapshot.outcomes.flatMap((outcome) => outcome.reason_codes));
+  const notices: string[] = [];
+  if (reasons.has("BUDGET_APPROVED_PLAN_MISSING")) {
+    notices.push(language === "en"
+      ? "Some authorized budget branches have no approved plan for the selected period. They are not included in the total and were not replaced with zero."
+      : "Některé oprávněné rozpočtové větve nemají pro zvolené období schválený plán. Nejsou zahrnuty do součtu ani nahrazeny nulou.");
+  }
+  if (reasons.has("BUDGET_CURRENCY_CONFLICT")) {
+    notices.push(language === "en"
+      ? "Values in different currencies were not added together."
+      : "Hodnoty v různých měnách nebyly sečteny.");
+  }
+  if (reasons.has("BUDGET_INFORMATION_POLICY_DENIED")) {
+    notices.push(language === "en"
+      ? "Part of the requested result is restricted by information-handling rules."
+      : "Část požadovaného výsledku omezují pravidla nakládání s informacemi.");
+  }
+  if (reasons.has("BUDGET_SCOPE_NOT_COVERED")) {
+    notices.push(language === "en"
+      ? "Part of the requested scope is not covered by your current access."
+      : "Část požadovaného rozsahu nepokrývá vaše aktuální oprávnění.");
+  }
+  return notices.join(" ");
 }
 
 function renderStratosRelationships(

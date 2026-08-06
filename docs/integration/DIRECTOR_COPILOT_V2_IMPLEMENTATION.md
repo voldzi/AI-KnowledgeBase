@@ -35,8 +35,14 @@ from the active runtime catalog.
 5. Traverse at most five cursor pages and 500 authorized items per tool for
    list and detail queries. For a count, traverse every cursor page up to the
    same 500-item safety bound; AKB returns a count only when the unique loaded
-   items equal the source-owned `candidate_count` and the final cursor is empty.
-   An unfinished page sequence remains fail-closed as partial.
+   items equal the source-owned `candidate_count`, the final cursor is empty,
+   the final page is complete, and every intermediate page is a warning-free
+   pagination partial. Cursor-only partial status is not propagated to the
+   aggregate. Any candidate-count drift, duplicate canonical identity,
+   source-version or period drift, material warning, incomplete final page or
+   unfinished sequence remains fail-closed. A rejected count sequence is also
+   recorded as failed evidence; it cannot appear as evidence-passed merely
+   because no source items were rendered.
 6. Distinguish `complete`, `partial`, `no_data`, `not_authorized` and
    `unavailable`.
 7. Reauthorize the actor and exact scope before synthesis.
@@ -62,8 +68,11 @@ from the active runtime catalog.
 
 For a partial organization aggregate, the chat labels the source as an
 **authorized part of the organization** and states directly beside the result
-that it is not complete for the entire organization. AKB never presents a
-partial aggregate as an organization-wide total.
+that it is not complete for the entire organization. A recognized Budget
+reason is rendered in user language: for example, missing approved plans mean
+that the affected authorized branches are excluded and are never replaced by
+zero. Technical reason codes remain in the API and audit metadata. AKB never
+presents a partial aggregate as an organization-wide total.
 
 The central access projection may identify the Budget application as either
 `budget` or the STRATOS catalog id `budget-contract`. AKB maps only this closed
