@@ -80,8 +80,18 @@ jobs:
           export DOCKER_CONFIG="${RUNNER_TEMP}/docker-config"
           mkdir -p "${DOCKER_CONFIG}"
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends shellcheck docker-compose-plugin
+          apt-get install -y -qq --no-install-recommends shellcheck ca-certificates curl
           rm -rf /var/lib/apt/lists/*
+          compose_plugin_dir="/usr/local/lib/docker/cli-plugins"
+          compose_plugin="${compose_plugin_dir}/docker-compose"
+          mkdir -p "${compose_plugin_dir}"
+          curl -fsSL --retry 3 \
+            https://github.com/docker/compose/releases/download/v2.39.2/docker-compose-linux-x86_64 \
+            -o "${compose_plugin}"
+          printf '%s  %s\n' \
+            a55a8cd4ef103aac282812554e531aac8df7e914a287ee81e14d695556a22902 \
+            "${compose_plugin}" | sha256sum -c -
+          chmod 0755 "${compose_plugin}"
           docker compose version >/dev/null
           setpriv --reuid=1001 --regid=107 --clear-groups \
             bash scripts/check_immutable_release_workflow.sh
