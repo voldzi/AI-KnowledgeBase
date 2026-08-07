@@ -19,7 +19,7 @@ env:
 jobs:
   standards:
     name: Repository standards
-    runs-on: stratos-gitea-ci-docker
+    runs-on: akb-gitea-light
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -109,7 +109,7 @@ jobs:
 
   web:
     name: Web
-    runs-on: stratos-gitea-ci-docker
+    runs-on: akb-gitea-light
     defaults:
       run:
         working-directory: apps/web
@@ -135,7 +135,7 @@ jobs:
 
   python-services:
     name: Python / ${{ matrix.service }}
-    runs-on: stratos-gitea-ci-docker
+    runs-on: akb-gitea-light
     strategy:
       fail-fast: false
       matrix:
@@ -174,7 +174,7 @@ jobs:
 
   compose:
     name: Docker Compose configuration
-    runs-on: stratos-gitea-ci-docker
+    runs-on: akb-gitea-light
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
