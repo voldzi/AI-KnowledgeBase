@@ -13,9 +13,7 @@
   ],
   "security": [
     {
-      "bearerAuth": [
-
-      ]
+      "bearerAuth": []
     }
   ],
   "tags": [
@@ -44,9 +42,7 @@
         "operationId": "aiip_harmonize_v1",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -236,9 +232,7 @@
         "operationId": "aiip_duplicates_search_v1",
         "security": [
           {
-            "bearerAuth": [
-
-            ]
+            "bearerAuth": []
           }
         ],
         "parameters": [
