@@ -62,7 +62,16 @@ jobs:
         shell: bash
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
+            fetch --depth=1 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
       - name: Validate immutable release workflow
         run: |
           set -euo pipefail
