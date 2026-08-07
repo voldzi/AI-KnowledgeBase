@@ -77,8 +77,6 @@ jobs:
           # The contract test deliberately injects SIGKILL at release boundaries.
           # Run it directly in the dedicated repo-scoped Docker executor so its
           # fake Docker boundary remains visible to the same shell process.
-          export DOCKER_CONFIG="${RUNNER_TEMP}/docker-config"
-          mkdir -p "${DOCKER_CONFIG}"
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends shellcheck ca-certificates curl
           rm -rf /var/lib/apt/lists/*
