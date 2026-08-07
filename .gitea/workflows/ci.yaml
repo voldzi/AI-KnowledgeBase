@@ -92,6 +92,18 @@ jobs:
           chmod 0755 "${compose_plugin}"
           mkdir -p /usr/libexec/docker/cli-plugins
           cp "${compose_plugin}" /usr/libexec/docker/cli-plugins/docker-compose
+          docker_bin="$(command -v docker)"
+          mv "${docker_bin}" "${docker_bin}.real"
+          cat >"${docker_bin}" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1-}" == compose ]]; then
+  shift
+  exec /usr/local/lib/docker/cli-plugins/docker-compose "$@"
+fi
+exec "$(dirname "$0")/docker.real" "$@"
+SH
+          chmod 0755 "${docker_bin}"
           docker compose version >/dev/null
           setpriv --reuid=1001 --regid=107 --clear-groups \
             bash scripts/check_immutable_release_workflow.sh
