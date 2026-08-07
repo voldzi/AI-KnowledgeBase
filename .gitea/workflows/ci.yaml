@@ -74,6 +74,10 @@ jobs:
       - name: Validate immutable release workflow
         run: |
           set -euo pipefail
+          # The immutable contract intentionally uses the exact production
+          # PostgreSQL tool image from the runner host; load it by digest before
+          # entering the network-isolated validation container.
+          docker pull --quiet postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
           # The contract test deliberately injects SIGKILL at release boundaries.
           # Keep that signal inside a disposable, non-privileged container rather
           # than allowing a host executor to mistake it for a failed worker.
