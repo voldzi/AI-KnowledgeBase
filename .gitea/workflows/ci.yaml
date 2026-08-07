@@ -84,8 +84,8 @@ jobs:
             --entrypoint /bin/bash \
             --network none \
             --read-only \
-            --tmpfs /workspace:rw,noexec,nosuid,size=2g \
-            --tmpfs /tmp:rw,noexec,nosuid,size=2g \
+            --tmpfs /workspace:rw,noexec,nosuid,size=2g,uid=1001,gid=107 \
+            --tmpfs /tmp:rw,noexec,nosuid,size=2g,uid=1001,gid=107 \
             --user 1001:107 \
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
