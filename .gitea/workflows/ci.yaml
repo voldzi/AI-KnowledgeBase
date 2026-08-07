@@ -82,7 +82,8 @@ jobs:
             apt-get install -y -qq --no-install-recommends shellcheck
             rm -rf /var/lib/apt/lists/*
           fi
-          bash scripts/check_immutable_release_workflow.sh
+          setpriv --reuid=1001 --regid=107 --clear-groups \
+            bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
