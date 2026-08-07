@@ -58,6 +58,9 @@ jobs:
     name: Immutable release contract
     runs-on: akb-gitea-exclusive
     container: akb/gitea-ci-tools:0.2.0
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
