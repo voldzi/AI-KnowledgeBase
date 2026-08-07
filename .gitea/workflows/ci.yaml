@@ -56,7 +56,7 @@ jobs:
 
   immutable-release:
     name: Immutable release contract
-    runs-on: stratos-gitea-ci-host
+    runs-on: stratos-gitea-ci-docker
     defaults:
       run:
         shell: bash
@@ -69,8 +69,7 @@ jobs:
           git init .
           git remote remove origin 2>/dev/null || true
           git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
-          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
-            fetch --depth=1 origin "${{ github.sha }}"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" fetch --depth=1 origin "${{ github.sha }}"
           git checkout --detach FETCH_HEAD
       - name: Validate immutable release workflow
         run: |
