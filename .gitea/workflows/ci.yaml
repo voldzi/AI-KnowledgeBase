@@ -56,7 +56,7 @@ jobs:
 
   immutable-release:
     name: Immutable release contract
-    runs-on: stratos-gitea-ci-docker
+    runs-on: stratos-gitea-ci-host
     defaults:
       run:
         shell: bash
@@ -74,29 +74,10 @@ jobs:
       - name: Validate immutable release workflow
         run: |
           set -euo pipefail
-          # The immutable contract intentionally uses the exact production
-          # PostgreSQL tool image from the runner host; load it by digest before
-          # entering the network-isolated validation container.
-          docker pull --quiet postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
           # The contract test deliberately injects SIGKILL at release boundaries.
-          # Keep that signal inside a disposable, non-privileged container rather
-          # than allowing a host executor to mistake it for a failed worker.
-          # The Docker runner uses an isolated named workspace volume, which is
-          # not visible to the host Docker daemon. Stream the checked-out tree
-          # into the disposable contract container instead of binding a path.
-          tar -C "$PWD" -cf - . | docker run --rm --pull never --init -i \
-            --entrypoint /bin/bash \
-            --network none \
-            --read-only \
-            --tmpfs /workspace:rw,noexec,nosuid,size=2g,uid=1001,gid=107 \
-            --tmpfs /tmp:rw,noexec,nosuid,size=2g,uid=1001,gid=107 \
-            --user 1001:107 \
-            --cap-drop ALL \
-            --security-opt no-new-privileges:true \
-            --volume /var/run/docker.sock:/var/run/docker.sock \
-            --workdir /workspace \
-            akb/gitea-ci-tools:0.2.0 \
-            -c 'tar -xf - -C /workspace && bash scripts/check_immutable_release_workflow.sh'
+          # Run it on the dedicated repo-scoped host executor because its fake
+          # Docker boundary must remain visible to the same shell process.
+          bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
