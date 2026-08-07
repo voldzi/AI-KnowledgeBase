@@ -90,6 +90,8 @@ jobs:
             a55a8cd4ef103aac282812554e531aac8df7e914a287ee81e14d695556a22902 \
             "${compose_plugin}" | sha256sum -c -
           chmod 0755 "${compose_plugin}"
+          mkdir -p /usr/libexec/docker/cli-plugins
+          cp "${compose_plugin}" /usr/libexec/docker/cli-plugins/docker-compose
           docker compose version >/dev/null
           setpriv --reuid=1001 --regid=107 --clear-groups \
             bash scripts/check_immutable_release_workflow.sh
