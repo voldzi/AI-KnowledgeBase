@@ -56,7 +56,7 @@ jobs:
 
   immutable-release:
     name: Immutable release contract
-    runs-on: stratos-gitea-ci-docker
+    runs-on: stratos-gitea-ci-tools
     defaults:
       run:
         shell: bash
