@@ -76,12 +76,14 @@ jobs:
           test -n "$runner_data_host_path"
           workspace_host_path="${runner_data_host_path}${PWD#/data}"
           test -f "$workspace_host_path/scripts/check_immutable_release_workflow.sh"
+          docker_socket_gid="$(stat -c '%g' /var/run/docker.sock)"
           docker run --rm --pull never --init \
             --entrypoint /bin/bash \
             --network none \
             --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,size=2g \
             --user 1001:107 \
+            --group-add "$docker_socket_gid" \
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
             --volume "$workspace_host_path:/workspace:ro" \
