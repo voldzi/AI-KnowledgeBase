@@ -56,7 +56,7 @@ jobs:
 
   immutable-release:
     name: Immutable release contract
-    runs-on: stratos-gitea-ci-host
+    runs-on: stratos-gitea-ci-docker
     defaults:
       run:
         shell: bash
@@ -75,8 +75,8 @@ jobs:
         run: |
           set -euo pipefail
           # The contract test deliberately injects SIGKILL at release boundaries.
-          # Run it on the dedicated repo-scoped host executor because its fake
-          # Docker boundary must remain visible to the same shell process.
+          # Run it directly in the dedicated repo-scoped Docker executor so its
+          # fake Docker boundary remains visible to the same shell process.
           bash scripts/check_immutable_release_workflow.sh
 
   web:
