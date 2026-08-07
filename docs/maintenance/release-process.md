@@ -42,8 +42,8 @@ The production immutable release remains a separate operator action on
 `docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
 CI must never use the production deployment runner or production environment.
 
-The CI VM owns its non-secret build prerequisites. Its baseline includes Docker,
-Ruby 3.3, `shellcheck`, and the Chromium runtime libraries required by the web
+The CI VM owns its non-secret build prerequisites. Its Debian-based runner image
+includes Docker, Ruby, `shellcheck`, and the Chromium runtime libraries required by the web
 end-to-end test. CI jobs must not use `sudo`; a repository workflow can execute
 arbitrary pull-request code and therefore receives only the `akbci` service
 account.

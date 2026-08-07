@@ -49,8 +49,8 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Smernice pro spravu rizene dokumentace")).toBeVisible();
 
     await page.getByPlaceholder("Název, ID, gestor, vlastník nebo štítek").fill("bezpecnostnich");
-    await expect(page.getByText("Zobrazeno 1 z 1")).toBeVisible();
     await expect(page.getByText("Metodika vyjimek z bezpecnostnich pravidel")).toBeVisible();
+    await expect(page.getByText("Zobrazeno 1 z 1")).toBeVisible();
 
     await page.locator("#document-registry-classification").click();
     await page.getByRole("option", { name: /Omezené/ }).click();

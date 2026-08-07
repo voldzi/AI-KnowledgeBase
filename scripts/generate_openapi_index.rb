@@ -16,6 +16,31 @@ STRATOS_AIIP_UPLOAD_PREFLIGHT_PATH = "/api/stratos/upload/preflight"
 STRATOS_AIIP_UPLOAD_CONTENT_PATH = "/api/stratos/upload/sessions/{sessionId}/content"
 STRATOS_AIIP_UPLOAD_CONFIRM_PATH = "/api/stratos/upload/sessions/{sessionId}/confirm"
 
+# JSON.pretty_generate changed its rendering of empty arrays and objects between
+# Ruby releases. The OpenAPI files are checked into source control, so their
+# representation must not depend on the Ruby version used by a developer or CI.
+def stable_json(value, depth = 0)
+  indent = "  " * depth
+  child_indent = "  " * (depth + 1)
+
+  case value
+  when Hash
+    return "{}" if value.empty?
+
+    entries = value.map do |key, nested_value|
+      "#{child_indent}#{JSON.generate(key.to_s)}: #{stable_json(nested_value, depth + 1)}"
+    end
+    "{\n#{entries.join(",\n")}\n#{indent}}"
+  when Array
+    return "[]" if value.empty?
+
+    entries = value.map { |nested_value| "#{child_indent}#{stable_json(nested_value, depth + 1)}" }
+    "[\n#{entries.join(",\n")}\n#{indent}]"
+  else
+    JSON.generate(value)
+  end
+end
+
 SERVICES = [
   {
     id: "registry-api",
@@ -1435,8 +1460,8 @@ Dir.glob(File.join(WEB_API_ROOT, "**", "route.ts")).sort.each do |route_file|
 end
 
 FileUtils.mkdir_p(File.dirname(OUTPUT))
-next_content = JSON.pretty_generate(spec) + "\n"
-next_aiip_content = JSON.pretty_generate(aiip_fragment(spec)) + "\n"
+next_content = stable_json(spec) + "\n"
+next_aiip_content = stable_json(aiip_fragment(spec)) + "\n"
 
 if ARGV.include?("--check")
   [[OUTPUT, next_content], [AIIP_OUTPUT, next_aiip_content]].each do |path, content|
