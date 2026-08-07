@@ -77,23 +77,22 @@ jobs:
           # The contract test deliberately injects SIGKILL at release boundaries.
           # Keep that signal inside a disposable, non-privileged container rather
           # than allowing a host executor to mistake it for a failed worker.
-          # The Docker daemon sees the runner's host paths, not its /data bind
-          # mount. Resolve the corresponding host path from the runner itself.
-          workspace_host_path="$PWD"
-          test -f "$workspace_host_path/scripts/check_immutable_release_workflow.sh"
-          docker run --rm --pull never --init \
+          # The Docker runner uses an isolated named workspace volume, which is
+          # not visible to the host Docker daemon. Stream the checked-out tree
+          # into the disposable contract container instead of binding a path.
+          tar -C "$PWD" -cf - . | docker run --rm --pull never --init -i \
             --entrypoint /bin/bash \
             --network none \
             --read-only \
+            --tmpfs /workspace:rw,noexec,nosuid,size=2g \
             --tmpfs /tmp:rw,noexec,nosuid,size=2g \
             --user 1001:107 \
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
-            --volume "$workspace_host_path:/workspace:ro" \
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --workdir /workspace \
             akb/gitea-ci-tools:0.2.0 \
-            scripts/check_immutable_release_workflow.sh
+            -c 'tar -xf - -C /workspace && scripts/check_immutable_release_workflow.sh'
 
   web:
     name: Web
