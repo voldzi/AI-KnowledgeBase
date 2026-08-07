@@ -92,7 +92,7 @@ jobs:
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --workdir /workspace \
             akb/gitea-ci-tools:0.2.0 \
-            -c 'tar -xf - -C /workspace && scripts/check_immutable_release_workflow.sh'
+            -c 'tar -xf - -C /workspace && bash scripts/check_immutable_release_workflow.sh'
 
   web:
     name: Web
