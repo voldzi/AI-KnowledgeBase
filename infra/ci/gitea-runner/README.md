@@ -17,3 +17,12 @@ credential, or SSH key for `docker.home.cz`.
 
 The Docker socket is present only for the immutable-release contract check.
 Workflows must not use it to deploy AKB or access production configuration.
+
+The repository-scoped systemd runner must advertise exactly:
+
+```text
+akb-gitea-ci:docker://akb/gitea-ci-tools:0.2.0
+```
+
+Its capacity is one. Labels beginning with `stratos-gitea-ci` are reserved for
+the STRATOS runner and must not be configured on the AKB runner.
