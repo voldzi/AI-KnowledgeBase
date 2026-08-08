@@ -27,35 +27,50 @@ Required checks:
 
 ## CI Runtime
 
-AKB pull-request and `main` CI run on the repository-specific self-hosted
-runner `akb-ci`. It is hosted on the isolated `stratos-ci-runner-01` VM and
-has no production secrets, production SSH credential, or access to
-`docker.home.cz`. VM 125 (`stratos-ci-runner-01`) hosts three AKB runners. Two workers use the
-`akb-ci-light` label for independent standards, web, Python and Compose checks.
-One `akb-ci-exclusive` worker runs the immutable release and Registry/PostgreSQL
-jobs serially because they use Docker, fixed local ports or release-state
-fixtures. Light workers retain the standard `self-hosted`, `Linux` and `X64`
-labels; the exclusive worker deliberately uses only `akb-ci-exclusive`. Do not
-route Docker integration work to a light worker.
+AKB's primary internal Git server is Gitea. Its verification workflow runs on
+the repository-scoped runner `stratos-gitea-ci-vm125-akb` on VM 125
+(`stratos-ci-runner-01`). Historical system names remain unchanged:
+
+- system account: `stratos-ci`
+- systemd service: `stratos-gitea-ci-runner.service`
+- workflow label: `akb-gitea-ci`
+- full runner label: `akb-gitea-ci:docker://akb/gitea-ci-tools:0.2.0`
+- capacity: one concurrent job
+
+The unique AKB label prevents Gitea from scheduling STRATOS work on this
+runner or AKB work on a STRATOS runner. No AKB workflow may use a label that
+starts with `stratos-gitea-ci`. The existing GitHub runners remain available as
+an unchanged parallel and rollback CI path until Gitea equivalence is formally
+accepted.
+
+The Gitea runner has no production secrets, production SSH credential, or
+access to `docker.home.cz`. Every workflow job runs in the maintained
+`akb/gitea-ci-tools:0.2.0` container. Capacity remains one because the Docker
+socket, fixed local ports, release-state fixtures, and shared cache require
+strict isolation. Faster releases come from persistent caches, focused local
+checks, and build-once promotion, not from overlapping unsafe jobs on this
+runner.
 
 The production immutable release remains a separate operator action on
 `docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
 CI must never use the production deployment runner or production environment.
 
-The CI VM owns its non-secret build prerequisites. Its Debian-based runner image
+The CI VM owns its non-secret build prerequisites. Its Debian-based job image
 includes Docker, Ruby, `shellcheck`, and the Chromium runtime libraries required by the web
 end-to-end test. CI jobs must not use `sudo`; a repository workflow can execute
-arbitrary pull-request code and therefore receives only the `akbci` service
-account.
+arbitrary pull-request code and therefore receives only the isolated job
+container and its explicitly mounted cache and Docker socket.
 
 ### Persistent CI caches
 
 The AKB runner keeps dependency caches on the VM instead of uploading them to
 GitHub Actions cache storage:
 
-- pnpm store: `/home/akbci/.cache/akb-ci/pnpm-store`
-- pip download cache: `/home/akbci/.cache/akb-ci/pip`
-- Playwright browsers: `/home/akbci/.cache/akb-ci/playwright`
+- host cache root: `/home/stratos-ci/.cache/akb-ci`
+- container cache root: `/cache/akb-ci`
+- pnpm store: `/cache/akb-ci/pnpm-store`
+- pip download cache: `/cache/akb-ci/pip`
+- Playwright browsers: `/cache/akb-ci/playwright`
 - Docker image and build layers: the persistent Docker data root managed by the
   VM Docker daemon
 
@@ -80,7 +95,8 @@ volumes, or images used by another repository.
 2. Keep the PR scoped to one coherent change.
 3. Run relevant local validation before pushing.
 4. Push the branch and open a PR.
-5. Wait for GitHub CI to pass.
+5. Wait for the required Gitea checks and, during the parallel migration
+   period, the required GitHub checks to pass.
 6. Review the diff for runtime contracts, generated files, secrets, and documentation drift.
 7. Squash merge into `main` after checks are green.
 8. Delete the feature branch.
