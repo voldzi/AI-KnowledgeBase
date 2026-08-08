@@ -80,8 +80,9 @@ jobs:
           shellcheck --version >/dev/null
           install -d -m 0755 "${DOCKER_CONFIG}"
           docker compose version >/dev/null
+          unset DOCKER_CONFIG
           setpriv --reuid=1001 --regid=107 --clear-groups \
-            bash scripts/check_immutable_release_workflow.sh
+            env HOME=/home/akbci bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
