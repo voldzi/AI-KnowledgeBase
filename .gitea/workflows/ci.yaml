@@ -1,4 +1,4 @@
-name: AKB shadow CI
+name: AKB CI
 
 # Verification-only internal CI. It never receives production secrets, builds a
 # production release, or connects to docker.home.cz.
@@ -6,12 +6,12 @@ on:
   push:
     branches:
       - main
-      - "codex/**"
   pull_request:
   workflow_dispatch:
 
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
+  DOCKER_CONFIG: /tmp/akb-docker-config
   PIP_CACHE_DIR: /cache/akb-ci/pip
   PLAYWRIGHT_BROWSERS_PATH: /cache/akb-ci/playwright
   PNPM_STORE_DIR: /cache/akb-ci/pnpm-store
@@ -19,7 +19,7 @@ env:
 jobs:
   standards:
     name: Repository standards
-    runs-on: akb-gitea-light
+    runs-on: akb-gitea-ci
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
 
   immutable-release:
     name: Immutable release contract
-    runs-on: stratos-gitea-ci-tools
+    runs-on: akb-gitea-ci
     defaults:
       run:
         shell: bash
@@ -77,39 +77,16 @@ jobs:
           # The contract test deliberately injects SIGKILL at release boundaries.
           # Run it directly in the dedicated repo-scoped Docker executor so its
           # fake Docker boundary remains visible to the same shell process.
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends shellcheck ca-certificates curl
-          rm -rf /var/lib/apt/lists/*
-          compose_plugin_dir="/usr/local/lib/docker/cli-plugins"
-          compose_plugin="${compose_plugin_dir}/docker-compose"
-          mkdir -p "${compose_plugin_dir}"
-          curl -fsSL --retry 3 \
-            https://github.com/docker/compose/releases/download/v2.39.2/docker-compose-linux-x86_64 \
-            -o "${compose_plugin}"
-          printf '%s  %s\n' \
-            a55a8cd4ef103aac282812554e531aac8df7e914a287ee81e14d695556a22902 \
-            "${compose_plugin}" | sha256sum -c -
-          chmod 0755 "${compose_plugin}"
-          mkdir -p /usr/libexec/docker/cli-plugins
-          cp "${compose_plugin}" /usr/libexec/docker/cli-plugins/docker-compose
-          docker_bin="$(command -v docker)"
-          mv "${docker_bin}" "${docker_bin}.real"
-          printf '%s\n' \
-            '#!/usr/bin/env bash' \
-            'set -euo pipefail' \
-            'if [[ "${1-}" == compose ]]; then' \
-            '  shift' \
-            '  exec /usr/local/lib/docker/cli-plugins/docker-compose "$@"' \
-            'fi' \
-            'exec "$(dirname "$0")/docker.real" "$@"' >"${docker_bin}"
-          chmod 0755 "${docker_bin}"
+          shellcheck --version >/dev/null
+          install -d -m 0755 "${DOCKER_CONFIG}"
           docker compose version >/dev/null
+          unset DOCKER_CONFIG
           setpriv --reuid=1001 --regid=107 --clear-groups \
-            bash scripts/check_immutable_release_workflow.sh
+            env HOME=/home/akbci bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
-    runs-on: akb-gitea-light
+    runs-on: akb-gitea-ci
     defaults:
       run:
         working-directory: apps/web
@@ -122,6 +99,8 @@ jobs:
           pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
       - name: Validate, test, and build
         run: |
+          mkdir -p "$AKB_CI_CACHE_ROOT/next/web" .next
+          ln -sfn "$AKB_CI_CACHE_ROOT/next/web" .next/cache
           pnpm semantic-registry:check
           pnpm typecheck
           pnpm test
@@ -135,7 +114,7 @@ jobs:
 
   python-services:
     name: Python / ${{ matrix.service }}
-    runs-on: akb-gitea-light
+    runs-on: akb-gitea-ci
     strategy:
       fail-fast: false
       matrix:
@@ -174,13 +153,14 @@ jobs:
 
   compose:
     name: Docker Compose configuration
-    runs-on: akb-gitea-light
+    runs-on: akb-gitea-ci
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Validate supported runtime configurations
         run: |
           set -euo pipefail
+          install -d -m 0755 "${DOCKER_CONFIG}"
           docker compose --env-file .env.example \
             -f infra/docker-compose/docker-compose.dev.yml config >/tmp/akb-compose-dev.yml
           docker compose --env-file .env.local-prod.example \

@@ -1,7 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-test.describe.configure({ mode: "serial" });
-
 const appBasePath = process.env.NEXT_PUBLIC_AKL_BASE_PATH?.replace(/\/+$/, "") ?? "";
 
 function appPath(path: string) {
