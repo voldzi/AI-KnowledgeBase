@@ -158,7 +158,9 @@ local default Unix socket.
 AKB uses internal Gitea as its primary Git source. The first Gitea Actions
 workflow is a shadow verification path only and cannot deploy AKB. Its runner
 isolation, required evidence before promotion, and rollback are documented in
-`docs/OPERATIONS/gitea-actions-shadow-ci.md`.
+`docs/OPERATIONS/gitea-actions-shadow-ci.md`. Digest pinning, untrusted PR
+isolation, cache retention and monitoring are defined in
+`docs/OPERATIONS/akb-gitea-ci-runner.md`.
 
 ## Configuration
 

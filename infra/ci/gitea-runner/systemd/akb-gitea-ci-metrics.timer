@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect AKB Gitea CI runner metrics every minute
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=1m
+AccuracySec=15s
+Persistent=true
+Unit=akb-gitea-ci-metrics.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=Export AKB Gitea CI runner metrics
+After=network-online.target stratos-gitea-ci-runner.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+LoadCredential=gitea-token:/etc/akb-gitea-ci/monitor.token
+ExecStart=/usr/bin/python3 /usr/local/libexec/akb-gitea-ci/export_gitea_ci_metrics.py --token-file ${CREDENTIALS_DIRECTORY}/gitea-token
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/home/stratos-ci/.cache/akb-ci
+ReadWritePaths=/var/lib/node_exporter/textfile_collector
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true

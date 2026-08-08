@@ -105,12 +105,15 @@ Central dashboards:
   `akl_document_chunks*`.
 
 Central Prometheus alert rules are stored in
-`infra/monitoring/central/akb-alerts.yml` and cover:
+`infra/monitoring/central/akb-alerts.yml` and
+`infra/monitoring/central/akb-gitea-ci-alerts.yml` and cover:
 
 - public health and dependency-aware readiness,
 - refused telemetry,
 - chat HTTP 5xx responses,
-- chat p95 latency.
+- chat p95 latency,
+- AKB Gitea runner/service availability, cache size, VM125 free space and the
+  last successful `main` SHA.
 
 ## Tracing
 

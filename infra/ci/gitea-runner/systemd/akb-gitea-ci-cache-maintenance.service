@@ -1,0 +1,19 @@
+[Unit]
+Description=AKB Gitea CI cache retention
+After=network-online.target stratos-gitea-ci-runner.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+LoadCredential=gitea-token:/etc/akb-gitea-ci/monitor.token
+ExecStart=/usr/bin/python3 /usr/local/libexec/akb-gitea-ci/maintain_gitea_ci_cache.py --apply --token-file ${CREDENTIALS_DIRECTORY}/gitea-token --retention-days 14 --max-bytes 10737418240
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/stratos-ci/.cache
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
