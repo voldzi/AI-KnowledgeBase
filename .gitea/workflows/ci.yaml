@@ -77,11 +77,8 @@ jobs:
           # Run it directly in the dedicated repo-scoped Docker executor so its
           # fake Docker boundary remains visible to the same shell process.
           shellcheck --version >/dev/null
-          compose_plugin=/usr/local/libexec/docker/cli-plugins/docker-compose
-          test -x "${compose_plugin}"
-          install -d /usr/local/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins
-          ln -sf "${compose_plugin}" /usr/local/lib/docker/cli-plugins/docker-compose
-          ln -sf "${compose_plugin}" /usr/libexec/docker/cli-plugins/docker-compose
+          export DOCKER_CONFIG="${RUNNER_TEMP:-/tmp}/akb-docker-config"
+          install -d -m 0755 "${DOCKER_CONFIG}"
           docker compose version >/dev/null
           setpriv --reuid=1001 --regid=107 --clear-groups \
             bash scripts/check_immutable_release_workflow.sh
