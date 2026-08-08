@@ -35,8 +35,8 @@ must not be changed by an AKB Gitea runner operation.
 The maintained Debian Bookworm image is defined in
 `infra/ci/gitea-runner/Dockerfile`. It provides Node.js, pnpm, Python, Ruby,
 ShellCheck, GNU core utilities, Docker Compose and the glibc browser runtime
-required by Playwright. Persistent package and browser caches are mounted only
-inside the job container. A Docker socket is mounted solely for immutable
+required by Playwright. Persistent package, browser, and Next.js build caches
+are mounted only inside the job container. A Docker socket is mounted solely for immutable
 release contract and Compose validation; the runner has no production env,
 deployment credential, or permitted path to production promotion.
 

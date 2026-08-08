@@ -68,9 +68,10 @@ GitHub Actions cache storage:
 
 - host cache root: `/home/stratos-ci/.cache/akb-ci`
 - container cache root: `/cache/akb-ci`
-- pnpm store: `/cache/akb-ci/pnpm-store`
+- pnpm store: `/cache/akb-ci/pnpm/store/v3`
 - pip download cache: `/cache/akb-ci/pip`
 - Playwright browsers: `/cache/akb-ci/playwright`
+- Next.js web build cache: `/cache/akb-ci/next/web`
 - Docker image and build layers: the persistent Docker data root managed by the
   VM Docker daemon
 

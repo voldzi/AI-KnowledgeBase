@@ -99,6 +99,8 @@ jobs:
           pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
       - name: Validate, test, and build
         run: |
+          mkdir -p "$AKB_CI_CACHE_ROOT/next/web" .next
+          ln -sfn "$AKB_CI_CACHE_ROOT/next/web" .next/cache
           pnpm semantic-registry:check
           pnpm typecheck
           pnpm test
