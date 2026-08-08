@@ -5671,27 +5671,11 @@ def _authorized_controlled_packages(
     valid_on: date,
     authorization_actions: tuple[Action, ...] = (Action.document_read,),
 ) -> list[ControlledDocumentPackage]:
-    packages = list(
-        db.execute(
-            select(ControlledDocumentPackage)
-            .where(
-                ControlledDocumentPackage.organization_id
-                == principal.organization_id,
-                ControlledDocumentPackage.domain == domain,
-                ControlledDocumentPackage.status
-                == ControlledDocumentPackageStatus.valid.value,
-                ControlledDocumentPackage.effective_from <= valid_on,
-                (
-                    ControlledDocumentPackage.effective_to.is_(None)
-                    | (ControlledDocumentPackage.effective_to >= valid_on)
-                ),
-            )
-            .options(selectinload(ControlledDocumentPackage.members))
-            .order_by(
-                desc(ControlledDocumentPackage.authority_rank),
-                desc(ControlledDocumentPackage.effective_from),
-            )
-        ).scalars()
+    packages = _effective_controlled_packages(
+        db=db,
+        organization_id=principal.organization_id,
+        domain=domain,
+        valid_on=valid_on,
     )
     authorized: list[ControlledDocumentPackage] = []
     for package in packages:
@@ -5708,6 +5692,37 @@ def _authorized_controlled_packages(
             raise
         authorized.append(package)
     return authorized
+
+
+def _effective_controlled_packages(
+    *,
+    db: Session,
+    organization_id: str,
+    domain: str,
+    valid_on: date,
+) -> list[ControlledDocumentPackage]:
+    return list(
+        db.execute(
+            select(ControlledDocumentPackage)
+            .where(
+                ControlledDocumentPackage.organization_id
+                == organization_id,
+                ControlledDocumentPackage.domain == domain,
+                ControlledDocumentPackage.status
+                == ControlledDocumentPackageStatus.valid.value,
+                ControlledDocumentPackage.effective_from <= valid_on,
+                (
+                    ControlledDocumentPackage.effective_to.is_(None)
+                    | (ControlledDocumentPackage.effective_to >= valid_on)
+                ),
+            )
+            .options(selectinload(ControlledDocumentPackage.members))
+            .order_by(
+                desc(ControlledDocumentPackage.authority_rank),
+                desc(ControlledDocumentPackage.effective_from),
+            )
+        ).scalars()
+    )
 
 
 def _require_controlled_package_access(
@@ -6204,13 +6219,28 @@ def list_controlled_document_rules(
                 raise
             packages.append(package)
     else:
-        packages = _authorized_controlled_packages(
+        candidates = _effective_controlled_packages(
             db=db,
-            principal=principal,
+            organization_id=principal.organization_id,
             domain=domain,
             valid_on=applicable_on,
-            authorization_actions=(Action.document_read, Action.rag_query),
         )
+        packages = []
+        access_filtered = False
+        for package in candidates:
+            try:
+                _require_controlled_package_access(
+                    principal,
+                    package,
+                    db,
+                    actions=(Action.document_read, Action.rag_query),
+                )
+            except HTTPException as exc:
+                if exc.status_code != status.HTTP_403_FORBIDDEN:
+                    raise
+                access_filtered = True
+                continue
+            packages.append(package)
     if consumer_view:
         response = _controlled_rule_consumer_view_for_packages(
             db=db,
@@ -6226,6 +6256,11 @@ def list_controlled_document_rules(
             packages=packages,
             approved_only=approved_only,
         )
+    if consumer_view and not include_inactive and access_filtered:
+        # The chat needs a bounded explanation for an empty result without
+        # exposing a hidden package's identity, content, or rule count.
+        response.warnings.append("CONTROLLED_RULE_RELEVANT_SOURCE_ACCESS_DENIED")
+        response.warnings = list(dict.fromkeys(response.warnings))
     add_audit_event(
         db,
         actor_id=principal.subject_id,

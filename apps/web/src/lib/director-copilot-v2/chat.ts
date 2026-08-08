@@ -231,9 +231,7 @@ function composeResponse(
     });
   }
   if (orchestration.status === "no_data") {
-    const answer = language === "en"
-      ? "The authorized STRATOS sources contain no data matching this query."
-      : "Oprávněné zdroje STRATOS neobsahují data odpovídající tomuto dotazu.";
+    const answer = noDataAnswer(orchestration.snapshot, language);
     return baseResponse({
       conversationId,
       responseType: "no_answer",
@@ -332,6 +330,51 @@ function composeResponse(
     missingInformation: null,
     followUps: followUps(language, orchestration.plan.intent),
   });
+}
+
+function noDataAnswer(
+  snapshot: DirectorCopilotV2Snapshot,
+  language: ResponseLanguage,
+): string {
+  const reasons = new Set(snapshot.outcomes.flatMap((outcome) => outcome.reason_codes));
+  if (reasons.has("PROJECTFLOW_SCOPE_NOT_COVERED")) {
+    return language === "en"
+      ? "Your current ProjectFlow scope does not cover the requested portfolio."
+      : "Váš aktuální rozsah v ProjectFlow nepokrývá požadované portfolio.";
+  }
+  if (reasons.has("PROJECTFLOW_LOCAL_MEMBERSHIP_REQUIRED")) {
+    return language === "en"
+      ? "The requested project requires active local ProjectFlow membership."
+      : "Požadovaný projekt vyžaduje aktivní místní členství v ProjectFlow.";
+  }
+  if (reasons.has("PROJECTFLOW_INFORMATION_POLICY_DENIED")) {
+    return language === "en"
+      ? "The requested ProjectFlow data is restricted by information-handling rules."
+      : "Požadovaná data ProjectFlow omezují pravidla nakládání s informacemi.";
+  }
+  if (reasons.has("PROJECTFLOW_ORGANIZATION_UNIT_MAPPING_MISSING")) {
+    return language === "en"
+      ? "The current ProjectFlow scope cannot be matched to an organizational unit yet."
+      : "Aktuální rozsah ProjectFlow zatím nelze přiřadit k organizační jednotce.";
+  }
+  if (reasons.has("PROJECTFLOW_PORTFOLIO_UNASSIGNED")) {
+    return language === "en"
+      ? "The current ProjectFlow scope is not assigned to a portfolio yet."
+      : "Aktuální rozsah ProjectFlow zatím není přiřazen k portfoliu.";
+  }
+  if (reasons.has("PROJECTFLOW_NO_PROJECTS_IN_SCOPE")) {
+    return language === "en"
+      ? "The authorized ProjectFlow scope contains no projects matching this query."
+      : "V oprávněném rozsahu ProjectFlow nejsou projekty odpovídající tomuto dotazu.";
+  }
+  if (reasons.has("PROJECTFLOW_NO_DATA")) {
+    return language === "en"
+      ? "ProjectFlow contains no authorized projects matching this query."
+      : "ProjectFlow neobsahuje žádné oprávněné projekty odpovídající tomuto dotazu.";
+  }
+  return language === "en"
+    ? "The authorized STRATOS sources contain no data matching this query."
+    : "Oprávněné zdroje STRATOS neobsahují data odpovídající tomuto dotazu.";
 }
 
 function partialReasonsNotice(

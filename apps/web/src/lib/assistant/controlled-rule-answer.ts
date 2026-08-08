@@ -27,6 +27,7 @@ const CONSUMER_BLOCKING_WARNINGS = new Set([
   "CONTROLLED_RULE_NORMATIVE_KEY_CATEGORY_MISMATCH",
   "SOURCE_REVIEW_DATE_INVALID",
 ]);
+const CONTROLLED_RULE_ACCESS_DENIED_WARNING = "CONTROLLED_RULE_RELEVANT_SOURCE_ACCESS_DENIED";
 
 const RULE_LABELS_CS: Record<string, string> = {
   "public_procurement.vzmr.supplies_services.threshold": "Limit VZMR pro dodávky a služby",
@@ -158,18 +159,29 @@ export function buildControlledRuleAssistantResponse(input: {
   }
 
   if (matching.length === 0) {
+    const accessDenied = input.result.warnings.includes(
+      CONTROLLED_RULE_ACCESS_DENIED_WARNING,
+    );
     return emptyResponse({
       conversationId: input.conversationId,
       language: input.language,
       context: baseContext,
       confidence: "insufficient_source",
       warnings: [...input.result.warnings, "NO_MATCHING_CONTROLLED_RULE"],
-      message: input.language === "en"
-        ? "No verified rule matching this question is effective for the selected date."
-        : "K vybranému datu není účinné ověřené pravidlo, které by přesně odpovídalo tomuto dotazu.",
-      missingInformation: input.language === "en"
-        ? "A matching verified rule is missing."
-        : "Chybí odpovídající ověřené pravidlo.",
+      message: accessDenied
+        ? input.language === "en"
+          ? "A relevant governed source is outside your current access. I did not infer or substitute its rule."
+          : "Relevantní řízený zdroj je mimo váš aktuální přístup. Pravidlo jsem nedovozoval ani nenahradil jiným zdrojem."
+        : input.language === "en"
+          ? "No verified rule matching this question is effective for the selected date."
+          : "K vybranému datu není účinné ověřené pravidlo, které by přesně odpovídalo tomuto dotazu.",
+      missingInformation: accessDenied
+        ? input.language === "en"
+          ? "Access to the applicable governed source is required."
+          : "Je potřeba přístup k použitelnému řízenému zdroji."
+        : input.language === "en"
+          ? "A matching verified rule is missing."
+          : "Chybí odpovídající ověřené pravidlo.",
     });
   }
 
