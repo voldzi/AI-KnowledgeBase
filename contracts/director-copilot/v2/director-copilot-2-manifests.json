@@ -802,7 +802,7 @@
       "tool_id": "projectflow.portfolio_delivery_overview.v1",
       "owner": "PROJECTFLOW",
       "audience": "projectflow-api",
-      "schema_revision": "projectflow-portfolio-delivery-overview-1.0.2",
+      "schema_revision": "projectflow-portfolio-delivery-overview-1.0.3",
       "metrics": [
         {
           "key": "organization.display_name",
@@ -1029,6 +1029,8 @@
         "PROJECTFLOW_CAPABILITY_DENIED",
         "PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED",
         "PROJECTFLOW_ORGANIZATION_UNIT_MAPPING_MISSING",
+        "PROJECTFLOW_NO_PROJECTS_IN_SCOPE",
+        "PROJECTFLOW_PORTFOLIO_UNASSIGNED",
         "PROJECTFLOW_NO_DATA",
         "PROJECTFLOW_DOMAIN_TOOL_UNAVAILABLE"
       ],
