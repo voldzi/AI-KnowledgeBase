@@ -58,9 +58,12 @@ run only on the disposable `akb-gitea-ci-untrusted` boundary described in the
 AKB Gitea CI runner runbook; that boundary has no Docker socket, host cache,
 secrets, production routes or long-lived credentials.
 
-The production immutable release remains a separate operator action on
-`docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
-CI must never use the production deployment runner or production environment.
+The production immutable release remains a distinct manual promotion and
+accepts only a full SHA reachable from protected `main`. The normal CI workflow
+never receives production credentials. The separately reviewed Gitea
+production workflow may trigger the existing host release only through the
+restricted interface in `docs/OPERATIONS/gitea-production-deploy.md`; it does
+not receive the production environment or a general host shell.
 
 The CI VM owns its non-secret build prerequisites. Its Debian-based job image
 includes Docker, Ruby, `shellcheck`, and the Chromium runtime libraries required by the web
@@ -179,9 +182,10 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
    the operator log.
 8. **Deploy the exact merge SHA once.** Confirm the SHA is reachable from
    protected `origin/main`, then start the immutable release through the
-   current verified release. Run it detached with a durable owner-only
-   operator log so an SSH or agent transport interruption cannot terminate or
-   obscure the release.
+   current verified release. Use either the restricted manual Gitea workflow
+   or the documented operator command. Both start it detached with a durable
+   owner-only operator log so an SSH or agent transport interruption cannot
+   terminate or obscure the release.
 9. **Monitor durable evidence.** Follow the deployment PID, deployment record,
    and operator log until completion. Do not report success while the process
    is still running.

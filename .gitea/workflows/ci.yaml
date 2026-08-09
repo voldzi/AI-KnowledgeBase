@@ -69,6 +69,7 @@ jobs:
           python3 -m json.tool openapi/openapi.json >/dev/null
           python3 scripts/check_embedding_shadow_profiles.py
           python3 tests/test_gitea_ci_operations.py
+          python3 tests/test_gitea_production_deploy.py
           npx --yes @redocly/cli lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |

@@ -155,11 +155,14 @@ local default Unix socket.
 
 ## Internal CI
 
-AKB uses internal Gitea as its primary Git source. The first Gitea Actions
-workflow is a shadow verification path only and cannot deploy AKB. Its runner
-isolation, required evidence before promotion, and rollback are documented in
-`docs/OPERATIONS/gitea-actions-shadow-ci.md`. Digest pinning, untrusted PR
-isolation, cache retention and monitoring are defined in
+AKB uses internal Gitea as its primary Git source. The normal Gitea Actions
+workflow is verification-only. A separate manually approved production
+workflow can trigger the existing immutable host release through a
+forced-command SSH identity after successful CI for the exact current `main`
+SHA. Its setup and rollback are documented in
+`docs/OPERATIONS/gitea-production-deploy.md`. Runner isolation and shadow-CI
+evidence are in `docs/OPERATIONS/gitea-actions-shadow-ci.md`; digest pinning,
+untrusted PR isolation, cache retention and monitoring are in
 `docs/OPERATIONS/akb-gitea-ci-runner.md`.
 
 ## Configuration

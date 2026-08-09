@@ -64,6 +64,12 @@ After the boundary passes a disposable test, copy the template to
 `.gitea/workflows/untrusted-pr.yaml` in a separate reviewed commit. Until then,
 PR validation is manual and no pending workflow targets the absent label.
 
+The optional production workflow is manual and separate from CI. Its only
+production credential is a dedicated forced-command SSH key, and it may be
+configured only after the host procedure and negative tests in
+`docs/OPERATIONS/gitea-production-deploy.md` pass. The key does not authorize a
+shell and must not be made available to the normal CI workflow.
+
 ## Coordinated Digest Pin
 
 Perform this only while runner ID 6 is online and idle. Keep an owner-readable

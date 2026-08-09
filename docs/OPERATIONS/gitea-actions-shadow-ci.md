@@ -5,7 +5,9 @@
 Gitea is AKB's primary internal Git server. The workflow in
 `.gitea/workflows/ci.yaml` is a verification-only CI path on the dedicated
 repository-scoped runner. It has no production secrets, no SSH key for
-`docker.home.cz`, and no deployment step.
+`docker.home.cz`, and no deployment step. Production promotion, when enabled,
+is a separate manually approved workflow described in
+`docs/OPERATIONS/gitea-production-deploy.md`.
 
 GitHub Actions remains the required release gate until this workflow has shown
 equivalent results for at least ten representative branches and pull requests,
@@ -56,8 +58,8 @@ documented in `docs/OPERATIONS/akb-gitea-ci-runner.md`.
 3. Verify cache isolation and safe logs.
 4. Review runner labels, container isolation, and Actions permissions.
 5. Protect `main` with the Gitea workflow after the evidence is complete.
-6. Keep production promotion manual and immutable until a separate reviewed
-   change introduces a production deployment mechanism.
+6. Enable the separate manual production workflow only after its forced-command
+   host gateway, exact-main CI gate, secrets and negative SSH tests pass.
 
 ## Rollback
 
