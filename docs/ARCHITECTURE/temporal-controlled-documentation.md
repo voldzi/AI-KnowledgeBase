@@ -172,6 +172,12 @@ obecného dokumentového RAG. Pokud zákon existuje pouze jako uložený dokumen
 ale nebyl převeden do právního balíčku, citovaně vytěžen a schválen gestorem,
 chat vrátí bezpečný stav bez odpovědi.
 
+Výslovně uvedený zdroj je závaznou součástí dotazu. Formulace „dle zákona“
+vybere pouze zákony a prováděcí předpisy, zatímco „dle interní směrnice“ vybere
+jen ověřené interní směrnice a pokyny. Dotaz, který požaduje oba zdroje, vrátí
+oddělenou zákonnou a interní část. Pořadí podle autority se uplatňuje až uvnitř
+požadovaného zdrojového rozsahu a nesmí výslovný požadavek uživatele přepsat.
+
 Veřejné zakázky používají uzavřený katalog `normative_key`. Známé aliasy jsou
 před porovnáním kanonizované, takže například oddělené klíče pro dodávky a
 služby sdílejí zákonný klíč VZMR. Balíček nelze nově vyhlásit jako platný,

@@ -13,10 +13,16 @@ export interface ControlledRuleIntent {
   validOn: string | null;
 }
 
+type ControlledRuleSourceScope = "statutory" | "internal" | "combined";
+
 const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e|ych|ou)\s+zakaz|\bvzmr\b|zadáván(?:í|i)\s+zakáz|zadavani\s+zakaz|průzkum\s+trhu|pruzkum\s+trhu|elektronick\w*\s+tržišt|elektronick\w*\s+trzist|profil\w*\s+zadavatele|registr\w*\s+smluv|přím\w*\s+nákup|prim\w*\s+nakup|public\s+procurement)/i;
 const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim|zákon|zakon|legislativ|právn|pravn)/i;
 const LEGAL_SOURCE_RE = /(?:zákon|zakon|zákonn|zakonn|legislativ|právn|pravn)/i;
 const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*\s+pravidl|vnitřn|vnitrn)/i;
+const INTERNAL_RULE_SOURCE_TYPES = new Set<ControlledRule["source_type"]>([
+  "internal_directive",
+  "internal_instruction",
+]);
 
 const CONSUMER_BLOCKING_WARNINGS = new Set([
   "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
@@ -102,6 +108,7 @@ export function buildControlledRuleAssistantResponse(input: {
   language: ResponseLanguage;
   result: ControlledRuleList;
 }): AssistantChatResponse {
+  const sourceScope = controlledRuleSourceScope(input.message);
   const blockingWarnings = input.result.warnings.filter((warning) =>
     CONSUMER_BLOCKING_WARNINGS.has(warning)
   );
@@ -128,10 +135,12 @@ export function buildControlledRuleAssistantResponse(input: {
   const eligible = input.result.rules.filter(
     (rule) => rule.consumer_eligible
       && ["accepted", "edited"].includes(rule.verification_status)
-      && ["authoritative", "supplemental"].includes(rule.precedence_status),
+      && ["authoritative", "supplemental"].includes(rule.precedence_status)
+      && ruleMatchesSourceScope(rule, sourceScope),
   );
   const matchingConflicts = rankedRules(input.message, input.result.rules.filter(
-    (rule) => rule.precedence_status === "conflict",
+    (rule) => rule.precedence_status === "conflict"
+      && ruleMatchesSourceScope(rule, sourceScope),
   ));
   const matching = selectMatchingRules(input.message, eligible);
   const baseContext = {
@@ -139,6 +148,7 @@ export function buildControlledRuleAssistantResponse(input: {
     answer_source: "controlled_rules",
     controlled_rule_domain: input.result.domain,
     controlled_rule_valid_on: input.result.valid_on,
+    controlled_rule_source_scope: sourceScope,
   };
 
   if (matchingConflicts.length > 0) {
@@ -174,7 +184,12 @@ export function buildControlledRuleAssistantResponse(input: {
   }
 
   const citations = matching.map((item) => citationForRule(item.rule, input.result));
-  const answer = controlledRuleAnswerText(matching.map((item) => item.rule), input.result, input.language);
+  const answer = controlledRuleAnswerText(
+    matching.map((item) => item.rule),
+    input.result,
+    input.language,
+    sourceScope,
+  );
   return {
     response_type: "answer",
     conversation_id: input.conversationId ?? `conv_controlled_${crypto.randomUUID().replaceAll("-", "")}`,
@@ -216,7 +231,7 @@ function rankedRules(message: string, rules: ControlledRule[]) {
 function selectMatchingRules(message: string, rules: ControlledRule[]) {
   const preferredKeys = targetedNormativeKeys(message);
   const normalizedMessage = normalized(message);
-  const allLimits = /\b(?:vsechny|prehled|seznam)\b/.test(normalizedMessage)
+  const allLimits = /\b(?:jake|ktere|vsechny|prehled|seznam)\b/.test(normalizedMessage)
     && /\b(?:limit|castk|hranic)\w*\b/.test(normalizedMessage);
   const candidates = preferredKeys.size > 0
     ? rules.filter((rule) => preferredKeys.has(rule.proposal.normative_key))
@@ -293,7 +308,8 @@ function targetedNormativeKeys(message: string) {
       for (const key of VZMR_STATUTORY_RULE_KEYS) keys.add(key);
     }
   }
-  if (broadVzmrOverview && !asksForLaw) {
+  if ((broadVzmrOverview && !asksForLaw)
+    || (asksForInternalRule && /\bvzmr\b/.test(value))) {
     for (const key of VZMR_SUPPLEMENTAL_RULE_KEYS) keys.add(key);
   }
   if (/vyjim/.test(value)) keys.add("public_procurement.exception.conditions");
@@ -342,6 +358,7 @@ function controlledRuleAnswerText(
   rules: ControlledRule[],
   result: ControlledRuleList,
   language: ResponseLanguage,
+  sourceScope: ControlledRuleSourceScope,
 ) {
   const statutoryRules = rules.filter(isStatutoryRule);
   const internalRules = rules.filter((rule) => !isStatutoryRule(rule));
@@ -357,9 +374,13 @@ function controlledRuleAnswerText(
   if (internalRules.length > 0) {
     if (sections.length > 0) sections.push("");
     sections.push(
-      language === "en"
-        ? "Supplementary internal rules:"
-        : "Doplňující interní pravidla:",
+      sourceScope === "internal"
+        ? language === "en"
+          ? `Internal rules effective on ${result.valid_on}:`
+          : `Interní pravidla účinná k ${formatDate(result.valid_on, language)}:`
+        : language === "en"
+          ? "Supplementary internal rules:"
+          : "Doplňující interní pravidla:",
       ...internalRules.map((rule) => controlledRuleLine(rule, language)),
     );
   }
@@ -380,8 +401,24 @@ function controlledRuleLine(rule: ControlledRule, language: ResponseLanguage) {
 
 function isStatutoryRule(rule: ControlledRule) {
   return rule.source_type === "law"
-    || rule.source_type === "implementing_regulation"
-    || rule.precedence_status === "authoritative";
+    || rule.source_type === "implementing_regulation";
+}
+
+function controlledRuleSourceScope(message: string): ControlledRuleSourceScope {
+  const asksForLaw = LEGAL_SOURCE_RE.test(message);
+  const asksForInternalRule = INTERNAL_SOURCE_RE.test(message);
+  if (asksForLaw && !asksForInternalRule) return "statutory";
+  if (asksForInternalRule && !asksForLaw) return "internal";
+  return "combined";
+}
+
+function ruleMatchesSourceScope(
+  rule: ControlledRule,
+  sourceScope: ControlledRuleSourceScope,
+): boolean {
+  if (sourceScope === "statutory") return isStatutoryRule(rule);
+  if (sourceScope === "internal") return INTERNAL_RULE_SOURCE_TYPES.has(rule.source_type);
+  return true;
 }
 
 function controlledRuleFollowUps(rules: ControlledRule[], language: ResponseLanguage) {
