@@ -5,7 +5,9 @@
 Gitea is AKB's primary internal Git server. The workflow in
 `.gitea/workflows/ci.yaml` is a verification-only CI path on the dedicated
 repository-scoped runner. It has no production secrets, no SSH key for
-`docker.home.cz`, and no deployment step.
+`docker.home.cz`, and no deployment step. Production promotion, when enabled,
+is a separate manually approved workflow described in
+`docs/OPERATIONS/gitea-production-deploy.md`.
 
 GitHub Actions remains the required release gate until this workflow has shown
 equivalent results for at least ten representative branches and pull requests,
@@ -24,8 +26,9 @@ for operational compatibility:
 - system account: `stratos-ci`
 - systemd service: `stratos-gitea-ci-runner.service`
 - capacity: one concurrent job
-- only accepted workflow label:
-  `akb-gitea-ci:docker://akb/gitea-ci-tools:0.2.0`
+- logical workflow label: `akb-gitea-ci`
+- approved immutable runner mapping:
+  `akb-gitea-ci:docker://akb/gitea-ci-tools@sha256:2be3431e52dc1cfae642ea744821980c60774485b98c5881593a95558ed518c9`
 
 Do not publish `stratos-gitea-ci`, `stratos-gitea-ci-tools`, or another
 STRATOS-owned label from this runner. Every `runs-on` value in the AKB Gitea
@@ -40,9 +43,12 @@ are mounted only inside the job container. A Docker socket is mounted solely for
 release contract and Compose validation; the runner has no production env,
 deployment credential, or permitted path to production promotion.
 
-The workflow runs for pull requests, merges to `main`, and explicit manual
-dispatch. It deliberately does not also run on every `codex/**` push because
-that would duplicate the pull-request validation for the same SHA.
+The privileged workflow runs automatically only for `main`. A reviewed commit
+may be run through manual dispatch only when the administrator enters the same
+full SHA as the selected ref. Automatic pull requests are prohibited because a
+workflow can execute repository code while the runner has the host Docker
+socket. The separate untrusted template and its required network boundary are
+documented in `docs/OPERATIONS/akb-gitea-ci-runner.md`.
 
 ## Promotion Criteria
 
@@ -52,8 +58,8 @@ that would duplicate the pull-request validation for the same SHA.
 3. Verify cache isolation and safe logs.
 4. Review runner labels, container isolation, and Actions permissions.
 5. Protect `main` with the Gitea workflow after the evidence is complete.
-6. Keep production promotion manual and immutable until a separate reviewed
-   change introduces a production deployment mechanism.
+6. Enable the separate manual production workflow only after its forced-command
+   host gateway, exact-main CI gate, secrets and negative SSH tests pass.
 
 ## Rollback
 

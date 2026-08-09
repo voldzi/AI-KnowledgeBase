@@ -1,13 +1,21 @@
 name: AKB CI
 
-# Verification-only internal CI. It never receives production secrets, builds a
-# production release, or connects to docker.home.cz.
+# Verification-only trusted CI. It never receives production secrets, builds a
+# production release, or connects to docker.home.cz. Pull requests do not run
+# here automatically because this runner has the host Docker socket.
 on:
   push:
     branches:
       - main
-  pull_request:
   workflow_dispatch:
+    inputs:
+      approved_sha:
+        description: Full reviewed commit SHA selected for the trusted runner
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
@@ -17,9 +25,37 @@ env:
   PNPM_STORE_DIR: /cache/akb-ci/pnpm-store
 
 jobs:
+  trusted-candidate:
+    name: Trusted candidate approval
+    runs-on: akb-gitea-ci
+    steps:
+      - name: Verify trusted execution boundary
+        env:
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+          CANDIDATE_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            exit 0
+          fi
+          [[ "${EVENT_NAME}" == "workflow_dispatch" ]] || {
+            printf 'Unsupported trusted CI event: %s\n' "${EVENT_NAME}" >&2
+            exit 1
+          }
+          [[ "${APPROVED_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+            printf 'approved_sha must be a full lowercase Git SHA.\n' >&2
+            exit 1
+          }
+          [[ "${APPROVED_SHA}" == "${CANDIDATE_SHA}" ]] || {
+            printf 'The reviewed SHA does not match the dispatched ref.\n' >&2
+            exit 1
+          }
+
   standards:
     name: Repository standards
     runs-on: akb-gitea-ci
+    needs: trusted-candidate
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -32,6 +68,8 @@ jobs:
           ruby scripts/generate_openapi_index.rb --check
           python3 -m json.tool openapi/openapi.json >/dev/null
           python3 scripts/check_embedding_shadow_profiles.py
+          python3 tests/test_gitea_ci_operations.py
+          python3 tests/test_gitea_production_deploy.py
           npx --yes @redocly/cli lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
@@ -57,6 +95,7 @@ jobs:
   immutable-release:
     name: Immutable release contract
     runs-on: akb-gitea-ci
+    needs: trusted-candidate
     defaults:
       run:
         shell: bash
@@ -87,6 +126,7 @@ jobs:
   web:
     name: Web
     runs-on: akb-gitea-ci
+    needs: trusted-candidate
     defaults:
       run:
         working-directory: apps/web
@@ -115,6 +155,7 @@ jobs:
   python-services:
     name: Python / ${{ matrix.service }}
     runs-on: akb-gitea-ci
+    needs: trusted-candidate
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +195,7 @@ jobs:
   compose:
     name: Docker Compose configuration
     runs-on: akb-gitea-ci
+    needs: trusted-candidate
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

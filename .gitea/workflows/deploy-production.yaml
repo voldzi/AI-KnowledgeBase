@@ -1,0 +1,157 @@
+name: AKB production deploy
+
+# Manual promotion of the exact current main SHA. The SSH key is restricted on
+# docker.home.cz to the AKB deployment gateway and cannot open a general shell.
+on:
+  workflow_dispatch:
+    inputs:
+      approved_sha:
+        description: Full current main SHA approved for production
+        required: true
+        type: string
+      confirmation:
+        description: Enter deploy-production
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: akb-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Immutable production deployment
+    runs-on: akb-gitea-ci
+    timeout-minutes: 150
+    steps:
+      - name: Validate manual production approval
+        env:
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+          CANDIDATE_SHA: ${{ github.sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "${EVENT_NAME}" == "workflow_dispatch" ]] || {
+            printf 'Production deployment must be manually dispatched.\n' >&2
+            exit 1
+          }
+          [[ "${REF_NAME}" == "refs/heads/main" ]] || {
+            printf 'Production deployment must be dispatched from main.\n' >&2
+            exit 1
+          }
+          [[ "${APPROVED_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+            printf 'approved_sha must be a full lowercase Git SHA.\n' >&2
+            exit 1
+          }
+          [[ "${APPROVED_SHA}" == "${CANDIDATE_SHA}" ]] || {
+            printf 'The approved SHA is not the selected main revision.\n' >&2
+            exit 1
+          }
+          [[ "${CONFIRMATION}" == "deploy-production" ]] || {
+            printf 'The production confirmation text is incorrect.\n' >&2
+            exit 1
+          }
+
+      - name: Check out exact release candidate
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
+            fetch --depth=1 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
+          [[ "$(git rev-parse HEAD)" == "${{ inputs.approved_sha }}" ]]
+
+      - name: Require successful trusted main CI
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          token_file="$(mktemp)"
+          trap 'unlink "${token_file}"' EXIT
+          printf '%s' "${GITEA_TOKEN}" >"${token_file}"
+          chmod 0600 "${token_file}"
+          python3 infra/ci/gitea-runner/check_production_deploy_gate.py \
+            --gitea-url "${{ github.server_url }}" \
+            --repository "${{ github.repository }}" \
+            --sha "${{ inputs.approved_sha }}" \
+            --token-file "${token_file}"
+
+      - name: Start and monitor immutable production release
+        env:
+          DEPLOY_KEY: ${{ secrets.AKB_PRODUCTION_DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.AKB_PRODUCTION_DEPLOY_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ inputs.approved_sha }}
+        run: |
+          set +x
+          set -euo pipefail
+          umask 077
+          ssh_dir="$(mktemp -d)"
+          cleanup() {
+            find "${ssh_dir}" -type f -exec shred -u {} \; 2>/dev/null || true
+            rmdir "${ssh_dir}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          [[ -n "${DEPLOY_KEY}" && -n "${DEPLOY_KNOWN_HOSTS}" ]] || {
+            printf 'Production deployment credentials are not configured.\n' >&2
+            exit 1
+          }
+          printf '%s\n' "${DEPLOY_KEY}" >"${ssh_dir}/id_ed25519"
+          printf '%s\n' "${DEPLOY_KNOWN_HOSTS}" >"${ssh_dir}/known_hosts"
+          chmod 0600 "${ssh_dir}/id_ed25519" "${ssh_dir}/known_hosts"
+
+          ssh_command=(
+            ssh
+            -F /dev/null
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="${ssh_dir}/known_hosts"
+            -o ConnectTimeout=10
+            -i "${ssh_dir}/id_ed25519"
+            voldzi@docker.home.cz
+          )
+
+          start_output="$("${ssh_command[@]}" "deploy ${RELEASE_SHA}")"
+          operation_id="$(printf '%s\n' "${start_output}" | awk -F= '$1 == "operation_id" {print $2}')"
+          [[ "${operation_id}" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}-[0-9]+$ ]] || {
+            printf 'Deployment gateway returned an invalid operation id.\n' >&2
+            exit 1
+          }
+          printf 'AKB immutable deployment started: %s\n' "${operation_id}"
+
+          for _ in $(seq 1 720); do
+            status_output="$("${ssh_command[@]}" "status ${operation_id}")"
+            state="$(printf '%s\n' "${status_output}" | awk -F= '$1 == "state" {print $2}')"
+            case "${state}" in
+              succeeded)
+                "${ssh_command[@]}" "verify ${RELEASE_SHA}"
+                printf 'AKB production deployment completed for %s.\n' "${RELEASE_SHA}"
+                exit 0
+                ;;
+              failed)
+                printf '%s\n' "${status_output}" >&2
+                exit 1
+                ;;
+              running)
+                sleep 10
+                ;;
+              *)
+                printf 'Deployment gateway returned an invalid state.\n' >&2
+                exit 1
+                ;;
+            esac
+          done
+          printf 'Deployment monitoring exceeded 120 minutes; inspect operation %s.\n' \
+            "${operation_id}" >&2
+          exit 1

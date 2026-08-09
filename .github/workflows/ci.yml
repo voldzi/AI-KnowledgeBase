@@ -61,6 +61,11 @@ jobs:
       - name: Verify embedding shadow profiles
         run: python3 scripts/check_embedding_shadow_profiles.py
 
+      - name: Verify Gitea CI and production deployment controls
+        run: |
+          python3 tests/test_gitea_ci_operations.py
+          python3 tests/test_gitea_production_deploy.py
+
       - name: Lint OpenAPI
         run: npx --yes @redocly/cli lint openapi/openapi.json
 

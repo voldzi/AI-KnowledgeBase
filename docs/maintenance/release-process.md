@@ -34,7 +34,8 @@ the repository-scoped runner `stratos-gitea-ci-vm125-akb` on VM 125
 - system account: `stratos-ci`
 - systemd service: `stratos-gitea-ci-runner.service`
 - workflow label: `akb-gitea-ci`
-- full runner label: `akb-gitea-ci:docker://akb/gitea-ci-tools:0.2.0`
+- approved full runner label:
+  `akb-gitea-ci:docker://akb/gitea-ci-tools@sha256:2be3431e52dc1cfae642ea744821980c60774485b98c5881593a95558ed518c9`
 - capacity: one concurrent job
 
 The unique AKB label prevents Gitea from scheduling STRATOS work on this
@@ -44,16 +45,25 @@ an unchanged parallel and rollback CI path until Gitea equivalence is formally
 accepted.
 
 The Gitea runner has no production secrets, production SSH credential, or
-access to `docker.home.cz`. Every workflow job runs in the maintained
-`akb/gitea-ci-tools:0.2.0` container. Capacity remains one because the Docker
+access to `docker.home.cz`. Every trusted workflow job runs in the maintained
+CI image pinned by digest. Capacity remains one because the Docker
 socket, fixed local ports, release-state fixtures, and shared cache require
 strict isolation. Faster releases come from persistent caches, focused local
 checks, and build-once promotion, not from overlapping unsafe jobs on this
 runner.
 
-The production immutable release remains a separate operator action on
-`docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
-CI must never use the production deployment runner or production environment.
+Pull requests do not run automatically on this Docker-capable runner. A trusted
+administrator may manually dispatch the exact reviewed SHA. An untrusted PR may
+run only on the disposable `akb-gitea-ci-untrusted` boundary described in the
+AKB Gitea CI runner runbook; that boundary has no Docker socket, host cache,
+secrets, production routes or long-lived credentials.
+
+The production immutable release remains a distinct manual promotion and
+accepts only a full SHA reachable from protected `main`. The normal CI workflow
+never receives production credentials. The separately reviewed Gitea
+production workflow may trigger the existing host release only through the
+restricted interface in `docs/OPERATIONS/gitea-production-deploy.md`; it does
+not receive the production environment or a general host shell.
 
 The CI VM owns its non-secret build prerequisites. Its Debian-based job image
 includes Docker, Ruby, `shellcheck`, and the Chromium runtime libraries required by the web
@@ -85,10 +95,12 @@ runner tool cache and are also reused between jobs.
 Do not run `docker system prune`, `docker builder prune`, or delete the shared
 Docker data root from a workflow. The Docker daemon is shared with the STRATOS
 CI runner on this VM. Cache maintenance is an operator action and must run only
-while both runners are idle. Keep at least 20 GB free on the VM; when cleanup is
-needed, remove package-cache entries older than 30 days first, then remove only
-unused Docker build cache older than 30 days. Never prune running containers,
-volumes, or images used by another repository.
+while runner ID 6 is online and idle. The dedicated AKB package cache uses a
+14-day retention and a 10 GB maximum. Keep at least 20 GB free on the VM and
+treat less than 10 GB as critical. The maintained cache tool never touches the
+shared Docker data root, running containers, volumes, STRATOS cache or images.
+Its exact dry-run and apply sequence is in
+`docs/OPERATIONS/akb-gitea-ci-runner.md`.
 
 ## Pull Request Flow
 
@@ -96,8 +108,10 @@ volumes, or images used by another repository.
 2. Keep the PR scoped to one coherent change.
 3. Run relevant local validation before pushing.
 4. Push the branch and open a PR.
-5. Wait for the required Gitea checks and, during the parallel migration
-   period, the required GitHub checks to pass.
+5. Run the untrusted PR checks on the isolated runner when that runner is
+   available. Until then, a trusted administrator reviews the exact SHA and
+   manually dispatches it on the AKB runner. During the parallel migration
+   period, the required GitHub checks also remain binding.
 6. Review the diff for runtime contracts, generated files, secrets, and documentation drift.
 7. Squash merge into `main` after checks are green.
 8. Delete the feature branch.
@@ -168,9 +182,10 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
    the operator log.
 8. **Deploy the exact merge SHA once.** Confirm the SHA is reachable from
    protected `origin/main`, then start the immutable release through the
-   current verified release. Run it detached with a durable owner-only
-   operator log so an SSH or agent transport interruption cannot terminate or
-   obscure the release.
+   current verified release. Use either the restricted manual Gitea workflow
+   or the documented operator command. Both start it detached with a durable
+   owner-only operator log so an SSH or agent transport interruption cannot
+   terminate or obscure the release.
 9. **Monitor durable evidence.** Follow the deployment PID, deployment record,
    and operator log until completion. Do not report success while the process
    is still running.
