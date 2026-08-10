@@ -13,6 +13,18 @@ export interface ControlledRuleIntent {
   validOn: string | null;
 }
 
+export function currentControlledRuleDate(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Prague",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 type ControlledRuleSourceScope = "statutory" | "internal" | "combined";
 
 const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e|ych|ou)\s+zakaz|\bvzmr\b|zadáván(?:í|i)\s+zakáz|zadavani\s+zakaz|průzkum\s+trhu|pruzkum\s+trhu|elektronick\w*\s+tržišt|elektronick\w*\s+trzist|profil\w*\s+zadavatele|registr\w*\s+smluv|přím\w*\s+nákup|prim\w*\s+nakup|public\s+procurement)/i;
@@ -255,6 +267,7 @@ function targetedNormativeKeys(message: string) {
   const keys = new Set<string>();
   const asksForLaw = LEGAL_SOURCE_RE.test(message);
   const asksForInternalRule = INTERNAL_SOURCE_RE.test(message);
+  const asksForBroadLimits = isBroadLimitOverview(message);
   if (/pruzkum\w*\s+trh/.test(value)) {
     keys.add("public_procurement.market_research.threshold");
     if (/nabid|dodavatel|kolik/.test(value)) {
@@ -309,7 +322,8 @@ function targetedNormativeKeys(message: string) {
     }
   }
   if ((broadVzmrOverview && !asksForLaw)
-    || (asksForInternalRule && /\bvzmr\b/.test(value))) {
+    || (asksForInternalRule && /\bvzmr\b/.test(value))
+    || (asksForLaw && asksForInternalRule && asksForBroadLimits)) {
     for (const key of VZMR_SUPPLEMENTAL_RULE_KEYS) keys.add(key);
   }
   if (/vyjim/.test(value)) keys.add("public_procurement.exception.conditions");
@@ -317,6 +331,12 @@ function targetedNormativeKeys(message: string) {
     keys.add("public_procurement.documentation.required");
   }
   return keys;
+}
+
+function isBroadLimitOverview(message: string): boolean {
+  const value = normalized(message);
+  return /\b(?:jake|ktere|vsechny|prehled|seznam)\b/.test(value)
+    && /\b(?:limit|castk|hranic)\w*\b/.test(value);
 }
 
 function isBroadVzmrOverview(message: string): boolean {

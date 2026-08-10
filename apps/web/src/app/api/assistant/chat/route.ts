@@ -6,7 +6,10 @@ import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
-import { buildControlledRuleAssistantResponse } from "@/lib/assistant/controlled-rule-answer";
+import {
+  buildControlledRuleAssistantResponse,
+  currentControlledRuleDate,
+} from "@/lib/assistant/controlled-rule-answer";
 import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
 import {
   auditDirectorCopilotV2Failure,
@@ -175,7 +178,7 @@ async function handlePost(request: NextRequest) {
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
 
     if (assistantRoute.tool === "controlled_rule_answer" && assistantRoute.controlledRuleIntent) {
-      const validOn = assistantRoute.controlledRuleIntent.validOn ?? new Date().toISOString().slice(0, 10);
+      const validOn = assistantRoute.controlledRuleIntent.validOn ?? currentControlledRuleDate();
       const controlledRules = await clients.registry.listControlledRules(
         assistantRoute.controlledRuleIntent.domain,
         context,

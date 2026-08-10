@@ -178,6 +178,11 @@ jen ověřené interní směrnice a pokyny. Dotaz, který požaduje oba zdroje, 
 oddělenou zákonnou a interní část. Pořadí podle autority se uplatňuje až uvnitř
 požadovaného zdrojového rozsahu a nesmí výslovný požadavek uživatele přepsat.
 
+Kombinovaný dotaz nemusí obsahovat zkratku VZMR. Pokud uživatel výslovně žádá
+limity podle zákona i interní směrnice, odpověď vždy skládá samostatnou zákonnou
+a interní část. Není-li datum v dotazu uvedeno, rozhodné datum se určuje podle
+kalendářního dne v časové zóně `Europe/Prague`, nikoli podle UTC.
+
 Veřejné zakázky používají uzavřený katalog `normative_key`. Známé aliasy jsou
 před porovnáním kanonizované, takže například oddělené klíče pro dodávky a
 služby sdílejí zákonný klíč VZMR. Balíček nelze nově vyhlásit jako platný,
