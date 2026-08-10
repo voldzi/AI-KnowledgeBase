@@ -1289,15 +1289,15 @@ export function AkbAssistantApp({
           }));
           return;
         }
-        if (httpResponse.status === 408 || httpResponse.status >= 500) {
-          if (await recoverLateResponse()) return;
-          showRecoveryFailure();
-          return;
-        }
-        setStatusMessage(await assistantHttpErrorMessage(httpResponse, copy));
+        const errorMessage = await assistantHttpErrorMessage(httpResponse, copy);
+        setStatusMessage(errorMessage);
         updateThread(threadId, (thread) => ({
           ...thread,
-          messages: thread.messages.filter((message) => message.id !== pendingMessage.id)
+          messages: thread.messages.map((message) => (
+            message.id === pendingMessage.id
+              ? { ...message, content: errorMessage, pending: false }
+              : message
+          ))
         }));
         return;
       }
@@ -2681,7 +2681,11 @@ async function assistantHttpErrorMessage(response: Response, copy: AssistantAppL
   const payload = await response.json().catch(() => null) as { error?: { code?: unknown; message?: unknown } } | null;
   const code = typeof payload?.error?.code === "string" ? payload.error.code : "";
 
-  if (code === "UPSTREAM_UNAVAILABLE" || code === "UPSTREAM_ERROR") {
+  if (
+    code === "UPSTREAM_UNAVAILABLE"
+    || code === "UPSTREAM_ERROR"
+    || code === "ASSISTANT_UPSTREAM_TIMEOUT"
+  ) {
     return copy.assistantServiceUnavailable;
   }
   return response.status === 401 ? copy.sessionExpired : copy.requestFailed;

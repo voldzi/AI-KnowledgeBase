@@ -188,9 +188,7 @@ function composeResponse(
   language: ResponseLanguage,
 ): AssistantChatResponse {
   if (orchestration.status === "not_authorized") {
-    const answer = language === "en"
-      ? "Your current access does not cover the requested live STRATOS data."
-      : "Vaše aktuální oprávnění nepokrývá požadovaná živá data STRATOS.";
+    const answer = notAuthorizedAnswer(orchestration.snapshot, language);
     return baseResponse({
       conversationId,
       responseType: "restricted",
@@ -339,6 +337,26 @@ function composeResponse(
     missingInformation: null,
     followUps: followUps(language, orchestration.plan.intent),
   });
+}
+
+function notAuthorizedAnswer(
+  snapshot: DirectorCopilotV2Snapshot,
+  language: ResponseLanguage,
+): string {
+  const archflowOnly = snapshot.outcomes.length > 0
+    && snapshot.outcomes.every((outcome) => outcome.application === "archflow");
+  const reasons = new Set(snapshot.outcomes.flatMap((outcome) => outcome.reason_codes));
+  if (archflowOnly && (
+    reasons.has("ARCHFLOW_INFORMATION_POLICY_DENIED")
+    || reasons.has("ARCHFLOW_SCOPE_NOT_COVERED")
+  )) {
+    return language === "en"
+      ? "No needs are available in your authorized ArchFlow scope. Needs outside that scope remain hidden."
+      : "V dostupném oprávněném rozsahu ArchFlow nejsou evidovány žádné potřeby. Potřeby mimo tento rozsah zůstávají skryté.";
+  }
+  return language === "en"
+    ? "Your current access does not cover the requested live STRATOS data."
+    : "Vaše aktuální oprávnění nepokrývá požadovaná živá data STRATOS.";
 }
 
 function partialReasonsNotice(

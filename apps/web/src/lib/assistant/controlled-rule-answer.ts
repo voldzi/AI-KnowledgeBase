@@ -31,6 +31,7 @@ const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e
 const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim|zákon|zakon|legislativ|právn|pravn)/i;
 const LEGAL_SOURCE_RE = /(?:zákon|zakon|zákonn|zakonn|legislativ|právn|pravn)/i;
 const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*(?:\s+(?:pravidl|limit|postup|směrnic|smernic))?|vnitřn|vnitrn)/i;
+const EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE = /(?:\bnis\s*2?\b|\bnis2\b|kybernetick\w*\s+bezpečnost|\bgdpr\b|ochran\w*\s+osobn\w*\s+údaj|\bai\s+act\b|akt\w*\s+o\s+uměl\w*\s+inteligenc)/i;
 const INTERNAL_RULE_SOURCE_TYPES = new Set<ControlledRule["source_type"]>([
   "internal_directive",
   "internal_instruction",
@@ -103,7 +104,8 @@ export function controlledRuleIntentFromMessage(
   );
   const continuingControlledRules =
     contextString(context, "answer_source") === "controlled_rules"
-    && contextDomain === CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT;
+    && contextDomain === CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT
+    && !EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message);
   const hasDomain = PUBLIC_PROCUREMENT_RE.test(message) || continuingControlledRules;
   if (!hasDomain || !CONTROLLED_RULE_QUESTION_RE.test(message)) {
     return null;
