@@ -231,9 +231,16 @@ function composeResponse(
     });
   }
   if (orchestration.status === "no_data") {
-    const answer = language === "en"
-      ? "The authorized STRATOS sources contain no data matching this query."
-      : "Oprávněné zdroje STRATOS neobsahují data odpovídající tomuto dotazu.";
+    const applications = new Set(
+      orchestration.snapshot.outcomes.map((outcome) => outcome.application),
+    );
+    const answer = applications.size === 1 && applications.has("projectflow")
+      ? language === "en"
+        ? "ProjectFlow returned no authorized projects matching this query. The result was not substituted with document search."
+        : "ProjectFlow nevrátil žádné oprávněné projekty odpovídající tomuto dotazu. Výsledek nebyl nahrazen vyhledáváním v dokumentech."
+      : language === "en"
+        ? "The authorized STRATOS sources contain no data matching this query."
+        : "Oprávněné zdroje STRATOS neobsahují data odpovídající tomuto dotazu.";
     return baseResponse({
       conversationId,
       responseType: "no_answer",

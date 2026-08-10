@@ -1089,6 +1089,7 @@ describe("production API clients", () => {
     assert.equal(calls[1][1]?.method, "GET");
     assert.equal(calls[2][0], "https://rag.local/api/v1/assistant/chat");
     assert.equal(calls[2][1]?.method, "POST");
+    assert.ok(calls[2][1]?.signal);
   });
 
   it("uses Registry conversation-history endpoints for persisted assistant threads", async () => {

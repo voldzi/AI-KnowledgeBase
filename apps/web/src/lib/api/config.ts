@@ -28,6 +28,7 @@ export interface AklConfig {
     governance: string;
     evaluation: string;
   };
+  ragAssistantTimeoutMs?: number;
   oidc?: {
     issuer: string;
     clientId: string;
@@ -312,6 +313,11 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     authMode,
     webProfile,
     serviceBaseUrls,
+    ragAssistantTimeoutMs: positiveNumber(
+      env.AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS,
+      45_000,
+      "AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS",
+    ),
     oidc,
     ingestionTransport,
     governanceTransport,

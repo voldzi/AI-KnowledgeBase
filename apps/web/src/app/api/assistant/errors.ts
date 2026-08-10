@@ -52,6 +52,21 @@ export function assistantBridgeError(error: unknown) {
     );
   }
 
+  if (
+    (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name))
+    || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))
+  ) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "ASSISTANT_UPSTREAM_TIMEOUT",
+          message: "Assistant source did not respond within the configured time limit.",
+        },
+      },
+      { status: 504 },
+    );
+  }
+
   return NextResponse.json(
     {
       error: {

@@ -129,6 +129,17 @@ describe("assistant tool router", () => {
     assert.match(String(context.answer_format_instruction), /Nevracej jednosloupcový seznam/);
   });
 
+  it("routes contract-content questions to authorized document RAG", () => {
+    const route = routeAssistantMessage(
+      "Co stanoví smlouva k projektu Disky pro QNAP o ceně, termínu plnění a závazcích? Uveď zdroj.",
+      "cs",
+    );
+
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.reason, "rag_grounded_answer");
+    assert.equal(route.queryPlan.quality_gates.citations_required, true);
+  });
+
   it("adds obligation-specific guidance for structured obligation answers", () => {
     const route = routeAssistantMessage("Vytvoř tabulku povinností podle citovaných zdrojů.", "cs");
 

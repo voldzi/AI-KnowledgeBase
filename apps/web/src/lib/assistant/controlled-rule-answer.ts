@@ -94,6 +94,7 @@ const CZECH_STOP_WORDS = new Set([
 export function controlledRuleIntentFromMessage(
   message: string,
   context: Record<string, unknown> = {},
+  now = new Date(),
 ): ControlledRuleIntent | null {
   const contextDomain = contextString(
     context,
@@ -109,7 +110,7 @@ export function controlledRuleIntentFromMessage(
   }
   return {
     domain: CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT,
-    validOn: explicitValidOn(message) ?? contextString(context, "controlled_rule_valid_on"),
+    validOn: explicitValidOn(message, now) ?? contextString(context, "controlled_rule_valid_on"),
   };
 }
 
@@ -201,6 +202,7 @@ export function buildControlledRuleAssistantResponse(input: {
     input.result,
     input.language,
     sourceScope,
+    input.message,
   );
   return {
     response_type: "answer",
@@ -263,7 +265,7 @@ function selectMatchingRules(
     : ranked;
   if (allLimits) return sourceOrdered.slice(0, sourceScope === "combined" ? 14 : 10);
   if (preferredKeys.size > 0) {
-    const limit = isBroadVzmrOverview(message) ? 14 : 4;
+    const limit = isBroadVzmrOverview(message) || isTransactionalVzmrAssessment(message) ? 14 : 4;
     return sourceOrdered.slice(0, Math.min(preferredKeys.size, limit));
   }
   const topScore = sourceOrdered[0]?.score ?? 0;
@@ -341,6 +343,22 @@ function targetedNormativeKeys(message: string) {
       for (const key of VZMR_STATUTORY_RULE_KEYS) keys.add(key);
     }
   }
+  if (isTransactionalVzmrAssessment(message)) {
+    if (/stavebn/.test(value)) {
+      keys.add("public_procurement.vzmr.works.threshold");
+    } else {
+      keys.add("public_procurement.vzmr.supplies_services.threshold");
+    }
+  }
+  if (isTransactionalVzmrAssessment(message) && /krok|postup|smernic|intern/.test(value)) {
+    keys.add("public_procurement.market_research.threshold");
+    keys.add("public_procurement.supplier_quotes.minimum_count");
+    keys.add("public_procurement.marketplace.threshold");
+    keys.add("public_procurement.central_evidence.threshold");
+    keys.add("public_procurement.contract.written_form.threshold");
+    keys.add("public_procurement.approval.workflow");
+    keys.add("public_procurement.documentation.required");
+  }
   if ((broadVzmrOverview && !asksForLaw)
     || (asksForInternalRule && /\bvzmr\b/.test(value))
     || (asksForLaw && asksForInternalRule && asksForBroadLimits)) {
@@ -399,10 +417,13 @@ function controlledRuleAnswerText(
   result: ControlledRuleList,
   language: ResponseLanguage,
   sourceScope: ControlledRuleSourceScope,
+  message: string,
 ) {
   const statutoryRules = rules.filter(isStatutoryRule);
   const internalRules = rules.filter((rule) => !isStatutoryRule(rule));
   const sections: string[] = [];
+  const assessment = controlledRuleScenarioAssessment(rules, message, language);
+  if (assessment) sections.push(assessment, "");
   if (statutoryRules.length > 0) {
     sections.push(
       language === "en"
@@ -447,6 +468,7 @@ function isStatutoryRule(rule: ControlledRule) {
 function controlledRuleSourceScope(message: string): ControlledRuleSourceScope {
   const asksForLaw = LEGAL_SOURCE_RE.test(message);
   const asksForInternalRule = INTERNAL_SOURCE_RE.test(message);
+  if (asksForInternalRule && isTransactionalVzmrAssessment(message)) return "combined";
   if (asksForLaw && !asksForInternalRule) return "statutory";
   if (asksForInternalRule && !asksForLaw) return "internal";
   return "combined";
@@ -582,7 +604,7 @@ function emptyResponse(input: {
   };
 }
 
-function explicitValidOn(message: string) {
+function explicitValidOn(message: string, now: Date) {
   const iso = message.match(/\b(20\d{2})-(0[1-9]|1[0-2])-([0-2]\d|3[01])\b/);
   if (iso) return iso[0];
   const czech = message.match(/\b([0-2]?\d|3[01])\.\s*(0?\d|1[0-2])\.\s*(20\d{2})\b/);
@@ -590,7 +612,62 @@ function explicitValidOn(message: string) {
     return `${czech[3]}-${String(Number(czech[2])).padStart(2, "0")}-${String(Number(czech[1])).padStart(2, "0")}`;
   }
   const year = message.match(/(?:v\s+roce|pro\s+rok|k\s+roku)\s+(20\d{2})\b/i);
-  return year ? `${year[1]}-12-31` : null;
+  if (!year) return null;
+  const currentDate = currentControlledRuleDate(now);
+  return year[1] === currentDate.slice(0, 4) ? currentDate : `${year[1]}-12-31`;
+}
+
+function isTransactionalVzmrAssessment(message: string): boolean {
+  const value = normalized(message);
+  return /\bvzmr\b|verejn\w*\s+zakaz\w*\s+maleh\w*\s+rozsah/.test(value)
+    && /(?:\d|milion|tisic)/.test(value)
+    && /(?:nakup|dodav|sluzb|stavebn|porizeni|zakazk)/.test(value);
+}
+
+function controlledRuleScenarioAssessment(
+  rules: ControlledRule[],
+  message: string,
+  language: ResponseLanguage,
+): string | null {
+  if (language !== "cs") return null;
+  const amount = monetaryAmountFromMessage(message);
+  if (amount === null) return null;
+  const query = normalized(message);
+  const key = /stavebn/.test(query)
+    ? "public_procurement.vzmr.works.threshold"
+    : /dodav|sluzb|nakup|porizeni/.test(query)
+      ? "public_procurement.vzmr.supplies_services.threshold"
+      : null;
+  if (!key) return null;
+  const threshold = rules.find((rule) => (
+    rule.proposal.normative_key === key
+    && isStatutoryRule(rule)
+    && typeof rule.proposal.value === "number"
+  ));
+  if (!threshold || typeof threshold.proposal.value !== "number") return null;
+  const amountText = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 2 }).format(amount);
+  const thresholdText = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 2 }).format(
+    threshold.proposal.value,
+  );
+  const category = key.endsWith("works.threshold") ? "stavební práce" : "dodávky a služby";
+  const comparison = amount <= threshold.proposal.value
+    ? `nepřekračuje zákonný limit ${thresholdText} Kč a z hlediska tohoto limitu spadá do VZMR`
+    : `překračuje zákonný limit ${thresholdText} Kč a z hlediska tohoto limitu nespadá do VZMR`;
+  return `**Posouzení uvedené hodnoty:** ${amountText} Kč pro ${category} ${comparison}. `
+    + "Jde o posouzení podle finančního limitu; konkrétní postup mohou ovlivnit další zákonné podmínky a výjimky.";
+}
+
+function monetaryAmountFromMessage(message: string): number | null {
+  const value = normalized(message).replaceAll("\u00a0", " ");
+  const match = value.match(/(\d[\d\s]*(?:[.,]\d+)?)\s*(milionu|miliony|milion|mil\.?|tisice|tisicu|tisic|tis\.?)?\s*kc\b/);
+  if (!match) return null;
+  const raw = match[1]!.replace(/\s+/g, "").replace(",", ".");
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const multiplier = match[2]?.startsWith("mil") ? 1_000_000
+    : match[2]?.startsWith("tis") ? 1_000
+    : 1;
+  return parsed * multiplier;
 }
 
 function meaningfulTokens(value: string) {

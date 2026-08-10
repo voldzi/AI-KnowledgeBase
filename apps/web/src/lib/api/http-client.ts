@@ -16,6 +16,7 @@ export interface JsonRequestOptions {
   context: ApiRequestContext;
   fetcher?: AklFetch;
   extraHeaders?: Record<string, string>;
+  timeoutMs?: number;
 }
 
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
@@ -71,7 +72,8 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
     method: options.method ?? "GET",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    cache: "no-store"
+    cache: "no-store",
+    signal: options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined,
   });
 
   const latencyMs = Math.round(performance.now() - startedAt);

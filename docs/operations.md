@@ -174,6 +174,12 @@ for compatibility. Production values belong outside Git, for example in
 When configuration changes, update `.env.example`, this document, and the
 specific deployment document.
 
+Document-grounded chat requests use
+`AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS` (default `45000`). When the bounded timeout
+expires, the web bridge fails the turn explicitly instead of leaving the chat
+indefinitely in a sending state. Live STRATOS tools retain their independent,
+shorter Director Copilot timeout.
+
 ### Director Copilot activation
 
 Director Copilot V2 is the only AKB federation path. It is pinned to wire

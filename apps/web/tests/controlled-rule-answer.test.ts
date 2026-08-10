@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildControlledRuleAssistantResponse,
+  controlledRuleIntentFromMessage,
   currentControlledRuleDate,
 } from "../src/lib/assistant/controlled-rule-answer";
 import type { ControlledRuleList } from "../src/lib/types";
@@ -438,6 +439,70 @@ describe("controlled rule assistant answer", () => {
       currentControlledRuleDate(new Date("2026-08-09T22:30:00.000Z")),
       "2026-08-10",
     );
+  });
+
+  it("uses today's Prague date for the current year and year end only for history", () => {
+    const now = new Date("2026-08-09T22:30:00.000Z");
+    assert.equal(
+      controlledRuleIntentFromMessage("Jaké limity platí pro VZMR v roce 2026?", {}, now)?.validOn,
+      "2026-08-10",
+    );
+    assert.equal(
+      controlledRuleIntentFromMessage("Jaké limity platily pro VZMR v roce 2023?", {}, now)?.validOn,
+      "2023-12-31",
+    );
+  });
+
+  it("assesses a natural VZMR scenario against law and includes internal procedure rules", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_supplies_services",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Statutory supplies and services threshold",
+        value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_market_research",
+        normativeKey: "public_procurement.market_research.threshold",
+        title: "Internal market research threshold",
+        value: 20000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+      controlledRule({
+        ruleId: "rule_marketplace",
+        normativeKey: "public_procurement.marketplace.threshold",
+        title: "Internal marketplace threshold",
+        value: 50000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Je nákup dodávky za 2,5 milionu Kč bez DPH v roce 2026 VZMR? Jaké interní kroky stanoví směrnice?",
+      conversationId: "conv_vzmr_scenario",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "answer");
+    assert.equal(response.current_context.controlled_rule_source_scope, "combined");
+    assert.deepEqual(response.current_context.controlled_rule_ids, [
+      "rule_supplies_services",
+      "rule_market_research",
+      "rule_marketplace",
+    ]);
+    assert.match(response.answer ?? "", /2\s500\s000 Kč/);
+    assert.match(response.answer ?? "", /nepřekračuje zákonný limit 3\s000\s000 Kč/);
+    assert.match(response.answer ?? "", /Doplňující interní pravidla/);
   });
 
   it("answers an explicit combined historical VZMR question with both statutory thresholds", () => {

@@ -13,6 +13,12 @@ describe("AKL web config", () => {
     assert.equal(config.webProfile, "platform");
     assert.equal(config.directorCopilot?.enabled, false);
     assert.equal(config.directorCopilot?.clientId, "svc-akb-director-copilot");
+    assert.equal(config.ragAssistantTimeoutMs, 45_000);
+  });
+
+  it("accepts a bounded RAG assistant timeout", () => {
+    const config = getAklConfig({ AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS: "12000" });
+    assert.equal(config.ragAssistantTimeoutMs, 12_000);
   });
 
   it("rejects mock API clients in production", () => {

@@ -535,6 +535,35 @@ describe("Director Copilot V2 active chat", () => {
     assert.ok(response.warnings.includes("LIVE_DATA_CONTRACT_REJECTED"));
     assert.ok(response.warnings.includes("LIVE_DATA_FALLBACK_BLOCKED"));
   });
+
+  it("identifies ProjectFlow explicitly when an authorized portfolio query has no data", async () => {
+    const message = "Jaký je aktuální stav projektového portfolia?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-10T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-projectflow-no-data",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "project_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: projectflowNoDataFetcher(),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.match(response.answer ?? "", /ProjectFlow nevrátil žádné oprávněné projekty/i);
+    assert.match(response.answer ?? "", /nebyl nahrazen vyhledáváním v dokumentech/i);
+  });
 });
 
 function fetcher(): typeof fetch {
@@ -561,6 +590,32 @@ function fetcher(): typeof fetch {
         : budgetProjectShapedOrganizationResponse();
     return Response.json({
       ...source,
+      tool_id: request.tool_id,
+      tool_call_id: request.tool_call_id,
+    });
+  };
+}
+
+function projectflowNoDataFetcher(): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (init?.method === "GET") {
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    assert.match(url, /projectflow/);
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    return Response.json({
+      ...structuredClone(projectflow.responses.no_data),
       tool_id: request.tool_id,
       tool_call_id: request.tool_call_id,
     });
