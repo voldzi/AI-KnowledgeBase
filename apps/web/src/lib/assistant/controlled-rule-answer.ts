@@ -30,7 +30,7 @@ type ControlledRuleSourceScope = "statutory" | "internal" | "combined";
 const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e|ych|ou)\s+zakaz|\bvzmr\b|zadáván(?:í|i)\s+zakáz|zadavani\s+zakaz|průzkum\s+trhu|pruzkum\s+trhu|elektronick\w*\s+tržišt|elektronick\w*\s+trzist|profil\w*\s+zadavatele|registr\w*\s+smluv|přím\w*\s+nákup|prim\w*\s+nakup|public\s+procurement)/i;
 const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim|zákon|zakon|legislativ|právn|pravn)/i;
 const LEGAL_SOURCE_RE = /(?:zákon|zakon|zákonn|zakonn|legislativ|právn|pravn)/i;
-const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*\s+pravidl|vnitřn|vnitrn)/i;
+const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*(?:\s+(?:pravidl|limit|postup|směrnic|smernic))?|vnitřn|vnitrn)/i;
 const INTERNAL_RULE_SOURCE_TYPES = new Set<ControlledRule["source_type"]>([
   "internal_directive",
   "internal_instruction",
@@ -154,7 +154,7 @@ export function buildControlledRuleAssistantResponse(input: {
     (rule) => rule.precedence_status === "conflict"
       && ruleMatchesSourceScope(rule, sourceScope),
   ));
-  const matching = selectMatchingRules(input.message, eligible);
+  const matching = selectMatchingRules(input.message, eligible, sourceScope);
   const baseContext = {
     ...input.context,
     answer_source: "controlled_rules",
@@ -240,7 +240,11 @@ function rankedRules(message: string, rules: ControlledRule[]) {
     .sort((left, right) => right.score - left.score || right.rule.authority_rank - left.rule.authority_rank);
 }
 
-function selectMatchingRules(message: string, rules: ControlledRule[]) {
+function selectMatchingRules(
+  message: string,
+  rules: ControlledRule[],
+  sourceScope: ControlledRuleSourceScope,
+) {
   const preferredKeys = targetedNormativeKeys(message);
   const normalizedMessage = normalized(message);
   const allLimits = /\b(?:jake|ktere|vsechny|prehled|seznam)\b/.test(normalizedMessage)
@@ -251,13 +255,19 @@ function selectMatchingRules(message: string, rules: ControlledRule[]) {
       ? rules.filter((rule) => rule.proposal.category === "financial_limit")
       : rules;
   const ranked = uniqueRankedRules(rankedRules(message, candidates));
-  if (allLimits) return ranked.slice(0, 10);
+  const sourceOrdered = sourceScope === "combined"
+    ? [
+        ...ranked.filter((item) => isStatutoryRule(item.rule)),
+        ...ranked.filter((item) => !isStatutoryRule(item.rule)),
+      ]
+    : ranked;
+  if (allLimits) return sourceOrdered.slice(0, sourceScope === "combined" ? 14 : 10);
   if (preferredKeys.size > 0) {
     const limit = isBroadVzmrOverview(message) ? 14 : 4;
-    return ranked.slice(0, Math.min(preferredKeys.size, limit));
+    return sourceOrdered.slice(0, Math.min(preferredKeys.size, limit));
   }
-  const topScore = ranked[0]?.score ?? 0;
-  return ranked
+  const topScore = sourceOrdered[0]?.score ?? 0;
+  return sourceOrdered
     .filter((item) => item.score >= Math.max(4, Math.ceil(topScore * 0.65)))
     .slice(0, 4);
 }
