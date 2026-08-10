@@ -45,6 +45,22 @@ describe("assistant tool router", () => {
     assert.equal(route.controlledRuleIntent?.validOn, "2026-08-03");
   });
 
+  it("does not carry a procurement rule context into an explicit NIS2 question", () => {
+    const route = routeAssistantMessage(
+      "Co znamená NIS2 a jaké povinnosti ukládá? Uveď citovatelné zdroje.",
+      "cs",
+      {
+        answer_source: "controlled_rules",
+        controlled_rule_domain: "public_procurement",
+        controlled_rule_valid_on: "2026-08-10",
+      },
+    );
+
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.reason, "rag_grounded_answer");
+    assert.equal(route.controlledRuleIntent, null);
+  });
+
   it("recognizes a governed procurement concept without requiring the formal domain name", () => {
     const route = routeAssistantMessage(
       "Jaký limit platí pro průzkum trhu a kolik nabídek je potřeba?",

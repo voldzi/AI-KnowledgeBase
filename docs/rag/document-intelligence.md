@@ -346,7 +346,10 @@ returned, the UI does not submit the question again. It polls the existing
 Registry conversation for the exact newly persisted user/assistant turn and
 replaces the pending bubble when that turn appears. This prevents duplicate
 LLM work and keeps a completed answer visible without requiring a manual page
-reload.
+reload. An explicit HTTP timeout or upstream error is terminal for that turn:
+the UI shows a bounded human-readable failure immediately and does not add a
+second history-recovery wait after the server has confirmed that no answer was
+completed.
 
 Questions about effective public-procurement limits, duties, evidence,
 exceptions and approvals use the Registry controlled-rule catalog before
@@ -356,7 +359,9 @@ only rules that are effective for the requested date, verified by the gestor,
 precedence engine. A matching conflict or missing rule fails closed with no
 replacement amount. Every returned rule retains its exact document-version
 and chunk citation, and follow-up questions keep the same governed domain and
-date without treating conversation context as authorization.
+date without treating conversation context as authorization. An explicit new
+legal topic, for example NIS2 after a procurement question, clears the inherited
+procurement route and uses authorized document RAG instead.
 
 The chat path authorizes every package source with `akb:chat` and the same
 fresh Information Policy decision used for RAG. The default employee profile

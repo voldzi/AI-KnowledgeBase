@@ -564,6 +564,36 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(response.answer ?? "", /ProjectFlow nevrátil žádné oprávněné projekty/i);
     assert.match(response.answer ?? "", /nebyl nahrazen vyhledáváním v dokumentech/i);
   });
+
+  it("describes an empty authorized ArchFlow scope without implying organization-wide absence", async () => {
+    const message = "Jaké potřeby eviduje Sekce IT?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-10T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-archflow-policy-denied",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "archflow_demand_overview",
+      queryState,
+      mode: "active",
+      fetcher: archflowNotAuthorizedFetcher(),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "restricted");
+    assert.match(response.answer ?? "", /v dostupném oprávněném rozsahu ArchFlow/i);
+    assert.match(response.answer ?? "", /mimo tento rozsah zůstávají skryté/i);
+    assert.doesNotMatch(response.answer ?? "", /v organizaci nejsou/i);
+  });
 });
 
 function fetcher(): typeof fetch {
@@ -616,6 +646,35 @@ function projectflowNoDataFetcher(): typeof fetch {
     const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
     return Response.json({
       ...structuredClone(projectflow.responses.no_data),
+      tool_id: request.tool_id,
+      tool_call_id: request.tool_call_id,
+    });
+  };
+}
+
+function archflowNotAuthorizedFetcher(): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (init?.method === "GET") {
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    assert.match(url, /archflow/);
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    const response = structuredClone(archflow.responses.not_authorized);
+    response.completeness.missing_reasons = ["ARCHFLOW_INFORMATION_POLICY_DENIED"];
+    response.warnings = ["ARCHFLOW_INFORMATION_POLICY_DENIED"];
+    return Response.json({
+      ...response,
       tool_id: request.tool_id,
       tool_call_id: request.tool_call_id,
     });
