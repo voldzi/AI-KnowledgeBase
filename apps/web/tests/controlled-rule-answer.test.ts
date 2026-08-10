@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildControlledRuleAssistantResponse } from "../src/lib/assistant/controlled-rule-answer";
+import {
+  buildControlledRuleAssistantResponse,
+  currentControlledRuleDate,
+} from "../src/lib/assistant/controlled-rule-answer";
 import type { ControlledRuleList } from "../src/lib/types";
 
 describe("controlled rule assistant answer", () => {
@@ -296,6 +299,54 @@ describe("controlled rule assistant answer", () => {
     ]);
     assert.match(response.answer ?? "", /Zákonné limity účinné/);
     assert.match(response.answer ?? "", /Doplňující interní pravidla/);
+  });
+
+  it("returns both source sections for a general combined limit question", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_supplies_services",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Statutory supplies and services threshold",
+        value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_market_research",
+        normativeKey: "public_procurement.market_research.threshold",
+        title: "Internal market research threshold",
+        value: 20000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaké jsou limity podle zákona a interní směrnice?",
+      conversationId: "conv_general_combined_sources",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.current_context.controlled_rule_source_scope, "combined");
+    assert.deepEqual(response.current_context.controlled_rule_ids, [
+      "rule_supplies_services",
+      "rule_market_research",
+    ]);
+    assert.match(response.answer ?? "", /Zákonné limity účinné/);
+    assert.match(response.answer ?? "", /Doplňující interní pravidla/);
+  });
+
+  it("uses the Prague calendar date when UTC is still on the previous day", () => {
+    assert.equal(
+      currentControlledRuleDate(new Date("2026-08-09T22:30:00.000Z")),
+      "2026-08-10",
+    );
   });
 
   it("answers an explicit combined historical VZMR question with both statutory thresholds", () => {
