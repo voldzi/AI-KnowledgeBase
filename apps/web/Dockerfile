@@ -3,7 +3,15 @@
 FROM node:26-alpine AS deps
 WORKDIR /app
 COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
-RUN npm install -g pnpm@11.7.0 && pnpm install --frozen-lockfile
+# Keep dependency downloads across BuildKit retries. The production image must
+# remain buildable when the public registry has a transient slow response.
+RUN --mount=type=cache,id=akb-web-pnpm-store,target=/pnpm/store \
+  npm install -g pnpm@11.7.0 && \
+  pnpm config set store-dir /pnpm/store && \
+  pnpm config set fetch-retries 5 && \
+  pnpm config set fetch-timeout 300000 && \
+  pnpm config set network-concurrency 8 && \
+  pnpm install --frozen-lockfile
 
 FROM node:26-alpine AS builder
 WORKDIR /app
