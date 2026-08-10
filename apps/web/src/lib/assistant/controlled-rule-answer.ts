@@ -250,7 +250,7 @@ function selectMatchingRules(message: string, rules: ControlledRule[]) {
     : allLimits
       ? rules.filter((rule) => rule.proposal.category === "financial_limit")
       : rules;
-  const ranked = rankedRules(message, candidates);
+  const ranked = uniqueRankedRules(rankedRules(message, candidates));
   if (allLimits) return ranked.slice(0, 10);
   if (preferredKeys.size > 0) {
     const limit = isBroadVzmrOverview(message) ? 14 : 4;
@@ -260,6 +260,16 @@ function selectMatchingRules(message: string, rules: ControlledRule[]) {
   return ranked
     .filter((item) => item.score >= Math.max(4, Math.ceil(topScore * 0.65)))
     .slice(0, 4);
+}
+
+function uniqueRankedRules<T extends { rule: ControlledRule }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.rule.proposal.normative_key;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function targetedNormativeKeys(message: string) {

@@ -323,6 +323,33 @@ describe("controlled rule assistant answer", () => {
         unit: "currency",
         currency: "CZK",
       }),
+      ...Array.from({ length: 10 }, (_, index) => controlledRule({
+        ruleId: `rule_supplies_services_duplicate_${index}`,
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: `Statutory supplies and services threshold duplicate ${index}`,
+        value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 99 - index,
+        precedenceStatus: "authoritative",
+      })),
+      controlledRule({
+        ruleId: "rule_marketplace",
+        normativeKey: "public_procurement.marketplace.threshold",
+        title: "Internal marketplace threshold",
+        value: 50000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+      controlledRule({
+        ruleId: "rule_central_evidence",
+        normativeKey: "public_procurement.central_evidence.threshold",
+        title: "Internal central evidence threshold",
+        value: 200000,
+        unit: "currency",
+        currency: "CZK",
+      }),
     ];
 
     const response = buildControlledRuleAssistantResponse({
@@ -337,6 +364,8 @@ describe("controlled rule assistant answer", () => {
     assert.deepEqual(response.current_context.controlled_rule_ids, [
       "rule_supplies_services",
       "rule_market_research",
+      "rule_marketplace",
+      "rule_central_evidence",
     ]);
     assert.match(response.answer ?? "", /Zákonné limity účinné/);
     assert.match(response.answer ?? "", /Doplňující interní pravidla/);
