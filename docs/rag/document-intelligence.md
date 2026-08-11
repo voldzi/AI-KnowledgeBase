@@ -359,9 +359,11 @@ only rules that are effective for the requested date, verified by the gestor,
 precedence engine. A matching conflict or missing rule fails closed with no
 replacement amount. Every returned rule retains its exact document-version
 and chunk citation, and follow-up questions keep the same governed domain and
-date without treating conversation context as authorization. An explicit new
-legal topic, for example NIS2 after a procurement question, clears the inherited
-procurement route and uses authorized document RAG instead.
+date without treating conversation context as authorization. Explicit domain
+signals always take precedence over inherited conversation state: a procurement
+question after an ArchFlow, Budget, or ProjectFlow answer uses the controlled-rule
+catalog, while a different legal topic such as NIS2 clears both the inherited
+live-source route and the procurement route and uses authorized document RAG.
 
 The chat path authorizes every package source with `akb:chat` and the same
 fresh Information Policy decision used for RAG. The default employee profile
