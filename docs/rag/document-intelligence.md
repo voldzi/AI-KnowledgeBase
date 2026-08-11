@@ -364,6 +364,17 @@ signals always take precedence over inherited conversation state: a procurement
 question after an ArchFlow, Budget, or ProjectFlow answer uses the controlled-rule
 catalog, while a different legal topic such as NIS2 clears both the inherited
 live-source route and the procurement route and uses authorized document RAG.
+Document RAG applies the same boundary to retrieval history. A short referential
+follow-up such as `A co zákon?` keeps the preceding user questions, while a
+self-contained question with no meaningful topic overlap starts a fresh retrieval
+context. Assistant answers are never reused as authority. This prevents an earlier
+project, budget, procurement or legal topic from diluting retrieval for a new
+question while preserving natural follow-up dialogue.
+
+A missing document source returns a normal fail-closed `no_answer` response.
+Service Desk handoff is offered only for a message that is actually classified as
+an IT incident; a failed legal, contractual or knowledge lookup never recommends a
+Service Desk that is unrelated to the requested information.
 
 The chat path authorizes every package source with `akb:chat` and the same
 fresh Information Policy decision used for RAG. The default employee profile

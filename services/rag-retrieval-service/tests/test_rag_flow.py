@@ -598,9 +598,88 @@ def test_regular_assistant_chat_applies_enforced_evidence_gate() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["response_type"] == "handoff_recommended"
+    assert body["response_type"] == "no_answer"
     assert body["citations"] == []
+    assert body["recommended_action"] is None
+    assert body["suggested_actions"] == []
     assert "EVIDENCE_GATE_UNSUPPORTED_CLAIMS" in body["warnings"]
+
+
+def test_it_support_no_source_can_recommend_service_desk_handoff() -> None:
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Tiskárna hlásí neznámou chybu XYZ-999.",
+                "mode": "it_support_answer",
+                "context": {
+                    "system": "Tiskárna",
+                    "impact": "chyba jedné funkce",
+                    "scope": "jen mě",
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "handoff_recommended"
+    assert body["recommended_action"] == "Založit požadavek na Service Desk"
+    assert body["suggested_actions"][0]["target"] == "service-desk"
+
+
+def test_explicit_new_topic_does_not_inherit_unrelated_conversation_questions() -> None:
+    query = _assistant_query(
+        "Co znamená NIS2 a jaké povinnosti ukládá?",
+        {
+            "earlier_user_questions": [
+                "Jaké potřeby eviduje Sekce IT?",
+                "Jaké jsou interní a zákonné limity pro veřejné zakázky?",
+            ]
+        },
+    )
+
+    assert "earlier_user_questions" not in query
+    assert "Směrnice (EU) 2022/2555" in query
+
+
+def test_legal_retrieval_hint_is_not_added_to_answer_prompt() -> None:
+    query = _assistant_answer_query(
+        "Co znamená NIS2 a jaké povinnosti ukládá?",
+        {"earlier_user_questions": ["Jaké jsou limity veřejných zakázek?"]},
+    )
+
+    assert "earlier_user_questions" not in query
+    assert "Kanonický právní zdroj" not in query
+
+
+def test_short_explicit_legal_topic_does_not_inherit_history() -> None:
+    query = _assistant_query(
+        "Co je NIS2?",
+        {"earlier_user_questions": ["Jaký je stav projektu Team Space?"]},
+    )
+
+    assert "earlier_user_questions" not in query
+    assert "Směrnice (EU) 2022/2555" in query
+
+
+def test_referential_follow_up_keeps_conversation_questions() -> None:
+    query = _assistant_query(
+        "A co zákon?",
+        {"earlier_user_questions": ["Jaké jsou interní limity pro veřejné zakázky?"]},
+    )
+
+    assert "earlier_user_questions" in query
+    assert "interní limity" in query
+
+
+def test_related_full_question_keeps_conversation_questions() -> None:
+    query = _assistant_query(
+        "Jaké jsou zákonné limity pro veřejné zakázky?",
+        {"earlier_user_questions": ["Jaké jsou interní limity pro veřejné zakázky?"]},
+    )
+
+    assert "earlier_user_questions" in query
 
 
 def test_conversation_context_keeps_only_bounded_user_questions() -> None:

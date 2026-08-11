@@ -1634,7 +1634,11 @@ class RagRetrievalService:
                 response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
-        response_type = "handoff_recommended" if rag_answer.confidence == "insufficient_source" else "no_answer"
+        service_desk_handoff = (
+            _is_incident_query(_normalize_for_assistant(payload.message))
+            and rag_answer.confidence == "insufficient_source"
+        )
+        response_type = "handoff_recommended" if service_desk_handoff else "no_answer"
         response = AssistantChatResponse(
             response_type=response_type,
             conversation_id=conversation_id,
@@ -1643,14 +1647,22 @@ class RagRetrievalService:
             confidence=rag_answer.confidence,
             warnings=rag_answer.warnings,
             missing_information=rag_answer.missing_information,
-            recommended_action=_localized(payload.response_language, "service_desk_handoff"),
-            suggested_actions=[
-                AssistantSuggestedAction(
-                    label=_localized(payload.response_language, "service_desk_handoff"),
-                    action_type="handoff",
-                    target="service-desk",
-                )
-            ],
+            recommended_action=(
+                _localized(payload.response_language, "service_desk_handoff")
+                if service_desk_handoff
+                else None
+            ),
+            suggested_actions=(
+                [
+                    AssistantSuggestedAction(
+                        label=_localized(payload.response_language, "service_desk_handoff"),
+                        action_type="handoff",
+                        target="service-desk",
+                    )
+                ]
+                if service_desk_handoff
+                else []
+            ),
         )
         await self._audit_assistant(
             actor_id=payload.user_id,
@@ -3457,11 +3469,19 @@ def _bounded_conversation_questions(
     return questions
 
 
-def _assistant_query(message: str, context: dict[str, object]) -> str:
+def _assistant_query(
+    message: str,
+    context: dict[str, object],
+    *,
+    include_retrieval_hint: bool = True,
+) -> str:
+    earlier_questions = context.get("earlier_user_questions")
+    include_history = _assistant_query_uses_history(message, earlier_questions)
     context_parts = [
         f"{key}: {value_text}"
         for key, value in sorted(context.items())
         if key not in ASSISTANT_INTERNAL_CONTEXT_KEYS
+        and (key != "earlier_user_questions" or include_history)
         for value_text in [
             _assistant_context_value(
                 value,
@@ -3474,13 +3494,78 @@ def _assistant_query(message: str, context: dict[str, object]) -> str:
         ]
         if value_text
     ]
-    if not context_parts:
-        return message
-    return f"{message}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
+    query = message
+    if context_parts:
+        query = f"{query}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
+    retrieval_hint = _assistant_legal_retrieval_hint(message) if include_retrieval_hint else None
+    if retrieval_hint:
+        query = f"{query}\n\nKanonický právní zdroj pro vyhledání: {retrieval_hint}"
+    return query
+
+
+_ASSISTANT_HISTORY_STOPWORDS = {
+    "a", "ale", "anebo", "co", "do", "for", "from", "how", "i", "in",
+    "is", "jak", "jaka", "jake", "jaky", "je", "jsou", "k", "ke",
+    "ktere", "ktery", "na", "nad", "nebo", "o", "od", "of", "pod", "pro",
+    "se", "the", "to", "u", "v", "ve", "what", "which", "with", "z", "za",
+}
+
+_ASSISTANT_LEGAL_RETRIEVAL_HINTS = (
+    (r"\bnis\s*2\b", "Směrnice NIS2; Směrnice (EU) 2022/2555"),
+    (r"\bgdpr\b", "Obecné nařízení o ochraně osobních údajů; Nařízení (EU) 2016/679"),
+    (
+        r"\b(ai\s*act|akt\s+o\s+umele\s+inteligenci)\b",
+        "Akt o umělé inteligenci; Nařízení (EU) 2024/1689",
+    ),
+)
+
+
+def _assistant_legal_retrieval_hint(message: str) -> str | None:
+    normalized = _normalize_for_assistant(message)
+    for pattern, hint in _ASSISTANT_LEGAL_RETRIEVAL_HINTS:
+        if re.search(pattern, normalized):
+            return hint
+    return None
+
+
+def _assistant_query_uses_history(message: str, earlier_questions: object) -> bool:
+    if not isinstance(earlier_questions, list) or not earlier_questions:
+        return False
+    normalized = _normalize_for_assistant(message).strip()
+    if not normalized:
+        return False
+    if re.match(
+        r"^(a\s+co|co\s+(s\s+tim|to|dale)|jak\s+je\s+to|jak\s+to|"
+        r"ktery\s+z\s+nich|ktera\s+z\s+nich|kolik\s+jich|a\s+dale|a\s+dal|"
+        r"what\s+about|and\s+what|how\s+about)\b",
+        normalized,
+    ):
+        return True
+    if re.search(r"\b(to|toho|tomu|tento|tato|teto|ten|jeho|jeji|jejich|nich|them|it|that|those)\b", normalized):
+        return True
+
+    current_terms = _assistant_history_terms(normalized)
+    if _assistant_legal_retrieval_hint(message):
+        return False
+    if len(current_terms) < 3:
+        return True
+    previous_terms: set[str] = set()
+    for question in earlier_questions[-4:]:
+        if isinstance(question, str):
+            previous_terms.update(_assistant_history_terms(_normalize_for_assistant(question)))
+    return bool(current_terms.intersection(previous_terms))
+
+
+def _assistant_history_terms(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9][a-z0-9_-]{1,}", value)
+        if token not in _ASSISTANT_HISTORY_STOPWORDS
+    }
 
 
 def _assistant_answer_query(message: str, context: dict[str, object]) -> str:
-    query = _assistant_query(message, context)
+    query = _assistant_query(message, context, include_retrieval_hint=False)
     evidence = _director_copilot_evidence_context(
         context.get("director_copilot_evidence")
     )
@@ -3822,7 +3907,21 @@ def _is_access_query(value: str) -> bool:
 
 
 def _is_incident_query(value: str) -> bool:
-    return any(term in value for term in ("nejde", "nefunguje", "vypadek", "chyba", "incident", "outage", "broken", "error"))
+    return (
+        any(
+            term in value
+            for term in (
+                "nejde",
+                "nefunguje",
+                "vypadek",
+                "incident",
+                "outage",
+                "broken",
+                "error",
+            )
+        )
+        or re.search(r"\bchyb(a|u|y|ou|e)\b", value) is not None
+    )
 
 
 def _is_approval_query(value: str) -> bool:
