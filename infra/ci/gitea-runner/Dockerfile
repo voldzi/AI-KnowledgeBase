@@ -45,6 +45,7 @@ RUN apt-get update \
         libxshmfence1 \
         libxss1 \
         libxtst6 \
+        openssh-client \
         python3 \
         python3-pip \
         python3-venv \
