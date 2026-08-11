@@ -601,7 +601,7 @@ class HttpRegistryClient:
                 dependency="registry-api",
                 settings=self._settings,
                 method="GET",
-                url=f"{self._settings.registry_base_url}/assistant/conversations/{conversation_id}",
+                url=f"{self._settings.registry_base_url}/assistant/conversation-history/{conversation_id}",
                 auth_context=auth_context,
                 prefer_upstream_token=True,
             )
