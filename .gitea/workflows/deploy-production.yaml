@@ -73,10 +73,14 @@ jobs:
 
       - name: Require successful trusted main CI
         env:
-          GITEA_TOKEN: ${{ github.token }}
+          GITEA_TOKEN: ${{ secrets.AKB_GITEA_RELEASE_GATE_TOKEN }}
         run: |
           set -euo pipefail
           umask 077
+          [[ -n "${GITEA_TOKEN}" ]] || {
+            printf 'Gitea release-gate token is not configured.\n' >&2
+            exit 1
+          }
           token_file="$(mktemp)"
           trap 'unlink "${token_file}"' EXIT
           printf '%s' "${GITEA_TOKEN}" >"${token_file}"

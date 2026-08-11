@@ -122,6 +122,12 @@ class ProductionGateTests(unittest.TestCase):
         self.assertNotIn("pull_request:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertIn("runs-on: akb-gitea-ci", workflow)
+        self.assertIn("GITEA_TOKEN: ${{ github.token }}", workflow)
+        self.assertIn(
+            "GITEA_TOKEN: ${{ secrets.AKB_GITEA_RELEASE_GATE_TOKEN }}",
+            workflow,
+        )
+        self.assertIn("Gitea release-gate token is not configured.", workflow)
         self.assertIn("secrets.AKB_PRODUCTION_DEPLOY_SSH_KEY", workflow)
         self.assertIn("secrets.AKB_PRODUCTION_DEPLOY_KNOWN_HOSTS", workflow)
         self.assertNotIn("AKL_PROD_ENV", workflow)

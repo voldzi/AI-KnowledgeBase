@@ -47,11 +47,16 @@ Configure exactly these repository-scoped Gitea Actions secrets:
 
 - `AKB_PRODUCTION_DEPLOY_SSH_KEY`: dedicated private Ed25519 trigger key;
 - `AKB_PRODUCTION_DEPLOY_KNOWN_HOSTS`: pinned trusted SSH host-key line for
-  `docker.home.cz`.
+  `docker.home.cz`;
+- `AKB_GITEA_RELEASE_GATE_TOKEN`: repository-read-only Gitea API token used
+  only to verify the successful trusted `main` CI run for the approved SHA.
 
-Do not reuse an operator key, Gitea read key, STRATOS key or CI runner
-registration token. Do not configure production environment files as Actions
-secrets. Secret values must never be printed in workflow logs.
+The release-gate token must have repository `Read` permission and no other API
+scope. The checkout step continues to use the ephemeral job token; the
+release-gate token is used only for the Gitea Actions API query. Do not reuse
+an operator key, Gitea deploy key, STRATOS key or CI runner registration token.
+Do not configure production environment files as Actions secrets. Secret
+values must never be printed in workflow logs.
 
 ## Host Installation
 
@@ -111,7 +116,7 @@ determine the actual state.
 
 ## Rollback Of This Integration
 
-Disable the `AKB production deploy` workflow, remove the two repository secrets
+Disable the `AKB production deploy` workflow, remove the three repository secrets
 and remove only the dedicated forced-command public key. Keep the immutable
 host release machinery and Gitea read-only mirror intact. Do not delete release
 records, burned-SHA markers, backups or operator logs.
