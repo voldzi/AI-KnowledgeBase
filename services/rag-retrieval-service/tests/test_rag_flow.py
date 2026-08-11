@@ -702,8 +702,30 @@ def test_legal_follow_up_inherits_canonical_source_from_latest_question() -> Non
         },
     )
 
-    assert "earlier_user_questions" in query
+    assert "earlier_user_questions" not in query
     assert "Směrnice (EU) 2022/2555" in query
+    assert "Téma předchozí otázky: Co znamená NIS2" in query
+    assert "Aktuální navazující dotaz: A jaké jsou lhůty" in query
+    assert "včasné varování" in query
+    assert "oznámení incidentu" in query
+    assert "24" not in query
+    assert "72" not in query
+
+
+def test_legal_follow_up_answer_prompt_does_not_inject_retrieval_expansion() -> None:
+    query = _assistant_answer_query(
+        "A jaké jsou lhůty pro oznámení významného incidentu?",
+        {
+            "earlier_user_questions": [
+                "Co znamená NIS2 a jaké hlavní povinnosti ukládá organizacím?"
+            ]
+        },
+    )
+
+    assert "earlier_user_questions" in query
+    assert "Kanonický právní zdroj" not in query
+    assert "Hledané právní pojmy" not in query
+    assert "včasné varování" not in query
 
 
 def test_latest_available_citation_scope_uses_reauthorized_assistant_source() -> None:
