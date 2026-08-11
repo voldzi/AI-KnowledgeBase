@@ -374,6 +374,10 @@ For a referential legal follow-up, retrieval also reuses the latest recognized
 canonical legal source from the bounded, authorized user-question history. This
 retrieval-only hint is not passed to answer generation, and a self-contained
 question about another topic cannot inherit it.
+The same follow-up retrieval is limited to document versions cited by the
+latest available assistant answer after Registry has reauthorized every
+citation. A changed or revoked source therefore fails closed; an explicit new
+legal or STRATOS domain topic starts a fresh retrieval scope.
 
 A missing document source returns a normal fail-closed `no_answer` response.
 Service Desk handoff is offered only for a message that is actually classified as

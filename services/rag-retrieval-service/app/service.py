@@ -1443,8 +1443,14 @@ class RagRetrievalService:
             return response
 
         query_context = dict(payload.context)
+        follow_up_document_ids: list[str] = []
+        follow_up_document_version_ids: list[str] = []
         if payload.conversation_id:
-            earlier_questions = await self._authorized_conversation_questions(
+            (
+                earlier_questions,
+                follow_up_document_ids,
+                follow_up_document_version_ids,
+            ) = await self._authorized_conversation_context(
                 conversation_id=payload.conversation_id,
                 auth_context=auth_context,
             )
@@ -1453,6 +1459,18 @@ class RagRetrievalService:
         query_id = _query_id()
         retrieval_query = _assistant_query(payload.message, query_context)
         answer_query = _assistant_answer_query(payload.message, query_context)
+        retrieval_filters = _assistant_filters(payload.context, payload.message)
+        if _assistant_uses_authorized_follow_up_source(
+            payload.message,
+            query_context.get("earlier_user_questions"),
+        ) and follow_up_document_version_ids:
+            retrieval_filters = retrieval_filters.model_copy(
+                update={
+                    "document_ids": follow_up_document_ids,
+                    "document_version_ids": follow_up_document_version_ids,
+                    "only_valid": False,
+                }
+            )
         director_copilot_request = _director_copilot_evidence_context(
             payload.context.get("director_copilot_evidence")
         ) is not None
@@ -1461,7 +1479,7 @@ class RagRetrievalService:
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
                 query=retrieval_query,
-                filters=_assistant_filters(payload.context, payload.message),
+                filters=retrieval_filters,
                 max_chunks=max_chunks,
             ),
             query_id=query_id,
@@ -1684,18 +1702,18 @@ class RagRetrievalService:
             response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
         return response
 
-    async def _authorized_conversation_questions(
+    async def _authorized_conversation_context(
         self,
         *,
         conversation_id: str,
         auth_context: AuthContext | None,
-    ) -> list[str]:
-        """Return a small, user-authored context window from the freshly
-        authorized Registry projection.
+    ) -> tuple[list[str], list[str], list[str]]:
+        """Return bounded questions and the latest reauthorized citation scope.
 
         Assistant answers are deliberately excluded: they are neither
         instructions nor an authority and could contain source-derived content
-        whose access has since changed.
+        whose access has since changed. Citation coordinates are safe to reuse
+        only because Registry reauthorizes them before returning the history.
         """
         try:
             stored = await self._registry_client.fetch_conversation(
@@ -1708,13 +1726,18 @@ class RagRetrievalService:
                 conversation_id,
                 exc.__class__.__name__,
             )
-            return []
+            return [], [], []
         if not stored:
-            return []
+            return [], [], []
         messages = stored.get("messages")
         if not isinstance(messages, list):
-            return []
-        return _bounded_conversation_questions(messages)
+            return [], [], []
+        document_ids, document_version_ids = _latest_available_citation_scope(messages)
+        return (
+            _bounded_conversation_questions(messages),
+            document_ids,
+            document_version_ids,
+        )
 
     async def _follow_up_questions(
         self,
@@ -3469,6 +3492,40 @@ def _bounded_conversation_questions(
     return questions
 
 
+def _latest_available_citation_scope(
+    messages: list[object],
+    *,
+    max_citations: int = 8,
+) -> tuple[list[str], list[str]]:
+    for value in reversed(messages):
+        if not isinstance(value, dict) or value.get("role") != "assistant":
+            continue
+        if value.get("availability") == "source_access_changed":
+            continue
+        citations = value.get("citations")
+        if not isinstance(citations, list) or not citations:
+            continue
+        document_ids: list[str] = []
+        document_version_ids: list[str] = []
+        for citation in citations[:max_citations]:
+            if not isinstance(citation, dict):
+                continue
+            document_id = citation.get("document_id")
+            version_id = citation.get("document_version_id")
+            if not isinstance(document_id, str) or not document_id.strip():
+                continue
+            if not isinstance(version_id, str) or not version_id.strip():
+                continue
+            document_ids.append(document_id.strip())
+            document_version_ids.append(version_id.strip())
+        if document_version_ids:
+            return (
+                list(dict.fromkeys(document_ids)),
+                list(dict.fromkeys(document_version_ids)),
+            )
+    return [], []
+
+
 def _assistant_query(
     message: str,
     context: dict[str, object],
@@ -3585,6 +3642,18 @@ def _assistant_query_uses_history(message: str, earlier_questions: object) -> bo
         if isinstance(question, str):
             previous_terms.update(_assistant_history_terms(_normalize_for_assistant(question)))
     return bool(current_terms.intersection(previous_terms))
+
+
+def _assistant_uses_authorized_follow_up_source(
+    message: str,
+    earlier_questions: object,
+) -> bool:
+    return bool(
+        _assistant_query_uses_history(message, earlier_questions)
+        and not _assistant_legal_retrieval_hint(message)
+        and not _assistant_query_has_explicit_source_topic(message)
+        and _assistant_legal_history_retrieval_hint(earlier_questions)
+    )
 
 
 def _assistant_history_terms(value: str) -> set[str]:

@@ -9,10 +9,12 @@ from app.service import (
     _assistant_answer_query,
     _assistant_filters,
     _assistant_query,
+    _assistant_uses_authorized_follow_up_source,
     _bounded_conversation_questions,
     _employee_answer,
     _fallback_follow_up_questions,
     _is_incident_query,
+    _latest_available_citation_scope,
     _normalize_for_assistant,
     _parse_follow_up_questions,
     _complete_chunk_policy_metadata,
@@ -702,6 +704,64 @@ def test_legal_follow_up_inherits_canonical_source_from_latest_question() -> Non
 
     assert "earlier_user_questions" in query
     assert "Směrnice (EU) 2022/2555" in query
+
+
+def test_latest_available_citation_scope_uses_reauthorized_assistant_source() -> None:
+    document_ids, version_ids = _latest_available_citation_scope(
+        [
+            {
+                "role": "assistant",
+                "availability": "available",
+                "citations": [
+                    {
+                        "document_id": "doc_nis2",
+                        "document_version_id": "ver_nis2",
+                    },
+                    {
+                        "document_id": "doc_nis2",
+                        "document_version_id": "ver_nis2",
+                    },
+                ],
+            }
+        ]
+    )
+
+    assert document_ids == ["doc_nis2"]
+    assert version_ids == ["ver_nis2"]
+
+
+def test_latest_available_citation_scope_rejects_changed_source_access() -> None:
+    document_ids, version_ids = _latest_available_citation_scope(
+        [
+            {
+                "role": "assistant",
+                "availability": "source_access_changed",
+                "citations": [
+                    {
+                        "document_id": "doc_denied",
+                        "document_version_id": "ver_denied",
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert document_ids == []
+    assert version_ids == []
+
+
+def test_legal_follow_up_uses_reauthorized_previous_source_scope() -> None:
+    assert _assistant_uses_authorized_follow_up_source(
+        "A jaké jsou lhůty pro oznámení významného incidentu?",
+        ["Co znamená NIS2 a jaké povinnosti ukládá?"],
+    )
+
+
+def test_explicit_procurement_topic_does_not_use_previous_legal_source_scope() -> None:
+    assert not _assistant_uses_authorized_follow_up_source(
+        "Jaké jsou zákonné a interní limity pro veřejné zakázky?",
+        ["Co znamená NIS2 a jaké povinnosti ukládá?"],
+    )
 
 
 def test_unrelated_legal_question_does_not_inherit_previous_legal_source() -> None:
