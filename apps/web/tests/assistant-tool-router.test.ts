@@ -71,6 +71,22 @@ describe("assistant tool router", () => {
     assert.equal(route.controlledRuleIntent?.domain, "public_procurement");
   });
 
+  it("routes an explicit procurement question despite inherited ArchFlow context", () => {
+    const route = routeAssistantMessage(
+      "Jaké jsou interní a zákonné limity pro veřejné zakázky?",
+      "cs",
+      {
+        answer_source: "director_copilot_v2",
+        stratos_query_state: {
+          sources: ["archflow"],
+        },
+      },
+    );
+
+    assert.equal(route.tool, "controlled_rule_answer");
+    assert.equal(route.controlledRuleIntent?.domain, "public_procurement");
+  });
+
   it("routes inventory questions to registry metadata reports", () => {
     const route = routeAssistantMessage("Kolik máme dokumentů na téma digitalizace?", "cs");
 

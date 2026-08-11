@@ -105,7 +105,7 @@ export function controlledRuleIntentFromMessage(
   const continuingControlledRules =
     contextString(context, "answer_source") === "controlled_rules"
     && contextDomain === CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT
-    && !EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message);
+    && !hasExplicitNonProcurementLegalTopic(message);
   const hasDomain = PUBLIC_PROCUREMENT_RE.test(message) || continuingControlledRules;
   if (!hasDomain || !CONTROLLED_RULE_QUESTION_RE.test(message)) {
     return null;
@@ -114,6 +114,10 @@ export function controlledRuleIntentFromMessage(
     domain: CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT,
     validOn: explicitValidOn(message, now) ?? contextString(context, "controlled_rule_valid_on"),
   };
+}
+
+export function hasExplicitNonProcurementLegalTopic(message: string): boolean {
+  return EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message);
 }
 
 export function buildControlledRuleAssistantResponse(input: {

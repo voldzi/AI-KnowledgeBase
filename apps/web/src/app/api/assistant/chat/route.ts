@@ -77,11 +77,14 @@ async function handlePost(request: NextRequest) {
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const config = getAklConfig();
     const directorConfig = getDirectorCopilotConfig(config);
+    const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
     const directorQuery = resolveConversationQuery({
       message,
       context: requestContext,
     });
-    const directorIntent = classifyDirectorCopilotV2Intent(message, requestContext);
+    const directorIntent = assistantRoute.tool === "controlled_rule_answer"
+      ? null
+      : classifyDirectorCopilotV2Intent(message, requestContext);
     if (directorIntent && directorQuery.clarification?.kind === "plan_meaning") {
       const clarificationResponse = directorPlanClarificationResponse({
         conversationId,
@@ -175,8 +178,6 @@ async function handlePost(request: NextRequest) {
         persistence_status: persistedConversation ? "persisted" : "failed",
       });
     }
-    const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
-
     if (assistantRoute.tool === "controlled_rule_answer" && assistantRoute.controlledRuleIntent) {
       const validOn = assistantRoute.controlledRuleIntent.validOn ?? currentControlledRuleDate();
       const controlledRules = await clients.registry.listControlledRules(

@@ -295,6 +295,21 @@ describe("Director Copilot conversation query state", () => {
     );
   });
 
+  it("does not carry ArchFlow context into an explicit NIS2 question", () => {
+    const previous = resolveConversationQuery({
+      message: "Jaké potřeby eviduje Sekce IT?",
+      now: NOW,
+    }).state;
+
+    assert.equal(
+      classifyDirectorCopilotV2Intent(
+        "Co znamená NIS2 a jaké povinnosti ukládá? Uveď citovatelné zdroje.",
+        { stratos_query_state: previous },
+      ),
+      null,
+    );
+  });
+
   it("routes AI intake concepts to ArchFlow", () => {
     const resolved = resolveConversationQuery({
       message: "V jakém stavu jsou AI podněty v ArchFlow?",
