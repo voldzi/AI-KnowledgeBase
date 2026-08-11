@@ -689,6 +689,40 @@ def test_referential_follow_up_keeps_conversation_questions() -> None:
     assert "interní limity" in query
 
 
+def test_legal_follow_up_inherits_canonical_source_from_latest_question() -> None:
+    query = _assistant_query(
+        "A jaké jsou lhůty pro oznámení významného incidentu?",
+        {
+            "earlier_user_questions": [
+                "Jaké jsou limity veřejných zakázek?",
+                "Co znamená NIS2 a jaké hlavní povinnosti ukládá organizacím?",
+            ]
+        },
+    )
+
+    assert "earlier_user_questions" in query
+    assert "Směrnice (EU) 2022/2555" in query
+
+
+def test_unrelated_legal_question_does_not_inherit_previous_legal_source() -> None:
+    query = _assistant_query(
+        "Jaké jsou zákonné limity veřejných zakázek?",
+        {"earlier_user_questions": ["Co znamená NIS2?"]},
+    )
+
+    assert "earlier_user_questions" not in query
+    assert "Směrnice (EU) 2022/2555" not in query
+
+
+def test_explicit_live_domain_follow_up_does_not_inherit_legal_source() -> None:
+    query = _assistant_query(
+        "A jaký má IT rozpočet na rok 2025?",
+        {"earlier_user_questions": ["Co znamená NIS2?"]},
+    )
+
+    assert "Směrnice (EU) 2022/2555" not in query
+
+
 def test_related_full_question_keeps_conversation_questions() -> None:
     query = _assistant_query(
         "Jaké jsou zákonné limity pro veřejné zakázky?",

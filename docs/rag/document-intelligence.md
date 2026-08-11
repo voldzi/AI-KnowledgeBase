@@ -370,6 +370,10 @@ self-contained question with no meaningful topic overlap starts a fresh retrieva
 context. Assistant answers are never reused as authority. This prevents an earlier
 project, budget, procurement or legal topic from diluting retrieval for a new
 question while preserving natural follow-up dialogue.
+For a referential legal follow-up, retrieval also reuses the latest recognized
+canonical legal source from the bounded, authorized user-question history. This
+retrieval-only hint is not passed to answer generation, and a self-contained
+question about another topic cannot inherit it.
 
 A missing document source returns a normal fail-closed `no_answer` response.
 Service Desk handoff is offered only for a message that is actually classified as

@@ -3497,7 +3497,15 @@ def _assistant_query(
     query = message
     if context_parts:
         query = f"{query}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
-    retrieval_hint = _assistant_legal_retrieval_hint(message) if include_retrieval_hint else None
+    retrieval_hint = None
+    if include_retrieval_hint:
+        retrieval_hint = _assistant_legal_retrieval_hint(message)
+        if (
+            not retrieval_hint
+            and include_history
+            and not _assistant_query_has_explicit_source_topic(message)
+        ):
+            retrieval_hint = _assistant_legal_history_retrieval_hint(earlier_questions)
     if retrieval_hint:
         query = f"{query}\n\nKanonický právní zdroj pro vyhledání: {retrieval_hint}"
     return query
@@ -3528,6 +3536,29 @@ def _assistant_legal_retrieval_hint(message: str) -> str | None:
     return None
 
 
+def _assistant_legal_history_retrieval_hint(earlier_questions: object) -> str | None:
+    if not isinstance(earlier_questions, list):
+        return None
+    for question in reversed(earlier_questions[-4:]):
+        if not isinstance(question, str):
+            continue
+        hint = _assistant_legal_retrieval_hint(question)
+        if hint:
+            return hint
+    return None
+
+
+def _assistant_query_has_explicit_source_topic(message: str) -> bool:
+    normalized = _normalize_for_assistant(message)
+    return bool(
+        re.search(
+            r"\b(budget|rozpocet|projectflow|projekt|archflow|potreb|verejn|zakaz|"
+            r"smlouv|gdpr|nis\s*2|ai\s*act|smernic|zakon)\w*\b",
+            normalized,
+        )
+    )
+
+
 def _assistant_query_uses_history(message: str, earlier_questions: object) -> bool:
     if not isinstance(earlier_questions, list) or not earlier_questions:
         return False
@@ -3535,7 +3566,7 @@ def _assistant_query_uses_history(message: str, earlier_questions: object) -> bo
     if not normalized:
         return False
     if re.match(
-        r"^(a\s+co|co\s+(s\s+tim|to|dale)|jak\s+je\s+to|jak\s+to|"
+        r"^(a\s+(co|jak(?:a|e|y|ou)?)|co\s+(s\s+tim|to|dale)|jak\s+je\s+to|jak\s+to|"
         r"ktery\s+z\s+nich|ktera\s+z\s+nich|kolik\s+jich|a\s+dale|a\s+dal|"
         r"what\s+about|and\s+what|how\s+about)\b",
         normalized,
