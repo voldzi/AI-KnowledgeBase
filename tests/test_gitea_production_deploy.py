@@ -18,6 +18,30 @@ GATE_SPEC.loader.exec_module(production_gate)
 
 
 class ProductionGateTests(unittest.TestCase):
+    def test_api_client_uses_system_ca_without_token_in_process_args(self) -> None:
+        token = "a" * 40
+
+        def run_curl(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            self.assertNotIn(token, " ".join(command))
+            config_path = Path(command[command.index("--config") + 1])
+            self.assertEqual(config_path.stat().st_mode & 0o077, 0)
+            self.assertIn(token, config_path.read_text(encoding="utf-8"))
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"ok": true}',
+                stderr="",
+            )
+
+        with (
+            patch.object(production_gate.shutil, "which", return_value="/usr/bin/curl"),
+            patch.object(production_gate.subprocess, "run", side_effect=run_curl),
+        ):
+            self.assertEqual(
+                production_gate.get_json("https://git.home.cz/api/v1/version", token),
+                {"ok": True},
+            )
+
     def test_trusted_ci_requires_push_success_and_exact_sha(self) -> None:
         sha = "a" * 40
         valid = {
@@ -36,6 +60,19 @@ class ProductionGateTests(unittest.TestCase):
         ):
             changed = {**valid, key: value}
             self.assertFalse(production_gate.is_trusted_ci_run(changed, sha))
+
+        gitea_run = {
+            **valid,
+            "path": "ci.yaml@refs/heads/main",
+            "head_branch": "main",
+        }
+        self.assertTrue(production_gate.is_trusted_ci_run(gitea_run, sha))
+        self.assertFalse(
+            production_gate.is_trusted_ci_run(
+                {**gitea_run, "path": "deploy-production.yaml@refs/heads/main"},
+                sha,
+            )
+        )
 
     def test_gate_requires_current_main_and_matching_successful_ci(self) -> None:
         sha = "c" * 40

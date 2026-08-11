@@ -7,12 +7,13 @@ import argparse
 import json
 from pathlib import Path
 import re
+import shutil
 import stat
+import subprocess
 import sys
+import tempfile
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -31,16 +32,50 @@ def read_token(path: Path) -> str:
 
 
 def get_json(url: str, token: str) -> dict[str, Any]:
-    request = Request(url, headers={"Authorization": f"token {token}"})
+    if not re.fullmatch(r"[A-Za-z0-9._~-]{20,256}", token):
+        raise RuntimeError("The Gitea token contains unsupported characters")
+    curl = shutil.which("curl")
+    if curl is None:
+        raise RuntimeError("The Gitea release-gate HTTP client is unavailable")
+
     try:
-        with urlopen(request, timeout=10) as response:  # noqa: S310 - configured Gitea URL
-            return json.load(response)
-    except (HTTPError, URLError, TimeoutError) as exc:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="akb-gitea-gate-",
+        ) as curl_config:
+            Path(curl_config.name).chmod(0o600)
+            curl_config.write(f'header = "Authorization: token {token}"\n')
+            curl_config.flush()
+            result = subprocess.run(
+                [
+                    curl,
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    "--connect-timeout",
+                    "5",
+                    "--max-time",
+                    "10",
+                    "--config",
+                    curl_config.name,
+                    "--header",
+                    "Accept: application/json",
+                    "--url",
+                    url,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        return json.loads(result.stdout)
+    except (subprocess.CalledProcessError, OSError, json.JSONDecodeError) as exc:
         raise RuntimeError("Gitea release-gate API request failed") from exc
 
 
 def is_trusted_ci_run(run: dict[str, Any], sha: str) -> bool:
     workflow_path = str(run.get("path") or run.get("workflow_path") or "")
+    workflow_file = workflow_path.split("@", 1)[0]
     workflow_name = str(run.get("name") or run.get("workflow_name") or "")
     conclusion = str(run.get("conclusion") or run.get("status") or "")
     branch = run.get("head_branch")
@@ -50,8 +85,7 @@ def is_trusted_ci_run(run: dict[str, Any], sha: str) -> bool:
             run.get("event") == "push",
             branch in {None, "main"},
             conclusion == "success",
-            workflow_path.endswith("/.gitea/workflows/ci.yaml")
-            or workflow_path == ".gitea/workflows/ci.yaml"
+            workflow_file in {"ci.yaml", ".gitea/workflows/ci.yaml"}
             or workflow_name == "AKB CI",
         )
     )
