@@ -58,6 +58,11 @@ an operator key, Gitea deploy key, STRATOS key or CI runner registration token.
 Do not configure production environment files as Actions secrets. Secret
 values must never be printed in workflow logs.
 
+The release-gate API client uses the CI image's system `curl` and system CA
+store so the internal `home-CA` trust installed by infrastructure is honored.
+The token is supplied through an owner-only temporary curl configuration file,
+not through process arguments, and the file is removed when the check exits.
+
 ## Host Installation
 
 Install the reviewed gateway from the exact merged commit as:
