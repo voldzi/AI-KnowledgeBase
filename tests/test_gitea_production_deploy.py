@@ -167,8 +167,15 @@ class ProductionGateTests(unittest.TestCase):
         self.assertIn("Gitea release-gate token is not configured.", workflow)
         self.assertIn("secrets.AKB_PRODUCTION_DEPLOY_SSH_KEY", workflow)
         self.assertIn("secrets.AKB_PRODUCTION_DEPLOY_KNOWN_HOSTS", workflow)
+        self.assertIn("command -v ssh", workflow)
+        self.assertIn("apt-get install -y -qq --no-install-recommends openssh-client", workflow)
         self.assertNotIn("AKL_PROD_ENV", workflow)
         self.assertNotIn("secrets.GITHUB_TOKEN", workflow)
+
+        runner_dockerfile = (ROOT / "infra/ci/gitea-runner/Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("openssh-client", runner_dockerfile)
 
 
 if __name__ == "__main__":

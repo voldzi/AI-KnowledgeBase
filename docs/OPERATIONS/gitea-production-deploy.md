@@ -63,6 +63,12 @@ store so the internal `home-CA` trust installed by infrastructure is honored.
 The token is supplied through an owner-only temporary curl configuration file,
 not through process arguments, and the file is removed when the check exits.
 
+The reviewed CI image includes the OpenSSH client used by the forced-command
+gateway. During the transition from the pinned `0.2.0` image, the manual deploy
+workflow installs the same Debian `openssh-client` package only when `ssh` is
+missing. This bootstrap runs before deployment credentials are materialized and
+is removed after the runner is repinned to an image that contains the client.
+
 ## Host Installation
 
 Install the reviewed gateway from the exact merged commit as:
