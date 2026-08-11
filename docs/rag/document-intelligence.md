@@ -374,6 +374,12 @@ For a referential legal follow-up, retrieval also reuses the latest recognized
 canonical legal source from the bounded, authorized user-question history. This
 retrieval-only hint is not passed to answer generation, and a self-contained
 question about another topic cannot inherit it.
+The retrieval query for that follow-up is compact and starts with the canonical
+source and the latest matching legal question. It may add neutral names of the
+requested legal concepts (for example warning, notification, interim report and
+final report), but never deadlines, amounts or other answer facts. This keeps
+the relevant provision rankable even when shadow reranking preserves lexical
+order, without weakening the no-answer threshold or seeding the generated answer.
 The same follow-up retrieval is limited to document versions cited by the
 latest available assistant answer after Registry has reauthorized every
 citation. A changed or revoked source therefore fails closed; an explicit new

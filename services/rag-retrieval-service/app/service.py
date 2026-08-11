@@ -3534,11 +3534,22 @@ def _assistant_query(
 ) -> str:
     earlier_questions = context.get("earlier_user_questions")
     include_history = _assistant_query_uses_history(message, earlier_questions)
+    inherited_legal_hint = None
+    inherited_legal_question = None
+    if (
+        include_retrieval_hint
+        and include_history
+        and not _assistant_query_has_explicit_source_topic(message)
+    ):
+        inherited_legal_hint, inherited_legal_question = (
+            _assistant_legal_history_retrieval_context(earlier_questions)
+        )
     context_parts = [
         f"{key}: {value_text}"
         for key, value in sorted(context.items())
         if key not in ASSISTANT_INTERNAL_CONTEXT_KEYS
         and (key != "earlier_user_questions" or include_history)
+        and not (inherited_legal_hint and key == "earlier_user_questions")
         for value_text in [
             _assistant_context_value(
                 value,
@@ -3552,6 +3563,16 @@ def _assistant_query(
         if value_text
     ]
     query = message
+    if inherited_legal_hint:
+        query_parts = [
+            inherited_legal_hint,
+            f"Téma předchozí otázky: {inherited_legal_question}",
+            f"Aktuální navazující dotaz: {message}",
+        ]
+        concept_terms = _assistant_legal_follow_up_concept_terms(message)
+        if concept_terms:
+            query_parts.append(f"Hledané právní pojmy: {concept_terms}")
+        query = "\n".join(query_parts)
     if context_parts:
         query = f"{query}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
     retrieval_hint = None
@@ -3562,8 +3583,8 @@ def _assistant_query(
             and include_history
             and not _assistant_query_has_explicit_source_topic(message)
         ):
-            retrieval_hint = _assistant_legal_history_retrieval_hint(earlier_questions)
-    if retrieval_hint:
+            retrieval_hint = inherited_legal_hint
+    if retrieval_hint and not inherited_legal_hint:
         query = f"{query}\n\nKanonický právní zdroj pro vyhledání: {retrieval_hint}"
     return query
 
@@ -3594,14 +3615,34 @@ def _assistant_legal_retrieval_hint(message: str) -> str | None:
 
 
 def _assistant_legal_history_retrieval_hint(earlier_questions: object) -> str | None:
+    hint, _question = _assistant_legal_history_retrieval_context(earlier_questions)
+    return hint
+
+
+def _assistant_legal_history_retrieval_context(
+    earlier_questions: object,
+) -> tuple[str | None, str | None]:
     if not isinstance(earlier_questions, list):
-        return None
+        return None, None
     for question in reversed(earlier_questions[-4:]):
         if not isinstance(question, str):
             continue
         hint = _assistant_legal_retrieval_hint(question)
         if hint:
-            return hint
+            return hint, question
+    return None, None
+
+
+def _assistant_legal_follow_up_concept_terms(message: str) -> str | None:
+    """Add neutral legal vocabulary for retrieval, never facts or answers."""
+    normalized = _normalize_for_assistant(message)
+    if re.search(r"\bincident\w*\b", normalized) and re.search(
+        r"\b(lhut\w*|oznam\w*|hlas\w*|zprav\w*)\b", normalized
+    ):
+        return (
+            "incident; včasné varování; oznámení incidentu; průběžná zpráva; "
+            "závěrečná zpráva"
+        )
     return None
 
 
