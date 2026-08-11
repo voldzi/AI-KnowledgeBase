@@ -3907,20 +3907,42 @@ def _is_access_query(value: str) -> bool:
 
 
 def _is_incident_query(value: str) -> bool:
-    return (
-        any(
-            term in value
-            for term in (
-                "nejde",
-                "nefunguje",
-                "vypadek",
-                "incident",
-                "outage",
-                "broken",
-                "error",
-            )
+    if any(
+        term in value
+        for term in ("nejde", "nefunguje", "vypadek", "outage", "broken", "error")
+    ) or re.search(r"\bchyb(a|u|y|ou|e)\b", value):
+        return True
+    if "incident" not in value:
+        return False
+    if any(
+        term in value
+        for term in (
+            "clanek",
+            "lhut",
+            "nis2",
+            "oznamen",
+            "povinnost",
+            "pravni",
+            "regulac",
+            "sankc",
+            "smernic",
+            "zakon",
         )
-        or re.search(r"\bchyb(a|u|y|ou|e)\b", value) is not None
+    ):
+        return False
+    return any(
+        term in value
+        for term in (
+            "aplikac",
+            "hlasim",
+            "nahlasit",
+            "nahlasuji",
+            "pocitac",
+            "sluzb",
+            "system",
+            "uzivatel",
+            "zarizeni",
+        )
     )
 
 

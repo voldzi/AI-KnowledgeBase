@@ -374,7 +374,10 @@ question while preserving natural follow-up dialogue.
 A missing document source returns a normal fail-closed `no_answer` response.
 Service Desk handoff is offered only for a message that is actually classified as
 an IT incident; a failed legal, contractual or knowledge lookup never recommends a
-Service Desk that is unrelated to the requested information.
+Service Desk that is unrelated to the requested information. Regulatory uses of
+`incident`, such as NIS2 reporting duties or deadlines, remain document questions;
+the incident workflow requires an operational failure or an explicit report tied
+to an application, system, service, device or affected users.
 
 The chat path authorizes every package source with `akb:chat` and the same
 fresh Information Policy decision used for RAG. The default employee profile
