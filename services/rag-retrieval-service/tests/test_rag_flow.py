@@ -12,6 +12,8 @@ from app.service import (
     _bounded_conversation_questions,
     _employee_answer,
     _fallback_follow_up_questions,
+    _is_incident_query,
+    _normalize_for_assistant,
     _parse_follow_up_questions,
     _complete_chunk_policy_metadata,
 )
@@ -626,6 +628,20 @@ def test_it_support_no_source_can_recommend_service_desk_handoff() -> None:
     assert body["response_type"] == "handoff_recommended"
     assert body["recommended_action"] == "Založit požadavek na Service Desk"
     assert body["suggested_actions"][0]["target"] == "service-desk"
+
+
+def test_legal_incident_deadline_question_is_not_an_it_incident() -> None:
+    assert not _is_incident_query(
+        _normalize_for_assistant(
+            "Jaké jsou lhůty pro oznámení významného incidentu podle NIS2?"
+        )
+    )
+
+
+def test_application_incident_report_is_an_it_incident() -> None:
+    assert _is_incident_query(
+        _normalize_for_assistant("Hlásím incident v aplikaci Budget.")
+    )
 
 
 def test_explicit_new_topic_does_not_inherit_unrelated_conversation_questions() -> None:
