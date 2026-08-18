@@ -4,6 +4,30 @@ This document is the flat operational entry point for AKB. Detailed deployment
 and runbook material remains in `docs/deployment/`, `docs/OPERATIONS/`, and
 service README files.
 
+## Server-side browser sessions
+
+Production OIDC uses database-backed AKB sessions. Configure two separate
+operator-owned files with mode `0600`:
+
+```dotenv
+AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE=/srv/akl/env/akb-web-session-encryption.key
+AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE=/srv/akl/env/akb-web-session-store.secret
+AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS=90
+AKL_WEB_SESSION_IDLE_TTL_DAYS=30
+AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES=15
+```
+
+Both web profiles need the encryption key. Both web profiles and Registry API
+need the store secret. Values must be independent random secrets of at least 32
+bytes and must not be placed in Git, Compose, logs or deployment reports. A key
+rotation invalidates sessions that cannot be decrypted; plan it as a controlled
+global logout. Apply Alembic migration `0026_web_sessions` before starting the
+new web image.
+
+The browser cookie contains only an opaque selector. Operators may inspect
+session counts and revocation audit events, but must not export the encrypted
+payload, selector hash or authentication material.
+
 ## STRATOS content-security profile
 
 AKB owns the central Document Intake malware boundary for all document

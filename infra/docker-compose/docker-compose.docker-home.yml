@@ -129,6 +129,11 @@ services:
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS: ${AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS:-90}
+      AKL_WEB_SESSION_IDLE_TTL_DAYS: ${AKL_WEB_SESSION_IDLE_TTL_DAYS:-30}
+      AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES: ${AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES:-15}
       AKL_WEB_INGESTION_TOKEN_URL: ${AKL_WEB_INGESTION_TOKEN_URL:?AKL_WEB_INGESTION_TOKEN_URL must be set}
       AKL_WEB_INGESTION_CLIENT_ID: ${AKL_WEB_INGESTION_CLIENT_ID:-svc-akb-web-ingestion}
       AKL_WEB_INGESTION_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-web-ingestion-client-secret
@@ -165,6 +170,8 @@ services:
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-secret-access-key:ro
       - ${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-/srv/akl/env/svc-akb-web-ingestion.client-secret}:/run/secrets/svc-akb-web-ingestion-client-secret:ro
       - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+      - ${AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE:?AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE must be set}:/run/secrets/akb-web-session-encryption-key:ro
+      - ${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:?AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE must be set}:/run/secrets/akb-web-session-store-secret:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     tmpfs:
@@ -249,6 +256,11 @@ services:
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_CHAT_WEB_PUBLIC_BASE_URL:?AKL_CHAT_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ""
       AKL_WEB_SESSION_SECRET: ${AKL_CHAT_WEB_SESSION_SECRET:?AKL_CHAT_WEB_SESSION_SECRET must be set}
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS: ${AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS:-90}
+      AKL_WEB_SESSION_IDLE_TTL_DAYS: ${AKL_WEB_SESSION_IDLE_TTL_DAYS:-30}
+      AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES: ${AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES:-15}
       AKL_DIRECTOR_COPILOT_ENABLED: ${AKL_DIRECTOR_COPILOT_ENABLED:-false}
       AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS: ${AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS:-300000}
       AKL_DIRECTOR_COPILOT_TOKEN_URL: ${AKL_DIRECTOR_COPILOT_TOKEN_URL:-}
@@ -271,6 +283,8 @@ services:
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-secret-access-key:ro
       - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+      - ${AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE:?AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE must be set}:/run/secrets/akb-web-session-encryption-key:ro
+      - ${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:?AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE must be set}:/run/secrets/akb-web-session-store-secret:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     tmpfs:
@@ -319,6 +333,7 @@ services:
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_REGISTRY_AUTH_MODE:-oidc}
       AKL_DATABASE_URL: ${AKL_REGISTRY_DATABASE_URL:?AKL_REGISTRY_DATABASE_URL must be set}
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/secrets/akb-web-session-store-secret
       AKL_AUTO_CREATE_SCHEMA: ${AKL_REGISTRY_AUTO_CREATE_SCHEMA:-false}
       AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}
       AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
@@ -380,6 +395,7 @@ services:
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage:ro
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-secret-access-key:ro
+      - ${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:?AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE must be set}:/run/secrets/akb-web-session-store-secret:ro
     networks:
       - app_zone
     healthcheck:

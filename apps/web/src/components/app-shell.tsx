@@ -902,7 +902,11 @@ function AppShellContent({
   }, []);
 
   const handleLogout = () => {
-    window.location.assign(withAppBasePath("/api/auth/logout"));
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = withAppBasePath("/api/auth/logout");
+    document.body.appendChild(form);
+    form.submit();
   };
 
   const handleSettingsValueChange = (

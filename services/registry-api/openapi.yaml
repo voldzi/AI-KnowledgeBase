@@ -541,18 +541,6 @@ paths:
           type: boolean
           default: false
           title: Include Inactive
-      - name: consumer_view
-        in: query
-        required: false
-        description: >-
-          Returns the user-authorized decision view used by AKB chat: verified
-          profile revision 3 rules registered in the closed normative catalog.
-          Blocking catalog, citation or precedence warnings produce no rules.
-          It cannot be combined with include_inactive=true.
-        schema:
-          type: boolean
-          default: false
-          title: Consumer View
       responses:
         '200':
           description: Successful Response
@@ -656,6 +644,13 @@ paths:
           type: boolean
           default: false
           title: Include Inactive
+      - name: consumer_view
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Consumer View
       responses:
         '200':
           description: Successful Response
@@ -2862,6 +2857,262 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssistantConversationDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions:
+    post:
+      tags:
+      - Web sessions
+      summary: Create Web Session
+      operationId: create_web_session_api_v1_internal_web_sessions_post
+      parameters:
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions/{session_id_hash}:
+    get:
+      tags:
+      - Web sessions
+      summary: Get Web Session
+      operationId: get_web_session_api_v1_internal_web_sessions__session_id_hash__get
+      parameters:
+      - name: session_id_hash
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id Hash
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Web sessions
+      summary: Update Web Session
+      operationId: update_web_session_api_v1_internal_web_sessions__session_id_hash__patch
+      parameters:
+      - name: session_id_hash
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id Hash
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Web sessions
+      summary: Revoke Web Session
+      operationId: revoke_web_session_api_v1_internal_web_sessions__session_id_hash__delete
+      parameters:
+      - name: session_id_hash
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id Hash
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions/subjects/{subject_id}/sessions:
+    get:
+      tags:
+      - Web sessions
+      summary: List Subject Sessions
+      operationId: list_subject_sessions_api_v1_internal_web_sessions_subjects__subject_id__sessions_get
+      parameters:
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Subject Id
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebSessionResponse'
+                title: Response List Subject Sessions Api V1 Internal Web Sessions
+                  Subjects  Subject Id  Sessions Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions/subjects/{subject_id}/all:
+    delete:
+      tags:
+      - Web sessions
+      summary: Revoke Subject Sessions
+      operationId: revoke_subject_sessions_api_v1_internal_web_sessions_subjects__subject_id__all_delete
+      parameters:
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Subject Id
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions/subjects/{subject_id}/sessions/{session_id}:
+    delete:
+      tags:
+      - Web sessions
+      summary: Revoke Subject Session
+      operationId: revoke_subject_session_api_v1_internal_web_sessions_subjects__subject_id__sessions__session_id__delete
+      parameters:
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Subject Id
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -9422,6 +9673,95 @@ components:
       - msg
       - type
       title: ValidationError
+    WebSessionResponse:
+      properties:
+        session_id_hash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Session Id Hash
+        subject_id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Subject Id
+        issuer:
+          type: string
+          maxLength: 512
+          minLength: 1
+          title: Issuer
+        client_id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Client Id
+        keycloak_session_id:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Keycloak Session Id
+        encrypted_payload:
+          type: string
+          maxLength: 65536
+          minLength: 40
+          title: Encrypted Payload
+        persistent:
+          type: boolean
+          title: Persistent
+          default: false
+        identity_validated_at:
+          type: string
+          format: date-time
+          title: Identity Validated At
+        last_seen_at:
+          type: string
+          format: date-time
+          title: Last Seen At
+        idle_expires_at:
+          type: string
+          format: date-time
+          title: Idle Expires At
+        absolute_expires_at:
+          type: string
+          format: date-time
+          title: Absolute Expires At
+        session_id:
+          type: string
+          title: Session Id
+        revoked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Revoked At
+        revoked_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Revoked Reason
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - session_id_hash
+      - subject_id
+      - issuer
+      - client_id
+      - encrypted_payload
+      - identity_validated_at
+      - last_seen_at
+      - idle_expires_at
+      - absolute_expires_at
+      - session_id
+      - created_at
+      - updated_at
+      title: WebSessionResponse
     WorkflowTaskAction:
       type: string
       enum:

@@ -1051,6 +1051,31 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
+class WebSession(Base, TimestampMixin):
+    __tablename__ = "web_sessions"
+    __table_args__ = (
+        Index("ix_web_sessions_subject_active", "subject_id", "revoked_at", "absolute_expires_at"),
+        Index("ix_web_sessions_expiry", "absolute_expires_at", "idle_expires_at"),
+    )
+
+    session_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True, default=lambda: make_id("sess")
+    )
+    session_id_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    subject_id: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    keycloak_session_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    encrypted_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    persistent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    identity_validated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    revoked_reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
 class IntegrationIdempotencyRecord(Base, TimestampMixin):
     __tablename__ = "integration_idempotency_records"
     __table_args__ = (

@@ -8,15 +8,9 @@ import {
   createState,
   getOrRefreshOidcSession,
   normalizeReturnToForPublicBase,
-  OIDC_REFRESH_COOKIE,
-  OIDC_SESSION_COOKIE,
-  openSession,
-  readSessionCookie,
+  parseState,
   refreshOidcSession,
   safeReturnToFromState,
-  sealBrowserSession,
-  sealRefreshToken,
-  sealSession,
   sessionFromTokens
 } from "../src/lib/auth/oidc";
 
@@ -57,53 +51,6 @@ describe("OIDC web session", () => {
     assert.equal(context?.accessToken, accessToken);
     assert.equal(contextFromOidcAccessToken("not-a-jwt", 1_000), null);
     assert.equal(contextFromOidcAccessToken(jwt({ sub: "expired", exp: 1 }), 2_000), null);
-  });
-
-  it("seals and opens a session cookie payload", () => {
-    const session = sessionFromTokens(
-      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
-      1_000
-    );
-    const sealed = sealSession(session, "test-secret");
-    const opened = openSession(sealed, "test-secret", 2_000);
-
-    assert.equal(opened?.accessToken, session.accessToken);
-    assert.equal(opened?.refreshToken, "refresh-token");
-    assert.equal(opened?.expiresAt, session.expiresAt);
-    assert.equal(opened?.subjectId, session.subjectId);
-    assert.deepEqual(opened?.roles, []);
-    assert.deepEqual(opened?.groups, []);
-    assert.equal(openSession(sealed, "wrong-secret", 2_000), null);
-    assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1), null);
-    assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1, { allowExpired: true })?.subjectId, "user-123");
-  });
-
-  it("keeps access tokens out of browser cookies and restores only the refresh token", () => {
-    const config = testOidcConfig();
-    const accessToken = jwt({ sub: "user-123" });
-    const session = sessionFromTokens(
-      { access_token: accessToken, refresh_token: "refresh-token", expires_in: 600 },
-      1_000
-    );
-    const browserSession = sealBrowserSession(session, "test-secret");
-    const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
-    const opened = openSession(browserSession, "test-secret", 2_000);
-    const read = readSessionCookie(
-      {
-        get: (name: string) =>
-          ({
-            [OIDC_SESSION_COOKIE]: { value: browserSession },
-            [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
-          })[name]
-      },
-      config,
-      2_000
-    );
-
-    assert.equal(opened?.accessToken, undefined);
-    assert.equal(opened?.refreshToken, undefined);
-    assert.equal(read?.accessToken, undefined);
-    assert.equal(read?.refreshToken, "refresh-token");
   });
 
   it("deduplicates refresh rotation and reuses the server-side access session", async () => {
@@ -148,31 +95,6 @@ describe("OIDC web session", () => {
     assert.equal(second?.accessToken, refreshedAccessToken);
     assert.equal(fromRotatedCookie?.accessToken, refreshedAccessToken);
     assert.equal(fromRotatedCookie?.refreshToken, "dedupe-refresh-new");
-  });
-
-  it("restores an expired metadata session so its refresh token can renew access", () => {
-    const config = testOidcConfig();
-    const session = sessionFromTokens(
-      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 30 },
-      1_000
-    );
-    const browserSession = sealBrowserSession(session, "test-secret");
-    const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
-    const read = readSessionCookie(
-      {
-        get: (name: string) =>
-          ({
-            [OIDC_SESSION_COOKIE]: { value: browserSession },
-            [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
-          })[name]
-      },
-      config,
-      session.expiresAt + 1
-    );
-
-    assert.equal(read?.subjectId, "user-123");
-    assert.equal(read?.accessToken, undefined);
-    assert.equal(read?.refreshToken, "refresh-token");
   });
 
   it("refreshes a non-expired metadata session when the access token is absent", async () => {
@@ -261,6 +183,11 @@ describe("OIDC web session", () => {
     assert.equal(safeReturnToFromState(state, "/"), "/chat");
     assert.equal(safeReturnToFromState("not-base64-json", "/"), "/");
     assert.equal(safeReturnToFromState(null, "/"), "/");
+  });
+
+  it("persists the explicit trusted-device choice only in validated OIDC state", () => {
+    assert.equal(parseState(createState("/chat", true)).remember, true);
+    assert.equal(parseState(createState("/chat")).remember, false);
   });
 
   it("normalizes return paths against the configured public base path", () => {

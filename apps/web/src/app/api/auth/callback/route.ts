@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
 import {
-  cookieOptions,
   exchangeAuthorizationCode,
   OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
@@ -11,19 +10,20 @@ import {
   OIDC_PKCE_COOKIE,
   buildPublicAppUrl,
   normalizeReturnToForPublicBase,
-  rememberOidcSession,
-  requireOidcConfig,
   safeReturnToFromState,
-  sealBrowserSession,
-  sealRefreshToken,
+  parseState,
   sessionFromTokens
 } from "@/lib/auth/oidc";
+import {
+  createServerSession,
+  serverSessionCookieOptions,
+  SERVER_SESSION_COOKIE,
+} from "@/lib/auth/server-session";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const config = getAklConfig();
-  const oidc = requireOidcConfig(config);
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const expectedState = request.cookies.get(OIDC_STATE_COOKIE)?.value;
@@ -41,21 +41,26 @@ export async function GET(request: NextRequest) {
   let tokens;
   try {
     tokens = await exchangeAuthorizationCode(config, code, codeVerifier);
-  } catch (error) {
-    console.error("OIDC callback token exchange failed.", error);
+  } catch {
+    console.error("OIDC callback token exchange failed.");
     return redirectToLogin(config, returnTo);
   }
 
   const session = sessionFromTokens(tokens);
-  rememberOidcSession(config, session);
+  const persistent = parseState(state).remember;
+  let selector: string;
+  try {
+    selector = await createServerSession(config, session, persistent);
+  } catch {
+    console.error("OIDC callback could not create a server session.");
+    return redirectToLogin(config, returnTo);
+  }
   const response = redirectTo(buildPublicAppUrl(config, returnTo));
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.delete(OIDC_PKCE_COOKIE);
-  response.cookies.set(OIDC_SESSION_COOKIE, sealBrowserSession(session, oidc.sessionSecret), cookieOptions(config));
+  response.cookies.set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, persistent));
   response.cookies.delete(OIDC_ACCESS_COOKIE);
-  if (session.refreshToken) {
-    response.cookies.set(OIDC_REFRESH_COOKIE, sealRefreshToken(session.refreshToken, oidc.sessionSecret), cookieOptions(config));
-  }
+  response.cookies.delete(OIDC_REFRESH_COOKIE);
   return response;
 }
 

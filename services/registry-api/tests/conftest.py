@@ -11,6 +11,10 @@ os.environ.setdefault("AKL_ENV", "test")
 os.environ.setdefault("AKL_AUTH_MODE", "mock")
 os.environ.setdefault("AKL_MOCK_ROLES", '["admin"]')
 os.environ.setdefault(
+    "AKL_WEB_SESSION_STORE_SECRET",
+    "akb-development-web-session-store-secret-v1",
+)
+os.environ.setdefault(
     "AKL_TRUSTED_SERVICE_CLIENT_IDS",
     "aiip-document-service,akb-rag-service,stratos-akb-service,"
     "svc-budget-controlled-rules,svc-ingestion,svc-governance,svc-evaluation,"
