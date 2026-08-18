@@ -13,6 +13,31 @@ GitHub Actions remains the required release gate until this workflow has shown
 equivalent results for at least ten representative branches and pull requests,
 including immutable-release validation and the web E2E job.
 
+## Runtime impact selection
+
+The trusted CI workflow always runs the repository standards job. It also
+computes an impact plan from the exact Git diff and runs only the web,
+individual Python service, Compose, and immutable-release jobs affected by the
+candidate. A change under a shared contract, OpenAPI, an unknown path, or a
+candidate with no reliable comparison base selects the full runtime suite.
+This is a scheduling optimisation, not an authorisation or security exception.
+The runner remains single-concurrency and workflow jobs must not overlap.
+Known CI-only files under `.gitea/workflows/` and `scripts/ci/` run the
+repository standards and their classifier tests, but have no production
+runtime owner and therefore do not trigger application tests or release-fault
+simulation by themselves.
+Each job has a bounded execution time. A timeout is a failed verification,
+never a pass or a permission to deploy, and prevents a faulty test or upstream
+dependency from consuming the runner indefinitely.
+
+Production still builds only the affected service set selected by the
+immutable release script. Building signed images once on VM125 and promoting
+them without rebuilding on `docker.home.cz` is intentionally not enabled yet:
+it requires a separately approved internal OCI registry or equivalent
+verified artifact transport, image provenance, retention, and rollback
+design. Until then, CI validates the candidate and production performs the
+existing exact affected-image build.
+
 ## Runner Registration
 
 Create a repository-scoped runner token in Gitea for `AKB/ai-knowledgebase`.
