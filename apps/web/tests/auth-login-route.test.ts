@@ -74,6 +74,72 @@ describe("OIDC login page", () => {
     );
   });
 
+  it("accepts an opaque origin from a same-origin document navigation", async () => {
+    Object.assign(process.env, {
+      AKL_ENV: "development",
+      AKL_API_CLIENT_MODE: "mock",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_OIDC_ISSUER: "https://login.example/realms/stratos",
+      AKL_WEB_OIDC_CLIENT_ID: "akl-web",
+      AKL_WEB_PUBLIC_BASE_URL: "https://stratos.example/akb",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_SESSION_ENCRYPTION_KEY:
+        "test-session-encryption-key-that-is-long-enough",
+      AKL_WEB_SESSION_STORE_SECRET:
+        "test-session-store-secret-that-is-long-enough",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+    });
+
+    const response = await POST(
+      new NextRequest("http://akl-web:3000/api/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin: "null",
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "document",
+        },
+        body: "return_to=%2Fchat",
+      }),
+    );
+
+    assert.equal(response.status, 307);
+  });
+
+  it("rejects an opaque origin without same-origin navigation metadata", async () => {
+    Object.assign(process.env, {
+      AKL_ENV: "development",
+      AKL_API_CLIENT_MODE: "mock",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_OIDC_ISSUER: "https://login.example/realms/stratos",
+      AKL_WEB_OIDC_CLIENT_ID: "akl-web",
+      AKL_WEB_PUBLIC_BASE_URL: "https://stratos.example/akb",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_SESSION_ENCRYPTION_KEY:
+        "test-session-encryption-key-that-is-long-enough",
+      AKL_WEB_SESSION_STORE_SECRET:
+        "test-session-store-secret-that-is-long-enough",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+    });
+
+    const response = await POST(
+      new NextRequest("http://akl-web:3000/api/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin: "null",
+          "sec-fetch-site": "cross-site",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "document",
+        },
+        body: "return_to=%2Fchat",
+      }),
+    );
+
+    assert.equal(response.status, 403);
+  });
+
   it("rejects a foreign origin", async () => {
     Object.assign(process.env, {
       AKL_ENV: "development",
