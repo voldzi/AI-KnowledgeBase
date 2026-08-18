@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAklConfig } from "@/lib/api/config";
 import {
   buildPublicAppUrl,
+  isAllowedPublicOrigin,
   OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
@@ -25,7 +26,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const config = getAklConfig();
   const origin = request.headers.get("origin");
-  if (!origin || origin !== request.nextUrl.origin) {
+  if (!isAllowedPublicOrigin(config, origin)) {
     return NextResponse.json({ error: { code: "AUTH_ORIGIN_REJECTED", message: "Odhlášení z tohoto zdroje není povoleno." } }, { status: 403 });
   }
   const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;

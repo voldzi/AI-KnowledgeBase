@@ -6,6 +6,7 @@ import {
   buildPublicAppUrl,
   createPkceVerifier,
   createState,
+  isAllowedPublicOrigin,
   normalizeReturnToForPublicBase,
   OIDC_STATE_COOKIE,
   OIDC_PKCE_COOKIE,
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const config = getAklConfig();
   const origin = request.headers.get("origin");
-  if (!origin || origin !== request.nextUrl.origin) {
+  if (!isAllowedPublicOrigin(config, origin)) {
     return NextResponse.json({ error: { code: "AUTH_ORIGIN_REJECTED", message: "Přihlášení z tohoto zdroje není povoleno." } }, { status: 403 });
   }
   const form = await request.formData();
