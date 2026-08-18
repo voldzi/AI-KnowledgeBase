@@ -95,6 +95,24 @@ export function isAllowedPublicOrigin(
   }
 }
 
+export function isAllowedLoginRequestOrigin(
+  config: AklConfig,
+  headers: Pick<Headers, "get">,
+): boolean {
+  const origin = headers.get("origin");
+  if (isAllowedPublicOrigin(config, origin)) return true;
+
+  // Some managed browser shells serialize a same-origin form navigation with
+  // an opaque Origin. Fetch Metadata headers are browser-controlled and keep
+  // this exception limited to a top-level, same-origin document navigation.
+  return (
+    origin === "null" &&
+    headers.get("sec-fetch-site") === "same-origin" &&
+    headers.get("sec-fetch-mode") === "navigate" &&
+    headers.get("sec-fetch-dest") === "document"
+  );
+}
+
 export function normalizeReturnToForPublicBase(
   config: AklConfig,
   returnTo: string | null | undefined,

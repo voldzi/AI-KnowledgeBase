@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildPublicAppUrl,
+  isAllowedLoginRequestOrigin,
   isAllowedPublicOrigin,
   contextFromOidcAccessToken,
   contextFromOidcSession,
@@ -188,6 +189,43 @@ describe("OIDC web session", () => {
     assert.equal(isAllowedPublicOrigin(config, "http://akl-web:3000"), false);
     assert.equal(isAllowedPublicOrigin(config, "https://attacker.example"), false);
     assert.equal(isAllowedPublicOrigin(config, null), false);
+  });
+
+  it("allows an opaque origin only for a same-origin document navigation", () => {
+    const config = testOidcConfig();
+    const headers = (values: Record<string, string>) => new Headers(values);
+
+    assert.equal(
+      isAllowedLoginRequestOrigin(
+        config,
+        headers({
+          origin: "null",
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "document",
+        }),
+      ),
+      true,
+    );
+    assert.equal(
+      isAllowedLoginRequestOrigin(
+        config,
+        headers({
+          origin: "null",
+          "sec-fetch-site": "cross-site",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "document",
+        }),
+      ),
+      false,
+    );
+    assert.equal(
+      isAllowedLoginRequestOrigin(
+        config,
+        headers({ origin: "null", "sec-fetch-site": "same-origin" }),
+      ),
+      false,
+    );
   });
 
   it("falls back to a safe return path for malformed OIDC state", () => {
