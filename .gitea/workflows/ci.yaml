@@ -28,6 +28,7 @@ jobs:
   trusted-candidate:
     name: Trusted candidate approval
     runs-on: akb-gitea-ci
+    timeout-minutes: 5
     steps:
       - name: Verify trusted execution boundary
         env:
@@ -52,10 +53,54 @@ jobs:
             exit 1
           }
 
+  impact:
+    name: Runtime impact plan
+    runs-on: akb-gitea-ci
+    needs: trusted-candidate
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.plan.outputs.web }}
+      registry_api: ${{ steps.plan.outputs.registry_api }}
+      ingestion_service: ${{ steps.plan.outputs.ingestion_service }}
+      rag_retrieval_service: ${{ steps.plan.outputs.rag_retrieval_service }}
+      llm_gateway_service: ${{ steps.plan.outputs.llm_gateway_service }}
+      evaluation_service: ${{ steps.plan.outputs.evaluation_service }}
+      governance_service: ${{ steps.plan.outputs.governance_service }}
+      compose: ${{ steps.plan.outputs.compose }}
+      immutable_release: ${{ steps.plan.outputs.immutable_release }}
+    steps:
+      - name: Check out reviewed history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select affected verification jobs
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base_sha=""
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            base_sha="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || true)"
+          else
+            git fetch origin main --quiet
+            base_sha="$(git merge-base "${HEAD_SHA}" origin/main 2>/dev/null || true)"
+          fi
+          if [[ ! "${base_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            # A missing comparison base is uncertain and selects every check.
+            printf '%s\n' pyproject.toml > changed-paths.txt
+          else
+            git diff --name-only "${base_sha}" "${HEAD_SHA}" -- > changed-paths.txt
+          fi
+          python3 scripts/ci/affected_components.py \
+            changed-paths.txt --github-output "${GITHUB_OUTPUT}"
+
   standards:
     name: Repository standards
     runs-on: akb-gitea-ci
     needs: trusted-candidate
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -70,6 +115,7 @@ jobs:
           python3 scripts/check_embedding_shadow_profiles.py
           python3 tests/test_gitea_ci_operations.py
           python3 tests/test_gitea_production_deploy.py
+          python3 tests/test_ci_affected_components.py
           npx --yes @redocly/cli lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
@@ -95,7 +141,9 @@ jobs:
   immutable-release:
     name: Immutable release contract
     runs-on: akb-gitea-ci
-    needs: trusted-candidate
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.immutable_release == 'true' }}
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -126,7 +174,9 @@ jobs:
   web:
     name: Web
     runs-on: akb-gitea-ci
-    needs: trusted-candidate
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.web == 'true' }}
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/web
@@ -152,50 +202,132 @@ jobs:
           pnpm exec playwright install chromium
           pnpm test:e2e
 
-  python-services:
-    name: Python / ${{ matrix.service }}
+  registry-api:
+    name: Python / registry-api
     runs-on: akb-gitea-ci
-    needs: trusted-candidate
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: registry-api
-            working-directory: services/registry-api
-            install-command: python3 -m pip install -e ".[test]"
-          - service: ingestion-service
-            working-directory: services/ingestion-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: rag-retrieval-service
-            working-directory: services/rag-retrieval-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: llm-gateway-service
-            working-directory: services/llm-gateway-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: evaluation-service
-            working-directory: services/evaluation-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: governance-service
-            working-directory: services/governance-service
-            install-command: python3 -m pip install -r requirements.txt
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.registry_api == 'true' }}
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Install dependencies and test
-        working-directory: ${{ matrix.working-directory }}
+        working-directory: services/registry-api
         env:
           PYTHONPATH: .
         run: |
           python3 -m venv .venv
           . .venv/bin/activate
           python -m pip install --upgrade pip
-          ${{ matrix.install-command }}
+          python3 -m pip install -e ".[test]"
+          python -m pytest
+
+  ingestion-service:
+    name: Python / ingestion-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.ingestion_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install dependencies and test
+        working-directory: services/ingestion-service
+        env:
+          PYTHONPATH: .
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python -m pytest
+
+  rag-retrieval-service:
+    name: Python / rag-retrieval-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.rag_retrieval_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install dependencies and test
+        working-directory: services/rag-retrieval-service
+        env:
+          PYTHONPATH: .
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python -m pytest
+
+  llm-gateway-service:
+    name: Python / llm-gateway-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.llm_gateway_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install dependencies and test
+        working-directory: services/llm-gateway-service
+        env:
+          PYTHONPATH: .
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python -m pytest
+
+  evaluation-service:
+    name: Python / evaluation-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.evaluation_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install dependencies and test
+        working-directory: services/evaluation-service
+        env:
+          PYTHONPATH: .
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python -m pytest
+
+  governance-service:
+    name: Python / governance-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.governance_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install dependencies and test
+        working-directory: services/governance-service
+        env:
+          PYTHONPATH: .
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
           python -m pytest
 
   compose:
     name: Docker Compose configuration
     runs-on: akb-gitea-ci
-    needs: trusted-candidate
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.compose == 'true' }}
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

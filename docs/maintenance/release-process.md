@@ -15,15 +15,20 @@ The `main` branch is protected:
 
 Required checks:
 
-- `Web`
-- `Python / registry-api`
-- `Python / ingestion-service`
-- `Python / rag-retrieval-service`
-- `Python / llm-gateway-service`
-- `Python / evaluation-service`
-- `Python / governance-service`
-- `Docker Compose Config`
-- `Immutable docker.home.cz release`
+- `Repository standards` and `Runtime impact plan` for every candidate;
+- the affected web and service checks selected from the exact Git diff;
+- Compose validation when runtime configuration changes;
+- immutable-release validation when release code or configuration changes.
+
+An unknown path, shared contract, OpenAPI change, or missing comparison base is
+treated as broad impact and selects all runtime checks. The optimisation never
+turns uncertainty into a skipped verification.
+
+Changes limited to `.gitea/workflows/`, `scripts/ci/`, and their classifier
+test are non-runtime CI plumbing: they run repository standards, including
+workflow parsing and classifier tests, but do not run application or immutable
+release simulation. A change that also touches a runtime path remains broad or
+component-specific according to that runtime path.
 
 ## CI Runtime
 
@@ -49,8 +54,9 @@ access to `docker.home.cz`. Every trusted workflow job runs in the maintained
 CI image pinned by digest. Capacity remains one because the Docker
 socket, fixed local ports, release-state fixtures, and shared cache require
 strict isolation. Faster releases come from persistent caches, focused local
-checks, and build-once promotion, not from overlapping unsafe jobs on this
-runner.
+checks, and avoiding unaffected checks, not from overlapping unsafe jobs on
+this runner. The runner remains single-concurrency because it has a Docker
+socket and shared caches.
 
 Pull requests do not run automatically on this Docker-capable runner. A trusted
 administrator may manually dispatch the exact reviewed SHA. An untrusted PR may
@@ -133,6 +139,11 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
 3. **Run focused validation.** Start with tests, type checking, contract
    checks, and schema checks owned by the affected components. Fix failures
    before starting the expensive image gate.
+
+   The Gitea workflow derives this same set from the exact candidate diff. It
+   always runs repository standards, then invokes only the affected runtime
+   jobs. Documentation-only changes therefore avoid application builds; any
+   unknown or shared change remains a full verification.
 4. **Build the exact production images.** Use the same Dockerfile, repository
    root context, build arguments, contract paths, and service profile as
    `docker-compose.docker-home.yml`. For the web profiles, the minimum exact
