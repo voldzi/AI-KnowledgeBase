@@ -10,17 +10,12 @@ import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
 import {
   buildPublicAppUrl,
-  cookieOptions,
-  getOrRefreshOidcSession,
-  OIDC_ACCESS_COOKIE,
-  OIDC_REFRESH_COOKIE,
-  OIDC_SESSION_COOKIE,
-  readSessionCookie,
-  requireOidcConfig,
-  sealBrowserSession,
-  sealRefreshToken,
   type OidcSession,
 } from "../auth/oidc";
+import {
+  resolveServerSession,
+  SERVER_SESSION_COOKIE,
+} from "../auth/server-session";
 import { contextFromStratosAccessProjection } from "../auth/access-projection";
 
 export {
@@ -176,26 +171,10 @@ async function resolveOptionalServerOidcSession(
   const cookieStore = request
     ? cookieReaderFromRequest(request)
     : await cookies();
-  const session = readSessionCookie(cookieStore, config);
-  if (!session) return null;
-  const refreshed = await getOrRefreshOidcSession(config, session);
-  if (!refreshed) return null;
-  if (request && oidcSessionChanged(session, refreshed)) {
-    const oidc = requireOidcConfig(config);
-    const responseCookies = await cookies();
-    const options = cookieOptions(config);
-    responseCookies.set(OIDC_SESSION_COOKIE, sealBrowserSession(refreshed, oidc.sessionSecret), options);
-    responseCookies.delete(OIDC_ACCESS_COOKIE);
-    if (refreshed.refreshToken) {
-      responseCookies.set(OIDC_REFRESH_COOKIE, sealRefreshToken(refreshed.refreshToken, oidc.sessionSecret), options);
-    }
-  }
-  return refreshed;
-}
-
-function oidcSessionChanged(previous: OidcSession, current: OidcSession): boolean {
-  return previous.refreshToken !== current.refreshToken
-    || previous.expiresAt !== current.expiresAt;
+  const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
+  if (!selector) return null;
+  const resolved = await resolveServerSession(config, selector);
+  return resolved?.oidc ?? null;
 }
 
 function cookieReaderFromRequest(request: RequestLike): CookieReader {

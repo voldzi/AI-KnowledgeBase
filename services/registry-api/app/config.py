@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     service_client_route_grants: str = Field(
         default="", alias="AKL_SERVICE_CLIENT_ROUTE_GRANTS"
     )
+    web_session_store_secret: str | None = Field(
+        default=None, alias="AKL_WEB_SESSION_STORE_SECRET"
+    )
+    web_session_store_secret_file: str | None = Field(
+        default=None, alias="AKL_WEB_SESSION_STORE_SECRET_FILE"
+    )
 
     stratos_auth_me_url: str | None = Field(default=None, alias="AKL_STRATOS_AUTH_ME_URL")
     stratos_policy_bindings_url: str | None = Field(
@@ -258,6 +264,25 @@ class Settings(BaseSettings):
             return "akb-development-ingestion-authorization-secret-v1"
         raise ValueError("Ingestion authorization signing secret is unavailable")
 
+    @property
+    def web_session_store_signing_secret(self) -> str:
+        if self.web_session_store_secret:
+            return self.web_session_store_secret
+        if self.web_session_store_secret_file:
+            try:
+                value = Path(self.web_session_store_secret_file).read_text(
+                    encoding="utf-8"
+                ).strip()
+            except OSError as exc:
+                raise ValueError(
+                    "AKL_WEB_SESSION_STORE_SECRET_FILE could not be read"
+                ) from exc
+            if value:
+                return value
+        if self.env != "production":
+            return "akb-development-web-session-store-secret-v1"
+        raise ValueError("Web session store signing secret is unavailable")
+
     @model_validator(mode="after")
     def validate_security_mode(self) -> "Settings":
         if self.env == "production" and self.auth_mode == "mock":
@@ -331,6 +356,15 @@ class Settings(BaseSettings):
             )
 
         if self.env == "production":
+            if bool(self.web_session_store_secret) == bool(
+                self.web_session_store_secret_file
+            ):
+                raise ValueError(
+                    "Production Registry requires exactly one of "
+                    "AKL_WEB_SESSION_STORE_SECRET or AKL_WEB_SESSION_STORE_SECRET_FILE"
+                )
+            if len(self.web_session_store_signing_secret) < 32:
+                raise ValueError("The web session store signing secret must contain at least 32 characters")
             if bool(self.ingestion_authorization_secret) == bool(
                 self.ingestion_authorization_secret_file
             ):

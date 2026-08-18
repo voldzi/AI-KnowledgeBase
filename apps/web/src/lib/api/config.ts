@@ -39,6 +39,13 @@ export interface AklConfig {
     stratosAuthMeUrl: string;
     accessProjectionTimeoutMs: number;
     accessProjectionCacheTtlMs: number;
+    sessionEncryptionKey?: string;
+    sessionEncryptionKeyFile?: string;
+    sessionStoreSecret?: string;
+    sessionStoreSecretFile?: string;
+    sessionAbsoluteTtlMs?: number;
+    sessionIdleTtlMs?: number;
+    identityValidationIntervalMs?: number;
   };
   ingestionTransport?: {
     tokenUrl: string;
@@ -196,9 +203,54 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
             0,
             "AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS",
             true
-          )
+          ),
+          sessionEncryptionKey: env.AKL_WEB_SESSION_ENCRYPTION_KEY || undefined,
+          sessionEncryptionKeyFile: env.AKL_WEB_SESSION_ENCRYPTION_KEY_FILE || undefined,
+          sessionStoreSecret: env.AKL_WEB_SESSION_STORE_SECRET || undefined,
+          sessionStoreSecretFile: env.AKL_WEB_SESSION_STORE_SECRET_FILE || undefined,
+          sessionAbsoluteTtlMs: positiveNumber(
+            env.AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS,
+            90,
+            "AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS",
+          ) * 86_400_000,
+          sessionIdleTtlMs: positiveNumber(
+            env.AKL_WEB_SESSION_IDLE_TTL_DAYS,
+            30,
+            "AKL_WEB_SESSION_IDLE_TTL_DAYS",
+          ) * 86_400_000,
+          identityValidationIntervalMs: positiveNumber(
+            env.AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES,
+            15,
+            "AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES",
+          ) * 60_000,
         }
       : undefined;
+
+  if (oidc) {
+    if (oidc.sessionEncryptionKey && oidc.sessionEncryptionKeyFile) {
+      throw new Error("Configure only one AKL_WEB_SESSION_ENCRYPTION_KEY source");
+    }
+    if (oidc.sessionStoreSecret && oidc.sessionStoreSecretFile) {
+      throw new Error("Configure only one AKL_WEB_SESSION_STORE_SECRET source");
+    }
+    if (environment === "production") {
+      if (!oidc.sessionEncryptionKeyFile || !oidc.sessionStoreSecretFile) {
+        throw new Error("Production OIDC requires file-backed server session encryption and store secrets");
+      }
+      if ((oidc.sessionIdleTtlMs ?? 0) > (oidc.sessionAbsoluteTtlMs ?? 0)) {
+        throw new Error("OIDC idle session lifetime cannot exceed absolute lifetime");
+      }
+      if ((oidc.sessionAbsoluteTtlMs ?? 0) > 90 * 86_400_000) {
+        throw new Error("OIDC absolute session lifetime cannot exceed 90 days");
+      }
+      if ((oidc.sessionIdleTtlMs ?? 0) > 30 * 86_400_000) {
+        throw new Error("OIDC idle session lifetime cannot exceed 30 days");
+      }
+      if ((oidc.identityValidationIntervalMs ?? 0) > 15 * 60_000) {
+        throw new Error("OIDC identity validation interval cannot exceed 15 minutes");
+      }
+    }
+  }
   const ingestionTransportConfigured = authMode === "oidc" && Boolean(
     env.AKL_WEB_INGESTION_TOKEN_URL
       || env.AKL_WEB_INGESTION_CLIENT_ID

@@ -11,6 +11,7 @@ from app.database import create_schema
 from app.errors import register_exception_handlers
 from app.middleware import CorrelationIdMiddleware
 from app.telemetry import configure_telemetry
+from app.session_api import router as session_router
 
 
 @asynccontextmanager
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     configure_telemetry(app, service_name=settings.service_name, service_version=settings.service_version)
     app.include_router(health_router)
     app.include_router(router)
+    app.include_router(session_router)
     return app
 
 

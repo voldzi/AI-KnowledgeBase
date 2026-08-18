@@ -7,6 +7,18 @@ host applications do not make authorization decisions for AKB documents.
 
 - Local development may use mock/dev auth.
 - Production and STRATOS integration use OIDC/SSO through the STRATOS realm.
+- Interactive OIDC login terminates in a server-side AKB session. The browser
+  receives only an opaque 256-bit session selector in an `HttpOnly`, `Secure`,
+  `SameSite=Lax` cookie scoped to the AKB base path. Access and refresh tokens
+  are encrypted at rest on the server and are never stored in browser storage.
+- A normal login is a browser-session cookie. The optional trusted-device mode
+  has a 90-day absolute limit, a 30-day inactivity limit and is never selected
+  by default. Identity is revalidated with Keycloak at most 15 minutes after
+  the previous successful validation.
+- Local logout and device revocation do not depend on Keycloak availability.
+  Current STRATOS capabilities, scopes and Information Policy are still
+  evaluated on every relevant request and are not copied into the session as
+  durable authority. See `docs/adr/0014-server-side-browser-sessions.md`.
 - Server-to-server calls use service tokens or OIDC client credentials.
 - Service calls preserve `X-Request-ID` and `X-Correlation-ID`.
 - Web-to-Governance calls use the internal

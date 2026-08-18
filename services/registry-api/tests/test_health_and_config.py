@@ -55,6 +55,7 @@ def _production_settings(**overrides):
         "AKB_AIIP_INGEST_SERVICE_TOKEN": "dedicated-aiip-ingest-service-token",
         "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN": "independent-public-delivery-token-0001",
         "AKL_INGESTION_AUTHORIZATION_SECRET": "test-ingestion-authorization-secret-0001",
+        "AKL_WEB_SESSION_STORE_SECRET": "test-web-session-store-secret-0001",
     }
     values.update(overrides)
     return Settings(**values)

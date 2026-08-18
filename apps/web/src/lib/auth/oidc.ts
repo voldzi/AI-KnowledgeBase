@@ -30,6 +30,7 @@ export interface OidcSession {
   groups: string[];
   name?: string;
   email?: string;
+  keycloakSessionId?: string;
 }
 
 export interface OidcCallbackTokens {
@@ -170,6 +171,10 @@ export function sessionFromTokens(
     groups: stringArrayClaim(claims.groups),
     name: stringClaim(claims.name) ?? stringClaim(fallbackClaims.name),
     email: stringClaim(claims.email) ?? stringClaim(fallbackClaims.email),
+    keycloakSessionId:
+      stringClaim(claims.sid) ??
+      stringClaim(claims.session_state) ??
+      stringClaim(fallbackClaims.sid),
   };
 }
 
@@ -215,20 +220,21 @@ export function contextFromOidcAccessToken(
   }
 }
 
-export function createState(returnTo: string | null): string {
+export function createState(returnTo: string | null, remember = false): string {
   const nonce = crypto.randomBytes(18).toString("base64url");
   return Buffer.from(
-    JSON.stringify({ nonce, returnTo: returnTo || "/" }),
+    JSON.stringify({ nonce, returnTo: returnTo || "/", remember }),
     "utf8",
   ).toString("base64url");
 }
 
-export function parseState(value: string): { nonce: string; returnTo: string } {
+export function parseState(value: string): { nonce: string; returnTo: string; remember: boolean } {
   const parsed = JSON.parse(
     Buffer.from(value, "base64url").toString("utf8"),
   ) as {
     nonce?: unknown;
     returnTo?: unknown;
+    remember?: unknown;
   };
   return {
     nonce: typeof parsed.nonce === "string" ? parsed.nonce : "",
@@ -236,6 +242,7 @@ export function parseState(value: string): { nonce: string; returnTo: string } {
       typeof parsed.returnTo === "string" && parsed.returnTo.startsWith("/")
         ? parsed.returnTo
         : "/",
+    remember: parsed.remember === true,
   };
 }
 
@@ -251,137 +258,6 @@ export function safeReturnToFromState(
   } catch {
     return fallback;
   }
-}
-
-export function sealBrowserSession(
-  session: OidcSession,
-  secret: string,
-): string {
-  const {
-    accessToken: _accessToken,
-    idToken: _idToken,
-    refreshToken: _refreshToken,
-    ...browserSession
-  } = session;
-  return sealSession(browserSession, secret);
-}
-
-export function sealRefreshToken(refreshToken: string, secret: string): string {
-  return sealTokenCookie({ refreshToken }, secret);
-}
-
-function sealTokenCookie(payload: Record<string, string>, secret: string): string {
-  const iv = crypto.randomBytes(12);
-  const key = sessionKey(secret);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ciphertext]).toString("base64url");
-}
-
-function openRefreshToken(value: string, secret: string): string | undefined {
-  return openTokenCookie(value, secret, "refreshToken");
-}
-
-function openTokenCookie(
-  value: string,
-  secret: string,
-  keyName: "refreshToken",
-): string | undefined {
-  try {
-    const payload = Buffer.from(value, "base64url");
-    const iv = payload.subarray(0, 12);
-    const tag = payload.subarray(12, 28);
-    const ciphertext = payload.subarray(28);
-    const decipher = crypto.createDecipheriv(
-      "aes-256-gcm",
-      sessionKey(secret),
-      iv,
-    );
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]);
-    const parsed = JSON.parse(plaintext.toString("utf8")) as Record<
-      string,
-      unknown
-    >;
-    const token = parsed[keyName];
-    return typeof token === "string" && token
-      ? token
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function sealSession(session: OidcSession, secret: string): string {
-  const iv = crypto.randomBytes(12);
-  const key = sessionKey(secret);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify(session), "utf8");
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ciphertext]).toString("base64url");
-}
-
-export function openSession(
-  value: string,
-  secret: string,
-  nowMs = Date.now(),
-  options: { allowExpired?: boolean } = {},
-): OidcSession | null {
-  try {
-    const payload = Buffer.from(value, "base64url");
-    const iv = payload.subarray(0, 12);
-    const tag = payload.subarray(12, 28);
-    const ciphertext = payload.subarray(28);
-    const decipher = crypto.createDecipheriv(
-      "aes-256-gcm",
-      sessionKey(secret),
-      iv,
-    );
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]);
-    const session = JSON.parse(plaintext.toString("utf8")) as OidcSession;
-    if (
-      !session.subjectId ||
-      (!options.allowExpired && session.expiresAt <= nowMs)
-    ) {
-      return null;
-    }
-    return session;
-  } catch {
-    return null;
-  }
-}
-
-export function readSessionCookie(
-  cookies: { get(name: string): { value: string } | undefined },
-  config: AklConfig,
-  nowMs = Date.now(),
-): OidcSession | null {
-  const oidc = requireOidcConfig(config);
-  const sessionValue = cookies.get(OIDC_SESSION_COOKIE)?.value;
-  const session = sessionValue
-    ? openSession(sessionValue, oidc.sessionSecret, nowMs, { allowExpired: true })
-    : null;
-  if (!session) {
-    return null;
-  }
-  const refreshValue = cookies.get(OIDC_REFRESH_COOKIE)?.value;
-  const refreshToken = refreshValue
-    ? openRefreshToken(refreshValue, oidc.sessionSecret)
-    : undefined;
-  return {
-    ...session,
-    ...(refreshToken ? { refreshToken } : {}),
-  };
 }
 
 export function rememberOidcSession(
@@ -505,10 +381,6 @@ export function requireOidcConfig(
     throw new Error("OIDC configuration is not available.");
   }
   return config.oidc;
-}
-
-function sessionKey(secret: string): Buffer {
-  return crypto.createHash("sha256").update(secret).digest();
 }
 
 function oidcSessionCacheKey(config: AklConfig, refreshToken: string): string {
