@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
 import { getOptionalServerRequestContext } from "@/lib/api/server";
+import { isAllowedPublicOrigin } from "@/lib/auth/oidc";
 import {
   listSubjectSessions,
   resolveServerSession,
@@ -26,10 +27,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) {
+  const config = getAklConfig();
+  if (!isAllowedPublicOrigin(config, request.headers.get("origin"))) {
     return NextResponse.json({ error: { code: "AUTH_ORIGIN_REJECTED", message: "Požadavek z tohoto zdroje není povolen." } }, { status: 403 });
   }
-  const current = await currentSession(request);
+  const current = await currentSession(request, config);
   if (!current) return unauthorized();
   const body = await request.json().catch(() => ({})) as { session_id?: string; all?: boolean };
   const revokeAll = body.all === true;
@@ -53,8 +55,10 @@ export async function DELETE(request: NextRequest) {
   return response;
 }
 
-async function currentSession(request: NextRequest) {
-  const config = getAklConfig();
+async function currentSession(
+  request: NextRequest,
+  config = getAklConfig(),
+) {
   const context = await getOptionalServerRequestContext(request);
   const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
   if (!context || !selector) return null;

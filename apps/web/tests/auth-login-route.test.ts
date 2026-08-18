@@ -3,7 +3,7 @@ import { afterEach, describe, it } from "node:test";
 
 import { NextRequest } from "next/server";
 
-import { GET } from "../src/app/api/auth/login/route";
+import { GET, POST } from "../src/app/api/auth/login/route";
 
 const originalEnv = { ...process.env };
 
@@ -38,5 +38,69 @@ describe("OIDC login page", () => {
     );
     assert.match(html, /name="remember"/);
     assert.doesNotMatch(html, /name="remember"[^>]*checked/);
+  });
+
+  it("accepts the configured public origin behind a reverse proxy", async () => {
+    Object.assign(process.env, {
+      AKL_ENV: "development",
+      AKL_API_CLIENT_MODE: "mock",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_OIDC_ISSUER: "https://login.example/realms/stratos",
+      AKL_WEB_OIDC_CLIENT_ID: "akl-web",
+      AKL_WEB_PUBLIC_BASE_URL: "https://stratos.example/akb",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_SESSION_ENCRYPTION_KEY:
+        "test-session-encryption-key-that-is-long-enough",
+      AKL_WEB_SESSION_STORE_SECRET:
+        "test-session-store-secret-that-is-long-enough",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+    });
+
+    const response = await POST(
+      new NextRequest("http://akl-web:3000/api/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin: "https://stratos.example",
+        },
+        body: "return_to=%2Fchat",
+      }),
+    );
+
+    assert.equal(response.status, 307);
+    assert.match(
+      response.headers.get("location") ?? "",
+      /^https:\/\/login\.example\/realms\/stratos\/protocol\/openid-connect\/auth\?/,
+    );
+  });
+
+  it("rejects a foreign origin", async () => {
+    Object.assign(process.env, {
+      AKL_ENV: "development",
+      AKL_API_CLIENT_MODE: "mock",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_OIDC_ISSUER: "https://login.example/realms/stratos",
+      AKL_WEB_OIDC_CLIENT_ID: "akl-web",
+      AKL_WEB_PUBLIC_BASE_URL: "https://stratos.example/akb",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_SESSION_ENCRYPTION_KEY:
+        "test-session-encryption-key-that-is-long-enough",
+      AKL_WEB_SESSION_STORE_SECRET:
+        "test-session-store-secret-that-is-long-enough",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+    });
+
+    const response = await POST(
+      new NextRequest("http://akl-web:3000/api/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin: "https://attacker.example",
+        },
+        body: "return_to=%2Fchat",
+      }),
+    );
+
+    assert.equal(response.status, 403);
   });
 });

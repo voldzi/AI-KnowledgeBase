@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildPublicAppUrl,
+  isAllowedPublicOrigin,
   contextFromOidcAccessToken,
   contextFromOidcSession,
   createState,
@@ -175,6 +176,18 @@ describe("OIDC web session", () => {
       buildPublicAppUrl(config, "/api/auth/login?return_to=%2F"),
       "https://stratos.example/akb/api/auth/login?return_to=%2F"
     );
+  });
+
+  it("validates state-changing requests against the configured public origin", () => {
+    const config = testOidcConfig();
+    assert.equal(isAllowedPublicOrigin(config, "https://stratos.example"), true);
+    assert.equal(
+      isAllowedPublicOrigin(config, "https://stratos.example:443"),
+      true,
+    );
+    assert.equal(isAllowedPublicOrigin(config, "http://akl-web:3000"), false);
+    assert.equal(isAllowedPublicOrigin(config, "https://attacker.example"), false);
+    assert.equal(isAllowedPublicOrigin(config, null), false);
   });
 
   it("falls back to a safe return path for malformed OIDC state", () => {

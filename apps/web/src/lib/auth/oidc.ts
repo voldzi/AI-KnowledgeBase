@@ -81,6 +81,20 @@ export function buildPublicAppUrl(config: AklConfig, path: string): string {
   return `${publicBaseUrl}${normalizedPath === "/" ? "" : normalizedPath}`;
 }
 
+export function isAllowedPublicOrigin(
+  config: AklConfig,
+  origin: string | null,
+): boolean {
+  if (!origin) return false;
+  try {
+    return (
+      new URL(origin).origin === new URL(buildPublicAppUrl(config, "/")).origin
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeReturnToForPublicBase(
   config: AklConfig,
   returnTo: string | null | undefined,
