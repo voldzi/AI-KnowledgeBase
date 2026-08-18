@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAklConfig } from "@/lib/api/config";
 import {
   buildAuthorizationUrl,
+  buildPublicAppUrl,
   createPkceVerifier,
   createState,
   normalizeReturnToForPublicBase,
@@ -19,14 +20,18 @@ export async function GET(request: NextRequest) {
     config,
     request.nextUrl.searchParams.get("return_to"),
   );
-  return new NextResponse(loginPage(request.nextUrl.pathname, returnTo), {
-    status: 200,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store, max-age=0",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+  return new NextResponse(
+    loginPage(buildPublicAppUrl(config, "/api/auth/login"), returnTo),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, max-age=0",
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      },
     },
-  });
+  );
 }
 
 export async function POST(request: NextRequest) {
