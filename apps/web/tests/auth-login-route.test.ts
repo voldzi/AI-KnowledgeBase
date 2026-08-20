@@ -75,7 +75,7 @@ describe("OIDC login page", () => {
       }),
     );
 
-    assert.equal(response.status, 307);
+    assert.equal(response.status, 303);
     const location = new URL(response.headers.get("location") ?? "");
     assert.equal(
       location.origin + location.pathname,
@@ -116,7 +116,7 @@ describe("OIDC login page", () => {
       }),
     );
 
-    assert.equal(response.status, 307);
+    assert.equal(response.status, 303);
   });
 
   it("rejects an opaque origin without same-origin navigation metadata", async () => {

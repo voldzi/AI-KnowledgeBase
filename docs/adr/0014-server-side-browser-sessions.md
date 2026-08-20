@@ -31,6 +31,9 @@ browser SSO state. The deployed Keycloak rejects the otherwise standard
 combination of `prompt=login` and `max_age`, so the 15-minute identity bound is
 enforced by AKB's server-side session validation rather than that authorization
 parameter. This does not shorten or bypass an already valid AKB session.
+The login form uses an HTTP 303 redirect so its POST is converted to the GET
+required by the Keycloak authorization endpoint; a method-preserving 307 is
+not valid for this browser flow.
 
 Logout revokes the local server session before attempting remote refresh-token
 revocation. Users can revoke one device or all their sessions. Undecryptable,
