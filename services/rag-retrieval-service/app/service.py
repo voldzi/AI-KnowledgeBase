@@ -1652,39 +1652,20 @@ class RagRetrievalService:
                 response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
-        service_desk_handoff = (
-            _is_incident_query(_normalize_for_assistant(payload.message))
-            and rag_answer.confidence == "insufficient_source"
-        )
-        response_type = "handoff_recommended" if service_desk_handoff else "no_answer"
         response = AssistantChatResponse(
-            response_type=response_type,
+            response_type="no_answer",
             conversation_id=conversation_id,
             answer=_assistant_no_source_message(payload.mode, payload.response_language),
             citations=[],
             confidence=rag_answer.confidence,
             warnings=rag_answer.warnings,
             missing_information=rag_answer.missing_information,
-            recommended_action=(
-                _localized(payload.response_language, "service_desk_handoff")
-                if service_desk_handoff
-                else None
-            ),
-            suggested_actions=(
-                [
-                    AssistantSuggestedAction(
-                        label=_localized(payload.response_language, "service_desk_handoff"),
-                        action_type="handoff",
-                        target="service-desk",
-                    )
-                ]
-                if service_desk_handoff
-                else []
-            ),
+            recommended_action=None,
+            suggested_actions=[],
         )
         await self._audit_assistant(
             actor_id=payload.user_id,
-            event_type="assistant.handoff_recommended" if response_type == "handoff_recommended" else "assistant.no_answer_returned",
+            event_type="assistant.no_answer_returned",
             conversation_id=conversation_id,
             metadata={"warnings": rag_answer.warnings, "missing_information": rag_answer.missing_information},
             auth_context=auth_context,
@@ -3796,11 +3777,10 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "ask_followup": "Položit doplňující dotaz",
         "no_precise_source": "Nepodařilo se najít dostatečně přesný a citovatelný postup.",
         "no_precise_document_source": "Nepodařilo se najít dostatečně přesný a citovatelný zdroj v dokumentech.",
-        "service_desk_handoff": "Založit požadavek na Service Desk",
         "followup_owner": "Chcete zjistit, kdo je vlastník systému?",
         "followup_request_text": "Chcete připravit text žádosti?",
         "followup_incident_category": "Chcete doporučit kategorii incidentu?",
-        "followup_incident_description": "Chcete připravit popis pro Service Desk?",
+        "followup_incident_description": "Chcete upřesnit projevy a rozsah problému?",
         "followup_open_source": "Chcete otevřít zdrojový dokument?",
         "followup_ask_more": "Chcete položit doplňující otázku?",
     },
@@ -3832,11 +3812,10 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "ask_followup": "Ask follow-up",
         "no_precise_source": "I could not find a sufficiently precise and citable procedure.",
         "no_precise_document_source": "I could not find a sufficiently precise and citable document source.",
-        "service_desk_handoff": "Create a Service Desk request",
         "followup_owner": "Do you want to identify the system owner?",
         "followup_request_text": "Do you want to draft the request text?",
         "followup_incident_category": "Do you want a recommended incident category?",
-        "followup_incident_description": "Do you want to draft a Service Desk description?",
+        "followup_incident_description": "Do you want to clarify the symptoms and scope of the problem?",
         "followup_open_source": "Do you want to open the source document?",
         "followup_ask_more": "Do you want to ask a follow-up question?",
     },

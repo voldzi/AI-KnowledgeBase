@@ -316,6 +316,13 @@ services:
       labels: *immutable-release-labels
     image: ${REGISTRY_API_IMAGE:-akl/registry-api:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -521,8 +528,15 @@ services:
     build:
       context: ../../services/rag-retrieval-service
       labels: *immutable-release-labels
-    image: ${RAG_RETRIEVAL_SERVICE_IMAGE:-akl/rag-retrieval-service:docker-home}
+    image: ${RAG_RETRIEVAL_SERVICE_IMAGE:-akl/rag-retrieval-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -629,6 +643,13 @@ services:
       labels: *immutable-release-labels
     image: ${LLM_GATEWAY_SERVICE_IMAGE:-akl/llm-gateway-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -649,6 +670,9 @@ services:
       AKL_LLM_REQUIRE_CALLER_IDENTITY: ${AKL_LLM_REQUIRE_CALLER_IDENTITY:-true}
       AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
       AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES: ${AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES:-service_ingestion,service_rag}
+      AKL_RATE_LIMIT_ENABLED: ${AKL_RATE_LIMIT_ENABLED:-true}
+      AKL_RATE_LIMIT_PER_MINUTE: ${AKL_RATE_LIMIT_PER_MINUTE:-120}
+      AKL_RATE_LIMIT_MAX_IDENTITIES: ${AKL_RATE_LIMIT_MAX_IDENTITIES:-4096}
       AKL_LLM_DEFAULT_PROVIDER: ${AKL_LLM_DEFAULT_PROVIDER:-ollama}
       AKL_LLM_ENABLED_PROVIDERS: ${AKL_LLM_ENABLED_PROVIDERS:-ollama}
       AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama","mock-chat":"mock","mock-embedding":"mock"}}
@@ -674,7 +698,7 @@ services:
     build:
       context: ../../services/evaluation-service
       labels: *immutable-release-labels
-    image: ${EVALUATION_SERVICE_IMAGE:-akl/evaluation-service:docker-home}
+    image: ${EVALUATION_SERVICE_IMAGE:-akl/evaluation-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     labels: *immutable-release-labels
     environment:
@@ -734,8 +758,15 @@ services:
     build:
       context: ../../services/governance-service
       labels: *immutable-release-labels
-    image: ${GOVERNANCE_SERVICE_IMAGE:-akl/governance-service:docker-home}
+    image: ${GOVERNANCE_SERVICE_IMAGE:-akl/governance-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -768,7 +799,7 @@ services:
     logging: *json-logging
 
   qdrant:
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c}
     restart: unless-stopped
     volumes:
       - qdrant-data:/qdrant/storage

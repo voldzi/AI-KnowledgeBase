@@ -15,6 +15,12 @@ Endpoint vrací pouze pravidla, která jsou:
 - bez konfliktu a bez zastínění vyšším účinným předpisem;
 - registrovaná v uzavřeném katalogu významových klíčů.
 
+Zákonné klíče VZMR pro dodávky/služby a stavební práce smí pocházet pouze z
+balíčku typu `law` nebo `implementing_regulation`. Interní směrnice nesmí tyto klíče použít
+jako náhradu zákona. Úplný zákonný základ vyžaduje oba klíče; chybí-li jeden z
+nich, endpoint vrátí `no_data` s `NO_VERIFIED_CONTROLLED_RULES_AVAILABLE` a
+bez rozhodovacích pravidel.
+
 Stejný řízený katalog používá AKB chat. Obecný dotaz na VZMR zobrazuje nejprve
 účinné zákonné limity a následně samostatně platná interní doplnění, například
 průzkum trhu, počet nabídek nebo dokumentační postup. Výslovný dotaz pouze na

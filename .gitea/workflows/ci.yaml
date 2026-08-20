@@ -342,5 +342,4 @@ jobs:
             -f infra/docker-compose/docker-compose.local-prod.yml config >/tmp/akb-compose-local-prod.yml
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
           AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
-          docker compose --env-file infra/docker-compose/docker-home.env.example \
-            -f infra/docker-compose/docker-compose.docker-home.yml config >/tmp/akb-compose-docker-home.yml
+          bash scripts/check_docker_home_compose_render.sh

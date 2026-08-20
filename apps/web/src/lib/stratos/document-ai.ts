@@ -43,7 +43,7 @@ export type StratosIngestionStatus =
 
 export const STRATOS_UPLOAD_TOKEN_PURPOSE = "stratos-upload";
 export const STRATOS_BUDGET_UPLOAD_TOKEN_PURPOSE = "stratos-budget-upload";
-export const STRATOS_BUDGET_UPLOAD_MAX_FILE_BYTES = 128 * 1024 * 1024;
+export const STRATOS_BUDGET_UPLOAD_MAX_FILE_BYTES = 100 * 1024 * 1024;
 
 export type StratosBudgetContractStatus =
   | "DRAFT"

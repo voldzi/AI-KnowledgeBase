@@ -18,6 +18,11 @@ COPY compliance ./compliance
 COPY kb_generation ./kb_generation
 COPY openapi.yaml README.md ./
 
+RUN groupadd --gid 1000 akb \
+    && useradd --uid 1000 --gid akb --no-create-home --shell /usr/sbin/nologin akb
+
+USER akb
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

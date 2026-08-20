@@ -244,6 +244,14 @@ rank and marks each rule `authoritative`, `supplemental`, `shadowed` or
 `conflict`. Only non-conflicting accepted/edited rules at the winning authority
 level have `consumer_eligible=true`.
 
+Normative keys reserved for statutory VZMR thresholds may be asserted only by
+`law` or `implementing_regulation` source packages. An internal directive attempting to use
+one of those keys is rejected with HTTP `409` and
+`controlled_document_package_normative_key_source_mismatch`; it cannot
+impersonate the statutory baseline. A broad statutory VZMR answer is complete
+only when both the supplies/services and construction thresholds are present
+from authorized legal sources.
+
 The generic rules endpoint is the human/gestor projection. `consumer_view=true`
 provides AKB chat with a narrower user-authorized decision view: only verified
 profile revision 3 rules registered in the normative catalog are returned, and

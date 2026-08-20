@@ -31,7 +31,7 @@ def test_default_file_limit_covers_trusted_budget_upload_boundary(tmp_path) -> N
         }
     )
 
-    assert settings.max_file_bytes == 128 * 1024 * 1024
+    assert settings.max_file_bytes == 100 * 1024 * 1024
 
 
 def test_ready_returns_503_when_registry_service_identity_is_unavailable(

@@ -7,6 +7,14 @@ import json
 
 CATALOG_VERSION = "public-procurement-normative-catalog-1.0.0"
 
+PUBLIC_PROCUREMENT_REQUIRED_STATUTORY_KEYS = frozenset(
+    {
+        "public_procurement.vzmr.supplies_services.threshold",
+        "public_procurement.vzmr.works.threshold",
+    }
+)
+STATUTORY_SOURCE_TYPES = frozenset({"law", "implementing_regulation"})
+
 
 @dataclass(frozen=True)
 class NormativeKeyDefinition:
@@ -154,6 +162,19 @@ def normative_key_category_matches(domain: str, key: str, category: str) -> bool
         return True
     definition = normative_key_definition(key)
     return definition is not None and definition.category == category
+
+
+def normative_key_source_type_matches(
+    domain: str,
+    key: str,
+    source_type: str,
+) -> bool:
+    if domain != "public_procurement":
+        return True
+    canonical_key = canonical_normative_key(key)
+    if canonical_key not in PUBLIC_PROCUREMENT_REQUIRED_STATUTORY_KEYS:
+        return True
+    return source_type in STATUTORY_SOURCE_TYPES
 
 
 def catalog_payload() -> dict[str, object]:
