@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
   const codeVerifier = createPkceVerifier();
   const response = NextResponse.redirect(
     buildAuthorizationUrl(config, state, codeVerifier),
+    303,
   );
   const temporaryCookieOptions = { ...serverSessionCookieOptions(config, false), maxAge: 60 * 10 };
   response.cookies.set(OIDC_STATE_COOKIE, state, temporaryCookieOptions);
