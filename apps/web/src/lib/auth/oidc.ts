@@ -53,10 +53,6 @@ export function buildAuthorizationUrl(
   url.searchParams.set("scope", oidc.scopes);
   url.searchParams.set("state", state);
   url.searchParams.set("prompt", "login");
-  url.searchParams.set(
-    "max_age",
-    String(Math.floor((oidc.identityValidationIntervalMs ?? 15 * 60_000) / 1000)),
-  );
   if (codeVerifier) {
     url.searchParams.set("code_challenge", pkceCodeChallenge(codeVerifier));
     url.searchParams.set("code_challenge_method", "S256");
