@@ -25,11 +25,12 @@ session has a 30-day inactivity limit. OIDC identity is refreshed or verified
 at least every 15 minutes. Current STRATOS access projection and Information
 Policy remain authoritative for every relevant request.
 
-The authorization request binds `max_age` to that identity-validation
-interval and sets `prompt=login`. Every new AKB login therefore gets an
-explicit Keycloak reauthentication step instead of relying on stale browser
-SSO state. This does not shorten or bypass an already valid AKB server-side
-session.
+The authorization request sets `prompt=login`. Every new AKB login therefore
+gets an explicit Keycloak reauthentication step instead of relying on stale
+browser SSO state. The deployed Keycloak rejects the otherwise standard
+combination of `prompt=login` and `max_age`, so the 15-minute identity bound is
+enforced by AKB's server-side session validation rather than that authorization
+parameter. This does not shorten or bypass an already valid AKB session.
 
 Logout revokes the local server session before attempting remote refresh-token
 revocation. Users can revoke one device or all their sessions. Undecryptable,
