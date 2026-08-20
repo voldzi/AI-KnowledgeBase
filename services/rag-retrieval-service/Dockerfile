@@ -19,7 +19,8 @@ COPY policies ./policies
 COPY openapi.yaml README.md ./
 
 RUN groupadd --gid 1000 akb \
-    && useradd --uid 1000 --gid akb --no-create-home --shell /usr/sbin/nologin akb
+    && useradd --uid 1000 --gid akb --no-create-home --shell /usr/sbin/nologin akb \
+    && chmod -R a+rX /app
 
 USER akb
 
