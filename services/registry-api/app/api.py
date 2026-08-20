@@ -45,10 +45,13 @@ from app.auth import (
 from app.config import Settings, get_settings
 from app.controlled_rule_catalog import (
     CATALOG_VERSION as CONTROLLED_RULE_CATALOG_VERSION,
+    PUBLIC_PROCUREMENT_REQUIRED_STATUTORY_KEYS,
+    STATUTORY_SOURCE_TYPES,
     canonical_normative_key,
     catalog_sha256 as controlled_rule_catalog_sha256,
     normative_key_category_matches,
     normative_key_is_registered,
+    normative_key_source_type_matches,
 )
 from app.content_security import (
     ContentSecurityAttestation,
@@ -5801,6 +5804,7 @@ def _require_controlled_package_rules_reviewed(
 
     unregistered_keys: set[str] = set()
     category_mismatches: set[str] = set()
+    source_type_mismatches: set[str] = set()
     for rule in result.rules:
         feedback = latest_feedback[f"rules.{rule.rule_id}"]
         if feedback.decision == "rejected":
@@ -5828,6 +5832,13 @@ def _require_controlled_package_rules_reviewed(
             effective_rule.category,
         ):
             category_mismatches.add(effective_rule.normative_key)
+            continue
+        if not normative_key_source_type_matches(
+            package.domain,
+            effective_rule.normative_key,
+            package.source_type,
+        ):
+            source_type_mismatches.add(effective_rule.normative_key)
 
     if unregistered_keys:
         raise problem(
@@ -5842,6 +5853,13 @@ def _require_controlled_package_rules_reviewed(
             "controlled_document_package_normative_key_category_mismatch",
             "A verified rule category does not match its registered normative key",
             {"normative_keys": sorted(category_mismatches)},
+        )
+    if source_type_mismatches:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_normative_key_source_mismatch",
+            "A statutory normative key requires an authoritative legal source",
+            {"normative_keys": sorted(source_type_mismatches)},
         )
 
     verified_rule_count = sum(
@@ -5878,6 +5896,14 @@ def _apply_controlled_rule_precedence(
     conflict_detected = False
     rules_by_normative_key: dict[str, list[ControlledRuleResponse]] = {}
     for rule in rules:
+        if not normative_key_source_type_matches(
+            "public_procurement",
+            rule.proposal.normative_key,
+            rule.source_type.value,
+        ):
+            rule.precedence_status = "shadowed"
+            rule.consumer_eligible = False
+            continue
         rules_by_normative_key.setdefault(
             canonical_normative_key(rule.proposal.normative_key),
             [],
@@ -5921,6 +5947,22 @@ def _apply_controlled_rule_precedence(
                 "edited",
             }
     return conflict_detected
+
+
+def _has_required_statutory_rule_coverage(
+    domain: str,
+    rules: list[ControlledRuleResponse],
+) -> bool:
+    if domain != "public_procurement":
+        return True
+    available = {
+        canonical_normative_key(rule.proposal.normative_key)
+        for rule in rules
+        if rule.consumer_eligible
+        and rule.precedence_status == "authoritative"
+        and rule.source_type.value in STATUTORY_SOURCE_TYPES
+    }
+    return PUBLIC_PROCUREMENT_REQUIRED_STATUTORY_KEYS.issubset(available)
 
 
 @router.get(
@@ -6449,6 +6491,15 @@ def list_controlled_rules_for_budget(
             rule.proposal.category,
         )
     ]
+    has_required_statutory_coverage = _has_required_statutory_rule_coverage(
+        domain,
+        eligible,
+    )
+    if not has_required_statutory_coverage:
+        eligible = []
+        if internal.packages:
+            warnings.append("NO_VERIFIED_CONTROLLED_RULES_AVAILABLE")
+    warnings = list(dict.fromkeys(warnings))
     if _CONTROLLED_RULE_CONSUMER_BLOCKING_WARNINGS.intersection(warnings):
         response_status = "conflict"
         eligible = []

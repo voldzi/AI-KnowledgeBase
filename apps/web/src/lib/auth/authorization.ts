@@ -180,6 +180,9 @@ export function canAccessWorkspaceRoute(
     if (routeMatches(route, "/sources")) return effectiveCapabilities.includes("akb:manage_document");
     if (routeMatches(route, "/audit")) return effectiveCapabilities.includes("akb:read_audit");
     if (routeMatches(route, "/intelligence")) return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:read_audit"]);
+    if (routeMatches(route, "/controlled-documentation")) {
+      return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:manage_document"]);
+    }
     if (routeMatches(route, "/documents/new") || routeMatches(route, "/upload")) {
       return hasAnyCapability(effectiveCapabilities, ["akb:upload", "akb:manage_document"]);
     }
@@ -205,6 +208,9 @@ export function canAccessWorkspaceRoute(
   }
   if (routeMatches(route, "/intelligence")) {
     return hasAnyRole(roles, INTELLIGENCE_ROLES);
+  }
+  if (routeMatches(route, "/controlled-documentation")) {
+    return hasAnyRole(roles, MANAGEMENT_ROLES);
   }
   if (routeMatches(route, "/documents/new")) {
     return hasAnyRole(roles, DOCUMENT_CREATOR_ROLES);

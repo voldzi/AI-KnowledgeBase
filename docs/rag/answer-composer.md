@@ -29,7 +29,14 @@ The prompt contains:
 - selected chunk text,
 - chunk IDs and citation metadata,
 - instruction to answer only from supplied context,
-- instruction to avoid adding unsupported facts.
+- instruction to avoid adding unsupported facts,
+- an explicit trust boundary declaring all source text and metadata to be
+  untrusted evidence rather than executable instructions.
+
+Instructions embedded in a document cannot change the task, authorization,
+output policy or source boundary and cannot request hidden prompts, credentials
+or tokens. This prompt boundary supplements, but never replaces, Registry
+authorization and citation validation.
 
 The service never calls Ollama or vLLM directly.
 

@@ -18,21 +18,29 @@ Expected identity inputs:
 
 Service-to-service calls must preserve correlation headers and must not log full user questions, answers, source text, secrets, or access tokens.
 
-AKB web stores OIDC browser credentials only inside sealed HTTP-only cookies:
-`akl_session` carries only compact session claims, while `akl_refresh` carries
-the refresh token separately. The access token is not persisted in a browser
-cookie; browser-facing BFF routes obtain it server-side from the sealed refresh
-cookie before calling Registry or RAG. Splitting and minimizing the cookies keeps
-the browser session below proxy and browser header limits and still prevents
-JavaScript from reading credentials. The browser never receives a readable
-refresh token and must not call Registry, RAG, or storage services directly.
-AKB keeps the short-lived access session only in a bounded process-memory cache
-addressed by a one-way hash of the refresh token. Concurrent BFF requests share
-one refresh operation, including rotated refresh tokens; after a restart the
-cache is safely reconstructed by refreshing from the sealed browser cookie.
+AKB terminates OIDC Authorization Code + PKCE in a server-side session. The
+browser receives only an opaque random selector in the `akl_session` cookie;
+the database stores only its one-way hash. Access and refresh tokens stay
+server-side in an authenticated encrypted envelope and are never written to a
+browser cookie, Web Storage or a client-readable response. The session is bound
+to the internal user, issuer, client and Keycloak session.
 
-The OIDC callback consumes the one-time authorization code server-side, sets the
-sealed session cookie, and returns a short no-store page that uses
+Without trusted-device consent the browser receives a session cookie with no
+`Max-Age` or `Expires`. Trusted-device sessions have a 90-day absolute limit,
+expire after 30 days without activity and revalidate identity with Keycloak at
+most 15 minutes after the previous successful check. Capability, scope and
+Information Policy are loaded from the current STRATOS projection for each
+relevant request and are not durable session authority. Cookie-authenticated
+unsafe API methods require an exact same-origin request.
+
+The browser never receives a readable refresh token and must not call Registry,
+RAG or storage services directly. Concurrent BFF requests may share a bounded
+in-process access-token refresh, but the durable authority remains the encrypted
+server-side session. Restarting an application process does not require the
+browser to hold or reconstruct any OIDC credential.
+
+The OIDC callback consumes the one-time authorization code server-side, creates
+the server-side session, sets the opaque cookie, and returns a short no-store page that uses
 `location.replace()` to leave the callback URL. This keeps stale authorization
 codes out of browser history and prevents repeated callback replay.
 

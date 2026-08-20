@@ -352,7 +352,7 @@ describe("STRATOS Budget document bridge contract", () => {
     }
   });
 
-  it("uses a dedicated 128 MiB Budget limit without widening general uploads", () => {
+  it("uses a dedicated 100 MiB Budget limit without widening general uploads", () => {
     const budgetSettings = getStratosBudgetUploadSettings({
       AKL_WEB_UPLOAD_MAX_FILE_BYTES: String(50 * 1024 * 1024),
     });

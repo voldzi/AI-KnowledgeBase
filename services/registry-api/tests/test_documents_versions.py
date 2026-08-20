@@ -1274,16 +1274,15 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     budget_body = budget_service.json()
     assert budget_body["contract"] == "akb-controlled-rules-1"
     assert budget_body["revision"] == "1.0.0"
-    assert budget_body["status"] == "complete_with_warning"
-    assert budget_body["decision_eligible"] is True
+    assert budget_body["status"] == "no_data"
+    assert budget_body["decision_eligible"] is False
     assert budget_body["source_version"].startswith("sha256:")
-    assert {
-        rule["normative_key"] for rule in budget_body["rules"]
-    } == {
-        "public_procurement.market_research.threshold",
-        "public_procurement.marketplace.threshold",
-    }
-    assert all(rule["citation"]["document_version_id"] for rule in budget_body["rules"])
+    assert budget_body["sources"] == []
+    assert budget_body["rules"] == []
+    assert budget_body["warnings"] == [
+        "SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE",
+        "NO_VERIFIED_CONTROLLED_RULES_AVAILABLE",
+    ]
 
 
 def test_budget_controlled_rules_route_is_fail_closed_and_audited(
@@ -1426,6 +1425,33 @@ def test_controlled_rule_precedence_prefers_law_and_closes_equal_rank_conflict()
     assert law.consumer_eligible is True
     assert directive.precedence_status == "shadowed"
     assert directive.consumer_eligible is False
+
+    directive_without_law = rule(
+        package_id="directive-without-law",
+        source_type=ControlledDocumentSourceType.internal_directive,
+        authority_rank=60,
+        value=100_000,
+    )
+    assert api_module._apply_controlled_rule_precedence([directive_without_law]) is False
+    assert directive_without_law.precedence_status == "shadowed"
+    assert directive_without_law.consumer_eligible is False
+    assert not api_module._has_required_statutory_rule_coverage(
+        "public_procurement",
+        [law],
+    )
+
+    works = rule(
+        package_id="law-works",
+        source_type=ControlledDocumentSourceType.law,
+        authority_rank=100,
+        value=9_000_000,
+    )
+    works.proposal.normative_key = "public_procurement.vzmr.works.threshold"
+    assert api_module._apply_controlled_rule_precedence([law, works]) is False
+    assert api_module._has_required_statutory_rule_coverage(
+        "public_procurement",
+        [law, works],
+    )
 
     conflicting_law = rule(
         package_id="law-conflict",

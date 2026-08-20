@@ -9,13 +9,16 @@ import {
 import type { ControlledRuleList } from "../src/lib/types";
 
 describe("controlled rule assistant answer", () => {
-  it("returns only verified consumer-eligible rules with source citations", () => {
+  it("returns only verified consumer-eligible internal rules with source citations", () => {
+    const data = fixture();
+    data.rules[0]!.proposal.normative_key = "public_procurement.market_research.threshold";
+    data.rules[0]!.proposal.title = "Limit průzkumu trhu";
     const response = buildControlledRuleAssistantResponse({
-      message: "Jaký je limit pro veřejnou zakázku malého rozsahu?",
+      message: "Jaký je interní limit průzkumu trhu podle směrnice?",
       conversationId: "conv_1",
       context: {},
       language: "cs",
-      result: fixture(),
+      result: data,
     });
 
     assert.equal(response.response_type, "answer");
@@ -156,7 +159,7 @@ describe("controlled rule assistant answer", () => {
     assert.equal(response.citations.length, 3);
   });
 
-  it("keeps an explicit statutory VZMR overview separate from internal procedures", () => {
+  it("fails closed when an explicit statutory VZMR overview is incomplete", () => {
     const data = fixture();
     data.rules = [
       controlledRule({
@@ -188,10 +191,11 @@ describe("controlled rule assistant answer", () => {
       result: data,
     });
 
-    assert.deepEqual(response.current_context.controlled_rule_ids, [
-      "rule_supplies_services",
-    ]);
-    assert.doesNotMatch(response.answer ?? "", /průzkumu trhu/i);
+    assert.equal(response.response_type, "no_answer");
+    assert.equal(response.confidence, "insufficient_source");
+    assert.deepEqual(response.citations, []);
+    assert.ok(response.warnings.includes("REQUIRED_STATUTORY_RULE_COVERAGE_MISSING"));
+    assert.match(response.answer ?? "", /není úplná sada závazných zákonných pravidel/i);
   });
 
   it("keeps an explicit internal-directive overview separate from statutory limits", () => {
@@ -276,6 +280,17 @@ describe("controlled rule assistant answer", () => {
         precedenceStatus: "authoritative",
       }),
       controlledRule({
+        ruleId: "rule_works",
+        normativeKey: "public_procurement.vzmr.works.threshold",
+        title: "Statutory works threshold",
+        value: 9000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
         ruleId: "rule_market_research",
         normativeKey: "public_procurement.market_research.threshold",
         title: "Internal market research threshold",
@@ -296,6 +311,7 @@ describe("controlled rule assistant answer", () => {
     assert.equal(response.current_context.controlled_rule_source_scope, "combined");
     assert.deepEqual(response.current_context.controlled_rule_ids, [
       "rule_supplies_services",
+      "rule_works",
       "rule_market_research",
     ]);
     assert.match(response.answer ?? "", /Zákonné limity účinné/);
@@ -310,6 +326,17 @@ describe("controlled rule assistant answer", () => {
         normativeKey: "public_procurement.vzmr.supplies_services.threshold",
         title: "Statutory supplies and services threshold",
         value: 3000000,
+        unit: "currency",
+        currency: "CZK",
+        sourceType: "law",
+        authorityRank: 100,
+        precedenceStatus: "authoritative",
+      }),
+      controlledRule({
+        ruleId: "rule_works",
+        normativeKey: "public_procurement.vzmr.works.threshold",
+        title: "Statutory works threshold",
+        value: 9000000,
         unit: "currency",
         currency: "CZK",
         sourceType: "law",
@@ -364,12 +391,39 @@ describe("controlled rule assistant answer", () => {
     assert.equal(response.current_context.controlled_rule_source_scope, "combined");
     assert.deepEqual(response.current_context.controlled_rule_ids, [
       "rule_supplies_services",
+      "rule_works",
       "rule_market_research",
       "rule_marketplace",
       "rule_central_evidence",
     ]);
     assert.match(response.answer ?? "", /Zákonné limity účinné/);
     assert.match(response.answer ?? "", /Doplňující interní pravidla/);
+  });
+
+  it("does not allow an internal directive to impersonate a statutory threshold", () => {
+    const data = fixture();
+    data.rules = [
+      controlledRule({
+        ruleId: "rule_internal_fake_law",
+        normativeKey: "public_procurement.vzmr.supplies_services.threshold",
+        title: "Internal value using a statutory key",
+        value: 100000,
+        unit: "currency",
+        currency: "CZK",
+      }),
+    ];
+
+    const response = buildControlledRuleAssistantResponse({
+      message: "Jaký je limit veřejné zakázky malého rozsahu pro dodávky?",
+      conversationId: "conv_fake_law",
+      context: {},
+      language: "cs",
+      result: data,
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.deepEqual(response.citations, []);
+    assert.ok(response.warnings.includes("REQUIRED_STATUTORY_RULE_COVERAGE_MISSING"));
   });
 
   it("keeps both source sections for the production combined wording", () => {

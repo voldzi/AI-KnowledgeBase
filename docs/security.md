@@ -15,6 +15,11 @@ host applications do not make authorization decisions for AKB documents.
   has a 90-day absolute limit, a 30-day inactivity limit and is never selected
   by default. Identity is revalidated with Keycloak at most 15 minutes after
   the previous successful validation.
+- Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
+  `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
+  Missing or foreign origins fail with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
+  before route handling. Audience-bound bearer-only service integrations do
+  not use the browser cookie and remain on their existing token boundary.
 - Local logout and device revocation do not depend on Keycloak availability.
   Current STRATOS capabilities, scopes and Information Policy are still
   evaluated on every relevant request and are not copied into the session as
@@ -414,6 +419,21 @@ AIIP application API processing accepts only `public` and `internal`.
 before RAG or model invocation. Duplicate retrieval also enforces `tenant_id`,
 `external_system=STRATOS_AIIP`, the classification ceiling, and Registry
 document authorization.
+
+## Container Runtime Boundary
+
+The production Registry, RAG, LLM Gateway and Governance containers run as the
+unprivileged `akb` user. Their root filesystems are read-only, Linux
+capabilities are dropped, `no-new-privileges` is enabled and the only generic
+writable path is an in-memory `/tmp`. Runtime secrets remain read-only mounts
+owned by the same numeric service identity. A service that needs durable state
+must use its declared database, object-storage or named-volume boundary; it
+must not write into the image filesystem.
+
+All release-managed service images use the exact `AKL_IMAGE_TAG` selected by
+the immutable release. Infrastructure images are pinned to an explicit
+version rather than `latest`. These controls complement application authorization;
+they do not replace capability, scope or Information Policy checks.
 
 ## Audit
 

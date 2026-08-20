@@ -71,6 +71,7 @@ const VZMR_STATUTORY_RULE_KEYS = [
   "public_procurement.vzmr.supplies_services.threshold",
   "public_procurement.vzmr.works.threshold",
 ] as const;
+const VZMR_STATUTORY_RULE_KEY_SET = new Set<string>(VZMR_STATUTORY_RULE_KEYS);
 const VZMR_SUPPLEMENTAL_RULE_KEYS = [
   "public_procurement.internal_category_1.upper_threshold",
   "public_procurement.direct_purchase.threshold",
@@ -155,6 +156,7 @@ export function buildControlledRuleAssistantResponse(input: {
     (rule) => rule.consumer_eligible
       && ["accepted", "edited"].includes(rule.verification_status)
       && ["authoritative", "supplemental"].includes(rule.precedence_status)
+      && ruleMatchesNormativeAuthority(rule)
       && ruleMatchesSourceScope(rule, sourceScope),
   );
   const matchingConflicts = rankedRules(input.message, input.result.rules.filter(
@@ -183,6 +185,40 @@ export function buildControlledRuleAssistantResponse(input: {
       missingInformation: input.language === "en"
         ? "No unambiguous governed rule is available."
         : "Není k dispozici jednoznačné ověřené pravidlo.",
+    });
+  }
+
+  const requiredStatutoryKeys = requiredStatutoryKeysForQuestion(
+    input.message,
+    sourceScope,
+  );
+  const availableStatutoryKeys = new Set(
+    eligible
+      .filter(isStatutoryRule)
+      .map((rule) => rule.proposal.normative_key),
+  );
+  const missingStatutoryKeys = [...requiredStatutoryKeys].filter(
+    (key) => !availableStatutoryKeys.has(key),
+  );
+  if (missingStatutoryKeys.length > 0) {
+    return emptyResponse({
+      conversationId: input.conversationId,
+      language: input.language,
+      context: {
+        ...baseContext,
+        controlled_rule_missing_statutory_keys: missingStatutoryKeys,
+      },
+      confidence: "insufficient_source",
+      warnings: [
+        ...input.result.warnings,
+        "REQUIRED_STATUTORY_RULE_COVERAGE_MISSING",
+      ],
+      message: input.language === "en"
+        ? "The authoritative statutory rules required for this question are not complete for the selected date. Internal rules were not used as a substitute."
+        : "Pro vybrané datum není úplná sada závazných zákonných pravidel potřebná pro tento dotaz. Interní pravidla jsem nepoužil jako náhradu.",
+      missingInformation: input.language === "en"
+        ? "One or more required statutory rules are missing."
+        : "Chybí jedno nebo více požadovaných zákonných pravidel.",
     });
   }
 
@@ -336,7 +372,8 @@ function targetedNormativeKeys(message: string) {
     keys.add("public_procurement.internal_category_1.upper_threshold");
   }
   const broadVzmrOverview = isBroadVzmrOverview(message);
-  if ((/\bvzmr\b/.test(value) && !asksForInternalRule) || asksForLaw) {
+  const namesVzmrInFull = /verejn\w*\s+zakaz\w*\s+maleh\w*\s+rozsah/.test(value);
+  if (((/\bvzmr\b/.test(value) || namesVzmrInFull) && !asksForInternalRule) || asksForLaw) {
     const asksForWorks = /stavebn/.test(value);
     const asksForSuppliesOrServices = /dodav|sluzb/.test(value);
     if (asksForWorks) {
@@ -469,6 +506,23 @@ function controlledRuleLine(rule: ControlledRule, language: ResponseLanguage) {
 function isStatutoryRule(rule: ControlledRule) {
   return rule.source_type === "law"
     || rule.source_type === "implementing_regulation";
+}
+
+function ruleMatchesNormativeAuthority(rule: ControlledRule): boolean {
+  if (!VZMR_STATUTORY_RULE_KEY_SET.has(rule.proposal.normative_key)) return true;
+  return isStatutoryRule(rule);
+}
+
+function requiredStatutoryKeysForQuestion(
+  message: string,
+  sourceScope: ControlledRuleSourceScope,
+): Set<string> {
+  if (sourceScope === "internal") return new Set();
+  return new Set(
+    [...targetedNormativeKeys(message)].filter((key) =>
+      VZMR_STATUTORY_RULE_KEY_SET.has(key)
+    ),
+  );
 }
 
 function controlledRuleSourceScope(message: string): ControlledRuleSourceScope {

@@ -114,6 +114,23 @@ describe("AKB web authorization", () => {
     assert.equal(canAccessWorkspaceRoute(["document_manager"], "/documents/new"), true);
     assert.equal(canAccessWorkspaceRoute(["document_owner"], "/documents/new"), false);
     assert.equal(canAccessWorkspaceRoute(["admin"], "/admin"), true);
+    assert.equal(canAccessWorkspaceRoute(["document_gestor"], "/controlled-documentation"), true);
+    assert.equal(
+      canAccessWorkspaceRoute(
+        ["stratos_user"],
+        "/controlled-documentation",
+        ["akb:read_document"],
+      ),
+      true,
+    );
+    assert.equal(
+      canAccessWorkspaceRoute(
+        ["stratos_user"],
+        "/controlled-documentation",
+        ["akb:chat"],
+      ),
+      false,
+    );
   });
 
   it("allows signed role preview only for the current admin user", () => {

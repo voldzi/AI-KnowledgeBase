@@ -360,9 +360,10 @@ Technické logy obsahují ID jobu, dokumentu/verze, počty chunků, status a lat
 
 ## Limity
 
-- Výchozí limit ingestion služby je 128 MiB. Vstupní rozhraní mohou použít
-  nižší limit; běžný AKB webový upload zůstává omezen na 50 MiB, zatímco
-  důvěryhodné STRATOS Budget rozhraní přijímá až 128 MiB.
+- Výchozí limit ingestion služby je 100 MiB, shodný s maximem povinné
+  antivirové kontroly. Vstupní rozhraní mohou použít nižší limit; běžný AKB
+  webový upload zůstává omezen na 50 MiB, zatímco důvěryhodné STRATOS Budget
+  rozhraní přijímá nejvýše 100 MiB.
 - Výchozí cílová velikost chunku je 1400 znaků.
 - Výchozí maximální velikost chunku je 3000 znaků.
 - Výchozí maximální počet chunků na job je 5000.

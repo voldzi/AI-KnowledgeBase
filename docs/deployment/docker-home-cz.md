@@ -97,6 +97,23 @@ Povinné produkční klíče jsou `OTEL_SDK_DISABLED=false`, privátní
 nesmí zastavit aplikaci; export probíhá asynchronně. Podrobný provozní postup je
 v `docs/OPERATIONS/central-observability.md`.
 
+Release-managed web, Registry, Ingestion, RAG, LLM Gateway, Evaluation a
+Governance image používají stejný plný `AKL_IMAGE_TAG`. Chybějící explicitní
+override nesmí jednotlivou službu vrátit na mutable `docker-home` tag.
+Produkční Qdrant image je připnutý na ověřený multi-platformní OCI digest,
+nikoli na proměnlivý tag `latest`. Hodnota `QDRANT_IMAGE` může digest řízeně
+přepsat, ale produkční Compose regresní kontrola výchozí schválený digest hlídá.
+
+Registry, RAG, LLM Gateway a Governance běží jako neprivilegovaný uživatel
+`akb` s read-only root filesystemem, `no-new-privileges`, bez Linux capabilities
+a s tmpfs `/tmp`. Read-only secret mounts musí zůstat čitelné přesně touto
+numerickou identitou; preflight to ověřuje bez výpisu jejich obsahu.
+
+Povinný ClamAV skener přijímá nejvýše 100 MiB. Ingestion a Budget intake proto
+nesmějí inzerovat ani přijmout vyšší limit; běžný interaktivní upload může mít
+užší limit. Překročení limitu skončí před trvalým uložením a nikdy se neoznačí
+jako čistý dokument.
+
 ## 2. PostgreSQL
 
 Použít PostgreSQL, ne SQLite.

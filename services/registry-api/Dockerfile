@@ -15,6 +15,11 @@ COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
 COPY openapi.yaml ./openapi.yaml
 
+RUN groupadd --gid 1000 akb \
+    && useradd --uid 1000 --gid akb --no-create-home --shell /usr/sbin/nologin akb
+
+USER akb
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -386,12 +386,12 @@ citation. A changed or revoked source therefore fails closed; an explicit new
 legal or STRATOS domain topic starts a fresh retrieval scope.
 
 A missing document source returns a normal fail-closed `no_answer` response.
-Service Desk handoff is offered only for a message that is actually classified as
-an IT incident; a failed legal, contractual or knowledge lookup never recommends a
-Service Desk that is unrelated to the requested information. Regulatory uses of
-`incident`, such as NIS2 reporting duties or deadlines, remain document questions;
-the incident workflow requires an operational failure or an explicit report tied
-to an application, system, service, device or affected users.
+AKB does not advertise a Service Desk handoff while no governed Service Desk
+integration is available. An operational incident receives neutral follow-up
+questions about the affected system, symptoms and scope; a failed legal,
+contractual or knowledge lookup never invents an unavailable escalation path.
+Regulatory uses of `incident`, such as NIS2 reporting duties or deadlines,
+remain document questions.
 
 The chat path authorizes every package source with `akb:chat` and the same
 fresh Information Policy decision used for RAG. The default employee profile
