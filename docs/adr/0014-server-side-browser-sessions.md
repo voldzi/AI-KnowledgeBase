@@ -26,8 +26,10 @@ at least every 15 minutes. Current STRATOS access projection and Information
 Policy remain authoritative for every relevant request.
 
 The authorization request binds `max_age` to that identity-validation
-interval. A recent Keycloak SSO session can still be reused, while an older or
-inconsistent browser session must be reauthenticated before AKB accepts it.
+interval and sets `prompt=login`. Every new AKB login therefore gets an
+explicit Keycloak reauthentication step instead of relying on stale browser
+SSO state. This does not shorten or bypass an already valid AKB server-side
+session.
 
 Logout revokes the local server session before attempting remote refresh-token
 revocation. Users can revoke one device or all their sessions. Undecryptable,
