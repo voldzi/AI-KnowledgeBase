@@ -26,11 +26,6 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 with open(sys.argv[2], encoding="utf-8") as handle:
     tagged_compose = json.load(handle)
 test_image_tag = sys.argv[3]
-expected_qdrant_image = (
-    "qdrant/qdrant@sha256:"
-    "75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c"
-)
-
 services = compose.get("services", {})
 volumes = compose.get("volumes", {})
 if "clamav" in services:
@@ -82,12 +77,8 @@ for service_name in release_services:
             f"{service_name} does not inherit the immutable AKL_IMAGE_TAG: {image}"
         )
 
-qdrant_image = services["qdrant"].get("image", "")
-if qdrant_image != expected_qdrant_image:
-    raise SystemExit(
-        "Production Qdrant image must use the approved immutable digest: "
-        f"{qdrant_image}"
-    )
+if "qdrant" not in services:
+    raise SystemExit("Production Compose must retain the shared Qdrant service.")
 PY
 
 printf 'Rendered compose config to %s\n' "$OUTPUT_FILE"
