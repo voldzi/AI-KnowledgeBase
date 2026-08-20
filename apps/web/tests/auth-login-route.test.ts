@@ -76,10 +76,13 @@ describe("OIDC login page", () => {
     );
 
     assert.equal(response.status, 307);
-    assert.match(
-      response.headers.get("location") ?? "",
-      /^https:\/\/login\.example\/realms\/stratos\/protocol\/openid-connect\/auth\?/,
+    const location = new URL(response.headers.get("location") ?? "");
+    assert.equal(
+      location.origin + location.pathname,
+      "https://login.example/realms/stratos/protocol/openid-connect/auth",
     );
+    assert.equal(location.searchParams.get("max_age"), "900");
+    assert.equal(location.searchParams.get("code_challenge_method"), "S256");
   });
 
   it("accepts an opaque origin from a same-origin document navigation", async () => {

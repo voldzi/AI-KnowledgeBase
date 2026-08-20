@@ -14,7 +14,9 @@ host applications do not make authorization decisions for AKB documents.
 - A normal login is a browser-session cookie. The optional trusted-device mode
   has a 90-day absolute limit, a 30-day inactivity limit and is never selected
   by default. Identity is revalidated with Keycloak at most 15 minutes after
-  the previous successful validation.
+  the previous successful validation. The authorization request uses the same
+  bounded age for the Keycloak authentication, so a stale browser SSO state is
+  revalidated instead of ending on an unrecoverable identity-provider error.
 - Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
   `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
   Missing or foreign origins fail with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
