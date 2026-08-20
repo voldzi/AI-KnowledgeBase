@@ -25,6 +25,10 @@ session has a 30-day inactivity limit. OIDC identity is refreshed or verified
 at least every 15 minutes. Current STRATOS access projection and Information
 Policy remain authoritative for every relevant request.
 
+The authorization request binds `max_age` to that identity-validation
+interval. A recent Keycloak SSO session can still be reused, while an older or
+inconsistent browser session must be reauthenticated before AKB accepts it.
+
 Logout revokes the local server session before attempting remote refresh-token
 revocation. Users can revoke one device or all their sessions. Undecryptable,
 expired, inactive or identity-invalid sessions fail closed.
