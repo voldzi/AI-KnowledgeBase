@@ -38,6 +38,14 @@ describe("OIDC login page", () => {
     );
     assert.match(html, /name="remember"/);
     assert.doesNotMatch(html, /name="remember"[^>]*checked/);
+    assert.equal(
+      response.headers.get("content-security-policy"),
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://login.example; base-uri 'none'; frame-ancestors 'none'",
+    );
+    assert.doesNotMatch(
+      response.headers.get("content-security-policy") ?? "",
+      /attacker\.example/,
+    );
   });
 
   it("accepts the configured public origin behind a reverse proxy", async () => {

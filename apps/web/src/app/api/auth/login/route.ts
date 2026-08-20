@@ -10,6 +10,7 @@ import {
   normalizeReturnToForPublicBase,
   OIDC_STATE_COOKIE,
   OIDC_PKCE_COOKIE,
+  requireOidcConfig,
 } from "@/lib/auth/oidc";
 import { serverSessionCookieOptions } from "@/lib/auth/server-session";
 
@@ -17,6 +18,9 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const config = getAklConfig();
+  const oidcAuthorizationOrigin = new URL(
+    requireOidcConfig(config).issuer,
+  ).origin;
   const returnTo = normalizeReturnToForPublicBase(
     config,
     request.nextUrl.searchParams.get("return_to"),
@@ -28,8 +32,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store, max-age=0",
-        "Content-Security-Policy":
-          "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${oidcAuthorizationOrigin}; base-uri 'none'; frame-ancestors 'none'`,
       },
     },
   );
