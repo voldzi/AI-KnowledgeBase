@@ -12,6 +12,8 @@ export function proxy(request: NextRequest) {
     method: request.method,
     pathname: request.nextUrl.pathname,
     origin: request.headers.get("origin"),
+    referer: request.headers.get("referer"),
+    secFetchSite: request.headers.get("sec-fetch-site"),
     hasServerSession: request.cookies.has("akl_session"),
   };
   if (

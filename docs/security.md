@@ -20,9 +20,11 @@ host applications do not make authorization decisions for AKB documents.
   existing valid AKB server-side session is unaffected.
 - Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
   `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
-  Missing or foreign origins fail with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
-  before route handling. Audience-bound bearer-only service integrations do
-  not use the browser cookie and remain on their existing token boundary.
+  Browser form navigations that omit `Origin` are accepted only when both an
+  exact-origin `Referer` and `Sec-Fetch-Site: same-origin` are present. Missing
+  or foreign evidence fails with `SESSION_REQUEST_ORIGIN_FORBIDDEN` before
+  route handling. Audience-bound bearer-only service integrations do not use
+  the browser cookie and remain on their existing token boundary.
 - Local logout and device revocation do not depend on Keycloak availability.
   Current STRATOS capabilities, scopes and Information Policy are still
   evaluated on every relevant request and are not copied into the session as

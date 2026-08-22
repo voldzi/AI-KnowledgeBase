@@ -4,6 +4,8 @@ type RequestMetadata = {
   method: string;
   pathname: string;
   origin: string | null;
+  referer: string | null;
+  secFetchSite: string | null;
   hasServerSession: boolean;
 };
 
@@ -20,10 +22,17 @@ export function hasAllowedSessionRequestOrigin(
   configuredPublicBaseUrl: string | undefined,
 ): boolean {
   if (!requiresSessionOriginCheck(request)) return true;
-  if (!configuredPublicBaseUrl || !request.origin) return false;
+  if (!configuredPublicBaseUrl) return false;
 
   try {
-    return new URL(request.origin).origin === new URL(configuredPublicBaseUrl).origin;
+    const configuredOrigin = new URL(configuredPublicBaseUrl).origin;
+    if (request.origin) {
+      return new URL(request.origin).origin === configuredOrigin;
+    }
+
+    return request.secFetchSite === "same-origin"
+      && Boolean(request.referer)
+      && new URL(request.referer as string).origin === configuredOrigin;
   } catch {
     return false;
   }
