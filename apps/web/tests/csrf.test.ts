@@ -16,6 +16,8 @@ describe("session request origin protection", () => {
       origin: "https://stratos.example",
       referer: "https://stratos.example/akb/documents",
       secFetchSite: "same-origin",
+      secFetchMode: "cors",
+      secFetchDest: "empty",
       hasServerSession: true,
     };
 
@@ -37,6 +39,42 @@ describe("session request origin protection", () => {
     );
   });
 
+  it("accepts an opaque Origin only for a verified same-origin login navigation", () => {
+    const request = {
+      method: "POST",
+      pathname: "/akb/api/auth/login",
+      origin: "null",
+      referer: null,
+      secFetchSite: "same-origin",
+      secFetchMode: "navigate",
+      secFetchDest: "document",
+      hasServerSession: true,
+    };
+
+    assert.equal(hasAllowedSessionRequestOrigin(request, publicBaseUrl), true);
+    assert.equal(
+      hasAllowedSessionRequestOrigin(
+        { ...request, pathname: "/akb/api/documents" },
+        publicBaseUrl,
+      ),
+      false,
+    );
+    assert.equal(
+      hasAllowedSessionRequestOrigin(
+        { ...request, secFetchSite: "cross-site" },
+        publicBaseUrl,
+      ),
+      false,
+    );
+    assert.equal(
+      hasAllowedSessionRequestOrigin(
+        { ...request, secFetchMode: "cors", secFetchDest: "empty" },
+        publicBaseUrl,
+      ),
+      false,
+    );
+  });
+
   it("accepts an exact same-origin browser navigation when Origin is omitted", () => {
     const request = {
       method: "POST",
@@ -44,6 +82,8 @@ describe("session request origin protection", () => {
       origin: null,
       referer: "https://stratos.example/akb/api/auth/login?return_to=%2Fdashboard",
       secFetchSite: "same-origin",
+      secFetchMode: "navigate",
+      secFetchDest: "document",
       hasServerSession: true,
     };
 
@@ -68,6 +108,8 @@ describe("session request origin protection", () => {
       origin: "https://stratos.example",
       referer: null,
       secFetchSite: null,
+      secFetchMode: null,
+      secFetchDest: null,
       hasServerSession: true,
     };
 
@@ -83,6 +125,8 @@ describe("session request origin protection", () => {
         origin: null,
         referer: null,
         secFetchSite: null,
+        secFetchMode: null,
+        secFetchDest: null,
         hasServerSession: true,
       }),
       false,
@@ -95,6 +139,8 @@ describe("session request origin protection", () => {
           origin: null,
           referer: null,
           secFetchSite: null,
+          secFetchMode: null,
+          secFetchDest: null,
           hasServerSession: false,
         },
         publicBaseUrl,
