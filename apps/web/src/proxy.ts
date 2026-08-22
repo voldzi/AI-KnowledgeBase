@@ -14,6 +14,8 @@ export function proxy(request: NextRequest) {
     origin: request.headers.get("origin"),
     referer: request.headers.get("referer"),
     secFetchSite: request.headers.get("sec-fetch-site"),
+    secFetchMode: request.headers.get("sec-fetch-mode"),
+    secFetchDest: request.headers.get("sec-fetch-dest"),
     hasServerSession: request.cookies.has("akl_session"),
   };
   if (

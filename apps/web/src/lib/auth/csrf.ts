@@ -6,6 +6,8 @@ type RequestMetadata = {
   origin: string | null;
   referer: string | null;
   secFetchSite: string | null;
+  secFetchMode: string | null;
+  secFetchDest: string | null;
   hasServerSession: boolean;
 };
 
@@ -27,6 +29,9 @@ export function hasAllowedSessionRequestOrigin(
   try {
     const configuredOrigin = new URL(configuredPublicBaseUrl).origin;
     if (request.origin) {
+      if (request.origin === "null") {
+        return isVerifiedSameOriginLoginNavigation(request);
+      }
       return new URL(request.origin).origin === configuredOrigin;
     }
 
@@ -36,6 +41,19 @@ export function hasAllowedSessionRequestOrigin(
   } catch {
     return false;
   }
+}
+
+function isVerifiedSameOriginLoginNavigation(request: RequestMetadata): boolean {
+  return isLoginPath(request.pathname)
+    && request.secFetchSite === "same-origin"
+    && request.secFetchMode === "navigate"
+    && request.secFetchDest === "document";
+}
+
+function isLoginPath(pathname: string): boolean {
+  const normalized = pathname.split(/[?#]/, 1)[0] || "/";
+  return normalized === "/api/auth/login"
+    || normalized.endsWith("/api/auth/login");
 }
 
 function isApiPath(pathname: string): boolean {
