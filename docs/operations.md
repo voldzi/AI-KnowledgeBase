@@ -24,6 +24,12 @@ rotation invalidates sessions that cannot be decrypted; plan it as a controlled
 global logout. Apply Alembic migration `0026_web_sessions` before starting the
 new web image.
 
+On `docker.home.cz`, the operator-owned source files are mounted read-only in
+the web containers. Their root entrypoint copies each required session secret
+to the private `/run/akl-secrets` tmpfs, sets ownership to the unprivileged
+`nextjs` process and uses that runtime copy. Keep the source files at `0600`;
+do not broaden host permissions for a container user.
+
 The browser cookie contains only an opaque selector. Operators may inspect
 session counts and revocation audit events, but must not export the encrypted
 payload, selector hash or authentication material.

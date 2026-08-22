@@ -42,6 +42,16 @@ install_secret \
   "${AKL_WEB_INGESTION_CLIENT_SECRET_SOURCE_FILE:-}" \
   "${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-}"
 
+install_secret \
+  "web session encryption" \
+  "${AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE:-}" \
+  "${AKL_WEB_SESSION_ENCRYPTION_KEY_FILE:-}"
+
+install_secret \
+  "web session store" \
+  "${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:-}" \
+  "${AKL_WEB_SESSION_STORE_SECRET_FILE:-}"
+
 if [ "${AKL_OBJECT_STORAGE_MODE:-local}" = "s3" ]; then
   install_secret \
     "S3 access key id" \

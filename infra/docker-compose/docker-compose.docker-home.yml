@@ -129,8 +129,10 @@ services:
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}
-      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/secrets/akb-web-session-encryption-key
-      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE: /run/secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/akl-secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/akl-secrets/akb-web-session-store-secret
       AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS: ${AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS:-90}
       AKL_WEB_SESSION_IDLE_TTL_DAYS: ${AKL_WEB_SESSION_IDLE_TTL_DAYS:-30}
       AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES: ${AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES:-15}
@@ -256,8 +258,10 @@ services:
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_CHAT_WEB_PUBLIC_BASE_URL:?AKL_CHAT_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ""
       AKL_WEB_SESSION_SECRET: ${AKL_CHAT_WEB_SESSION_SECRET:?AKL_CHAT_WEB_SESSION_SECRET must be set}
-      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/secrets/akb-web-session-encryption-key
-      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE: /run/secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/akl-secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/akl-secrets/akb-web-session-store-secret
       AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS: ${AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS:-90}
       AKL_WEB_SESSION_IDLE_TTL_DAYS: ${AKL_WEB_SESSION_IDLE_TTL_DAYS:-30}
       AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES: ${AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES:-15}
