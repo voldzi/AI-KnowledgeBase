@@ -14,10 +14,10 @@ host applications do not make authorization decisions for AKB documents.
 - A normal login is a browser-session cookie. The optional trusted-device mode
   has a 90-day absolute limit, a 30-day inactivity limit and is never selected
   by default. Identity is revalidated with Keycloak at most 15 minutes after
-  the previous successful validation. A new authorization request explicitly
-  requests a Keycloak login step, without the Keycloak-incompatible
-  `prompt=login` and `max_age` combination. An existing valid AKB server-side
-  session is unaffected.
+  the previous successful validation. A new authorization request reuses an
+  existing valid STRATOS SSO session; it does not force another password prompt.
+  Keycloak still requests credentials when no valid SSO session exists. An
+  existing valid AKB server-side session is unaffected.
 - Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
   `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
   Missing or foreign origins fail with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
