@@ -82,7 +82,7 @@ describe("OIDC login page", () => {
       "https://login.example/realms/stratos/protocol/openid-connect/auth",
     );
     assert.equal(location.searchParams.get("max_age"), null);
-    assert.equal(location.searchParams.get("prompt"), "login");
+    assert.equal(location.searchParams.get("prompt"), null);
     assert.equal(location.searchParams.get("code_challenge_method"), "S256");
   });
 

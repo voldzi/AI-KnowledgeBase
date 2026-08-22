@@ -52,7 +52,6 @@ export function buildAuthorizationUrl(
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", oidc.scopes);
   url.searchParams.set("state", state);
-  url.searchParams.set("prompt", "login");
   if (codeVerifier) {
     url.searchParams.set("code_challenge", pkceCodeChallenge(codeVerifier));
     url.searchParams.set("code_challenge_method", "S256");
