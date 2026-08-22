@@ -10603,6 +10603,47 @@
         }
       }
     },
+    "/api/auth/sso": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "get": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "GET /api/auth/sso",
+        "operationId": "web_get_api_auth_sso",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/controlled-document/citations/{chunkId}/open": {
       "servers": [
         {

@@ -18,6 +18,11 @@ host applications do not make authorization decisions for AKB documents.
   existing valid STRATOS SSO session; it does not force another password prompt.
   Keycloak still requests credentials when no valid SSO session exists. An
   existing valid AKB server-side session is unaffected.
+- Opening a protected AKB page first performs a silent authorization round trip
+  through the shared STRATOS realm. An active STRATOS browser SSO session opens
+  AKB without another screen or password prompt. If no central session exists,
+  AKB falls back once to its interactive login page; tokens and application
+  cookies are never passed between STRATOS applications.
 - Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
   `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
   Browser form navigations that omit `Origin` are accepted only when both an
@@ -27,7 +32,10 @@ host applications do not make authorization decisions for AKB documents.
   Missing or foreign evidence fails with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
   before route handling. Audience-bound bearer-only service integrations do
   not use the browser cookie and remain on their existing token boundary.
-- Local logout and device revocation do not depend on Keycloak availability.
+- Local session revocation does not depend on Keycloak availability. The
+  primary logout then continues to the Keycloak end-session endpoint so the
+  visible STRATOS environment is signed out as one application. Selective
+  device-session revocation remains local to AKB.
   Current STRATOS capabilities, scopes and Information Policy are still
   evaluated on every relevant request and are not copied into the session as
   durable authority. See `docs/adr/0014-server-side-browser-sessions.md`.

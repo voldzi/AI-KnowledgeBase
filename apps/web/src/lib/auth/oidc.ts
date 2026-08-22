@@ -40,10 +40,13 @@ export interface OidcCallbackTokens {
   expires_in?: number;
 }
 
+export type OidcAuthorizationMode = "interactive" | "silent";
+
 export function buildAuthorizationUrl(
   config: AklConfig,
   state: string,
   codeVerifier?: string,
+  mode: OidcAuthorizationMode = "interactive",
 ): string {
   const oidc = requireOidcConfig(config);
   const url = new URL(`${oidc.issuer}/protocol/openid-connect/auth`);
@@ -52,6 +55,9 @@ export function buildAuthorizationUrl(
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", oidc.scopes);
   url.searchParams.set("state", state);
+  if (mode === "silent") {
+    url.searchParams.set("prompt", "none");
+  }
   if (codeVerifier) {
     url.searchParams.set("code_challenge", pkceCodeChallenge(codeVerifier));
     url.searchParams.set("code_challenge_method", "S256");
@@ -252,21 +258,31 @@ export function contextFromOidcAccessToken(
   }
 }
 
-export function createState(returnTo: string | null, remember = false): string {
+export function createState(
+  returnTo: string | null,
+  remember = false,
+  mode: OidcAuthorizationMode = "interactive",
+): string {
   const nonce = crypto.randomBytes(18).toString("base64url");
   return Buffer.from(
-    JSON.stringify({ nonce, returnTo: returnTo || "/", remember }),
+    JSON.stringify({ nonce, returnTo: returnTo || "/", remember, mode }),
     "utf8",
   ).toString("base64url");
 }
 
-export function parseState(value: string): { nonce: string; returnTo: string; remember: boolean } {
+export function parseState(value: string): {
+  nonce: string;
+  returnTo: string;
+  remember: boolean;
+  mode: OidcAuthorizationMode;
+} {
   const parsed = JSON.parse(
     Buffer.from(value, "base64url").toString("utf8"),
   ) as {
     nonce?: unknown;
     returnTo?: unknown;
     remember?: unknown;
+    mode?: unknown;
   };
   return {
     nonce: typeof parsed.nonce === "string" ? parsed.nonce : "",
@@ -275,6 +291,7 @@ export function parseState(value: string): { nonce: string; returnTo: string; re
         ? parsed.returnTo
         : "/",
     remember: parsed.remember === true,
+    mode: parsed.mode === "silent" ? "silent" : "interactive",
   };
 }
 

@@ -47,7 +47,7 @@ export async function getServerRequestContext(): Promise<ApiRequestContext> {
   }
 
   const config = getAklConfig();
-  redirect(buildPublicAppUrl(config, "/api/auth/login"));
+  redirect(buildPublicAppUrl(config, "/api/auth/sso"));
 }
 
 export async function getServerRequestContextForPath(
@@ -62,7 +62,7 @@ export async function getServerRequestContextForPath(
   redirect(
     buildPublicAppUrl(
       config,
-      `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`,
+      `/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`,
     ),
   );
 }
@@ -81,7 +81,7 @@ export async function getServerRequestContextForRequest(
   redirect(
     buildPublicAppUrl(
       config,
-      `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`,
+      `/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`,
     ),
   );
 }

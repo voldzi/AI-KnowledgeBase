@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
 import {
-  buildPublicAppUrl,
+  buildLogoutUrl,
   isAllowedPublicOrigin,
   OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     await revokeRefreshToken(config, session.refreshToken).catch(() => undefined);
   }
   const response = NextResponse.redirect(
-    buildPublicAppUrl(config, "/api/auth/login"),
+    buildLogoutUrl(config),
     303,
   );
   response.cookies.delete(OIDC_ACCESS_COOKIE);

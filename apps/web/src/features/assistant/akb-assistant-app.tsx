@@ -965,7 +965,7 @@ export function AkbAssistantApp({
     setStatusMessage(copy.sessionExpired);
     window.setTimeout(() => {
       const returnTo = window.location.pathname === "/" ? "/" : "/chat";
-      window.location.assign(withAppBasePath(`/api/auth/login?return_to=${encodeURIComponent(returnTo)}`));
+      window.location.assign(withAppBasePath(`/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`));
     }, 250);
   }
 

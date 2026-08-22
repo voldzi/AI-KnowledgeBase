@@ -36,9 +36,20 @@ The login form uses an HTTP 303 redirect so its POST is converted to the GET
 required by the Keycloak authorization endpoint; a method-preserving 307 is
 not valid for this browser flow.
 
+Protected AKB pages enter through `/api/auth/sso`, which sends an authorization
+request with `prompt=none`. A valid central STRATOS SSO session therefore opens
+AKB without an intermediate application login screen. `login_required` and
+other authorization errors are accepted only with valid state and PKCE cookies,
+then fall back to the interactive AKB login page exactly once. STRATOS tokens or
+cookies are never copied into AKB; a successful callback still creates an
+independent opaque AKB server session.
+
 Logout revokes the local server session before attempting remote refresh-token
-revocation. Users can revoke one device or all their sessions. Undecryptable,
-expired, inactive or identity-invalid sessions fail closed.
+revocation, then continues to the Keycloak end-session endpoint so the visible
+STRATOS environment signs out consistently. Users can still revoke one AKB
+device session or all their AKB sessions without terminating unrelated central
+sessions. Undecryptable, expired, inactive or identity-invalid sessions fail
+closed.
 
 ## Consequences
 

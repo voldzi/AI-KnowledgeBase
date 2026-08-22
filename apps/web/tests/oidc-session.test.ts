@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildAuthorizationUrl,
   buildPublicAppUrl,
   isAllowedLoginRequestOrigin,
   isAllowedPublicOrigin,
@@ -239,6 +240,17 @@ describe("OIDC web session", () => {
   it("persists the explicit trusted-device choice only in validated OIDC state", () => {
     assert.equal(parseState(createState("/chat", true)).remember, true);
     assert.equal(parseState(createState("/chat")).remember, false);
+    assert.equal(parseState(createState("/chat", false, "silent")).mode, "silent");
+    assert.equal(parseState(createState("/chat")).mode, "interactive");
+  });
+
+  it("uses prompt=none only for silent STRATOS SSO", () => {
+    const config = testOidcConfig();
+    const silent = new URL(buildAuthorizationUrl(config, "state", "verifier", "silent"));
+    const interactive = new URL(buildAuthorizationUrl(config, "state", "verifier"));
+
+    assert.equal(silent.searchParams.get("prompt"), "none");
+    assert.equal(interactive.searchParams.get("prompt"), null);
   });
 
   it("normalizes return paths against the configured public base path", () => {

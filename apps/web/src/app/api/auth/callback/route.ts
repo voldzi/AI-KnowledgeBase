@@ -25,6 +25,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const config = getAklConfig();
   const code = request.nextUrl.searchParams.get("code");
+  const error = request.nextUrl.searchParams.get("error");
   const state = request.nextUrl.searchParams.get("state");
   const expectedState = request.cookies.get(OIDC_STATE_COOKIE)?.value;
   const codeVerifier = request.cookies.get(OIDC_PKCE_COOKIE)?.value;
@@ -33,8 +34,31 @@ export async function GET(request: NextRequest) {
     safeReturnToFromState(state, "/"),
   );
 
-  if (!code || !state || state !== expectedState || !codeVerifier) {
+  if (!state || state !== expectedState || !codeVerifier) {
     console.warn("OIDC callback rejected due to invalid state.");
+    return redirectToLogin(config, returnTo);
+  }
+
+  let parsedState;
+  try {
+    parsedState = parseState(state);
+    if (!parsedState.nonce) throw new Error("Missing state nonce.");
+  } catch {
+    console.warn("OIDC callback rejected due to malformed state.");
+    return redirectToLogin(config, returnTo);
+  }
+
+  if (error) {
+    if (parsedState.mode === "silent") {
+      console.info("Silent STRATOS SSO requires interactive authentication.");
+    } else {
+      console.warn("Interactive OIDC authorization was not completed.");
+    }
+    return redirectToLogin(config, returnTo);
+  }
+
+  if (!code) {
+    console.warn("OIDC callback rejected because the authorization code is missing.");
     return redirectToLogin(config, returnTo);
   }
 
@@ -47,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 
   const session = sessionFromTokens(tokens);
-  const persistent = parseState(state).remember;
+  const persistent = parsedState.remember;
   let selector: string;
   try {
     selector = await createServerSession(config, session, persistent);

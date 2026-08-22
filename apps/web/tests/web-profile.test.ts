@@ -20,6 +20,7 @@ describe("AKB chat-only route policy", () => {
       "/api/auth/logout",
       "/api/auth/session",
       "/api/auth/sessions",
+      "/api/auth/sso",
       "/api/assistant/chat",
       "/api/assistant/conversations/conv-1",
       "/api/assistant/citations/chunk-1/open",

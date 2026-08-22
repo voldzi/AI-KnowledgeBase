@@ -8,6 +8,7 @@ const CHAT_API_PREFIXES = [
   "/api/auth/logout",
   "/api/auth/session",
   "/api/auth/sessions",
+  "/api/auth/sso",
   "/api/health",
   "/api/ready",
   "/api/v1/profile/settings",
