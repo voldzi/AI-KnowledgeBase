@@ -634,5 +634,5 @@ forward-fix; žádný release skript automatickou obnovu DB neprovádí.
 - Rozhodnout, zda SeaweedFS bude připojený přes S3 gateway nebo filesystem mount. Pro dlouhodobý provoz preferovat S3 adapter.
 - Nasadit přes připravený standalone compose profil `infra/docker-compose/docker-compose.docker-home.yml`.
 - Ověřit, že `apps/web/pnpm-lock.yaml` ukazuje `@voldzi/stratos-ui` na veřejný npm tarball.
-- Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL`, `AKL_WEB_SESSION_SECRET` a cest k odděleným souborům `AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE` a `AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE`. Oba soubory musí být vlastněné provozním účtem, mít režim `0600` a nesmí být v Git.
+- Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL`, `AKL_WEB_SESSION_SECRET` a cest k odděleným souborům `AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE` a `AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE`. Oba soubory musí být vlastněné provozním účtem, mít režim `0600` a nesmí být v Git. Webové entrypointy je po read-only mountu zkopírují do soukromého `/run/akl-secrets` tmpfs pro proces `nextjs`; neměňte proto vlastnictví ani režim hostitelských zdrojových souborů kvůli kontejneru.
 - Připravit monitoring a log retention pro `/srv/akl/data/logs`.
