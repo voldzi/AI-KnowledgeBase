@@ -687,17 +687,21 @@ test.describe("Document Workbench product paths", () => {
     await expect(appMenu).toBeVisible();
     await expect(appSwitcher).toContainText("AI KnowledgeBase");
     await expect(appMenu.getByText("AI KnowledgeBase", { exact: true })).toHaveCount(0);
+    await expect(appMenu.getByRole("menuitem")).toHaveCount(3);
 
     const budget = appMenu.getByRole("menuitem", { name: "Budget & Contract" });
     const projectFlow = appMenu.getByRole("menuitem", { name: "ProjectFlow" });
-    const aiip = appMenu.getByRole("menuitem", { name: "AI Innovation Portal" });
+    const archFlow = appMenu.getByRole("menuitem", { name: "ArchFlow" });
+    await expect(appMenu.getByText("SecurityPreflight", { exact: true })).toHaveCount(0);
+    await expect(appMenu.getByText("AI Innovation Portal", { exact: true })).toHaveCount(0);
+    await expect(appMenu.getByText("ProcessForge", { exact: true })).toHaveCount(0);
     await expect(budget).toBeFocused();
     await page.keyboard.press("ArrowDown");
     await expect(projectFlow).toBeFocused();
     await page.keyboard.press("ArrowUp");
     await expect(budget).toBeFocused();
     await page.keyboard.press("End");
-    await expect(aiip).toBeFocused();
+    await expect(archFlow).toBeFocused();
     await page.keyboard.press("Home");
     await expect(budget).toBeFocused();
     await page.keyboard.press("Escape");

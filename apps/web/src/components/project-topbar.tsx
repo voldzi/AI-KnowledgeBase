@@ -23,6 +23,7 @@ import {
 
 import { withAppBasePath } from "@/lib/app-url";
 import type { AklLanguage } from "@/lib/i18n";
+import { applyAkbStratosAppsVisibility } from "@/lib/stratos-app-switcher";
 
 export interface AklTopbarUserProfile {
   name: string;
@@ -183,7 +184,9 @@ export function ProjectTopbar({
   return (
     <GlobalTopbar
       currentAppId="akb"
-      appAvailability={buildStratosAppsAvailabilityFromAccessProjection(applicationAccess)}
+      appAvailability={applyAkbStratosAppsVisibility(
+        buildStratosAppsAvailabilityFromAccessProjection(applicationAccess),
+      )}
       appUrls={{
         "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
         projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
