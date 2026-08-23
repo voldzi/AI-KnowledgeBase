@@ -191,8 +191,11 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "Smlouva" }).click();
     await expect(page.locator("#tags")).toHaveValue("controlled-document,akb,smlouva");
     await expect(page.getByRole("region", { name: "Gestor" })).toContainText("Aktuální uživatel");
-    await page.getByRole("region", { name: "Schvalovatel" }).getByRole("button", { name: "Přidat" }).click();
-    await expect(page.getByRole("region", { name: "Schvalovatel" })).toContainText("admins");
+    const approverRegion = page.getByRole("region", { name: "Schvalovatel" });
+    await approverRegion.getByRole("button", { name: "Přidat" }).click();
+    await approverRegion.getByRole("button", { name: "Vybrat z adresáře" }).click();
+    await page.getByRole("button", { name: "admins" }).click();
+    await expect(approverRegion).toContainText("admins");
     await page.locator("#title").fill("E2E založení dokumentu");
     await page.setInputFiles('input[type="file"]', {
       name: "new-document.pdf",
