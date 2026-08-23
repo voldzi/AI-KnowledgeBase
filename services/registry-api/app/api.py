@@ -2089,10 +2089,25 @@ def _archive_version(
     )
 
 
-def _upsert_derived_task(db: Session, *, source_key: str, values: dict[str, object]) -> None:
-    task = db.execute(select(WorkflowTask).where(WorkflowTask.source_key == source_key)).scalar_one_or_none()
+def _upsert_derived_task(
+    db: Session,
+    *,
+    source_key: str,
+    values: dict[str, object],
+    existing_tasks_by_source_key: dict[str, WorkflowTask] | None = None,
+) -> None:
+    task = (
+        existing_tasks_by_source_key.get(source_key)
+        if existing_tasks_by_source_key is not None
+        else db.execute(
+            select(WorkflowTask).where(WorkflowTask.source_key == source_key)
+        ).scalar_one_or_none()
+    )
     if task is None:
-        db.add(WorkflowTask(task_id=make_id("task"), source_key=source_key, **values))
+        task = WorkflowTask(task_id=make_id("task"), source_key=source_key, **values)
+        db.add(task)
+        if existing_tasks_by_source_key is not None:
+            existing_tasks_by_source_key[source_key] = task
         return
     if task.status not in ACTIVE_TASK_STATUSES:
         return
@@ -2111,7 +2126,36 @@ def _upsert_derived_task(db: Session, *, source_key: str, values: dict[str, obje
 
 
 def _sync_derived_workflow_tasks(db: Session) -> None:
-    documents = list(db.execute(select(Document).options(selectinload(Document.assignments))).scalars())
+    existing_tasks_by_source_key = {
+        task.source_key: task
+        for task in db.execute(
+            select(WorkflowTask).where(WorkflowTask.source_key.is_not(None))
+        ).scalars()
+        if task.source_key is not None
+    }
+    documents = list(
+        db.execute(
+            select(Document)
+            .where(
+                Document.status.in_(
+                    [
+                        DocumentStatus.review.value,
+                        DocumentStatus.draft.value,
+                    ]
+                )
+                | (
+                    Document.classification.in_(
+                        [
+                            Classification.restricted.value,
+                            Classification.confidential.value,
+                        ]
+                    )
+                    & (Document.status != DocumentStatus.valid.value)
+                )
+            )
+            .options(selectinload(Document.assignments))
+        ).scalars()
+    )
     for document in documents:
         if document.status == DocumentStatus.review.value:
             review_context = _workflow_assignment_context(
@@ -2156,6 +2200,7 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                         **dict(review_context["assignment_metadata"]),
                     },
                 },
+                existing_tasks_by_source_key=existing_tasks_by_source_key,
             )
 
         if document.status == DocumentStatus.draft.value:
@@ -2192,6 +2237,7 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                         **dict(draft_context["assignment_metadata"]),
                     },
                 },
+                existing_tasks_by_source_key=existing_tasks_by_source_key,
             )
 
         if document.classification in {Classification.restricted.value, Classification.confidential.value} and document.status != DocumentStatus.valid.value:
@@ -2236,12 +2282,40 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                         **dict(governance_context["assignment_metadata"]),
                     },
                 },
+                existing_tasks_by_source_key=existing_tasks_by_source_key,
             )
 
-    warning_events = db.execute(
-        select(AuditEvent).where(AuditEvent.severity.in_(["warning", "error", "critical"]))
-    ).scalars()
+    warning_events = list(
+        db.execute(
+            select(AuditEvent)
+            .outerjoin(
+                WorkflowTask,
+                WorkflowTask.audit_event_id == AuditEvent.audit_event_id,
+            )
+            .where(
+                AuditEvent.severity.in_(["warning", "error", "critical"]),
+                WorkflowTask.task_id.is_(None),
+            )
+        ).scalars()
+    )
     documents_by_id = {document.document_id: document for document in documents}
+    missing_document_ids = {
+        document_id
+        for event in warning_events
+        if isinstance((document_id := event.event_metadata.get("document_id")), str)
+        and document_id not in documents_by_id
+    }
+    if missing_document_ids:
+        documents_by_id.update(
+            {
+                document.document_id: document
+                for document in db.execute(
+                    select(Document)
+                    .where(Document.document_id.in_(missing_document_ids))
+                    .options(selectinload(Document.assignments))
+                ).scalars()
+            }
+        )
     for event in warning_events:
         document_id = event.event_metadata.get("document_id")
         document = documents_by_id.get(document_id) if isinstance(document_id, str) else None
@@ -2299,6 +2373,7 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     **(dict(audit_context["assignment_metadata"]) if audit_context is not None else {}),
                 },
             },
+            existing_tasks_by_source_key=existing_tasks_by_source_key,
         )
 
 

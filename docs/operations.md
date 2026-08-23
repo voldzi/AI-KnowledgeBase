@@ -147,6 +147,18 @@ narrow assistant/source smoke
 ```
 
 Do not manipulate VPN, VLAN, firewall, or network segmentation from this repo.
+
+### Dashboard read path
+
+The operational dashboard renders an immediate loading state while its
+permission-scoped server data is fetched. Independent Registry, audit and
+authorization reads start concurrently. The workflow-task projection may
+materialize tasks for current document states and newly observed warning audit
+events, but it must not rescan or upsert audit events that already have a
+workflow task. Treat a sustained `listWorkflowTasks` latency above two seconds
+as a Registry performance incident; do not hide it by weakening authorization
+or omitting task visibility.
+
 Production deploys use the immutable exact-SHA workflow in
 `docs/OPERATIONS/immutable-docker-home-release.md`; `/srv/akl/repo` is not a
 release source and must not be pulled, checked out, or switched during deploy.

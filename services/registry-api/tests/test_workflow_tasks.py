@@ -134,6 +134,46 @@ def test_workflow_tasks_include_warning_audit_events(client, admin_headers):
     assert tasks[0]["job_id"] == "ing_123"
 
 
+def test_workflow_task_sync_skips_audit_events_that_already_have_tasks(
+    client,
+    admin_headers,
+    monkeypatch,
+):
+    from app import api as registry_api
+
+    created = client.post(
+        "/api/v1/audit/events",
+        headers=admin_headers,
+        json={
+            "actor_id": "svc-ingestion",
+            "event_type": "ingestion.job.failed",
+            "resource_type": "ingestion_job",
+            "resource_id": "ing_existing",
+            "severity": "warning",
+            "metadata": {},
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    first_listing = client.get("/api/v1/workflow/tasks?kind=audit", headers=admin_headers)
+    assert first_listing.status_code == 200, first_listing.text
+    assert len(first_listing.json()["items"]) == 1
+
+    original_upsert = registry_api._upsert_derived_task
+    upserted_source_keys: list[str] = []
+
+    def record_upsert(*args, source_key: str, **kwargs):
+        upserted_source_keys.append(source_key)
+        return original_upsert(*args, source_key=source_key, **kwargs)
+
+    monkeypatch.setattr(registry_api, "_upsert_derived_task", record_upsert)
+
+    second_listing = client.get("/api/v1/workflow/tasks?kind=audit", headers=admin_headers)
+    assert second_listing.status_code == 200, second_listing.text
+    assert len(second_listing.json()["items"]) == 1
+    assert not any(source_key.startswith("audit:") for source_key in upserted_source_keys)
+
+
 def test_workflow_task_action_resolves_task_and_writes_audit(client, admin_headers):
     document = _create_document(client, admin_headers)
     listed = client.get("/api/v1/workflow/tasks?kind=draft", headers=admin_headers)
