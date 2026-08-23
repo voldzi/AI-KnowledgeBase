@@ -98,11 +98,14 @@ export function directoryUsersToWorkflowSubjects(
     for (const group of user.groups) {
       const normalized = group.trim();
       if (!normalized || subjects.has(normalized)) continue;
+      const isOrganizationalUnit = isOrganizationalDirectoryGroup(normalized);
       subjects.set(normalized, {
         id: normalized,
         name: groupLabel(normalized),
-        type: "organization",
-        description: language === "cs" ? "Organizační jednotka" : "Organizational unit",
+        type: isOrganizationalUnit ? "organization" : "group",
+        description: isOrganizationalUnit
+          ? language === "cs" ? "Organizační jednotka" : "Organizational unit"
+          : language === "cs" ? "Skupina adresáře" : "Directory group",
       });
     }
   }
@@ -183,6 +186,10 @@ function entry(
 function groupLabel(value: string): string {
   const part = value.split("/").filter(Boolean).at(-1) ?? value;
   return part.replaceAll("_", " ");
+}
+
+function isOrganizationalDirectoryGroup(value: string): boolean {
+  return value.startsWith("/") || value.includes("/");
 }
 
 function initials(value: string): string {
