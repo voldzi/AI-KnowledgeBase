@@ -23,6 +23,24 @@ export function generateMetadata(): Metadata {
           title: "AKB Chat",
         }
       : undefined,
+    icons: chatProfile
+      ? {
+          icon: [
+            {
+              url: "/icons/akb-chat-192.png",
+              sizes: "192x192",
+              type: "image/png",
+            },
+          ],
+          apple: [
+            {
+              url: "/icons/akb-chat-192.png",
+              sizes: "192x192",
+              type: "image/png",
+            },
+          ],
+        }
+      : undefined,
   };
 }
 

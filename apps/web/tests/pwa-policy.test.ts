@@ -21,12 +21,32 @@ describe("AKB Chat PWA cache policy", () => {
     assert.doesNotMatch(navigationBlock, /cache\.put/);
   });
 
-  it("keeps APIs, source content and exports network-only", () => {
-    assert.match(worker, /url\.pathname\.startsWith\("\/api\/"\)/);
-    assert.match(worker, /url\.pathname\.includes\("\/source\/"\)/);
-    assert.match(worker, /url\.pathname\.includes\("\/export"\)/);
+  it("keeps authentication, chat, documents, citations and integrations network-only", () => {
+    for (const path of [
+      '"/api/"',
+      '"/chat"',
+      '"/documents"',
+      '"/controlled-documentation"',
+      '"/source/"',
+      '"/citation"',
+      '"/download"',
+      '"/export"',
+      '"/rag/"',
+      '"/controlled-rules"',
+    ]) {
+      assert.match(worker, new RegExp(path.replaceAll("/", "\\/")));
+    }
+    assert.match(worker, /isNetworkOnlyPath\(url\.pathname\)/);
     assert.match(worker, /event\.respondWith\(fetch\(request\)\)/);
     assert.doesNotMatch(worker, /indexedDB|localStorage/);
+  });
+
+  it("writes only allowlisted public assets and immutable framework files to Cache Storage", () => {
+    assert.match(worker, /const SAFE_PRECACHE =/);
+    assert.match(worker, /url\.pathname\.startsWith\("\/_next\/static\/"\)/);
+    assert.match(worker, /url\.pathname === "\/manifest\.webmanifest"/);
+    assert.match(worker, /url\.pathname\.startsWith\("\/icons\/"\)/);
+    assert.doesNotMatch(worker, /cache\.put\([^,]+(?:api|chat|document|citation|export|rag|controlled-rules)/i);
   });
 
   it("activates an update only after an explicit user action", () => {
