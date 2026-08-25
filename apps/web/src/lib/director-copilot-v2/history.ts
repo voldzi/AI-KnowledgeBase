@@ -76,6 +76,9 @@ export function directorCopilotV2PersistenceMetadata(
     current_context: {
       answer_source: stringValue(response.current_context.answer_source),
       active_source_application: stringValue(response.current_context.active_source_application),
+      assistant_goal: assistantGoalValue(response.current_context.assistant_goal),
+      answer_composition: answerCompositionValue(response.current_context.answer_composition),
+      mixed_evidence: mixedEvidenceValue(response.current_context.mixed_evidence),
       requested_director_copilot_intent: snapshot?.plan.intent ?? null,
       stratos_query_state: conversationQueryState(response.current_context.stratos_query_state)
         ?? snapshot?.plan.query_state,
@@ -100,12 +103,45 @@ export function persistedDirectorCopilotV2Response(
     current_context: {
       answer_source: stringValue(response.current_context.answer_source),
       active_source_application: stringValue(response.current_context.active_source_application),
+      assistant_goal: assistantGoalValue(response.current_context.assistant_goal),
+      answer_composition: answerCompositionValue(response.current_context.answer_composition),
+      mixed_evidence: mixedEvidenceValue(response.current_context.mixed_evidence),
       requested_director_copilot_intent: snapshot?.plan.intent ?? null,
       stratos_query_state: conversationQueryState(response.current_context.stratos_query_state)
         ?? snapshot?.plan.query_state,
       live_sources: assistantLiveSourcesFromOutcomes(snapshot?.outcomes),
     },
   };
+}
+
+function assistantGoalValue(value: unknown): string | null {
+  return value === "lookup" || value === "explain" || value === "compare"
+    || value === "diagnose" || value === "recommend" || value === "scenario"
+    ? value
+    : null;
+}
+
+function answerCompositionValue(value: unknown): string | null {
+  return value === "live_data" || value === "live_and_document_evidence"
+    ? value
+    : null;
+}
+
+function mixedEvidenceValue(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const liveData = evidenceAvailability(candidate.live_data);
+  const documentGuidance = evidenceAvailability(candidate.document_guidance);
+  if (!liveData || !documentGuidance) return null;
+  return {
+    live_data: liveData,
+    document_guidance: documentGuidance,
+    live_data_substituted_by_documents: false,
+  };
+}
+
+function evidenceAvailability(value: unknown): "available" | "not_available" | null {
+  return value === "available" || value === "not_available" ? value : null;
 }
 
 export async function authorizeDirectorCopilotV2History(input: {

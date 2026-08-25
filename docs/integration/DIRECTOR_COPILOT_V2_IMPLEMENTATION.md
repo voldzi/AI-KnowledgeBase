@@ -185,6 +185,26 @@ inherits that source instead of asking again. Unknown or unsupported concepts
 must produce clarification, `no_data` or an explicit bounded failure; they
 must not be converted into invented live facts.
 
+The query plan also records the user's answer goal independently from source
+selection: `lookup`, `explain`, `compare`, `diagnose`, `recommend` or
+`scenario`. This dimension does not select a capability or widen a scope. An
+analytical financial goal requests the existing authorized plan, actual,
+forecast, commitments and variance facts, while a plain lookup remains narrow.
+For analytical live-data questions, AKB executes Director Copilot and
+permission-scoped document retrieval concurrently. The rendered answer keeps
+three explicit sections: verified live data, cited document guidance and the
+interpretation boundary. Documents never supply a missing current amount or
+status. Live facts alone never become an unsupported recommendation, causal
+claim or hypothetical scenario result.
+
+If one evidence class is missing, the remaining authorized evidence can still
+be shown with a visible limitation and confidence capped at `medium`. If both
+classes fail, AKB returns `insufficient_source` with a bounded clarification or
+follow-up. A live `no_data` result is never labelled high confidence and is
+never interpreted as zero. The mixed-evidence context persisted with the turn
+contains only the bounded goal and availability flags; citations and live
+source references retain their existing independent reauthorization paths.
+
 Cross-source granularity is resolved per application. In one joined
 need-project-finance question, ArchFlow returns needs, ProjectFlow returns
 projects and Budget returns project-level financial facts. AKB does not force

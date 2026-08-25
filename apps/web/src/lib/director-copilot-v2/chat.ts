@@ -232,22 +232,31 @@ function composeResponse(
     const applications = new Set(
       orchestration.snapshot.outcomes.map((outcome) => outcome.application),
     );
-    const answer = applications.size === 1 && applications.has("projectflow")
-      ? language === "en"
-        ? "ProjectFlow returned no authorized projects matching this query. The result was not substituted with document search."
-        : "ProjectFlow nevrátil žádné oprávněné projekty odpovídající tomuto dotazu. Výsledek nebyl nahrazen vyhledáváním v dokumentech."
-      : language === "en"
-        ? "The authorized STRATOS sources contain no data matching this query."
-        : "Oprávněné zdroje STRATOS neobsahují data odpovídající tomuto dotazu.";
+    const answer = noDataAnswer(
+      applications,
+      orchestration.continuation_query_state,
+      language,
+    );
     return baseResponse({
       conversationId,
       responseType: "no_answer",
       answer,
-      confidence: "high",
+      confidence: "insufficient_source",
       queryState: orchestration.continuation_query_state,
       snapshot: orchestration.snapshot,
-      warnings: outcomeWarnings(orchestration.snapshot),
+      warnings: [
+        ...outcomeWarnings(orchestration.snapshot),
+        "LIVE_DATA_NO_MATCHING_DATA",
+      ],
       missingInformation: answer,
+      followUps: noDataFollowUps(
+        applications,
+        orchestration.continuation_query_state,
+        language,
+      ),
+      recommendedAction: language === "en"
+        ? "Specify another period or narrower authorized scope. A missing result is not interpreted as zero."
+        : "Upřesněte jiné období nebo užší oprávněný rozsah. Chybějící výsledek není vykládán jako nula.",
     });
   }
   const shapeMismatch = orchestration.snapshot.outcomes.find((outcome) => (
@@ -874,6 +883,7 @@ function baseResponse(input: {
   warnings: string[];
   missingInformation: string | null;
   followUps?: string[];
+  recommendedAction?: string | null;
 }): AssistantChatResponse {
   return {
     response_type: input.responseType,
@@ -897,8 +907,66 @@ function baseResponse(input: {
     confidence: input.confidence,
     warnings: [...new Set(input.warnings)],
     missing_information: input.missingInformation,
-    recommended_action: null,
+    recommended_action: input.recommendedAction ?? null,
   };
+}
+
+function noDataAnswer(
+  applications: Set<string>,
+  queryState: ConversationQueryState,
+  language: ResponseLanguage,
+): string {
+  const year = queryState.period.fiscal_year;
+  if (applications.size === 1 && applications.has("budget")) {
+    return language === "en"
+      ? `Budget returned no authorized financial data matching the query for ${year}. This does not confirm that the plan or amount is zero.`
+      : `Budget pro rok ${year} nevrátil v oprávněném rozsahu finanční data odpovídající dotazu. Nejde o potvrzení, že plán nebo částka jsou nulové.`;
+  }
+  if (applications.size === 1 && applications.has("projectflow")) {
+    return language === "en"
+      ? `ProjectFlow returned no authorized projects matching the query for ${year}. The result was not substituted with document search.`
+      : `ProjectFlow nevrátil žádné oprávněné projekty odpovídající dotazu pro rok ${year}. Výsledek nebyl nahrazen vyhledáváním v dokumentech.`;
+  }
+  if (applications.size === 1 && applications.has("archflow")) {
+    return language === "en"
+      ? `ArchFlow returned no authorized needs matching the query for ${year}. Needs outside the authorized scope remain hidden.`
+      : `ArchFlow pro rok ${year} nevrátil žádné oprávněné potřeby odpovídající dotazu. Potřeby mimo oprávněný rozsah zůstávají skryté.`;
+  }
+  return language === "en"
+    ? `The authorized STRATOS sources contain no data matching the query for ${year}. Missing data was not interpreted as zero.`
+    : `Oprávněné zdroje STRATOS neobsahují data odpovídající dotazu pro rok ${year}. Chybějící data nebyla vyložena jako nula.`;
+}
+
+function noDataFollowUps(
+  applications: Set<string>,
+  queryState: ConversationQueryState,
+  language: ResponseLanguage,
+): string[] {
+  const previousYear = queryState.period.fiscal_year - 1;
+  if (applications.size === 1 && applications.has("budget")) {
+    return language === "en"
+      ? [
+          `Show the financial plan for ${previousYear}.`,
+          "Which authorized budget branches have no approved plan?",
+        ]
+      : [
+          `Ukaž finanční plán pro rok ${previousYear}.`,
+          "Které oprávněné rozpočtové větve nemají schválený plán?",
+        ];
+  }
+  if (applications.size === 1 && applications.has("projectflow")) {
+    return language === "en"
+      ? ["Show the current project portfolio.", "Which projects are delayed?"]
+      : ["Ukaž aktuální projektové portfolio.", "Které projekty jsou zpožděné?"];
+  }
+  if (applications.size === 1 && applications.has("archflow")) {
+    return language === "en"
+      ? ["Show needs in my authorized scope.", "Which needs require a decision?"]
+      : ["Ukaž potřeby v mém oprávněném rozsahu.", "Které potřeby vyžadují rozhodnutí?"];
+  }
+  return language === "en"
+    ? ["Use the current period.", "Narrow the question to finance, projects, or needs."]
+    : ["Použij aktuální období.", "Omez dotaz na finance, projekty, nebo potřeby."];
 }
 
 function outcomeWarnings(snapshot: DirectorCopilotV2Snapshot): string[] {

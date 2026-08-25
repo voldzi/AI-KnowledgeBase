@@ -13,6 +13,7 @@ import { resetDirectorCopilotV2ManifestCacheForTests } from "../src/lib/director
 import {
   authorizeDirectorCopilotV2History,
   directorCopilotV2PersistenceMetadata,
+  persistedDirectorCopilotV2Response,
 } from "../src/lib/director-copilot-v2/history";
 import { resolveConversationQuery } from "../src/lib/director-copilot/query-state";
 import type {
@@ -113,6 +114,30 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(serializedHistory, /"item_count":1/);
     assert.equal(serializedHistory.includes("actor-token"), false);
     assert.equal(serializedHistory.includes("Projekt Alfa"), false);
+    const persistedMixed = persistedDirectorCopilotV2Response({
+      ...response,
+      current_context: {
+        ...response.current_context,
+        assistant_goal: "recommend",
+        answer_composition: "live_and_document_evidence",
+        mixed_evidence: {
+          live_data: "available",
+          document_guidance: "available",
+          live_data_substituted_by_documents: false,
+          unsafe_extra: "must-not-persist",
+        },
+      },
+    });
+    assert.equal(persistedMixed.current_context.assistant_goal, "recommend");
+    assert.equal(
+      persistedMixed.current_context.answer_composition,
+      "live_and_document_evidence",
+    );
+    assert.deepEqual(persistedMixed.current_context.mixed_evidence, {
+      live_data: "available",
+      document_guidance: "available",
+      live_data_substituted_by_documents: false,
+    });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetcher();
     try {
@@ -561,8 +586,12 @@ describe("Director Copilot V2 active chat", () => {
     });
 
     assert.equal(response.response_type, "no_answer");
+    assert.equal(response.confidence, "insufficient_source");
     assert.match(response.answer ?? "", /ProjectFlow nevrátil žádné oprávněné projekty/i);
     assert.match(response.answer ?? "", /nebyl nahrazen vyhledáváním v dokumentech/i);
+    assert.ok(response.warnings.includes("LIVE_DATA_NO_MATCHING_DATA"));
+    assert.ok(response.follow_up_questions.length > 0);
+    assert.match(response.recommended_action ?? "", /Chybějící výsledek není vykládán jako nula/i);
   });
 
   it("describes an empty authorized ArchFlow scope without implying organization-wide absence", async () => {

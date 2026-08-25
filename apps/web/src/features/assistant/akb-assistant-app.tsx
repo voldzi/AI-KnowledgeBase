@@ -2924,7 +2924,13 @@ function ChatBubble({
             <Clock3 size={12} aria-hidden="true" />
             {formatThreadTime(message.createdAt)}
           </span>
-          {response?.confidence ? <StatusBadge value={response.confidence} /> : null}
+          {response?.confidence ? (
+            <StatusBadge
+              value={response.response_type === "no_answer" || response.response_type === "restricted"
+                ? "insufficient_source"
+                : response.confidence}
+            />
+          ) : null}
         </div>
         <ChatMessageContent
           role={message.role}
@@ -3109,10 +3115,23 @@ function AssistantResponseTools({
   }
 
   if (response.response_type === "handoff_recommended" || response.response_type === "no_answer") {
-    return response.recommended_action ? (
-      <div className="notice">
-        <LifeBuoy size={16} aria-hidden="true" />
-        {copy.recommendation} {response.recommended_action}
+    return response.recommended_action || response.follow_up_questions.length > 0 ? (
+      <div className="akb-chat-answer-tools">
+        {response.recommended_action ? (
+          <div className="notice">
+            <LifeBuoy size={16} aria-hidden="true" />
+            {copy.recommendation} {response.recommended_action}
+          </div>
+        ) : null}
+        {response.follow_up_questions.length > 0 ? (
+          <div className="assistant-followups" aria-label={copy.followUps}>
+            {response.follow_up_questions.map((item) => (
+              <button key={item} type="button" onClick={() => onAskFollowUp(item)}>
+                {item}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     ) : null;
   }

@@ -5,10 +5,14 @@ import {
   assistantReportExportFormats,
   type AssistantReportRequest
 } from "./assistant-report-request";
+import {
+  resolveAssistantUserGoal,
+  type AssistantUserGoal,
+} from "./user-goal";
 
 import type { AssistantToolName, AssistantToolRouteReason } from "./assistant-tool-router";
 
-export const ASSISTANT_QUERY_PLAN_VERSION = "2026-06-23";
+export const ASSISTANT_QUERY_PLAN_VERSION = "2026-08-25";
 export const ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION = "report.v2";
 
 export type AssistantQueryIntent =
@@ -16,6 +20,11 @@ export type AssistantQueryIntent =
   | "document_list"
   | "controlled_rule_answer"
   | "grounded_answer"
+  | "explanation"
+  | "comparison"
+  | "diagnosis"
+  | "recommendation"
+  | "scenario_analysis"
   | "structured_report"
   | "obligation_table";
 
@@ -24,6 +33,7 @@ export type AssistantPlannedOutputKind = "answer" | "table" | "registry_report";
 export interface AssistantQueryPlan {
   plan_id: string;
   version: typeof ASSISTANT_QUERY_PLAN_VERSION;
+  goal: AssistantUserGoal;
   intent: AssistantQueryIntent;
   tool: AssistantToolName;
   reason: AssistantToolRouteReason;
@@ -62,7 +72,8 @@ export function buildAssistantQueryPlan(input: {
   registryTopics: string[];
   reportRequest?: AssistantReportRequest | null;
 }): AssistantQueryPlan {
-  const intent = queryIntentFor(input);
+  const goal = resolveAssistantUserGoal(input.message).goal;
+  const intent = queryIntentFor(input, goal);
   const outputKind = outputKindFor(input.tool, intent, input.structuredOutput);
   const requiredColumns = requiredColumnsFor(input.language, intent, input.reportRequest ?? null);
   return {
@@ -71,12 +82,14 @@ export function buildAssistantQueryPlan(input: {
       input.language,
       input.tool,
       input.reason,
+      goal,
       intent,
       input.registryReportKind ?? "",
       input.registryTopics.join(","),
       normalizePlanMessage(input.message)
     ].join("|")).slice(0, 16)}`,
     version: ASSISTANT_QUERY_PLAN_VERSION,
+    goal,
     intent,
     tool: input.tool,
     reason: input.reason,
@@ -111,7 +124,7 @@ function queryIntentFor(input: {
   obligationOutput: boolean;
   registryReportKind: RegistryReportKind | null;
   reportRequest?: AssistantReportRequest | null;
-}): AssistantQueryIntent {
+}, goal: AssistantUserGoal): AssistantQueryIntent {
   if (input.tool === "registry_document_report") {
     return input.registryReportKind === "document_list" ? "document_list" : "document_metadata_report";
   }
@@ -124,6 +137,11 @@ function queryIntentFor(input: {
   if (input.structuredOutput) {
     return "structured_report";
   }
+  if (goal === "explain") return "explanation";
+  if (goal === "compare") return "comparison";
+  if (goal === "diagnose") return "diagnosis";
+  if (goal === "recommend") return "recommendation";
+  if (goal === "scenario") return "scenario_analysis";
   return "grounded_answer";
 }
 

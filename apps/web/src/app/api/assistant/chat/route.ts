@@ -5,11 +5,21 @@ import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
-import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
+import {
+  ragContextForAssistantRoute,
+  routeAssistantMessage,
+  routeAssistantMessageForRag,
+} from "@/lib/assistant/assistant-tool-router";
 import {
   buildControlledRuleAssistantResponse,
   currentControlledRuleDate,
 } from "@/lib/assistant/controlled-rule-answer";
+import { composeMixedEvidenceAssistantResponse } from "@/lib/assistant/mixed-evidence-answer";
+import {
+  answerModeForAssistantGoal,
+  isAnalyticalAssistantGoal,
+  queryStateForAssistantGoal,
+} from "@/lib/assistant/user-goal";
 import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
 import {
   auditDirectorCopilotV2Failure,
@@ -79,10 +89,15 @@ async function handlePost(request: NextRequest) {
     const config = getAklConfig();
     const directorConfig = getDirectorCopilotConfig(config);
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
+    const assistantGoal = assistantRoute.queryPlan.goal;
     const directorQuery = resolveConversationQuery({
       message,
       context: requestContext,
     });
+    const directorQueryState = queryStateForAssistantGoal(
+      directorQuery.state,
+      assistantGoal,
+    );
     const directorIntent = assistantRoute.tool === "controlled_rule_answer"
       ? null
       : classifyDirectorCopilotV2Intent(message, requestContext);
@@ -121,8 +136,8 @@ async function handlePost(request: NextRequest) {
       const refreshActorContext = context.accessToken
         ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
         : undefined;
-      const directorResponse = directorConfig.enabled
-        ? await runDirectorCopilotV2Chat({
+      const directorPromise: Promise<AssistantChatResponse> = directorConfig.enabled
+        ? runDirectorCopilotV2Chat({
             message,
             conversationId,
             responseLanguage,
@@ -130,7 +145,7 @@ async function handlePost(request: NextRequest) {
             clients,
             config,
             intent: directorIntent,
-            queryState: directorQuery.state,
+            queryState: directorQueryState,
             refreshActorContext,
             mode: "active",
           }).catch(async (error: unknown) => {
@@ -146,16 +161,71 @@ async function handlePost(request: NextRequest) {
               conversationId,
               language: responseLanguage,
               error,
-              queryState: directorQuery.state,
+              queryState: directorQueryState,
             });
           })
-        : directorCopilotV2FailureResponse({
+        : Promise.resolve(directorCopilotV2FailureResponse({
             conversationId,
             language: responseLanguage,
             error: new Error("DIRECTOR_COPILOT_V2_DISABLED"),
-            queryState: directorQuery.state,
-          });
-      const response = persistedDirectorCopilotV2Response(directorResponse);
+            queryState: directorQueryState,
+          }));
+      const analyticalGoal = isAnalyticalAssistantGoal(assistantGoal);
+      const documentResultPromise: Promise<{
+        response: AssistantChatResponse | null;
+        unavailable: boolean;
+      }> = analyticalGoal
+        ? (async () => {
+            const documentRoute = routeAssistantMessageForRag(
+              message,
+              responseLanguage,
+              requestContext,
+            );
+            try {
+              const rawResponse = await clients.rag.assistantChat(
+                {
+                  user_id: context.subjectId,
+                  conversation_id: conversationId,
+                  message,
+                  context: ragContextForAssistantRoute({
+                    ...requestContext,
+                    assistant_goal: assistantGoal,
+                    mixed_evidence_role: "document_guidance",
+                  }, documentRoute),
+                  mode: answerModeForAssistantGoal(assistantGoal),
+                  response_language: responseLanguage,
+                  persist_conversation: false,
+                },
+                context,
+              );
+              return {
+                response: normalizeAssistantChatResponse({
+                  response: rawResponse,
+                  message,
+                  language: responseLanguage,
+                  route: documentRoute,
+                }),
+                unavailable: false,
+              };
+            } catch {
+              return { response: null, unavailable: true };
+            }
+          })()
+        : Promise.resolve({ response: null, unavailable: false });
+      const [directorResponse, documentResult] = await Promise.all([
+        directorPromise,
+        documentResultPromise,
+      ]);
+      const composedResponse = analyticalGoal
+        ? composeMixedEvidenceAssistantResponse({
+            directorResponse,
+            documentResponse: documentResult.response,
+            documentUnavailable: documentResult.unavailable,
+            goal: assistantGoal,
+            language: responseLanguage,
+          })
+        : directorResponse;
+      const response = persistedDirectorCopilotV2Response(composedResponse);
       const persistedConversation = await clients.registry
         .appendAssistantConversationMessages(
           response.conversation_id,
@@ -165,7 +235,13 @@ async function handlePost(request: NextRequest) {
             messages: assistantTurnMessages(
               message,
               response,
-              directorCopilotV2PersistenceMetadata(directorResponse, context),
+              {
+                ...directorCopilotV2PersistenceMetadata(composedResponse, context),
+                assistant_goal: assistantGoal,
+                answer_composition: analyticalGoal
+                  ? "live_and_document_evidence"
+                  : "live_data",
+              },
             ),
           },
           context,
@@ -363,7 +439,7 @@ async function handlePost(request: NextRequest) {
         conversation_id: conversationId,
         message,
         context: ragContextForAssistantRoute(requestContext, assistantRoute),
-        mode: body.mode ?? "it_support_answer",
+        mode: body.mode ?? answerModeForAssistantGoal(assistantGoal),
         response_language: responseLanguage
       },
       context

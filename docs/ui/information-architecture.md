@@ -173,6 +173,12 @@ Purpose:
 - load persisted conversation history from Registry API through the web BFF
 - keep document, ProjectFlow, Budget, and cross-domain Copilot turns in the
   same governed history
+- distinguish a factual lookup from explanation, comparison, diagnosis,
+  recommendation and scenario goals without presenting these modes as extra
+  controls the employee must understand
+- for analytical domain questions, show verified live facts, cited document
+  guidance and interpretation limits as visibly separate sections; never hide
+  a missing live result behind a document answer
 - follow new messages only while the reader is near the end; preserve an
   intentional scroll position and expose a `New answer` control otherwise
 - keep share-thread controls visible as the product path for collaborative work with retention policy
@@ -190,6 +196,9 @@ Purpose:
 - refresh suggestions when the selected language changes and whenever a new
   server-backed thread is created
 - show confidence, warnings and no-answer states inside the active thread
+- render `no_answer` and restricted turns as insufficient-source states even
+  when an older stored response contains a misleading confidence value, and
+  keep safe follow-up questions usable directly below the turn
 - display citations with document id, version id, section path, page and chunk id
 - keep source-context and direct source-document opening available from the answer
 - on mobile, place the composer before the transcript/suggestion area and keep

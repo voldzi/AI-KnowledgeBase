@@ -152,6 +152,11 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   acceptance. A slow, failed, denied or contract-drifting source returns its
   explicit V2 result and cannot be substituted by document RAG. The runtime
   does not retain a V1 baseline, shadow comparison or fallback execution path.
+- Assistant planning separates source selection from the user's answer goal.
+  Analytical goals may run the pinned live-data tools and authorized document
+  retrieval concurrently, but their evidence is rendered in separate sections.
+  Document citations cannot supply a missing live value, and live facts cannot
+  become an uncited recommendation, causal claim or scenario calculation.
 - The semantic catalog is enriched by an immutable local SSP snapshot with
   source attribution and a content SHA-256. The full imported vocabulary is
   context only. Only separately reviewed concept bindings may influence a
