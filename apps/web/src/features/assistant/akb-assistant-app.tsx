@@ -73,6 +73,7 @@ import {
   directoryUsersToPeople,
 } from "@/lib/directory-people";
 import { normalizeAssistantAnswerReports } from "@/lib/reporting/assistant-answer-report";
+import { sanitizeAssistantDisplayContent } from "@/lib/assistant/assistant-display-content";
 import type {
   AssistantChatResponse,
   AssistantChartArtifact,
@@ -3012,7 +3013,8 @@ function ChatMessageContent({
     return <p>{content}</p>;
   }
 
-  const displayContent = hideMarkdownTables ? stripMarkdownTables(content) : content;
+  const safeContent = sanitizeAssistantDisplayContent(content);
+  const displayContent = hideMarkdownTables ? stripMarkdownTables(safeContent) : safeContent;
   if (!displayContent.trim()) {
     return null;
   }

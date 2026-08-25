@@ -17,7 +17,7 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { StratosButton } from "@/components/stratos/button";
 import { withAppBasePath } from "@/lib/app-url";
@@ -42,6 +42,7 @@ import type {
   ControlledRuleList,
   ControlledRuleProposal,
   Document,
+  DocumentListPage,
   DocumentVersion,
 } from "@/lib/types";
 
@@ -74,6 +75,9 @@ const domainLabels: Record<string, string> = {
   public_procurement: "Veřejné zakázky",
 };
 
+const INITIAL_PACKAGE_COUNT = 20;
+const INITIAL_RULE_COUNT = 30;
+
 function controlledDocumentationReturnTarget(
   domain: string,
   validOn: string,
@@ -103,6 +107,8 @@ export function ControlledDocumentationWorkbench({
   const [editingRule, setEditingRule] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visiblePackageCount, setVisiblePackageCount] = useState(INITIAL_PACKAGE_COUNT);
+  const [visibleRuleCount, setVisibleRuleCount] = useState(INITIAL_RULE_COUNT);
 
   const acceptedCount = rules.rules.filter((rule) =>
     ["accepted", "edited"].includes(rule.verification_status),
@@ -135,6 +141,8 @@ export function ControlledDocumentationWorkbench({
       }
       setPackages((await packageResponse.json()) as ControlledDocumentPackageList);
       setRules((await ruleResponse.json()) as ControlledRuleList);
+      setVisiblePackageCount(INITIAL_PACKAGE_COUNT);
+      setVisibleRuleCount(INITIAL_RULE_COUNT);
     } catch (refreshError) {
       setError(
         refreshError instanceof Error
@@ -399,7 +407,7 @@ export function ControlledDocumentationWorkbench({
         <div className="controlled-docs__release-list">
           {packages.items.length === 0 ? (
             <p className="muted">Pro zvolenou oblast a datum není dostupný žádný balíček.</p>
-          ) : packages.items.map((item) => {
+          ) : packages.items.slice(0, visiblePackageCount).map((item) => {
             const ruleProgress = controlledPackageRuleProgress(
               item.package_id,
               rules.rules,
@@ -440,7 +448,7 @@ export function ControlledDocumentationWorkbench({
                     key={member.member_id}
                   >
                     <Files aria-hidden="true" />
-                    <span>{documentTitle(member.document_id, documents)}</span>
+                    <span>{documentTitle(member, documents)}</span>
                     <small>{member.label || memberRoleLabel(member.member_role)}</small>
                   </a>
                 ))}
@@ -492,6 +500,16 @@ export function ControlledDocumentationWorkbench({
             );
           })}
         </div>
+        {visiblePackageCount < packages.items.length ? (
+          <div className="controlled-docs__actions">
+            <StratosButton
+              type="button"
+              onClick={() => setVisiblePackageCount((current) => current + INITIAL_PACKAGE_COUNT)}
+            >
+              Zobrazit další vydání ({packages.items.length - visiblePackageCount})
+            </StratosButton>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel controlled-docs__rules" id="controlled-rules">
@@ -507,7 +525,7 @@ export function ControlledDocumentationWorkbench({
         <div className="controlled-docs__rule-list">
           {rules.rules.length === 0 ? (
             <p className="muted">Zatím nejsou připravena žádná pravidla. U schváleného vydání nejprve zvolte „Navrhnout pravidla“.</p>
-          ) : rules.rules.map((rule) => (
+          ) : rules.rules.slice(0, visibleRuleCount).map((rule) => (
             <article
               className="controlled-docs__rule"
               id={`controlled-rule-${rule.proposal.rule_id}`}
@@ -593,6 +611,16 @@ export function ControlledDocumentationWorkbench({
             </article>
           ))}
         </div>
+        {visibleRuleCount < rules.rules.length ? (
+          <div className="controlled-docs__actions">
+            <StratosButton
+              type="button"
+              onClick={() => setVisibleRuleCount((current) => current + INITIAL_RULE_COUNT)}
+            >
+              Zobrazit další pravidla ({rules.rules.length - visibleRuleCount})
+            </StratosButton>
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -755,16 +783,41 @@ function OfficialLegalPackagePlanner({
   onCreated: (created: number, existing: number) => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const [legalDocuments, setLegalDocuments] = useState<Document[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
   const candidates = useMemo(() => PUBLIC_PROCUREMENT_LEGAL_SOURCES.flatMap((source) =>
-    documents
+    [...documents, ...legalDocuments]
+      .filter((document, index, items) => (
+        items.findIndex((candidate) => candidate.document_id === document.document_id) === index
+      ))
       .filter((document) => (
         document.metadata?.collection_id === "czech-law"
         && document.title.includes(source.match)
       ))
       .map((document) => ({ ...source, document })),
-  ), [documents]);
+  ), [documents, legalDocuments]);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingDocuments(true);
+    void fetch(withAppBasePath("/api/documents?type=regulation&limit=100"))
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Právní podklady se nepodařilo načíst.");
+        return response.json() as Promise<DocumentListPage>;
+      })
+      .then((result) => {
+        if (!cancelled) setLegalDocuments(result.items);
+      })
+      .catch(() => {
+        if (!cancelled) onError("Právní podklady se nepodařilo načíst.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDocuments(false);
+      });
+    return () => { cancelled = true; };
+  }, [onError]);
 
   useEffect(() => {
     setSelected((current) => {
@@ -823,7 +876,9 @@ function OfficialLegalPackagePlanner({
           s přesnou citací posoudit.
         </p>
       </div>
-      {candidates.length === 0 ? (
+      {loadingDocuments ? (
+        <p className="muted" role="status">Načítám dostupné právní podklady…</p>
+      ) : candidates.length === 0 ? (
         <p className="controlled-docs__warning"><ShieldCheck aria-hidden="true" />Nejsou dostupné cílové právní předpisy z e-Sbírky. Nejprve je synchronizujte ve Veřejných zdrojích.</p>
       ) : (
         <>
@@ -880,10 +935,54 @@ function PackageComposer({
   const [members, setMembers] = useState<MemberDraft[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [documentQuery, setDocumentQuery] = useState("");
+  const [loadedDocuments, setLoadedDocuments] = useState<Document[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const documentRequestSequence = useRef(0);
+
+  useEffect(() => {
+    if (!open) return;
+    const abortController = new AbortController();
+    const requestSequence = documentRequestSequence.current + 1;
+    documentRequestSequence.current = requestSequence;
+    const timer = window.setTimeout(() => {
+      setDocumentsLoading(true);
+      const params = new URLSearchParams({ limit: "50" });
+      if (documentQuery.trim()) params.set("q", documentQuery.trim());
+      void fetch(withAppBasePath(`/api/documents?${params.toString()}`), {
+        signal: abortController.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Dokumenty se nepodařilo načíst.");
+          return response.json() as Promise<DocumentListPage>;
+        })
+        .then((result) => setLoadedDocuments((current) => [...current, ...result.items]
+          .filter((document, index, items) => (
+            items.findIndex((candidate) => candidate.document_id === document.document_id) === index
+          ))))
+        .catch((loadError: unknown) => {
+          if (loadError instanceof DOMException && loadError.name === "AbortError") return;
+          setError(loadError instanceof Error ? loadError.message : "Dokumenty se nepodařilo načíst.");
+        })
+        .finally(() => {
+          if (documentRequestSequence.current === requestSequence) {
+            setDocumentsLoading(false);
+          }
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      abortController.abort();
+    };
+  }, [documentQuery, open]);
 
   const availableDocuments = useMemo(
-    () => documents.slice().sort((left, right) => left.title.localeCompare(right.title, "cs")),
-    [documents],
+    () => [...documents, ...loadedDocuments]
+      .filter((document, index, items) => (
+        items.findIndex((candidate) => candidate.document_id === document.document_id) === index
+      ))
+      .sort((left, right) => left.title.localeCompare(right.title, "cs")),
+    [documents, loadedDocuments],
   );
 
   async function submit() {
@@ -951,6 +1050,17 @@ function PackageComposer({
       </StratosButton>
       {!open ? null : (
         <div className="controlled-docs__composer-form">
+          <Field label="Najít dokument nebo přílohu">
+            <input
+              type="search"
+              value={documentQuery}
+              onChange={(event) => setDocumentQuery(event.target.value)}
+              placeholder="Začněte psát název dokumentu"
+            />
+          </Field>
+          <p className="muted" role="status">
+            {documentsLoading ? "Načítám dokumenty…" : `K výběru je ${availableDocuments.length} dokumentů.`}
+          </p>
           <div className="controlled-docs__form-grid">
             <Field label="Název balíčku">
               <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Směrnice č. 2/2023 včetně příloh" />
@@ -1245,9 +1355,13 @@ function memberRoleLabel(role: ControlledDocumentPackage["members"][number]["mem
   }[role];
 }
 
-function documentTitle(documentId: string, documents: Document[]) {
-  return documents.find((document) => document.document_id === documentId)?.title
-    ?? "Dokument v tomto vydání";
+function documentTitle(
+  member: ControlledDocumentPackage["members"][number],
+  documents: Document[],
+) {
+  return documents.find((document) => document.document_id === member.document_id)?.title
+    ?? member.label
+    ?? memberRoleLabel(member.member_role);
 }
 
 function domainLabel(domain: string) {

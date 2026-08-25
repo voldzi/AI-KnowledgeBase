@@ -69,3 +69,23 @@ export function documentStatusLabel(value: string, language: AklLanguage = "cs")
   };
   return labels[value]?.[language] ?? value.replaceAll("_", " ");
 }
+
+export function classificationLabel(value: string, language: AklLanguage = "cs"): string {
+  const labels: Record<string, Record<AklLanguage, string>> = {
+    public: { cs: "Veřejné", en: "Public" },
+    internal: { cs: "Interní", en: "Internal" },
+    restricted: { cs: "Omezené", en: "Restricted" },
+    confidential: { cs: "Důvěrné", en: "Confidential" },
+  };
+  return labels[value]?.[language] ?? value.replaceAll("_", " ");
+}
+
+export function processingStrategyLabel(value: string, language: AklLanguage = "cs"): string {
+  const labels: Record<string, Record<AklLanguage, string>> = {
+    legal_structured: { cs: "Strukturované zpracování předpisu", en: "Structured legal processing" },
+    semantic: { cs: "Sémantické zpracování", en: "Semantic processing" },
+    fixed: { cs: "Zpracování po pevných úsecích", en: "Fixed-size processing" },
+    recursive: { cs: "Členěné zpracování", en: "Recursive processing" },
+  };
+  return labels[value]?.[language] ?? (language === "cs" ? "Zpracování dokumentu" : "Document processing");
+}

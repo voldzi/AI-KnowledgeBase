@@ -10,6 +10,10 @@ const workbench = readFileSync(
   "utf8",
 );
 const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
+const page = readFileSync(
+  new URL("../src/app/controlled-documentation/page.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("controlled documentation guidance", () => {
   it("guides the user from an approved release to verified rules", () => {
@@ -21,10 +25,22 @@ describe("controlled documentation guidance", () => {
   });
 
   it("shows human document names and keeps identifiers in technical details", () => {
-    assert.match(workbench, /documentTitle\(member\.document_id, documents\)/);
+    assert.match(workbench, /documentTitle\(member, documents\)/);
+    assert.match(workbench, /\?\? member\.label/);
     assert.doesNotMatch(workbench, /<small>verze \{shortId/);
     assert.match(workbench, /<PackageTechnicalDetails item=\{item\}/);
     assert.match(workbench, /<RuleTechnicalDetails rule=\{rule\}/);
+  });
+
+  it("loads large registries on demand and renders long histories progressively", () => {
+    assert.doesNotMatch(page, /registry\.listDocuments\(context\)/);
+    assert.match(page, /\.filter\(\(member\) => !member\.label\)/);
+    assert.match(page, /\]\.slice\(0, 50\)/);
+    assert.match(workbench, /\/api\/documents\?\$\{params\.toString\(\)\}/);
+    assert.match(workbench, /slice\(0, visiblePackageCount\)/);
+    assert.match(workbench, /slice\(0, visibleRuleCount\)/);
+    assert.match(workbench, /Zobrazit další vydání/);
+    assert.match(workbench, /Zobrazit další pravidla/);
   });
 
   it("links every extracted rule to its cited source", () => {

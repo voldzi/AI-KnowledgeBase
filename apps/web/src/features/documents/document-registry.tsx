@@ -30,7 +30,7 @@ import {
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import { withAppBasePath } from "@/lib/app-url";
 import type { AuthorizationHint, Classification, Document, DocumentListPage, DocumentStatus, DocumentType } from "@/lib/types";
-import { documentStatusLabel, documentTypeLabel, formatDateTime } from "@/lib/format";
+import { classificationLabel, documentStatusLabel, documentTypeLabel, formatDateTime } from "@/lib/format";
 import { DOCUMENT_TYPE_CATALOG } from "@/lib/documents/document-workflow";
 import { buildReturnTarget, documentDetailHref } from "@/lib/navigation/document-navigation";
 
@@ -646,19 +646,6 @@ function registryViewClassifications(
 ): Classification[] {
   if (selected.length > 0) return selected;
   return view === "restricted" ? ["restricted", "confidential"] : [];
-}
-
-function classificationLabel(
-  value: Classification,
-  language: AklLanguage,
-): string {
-  const labels: Record<Classification, [string, string]> = {
-    public: ["Veřejné", "Public"],
-    internal: ["Interní", "Internal"],
-    restricted: ["Omezené", "Restricted"],
-    confidential: ["Důvěrné", "Confidential"],
-  };
-  return labels[value][language === "en" ? 1 : 0];
 }
 
 function documentOwnerLabel(document: Document, language: AklLanguage): string {

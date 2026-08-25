@@ -4088,7 +4088,14 @@ def _employee_answer(answer: str, response_language: ResponseLanguage = "cs") ->
 def _strip_inline_chunk_citations(value: str) -> str:
     text = re.sub(r"\s*\[(?:\s*chunk_[A-Za-z0-9]+\s*,?)+\]", "", value)
     text = re.sub(r"\s*\[chunk_[^\]]+\]", "", text)
-    return re.sub(r"\bchunk_[A-Za-z0-9]+\b", "", text)
+    # A streamed or truncated model response can end before the closing bracket.
+    # Remove only a trailing citation fragment so ordinary bracketed text remains intact.
+    text = re.sub(r"\s*\[\s*chunk_[A-Za-z0-9_,\s]*$", "", text)
+    return re.sub(
+        r"(?<![A-Za-z0-9_])chunk_[A-Za-z0-9]*(?![A-Za-z0-9_])",
+        "",
+        text,
+    )
 
 
 def _strip_markdown_emphasis(value: str) -> str:

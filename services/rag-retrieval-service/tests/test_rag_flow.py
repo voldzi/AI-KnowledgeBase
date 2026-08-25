@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 from app.registry_client import AuthzFilterResult
 from app.service import (
     RagRetrievalService,
@@ -946,6 +948,21 @@ def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:
         "Architektura je distribuovaná sada služeb.\n"
         "- Infrastruktura: Obsahuje registr dokumentů, vyhledávání ve znalostech, vyhledávací index a úložiště dokumentů."
     )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Odpověď končí poškozenou citací [chunk_", "Odpověď končí poškozenou citací"),
+        ("Odpověď končí neuzavřenou citací [chunk_abc123", "Odpověď končí neuzavřenou citací"),
+        ("Odpověď obsahuje samostatný chunk_ marker.", "Odpověď obsahuje samostatný marker."),
+    ],
+)
+def test_employee_answer_hides_truncated_internal_citation_markers(
+    raw: str,
+    expected: str,
+) -> None:
+    assert _employee_answer(raw) == expected
 
 
 def test_compare_documents_forwards_to_governance(monkeypatch) -> None:
