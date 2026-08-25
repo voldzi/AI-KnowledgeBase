@@ -265,7 +265,7 @@ export function ProjectTopbar({
       ) : undefined}
       status={
         <TopbarStatusGroup
-          label={healthLabel}
+          label={language === "cs" ? "Stav systému" : "System status"}
           ariaLive="polite"
           items={[
             {
