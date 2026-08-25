@@ -6,6 +6,7 @@ import type {
 } from "./contracts";
 import type { DirectorCopilotV2ManifestCatalog } from "./manifest-catalog";
 import type { DirectorCopilotV2SourceOutcome } from "./orchestrator";
+import type { DirectorCopilotV2PlanNode } from "./planner";
 
 const MAX_CONTINUATION_IDS = 8;
 
@@ -20,6 +21,7 @@ export function directorCopilotV2ContinuationQueryState(
   state: ConversationQueryState,
   outcomes: DirectorCopilotV2SourceOutcome[],
   catalog: DirectorCopilotV2ManifestCatalog,
+  nodes: DirectorCopilotV2PlanNode[] = [],
 ): ConversationQueryState {
   const next = structuredClone(state);
   const selections = new Map<EntityFilterKey, Set<string>>();
@@ -28,7 +30,9 @@ export function directorCopilotV2ContinuationQueryState(
     if (outcome.status !== "complete" && outcome.status !== "partial") continue;
     const manifest = catalog.byTool.get(outcome.tool_id);
     if (!manifest) continue;
-    for (const item of focusedItems(state, outcome)) {
+    const outcomeState = (nodes.find((node) => node.node_id === outcome.node_id)
+      ?? nodes.find((node) => node.application === outcome.application))?.query_state ?? state;
+    for (const item of focusedItems(outcomeState, outcome)) {
       const linkedSelections = preferredLinkedSelections(
         selectionsForTypedLinks(item, manifest),
       );

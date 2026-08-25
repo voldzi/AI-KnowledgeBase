@@ -12,16 +12,18 @@ from app.service import (
     _assistant_filters,
     _assistant_query,
     _assistant_uses_authorized_follow_up_source,
+    _apply_answer_facet_completeness,
     _bounded_conversation_questions,
     _employee_answer,
     _fallback_follow_up_questions,
     _is_incident_query,
     _latest_available_citation_scope,
     _normalize_for_assistant,
+    _requested_answer_facets,
     _parse_follow_up_questions,
     _complete_chunk_policy_metadata,
 )
-from app.schemas import ChunkCitation, RetrievedChunk
+from app.schemas import ChunkCitation, RagAnswer, RetrievedChunk
 from answer_composer.composer import _citations, _policy_metadata, _system_prompt
 from hashlib import sha256
 import json
@@ -243,6 +245,45 @@ def _policy_chunk(
             "tags": [f"project:{document_id}"],
         },
     )
+
+
+def test_multi_facet_answer_reports_an_omitted_requested_facet() -> None:
+    facets = _requested_answer_facets("Jaké jsou povinnosti a lhůty podle smlouvy?")
+    assert facets == ["obligations", "deadlines"]
+    chunk = _policy_chunk(
+        chunk_id="chunk_facets",
+        document_id="doc_facets",
+        binding_id="pol_facets01",
+        handling_class="INTERNAL",
+        obligations=["AUDIT_ACCESS"],
+    ).model_copy(
+        update={"text": "Dodavatel je povinen oznámit změnu nejpozději do 30 dnů."}
+    )
+    answer = RagAnswer(
+        query_id="qry_facets",
+        answer="Dodavatel je povinen oznámit změnu.",
+        confidence="high",
+        citations=[],
+        used_chunks=[chunk.chunk_id],
+        evidence_status="supported",
+    )
+
+    checked = _apply_answer_facet_completeness(
+        answer=answer,
+        requested_facets=facets,
+        chunks=[chunk],
+        response_language="cs",
+    )
+
+    assert checked.confidence == "medium"
+    assert checked.evidence_status == "partial"
+    assert "ANSWER_FACET_COVERAGE_INCOMPLETE" in checked.warnings
+    assert "lhůty a termíny" in (checked.missing_information or "")
+
+
+def test_answer_facets_do_not_confuse_licence_or_termination_words() -> None:
+    assert _requested_answer_facets("Jaká je platnost licence?") == ["validity"]
+    assert _requested_answer_facets("What are the termination conditions?") == ["termination"]
 
 
 def test_mixed_source_policy_aggregation_is_strictest_and_tamper_evident() -> None:

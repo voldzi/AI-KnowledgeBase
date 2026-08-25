@@ -141,6 +141,13 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   displayed versus matching counts. Desktop support panels are resizable and
   collapsible; compact layouts use focus-safe drawers so navigation and source
   context do not reduce the transcript to an unusable column.
+- A compound management question is decomposed into bounded source questions
+  before execution. Each node carries its own operation, period, metric,
+  granularity and source scope, so a count requested from Budget cannot change
+  a ProjectFlow summary in the same turn. The global conversation state remains
+  only the bounded continuation state. Nodes still perform their own fresh
+  authorization and evidence checks. Current live-source data older than seven
+  days remains attributable but is shown with a visible staleness warning.
 - Director Copilot V2 is the sole live-data path after joint production
   acceptance. A slow, failed, denied or contract-drifting source returns its
   explicit V2 result and cannot be substituted by document RAG. The runtime

@@ -86,6 +86,39 @@ const OPERATION_TEMPLATES: Array<{
 ];
 
 describe("continuous Czech assistant acceptance", () => {
+  it("decomposes a management question into independently planned source operations", () => {
+    const message = "Pro poradu: jaký má IT rozpočet na rok 2025, kolik akcí je v plánu a v jakém stavu je aktuální projektové portfolio?";
+    const resolved = resolveConversationQuery({ message, now: NOW });
+    const plan = buildDirectorCopilotV2Plan({
+      message,
+      language: "cs",
+      context: projectedContext(),
+      intent: "portfolio_performance_overview",
+      queryState: resolved.state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      now: NOW,
+    });
+
+    assert.deepEqual(
+      plan.nodes.map((node) => node.application),
+      ["budget", "budget", "projectflow"],
+    );
+    assert.deepEqual(
+      plan.nodes.map((node) => node.query_state.operation),
+      ["summary", "count", "summary"],
+    );
+    assert.deepEqual(
+      plan.nodes.map((node) => node.query_state.period.type),
+      ["fiscal_year", "fiscal_year", "current"],
+    );
+    assert.deepEqual(
+      plan.nodes.map((node) => node.query_state.period.fiscal_year),
+      [2025, 2025, 2026],
+    );
+    assert.equal(new Set(plan.nodes.map((node) => node.node_id)).size, 3);
+    assert.equal(plan.nodes[1]?.request?.parameters.limit, 1);
+  });
+
   it("plans more than 300 realistic live-data questions with bounded latency", () => {
     const catalog = pinnedDirectorCopilotV2CatalogForTests();
     const context = projectedContext();

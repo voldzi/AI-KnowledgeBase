@@ -490,9 +490,14 @@ def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage 
     no_answer_instruction = (
         f'If the supplied context does not answer the question, return exactly: "{_localized_no_answer(response_language)}"'
     )
+    completeness_instruction = (
+        "Identify every independently requested facet of the question. Address each facet from the supplied context, "
+        "or state explicitly that the context does not establish that facet; never silently omit a requested facet."
+    )
     return (
         f"{base} {trust_boundary} {language_instruction} "
         f"{mode_prompts.get(answer_mode, mode_prompts['standard_answer'])} "
+        f"{completeness_instruction} "
         f"{no_answer_instruction}"
     )
 

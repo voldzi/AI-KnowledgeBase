@@ -1474,7 +1474,8 @@ class RagRetrievalService:
         director_copilot_request = _director_copilot_evidence_context(
             payload.context.get("director_copilot_evidence")
         ) is not None
-        max_chunks = 3 if director_copilot_request else 6
+        requested_facets = _requested_answer_facets(payload.message)
+        max_chunks = 3 if director_copilot_request else (10 if len(requested_facets) >= 2 else 6)
         run = await self._retrieve_authorized(
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
@@ -1529,6 +1530,12 @@ class RagRetrievalService:
                 rag_answer,
                 run.response.chunks,
                 auth_context=auth_context,
+            )
+            rag_answer = _apply_answer_facet_completeness(
+                answer=rag_answer,
+                requested_facets=requested_facets,
+                chunks=run.response.chunks,
+                response_language=payload.response_language,
             )
         rag_answer = rag_answer.model_copy(
             update={
@@ -2116,7 +2123,13 @@ class RagRetrievalService:
         chunks = _diversify_chunks(
             chunks,
             limit=payload.max_chunks,
-            max_per_document=self._settings.max_chunks_per_document,
+            max_per_document=(
+                payload.max_chunks
+                if exact_document_id
+                else max(self._settings.max_chunks_per_document, min(6, payload.max_chunks))
+                if len(_requested_answer_facets(payload.query)) >= 2
+                else self._settings.max_chunks_per_document
+            ),
             max_documents=plan.max_documents,
         )
         if (
@@ -4020,6 +4033,138 @@ def _normalize_for_assistant(value: str) -> str:
 
     normalized = unicodedata.normalize("NFKD", value.lower())
     return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+_ANSWER_FACET_CATALOG: dict[str, dict[str, object]] = {
+    "obligations": {
+        "query_terms": ("povinnost", "musi", "pozadavek", "obligation", "must", "requirement"),
+        "evidence_terms": ("povinnost", "musi", "je povinen", "pozad", "obligation", "shall", "must"),
+        "label_cs": "povinnosti",
+        "label_en": "obligations",
+    },
+    "deadlines": {
+        "query_terms": ("lhut", "termin", "do kdy", "deadline", "time limit"),
+        "evidence_terms": ("lhut", "termin", "dnu", "mesic", "nejpozdeji", "deadline", "days", "months"),
+        "label_cs": "lhůty a termíny",
+        "label_en": "deadlines and time limits",
+    },
+    "sanctions": {
+        "query_terms": ("sankc", "pokut", "penal", "postih"),
+        "evidence_terms": ("sankc", "pokut", "penal", "postih", "urok z prodleni"),
+        "label_cs": "sankce",
+        "label_en": "sanctions",
+    },
+    "price": {
+        "query_terms": ("cen", "castk", "odmen", "platb", "price", "amount", "payment"),
+        "evidence_terms": ("cen", "castk", "odmen", "platb", "kc", "eur", "price", "amount", "payment"),
+        "label_cs": "cena a platby",
+        "label_en": "price and payments",
+    },
+    "validity": {
+        "query_terms": ("platnost", "ucinnost", "trvani", "od kdy", "validity", "effective"),
+        "evidence_terms": ("platnost", "ucinnost", "trvani", "nabyva", "validity", "effective", "duration"),
+        "label_cs": "platnost a účinnost",
+        "label_en": "validity and effectiveness",
+    },
+    "termination": {
+        "query_terms": ("ukoncen", "vypoved", "odstoupen", "termination", "notice"),
+        "evidence_terms": ("ukoncen", "vypoved", "odstoupen", "termination", "notice"),
+        "label_cs": "ukončení a výpověď",
+        "label_en": "termination and notice",
+    },
+    "responsibilities": {
+        "query_terms": ("odpovednost", "gestor", "vlastnik", "kdo", "responsibility", "owner"),
+        "evidence_terms": ("odpovednost", "odpovida", "gestor", "vlastnik", "responsibility", "responsible", "owner"),
+        "label_cs": "odpovědnosti",
+        "label_en": "responsibilities",
+    },
+    "exceptions": {
+        "query_terms": ("vyjimk", "odchylk", "exception", "exemption"),
+        "evidence_terms": ("vyjimk", "odchylk", "exception", "exemption"),
+        "label_cs": "výjimky",
+        "label_en": "exceptions",
+    },
+    "risks": {
+        "query_terms": ("rizik", "risk"),
+        "evidence_terms": ("rizik", "ohrozen", "skod", "risk", "damage", "liability"),
+        "label_cs": "rizika",
+        "label_en": "risks",
+    },
+}
+
+
+def _contains_answer_facet_term(value: str, term: str) -> bool:
+    if " " in term:
+        return term in value
+    return any(
+        token.startswith(term)
+        and not (term == "termin" and token.startswith("termination"))
+        for token in re.findall(r"[a-z0-9]+", value)
+    )
+
+
+def _requested_answer_facets(message: str) -> list[str]:
+    normalized = _normalize_for_assistant(message)
+    return [
+        facet
+        for facet, definition in _ANSWER_FACET_CATALOG.items()
+        if any(
+            _contains_answer_facet_term(normalized, str(term))
+            for term in definition["query_terms"]
+        )
+    ]
+
+
+def _apply_answer_facet_completeness(
+    *,
+    answer: RagAnswer,
+    requested_facets: list[str],
+    chunks: list[RetrievedChunk],
+    response_language: ResponseLanguage,
+) -> RagAnswer:
+    if len(requested_facets) < 2 or not answer.used_chunks or answer.confidence == "insufficient_source":
+        return answer
+
+    used_chunk_ids = set(answer.used_chunks)
+    evidence = _normalize_for_assistant(
+        " ".join(chunk.text for chunk in chunks if chunk.chunk_id in used_chunk_ids)
+    )
+    rendered_answer = _normalize_for_assistant(answer.answer)
+    missing = []
+    for facet in requested_facets:
+        definition = _ANSWER_FACET_CATALOG[facet]
+        terms = definition["evidence_terms"]
+        if not any(
+            _contains_answer_facet_term(evidence, str(term)) for term in terms
+        ) or not any(
+            _contains_answer_facet_term(rendered_answer, str(term)) for term in terms
+        ):
+            missing.append(str(definition[f"label_{response_language}"]))
+    if not missing:
+        return answer
+
+    missing_label = ", ".join(missing)
+    notice = (
+        f"V autorizovaných zdrojích se nepodařilo úplně doložit: {missing_label}."
+        if response_language == "cs"
+        else f"The authorized sources did not fully substantiate: {missing_label}."
+    )
+    missing_information = " ".join(
+        part for part in (answer.missing_information, notice) if part
+    )
+    return answer.model_copy(
+        update={
+            "answer": f"{answer.answer.rstrip()}\n\n{notice}",
+            "confidence": "medium" if answer.confidence == "high" else answer.confidence,
+            "warnings": list(
+                dict.fromkeys([*answer.warnings, "ANSWER_FACET_COVERAGE_INCOMPLETE"])
+            ),
+            "missing_information": missing_information,
+            "evidence_status": (
+                "partial" if answer.evidence_status == "supported" else answer.evidence_status
+            ),
+        }
+    )
 
 
 def _is_access_query(value: str) -> bool:

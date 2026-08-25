@@ -295,14 +295,13 @@ function composeResponse(
     .filter((outcome) => outcome.items.length > 0)
     .map((outcome) => renderSource(
       outcome,
-      orchestration.plan.query_state,
+      queryStateForOutcome(outcome, orchestration.snapshot),
       language,
     ));
   const correlations = [
     renderStratosRelationships(orchestration.snapshot, language),
   ].filter(Boolean);
   const partialNotice = orchestration.status === "partial"
-    || orchestration.snapshot.evidence.status === "partial"
     ? language === "en"
       ? "The result is partial because at least one authorized source did not return a complete result."
       : "Výsledek je částečný, protože nejméně jeden oprávněný zdroj neposkytl úplný výsledek."
@@ -385,29 +384,49 @@ function partialReasonsNotice(
       ? "Part of the requested scope is not covered by your current access."
       : "Část požadovaného rozsahu nepokrývá vaše aktuální oprávnění.");
   }
+  if (snapshot.evidence.issues.some((issue) => issue.code === "LIVE_DATA_SOURCE_STALE")) {
+    notices.push(language === "en"
+      ? "At least one current live source is older than seven days. The values are shown with their source timestamp and should be treated as potentially stale."
+      : "Nejméně jeden aktuální živý zdroj je starší než sedm dní. Hodnoty jsou uvedeny s časem zdroje a mohou být zastaralé.");
+  }
   return notices.join(" ");
+}
+
+function queryStateForOutcome(
+  outcome: DirectorCopilotV2SourceOutcome,
+  snapshot: DirectorCopilotV2Snapshot,
+): ConversationQueryState {
+  return (snapshot.plan.nodes.find((node) => node.node_id === outcome.node_id)
+    ?? snapshot.plan.nodes.find((node) => node.application === outcome.application))?.query_state
+    ?? snapshot.plan.query_state;
 }
 
 function renderStratosRelationships(
   snapshot: DirectorCopilotV2Snapshot,
   language: ResponseLanguage,
 ): string {
-  const budget = snapshot.outcomes.find((outcome) => outcome.application === "budget");
-  const projectflow = snapshot.outcomes.find((outcome) => outcome.application === "projectflow");
-  const archflow = snapshot.outcomes.find((outcome) => outcome.application === "archflow");
-  if (!budget && !projectflow && !archflow) return "";
+  const budgetItems = snapshot.outcomes
+    .filter((outcome) => outcome.application === "budget")
+    .flatMap((outcome) => outcome.items);
+  const projectflowItems = snapshot.outcomes
+    .filter((outcome) => outcome.application === "projectflow")
+    .flatMap((outcome) => outcome.items);
+  const archflowItems = snapshot.outcomes
+    .filter((outcome) => outcome.application === "archflow")
+    .flatMap((outcome) => outcome.items);
+  if (!budgetItems.length && !projectflowItems.length && !archflowItems.length) return "";
   const budgetById = new Map(
-    (budget?.items ?? [])
+    budgetItems
       .filter((item) => item.canonical_id.startsWith("stratos:project:"))
       .map((item) => [item.canonical_id, item]),
   );
   const projectflowById = new Map(
-    (projectflow?.items ?? [])
+    projectflowItems
     .filter((item) => item.canonical_id.startsWith("stratos:project:"))
     .map((item) => [item.canonical_id, item]),
   );
   const needsByProject = new Map<string, DirectorCopilotV2Item[]>();
-  for (const need of archflow?.items ?? []) {
+  for (const need of archflowItems) {
     for (const link of need.links.filter((candidate) => (
       candidate.key === "archflow.need.linked_project"
       && candidate.relation_type === "direct"
@@ -468,7 +487,7 @@ function renderStratosRelationships(
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
   ].join("\n");
-  const title = archflow
+  const title = archflowItems.length
     ? language === "en"
       ? "### Verified relationships across STRATOS"
       : "### Ověřené souvislosti napříč STRATOS"
@@ -634,9 +653,9 @@ function sourceShapeDoesNotMatchQuery(
   snapshot: DirectorCopilotV2Snapshot,
 ): boolean {
   if (!outcome.items.length) return false;
-  const request = snapshot.plan.nodes.find(
-    (node) => node.application === outcome.application,
-  )?.request?.parameters;
+  const request = (snapshot.plan.nodes.find((node) => node.node_id === outcome.node_id)
+    ?? snapshot.plan.nodes.find((node) => node.application === outcome.application))
+    ?.request?.parameters;
   const expected = expectedEntityType(
     outcome.application,
     request?.granularity ?? null,
@@ -982,8 +1001,16 @@ async function auditResult(
         0,
       ),
       query_operation: orchestration.plan.query_state.operation,
+      query_operations_json: JSON.stringify(
+        orchestration.plan.nodes.map((node) => ({
+          node_id: node.node_id,
+          application: node.application,
+          operation: node.query_state.operation,
+        })),
+      ),
       requested_granularities_json: JSON.stringify(
         orchestration.plan.nodes.map((node) => ({
+          node_id: node.node_id,
           application: node.application,
           granularity: node.request?.parameters.granularity ?? null,
         })),

@@ -386,6 +386,22 @@ citation. A changed or revoked source therefore fails closed; an explicit new
 legal or STRATOS domain topic starts a fresh retrieval scope.
 
 A missing document source returns a normal fail-closed `no_answer` response.
+
+Metadata questions are parsed independently from document content questions.
+Natural Czech filters such as `platné interní směrnice` constrain the Registry
+request by status, classification and document type inside the caller's
+already-authorized scope. A combined request such as `kolik ... a které` returns
+the bounded list and its count; it does not fall back to an unfiltered inventory.
+These filters can only narrow Registry authorization.
+
+For document questions that explicitly request several facets (for example
+obligations, deadlines and sanctions), retrieval raises the bounded context
+budget and allows more chunks from an exact document. The answer composer must
+address every requested facet or explicitly state that the authorized evidence
+does not establish it. A deterministic post-composition check adds
+`ANSWER_FACET_COVERAGE_INCOMPLETE`, lowers high confidence to medium and names
+the missing facets instead of silently presenting an incomplete answer.
+
 AKB does not advertise a Service Desk handoff while no governed Service Desk
 integration is available. An operational incident receives neutral follow-up
 questions about the affected system, symptoms and scope; a failed legal,

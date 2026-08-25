@@ -18,6 +18,35 @@ const projectflow = fixture("projectflow-portfolio-delivery-overview.json");
 const archflow = fixture("archflow-need-portfolio-overview.json");
 
 describe("Director Copilot V2 orchestration", () => {
+  it("keeps complete live data but marks a current source older than seven days", async () => {
+    const now = new Date("2026-08-05T10:00:00.000Z");
+    const state = resolveConversationQuery({
+      message: "Jaký je aktuální rozpočet IT?",
+      now,
+    }).state;
+    const result = await orchestrateDirectorCopilotV2({
+      message: "Jaký je aktuální rozpočet IT?",
+      language: "cs",
+      context: projectedContext("budget-contract"),
+      intent: "budget_portfolio_status",
+      queryState: state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      client: {
+        execute: async (_application, request) => ({
+          ...structuredClone(budgetOrganization.responses.complete),
+          tool_call_id: request.tool_call_id,
+        }),
+      },
+      now,
+    });
+
+    assert.equal(result.status, "complete");
+    assert.equal(result.snapshot.evidence.status, "partial");
+    assert.ok(result.snapshot.evidence.issues.some(
+      (issue) => issue.code === "LIVE_DATA_SOURCE_STALE" && issue.severity === "warning",
+    ));
+  });
+
   it("uses the source-owned organization aggregate instead of summing projects in AKB", async () => {
     const state = resolveConversationQuery({
       message: "Jaký je celkový rozpočet organizace na rok 2025?",

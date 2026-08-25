@@ -30,6 +30,12 @@ least 300 generated live-data questions covering:
 - fail-closed behavior when a required capability is absent;
 - deterministic routing of governed rules, documents and Registry reports;
 - mandatory citation gates for governed-rule and document answers.
+- compound management questions whose Budget and ProjectFlow clauses require
+  different operations and periods;
+- current-source freshness warnings without treating stale data as a transport
+  failure;
+- Czech Registry count-and-list questions with status, classification and
+  inflected document-type filters.
 
 Focused integration tests additionally verify:
 

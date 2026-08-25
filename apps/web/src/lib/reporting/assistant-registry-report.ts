@@ -76,6 +76,9 @@ const LIST_INTENT_WORDS = [
   "vypsat",
   "vyjmenuj",
   "vyjmenujte",
+  "ktere",
+  "jake",
+  "which",
   "list",
   "listing"
 ];
@@ -243,7 +246,7 @@ const DOCUMENT_TYPE_ALIASES: Array<{ type: Document["document_type"]; terms: str
   { type: "methodology", terms: ["metodika", "metodiky", "metodick", "methodology"] },
   { type: "regulation", terms: ["regulace", "regulation"] },
   { type: "policy", terms: ["politika", "politiky", "policy", "policies"] },
-  { type: "directive", terms: ["smernice", "směrnice", "directive"] },
+  { type: "directive", terms: ["smernice", "směrnice", "smernic", "směrnic", "directive"] },
   { type: "procedure", terms: ["postup", "postupy", "procedure"] },
   { type: "manual", terms: ["manual", "manuál", "navod", "návod"] },
   { type: "attachment", terms: ["priloha", "příloha", "attachment"] },
@@ -285,7 +288,43 @@ export function registryReportKindFromMessage(message: string, context: Record<s
   if (asksForDocumentTypeBreakdown && (asksForCount || asksForStructuredOutput || hasDocumentOrDomain || isRegistryMetadataContext(context))) {
     return "document_type_count";
   }
-  return (asksForList || asksForStructuredOutput) && !asksForCount ? "document_list" : "document_inventory_summary";
+  return asksForList || (asksForStructuredOutput && !asksForCount)
+    ? "document_list"
+    : "document_inventory_summary";
+}
+
+export interface RegistryMessageSummaryFilters {
+  status?: Document["status"];
+  classification?: Document["classification"];
+  documentType?: Document["document_type"];
+}
+
+export function registrySummaryOptionsFromMessage(message: string): RegistryMessageSummaryFilters {
+  const normalized = normalizeText(message);
+  const filters: RegistryMessageSummaryFilters = {};
+  const statusPatterns: Array<[Document["status"], RegExp]> = [
+    ["cancelled", /\b(zrusen\w*|cancelled|canceled)\b/],
+    ["superseded", /\b(nahrazen\w*|superseded|predchoz\w* verze)\b/],
+    ["archived", /\b(archiv\w*|archived)\b/],
+    ["review", /\b(k posouzeni|v revizi|review)\b/],
+    ["draft", /\b(koncept\w*|navrh\w*|rozpracovan\w*|draft)\b/],
+    ["approved", /\b(schvalen\w*|approved)\b/],
+    ["valid", /\b(platn\w*|ucinn\w*|valid|effective)\b/],
+  ];
+  filters.status = statusPatterns.find(([, pattern]) => pattern.test(normalized))?.[0];
+
+  const classificationPatterns: Array<[Document["classification"], RegExp]> = [
+    ["confidential", /\b(duvern\w*|confidential)\b/],
+    ["restricted", /\b(omezen\w*|restricted)\b/],
+    ["internal", /\b(intern\w*|internal)\b/],
+    ["public", /\b(verejn\w*|public)\b/],
+  ];
+  filters.classification = classificationPatterns
+    .find(([, pattern]) => pattern.test(normalized))?.[0];
+  filters.documentType = extractRegistryDocumentTypeFilter(message) ?? undefined;
+  return Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== undefined),
+  ) as RegistryMessageSummaryFilters;
 }
 
 export function extractRegistryDocumentTypeFilter(message: string): Document["document_type"] | null {

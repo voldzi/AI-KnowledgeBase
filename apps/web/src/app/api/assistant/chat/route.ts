@@ -27,6 +27,7 @@ import {
   buildRegistryDocumentReport,
   buildRegistryDocumentReportFromSummary,
   registryDocumentTypeFilterForReport,
+  registrySummaryOptionsFromMessage,
   registryTopicsForDocumentListRequest,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
@@ -223,7 +224,10 @@ async function handlePost(request: NextRequest) {
       });
     }
 
-    const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
+    const registrySummaryFilters = {
+      ...registrySummaryOptionsFromAssistantContext(requestContext),
+      ...registrySummaryOptionsFromMessage(message),
+    };
     const registryReportKind = assistantRoute.registryReportKind ?? "document_inventory_summary";
     const inferredDocumentType = registryDocumentTypeFilterForReport(message, registryReportKind);
     if (!registrySummaryFilters.documentType && inferredDocumentType) {
