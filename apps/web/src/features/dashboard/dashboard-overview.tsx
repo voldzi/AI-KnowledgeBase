@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { StratosButtonLink, StratosDataTable, StratosSearchBox, StratosSelect, type StratosDataTableColumn } from "@/components/stratos";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import type { AuditEvent, AuthorizationHint, Document, IngestionJob, RegistryWorkflowTask } from "@/lib/types";
-import { documentTypeLabel, formatDateTime } from "@/lib/format";
+import { classificationLabel, documentTypeLabel, formatDateTime, processingStrategyLabel } from "@/lib/format";
 import { buildWorkflowTasks, isTaskOverdue } from "@/features/tasks/workflow-task-model";
 import { accessAuditItemFromEvent } from "@/features/audit/access-audit-items";
 
@@ -54,6 +54,9 @@ const dashboardCopy = {
     auditActor: "Aktér",
     auditCreated: "Vytvořeno",
     auditEmpty: "Bez auditních událostí v aktuálním přehledu.",
+    technicalDetails: "Technické podrobnosti",
+    jobId: "ID zpracování",
+    documentId: "ID dokumentu",
     hiddenActions: "Akce se zobrazují jen uživatelům, kteří k nim mají oprávnění.",
     publishingVisible: "Publikování je viditelné.",
     publishingHidden: "Publikování je v této relaci skryté.",
@@ -103,6 +106,9 @@ const dashboardCopy = {
     auditActor: "Actor",
     auditCreated: "Created",
     auditEmpty: "No audit events in the current overview.",
+    technicalDetails: "Technical details",
+    jobId: "Processing ID",
+    documentId: "Document ID",
     hiddenActions: "Actions are shown only to users who are allowed to use them.",
     publishingVisible: "Publishing is visible.",
     publishingHidden: "Publishing is hidden in this session.",
@@ -224,7 +230,7 @@ export function DashboardOverview({
       id: "classification",
       label: copy.classification,
       width: 140,
-      render: (document) => document.classification
+      render: (document) => classificationLabel(document.classification, language)
     },
     {
       id: "updated",
@@ -316,7 +322,7 @@ export function DashboardOverview({
                 onValuesChange={setRecentClassifications}
               >
                 {recentClassificationOptions.map((classification) => (
-                  <option key={classification} value={classification}>{classification}</option>
+                  <option key={classification} value={classification}>{classificationLabel(classification, language)}</option>
                 ))}
               </StratosSelect>
             </div>
@@ -347,9 +353,17 @@ export function DashboardOverview({
               {jobs.slice(0, 3).map((job) => (
                 <div className="timeline-item" key={job.job_id}>
                   <strong>
-                    {job.job_id} <StatusBadge value={job.status} />
+                    {documents.find((document) => document.document_id === job.document_id)?.title
+                      ?? (language === "cs" ? "Zpracování dokumentu" : "Document processing")} <StatusBadge value={job.status} />
                   </strong>
-                  <span>{job.document_id} - {job.chunking_strategy} - {formatDateTime(job.created_at, language)}</span>
+                  <span>{processingStrategyLabel(job.chunking_strategy, language)} · {formatDateTime(job.created_at, language)}</span>
+                  <details className="technical-details technical-details--compact">
+                    <summary>{copy.technicalDetails}</summary>
+                    <div className="technical-details__body">
+                      <p className="technical-details__line"><strong>{copy.jobId}</strong><span>{job.job_id}</span></p>
+                      <p className="technical-details__line"><strong>{copy.documentId}</strong><span>{job.document_id}</span></p>
+                    </div>
+                  </details>
                 </div>
               ))}
             </div>
