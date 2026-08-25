@@ -212,6 +212,9 @@ class Settings:
     max_context_chars: int
     source_context_window: int
     answer_max_tokens: int
+    assistant_history_max_user_messages: int
+    assistant_history_max_message_chars: int
+    assistant_history_max_chars: int
     hybrid_dense_weight: float
     no_answer_min_score: float
     confidence_high_threshold: float
@@ -280,9 +283,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         retrieval_candidate_limit = int(
             _get(source, "AKL_RAG_RETRIEVAL_CANDIDATE_LIMIT", str(max(24, default_max_chunks * 3)))
         )
-        max_context_chars = int(_get(source, "AKL_RAG_MAX_CONTEXT_CHARS", "12000"))
+        max_context_chars = int(_get(source, "AKL_RAG_MAX_CONTEXT_CHARS", "20000"))
         source_context_window = int(_get(source, "AKL_RAG_SOURCE_CONTEXT_WINDOW", "1"))
-        answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "512"))
+        answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "768"))
+        assistant_history_max_user_messages = int(
+            _get(source, "AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES", "12")
+        )
+        assistant_history_max_message_chars = int(
+            _get(source, "AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS", "800")
+        )
+        assistant_history_max_chars = int(
+            _get(source, "AKL_ASSISTANT_HISTORY_MAX_CHARS", "6000")
+        )
         hybrid_dense_weight = float(_get(source, "AKL_RAG_HYBRID_DENSE_WEIGHT", "0.35"))
         no_answer_min_score = float(_get(source, "AKL_RAG_NO_ANSWER_MIN_SCORE", "0.35"))
         confidence_high_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_HIGH_THRESHOLD", "0.75"))
@@ -328,6 +340,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_SOURCE_CONTEXT_WINDOW must be between 0 and 5")
     if answer_max_tokens <= 0:
         raise ConfigError("AKL_RAG_ANSWER_MAX_TOKENS must be greater than zero")
+    if not 1 <= assistant_history_max_user_messages <= 24:
+        raise ConfigError("AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES must be between 1 and 24")
+    if not 200 <= assistant_history_max_message_chars <= 2000:
+        raise ConfigError("AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS must be between 200 and 2000")
+    if not 500 <= assistant_history_max_chars <= 12000:
+        raise ConfigError("AKL_ASSISTANT_HISTORY_MAX_CHARS must be between 500 and 12000")
     if not 0 <= hybrid_dense_weight <= 1:
         raise ConfigError("AKL_RAG_HYBRID_DENSE_WEIGHT must be between 0 and 1")
     if not 0 <= no_answer_min_score <= 1:
@@ -596,6 +614,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         max_context_chars=max_context_chars,
         source_context_window=source_context_window,
         answer_max_tokens=answer_max_tokens,
+        assistant_history_max_user_messages=assistant_history_max_user_messages,
+        assistant_history_max_message_chars=assistant_history_max_message_chars,
+        assistant_history_max_chars=assistant_history_max_chars,
         hybrid_dense_weight=hybrid_dense_weight,
         no_answer_min_score=no_answer_min_score,
         confidence_high_threshold=confidence_high_threshold,

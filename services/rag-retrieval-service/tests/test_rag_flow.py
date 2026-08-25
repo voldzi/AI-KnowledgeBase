@@ -9,6 +9,7 @@ from app.registry_client import AuthzFilterResult
 from app.service import (
     RagRetrievalService,
     _assistant_answer_query,
+    _assistant_current_context,
     _assistant_filters,
     _assistant_query,
     _assistant_uses_authorized_follow_up_source,
@@ -18,6 +19,7 @@ from app.service import (
     _fallback_follow_up_questions,
     _is_incident_query,
     _latest_available_citation_scope,
+    _latest_available_assistant_context,
     _normalize_for_assistant,
     _requested_answer_facets,
     _parse_follow_up_questions,
@@ -891,6 +893,111 @@ def test_conversation_context_keeps_only_bounded_user_questions() -> None:
     ]
     assert "stará odpověď" not in " ".join(context)
     assert "změnil přístup" not in " ".join(context)
+
+
+def test_conversation_context_keeps_twelve_recent_questions_with_total_bound() -> None:
+    messages: list[object] = [
+        {"role": "user", "content": f"Otázka {index}: " + ("kontext " * 30)}
+        for index in range(20)
+    ]
+
+    context = _bounded_conversation_questions(
+        messages,
+        max_messages=12,
+        max_message_length=800,
+        max_total_length=6000,
+    )
+
+    assert len(context) == 12
+    assert context[0].startswith("Otázka 8:")
+    assert context[-1].startswith("Otázka 19:")
+    assert sum(len(question) for question in context) <= 6000
+
+
+def test_answer_query_can_use_larger_history_than_retrieval_query() -> None:
+    context = {
+        "earlier_user_questions": [
+            f"Navazující kontext plánu a souvislostí {index} "
+            + ("rozpočet projekt směrnice " * 12)
+            for index in range(12)
+        ],
+    }
+
+    retrieval_query = _assistant_query(
+        "Jak tyto souvislosti ovlivní plán?",
+        context,
+        history_max_length=2400,
+        max_query_length=4000,
+    )
+    answer_query = _assistant_answer_query(
+        "Jak tyto souvislosti ovlivní plán?",
+        context,
+        history_max_length=6000,
+    )
+
+    assert len(retrieval_query) <= 4000
+    assert len(answer_query) > len(retrieval_query)
+    assert len(answer_query) <= 12000
+
+
+def test_structured_context_is_bounded_and_excludes_secrets_and_snapshots() -> None:
+    context = _assistant_current_context({
+        "stratos_query_state": {"sources": ["budget"], "period": {"fiscal_year": 2026}},
+        "access_token": "must-not-survive",
+        "nested": {
+            "refresh_token": "must-not-survive",
+            "api_key": "must-not-survive",
+            "useful": True,
+        },
+        "director_copilot_v2_snapshot": {"large": "payload"},
+    })
+
+    assert context == {
+        "stratos_query_state": {"sources": ["budget"], "period": {"fiscal_year": 2026}},
+        "nested": {"useful": True},
+        "answer_source": "rag_retrieval",
+    }
+
+
+def test_latest_structured_context_skips_revoked_source_and_assistant_prose() -> None:
+    messages: list[object] = [
+        {
+            "role": "assistant",
+            "content": "This answer is not reusable context.",
+            "metadata": {"current_context": {"controlled_rule_domain": "public_procurement"}},
+        },
+        {
+            "role": "assistant",
+            "content": "Revoked content.",
+            "availability": "source_access_changed",
+            "metadata": {"current_context": {"document_id": "doc_revoked"}},
+        },
+        {
+            "role": "assistant",
+            "content": "Latest answer.",
+            "metadata": {"current_context": {"stratos_query_state": {"sources": ["budget"]}}},
+        },
+    ]
+
+    context = _latest_available_assistant_context(messages)
+
+    assert context["controlled_rule_domain"] == "public_procurement"
+    assert context["stratos_query_state"] == {"sources": ["budget"]}
+    assert "document_id" not in context
+    assert "answer" not in str(context).lower()
+
+
+def test_live_query_state_is_not_injected_into_document_prompt() -> None:
+    query = _assistant_query(
+        "Co stanoví interní směrnice?",
+        {
+            "stratos_query_state": {"sources": ["budget"], "period": {"fiscal_year": 2026}},
+            "controlled_rule_ids": ["rule_internal"],
+        },
+    )
+
+    assert "stratos_query_state" not in query
+    assert "controlled_rule_ids" not in query
 
 
 def test_assistant_chat_report_context_does_not_degrade_retrieval() -> None:

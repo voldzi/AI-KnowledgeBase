@@ -170,10 +170,17 @@ Akceptace:
 
 ### Řízený vícekolový kontext
 
-Stav produkce 2026-07-18: nasazeno. Z čerstvě autorizované
-Registry historie se používají nejvýše čtyři předchozí uživatelské otázky a
-celkově nejvýše 1 800 znaků. Staré odpovědi asistenta, citace ani skryté zdroje
-se do modelového kontextu nepřenášejí.
+Aktuální kontrakt používá z čerstvě autorizované Registry historie nejvýše 12
+předchozích uživatelských otázek, nejvýše 800 znaků na otázku a celkově nejvýše
+6 000 znaků pro skladbu odpovědi. Vyhledávací dotaz dostává menší projekci
+omezenou na 4 000 znaků. Staré odpovědi asistenta, neautorizované citace ani
+skryté zdroje se do modelového kontextu nepřenášejí.
+
+Strukturovaný stav období, metriky, zdrojů a řízených pravidel se ukládá jako
+samostatná omezená kapsle. Po obnovení stránky ji web i server znovu sestaví z
+historie; tajné hodnoty, velké evidence snapshoty a text odpovědi se zahodí.
+Kapsle není autorizačním vstupem: capability, scope, Information Policy,
+citace a živé zdroje se při každém požadavku znovu ověřují.
 
 - server sestaví omezenou historii relevantních předchozích tahů;
 - kontext je velikostně omezený a odděluje instrukce, uživatelská tvrzení a

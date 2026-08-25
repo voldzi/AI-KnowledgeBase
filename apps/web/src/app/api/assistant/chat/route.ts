@@ -6,6 +6,12 @@ import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import {
+  assistantConversationContextFromMessages,
+  hasAssistantContinuityContext,
+  mergeAssistantConversationContext,
+  safeAssistantConversationContext,
+} from "@/lib/assistant/conversation-context";
+import {
   ragContextForAssistantRoute,
   routeAssistantMessage,
   routeAssistantMessageForRag,
@@ -84,7 +90,18 @@ async function handlePost(request: NextRequest) {
       return badAssistantRequest("message is required.");
     }
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
-    const requestContext = _objectContext(body.context);
+    let requestContext = safeAssistantConversationContext(_objectContext(body.context));
+    if (conversationId && !hasAssistantContinuityContext(requestContext)) {
+      const persistedConversation = await clients.registry
+        .getAssistantConversation(conversationId, context)
+        .catch(() => undefined);
+      if (persistedConversation) {
+        requestContext = mergeAssistantConversationContext(
+          assistantConversationContextFromMessages(persistedConversation.messages),
+          requestContext,
+        );
+      }
+    }
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const config = getAklConfig();
     const directorConfig = getDirectorCopilotConfig(config);

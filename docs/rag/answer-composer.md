@@ -56,11 +56,19 @@ The LLM response is not trusted as the source of citation metadata.
 
 Only chunks with `score >= AKL_RAG_NO_ANSWER_MIN_SCORE` are sent to the LLM.
 Context is capped by `AKL_RAG_MAX_CONTEXT_CHARS`, and the generated answer is
-capped by `AKL_RAG_ANSWER_MAX_TOKENS` (`512` in the real local RAG profile).
+capped by `AKL_RAG_ANSWER_MAX_TOKENS` (`20000` authorized evidence characters
+and `768` generated tokens in the standard profile).
 Ordinary employee questions use six chunks. Explicit multi-facet questions use
 up to ten chunks, and an exact-document question may use all selected chunks
-from that document. Authorization, score thresholds and the context character
-limit remain unchanged.
+from that document. Authorization, score thresholds and the configured context
+character limit remain enforced.
+
+Relevant continuation can use up to 12 earlier user questions, 800 characters
+per question and 6000 characters in total. Retrieval receives a shorter bounded
+projection while answer composition can use the full history budget. Assistant
+answers are never reused as facts or instructions. Structured routing state is
+restored separately and authorization, scope and citations are re-evaluated for
+every request.
 
 After evidence verification, a deterministic completeness check compares the
 requested facets with the authorized selected chunks and the rendered answer.

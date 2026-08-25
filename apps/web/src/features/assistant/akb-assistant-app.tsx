@@ -98,6 +98,7 @@ import {
   assistantLiveSourceStatusLabel,
   assistantLiveSourceTimestamp,
 } from "@/lib/assistant/live-source-presentation";
+import { assistantConversationContextFromMessages } from "@/lib/assistant/conversation-context";
 
 interface AkbAssistantAppProps {
   currentSubjectId: string;
@@ -3899,7 +3900,7 @@ function threadFromConversation(
         ? emptyThreadTitle(language)
         : "AKB chat"
     ),
-    context: {},
+    context: assistantConversationContextFromMessages(conversation.messages),
     messages: conversation.messages.map((message) => {
       const chatMessage = messageFromConversationMessage(
         conversation.conversation_id,

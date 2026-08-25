@@ -43,4 +43,28 @@ describe("general question orchestration", () => {
     assert.equal(planned.period.fiscal_year, 2026);
     assert.deepEqual(planned.metrics, ["budget.plan_amount"]);
   });
+
+  it("plans one analytical question across all live domains and cited guidance", () => {
+    const message = "Zhodnoť finanční plán, stav projektového portfolia a potřeby ArchFlow a navrhni zlepšení.";
+    const route = routeAssistantMessage(message, "cs");
+    const query = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-25T08:00:00.000Z"),
+    });
+    const enriched = queryStateForAssistantGoal(query.state, route.queryPlan.goal);
+
+    assert.equal(route.queryPlan.goal, "recommend");
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(classifyDirectorCopilotV2Intent(message), "portfolio_performance_overview");
+    assert.deepEqual(enriched.sources, ["budget", "projectflow", "archflow"]);
+    assert.deepEqual(enriched.metrics, [
+      "budget.plan_amount",
+      "project.status",
+      "archflow.need.status",
+      "budget.actual_amount",
+      "budget.forecast_amount",
+      "budget.commitments_amount",
+      "budget.variance_amount",
+    ]);
+  });
 });

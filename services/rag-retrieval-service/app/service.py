@@ -6,6 +6,7 @@ import json
 import hashlib
 import inspect
 import logging
+import math
 import re
 import time
 import uuid
@@ -1405,7 +1406,24 @@ class RagRetrievalService:
             auth_context=auth_context,
         )
 
-        questions = _clarification_questions(payload.message, payload.context, payload.response_language)
+        query_context = dict(payload.context)
+        follow_up_document_ids: list[str] = []
+        follow_up_document_version_ids: list[str] = []
+        if payload.conversation_id:
+            (
+                earlier_questions,
+                follow_up_document_ids,
+                follow_up_document_version_ids,
+                persisted_context,
+            ) = await self._authorized_conversation_context(
+                conversation_id=payload.conversation_id,
+                auth_context=auth_context,
+            )
+            query_context = {**persisted_context, **query_context}
+            if earlier_questions:
+                query_context["earlier_user_questions"] = earlier_questions
+
+        questions = _clarification_questions(payload.message, query_context, payload.response_language)
         if questions:
             response = AssistantChatResponse(
                 response_type="clarification_needed",
@@ -1413,7 +1431,7 @@ class RagRetrievalService:
                 message=_localized(payload.response_language, "clarification_message"),
                 questions=questions,
                 why_needed=_localized(payload.response_language, "clarification_why_needed"),
-                current_context=payload.context,
+                current_context=_assistant_current_context(query_context),
                 suggested_actions=[
                     AssistantSuggestedAction(
                         label=_localized(payload.response_language, "complete_answers"),
@@ -1442,24 +1460,19 @@ class RagRetrievalService:
                 response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
-        query_context = dict(payload.context)
-        follow_up_document_ids: list[str] = []
-        follow_up_document_version_ids: list[str] = []
-        if payload.conversation_id:
-            (
-                earlier_questions,
-                follow_up_document_ids,
-                follow_up_document_version_ids,
-            ) = await self._authorized_conversation_context(
-                conversation_id=payload.conversation_id,
-                auth_context=auth_context,
-            )
-            if earlier_questions:
-                query_context["earlier_user_questions"] = earlier_questions
         query_id = _query_id()
-        retrieval_query = _assistant_query(payload.message, query_context)
-        answer_query = _assistant_answer_query(payload.message, query_context)
-        retrieval_filters = _assistant_filters(payload.context, payload.message)
+        retrieval_query = _assistant_query(
+            payload.message,
+            query_context,
+            history_max_length=min(2400, self._settings.assistant_history_max_chars),
+            max_query_length=4000,
+        )
+        answer_query = _assistant_answer_query(
+            payload.message,
+            query_context,
+            history_max_length=self._settings.assistant_history_max_chars,
+        )
+        retrieval_filters = _assistant_filters(query_context, payload.message)
         if _assistant_uses_authorized_follow_up_source(
             payload.message,
             query_context.get("earlier_user_questions"),
@@ -1618,6 +1631,7 @@ class RagRetrievalService:
                 response_type="answer",
                 conversation_id=conversation_id,
                 answer=_employee_answer(rag_answer.answer, payload.response_language),
+                current_context=_assistant_current_context(query_context),
                 citations=rag_answer.citations,
                 follow_up_questions=(
                     _fallback_follow_up_questions(payload.message, payload.response_language)
@@ -1663,6 +1677,7 @@ class RagRetrievalService:
             response_type="no_answer",
             conversation_id=conversation_id,
             answer=_assistant_no_source_message(payload.mode, payload.response_language),
+            current_context=_assistant_current_context(query_context),
             citations=[],
             confidence=rag_answer.confidence,
             warnings=rag_answer.warnings,
@@ -1695,7 +1710,7 @@ class RagRetrievalService:
         *,
         conversation_id: str,
         auth_context: AuthContext | None,
-    ) -> tuple[list[str], list[str], list[str]]:
+    ) -> tuple[list[str], list[str], list[str], dict[str, object]]:
         """Return bounded questions and the latest reauthorized citation scope.
 
         Assistant answers are deliberately excluded: they are neither
@@ -1714,17 +1729,23 @@ class RagRetrievalService:
                 conversation_id,
                 exc.__class__.__name__,
             )
-            return [], [], []
+            return [], [], [], {}
         if not stored:
-            return [], [], []
+            return [], [], [], {}
         messages = stored.get("messages")
         if not isinstance(messages, list):
-            return [], [], []
+            return [], [], [], {}
         document_ids, document_version_ids = _latest_available_citation_scope(messages)
         return (
-            _bounded_conversation_questions(messages),
+            _bounded_conversation_questions(
+                messages,
+                max_messages=self._settings.assistant_history_max_user_messages,
+                max_message_length=self._settings.assistant_history_max_message_chars,
+                max_total_length=self._settings.assistant_history_max_chars,
+            ),
             document_ids,
             document_version_ids,
+            _latest_available_assistant_context(messages),
         )
 
     async def _follow_up_questions(
@@ -1885,9 +1906,16 @@ class RagRetrievalService:
                         "metadata": {
                             "confidence": response.confidence,
                             "warnings": response.warnings,
+                            "current_context": response.current_context,
+                            "follow_up_questions": response.follow_up_questions,
+                            "suggested_actions": [
+                                action.model_dump(mode="json") for action in response.suggested_actions
+                            ],
                             "report_artifacts": [
                                 artifact.model_dump(mode="json") for artifact in response.report_artifacts
                             ],
+                            "missing_information": response.missing_information,
+                            "recommended_action": response.recommended_action,
                         },
                     },
                 ],
@@ -3447,11 +3475,36 @@ def _reranker_budget(profile: str, *, available: int) -> int:
 
 
 ASSISTANT_INTERNAL_CONTEXT_KEYS = {
+    "active_source_application",
+    "answer_composition",
+    "answer_format_instruction",
+    "answer_source",
+    "assistant_contract_version",
+    "assistant_goal",
+    "assistant_query_plan",
+    "assistant_report_request",
+    "assistant_tool",
+    "assistant_tool_reason",
+    "director_copilot_evidence",
+    "live_sources",
+    "mixed_evidence",
+    "stratos_query_state",
+}
+
+ASSISTANT_PERSISTED_CONTEXT_OMIT_KEYS = {
     "answer_format_instruction",
     "assistant_query_plan",
     "assistant_report_request",
     "director_copilot_evidence",
+    "director_copilot_v2_snapshot",
+    "earlier_user_questions",
+    "report_artifacts",
 }
+
+ASSISTANT_SENSITIVE_CONTEXT_KEY_RE = re.compile(
+    r"(?:^|_)(?:access_?token|refresh_?token|bearer|authorization|cookie|credential|password|secret|session_?id|private_?key|api_?key|encryption_?key|signing_?key|key_?material)(?:$|_)",
+    re.IGNORECASE,
+)
 
 
 def _bounded_conversation_questions(
@@ -3484,6 +3537,87 @@ def _bounded_conversation_questions(
             break
     questions.reverse()
     return questions
+
+
+def _assistant_current_context(context: dict[str, object]) -> dict[str, object]:
+    sanitized = _bounded_context_value(context)
+    result = sanitized if isinstance(sanitized, dict) else {}
+    result["answer_source"] = "rag_retrieval"
+    return result
+
+
+def _latest_available_assistant_context(
+    messages: list[object],
+    *,
+    max_messages: int = 12,
+) -> dict[str, object]:
+    merged: dict[str, object] = {}
+    inspected = 0
+    for value in reversed(messages):
+        if not isinstance(value, dict) or value.get("role") != "assistant":
+            continue
+        if value.get("availability") == "source_access_changed":
+            continue
+        metadata = value.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        current_context = metadata.get("current_context")
+        sanitized = _bounded_context_value(current_context)
+        if not isinstance(sanitized, dict):
+            continue
+        for key, item in sanitized.items():
+            merged.setdefault(key, item)
+        inspected += 1
+        if inspected >= max_messages:
+            break
+    sanitized_merged = _bounded_context_value(merged)
+    return sanitized_merged if isinstance(sanitized_merged, dict) else {}
+
+
+def _bounded_context_value(
+    value: object,
+    *,
+    depth: int = 0,
+    budget: dict[str, int] | None = None,
+) -> object | None:
+    state = budget if budget is not None else {"entries": 0, "characters": 0}
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value if math.isfinite(value) else None
+    if isinstance(value, str):
+        bounded = value[:800]
+        if state["characters"] + len(bounded) > 12000:
+            return None
+        state["characters"] += len(bounded)
+        return bounded
+    if depth >= 5 or state["entries"] >= 72:
+        return None
+    if isinstance(value, list):
+        result: list[object] = []
+        for item in value[:32]:
+            sanitized = _bounded_context_value(item, depth=depth + 1, budget=state)
+            if sanitized is not None:
+                result.append(sanitized)
+        return result
+    if not isinstance(value, dict):
+        return None
+    result_dict: dict[str, object] = {}
+    for raw_key, item in value.items():
+        if not isinstance(raw_key, str):
+            continue
+        if (
+            raw_key in ASSISTANT_PERSISTED_CONTEXT_OMIT_KEYS
+            or ASSISTANT_SENSITIVE_CONTEXT_KEY_RE.search(raw_key)
+        ):
+            continue
+        state["entries"] += 1
+        if state["entries"] > 72:
+            break
+        sanitized = _bounded_context_value(item, depth=depth + 1, budget=state)
+        if sanitized is not None:
+            result_dict[raw_key] = sanitized
+    return result_dict
 
 
 def _latest_available_citation_scope(
@@ -3525,6 +3659,8 @@ def _assistant_query(
     context: dict[str, object],
     *,
     include_retrieval_hint: bool = True,
+    history_max_length: int = 1800,
+    max_query_length: int = 4000,
 ) -> str:
     earlier_questions = context.get("earlier_user_questions")
     include_history = _assistant_query_uses_history(message, earlier_questions)
@@ -3541,14 +3677,14 @@ def _assistant_query(
     context_parts = [
         f"{key}: {value_text}"
         for key, value in sorted(context.items())
-        if key not in ASSISTANT_INTERNAL_CONTEXT_KEYS
+        if not _assistant_internal_context_key(key)
         and (key != "earlier_user_questions" or include_history)
         and not (inherited_legal_hint and key == "earlier_user_questions")
         for value_text in [
             _assistant_context_value(
                 value,
                 max_length=(
-                    1800
+                    history_max_length
                     if key == "earlier_user_questions"
                     else 500
                 ),
@@ -3580,7 +3716,15 @@ def _assistant_query(
             retrieval_hint = inherited_legal_hint
     if retrieval_hint and not inherited_legal_hint:
         query = f"{query}\n\nKanonický právní zdroj pro vyhledání: {retrieval_hint}"
-    return query
+    return query[:max_query_length]
+
+
+def _assistant_internal_context_key(key: str) -> bool:
+    return (
+        key in ASSISTANT_INTERNAL_CONTEXT_KEYS
+        or key.startswith("controlled_rule_")
+        or key.startswith("registry_report_")
+    )
 
 
 _ASSISTANT_HISTORY_STOPWORDS = {
@@ -3699,8 +3843,19 @@ def _assistant_history_terms(value: str) -> set[str]:
     }
 
 
-def _assistant_answer_query(message: str, context: dict[str, object]) -> str:
-    query = _assistant_query(message, context, include_retrieval_hint=False)
+def _assistant_answer_query(
+    message: str,
+    context: dict[str, object],
+    *,
+    history_max_length: int = 6000,
+) -> str:
+    query = _assistant_query(
+        message,
+        context,
+        include_retrieval_hint=False,
+        history_max_length=history_max_length,
+        max_query_length=12000,
+    )
     evidence = _director_copilot_evidence_context(
         context.get("director_copilot_evidence")
     )
